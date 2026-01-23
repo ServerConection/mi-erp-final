@@ -6,14 +6,18 @@ const jwt = require('jsonwebtoken');
 
 router.post('/login', async (req, res) => {
   try {
-    // 1. Recibir datos (aceptamos tanto español como inglés por seguridad)
+    // 1. Recibir datos
     const { usuario, contraseña, username, password } = req.body;
     const userLogin = usuario || username;
     const passLogin = contraseña || password;
 
-    // 2. Buscar usuario en la Base de Datos
+    if (!userLogin || !passLogin) {
+        return res.status(400).json({ success: false, error: "Faltan datos de acceso" });
+    }
+
+    // 2. Buscar usuario en la Base de Datos (Tabla 'users')
     const result = await pool.query(
-      'SELECT * FROM users WHERE username=$1 AND activo=true',
+      'SELECT * FROM users WHERE username=$1', 
       [userLogin]
     );
 
@@ -23,36 +27,44 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // 3. Validar Contraseña
-    const match = await bcrypt.compare(passLogin, user.password_hash);
+    // 3. Validar Contraseña (CORRECCIÓN CRÍTICA AQUÍ) 🚨
+    // El script creó la columna 'password', pero por seguridad leemos ambas opciones
+    const dbPassword = user.password || user.password_hash;
+
+    if (!dbPassword) {
+        console.error("Error: Usuario encontrado pero sin campo de contraseña válido.");
+        return res.status(500).json({ success: false, error: 'Error de integridad de datos' });
+    }
+
+    const match = await bcrypt.compare(passLogin, dbPassword);
     
     if (!match) {
       return res.status(401).json({ success: false, error: 'Contraseña incorrecta' });
     }
 
     // =================================================================
-    // ZONA DE EMERGENCIA: ASIGNACIÓN MANUAL DE URLS (Hardcode)
-    // Edita aquí las URLs de tus reportes de Looker Studio
+    // ZONA DE EMERGENCIA: ASIGNACIÓN MANUAL DE URLS
     // =================================================================
     
     let urlReporte = "";
 
-    // Asegúrate de que los roles coincidan EXACTAMENTE con lo que tienes en BD
-    if (user.rol === 'SUPERVISOR') {
+    // Normalizamos el rol a mayúsculas para evitar errores
+    const rolUsuario = user.rol ? user.rol.toUpperCase() : "";
+
+    if (rolUsuario === 'SUPERVISOR') {
         urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
     } 
-    else if (user.rol === 'ASESOR') {
+    else if (rolUsuario === 'ASESOR') {
         urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
     } 
-    else if (user.rol === 'ANALISTA') {
+    else if (rolUsuario === 'ANALISTA') {
         urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF";
     }
-    else if (user.rol === 'GERENCIA') {
+    else if (rolUsuario === 'GERENCIA') {
         urlReporte = "https://lookerstudio.google.com/embed/reporting/6579e74e-9a91-4cbb-90ac-5f43448026f9/page/Hq8lF";
     }
-    else {
-        // URL por defecto si el rol no tiene una asignada
-        urlReporte = ""; 
+    else if (rolUsuario === 'ADMINISTRADOR') {
+         urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF";
     }
     
     // =================================================================
@@ -60,7 +72,7 @@ router.post('/login', async (req, res) => {
     // 4. Generar Token
     const token = jwt.sign(
       { id: user.id, rol: user.rol },
-      process.env.JWT_SECRET || 'secreto_super_seguro', // Fallback por si falta .env
+      process.env.JWT_SECRET || 'secreto_v1_super_seguro', 
       { expiresIn: '8h' }
     );
 
@@ -73,7 +85,7 @@ router.post('/login', async (req, res) => {
         usuario: user.username,
         perfil: user.rol,
         nombre: user.nombres_completos,
-        url_reporte: urlReporte // Enviamos la URL forzada
+        url_reporte: urlReporte 
       }
     });
 

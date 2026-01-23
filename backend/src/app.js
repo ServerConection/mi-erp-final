@@ -7,10 +7,13 @@ const userRoutes = require('./routes/users.routes');
 
 const app = express();
 
-app.use(cors());
+// 1. IMPORTANTE: CORS activado para que entre el frontend
+app.use(cors()); 
 app.use(express.json());
 
-app.use('/auth', authRoutes);
-app.use('/admin/users', userRoutes);
+// 2. CORRECCIÓN DE RUTAS (Agregamos '/api')
+// Así la url queda: https://tu-web.com/api/auth/login
+app.use('/api/auth', authRoutes);
+app.use('/api/admin/users', userRoutes);
 
 module.exports = app;

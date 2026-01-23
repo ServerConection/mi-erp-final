@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ success: false, error: "Faltan datos de acceso" });
     }
 
-    // 2. Buscar usuario en la Base de Datos (Tabla 'users')
+    // 2. Buscar usuario en la Base de Datos
     const result = await pool.query(
       'SELECT * FROM users WHERE username=$1', 
       [userLogin]
@@ -27,13 +27,12 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // 3. Validar Contraseña (CORRECCIÓN CRÍTICA AQUÍ) 🚨
-    // El script creó la columna 'password', pero por seguridad leemos ambas opciones
+    // 3. Validar Contraseña (seguridad doble campo)
     const dbPassword = user.password || user.password_hash;
 
     if (!dbPassword) {
-        console.error("Error: Usuario encontrado pero sin campo de contraseña válido.");
-        return res.status(500).json({ success: false, error: 'Error de integridad de datos' });
+        console.error("Error: Usuario sin contraseña válida.");
+        return res.status(500).json({ success: false, error: 'Error de datos' });
     }
 
     const match = await bcrypt.compare(passLogin, dbPassword);
@@ -43,22 +42,23 @@ router.post('/login', async (req, res) => {
     }
 
     // =================================================================
-    // ZONA DE EMERGENCIA: ASIGNACIÓN MANUAL DE URLS
+    // ZONA DE REPORTES (LINKS INTERCAMBIADOS SEGÚN TU PEDIDO)
     // =================================================================
     
     let urlReporte = "";
-
-    // Normalizamos el rol a mayúsculas para evitar errores
     const rolUsuario = user.rol ? user.rol.toUpperCase() : "";
 
     if (rolUsuario === 'SUPERVISOR') {
+        // Mantiene el mismo de ventas
         urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
     } 
     else if (rolUsuario === 'ASESOR') {
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
+        // CAMBIO: Ahora tiene el link que era de Analista (...4a8lF)
+        urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF"; 
     } 
     else if (rolUsuario === 'ANALISTA') {
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF";
+        // CAMBIO: Ahora tiene el link que era de Asesor (...0U7lF)
+        urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF";
     }
     else if (rolUsuario === 'GERENCIA') {
         urlReporte = "https://lookerstudio.google.com/embed/reporting/6579e74e-9a91-4cbb-90ac-5f43448026f9/page/Hq8lF";
@@ -76,7 +76,7 @@ router.post('/login', async (req, res) => {
       { expiresIn: '8h' }
     );
 
-    // 5. Responder al Frontend
+    // 5. Responder
     res.json({
       success: true,
       token,

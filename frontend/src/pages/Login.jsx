@@ -20,7 +20,7 @@ export default function Login() {
     setError("");
 
     try {
-      const response = await fetch("https://velsa-backend.onrender.com/api/auth/login", {
+      const response = await fetch("https://erp-backend-v1-qhk2.onrender.com/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

@@ -7,9 +7,9 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
-  // ESTA ES LA PARTE QUE TE FALTA PARA LA NUBE:
+  // ESTA ES LA PARTE QUE SOLUCIONA TU ERROR DE AHORA:
   ssl: {
-    rejectUnauthorized: false // Esto permite la conexión segura con Render
+    rejectUnauthorized: false
   }
 });
 

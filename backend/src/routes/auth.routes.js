@@ -42,29 +42,45 @@ router.post('/login', async (req, res) => {
     }
 
     // =================================================================
-    // ZONA DE REPORTES (LINKS INTERCAMBIADOS SEGÚN TU PEDIDO)
+    // ZONA DE REPORTES (LÓGICA ACTUALIZADA)
     // =================================================================
     
     let urlReporte = "";
     const rolUsuario = user.rol ? user.rol.toUpperCase() : "";
+    const nombreUsuario = user.username; // Usamos el username exacto de la BD
 
-    if (rolUsuario === 'SUPERVISOR') {
-        // Mantiene el mismo de ventas
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
+    // A. LISTA DE USUARIOS ESPECIALES (De tu imagen amarilla)
+    const usuariosEspeciales = [
+        'berueda',
+        'brueda',
+        'achavez',
+        'dleonardi',
+        'apachecho',
+        'asrodriguez'
+    ];
+
+    // B. VALIDACIÓN: ¿Es un usuario especial?
+    if (usuariosEspeciales.includes(nombreUsuario)) {
+        // LINK NUEVO SOLICITADO
+        urlReporte = "https://lookerstudio.google.com/embed/reporting/ee3b8401-45d8-4075-912b-2bc6ef815309/page/p_jsui99vd0d";
     } 
-    else if (rolUsuario === 'ASESOR') {
-        // CAMBIO: Ahora tiene el link que era de Analista (...4a8lF)
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF"; 
-    } 
-    else if (rolUsuario === 'ANALISTA') {
-        // CAMBIO: Ahora tiene el link que era de Asesor (...0U7lF)
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF";
-    }
-    else if (rolUsuario === 'GERENCIA') {
-        urlReporte = "https://lookerstudio.google.com/embed/reporting/6579e74e-9a91-4cbb-90ac-5f43448026f9/page/Hq8lF";
-    }
-    else if (rolUsuario === 'ADMINISTRADOR') {
-         urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF";
+    else {
+        // C. SI NO ES ESPECIAL, APLICAMOS LÓGICA POR ROL
+        if (rolUsuario === 'SUPERVISOR') {
+            urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF"; 
+        } 
+        else if (rolUsuario === 'ASESOR') {
+            urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF"; 
+        } 
+        else if (rolUsuario === 'ANALISTA') {
+            urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF";
+        }
+        else if (rolUsuario === 'GERENCIA') {
+            urlReporte = "https://lookerstudio.google.com/embed/reporting/5cfdbb81-95d3-428a-9e43-ac3a1687ba9c/page/0U7lF";
+        }
+        else if (rolUsuario === 'ADMINISTRADOR') {
+             urlReporte = "https://lookerstudio.google.com/embed/reporting/256bf4b5-e032-4d1f-b799-c931be1b38d9/page/4a8lF";
+        }
     }
     
     // =================================================================

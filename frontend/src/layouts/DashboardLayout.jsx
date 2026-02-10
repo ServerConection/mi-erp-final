@@ -5,11 +5,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
-  
-  // ESTADO PARA EL MENÚ EN MÓVIL (Abierto/Cerrado)
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
-  // NUEVO: ESTADO PARA COLAPSAR EN ESCRITORIO (Flecha)
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
 
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
@@ -44,42 +40,50 @@ export default function DashboardLayout() {
     >
       <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm z-0"></div>
 
-      {/* 0. OVERLAY PARA CERRAR EN MÓVIL */}
       {sidebarOpen && (
         <div 
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
         ></div>
       )}
 
-      {/* 1. SIDEBAR (RESPONSIVE + COLLAPSIBLE) */}
+      {/* SIDEBAR */}
       <aside 
         className={`
           fixed md:static inset-y-0 left-0 z-30 
-          bg-black/40 backdrop-blur-xl border-r border-white/10 flex flex-col transition-all duration-300 ease-in-out
+          bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} 
           md:translate-x-0 
           ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
         `}
       >
-        {/* BOTÓN FLECHA (Solo visible en Desktop) */}
+        {/* NUEVA FLECHA ESTILIZADA (Pestaña de Cristal) */}
         <button 
           onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
-          className="hidden md:flex absolute -right-3 top-10 w-6 h-6 bg-blue-600 hover:bg-blue-500 rounded-full items-center justify-center text-white border border-slate-900 z-50 shadow-lg transition-transform"
+          className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-20 bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md rounded-r-2xl items-center justify-center text-white border-y border-r border-white/20 z-50 shadow-[5px_0_15px_rgba(0,0,0,0.3)] transition-all group"
         >
-          {isDesktopCollapsed ? "→" : "←"}
+          <div className={`transition-transform duration-500 ${isDesktopCollapsed ? "rotate-180" : ""}`}>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={2.5} 
+              stroke="currentColor" 
+              className="w-5 h-5 group-hover:scale-125 transition-transform"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </div>
         </button>
 
-        <div className={`p-8 border-b border-white/5 flex justify-between items-center ${isDesktopCollapsed ? "px-4" : ""}`}>
-          <h1 className={`font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 transition-all ${isDesktopCollapsed ? "text-lg" : "text-2xl"}`}>
-            {isDesktopCollapsed ? "ERP" : <>MI ERP <span className="text-xs text-white/40 font-normal">PRO</span></>}
+        <div className="p-8 border-b border-white/5 flex justify-center items-center overflow-hidden">
+          <h1 className={`font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 transition-all duration-500 ${isDesktopCollapsed ? "text-xs opacity-0" : "text-2xl opacity-100"}`}>
+             NOVONET PRO
           </h1>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden text-white/50 hover:text-white">
-            ✕
-          </button>
+          {isDesktopCollapsed && <span className="text-blue-400 font-bold text-xl">N</span>}
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 py-10 space-y-4 overflow-y-auto custom-scrollbar">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -89,61 +93,59 @@ export default function DashboardLayout() {
                   navigate(item.path);
                   setSidebarOpen(false); 
                 }}
-                title={isDesktopCollapsed ? item.name : ""}
-                className={`w-full flex items-center px-4 py-3.5 rounded-xl transition-all duration-300 group ${
-                  isDesktopCollapsed ? "justify-center" : "space-x-4"
+                className={`w-full flex items-center rounded-2xl transition-all duration-300 group ${
+                  isDesktopCollapsed ? "justify-center h-14" : "px-5 py-4 space-x-5"
                 } ${
                   isActive
-                    ? "bg-blue-600/20 border border-blue-500/30 text-white shadow-[0_0_20px_rgba(59,130,246,0.15)]"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white border border-transparent"
+                    ? "bg-blue-600/20 border border-blue-500/40 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <span className={`text-xl ${isActive ? "text-blue-400" : "text-slate-500"}`}>{item.icon}</span>
-                {!isDesktopCollapsed && <span className="font-medium tracking-wide truncate">{item.name}</span>}
+                <span className={`${isDesktopCollapsed ? "text-3xl" : "text-2xl"} transition-all group-hover:scale-110 drop-shadow-md`}>
+                  {item.icon}
+                </span>
+                {!isDesktopCollapsed && <span className="font-bold tracking-wide truncate">{item.name}</span>}
               </button>
             );
           })}
         </nav>
 
-        <div className={`p-4 border-t border-white/5 bg-black/20 transition-all ${isDesktopCollapsed ? "items-center" : ""}`}>
-           <div className={`flex items-center mb-4 px-2 ${isDesktopCollapsed ? "justify-center" : "space-x-3"}`}>
-              <div className="w-10 h-10 shrink-0 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg">
+        <div className={`p-6 border-t border-white/5 bg-black/20 ${isDesktopCollapsed ? "text-center px-2" : ""}`}>
+           <div className={`flex items-center mb-6 ${isDesktopCollapsed ? "justify-center" : "space-x-4"}`}>
+              <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center font-black text-white shadow-xl border border-white/10">
                 {user.usuario.charAt(0).toUpperCase()}
               </div>
               {!isDesktopCollapsed && (
-                <div className="overflow-hidden">
-                  <p className="text-sm font-semibold text-white truncate">{user.usuario}</p>
-                  <p className="text-xs text-blue-300 truncate">{user.perfil}</p>
+                <div className="overflow-hidden text-left">
+                  <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
+                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Online</p>
                 </div>
               )}
            </div>
-           <button onClick={handleLogout} className={`w-full text-xs text-red-400 hover:bg-red-500/20 py-2 rounded transition ${isDesktopCollapsed ? "text-[10px]" : ""}`}>
-             {isDesktopCollapsed ? "Salir" : "Cerrar Sesión"}
+           <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-[10px] font-black text-red-400 hover:text-white hover:bg-red-500/30 py-3 rounded-xl border border-red-500/20 transition-all uppercase tracking-widest">
+             <span>🚫</span>
+             {!isDesktopCollapsed && <span>Desconectar</span>}
            </button>
         </div>
       </aside>
 
-      {/* 2. ÁREA DE CONTENIDO */}
-      <main className="flex-1 flex flex-col relative z-10 overflow-hidden w-full transition-all duration-300">
-        <header className="h-16 md:h-20 flex items-center justify-between px-4 md:px-8 border-b border-white/5 bg-transparent shrink-0">
-          <div className="flex items-center gap-4">
+      {/* ÁREA DE CONTENIDO */}
+      <main className="flex-1 flex flex-col relative z-10 overflow-hidden w-full transition-all duration-500">
+        <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-black/20 shrink-0 backdrop-blur-md">
+          <div className="flex items-center gap-6">
             <button 
               onClick={() => setSidebarOpen(true)}
-              className="md:hidden p-2 text-white hover:bg-white/10 rounded-lg"
+              className="md:hidden p-3 text-white bg-white/10 rounded-xl"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-
-            <div>
-              <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic bg-clip-text">
                  {menuItems.find(m => m.path === location.pathname)?.name}
-              </h2>
-              <p className="hidden md:block text-sm text-slate-400">Panel de Control</p>
-            </div>
+            </h2>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 md:p-6 w-full transition-all">
+        <div className="flex-1 overflow-auto p-4 md:p-10 w-full transition-all">
            <Outlet /> 
         </div>
       </main>

@@ -19,6 +19,9 @@ export default function Indicadores() {
   const URL_GERENCIA_VELSA =
     "https://lookerstudio.google.com/embed/reporting/ee3b8401-45d8-4075-912b-2bc6ef815309/page/TwbmF";
 
+  const URL_GERENCIA_ASESORES =
+    "https://lookerstudio.google.com/embed/reporting/7690d7a1-0a7e-4eeb-9f7b-5d1a65d0a03a/page/w7EnF";
+
   const URL_POR_DEFECTO = URLS_FIJAS.GERENCIA;
 
   useEffect(() => {
@@ -47,8 +50,10 @@ export default function Indicadores() {
     if (perfil === "GERENCIA") {
       if (tab === "NOVONET") {
         setReportUrl(URLS_FIJAS.GERENCIA);
-      } else {
+      } else if (tab === "VELSA") {
         setReportUrl(URL_GERENCIA_VELSA);
+      } else if (tab === "ASESORES") {
+        setReportUrl(URL_GERENCIA_ASESORES);
       }
     }
   }, [tab, perfil]);
@@ -79,6 +84,17 @@ export default function Indicadores() {
             }`}
           >
             Indicadores VELSA
+          </button>
+
+          <button
+            onClick={() => setTab("ASESORES")}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+              tab === "ASESORES"
+                ? "bg-blue-600 text-white"
+                : "bg-white border text-gray-600"
+            }`}
+          >
+            Módulo Asesores
           </button>
         </div>
       )}

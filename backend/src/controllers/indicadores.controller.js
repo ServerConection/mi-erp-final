@@ -1,18 +1,29 @@
 const pool = require('../config/db');
 
+// Fecha correcta en Ecuador (UTC-5)
+const getFechaEcuador = () => {
+    const ahora = new Date();
+    ahora.setHours(ahora.getHours() - 5);
+    return ahora.toISOString().split('T')[0];
+};
+
+const getPrimerDiaMesEcuador = () => {
+    const ahora = new Date();
+    ahora.setHours(ahora.getHours() - 5);
+    return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
 const getIndicadoresDashboard = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
 
-        // Fechas por defecto (Hoy)
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
         let filters = "";
 
-        // Construcción dinámica de filtros
         if (asesor) {
             values.push(`%${asesor}%`);
             filters += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
@@ -21,12 +32,12 @@ const getIndicadoresDashboard = async (req, res) => {
             values.push(`%${supervisor}%`);
             filters += ` AND e.supervisor ILIKE $${values.length}`;
         }
-        if (req.query.estadoNetlife) {
-            values.push(`%${req.query.estadoNetlife}%`);
+        if (estadoNetlife) {
+            values.push(`%${estadoNetlife}%`);
             filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
-        if (req.query.estadoRegularizacion) {
-            values.push(`%${req.query.estadoRegularizacion}%`);
+        if (estadoRegularizacion) {
+            values.push(`%${estadoRegularizacion}%`);
             filters += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
         if (etapaCRM) {
@@ -38,7 +49,6 @@ const getIndicadoresDashboard = async (req, res) => {
             filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
-        // Definición de grupos de etapas
         const ETAPAS_GESTIONABLES = `(
             'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
             'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
@@ -56,87 +66,66 @@ const getIndicadoresDashboard = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL', 'CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        // Query principal para KPIs de Supervisores y Asesores
         const queryKPI = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-
-                /* --- INDICADORES --- */
                 COUNT(*) FILTER (WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AS leads_totales,
-                
                 COUNT(*) FILTER (
                     WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
-                 
-
                 COUNT(*) FILTER (
                     WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date)
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS gestionables,
-
                 COUNT(*) FILTER (
                     WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
                     AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = '')
                 ) AS ingresos_reales,
-
                 COUNT(*) FILTER (
                     WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS activas,
-
-                /* --- NUEVOS INDICADORES --- */
-                
                 COUNT(*) FILTER (
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                     AND mb.b_fecha_venta_subida IS NOT NULL
                 ) AS real_mes,
-
                 COUNT(*) FILTER (
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                     AND mb.b_fecha_venta_subida IS NULL
                 ) AS backlog,
-
                 (
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO' AND mb.b_fecha_venta_subida IS NOT NULL) +
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO' AND mb.b_fecha_venta_subida IS NULL)
                 ) AS total_activas_calculada,
-
                 0 AS crec_vs_ma,
-
                 (COUNT(*) FILTER (
                     WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
                     AND mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                )::numeric / 
+                )::numeric /
                 NULLIF(COUNT(*) FILTER (
                     WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date)
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ), 0) * 100)::numeric(10,2) AS descarte,
-
                 COUNT(*) FILTER (
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
                     AND mb.j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS regularizacion,
-
-                /* --- CÁLCULOS DE PORCENTAJES --- */
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
-
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''))::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS eficiencia
-
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE 1=1 ${filters}
@@ -165,8 +154,9 @@ const getIndicadoresDashboard = async (req, res) => {
         `;
 
         const ESTADOS_ORDEN = [
-            'ACTIVO', 'ASIGNADO' , 'PREPLANIIFICADO' , 'PLANIIFICADO' , 'RECHAZADO', 'REPLANIFICADO' , 'DESISTE DEL SERVICIO',
-            'PRESERVICIO', 'FIN DE GESTION', 'FACTIBLE' ];
+            'ACTIVO', 'ASIGNADO', 'PREPLANIIFICADO', 'PLANIIFICADO', 'RECHAZADO', 'REPLANIFICADO', 'DESISTE DEL SERVICIO',
+            'PRESERVICIO', 'FIN DE GESTION', 'FACTIBLE'
+        ];
 
         const queryEstados = `
             SELECT
@@ -177,9 +167,9 @@ const getIndicadoresDashboard = async (req, res) => {
         `;
 
         const queryEmbudo = `
-            SELECT 
-                COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa, 
-                COUNT(*)::int AS total 
+            SELECT
+                COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
+                COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date ${filters}
@@ -188,9 +178,9 @@ const getIndicadoresDashboard = async (req, res) => {
         `;
 
         const queryPorDia = `
-            SELECT 
-                mb.b_cerrado::date AS fecha, 
-                COUNT(*)::int AS total 
+            SELECT
+                mb.b_cerrado::date AS fecha,
+                COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date ${filters}
@@ -198,7 +188,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
-        // Query para obtener etapas CRM dinámicas (para el select del frontend)
         const queryEtapasCRM = `
             SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
             FROM public.mestra_bitrix mb
@@ -207,7 +196,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY mb.b_etapa_de_la_negociacion ASC
         `;
 
-        // Ejecución concurrente
         const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('mb.b_persona_responsable'), values),
@@ -244,46 +232,113 @@ const getIndicadoresDashboard = async (req, res) => {
 };
 
 const getMonitoreoDiario = async (req, res) => {
-  try {
-    // 🔹 POR AHORA DATA DE PRUEBA (luego se conecta a SQL)
-    res.json({
-      success: true,
-      supervisores: [
-        {
-          nombre_grupo: "SUPERVISOR A",
-          real_mes_leads: 1200,
-          real_dia_leads: 55,
-          crm_acumulado: 300,
-          crm_dia: 15,
-          v_subida_crm_hoy: 6,
-          v_subida_jot_hoy: 9,
-          real_efectividad: 82,
-          real_descarte: 10,
-          real_tarjeta: 78
-        }
-      ],
-      asesores: [
-        {
-          nombre_grupo: "ASESOR 1",
-          real_mes_leads: 320,
-          real_dia_leads: 14,
-          crm_acumulado: 80,
-          crm_dia: 4,
-          v_subida_crm_hoy: 2,
-          v_subida_jot_hoy: 3,
-          real_efectividad: 75,
-          real_descarte: 12,
-          real_tarjeta: 65
-        }
-      ]
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Error monitoreo" });
-  }
+    try {
+        // Fecha correcta Ecuador UTC-5
+        const hoy = getFechaEcuador();
+        const iniciomes = getPrimerDiaMesEcuador();
+
+        console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
+
+        const ETAPAS_GESTIONABLES = `(
+            'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
+            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
+            'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
+            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
+            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
+            'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
+        )`;
+
+        const ETAPAS_DESCARTE = `(
+            'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
+            'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
+            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
+        )`;
+
+        const queryMonitoreo = (columna) => `
+            SELECT
+                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+
+                COUNT(*) FILTER (
+                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                ) AS real_mes_leads,
+
+                COUNT(*) FILTER (
+                    WHERE mb.b_creado_el_fecha::date = $2::date
+                ) AS real_dia_leads,
+
+                COUNT(*) FILTER (
+                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                ) AS crm_acumulado,
+
+                COUNT(*) FILTER (
+                    WHERE mb.b_creado_el_fecha::date = $2::date
+                ) AS crm_dia,
+
+                COUNT(*) FILTER (
+                    WHERE mb.b_cerrado::date = $2::date
+                    AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+                ) AS v_subida_crm_hoy,
+
+                COUNT(*) FILTER (
+                    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date = $2::date)
+                    AND mb.j_netlife_estatus_real IS NOT NULL
+                    AND TRIM(COALESCE(mb.j_netlife_estatus_real, '')) <> ''
+                    AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
+                ) AS v_subida_jot_hoy,
+
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND mb.j_netlife_estatus_real = 'ACTIVO'
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    ), 0)
+                , 0) * 100, 2) AS real_efectividad,
+
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    ), 0)
+                , 0) * 100, 2) AS real_descarte,
+
+                0 AS real_tarjeta
+
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+            GROUP BY 1
+            ORDER BY real_mes_leads DESC
+        `;
+
+        const [resSup, resAses] = await Promise.all([
+            pool.query(queryMonitoreo('e.supervisor'), [iniciomes, hoy]),
+            pool.query(queryMonitoreo('mb.b_persona_responsable'), [iniciomes, hoy]),
+        ]);
+
+        console.log(`[MONITOREO] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length}`);
+
+        res.json({
+            success: true,
+            supervisores: resSup.rows,
+            asesores: resAses.rows,
+        });
+
+    } catch (error) {
+        console.error("ERROR MONITOREO:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
 };
 
 module.exports = {
-  getIndicadoresDashboard,
-  getMonitoreoDiario
+    getIndicadoresDashboard,
+    getMonitoreoDiario
 };

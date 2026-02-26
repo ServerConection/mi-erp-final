@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, FunnelChart, Funnel, LabelList, Cell 
@@ -7,6 +8,7 @@ import {
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
+  const [alertas, setAlertas] = useState([]);
   
   const [data, setData] = useState({ 
     supervisores: [], 
@@ -35,14 +37,52 @@ export default function ReporteComercialCore() {
     etapaJotform: "",
   });
 
-  const fetchDashboard = async () => {
+  const mostrarAlertas = (supervisores) => {
+    const nuevasAlertas = [];
+
+    const supEficienciaBaja = (supervisores || []).filter(s => Number(s.eficiencia) < 5);
+    if (supEficienciaBaja.length > 0) {
+      nuevasAlertas.push({
+        id: 1,
+        mensaje: `⚠️ ATENCIÓN: ${supEficienciaBaja.length} SUPERVISOR(ES) CON EFICIENCIA MENOR AL 5%`,
+        color: "bg-red-600 border-red-400",
+        duracion: 5000,
+      });
+    }
+
+    const supVentasBajas = (supervisores || []).filter(s => Number(s.ingresos_reales) < 2);
+    if (supVentasBajas.length > 0) {
+      const nombres = supVentasBajas.map(s => s.nombre_grupo).join(", ");
+      nuevasAlertas.push({
+        id: 2,
+        mensaje: `📉 ${supVentasBajas.length} SUPERVISOR(ES) CON MENOS DE 2 VENTAS JOT: ${nombres}`,
+        color: "bg-amber-600 border-amber-400",
+        duracion: 7000,
+      });
+    }
+
+    if (nuevasAlertas.length > 0) {
+      setAlertas(nuevasAlertas);
+      nuevasAlertas.forEach(alerta => {
+        setTimeout(() => {
+          setAlertas(prev => prev.filter(a => a.id !== alerta.id));
+        }, alerta.duracion);
+      });
+    }
+  };
+
+  const fetchDashboard = async (filtrosOverride) => {
     setLoading(true);
     try {
-      const params = Object.fromEntries(Object.entries(filtros).filter(([_, v]) => v !== ""));
+      const filtrosActivos = filtrosOverride || filtros;
+      const params = Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== ""));
       const p = new URLSearchParams(params);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
-      if (result.success) setData(result);
+      if (result.success) {
+        setData(result);
+        mostrarAlertas(result.supervisores);
+      }
     } catch (e) {
       console.error("Error Dashboard:", e);
     } finally {
@@ -63,6 +103,12 @@ export default function ReporteComercialCore() {
     }
   };
 
+  const handleClickTarjetaJotform = (estado) => {
+    const nuevosFiltros = { ...filtros, etapaJotform: estado };
+    setFiltros(nuevosFiltros);
+    fetchDashboard(nuevosFiltros);
+  };
+
   useEffect(() => { 
     if(tabActiva === "GENERAL") {
       fetchDashboard();
@@ -71,17 +117,13 @@ export default function ReporteComercialCore() {
     }
   }, [tabActiva]);
 
-  const descargarCSV = (tipo) => {
+  const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
     if (!list || !list.length) return;
-    const headers = Object.keys(list[0]).join(",");
-    const rows = list.map(r => Object.values(r).map(v => `"${v ?? ""}"`).join(",")).join("\n");
-    const blob = new Blob([`${headers}\n${rows}`], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+    const ws = XLSX.utils.json_to_sheet(list);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, tipo);
+    XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const stats = useMemo(() => {
@@ -89,6 +131,7 @@ export default function ReporteComercialCore() {
     const n = s.length || 1;
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
+      gestionables: s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0),
       ingresosJotform: s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0),
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
@@ -104,50 +147,103 @@ export default function ReporteComercialCore() {
     'REPLANIFICADO', 'DESISTE DEL SERVICIO', 'PRESERVICIO', 'FIN DE GESTION', 'FACTIBLE'
   ];
 
+  const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
+
+  // Label barra - número dentro
   const CustomBarLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
     return (
-      <text
-        x={x + width / 2}
-        y={y + 18}
-        fill="#ffffff"
-        textAnchor="middle"
-        fontSize={10}
-        fontWeight="900"
-      >
+      <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">
         {value}
       </text>
     );
   };
 
-  const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
+  // Tick vertical para el eje X del gráfico de barras
+  const CustomXAxisTick = (props) => {
+    const { x, y, payload } = props;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={10}
+          textAnchor="end"
+          fill="#64748b"
+          fontSize={9}
+          fontWeight={700}
+          transform="rotate(-45)"
+        >
+          {payload.value}
+        </text>
+      </g>
+    );
+  };
+
+  // Label embudo - lee directo del array de datos usando el índice
+  const embudoConIndice = (data.graficoEmbudo || []).map((item, index) => ({
+    ...item,
+    _index: index,
+  }));
+
+  const CustomFunnelLabel = (props) => {
+    const { x, y, width, height, index } = props;
+    if (height < 22) return null;
+    const item = (data.graficoEmbudo || [])[index];
+    if (!item) return null;
+    return (
+      <text
+        x={x + width / 2}
+        y={y + height / 2}
+        fill="#ffffff"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={9}
+        fontWeight="900"
+      >
+        {`${item.etapa} = ${item.total}`}
+      </text>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
+
+      {/* ALERTAS APILADAS */}
+      <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
+        {alertas.map(alerta => (
+          <div
+            key={alerta.id}
+            className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm`}
+          >
+            {alerta.mensaje}
+          </div>
+        ))}
+      </div>
       
       {/* HEADER Y TABS */}
-<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-  <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-    <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
-    SISTEMA DE INDICADORES
-  </h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+          <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
+          SISTEMA DE INDICADORES
+        </h1>
 
-  <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
-    <button 
-      onClick={() => setTabActiva("GENERAL")} 
-      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
-    >
-      📊 REPORTE GENERAL D-1
-    </button>
-    <button 
-      onClick={() => setTabActiva("MONITOREO")} 
-      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
-    >
-      ⏱️ MONITOREO LEADS DIARIO
-    </button>
-  </div>
-</div>
+        <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
+          <button 
+            onClick={() => setTabActiva("GENERAL")} 
+            className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
+          >
+            📊 REPORTE GENERAL D-1
+          </button>
+          <button 
+            onClick={() => setTabActiva("MONITOREO")} 
+            className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
+          >
+            ⏱️ MONITOREO LEADS 
+          </button>
+        </div>
+      </div>
 
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
@@ -214,7 +310,7 @@ export default function ReporteComercialCore() {
                 </div>
 
                 <button 
-                  onClick={fetchDashboard} 
+                  onClick={() => fetchDashboard()} 
                   className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95"
                 >
                   {loading ? "CARGANDO..." : "APLICAR FILTROS"}
@@ -225,27 +321,38 @@ export default function ReporteComercialCore() {
 
           {/* KPI CARDS */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
-            <KpiMini label="Ventas CRM" value={stats.ingresosCRM} color="border-l-blue-500" />
+            <KpiMini label="Leads Totales" value={stats.leadsGestionables} color="border-l-emerald-500" />    
+            <KpiMini label="Gestionables" value={stats.gestionables} color="border-l-violet-500" />
+            <KpiMini label="Ingresos CRM" value={stats.ingresosCRM} color="border-l-blue-500" />
             <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
-            <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
-            <KpiMini label="Leads Totales" value={stats.leadsGestionables} color="border-l-emerald-500" />        
-            <KpiMini label="Eficiencia" value={`${stats.efectividad}%`} color="border-l-purple-500" />
+            <KpiMini label="Efectividad" value={`${stats.efectividad}%`} color="border-l-purple-500" />
             <KpiMini label="Tasa Inst." value={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
             <KpiMini label="Tarjeta %" value={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
+            <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
           </div>
 
-          {/* ETAPAS JOTFORM */}
+          {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               Etapas Jotform
+              {filtros.etapaJotform && (
+                <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black normal-case">
+                  FILTRO ACTIVO: {filtros.etapaJotform}
+                  <button onClick={() => { const f = {...filtros, etapaJotform: ""}; setFiltros(f); fetchDashboard(f); }} className="ml-1 text-blue-400 hover:text-red-500">✕</button>
+                </span>
+              )}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {(data.estadosNetlife || []).map((e, i) => (
-                <div key={i} className="bg-white border border-slate-100 px-3 py-3 rounded-xl flex justify-between items-center shadow-sm">
+                <div
+                  key={i}
+                  onClick={() => handleClickTarjetaJotform(e.estado)}
+                  className={`px-3 py-3 rounded-xl flex justify-between items-center shadow-sm cursor-pointer transition-all border hover:scale-105 active:scale-95 ${filtros.etapaJotform === e.estado ? 'bg-blue-50 border-blue-400 shadow-blue-100' : 'bg-white border-slate-100 hover:border-blue-300'}`}
+                >
                   <span className="text-[10px] font-bold text-slate-600 uppercase leading-tight pr-2">{e.estado}</span>
-                  <span className="text-sm font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg shrink-0">{e.total}</span>
+                  <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${filtros.etapaJotform === e.estado ? 'text-white bg-blue-500' : 'text-blue-600 bg-blue-50'}`}>{e.total}</span>
                 </div>  
               ))}
             </div>
@@ -254,7 +361,7 @@ export default function ReporteComercialCore() {
           {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* GRÁFICO DE BARRAS POR DÍA */}
+            {/* GRÁFICO DE BARRAS POR DÍA - FECHAS VERTICALES */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -262,9 +369,9 @@ export default function ReporteComercialCore() {
               </h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.graficoBarrasDia} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <BarChart data={data.graficoBarrasDia} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} />
+                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={<CustomXAxisTick />} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
                     <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} />
                     <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} label={<CustomBarLabel />} />
@@ -273,7 +380,7 @@ export default function ReporteComercialCore() {
               </div>
             </div>
 
-            {/* EMBUDO DE CONVERSIÓN CON LEYENDA LATERAL */}
+            {/* EMBUDO DE CONVERSIÓN CON LABEL DENTRO Y LEYENDA LATERAL */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
@@ -281,11 +388,16 @@ export default function ReporteComercialCore() {
               </h3>
               <div className="flex gap-4 h-[300px]">
 
-                {/* GRÁFICO EMBUDO */}
                 <div className="flex-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <FunnelChart>
-                      <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false}>
+                      <Funnel
+                        data={data.graficoEmbudo || []}
+                        dataKey="total"
+                        nameKey="etapa"
+                        isAnimationActive={false}
+                        label={CustomFunnelLabel}
+                      >
                         {(data.graficoEmbudo || []).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />
                         ))}
@@ -295,7 +407,6 @@ export default function ReporteComercialCore() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* LEYENDA LATERAL */}
                 <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
                   {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => (
                     <div key={index} className="flex items-center gap-2 min-w-0">
@@ -327,19 +438,18 @@ export default function ReporteComercialCore() {
             <DataVisor 
               title="DETALLE BASE CRM" 
               data={data.dataCRM} 
-              onDownload={() => descargarCSV("CRM")} 
+              onDownload={() => descargarExcel("CRM")} 
               color="bg-slate-800" 
             />
             <DataVisor 
               title="DETALLE BASE JOTFORM (NETLIFE)" 
               data={data.dataNetlife} 
-              onDownload={() => descargarCSV("JOTFORM")} 
+              onDownload={() => descargarExcel("JOTFORM")} 
               color="bg-blue-900" 
             />
           </div>
         </div>
       ) : (
-        /* PANTALLA 2: MONITOREO TOTALMENTE INDEPENDIENTE */
         <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
           <div className="bg-emerald-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-emerald-700">
              <div>
@@ -367,8 +477,6 @@ export default function ReporteComercialCore() {
     </div>
   );
 }
-
-// --- COMPONENTES AUXILIARES ---
 
 function KpiMini({ label, value, color }) {
   return (
@@ -512,7 +620,7 @@ function DataVisor({ title, data, onDownload, color }) {
           onClick={onDownload} 
           className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2"
         >
-          ⬇️ DESCARGAR REPORTE COMPLETO
+          ⬇️ DESCARGAR EXCEL
         </button>
       </div>
       <div className="max-h-56 overflow-auto text-[9px] font-bold text-slate-600 font-mono">

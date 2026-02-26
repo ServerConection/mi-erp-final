@@ -40,7 +40,7 @@ export default function ReporteComercialCore() {
     try {
       const params = Object.fromEntries(Object.entries(filtros).filter(([_, v]) => v !== ""));
       const p = new URLSearchParams(params);
-      const res = await fetch(`http://localhost:3000/api/indicadores/dashboard?${p}`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
       if (result.success) setData(result);
     } catch (e) {
@@ -54,7 +54,7 @@ export default function ReporteComercialCore() {
   const fetchMonitoreo = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/indicadores/monitoreo-diario`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario`);
       const result = await res.json();
       if (result.success) setMonitoreoData(result);
     } catch (e) {
@@ -190,24 +190,22 @@ export default function ReporteComercialCore() {
             <KpiMini label="Tarjeta %" value={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
           </div>
-           {/* 3. ETAPAS JOTFORM */}
-      <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
-          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-          Etapas Jotform
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {(data.estadosNetlife || []).map((e, i) => (
-            <div key={i} className="bg-white border border-slate-100 px-3 py-3 rounded-xl flex justify-between items-center shadow-sm">
-              <span className="text-[10px] font-bold text-slate-600 uppercase leading-tight pr-2">{e.estado}</span>
-              <span className="text-sm font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg shrink-0">{e.total}</span>
-            </div>  
-          ))}
-        </div>
-      </div>
 
-
-
+          {/* 3. ETAPAS JOTFORM */}
+          <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+              Etapas Jotform
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {(data.estadosNetlife || []).map((e, i) => (
+                <div key={i} className="bg-white border border-slate-100 px-3 py-3 rounded-xl flex justify-between items-center shadow-sm">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase leading-tight pr-2">{e.estado}</span>
+                  <span className="text-sm font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg shrink-0">{e.total}</span>
+                </div>  
+              ))}
+            </div>
+          </div>
 
           {/* GRÁFICOS ORIGINALES */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
 
         // Fechas por defecto (Hoy)
         const hoy = new Date().toISOString().split('T')[0];
@@ -28,6 +28,14 @@ const getIndicadoresDashboard = async (req, res) => {
         if (req.query.estadoRegularizacion) {
             values.push(`%${req.query.estadoRegularizacion}%`);
             filters += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+        }
+        if (etapaCRM) {
+            values.push(`%${etapaCRM}%`);
+            filters += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+        }
+        if (etapaJotform) {
+            values.push(`%${etapaJotform}%`);
+            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
         // Definición de grupos de etapas
@@ -190,8 +198,17 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
+        // Query para obtener etapas CRM dinámicas (para el select del frontend)
+        const queryEtapasCRM = `
+            SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
+            FROM public.mestra_bitrix mb
+            WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
+            AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
+            ORDER BY mb.b_etapa_de_la_negociacion ASC
+        `;
+
         // Ejecución concurrente
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia] = await Promise.all([
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('mb.b_persona_responsable'), values),
             pool.query(queryCRM, values),
@@ -199,6 +216,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryEstados, values),
             pool.query(queryEmbudo, values),
             pool.query(queryPorDia, values),
+            pool.query(queryEtapasCRM),
         ]);
 
         const estadosRow = resEstados.rows[0] || {};
@@ -216,6 +234,7 @@ const getIndicadoresDashboard = async (req, res) => {
             estadosNetlife,
             graficoEmbudo: resEmbudo.rows,
             graficoBarrasDia: resDia.rows,
+            etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
         });
 
     } catch (error) {

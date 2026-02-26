@@ -8,7 +8,6 @@ export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
   
-  // TODOS LOS ESTADOS ORIGINALES RESTAURADOS
   const [data, setData] = useState({ 
     supervisores: [], 
     asesores: [], 
@@ -17,9 +16,9 @@ export default function ReporteComercialCore() {
     estadosNetlife: [],
     graficoEmbudo: [],   
     graficoBarrasDia: [],
+    etapasCRM: [],
   });
   
-  // Estado para la Pantalla 2 (Monitoreo independiente)
   const [monitoreoData, setMonitoreoData] = useState({ 
     supervisores: [], 
     asesores: [] 
@@ -31,10 +30,11 @@ export default function ReporteComercialCore() {
     asesor: "",
     supervisor: "",
     estadoNetlife: "",
-    estadoRegularizacion: ""
+    estadoRegularizacion: "",
+    etapaCRM: "",
+    etapaJotform: "",
   });
 
-  // FETCH PANTALLA 1 (Con Filtros)
   const fetchDashboard = async () => {
     setLoading(true);
     try {
@@ -50,7 +50,6 @@ export default function ReporteComercialCore() {
     }
   };
 
-  // FETCH PANTALLA 2 (Independiente / Sin filtros)
   const fetchMonitoreo = async () => {
     setLoading(true);
     try {
@@ -72,7 +71,6 @@ export default function ReporteComercialCore() {
     }
   }, [tabActiva]);
 
-  // Lógica de exportación original
   const descargarCSV = (tipo) => {
     const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
     if (!list || !list.length) return;
@@ -86,7 +84,6 @@ export default function ReporteComercialCore() {
     a.click();
   };
 
-  // Cálculos de KPIs originales
   const stats = useMemo(() => {
     const s = data.supervisores || [];
     const n = s.length || 1;
@@ -102,37 +99,63 @@ export default function ReporteComercialCore() {
     };
   }, [data]);
 
+  const ETAPAS_JOTFORM = [
+    'ACTIVO', 'ASIGNADO', 'PREPLANIIFICADO', 'PLANIIFICADO', 'RECHAZADO',
+    'REPLANIFICADO', 'DESISTE DEL SERVICIO', 'PRESERVICIO', 'FIN DE GESTION', 'FACTIBLE'
+  ];
+
+  const CustomBarLabel = (props) => {
+    const { x, y, width, value } = props;
+    if (!value) return null;
+    return (
+      <text
+        x={x + width / 2}
+        y={y + 18}
+        fill="#ffffff"
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight="900"
+      >
+        {value}
+      </text>
+    );
+  };
+
+  const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
+
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
       
       {/* HEADER Y TABS */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
-          SISTEMA DE INDICADORES
-        </h1>
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+  <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+    <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
+    SISTEMA DE INDICADORES
+  </h1>
 
-        <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300">
-          <button 
-            onClick={() => setTabActiva("GENERAL")} 
-            className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
-          >
-            📊 REPORTE GENERAL
-          </button>
-          <button 
-            onClick={() => setTabActiva("MONITOREO")} 
-            className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
-          >
-            ⏱️ MONITOREO
-          </button>
-        </div>
-      </div>
+  <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
+    <button 
+      onClick={() => setTabActiva("GENERAL")} 
+      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
+    >
+      📊 REPORTE GENERAL D-1
+    </button>
+    <button 
+      onClick={() => setTabActiva("MONITOREO")} 
+      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
+    >
+      ⏱️ MONITOREO LEADS DIARIO
+    </button>
+  </div>
+</div>
 
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
-          {/* FILTROS ORIGINALES */}
+
+          {/* FILTROS */}
           <div className="bg-[#0F172A] rounded-2xl shadow-2xl mb-8 overflow-hidden border border-slate-800">
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 items-end">
+            <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
+
                 <div className="lg:col-span-2 flex flex-col gap-2">
                   <label className="text-[9px] font-black text-blue-400 italic tracking-widest">PERÍODO DE CONSULTA</label>
                   <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
@@ -141,7 +164,7 @@ export default function ReporteComercialCore() {
                     <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
                   </div>
                 </div>
-                
+
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">ASESOR</label>
                   <input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors" value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} />
@@ -153,11 +176,31 @@ export default function ReporteComercialCore() {
                 </div>
 
                 <div className="flex flex-col gap-2">
+                  <label className="text-[9px] font-black text-slate-500 italic">ETAPA CRM</label>
+                  <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}>
+                    <option value="">TODAS</option>
+                    {(data.etapasCRM || []).map((etapa, i) => (
+                      <option key={i} value={etapa}>{etapa}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">NETLIFE</label>
                   <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}>
                     <option value="">TODOS</option>
                     <option value="ACTIVO">ACTIVO</option>
                     <option value="RECHAZADO">RECHAZADO</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[9px] font-black text-slate-500 italic">ETAPA JOTFORM</label>
+                  <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}>
+                    <option value="">TODAS</option>
+                    {ETAPAS_JOTFORM.map((etapa, i) => (
+                      <option key={i} value={etapa}>{etapa}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -176,10 +219,11 @@ export default function ReporteComercialCore() {
                 >
                   {loading ? "CARGANDO..." : "APLICAR FILTROS"}
                 </button>
+
             </div>
           </div>
 
-          {/* KPI CARDS ORIGINALES */}
+          {/* KPI CARDS */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
             <KpiMini label="Ventas CRM" value={stats.ingresosCRM} color="border-l-blue-500" />
             <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
@@ -191,7 +235,7 @@ export default function ReporteComercialCore() {
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
           </div>
 
-          {/* 3. ETAPAS JOTFORM */}
+          {/* ETAPAS JOTFORM */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -207,8 +251,10 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          {/* GRÁFICOS ORIGINALES */}
+          {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+            {/* GRÁFICO DE BARRAS POR DÍA */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -216,38 +262,56 @@ export default function ReporteComercialCore() {
               </h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.graficoBarrasDia}>
+                  <BarChart data={data.graficoBarrasDia} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                     <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
                     <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} />
-                    <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30}>
-                      <LabelList dataKey="total" position="top" fill="#10b981" fontSize={10} fontWeight="900" />
-                    </Bar>
+                    <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} label={<CustomBarLabel />} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
+            {/* EMBUDO DE CONVERSIÓN CON LEYENDA LATERAL */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-blue-400 mb-8 italic tracking-widest flex items-center gap-2">
+              <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
               </h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <FunnelChart>
-                    <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa">
-                      <LabelList position="center" fill="#fff" fontSize={11} fontWeight="900" dataKey="total" stroke="none" />
-                      {(data.graficoEmbudo || []).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa'][index % 4]} />
-                      ))}
-                    </Funnel>
-                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
-                  </FunnelChart>
-                </ResponsiveContainer>
+              <div className="flex gap-4 h-[300px]">
+
+                {/* GRÁFICO EMBUDO */}
+                <div className="flex-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <FunnelChart>
+                      <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false}>
+                        {(data.graficoEmbudo || []).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />
+                        ))}
+                      </Funnel>
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+                    </FunnelChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* LEYENDA LATERAL */}
+                <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+                  {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => (
+                    <div key={index} className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-2 h-2 rounded-sm shrink-0"
+                        style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }}
+                      />
+                      <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                      <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                    </div>
+                  ))}
+                </div>
+
               </div>
             </div>
+
           </div>
 
           {/* TABLAS GENERALES */}
@@ -258,7 +322,7 @@ export default function ReporteComercialCore() {
             <HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} />
           </div>
 
-          {/* VISUALIZADORES DE DATA ORIGINALES */}
+          {/* VISUALIZADORES DE DATA */}
           <div className="grid grid-cols-1 gap-4">
             <DataVisor 
               title="DETALLE BASE CRM" 
@@ -304,7 +368,7 @@ export default function ReporteComercialCore() {
   );
 }
 
-// --- COMPONENTES AUXILIARES (RESTAURADOS AL 100%) ---
+// --- COMPONENTES AUXILIARES ---
 
 function KpiMini({ label, value, color }) {
   return (

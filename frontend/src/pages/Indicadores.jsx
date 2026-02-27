@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -38,12 +38,6 @@ export default function ReporteComercialCore() {
     etapaJotform: "",
   });
 
-  // ✅ FIX #2: ref para siempre tener los filtros más recientes en closures
-  const filtrosRef = useRef(filtros);
-  useEffect(() => {
-    filtrosRef.current = filtros;
-  }, [filtros]);
-
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
 
@@ -78,11 +72,10 @@ export default function ReporteComercialCore() {
     }
   };
 
-  // ✅ FIX #2: siempre recibe filtros explícitamente, nunca depende del closure
   const fetchDashboard = async (filtrosOverride) => {
     setLoading(true);
     try {
-      const filtrosActivos = filtrosOverride || filtrosRef.current;
+      const filtrosActivos = filtrosOverride || filtros;
       const params = Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== ""));
       const p = new URLSearchParams(params);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
@@ -117,10 +110,9 @@ export default function ReporteComercialCore() {
     fetchDashboard(nuevosFiltros);
   };
 
-  // ✅ FIX #3: pasar filtrosRef.current para evitar closure stale
   useEffect(() => { 
     if(tabActiva === "GENERAL") {
-      fetchDashboard(filtrosRef.current);
+      fetchDashboard();
     } else {
       fetchMonitoreo();
     }
@@ -146,8 +138,7 @@ export default function ReporteComercialCore() {
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
       tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
-      // ✅ FIX #1: tarjetaCredito ya no está hardcodeado
-      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.tarjeta_credito || 0), 0) / n).toFixed(1),
+      tarjetaCredito: 65, 
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
     };
@@ -292,9 +283,8 @@ export default function ReporteComercialCore() {
                   </select>
                 </div>
 
-                {/* ✅ FIX #2: pasar filtros explícitamente al botón */}
                 <button 
-                  onClick={() => fetchDashboard(filtros)} 
+                  onClick={() => fetchDashboard()} 
                   className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95"
                 >
                   {loading ? "CARGANDO..." : "APLICAR FILTROS"}
@@ -311,7 +301,6 @@ export default function ReporteComercialCore() {
             <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
             <KpiMini label="Efectividad" value={`${stats.efectividad}%`} color="border-l-purple-500" />
             <KpiMini label="Tasa Inst." value={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
-            {/* ✅ FIX #1: ahora muestra dato real del API */}
             <KpiMini label="Tarjeta %" value={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
             <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
@@ -347,7 +336,7 @@ export default function ReporteComercialCore() {
           {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* GRÁFICO DE BARRAS POR DÍA */}
+            {/* GRÁFICO DE BARRAS POR DÍA - PRODUCCION POR DIA (b_cerrado) */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>

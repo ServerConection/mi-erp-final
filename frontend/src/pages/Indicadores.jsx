@@ -4,6 +4,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, FunnelChart, Funnel, LabelList, Cell 
 } from 'recharts';
+const formatFechaCorta = (fechaStr) => {
+  if (!fechaStr || typeof fechaStr !== 'string') return fechaStr;
+  // Corta el texto largo y saca solo dia y mes
+  const partes = fechaStr.split('T')[0].split('-');
+  return `${partes[2]}`; 
+};
 
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
@@ -337,6 +343,8 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
+          
+
           {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
@@ -350,7 +358,8 @@ export default function ReporteComercialCore() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.graficoBarrasDia} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={<CustomXAxisTick />} interval={0} />
+                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} 
+                    interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }}/>
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
                     <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} />
                     <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} label={<CustomBarLabel />} />
@@ -397,6 +406,8 @@ export default function ReporteComercialCore() {
             </div>
 
           </div>
+
+
 
           {/* TABLAS GENERALES */}
           <div className="mb-8">

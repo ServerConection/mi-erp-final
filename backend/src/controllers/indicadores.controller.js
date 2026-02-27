@@ -13,17 +13,7 @@ const getPrimerDiaMesEcuador = () => {
 };
 
 // ✅ FIX: Función helper para parsear fechas con formato "Mon DD YYYY 00:00:00 GMT-0500"
-// Las columnas b_creado_el_fecha, b_modificado_el_fecha y j_fecha_registro_sistema
-// tienen valores como "Mon Feb 09 2026 00:00:00 GMT-0500 (hora de Ecuador)"
-// PostgreSQL no puede castear eso directamente con ::date
-// Esta función extrae la parte de fecha de forma segura
-const parseFecha = (col) => `
-    CASE 
-        WHEN ${col} IS NULL OR TRIM(${col}) = '' THEN NULL
-        WHEN ${col} ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::date
-        ELSE TO_DATE(SUBSTRING(${col} FROM 5 FOR 11), 'Mon DD YYYY')
-    END
-`;
+const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}) = '' THEN NULL WHEN ${col} ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::date ELSE TO_DATE(SUBSTRING(${col} FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
@@ -214,27 +204,26 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-// REPASO: Gráfico por día (Asegúrate que esté así)
-const queryPorDia = `
-    SELECT
-        mb.j_fecha_registro_sistema::date AS fecha,
-        COUNT(*)::int AS total
-    FROM public.mestra_bitrix mb
-    LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-    WHERE mb.j_fecha_registro_sistema IS NOT NULL
-    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-    ${filters}
-    GROUP BY mb.j_fecha_registro_sistema::date
-    ORDER BY fecha ASC
-`;
+        const queryPorDia = `
+            SELECT
+                mb.j_fecha_registro_sistema::date AS fecha,
+                COUNT(*)::int AS total
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE mb.j_fecha_registro_sistema IS NOT NULL
+            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            ${filters}
+            GROUP BY mb.j_fecha_registro_sistema::date
+            ORDER BY fecha ASC
+        `;
 
        const queryEtapasCRM = `
-    SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
-    FROM public.mestra_bitrix mb
-    WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
-    AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
-    ORDER BY etapa ASC
-`;
+            SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
+            FROM public.mestra_bitrix mb
+            WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
+            AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
+            ORDER BY etapa ASC
+        `;
 
         const queryTerceraEdad = `
             SELECT
@@ -303,37 +292,27 @@ const getMonitoreoDiario = async (req, res) => {
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        const ETAPAS_GESTIONABLES = `(
-            'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
-            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
-            'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
-            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
-            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
-            'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-            'SEGUIMIENTO NEGOCIACIÓN','DUPLICADO','POSTVENTA NOVONET','DESCARTE PLAN DE 200',
-            'DUPLLICADO','POSTVENTA','SEGUIMIENTO PLAN 200'
-        )`;
+        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DUPLICADO','POSTVENTA NOVONET','DESCARTE PLAN DE 200','DUPLLICADO','POSTVENTA','SEGUIMIENTO PLAN 200')";
 
-        const ETAPAS_DESCARTE = `(
-            'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
-            'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
-        )`;
+const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
+        // ✅ FIX: WHERE ampliado para incluir registros por b_creado_el_fecha O j_fecha_registro_sistema
+        // Así no se pierden ventas jotform de leads viejos ni leads nuevos sin jotform
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
 
+                -- LEADS MES
                 COUNT(*) FILTER (
                     WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
 
+                -- LEADS HOY
                 COUNT(*) FILTER (
                     WHERE ${parseFecha('mb.b_creado_el_fecha')} = $2::date
                 ) AS real_dia_leads,
 
+                -- CRM (ACUM Y DIA)
                 COUNT(*) FILTER (
                     WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
@@ -342,11 +321,13 @@ const getMonitoreoDiario = async (req, res) => {
                     WHERE ${parseFecha('mb.b_creado_el_fecha')} = $2::date
                 ) AS crm_dia,
 
+                -- VENTAS CRM HOY
                 COUNT(*) FILTER (
                     WHERE mb.b_cerrado::date = $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
 
+                -- VENTAS JOTFORM HOY (sin restricción de WHERE principal, usa toda la tabla)
                 COUNT(*) FILTER (
                     WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date = $2::date)
                     AND mb.j_netlife_estatus_real IS NOT NULL
@@ -354,6 +335,7 @@ const getMonitoreoDiario = async (req, res) => {
                     AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
                 ) AS v_subida_jot_hoy,
 
+                -- EFECTIVIDAD
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
@@ -374,23 +356,24 @@ const getMonitoreoDiario = async (req, res) => {
                         AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
-                        COUNT(*) FILTER (
-                            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                            AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                        )::numeric
-                        /
-                        NULLIF(
-                            COUNT(*) FILTER (
-                                WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
-                            )
-                        , 0)
-                    , 0) * 100
-                , 2) AS real_tarjeta
+
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                        AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    ), 0)
+                , 0) * 100, 2) AS real_tarjeta
 
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+            WHERE (
+                ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                OR ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+            )
             GROUP BY 1
             ORDER BY real_mes_leads DESC
         `;
@@ -405,7 +388,7 @@ const getMonitoreoDiario = async (req, res) => {
         res.json({
             success: true,
             supervisores: resSup.rows,
-            asesores: resAses.rows,
+            asesores: resAses.rows
         });
 
     } catch (error) {
@@ -413,6 +396,8 @@ const getMonitoreoDiario = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+
 
 module.exports = {
     getIndicadoresDashboard,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -19,6 +19,7 @@ export default function ReporteComercialCore() {
     graficoEmbudo: [],   
     graficoBarrasDia: [],
     etapasCRM: [],
+    porcentajeTerceraEdad: 0,
   });
   
   const [monitoreoData, setMonitoreoData] = useState({ 
@@ -36,6 +37,12 @@ export default function ReporteComercialCore() {
     etapaCRM: "",
     etapaJotform: "",
   });
+
+  // ✅ FIX #2: ref para siempre tener los filtros más recientes en closures
+  const filtrosRef = useRef(filtros);
+  useEffect(() => {
+    filtrosRef.current = filtros;
+  }, [filtros]);
 
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
@@ -71,10 +78,11 @@ export default function ReporteComercialCore() {
     }
   };
 
+  // ✅ FIX #2: siempre recibe filtros explícitamente, nunca depende del closure
   const fetchDashboard = async (filtrosOverride) => {
     setLoading(true);
     try {
-      const filtrosActivos = filtrosOverride || filtros;
+      const filtrosActivos = filtrosOverride || filtrosRef.current;
       const params = Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== ""));
       const p = new URLSearchParams(params);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
@@ -109,9 +117,10 @@ export default function ReporteComercialCore() {
     fetchDashboard(nuevosFiltros);
   };
 
+  // ✅ FIX #3: pasar filtrosRef.current para evitar closure stale
   useEffect(() => { 
     if(tabActiva === "GENERAL") {
-      fetchDashboard();
+      fetchDashboard(filtrosRef.current);
     } else {
       fetchMonitoreo();
     }
@@ -137,8 +146,10 @@ export default function ReporteComercialCore() {
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
       tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
-      tarjetaCredito: 65, 
-      efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1), 
+      // ✅ FIX #1: tarjetaCredito ya no está hardcodeado
+      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.tarjeta_credito || 0), 0) / n).toFixed(1),
+      efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
+      terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
     };
   }, [data]);
 
@@ -149,7 +160,6 @@ export default function ReporteComercialCore() {
 
   const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
-  // Label barra - número dentro
   const CustomBarLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
@@ -160,32 +170,16 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // Tick vertical para el eje X del gráfico de barras
   const CustomXAxisTick = (props) => {
     const { x, y, payload } = props;
     return (
       <g transform={`translate(${x},${y})`}>
-        <text
-          x={0}
-          y={0}
-          dy={10}
-          textAnchor="end"
-          fill="#64748b"
-          fontSize={9}
-          fontWeight={700}
-          transform="rotate(-45)"
-        >
+        <text x={0} y={0} dy={10} textAnchor="end" fill="#64748b" fontSize={9} fontWeight={700} transform="rotate(-45)">
           {payload.value}
         </text>
       </g>
     );
   };
-
-  // Label embudo - lee directo del array de datos usando el índice
-  const embudoConIndice = (data.graficoEmbudo || []).map((item, index) => ({
-    ...item,
-    _index: index,
-  }));
 
   const CustomFunnelLabel = (props) => {
     const { x, y, width, height, index } = props;
@@ -193,15 +187,7 @@ export default function ReporteComercialCore() {
     const item = (data.graficoEmbudo || [])[index];
     if (!item) return null;
     return (
-      <text
-        x={x + width / 2}
-        y={y + height / 2}
-        fill="#ffffff"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={9}
-        fontWeight="900"
-      >
+      <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
         {`${item.etapa} = ${item.total}`}
       </text>
     );
@@ -213,10 +199,7 @@ export default function ReporteComercialCore() {
       {/* ALERTAS APILADAS */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
         {alertas.map(alerta => (
-          <div
-            key={alerta.id}
-            className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm`}
-          >
+          <div key={alerta.id} className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm`}>
             {alerta.mensaje}
           </div>
         ))}
@@ -240,7 +223,7 @@ export default function ReporteComercialCore() {
             onClick={() => setTabActiva("MONITOREO")} 
             className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
           >
-            ⏱️ MONITOREO LEADS 
+            ⏱️ MONITOREO LEADS
           </button>
         </div>
       </div>
@@ -309,8 +292,9 @@ export default function ReporteComercialCore() {
                   </select>
                 </div>
 
+                {/* ✅ FIX #2: pasar filtros explícitamente al botón */}
                 <button 
-                  onClick={() => fetchDashboard()} 
+                  onClick={() => fetchDashboard(filtros)} 
                   className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95"
                 >
                   {loading ? "CARGANDO..." : "APLICAR FILTROS"}
@@ -320,16 +304,18 @@ export default function ReporteComercialCore() {
           </div>
 
           {/* KPI CARDS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
             <KpiMini label="Leads Totales" value={stats.leadsGestionables} color="border-l-emerald-500" />    
             <KpiMini label="Gestionables" value={stats.gestionables} color="border-l-violet-500" />
             <KpiMini label="Ingresos CRM" value={stats.ingresosCRM} color="border-l-blue-500" />
             <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
             <KpiMini label="Efectividad" value={`${stats.efectividad}%`} color="border-l-purple-500" />
             <KpiMini label="Tasa Inst." value={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
+            {/* ✅ FIX #1: ahora muestra dato real del API */}
             <KpiMini label="Tarjeta %" value={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
             <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+            <KpiMini label="3ra Edad %" value={`${stats.terceraEdad}%`} color="border-l-pink-500" />
           </div>
 
           {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}
@@ -361,7 +347,7 @@ export default function ReporteComercialCore() {
           {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* GRÁFICO DE BARRAS POR DÍA - FECHAS VERTICALES */}
+            {/* GRÁFICO DE BARRAS POR DÍA */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -380,14 +366,13 @@ export default function ReporteComercialCore() {
               </div>
             </div>
 
-            {/* EMBUDO DE CONVERSIÓN CON LABEL DENTRO Y LEYENDA LATERAL */}
+            {/* EMBUDO DE CONVERSIÓN */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
               </h3>
               <div className="flex gap-4 h-[300px]">
-
                 <div className="flex-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <FunnelChart>
@@ -406,20 +391,15 @@ export default function ReporteComercialCore() {
                     </FunnelChart>
                   </ResponsiveContainer>
                 </div>
-
                 <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
                   {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => (
                     <div key={index} className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-2 h-2 rounded-sm shrink-0"
-                        style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }}
-                      />
+                      <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
                       <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
                       <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
                     </div>
                   ))}
                 </div>
-
               </div>
             </div>
 
@@ -511,9 +491,13 @@ function HorizontalTable({ title, data, hasScroll }) {
             </tr>
             <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500">
               <th className="p-1 border-r border-slate-400 sticky left-0 bg-white z-10">NOMBRE</th>
-              <th className="border-r border-slate-100 w-10">REAL</th><th className="border-r border-slate-100 w-10">BACK</th><th className="border-r border-slate-100 w-10 bg-slate-50 font-bold">TOT</th><th className="border-r border-slate-400 w-10">CREC</th>
+              <th className="border-r border-slate-100 w-10">REAL</th>
+              <th className="border-r border-slate-100 w-10">BACK</th>
+              <th className="border-r border-slate-100 w-10 bg-slate-50 font-bold">TOT</th>
+              <th className="border-r border-slate-400 w-10">CREC</th>
               <th className="border-r border-slate-400 w-12">TOT</th>
-              <th className="border-r border-slate-100 w-10">CRM</th><th className="border-r border-slate-400 w-10">JOTF</th>
+              <th className="border-r border-slate-100 w-10">CRM</th>
+              <th className="border-r border-slate-400 w-10">JOTF</th>
               <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="border-r border-slate-400 w-12">REAL</th>
@@ -595,8 +579,8 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
                 <td className="p-3 text-center font-black text-slate-900">{row.crm_dia}</td>
                 <td className="p-3 text-center font-bold text-slate-600">{row.v_subida_crm_hoy}</td>
                 <td className="p-3 text-center font-black text-emerald-700 bg-emerald-50/30">{row.v_subida_jot_hoy}</td>
-                <td className={`p-3 text-center font-black ${row.real_efectividad < 80 ? 'text-red-500' : 'text-emerald-600'}`}>{row.real_efectividad}%</td>
-                <td className={`p-3 text-center font-black ${row.real_descarte > 20 ? 'text-red-500' : 'text-slate-600'}`}>{row.real_descarte}%</td>
+                <td className={`p-3 text-center font-black ${Number(row.real_efectividad) < 80 ? 'text-red-500' : 'text-emerald-600'}`}>{row.real_efectividad}%</td>
+                <td className={`p-3 text-center font-black ${Number(row.real_descarte) > 20 ? 'text-red-500' : 'text-slate-600'}`}>{row.real_descarte}%</td>
                 <td className="p-3 text-center font-black text-amber-600">{row.real_tarjeta}%</td>
               </tr>
             ))}

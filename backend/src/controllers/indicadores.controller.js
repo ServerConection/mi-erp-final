@@ -1,16 +1,15 @@
 const pool = require('../config/db');
 
-// Fecha correcta en Ecuador (UTC-5)
+// ✅ FIX #2: Fecha correcta en Ecuador usando timezone explícita
 const getFechaEcuador = () => {
     const ahora = new Date();
-    ahora.setHours(ahora.getHours() - 5);
-    return ahora.toISOString().split('T')[0];
+    return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }); // Retorna YYYY-MM-DD
 };
 
 const getPrimerDiaMesEcuador = () => {
     const ahora = new Date();
-    ahora.setHours(ahora.getHours() - 5);
-    return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-01`;
+    const fechaEcuador = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
+    return `${fechaEcuador.getFullYear()}-${String(fechaEcuador.getMonth() + 1).padStart(2, '0')}-01`;
 };
 
 const getIndicadoresDashboard = async (req, res) => {
@@ -44,9 +43,10 @@ const getIndicadoresDashboard = async (req, res) => {
             values.push(`%${etapaCRM}%`);
             filters += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
         }
+        // ✅ FIX #1: etapaJotform ahora filtra el campo correcto (estatus_envio del jotform, no netlife)
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
-            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filters += ` AND mb.j_estatus_envio ILIKE $${values.length}`;
         }
 
         const ETAPAS_GESTIONABLES = `(
@@ -57,9 +57,7 @@ const getIndicadoresDashboard = async (req, res) => {
             'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
             'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO', 'SEGUIMIENTO NEGOCIACIÓN', 
-            'DUPLICADO', 'POSTVENTA NOVONET', 'DESCARTE PLAN DE 200', 'DUPLLICADO', 'POSTVENTA', SEGUIMIENTO PLAN 200'
-            
-
+            'DUPLICADO', 'POSTVENTA NOVONET', 'DESCARTE PLAN DE 200', 'DUPLLICADO', 'POSTVENTA', 'SEGUIMIENTO PLAN 200'
         )`;
 
         const ETAPAS_DESCARTE = `(
@@ -128,7 +126,18 @@ const getIndicadoresDashboard = async (req, res) => {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''))::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
-                , 0) * 100, 2) AS eficiencia
+                , 0) * 100, 2) AS eficiencia,
+                -- ✅ FIX #4: calcular tarjeta_credito real (forma_pago = TARJETA DE CREDITO)
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND UPPER(TRIM(COALESCE(mb.j_forma_pago, ''))) ILIKE '%TARJETA%'
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = '')
+                    ), 0)
+                , 0) * 100, 2) AS tarjeta_credito
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE 1=1 ${filters}
@@ -138,22 +147,37 @@ const getIndicadoresDashboard = async (req, res) => {
 
         const queryCRM = `
             SELECT
-                mb.b_id AS "ID_CRM", mb.b_etapa_de_la_negociacion AS "ETAPA_CRM", mb.b_creado_el_fecha AS "FECHA_CREACION_CRM",
-                mb.b_persona_responsable AS "ASESOR", mb.b_creado_el_hora AS "HORA_CREACION", e.supervisor AS "SUPERVISOR_ASIGNADO",
-                mb.b_modificado_el_fecha AS "FECHA_MODIFICACION", mb.b_modificado_el_hora AS "HORA_MODIFICACION", mb.b_origen AS "ORIGEN"
+                mb.b_id AS "ID_CRM",
+                mb.b_etapa_de_la_negociacion AS "ETAPA_CRM",
+                mb.b_creado_el_fecha AS "FECHA_CREACION_CRM",
+                mb.b_persona_responsable AS "ASESOR",
+                mb.b_creado_el_hora AS "HORA_CREACION",
+                e.supervisor AS "SUPERVISOR_ASIGNADO",
+                mb.b_modificado_el_fecha AS "FECHA_MODIFICACION",
+                mb.b_modificado_el_hora AS "HORA_MODIFICACION",
+                mb.b_origen AS "ORIGEN"
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date ${filters} LIMIT 6000
+            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date ${filters}
+            LIMIT 6000
         `;
 
         const queryJotform = `
             SELECT
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT", mb.j_id_bitrix AS "ID_CRM", mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
-                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION", mb.j_novedades_atc AS "NOVEDADES_ATC", mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
-                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR", mb.j_forma_pago AS "FORMA_PAGO", mb.b_persona_responsable AS "ASESOR", e.supervisor AS "SUPERVISOR_ASIGNADO"
+                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_id_bitrix AS "ID_CRM",
+                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
+                mb.j_novedades_atc AS "NOVEDADES_ATC",
+                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
+                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
+                mb.j_forma_pago AS "FORMA_PAGO",
+                mb.b_persona_responsable AS "ASESOR",
+                e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) ${filters} LIMIT 6000
+            WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) ${filters}
+            LIMIT 6000
         `;
 
         const ESTADOS_ORDEN = [
@@ -161,6 +185,7 @@ const getIndicadoresDashboard = async (req, res) => {
             'PRESERVICIO', 'FIN DE GESTION', 'FACTIBLE'
         ];
 
+        // ✅ FIX #5: queryEstados ahora aplica el mismo offset de 6 horas que el resto de queries jotform
         const queryEstados = `
             SELECT
                 ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND mb.j_netlife_estatus_real = '${est}') AS "${est}"`).join(',')}
@@ -199,7 +224,25 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY mb.b_etapa_de_la_negociacion ASC
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM] = await Promise.all([
+        // ✅ FIX #3: query para porcentaje tercera edad
+        const queryTerceraEdad = `
+            SELECT
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND UPPER(TRIM(COALESCE(mb.j_aplica_descuento_3ra_edad, ''))) IN ('SI', 'SÍ', 'APLICA', 'S')
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = '')
+                    ), 0)
+                , 0) * 100, 2) AS porcentaje_tercera_edad
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE 1=1 ${filters}
+        `;
+
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('mb.b_persona_responsable'), values),
             pool.query(queryCRM, values),
@@ -208,6 +251,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryEmbudo, values),
             pool.query(queryPorDia, values),
             pool.query(queryEtapasCRM),
+            pool.query(queryTerceraEdad, values),
         ]);
 
         const estadosRow = resEstados.rows[0] || {};
@@ -226,6 +270,8 @@ const getIndicadoresDashboard = async (req, res) => {
             graficoEmbudo: resEmbudo.rows,
             graficoBarrasDia: resDia.rows,
             etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
+            // ✅ FIX #3: ahora se devuelve el porcentaje real de tercera edad
+            porcentajeTerceraEdad: Number(resTerceraEdad.rows[0]?.porcentaje_tercera_edad || 0),
         });
 
     } catch (error) {
@@ -236,7 +282,6 @@ const getIndicadoresDashboard = async (req, res) => {
 
 const getMonitoreoDiario = async (req, res) => {
     try {
-        // Fecha correcta Ecuador UTC-5
         const hoy = getFechaEcuador();
         const iniciomes = getPrimerDiaMesEcuador();
 
@@ -263,27 +308,35 @@ const getMonitoreoDiario = async (req, res) => {
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
 
+                -- Leads acumulados del mes
                 COUNT(*) FILTER (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
 
+                -- Leads creados hoy
                 COUNT(*) FILTER (
                     WHERE mb.b_creado_el_fecha::date = $2::date
                 ) AS real_dia_leads,
 
+                -- CRM acumulado del mes (registros CRM creados en el mes)
                 COUNT(*) FILTER (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                    AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS crm_acumulado,
 
+                -- CRM creados hoy
                 COUNT(*) FILTER (
                     WHERE mb.b_creado_el_fecha::date = $2::date
+                    AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS crm_dia,
 
+                -- Ventas subidas en CRM hoy (b_cerrado = hoy y etapa VENTA SUBIDA)
                 COUNT(*) FILTER (
                     WHERE mb.b_cerrado::date = $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
 
+                -- Ventas subidas en Jotform hoy
                 COUNT(*) FILTER (
                     WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date = $2::date)
                     AND mb.j_netlife_estatus_real IS NOT NULL
@@ -291,6 +344,7 @@ const getMonitoreoDiario = async (req, res) => {
                     AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
                 ) AS v_subida_jot_hoy,
 
+                -- Efectividad real del mes
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
@@ -302,6 +356,7 @@ const getMonitoreoDiario = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS real_efectividad,
 
+                -- Descarte real del mes
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -313,7 +368,19 @@ const getMonitoreoDiario = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
 
-                0 AS real_tarjeta
+                -- ✅ FIX #6: tarjeta real calculada (% de ventas jotform pagadas con tarjeta)
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND UPPER(TRIM(COALESCE(mb.j_forma_pago, ''))) ILIKE '%TARJETA%'
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                        AND mb.j_netlife_estatus_real IS NOT NULL
+                        AND TRIM(COALESCE(mb.j_netlife_estatus_real, '')) <> ''
+                        AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
+                    ), 0)
+                , 0) * 100, 2) AS real_tarjeta
 
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo

@@ -341,7 +341,21 @@ const getMonitoreoDiario = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
 
-                0 AS real_tarjeta
+            ROUND(
+    COALESCE(
+        COUNT(*) FILTER (
+            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+            AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
+        )::numeric
+        /
+        NULLIF(
+            COUNT(*) FILTER (
+                WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+            )
+        , 0)
+    , 0) * 100
+, 2) AS real_tarjeta
 
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo

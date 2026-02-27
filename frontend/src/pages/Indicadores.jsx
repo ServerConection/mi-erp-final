@@ -138,9 +138,10 @@ export default function ReporteComercialCore() {
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
       tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
-      tarjetaCredito: 65, 
+      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.real_tarjeta || 0), 0) / n).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
+      activas: s.reduce((acc, c) => acc + Number(c.total_activas_calculada || 0), 0),
     };
   }, [data]);
 

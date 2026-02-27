@@ -124,7 +124,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     / NULLIF(COUNT(*) FILTER (WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''))::numeric
+                    COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND (mb.j_netlife_estatus_real NOT IN ('DUPLICADO','DUPLILLADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''))::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM mestra_bitrix mb

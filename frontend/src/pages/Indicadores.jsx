@@ -127,21 +127,42 @@ export default function ReporteComercialCore() {
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const stats = useMemo(() => {
+const stats = useMemo(() => {
     const s = data.supervisores || [];
     const n = s.length || 1;
+
+    // Calculamos totales generales primero para que los porcentajes sean exactos
+    const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
+    
+    // Suma de casos reales de tarjeta (reconstruimos el número a partir del % de cada uno)
+    const totalCasosTarjeta = s.reduce((acc, c) => {
+      const porcentaje = Number(c.real_tarjeta || 0);
+      const gestionablesIndiv = Number(c.gestionables || 0);
+      return acc + (porcentaje * gestionablesIndiv / 100);
+    }, 0);
+
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
-      gestionables: s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0),
-      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
+      gestionables: totalGestionables,
+      // Usamos 'regularizacion' que es como viene del Backend
+      regularizar: s.reduce((acc, c) => acc + Number(c.regularizacion || 0), 0),
       ingresosJotform: s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0),
+      
+      // Promedios de porcentajes (se mantienen igual para no complicar el código)
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
       tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
-      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.real_tarjeta || 0), 0) / n).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
+      
+      // LA CORRECCIÓN: Tarjeta de Crédito Global Real
+      tarjetaCredito: totalGestionables > 0 
+        ? ((totalCasosTarjeta / totalGestionables) * 100).toFixed(1) 
+        : "0.0",
+
+      // LA CORRECCIÓN: 3ra Edad (Dato único fuera del loop)
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
+      
       activas: s.reduce((acc, c) => acc + Number(c.activas || 0), 0),
     };
   }, [data]);
@@ -297,17 +318,17 @@ export default function ReporteComercialCore() {
 
           {/* KPI CARDS */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini label="Leads Totales" value={stats.leadsGestionables} color="border-l-emerald-500" />    
-            <KpiMini label="Gestionables" value={stats.gestionables} color="border-l-violet-500" />
-            <KpiMini label="Ingresos CRM" meta={1000} real={stats.ingresosCRM} color="border-l-blue-500" />
-            <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
-            <KpiMini label="Efectividad" value={`${stats.efectividad}%`} color="border-l-purple-500" />
-            <KpiMini label="Tasa Inst." value={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
-            <KpiMini label="Tarjeta %" value={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
-            <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
-            <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini label="3ra Edad %" value={`${stats.terceraEdad}%`} color="border-l-pink-500" />
-            <KpiMini label="Activas Mes" value={stats.activas} color="border-l-emerald-500" />
+            <KpiMini label="Leads Totales" meta={7050} real={stats.leadsGestionables} color="border-l-emerald-500" />    
+            <KpiMini label="Gestionables" meta={4230} real={stats.gestionables} color="border-l-violet-500" />
+            <KpiMini label="Ingresos CRM" meta={1200} real={stats.ingresosCRM} color="border-l-blue-500" />
+            <KpiMini label="Ingresos JOT" meta={1050} real={stats.ingresosJotform} color="border-l-emerald-500" />
+            <KpiMini label="Efectividad" meta="90%" real={`${stats.efectividad}%`} color="border-l-purple-500" />
+            <KpiMini label="Tasa Inst." meta="80%" real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
+            <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
+            <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
+            <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+            <KpiMini label="3ra Edad %" max="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
+            <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
             <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
           </div>
 
@@ -451,14 +472,34 @@ export default function ReporteComercialCore() {
   );
 }
 
-function KpiMini({ label, value, color }) {
+const KpiMini = ({ label, value, meta, real, color }) => {
   return (
-    <div className={`bg-white border-l-4 ${color} p-4 shadow-md rounded-xl hover:translate-y-[-2px] transition-transform`}>
-      <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-tighter">{label}</p>
-      <p className="text-xl font-black text-slate-800 tabular-nums tracking-tight">{value}</p>
+    <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
+      {/* Título del Indicador */}
+      <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">
+        {label}
+      </span>
+
+      {/* Lógica: Si hay meta/real muestra la tabla, si no, el valor simple */}
+      {meta !== undefined ? (
+        <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
+          <div className="flex flex-col">
+            <span className="text-[8px] font-bold text-slate-400">META</span>
+            <span className="text-[12px] font-black text-slate-700">{meta}</span>
+          </div>
+          <div className="flex flex-col border-l border-slate-100 pl-2">
+            <span className="text-[8px] font-bold text-slate-400">REAL</span>
+            <span className="text-[12px] font-black text-blue-600">{real}</span>
+          </div>
+        </div>
+      ) : (
+        <span className="text-xl font-black text-slate-800 mt-1">
+          {value}
+        </span>
+      )}
     </div>
   );
-}
+};
 
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];

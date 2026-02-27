@@ -141,7 +141,7 @@ export default function ReporteComercialCore() {
       tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.real_tarjeta || 0), 0) / n).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      activas: s.reduce((acc, c) => acc + Number(c.total_activas_calculada || 0), 0),
+      activas: s.reduce((acc, c) => acc + Number(c.activas || 0), 0),
     };
   }, [data]);
 

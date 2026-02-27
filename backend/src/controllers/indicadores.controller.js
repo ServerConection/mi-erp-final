@@ -85,7 +85,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
-                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                    AND mb.j_año_activacion_netlife = '2026' and mb.j_mes_activacion_netlife = 'Febrero'
                 ) AS activas,
                 COUNT(*) FILTER (
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -98,8 +98,8 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND mb.b_fecha_venta_subida IS NULL
                 ) AS backlog,
                 (
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO' AND mb.b_fecha_venta_subida IS NOT NULL) +
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO' AND mb.b_fecha_venta_subida IS NULL)
+                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' and mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NOT NULL) +
+                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' and mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NULL)
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 (COUNT(*) FILTER (

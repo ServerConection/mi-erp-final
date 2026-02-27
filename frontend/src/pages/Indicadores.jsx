@@ -305,6 +305,8 @@ export default function ReporteComercialCore() {
             <KpiMini label="Descarte %" value={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
             <KpiMini label="3ra Edad %" value={`${stats.terceraEdad}%`} color="border-l-pink-500" />
+            <KpiMini label="Activas Mes" value={`${stats.total_activas_calculada}%`} color="border-l-emerald-500" />
+            <KpiMini label="Activas 2" value={`${stats.activas}%`} color="border-l-pink-500" />
           </div>
 
           {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}

@@ -127,42 +127,21 @@ export default function ReporteComercialCore() {
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-const stats = useMemo(() => {
+  const stats = useMemo(() => {
     const s = data.supervisores || [];
     const n = s.length || 1;
-
-    // Calculamos totales generales primero para que los porcentajes sean exactos
-    const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
-    
-    // Suma de casos reales de tarjeta (reconstruimos el número a partir del % de cada uno)
-    const totalCasosTarjeta = s.reduce((acc, c) => {
-      const porcentaje = Number(c.real_tarjeta || 0);
-      const gestionablesIndiv = Number(c.gestionables || 0);
-      return acc + (porcentaje * gestionablesIndiv / 100);
-    }, 0);
-
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
-      gestionables: totalGestionables,
-      // Usamos 'regularizacion' que es como viene del Backend
-      regularizar: s.reduce((acc, c) => acc + Number(c.regularizacion || 0), 0),
+      gestionables: s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0),
+      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform: s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0),
-      
-      // Promedios de porcentajes (se mantienen igual para no complicar el código)
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
       tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
+      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.real_tarjeta || 0), 0) / n).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      
-      // LA CORRECCIÓN: Tarjeta de Crédito Global Real
-      tarjetaCredito: totalGestionables > 0 
-        ? ((totalCasosTarjeta / totalGestionables) * 100).toFixed(1) 
-        : "0.0",
-
-      // LA CORRECCIÓN: 3ra Edad (Dato único fuera del loop)
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      
       activas: s.reduce((acc, c) => acc + Number(c.activas || 0), 0),
     };
   }, [data]);

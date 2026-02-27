@@ -214,27 +214,27 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        const queryPorDia = `
-            SELECT
-                mb.b_cerrado::date AS fecha,
-                COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.b_cerrado IS NOT NULL
-            AND TRIM(mb.b_cerrado::text) <> ''
-            AND mb.b_cerrado::date BETWEEN $1::date AND $2::date
-            ${filters}
-            GROUP BY mb.b_cerrado::date
-            ORDER BY mb.b_cerrado::date ASC
-        `;
+// REPASO: Gráfico por día (Asegúrate que esté así)
+const queryPorDia = `
+    SELECT
+        mb.j_fecha_registro_sistema::date AS fecha,
+        COUNT(*)::int AS total
+    FROM public.mestra_bitrix mb
+    LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+    WHERE mb.j_fecha_registro_sistema IS NOT NULL
+    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+    ${filters}
+    GROUP BY mb.j_fecha_registro_sistema::date
+    ORDER BY fecha ASC
+`;
 
-        const queryEtapasCRM = `
-            SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
-            FROM public.mestra_bitrix mb
-            WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
-            AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
-            ORDER BY mb.b_etapa_de_la_negociacion ASC
-        `;
+       const queryEtapasCRM = `
+    SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
+    FROM public.mestra_bitrix mb
+    WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
+    AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
+    ORDER BY etapa ASC
+`;
 
         const queryTerceraEdad = `
             SELECT

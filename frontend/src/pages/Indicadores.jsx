@@ -2,11 +2,11 @@ import { useEffect, useState, useMemo } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, FunnelChart, Funnel, LabelList, Cell 
+  ResponsiveContainer, FunnelChart, Funnel, LabelList, Cell, ReferenceLine
 } from 'recharts';
+
 const formatFechaCorta = (fechaStr) => {
   if (!fechaStr || typeof fechaStr !== 'string') return fechaStr;
-  // Corta el texto largo y saca solo dia y mes
   const partes = fechaStr.split('T')[0].split('-');
   return `${partes[2]}`; 
 };
@@ -343,26 +343,62 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          
-
           {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* GRÁFICO DE BARRAS POR DÍA - PRODUCCION POR DIA (b_cerrado) */}
+            {/* GRÁFICO DE BARRAS POR DÍA */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
+                <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
+                  <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> REAL
+                  <span className="w-3 h-2 bg-red-500/50 rounded inline-block"></span> FALTA
+                  <span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META 65
+                </span>
               </h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.graficoBarrasDia} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
+                  <BarChart
+                    data={(data.graficoBarrasDia || []).map(d => ({
+                      ...d,
+                      faltante: Math.max(0, 65 - Number(d.total)),
+                    }))}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 50 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} 
-                    interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }}/>
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} />
-                    <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} label={<CustomBarLabel />} />
+                    <XAxis
+                      dataKey="fecha"
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={formatFechaCorta}
+                      interval="preserveStartEnd"
+                      tick={{ fill: '#475569', fontSize: 10 }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#475569', fontSize: 9 }}
+                      domain={[0, dataMax => Math.max(dataMax, 70)]}
+                    />
+                    <Tooltip
+                      cursor={{ fill: '#1e293b' }}
+                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
+                      formatter={(value, name) => {
+                        if (name === 'total') return [value, 'REAL'];
+                        if (name === 'faltante') return [value, 'FALTANTE'];
+                        return [value, name];
+                      }}
+                    />
+                    <ReferenceLine
+                      y={65}
+                      stroke="#facc15"
+                      strokeDasharray="4 3"
+                      strokeWidth={1.5}
+                      label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }}
+                    />
+                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={30} label={<CustomBarLabel />} />
+                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={30} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -406,8 +442,6 @@ export default function ReporteComercialCore() {
             </div>
 
           </div>
-
-
 
           {/* TABLAS GENERALES */}
           <div className="mb-8">
@@ -465,12 +499,9 @@ export default function ReporteComercialCore() {
 const KpiMini = ({ label, value, meta, real, color }) => {
   return (
     <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
-      {/* Título del Indicador */}
       <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">
         {label}
       </span>
-
-      {/* Lógica: Si hay meta/real muestra la tabla, si no, el valor simple */}
       {meta !== undefined ? (
         <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
           <div className="flex flex-col">

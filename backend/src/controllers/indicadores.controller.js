@@ -373,9 +373,6 @@ const getMonitoreoDiario = async (req, res) => {
                         AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
-
-                ROUND(
-                    COALESCE(
                         COUNT(*) FILTER (
                             WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                             AND mb.j_forma_pago = 'TARJETA DE CREDITO.'

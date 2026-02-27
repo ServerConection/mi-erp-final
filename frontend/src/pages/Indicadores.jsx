@@ -299,7 +299,7 @@ export default function ReporteComercialCore() {
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
             <KpiMini label="Leads Totales" value={stats.leadsGestionables} color="border-l-emerald-500" />    
             <KpiMini label="Gestionables" value={stats.gestionables} color="border-l-violet-500" />
-            <KpiMini label="Ingresos CRM" value={stats.ingresosCRM} color="border-l-blue-500" />
+            <KpiMini label="Ingresos CRM" meta={1000} real={stats.ingresosCRM} color="border-l-blue-500" />
             <KpiMini label="Ingresos JOT" value={stats.ingresosJotform} color="border-l-emerald-500" />
             <KpiMini label="Efectividad" value={`${stats.efectividad}%`} color="border-l-purple-500" />
             <KpiMini label="Tasa Inst." value={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />

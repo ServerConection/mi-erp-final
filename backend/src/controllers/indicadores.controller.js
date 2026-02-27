@@ -88,6 +88,13 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
+                
+                COUNT(*) FILTER (
+                    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
+                    AND mb.j_estatus_regularizacion = 'POR REGULARIZAR'
+                ) AS por_regularizar,
+
+
                 COUNT(*) FILTER (
                     WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}

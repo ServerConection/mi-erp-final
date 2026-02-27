@@ -133,6 +133,7 @@ export default function ReporteComercialCore() {
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0),
+      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform: s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0),
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
@@ -307,7 +308,7 @@ export default function ReporteComercialCore() {
             <KpiMini label="Efic. Pauta" value={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
             <KpiMini label="3ra Edad %" value={`${stats.terceraEdad}%`} color="border-l-pink-500" />
             <KpiMini label="Activas Mes" value={stats.activas} color="border-l-emerald-500" />
-            <KpiMini label="Activas 2" value={stats.total_activas_calculada} color="border-l-pink-500" />
+            <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
           </div>
 
           {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}

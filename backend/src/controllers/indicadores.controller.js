@@ -89,8 +89,8 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS gestionables,
-                COUNT(*) FILTER (
-                    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)    AS ingresos_reales,
+COUNT(*) FILTER (
+    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)    AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero'
                 ) AS activas,

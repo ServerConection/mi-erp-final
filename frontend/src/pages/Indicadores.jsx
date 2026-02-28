@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, FunnelChart, Funnel, LabelList, Cell, ReferenceLine
+  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList
 } from 'recharts';
 
 const formatFechaCorta = (fechaStr) => {
@@ -46,7 +46,6 @@ export default function ReporteComercialCore() {
 
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
-
     const supEficienciaBaja = (supervisores || []).filter(s => Number(s.eficiencia) < 5);
     if (supEficienciaBaja.length > 0) {
       nuevasAlertas.push({
@@ -56,7 +55,6 @@ export default function ReporteComercialCore() {
         duracion: 5000,
       });
     }
-
     const supVentasBajas = (supervisores || []).filter(s => Number(s.ingresos_reales) < 2);
     if (supVentasBajas.length > 0) {
       const nombres = supVentasBajas.map(s => s.nombre_grupo).join(", ");
@@ -67,7 +65,6 @@ export default function ReporteComercialCore() {
         duracion: 7000,
       });
     }
-
     if (nuevasAlertas.length > 0) {
       setAlertas(nuevasAlertas);
       nuevasAlertas.forEach(alerta => {
@@ -159,6 +156,7 @@ export default function ReporteComercialCore() {
 
   const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
+  // Label para barra REAL (valor dentro de la barra verde)
   const CustomBarLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
@@ -169,12 +167,36 @@ export default function ReporteComercialCore() {
     );
   };
 
+  // Label para barra FALTANTE (valor en rojo encima)
+  const CustomFaltanteLabel = (props) => {
+    const { x, y, width, value } = props;
+    if (!value) return null;
+    return (
+      <text x={x + width / 2} y={y - 4} fill="#f87171" textAnchor="middle" fontSize={9} fontWeight="900">
+        -{value}
+      </text>
+    );
+  };
+
   const CustomXAxisTick = (props) => {
     const { x, y, payload } = props;
     return (
       <g transform={`translate(${x},${y})`}>
         <text x={0} y={0} dy={10} textAnchor="end" fill="#64748b" fontSize={9} fontWeight={700} transform="rotate(-45)">
           {payload.value}
+        </text>
+      </g>
+    );
+  };
+
+  // Tick vertical para nombres largos en gráficos de monitoreo
+  const CustomXAxisTickVertical = (props) => {
+    const { x, y, payload } = props;
+    const nombre = (payload.value || '').length > 14 ? payload.value.substring(0, 14) + '…' : payload.value;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={0} y={0} dy={4} textAnchor="end" fill="#94a3b8" fontSize={8} fontWeight={700} transform="rotate(-55)">
+          {nombre}
         </text>
       </g>
     );
@@ -210,7 +232,6 @@ export default function ReporteComercialCore() {
           <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
           SISTEMA DE INDICADORES
         </h1>
-
         <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
           <button 
             onClick={() => setTabActiva("GENERAL")} 
@@ -233,7 +254,6 @@ export default function ReporteComercialCore() {
           {/* FILTROS */}
           <div className="bg-[#0F172A] rounded-2xl shadow-2xl mb-8 overflow-hidden border border-slate-800">
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
-
                 <div className="lg:col-span-2 flex flex-col gap-2">
                   <label className="text-[9px] font-black text-blue-400 italic tracking-widest">PERÍODO DE CONSULTA</label>
                   <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
@@ -242,17 +262,14 @@ export default function ReporteComercialCore() {
                     <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
                   </div>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">ASESOR</label>
                   <input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors" value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} />
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">SUPERVISOR</label>
                   <input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors" value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} />
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">ETAPA CRM</label>
                   <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}>
@@ -262,7 +279,6 @@ export default function ReporteComercialCore() {
                     ))}
                   </select>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">NETLIFE</label>
                   <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}>
@@ -271,7 +287,6 @@ export default function ReporteComercialCore() {
                     <option value="RECHAZADO">RECHAZADO</option>
                   </select>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">ETAPA JOTFORM</label>
                   <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}>
@@ -281,7 +296,6 @@ export default function ReporteComercialCore() {
                     ))}
                   </select>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-500 italic">REGULARIZACIÓN</label>
                   <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoRegularizacion} onChange={e => setFiltros({...filtros, estadoRegularizacion: e.target.value})}>
@@ -290,14 +304,12 @@ export default function ReporteComercialCore() {
                     <option value="REGULARIZADO">REGULARIZADO</option>
                   </select>
                 </div>
-
                 <button 
                   onClick={() => fetchDashboard()} 
                   className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95"
                 >
                   {loading ? "CARGANDO..." : "APLICAR FILTROS"}
                 </button>
-
             </div>
           </div>
 
@@ -348,8 +360,8 @@ export default function ReporteComercialCore() {
 
             {/* GRÁFICO DE BARRAS POR DÍA */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+              <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
                 <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
                   <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> REAL
@@ -364,7 +376,7 @@ export default function ReporteComercialCore() {
                       ...d,
                       faltante: Math.max(0, 65 - Number(d.total)),
                     }))}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 50 }}
+                    margin={{ top: 20, right: 10, left: 0, bottom: 50 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                     <XAxis
@@ -397,8 +409,12 @@ export default function ReporteComercialCore() {
                       strokeWidth={1.5}
                       label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }}
                     />
-                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={30} label={<CustomBarLabel />} />
-                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={30} />
+                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={30}>
+                      <LabelList dataKey="total" content={CustomBarLabel} />
+                    </Bar>
+                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={30}>
+                      <LabelList dataKey="faltante" content={CustomFaltanteLabel} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -487,7 +503,102 @@ export default function ReporteComercialCore() {
                {loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}
              </button>
           </div>
-          
+
+          {/* GRÁFICOS DE MONITOREO */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* GRÁFICO ASESORES: LEADS DÍA VS INGRESOS HOY */}
+            <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
+              <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
+                <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
+                ASESORES — GESTIONABLES VS INGRESOS HOY
+                <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400">
+                  <span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> GEST.
+                  <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.
+                </span>
+              </h3>
+              <div className="h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={(monitoreoData.asesores || []).map(a => ({
+                      nombre: a.nombre_grupo,
+                      gestionables: Number(a.real_dia_leads || 0),
+                      ingresos: Number(a.v_subida_jot_hoy || 0),
+                    }))}
+                    margin={{ top: 15, right: 10, left: 0, bottom: 80 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                    <XAxis
+                      dataKey="nombre"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={<CustomXAxisTickVertical />}
+                      interval={0}
+                    />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+                    <Tooltip
+                      cursor={{ fill: '#1e293b' }}
+                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
+                      formatter={(value, name) => {
+                        if (name === 'gestionables') return [value, 'GESTIONABLES HOY'];
+                        if (name === 'ingresos') return [value, 'INGRESOS JOT HOY'];
+                        return [value, name];
+                      }}
+                    />
+                    <Bar dataKey="gestionables" fill="#8b5cf6" radius={[3, 3, 0, 0]} barSize={14} label={{ position: 'top', fill: '#c4b5fd', fontSize: 8, fontWeight: 900 }} />
+                    <Bar dataKey="ingresos" fill="#10b981" radius={[3, 3, 0, 0]} barSize={14} label={{ position: 'top', fill: '#6ee7b7', fontSize: 8, fontWeight: 900 }} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* GRÁFICO SUPERVISORES: LEADS DÍA VS INGRESOS HOY */}
+            <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
+              <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
+                <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
+                SUPERVISORES — GESTIONABLES VS INGRESOS HOY
+                <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400">
+                  <span className="w-3 h-2 bg-cyan-500 rounded inline-block"></span> GEST.
+                  <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.
+                </span>
+              </h3>
+              <div className="h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={(monitoreoData.supervisores || []).map(s => ({
+                      nombre: s.nombre_grupo,
+                      gestionables: Number(s.real_dia_leads || 0),
+                      ingresos: Number(s.v_subida_jot_hoy || 0),
+                    }))}
+                    margin={{ top: 15, right: 10, left: 0, bottom: 80 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                    <XAxis
+                      dataKey="nombre"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={<CustomXAxisTickVertical />}
+                      interval={0}
+                    />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+                    <Tooltip
+                      cursor={{ fill: '#1e293b' }}
+                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
+                      formatter={(value, name) => {
+                        if (name === 'gestionables') return [value, 'GESTIONABLES HOY'];
+                        if (name === 'ingresos') return [value, 'INGRESOS JOT HOY'];
+                        return [value, name];
+                      }}
+                    />
+                    <Bar dataKey="gestionables" fill="#06b6d4" radius={[3, 3, 0, 0]} barSize={22} label={{ position: 'top', fill: '#67e8f9', fontSize: 8, fontWeight: 900 }} />
+                    <Bar dataKey="ingresos" fill="#10b981" radius={[3, 3, 0, 0]} barSize={22} label={{ position: 'top', fill: '#6ee7b7', fontSize: 8, fontWeight: 900 }} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+          </div>
+
           <DailyMonitoringTable title="CONTROL OPERATIVO: SUPERVISORES" data={monitoreoData.supervisores} />
           <DailyMonitoringTable title="CONTROL OPERATIVO: ASESORES" data={monitoreoData.asesores} hasScroll={true} />
         </div>

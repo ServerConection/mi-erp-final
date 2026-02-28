@@ -90,9 +90,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS gestionables,
                 COUNT(*) FILTER (
-                    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)
-                    AND (mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = '')
-                ) AS ingresos_reales,
+                    WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date)    AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero'
                 ) AS activas,
@@ -396,7 +394,7 @@ const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETL
     }
 };
 
-
+    
 
 module.exports = {
     getIndicadoresDashboard,

@@ -131,10 +131,27 @@ COUNT(*) FILTER (
                     COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) AND (mb.j_netlife_estatus_real NOT IN ('DUPLICADO','DUPLILLADO') OR mb.j_netlife_estatus_real IS NULL OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''))::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
-                , 0) * 100, 2) AS eficiencia
+ROUND(
+    COALESCE(
+        COUNT(*) FILTER (
+            WHERE ${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date
+            AND (
+                mb.j_netlife_estatus_real NOT IN ('DUPLICADO')
+                OR TRIM(COALESCE(mb.j_netlife_estatus_real,'')) = ''
+            )
+        )::numeric
+        /
+        NULLIF(
+            COUNT(*) FILTER (
+                WHERE (
+                    ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                )
+                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+            ),
+        0),
+    0
+    ) * 1,
+2) AS eficiencia
                 
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
@@ -155,7 +172,6 @@ COUNT(*) FILTER (
                 mb.b_modificado_el_hora AS "HORA_MODIFICACION",
                 mb.b_origen AS "ORIGEN"
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filters}
             LIMIT 6000
         `;
@@ -173,7 +189,6 @@ COUNT(*) FILTER (
                 mb.b_persona_responsable AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE ((mb.j_fecha_registro_sistema::timestamp - INTERVAL '6 hours')::date BETWEEN $1::date AND $2::date) ${filters}
             LIMIT 6000
         `;

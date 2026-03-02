@@ -106,6 +106,15 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NULL)
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
+                COUNT(*) FILTER (
+                    WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
+                    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                ) AS tarjeta_credito,
+                COUNT(*) FILTER (
+                    WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
+                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                ) AS tercera_edad,
                 (COUNT(*) FILTER (
                     WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
                     AND ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
@@ -222,48 +231,38 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY etapa ASC
         `;
 
-        // ✅ FIX: sin INTERVAL, j_fecha_registro_sistema ya viene en hora Ecuador
+        // ✅ FIX DEFINITIVO: WHERE solo por j_fecha_registro_sistema
+        // El WHERE anterior usaba (b_creado_el_fecha OR j_fecha_registro_sistema)
+        // eso metía en la tabla registros SIN datos jotform (sin j_forma_pago, sin j_aplica_descuento_3ra_edad)
+        // lo que inflaba el denominador con filas vacías -> porcentaje resultaba 0%
         const queryTerceraEdad = `
             SELECT
-                ROUND(
-                    COALESCE(
-                        COUNT(*) FILTER (
-                            WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
-                            AND mb.j_netlife_estatus_real = 'ACTIVO'
-                        )::decimal
-                        / NULLIF(
-                            COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')
-                        , 0) * 100
-                    , 0)
-                , 2) AS porcentaje_tercera_edad
+                COUNT(*) FILTER (
+                    WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
+                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                ) AS total_tercera_edad,
+                COUNT(*) FILTER (
+                    WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                ) AS total_activos
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
             ${filters}
         `;
 
-        // ✅ FIX: sin INTERVAL, j_fecha_registro_sistema ya viene en hora Ecuador
+        // ✅ FIX DEFINITIVO: WHERE solo por j_fecha_registro_sistema
+        // Igual que queryTerceraEdad: el WHERE anterior inflaba el denominador
+        // con registros CRM que no tienen jotform -> j_forma_pago = NULL -> nunca cuenta como TARJETA -> % = 0
         const queryTarjeta = `
             SELECT
-                ROUND(
-                    COALESCE(
-                        COUNT(*) FILTER (
-                            WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                        )::decimal
-                        / NULLIF(
-                            COUNT(*) FILTER (
-                                WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                            )
-                        , 0) * 100
-                    , 0)
-                , 2) AS porcentaje_tarjeta
+                COUNT(*) FILTER (
+                    WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
+                ) AS total_tarjeta,
+                COUNT(*) AS total_jotform
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE (
-                ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filters}
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            ${filters}
         `;
 
         const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta] = await Promise.all([
@@ -285,10 +284,24 @@ const getIndicadoresDashboard = async (req, res) => {
             total: Number(estadosRow[est] || 0),
         }));
 
-        const porcentajeTerceraEdad = Number(resTerceraEdad.rows[0]?.porcentaje_tercera_edad || 0);
-        const porcentajeTarjeta = Number(resTarjeta.rows[0]?.porcentaje_tarjeta || 0);
+        // ✅ Calcular porcentajes en JS — evita problemas de casting numeric->string de PostgreSQL
+        const rowTercera = resTerceraEdad.rows[0] || {};
+        const totalTerceraEdad = Number(rowTercera.total_tercera_edad || 0);
+        const totalActivosTercera = Number(rowTercera.total_activos || 0);
+        const porcentajeTerceraEdad = totalActivosTercera > 0
+            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2))
+            : 0;
+
+        const rowTarjeta = resTarjeta.rows[0] || {};
+        const totalTarjeta = Number(rowTarjeta.total_tarjeta || 0);
+        const totalJotformTarjeta = Number(rowTarjeta.total_jotform || 0);
+        const porcentajeTarjeta = totalJotformTarjeta > 0
+            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2))
+            : 0;
 
         console.log(`[DASHBOARD] Supervisores: ${resSup.rows.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+        console.log(`[DASHBOARD DEBUG] TerceraEdad => total_3ra=${totalTerceraEdad} | total_activos=${totalActivosTercera}`);
+        console.log(`[DASHBOARD DEBUG] Tarjeta     => total_tarjeta=${totalTarjeta} | total_jotform=${totalJotformTarjeta}`);
 
         res.json({
             success: true,
@@ -317,7 +330,7 @@ const getMonitoreoDiario = async (req, res) => {
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DUPLICADO','POSTVENTA NOVONET','DESCARTE PLAN DE 200','DUPLLICADO','POSTVENTA','SEGUIMIENTO PLAN 200')";
+        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
 
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 

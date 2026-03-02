@@ -31,7 +31,7 @@ export default function ReporteComercialCore() {
     graficoBarrasDia: [],
     etapasCRM: [],
     porcentajeTerceraEdad: 0,
-     porcentajeTarjeta: 0,  // 
+    porcentajeTarjeta: 0,
   });
   
   const [monitoreoData, setMonitoreoData] = useState({ 
@@ -90,8 +90,16 @@ export default function ReporteComercialCore() {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
       if (result.success) {
-        setData(result);
+        // ✅ FIX: forzar Number() en los porcentajes para evitar que lleguen como string "0.00"
+        setData({
+          ...result,
+          porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
+          porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
+        });
         mostrarAlertas(result.supervisores);
+        // ✅ DEBUG: ver exactamente qué llega del backend
+        console.log('[FRONTEND DEBUG] porcentajeTarjeta recibido:', result.porcentajeTarjeta);
+        console.log('[FRONTEND DEBUG] porcentajeTerceraEdad recibido:', result.porcentajeTerceraEdad);
       }
     } catch (e) {
       console.error("Error Dashboard:", e);
@@ -136,12 +144,18 @@ export default function ReporteComercialCore() {
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-const stats = useMemo(() => {
+  const stats = useMemo(() => {
     const s = data.supervisores || [];
     const n = s.length || 1;
     const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
     const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
+    const totalActivas = s.reduce((acc, c) => acc + Number(c.activas || 0), 0);
+
+    // ✅ FIX: leer directamente de data (ya forzados a Number en setData)
+    const tarjetaCredito = Number(data.porcentajeTarjeta || 0).toFixed(1);
+    const terceraEdad = Number(data.porcentajeTerceraEdad || 0).toFixed(1);
+
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: totalGestionables,
@@ -151,10 +165,10 @@ const stats = useMemo(() => {
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
       tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
-      tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
+      tarjetaCredito,
+      terceraEdad,
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      activas: s.reduce((acc, c) => acc + Number(c.activas || 0), 0),
+      activas: totalActivas,
     };
   }, [data]);
 
@@ -321,22 +335,22 @@ const stats = useMemo(() => {
                 </button>
             </div>
           </div>
+        {/* KPI CARDS */}
+<div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
+  <KpiMini label="Leads Totales" meta={7050} real={stats.leadsGestionables} color="border-l-emerald-500" />    
+  <KpiMini label="Gestionables" meta={4230} real={stats.gestionables} color="border-l-violet-500" />
+  <KpiMini label="Ingresos CRM" meta={1200} real={stats.ingresosCRM} color="border-l-blue-500" />
+  <KpiMini label="Ingresos JOT" meta={1050} real={stats.ingresosJotform} color="border-l-emerald-500" />
+  <KpiMini label="Efectividad" meta="90%" real={`${stats.efectividad}%`} color="border-l-purple-500" />
+  <KpiMini label="Tasa Inst." meta="80%" real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
+  <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
+  <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
+  <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+  <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
+  <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
+  <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
+</div>
 
-          {/* KPI CARDS */}
-          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini label="Leads Totales" meta={7050} real={stats.leadsGestionables} color="border-l-emerald-500" />    
-            <KpiMini label="Gestionables" meta={4230} real={stats.gestionables} color="border-l-violet-500" />
-            <KpiMini label="Ingresos CRM" meta={1200} real={stats.ingresosCRM} color="border-l-blue-500" />
-            <KpiMini label="Ingresos JOT" meta={1050} real={stats.ingresosJotform} color="border-l-emerald-500" />
-            <KpiMini label="Efectividad" meta="90%" real={`${stats.efectividad}%`} color="border-l-purple-500" />
-            <KpiMini label="Tasa Inst." meta="80%" real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
-            <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
-            <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
-            <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
-            <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
-            <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
-          </div>
 
           {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">

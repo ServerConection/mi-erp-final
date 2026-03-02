@@ -11,7 +11,6 @@ const formatFechaCorta = (fechaStr) => {
   return `${partes[2]}`; 
 };
 
-// ✅ FIX: Fecha correcta en Ecuador desde el frontend
 const getFechaHoyEcuador = () => {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 };
@@ -90,16 +89,12 @@ export default function ReporteComercialCore() {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
       if (result.success) {
-        // ✅ FIX: forzar Number() en los porcentajes para evitar que lleguen como string "0.00"
         setData({
           ...result,
           porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
         });
         mostrarAlertas(result.supervisores);
-        // ✅ DEBUG: ver exactamente qué llega del backend
-        console.log('[FRONTEND DEBUG] porcentajeTarjeta recibido:', result.porcentajeTarjeta);
-        console.log('[FRONTEND DEBUG] porcentajeTerceraEdad recibido:', result.porcentajeTerceraEdad);
       }
     } catch (e) {
       console.error("Error Dashboard:", e);
@@ -151,11 +146,8 @@ export default function ReporteComercialCore() {
     const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalActivas = s.reduce((acc, c) => acc + Number(c.activas || 0), 0);
-
-    // ✅ FIX: leer directamente de data (ya forzados a Number en setData)
     const tarjetaCredito = Number(data.porcentajeTarjeta || 0).toFixed(1);
     const terceraEdad = Number(data.porcentajeTerceraEdad || 0).toFixed(1);
-
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: totalGestionables,
@@ -168,7 +160,7 @@ export default function ReporteComercialCore() {
       tarjetaCredito,
       terceraEdad,
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas: totalActivas,
+      activas: totalActivos,
     };
   }, [data]);
 
@@ -179,7 +171,6 @@ export default function ReporteComercialCore() {
 
   const COLORES_EMBUDO = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
-  // Label para barra REAL (valor dentro de la barra verde)
   const CustomBarLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
@@ -190,7 +181,17 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // Label para barra FALTANTE (valor en rojo encima)
+  // ✅ Label activos — aparece encima de la barra en azul
+  const CustomActivosLabel = (props) => {
+    const { x, y, width, value } = props;
+    if (!value) return null;
+    return (
+      <text x={x + width / 2} y={y - 4} fill="#60a5fa" textAnchor="middle" fontSize={9} fontWeight="900">
+        {value}
+      </text>
+    );
+  };
+
   const CustomFaltanteLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
@@ -212,7 +213,6 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // Tick vertical para nombres largos en gráficos de monitoreo
   const CustomXAxisTickVertical = (props) => {
     const { x, y, payload } = props;
     const nombre = (payload.value || '').length > 14 ? payload.value.substring(0, 14) + '…' : payload.value;
@@ -237,10 +237,24 @@ export default function ReporteComercialCore() {
     );
   };
 
+  // ✅ Datos para gráficos de monitoreo — campos reales del backend
+  // real_dia_leads = gestionables HOY (b_cerrado::date = hoy AND etapa IN gestionables)
+  // v_subida_jot_hoy = ingresos JOT HOY (j_fecha_registro_sistema::date = hoy, excluye fuera cobertura/desiste/rechazado)
+  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
+    nombre: a.nombre_grupo,
+    gestionables: Number(a.real_dia_leads || 0),
+    ingresos: Number(a.v_subida_jot_hoy || 0),
+  }));
+
+  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
+    nombre: s.nombre_grupo,
+    gestionables: Number(s.real_dia_leads || 0),
+    ingresos: Number(s.v_subida_jot_hoy || 0),
+  }));
+
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
 
-      {/* ALERTAS APILADAS */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
         {alertas.map(alerta => (
           <div key={alerta.id} className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm`}>
@@ -249,7 +263,6 @@ export default function ReporteComercialCore() {
         ))}
       </div>
       
-      {/* HEADER Y TABS */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
           <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> 
@@ -274,7 +287,6 @@ export default function ReporteComercialCore() {
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
 
-          {/* FILTROS */}
           <div className="bg-[#0F172A] rounded-2xl shadow-2xl mb-8 overflow-hidden border border-slate-800">
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
                 <div className="lg:col-span-2 flex flex-col gap-2">
@@ -335,24 +347,22 @@ export default function ReporteComercialCore() {
                 </button>
             </div>
           </div>
-        {/* KPI CARDS */}
-<div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-  <KpiMini label="Leads Totales" meta={7050} real={stats.leadsGestionables} color="border-l-emerald-500" />    
-  <KpiMini label="Gestionables" meta={4230} real={stats.gestionables} color="border-l-violet-500" />
-  <KpiMini label="Ingresos CRM" meta={1200} real={stats.ingresosCRM} color="border-l-blue-500" />
-  <KpiMini label="Ingresos JOT" meta={1050} real={stats.ingresosJotform} color="border-l-emerald-500" />
-  <KpiMini label="Efectividad" meta="90%" real={`${stats.efectividad}%`} color="border-l-purple-500" />
-  <KpiMini label="Tasa Inst." meta="80%" real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
-  <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
-  <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
-  <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-  <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
-  <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
-  <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
-</div>
 
+          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
+            <KpiMini label="Leads Totales" meta={7050} real={stats.leadsGestionables} color="border-l-emerald-500" />    
+            <KpiMini label="Gestionables" meta={4230} real={stats.gestionables} color="border-l-violet-500" />
+            <KpiMini label="Ingresos CRM" meta={1200} real={stats.ingresosCRM} color="border-l-blue-500" />
+            <KpiMini label="Ingresos JOT" meta={1050} real={stats.ingresosJotform} color="border-l-emerald-500" />
+            <KpiMini label="Efectividad" meta="90%" real={`${stats.efectividad}%`} color="border-l-purple-500" />
+            <KpiMini label="Tasa Inst." meta="80%" real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
+            <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
+            <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
+            <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+            <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
+            <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
+            <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
+          </div>
 
-          {/* ETAPAS JOTFORM - TARJETAS CLICKEABLES */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -378,16 +388,16 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* GRÁFICO DE BARRAS POR DÍA */}
+            {/* ✅ PRODUCCIÓN POR DÍA — barra ACTIVOS visible al lado (sin stackId propio) */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
                 <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
                   <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> REAL
+                  <span className="w-3 h-2 bg-blue-400 rounded inline-block"></span> ACTIVOS
                   <span className="w-3 h-2 bg-red-500/50 rounded inline-block"></span> FALTA
                   <span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META 65
                 </span>
@@ -398,52 +408,42 @@ export default function ReporteComercialCore() {
                     data={(data.graficoBarrasDia || []).map(d => ({
                       ...d,
                       faltante: Math.max(0, 65 - Number(d.total)),
+                      activos: Number(d.activos || 0),
                     }))}
-                    margin={{ top: 20, right: 10, left: 0, bottom: 50 }}
+                    margin={{ top: 24, right: 10, left: 0, bottom: 50 }}
+                    barCategoryGap="20%"
+                    barGap={2}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis
-                      dataKey="fecha"
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={formatFechaCorta}
-                      interval="preserveStartEnd"
-                      tick={{ fill: '#475569', fontSize: 10 }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#475569', fontSize: 9 }}
-                      domain={[0, dataMax => Math.max(dataMax, 70)]}
-                    />
+                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} domain={[0, dataMax => Math.max(dataMax, 70)]} />
                     <Tooltip
                       cursor={{ fill: '#1e293b' }}
                       contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
                       formatter={(value, name) => {
                         if (name === 'total') return [value, 'REAL'];
+                        if (name === 'activos') return [value, 'ACTIVOS'];
                         if (name === 'faltante') return [value, 'FALTANTE'];
                         return [value, name];
                       }}
                     />
-                    <ReferenceLine
-                      y={65}
-                      stroke="#facc15"
-                      strokeDasharray="4 3"
-                      strokeWidth={1.5}
-                      label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }}
-                    />
-                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={30}>
+                    <ReferenceLine y={65} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
+                    {/* Stack REAL + FALTANTE */}
+                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={22}>
                       <LabelList dataKey="total" content={CustomBarLabel} />
                     </Bar>
-                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={30}>
+                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={22}>
                       <LabelList dataKey="faltante" content={CustomFaltanteLabel} />
+                    </Bar>
+                    {/* ✅ ACTIVOS: sin stackId → aparece como barra independiente al lado */}
+                    <Bar dataKey="activos" fill="#60a5fa" radius={[4, 4, 0, 0]} barSize={12}>
+                      <LabelList dataKey="activos" content={CustomActivosLabel} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* EMBUDO DE CONVERSIÓN */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
@@ -453,13 +453,7 @@ export default function ReporteComercialCore() {
                 <div className="flex-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <FunnelChart>
-                      <Funnel
-                        data={data.graficoEmbudo || []}
-                        dataKey="total"
-                        nameKey="etapa"
-                        isAnimationActive={false}
-                        label={CustomFunnelLabel}
-                      >
+                      <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
                         {(data.graficoEmbudo || []).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />
                         ))}
@@ -482,7 +476,6 @@ export default function ReporteComercialCore() {
 
           </div>
 
-          {/* TABLAS GENERALES */}
           <div className="mb-8">
             <HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} />
           </div>
@@ -490,20 +483,9 @@ export default function ReporteComercialCore() {
             <HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} />
           </div>
 
-          {/* VISUALIZADORES DE DATA */}
           <div className="grid grid-cols-1 gap-4">
-            <DataVisor 
-              title="DETALLE BASE CRM" 
-              data={data.dataCRM} 
-              onDownload={() => descargarExcel("CRM")} 
-              color="bg-slate-800" 
-            />
-            <DataVisor 
-              title="DETALLE BASE JOTFORM (NETLIFE)" 
-              data={data.dataNetlife} 
-              onDownload={() => descargarExcel("JOTFORM")} 
-              color="bg-blue-900" 
-            />
+            <DataVisor title="DETALLE BASE CRM" data={data.dataCRM} onDownload={() => descargarExcel("CRM")} color="bg-slate-800" />
+            <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-900" />
           </div>
         </div>
       ) : (
@@ -519,18 +501,14 @@ export default function ReporteComercialCore() {
                </h2>
                <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em]">DATOS ACUMULADOS DEL MES Y DÍA ACTUAL</p>
              </div>
-             <button 
-               onClick={fetchMonitoreo} 
-               className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20"
-             >
+             <button onClick={fetchMonitoreo} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20">
                {loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}
              </button>
           </div>
 
-          {/* GRÁFICOS DE MONITOREO */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            {/* GRÁFICO ASESORES: LEADS DÍA VS INGRESOS HOY */}
+            {/* ✅ ASESORES — gestionables = real_dia_leads | ingresos = v_subida_jot_hoy */}
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
@@ -543,21 +521,13 @@ export default function ReporteComercialCore() {
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={(monitoreoData.asesores || []).map(a => ({
-                      nombre: a.nombre_grupo,
-                      gestionables: Number(a.real_dia_leads || 0),
-                      ingresos: Number(a.v_subida_jot_hoy || 0),
-                    }))}
-                    margin={{ top: 15, right: 10, left: 0, bottom: 80 }}
+                    data={dataGraficoAsesores}
+                    margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
+                    barCategoryGap="25%"
+                    barGap={3}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis
-                      dataKey="nombre"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={<CustomXAxisTickVertical />}
-                      interval={0}
-                    />
+                    <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
                     <Tooltip
                       cursor={{ fill: '#1e293b' }}
@@ -568,14 +538,14 @@ export default function ReporteComercialCore() {
                         return [value, name];
                       }}
                     />
-                    <Bar dataKey="gestionables" fill="#8b5cf6" radius={[3, 3, 0, 0]} barSize={14} label={{ position: 'top', fill: '#c4b5fd', fontSize: 8, fontWeight: 900 }} />
-                    <Bar dataKey="ingresos" fill="#10b981" radius={[3, 3, 0, 0]} barSize={14} label={{ position: 'top', fill: '#6ee7b7', fontSize: 8, fontWeight: 900 }} />
+                    <Bar dataKey="gestionables" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }} />
+                    <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* GRÁFICO SUPERVISORES: LEADS DÍA VS INGRESOS HOY */}
+            {/* ✅ SUPERVISORES — gestionables = real_dia_leads | ingresos = v_subida_jot_hoy */}
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
@@ -588,21 +558,13 @@ export default function ReporteComercialCore() {
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={(monitoreoData.supervisores || []).map(s => ({
-                      nombre: s.nombre_grupo,
-                      gestionables: Number(s.real_dia_leads || 0),
-                      ingresos: Number(s.v_subida_jot_hoy || 0),
-                    }))}
-                    margin={{ top: 15, right: 10, left: 0, bottom: 80 }}
+                    data={dataGraficoSupervisores}
+                    margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
+                    barCategoryGap="25%"
+                    barGap={3}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis
-                      dataKey="nombre"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={<CustomXAxisTickVertical />}
-                      interval={0}
-                    />
+                    <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
                     <Tooltip
                       cursor={{ fill: '#1e293b' }}
@@ -613,13 +575,12 @@ export default function ReporteComercialCore() {
                         return [value, name];
                       }}
                     />
-                    <Bar dataKey="gestionables" fill="#06b6d4" radius={[3, 3, 0, 0]} barSize={22} label={{ position: 'top', fill: '#67e8f9', fontSize: 8, fontWeight: 900 }} />
-                    <Bar dataKey="ingresos" fill="#10b981" radius={[3, 3, 0, 0]} barSize={22} label={{ position: 'top', fill: '#6ee7b7', fontSize: 8, fontWeight: 900 }} />
+                    <Bar dataKey="gestionables" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }} />
+                    <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
-
           </div>
 
           <DailyMonitoringTable title="CONTROL OPERATIVO: SUPERVISORES" data={monitoreoData.supervisores} />
@@ -633,9 +594,7 @@ export default function ReporteComercialCore() {
 const KpiMini = ({ label, value, meta, real, color }) => {
   return (
     <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
-      <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">
-        {label}
-      </span>
+      <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
       {meta !== undefined ? (
         <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
           <div className="flex flex-col">
@@ -648,14 +607,13 @@ const KpiMini = ({ label, value, meta, real, color }) => {
           </div>
         </div>
       ) : (
-        <span className="text-xl font-black text-slate-800 mt-1">
-          {value}
-        </span>
+        <span className="text-xl font-black text-slate-800 mt-1">{value}</span>
       )}
     </div>
   );
 };
 
+// ✅ TABLA CORREGIDA: cada columna lee el campo correcto del backend
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
   return (
@@ -676,6 +634,8 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className="border-r border-slate-400 text-center">DESC. %</th>
               <th className="border-r border-slate-400 text-center">INST. %</th>
               <th className="border-r border-slate-400 text-center bg-slate-50">EFIC. %</th>
+              <th className="border-r border-slate-400 text-center">TJC. %</th>
+              <th className="border-r border-slate-400 text-center">3ED. %</th>
               <th>REGU.</th>
             </tr>
             <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500">
@@ -691,6 +651,8 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="border-r border-slate-400 w-12 bg-slate-50 font-bold">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="w-12">REAL</th>
             </tr>
           </thead>
@@ -705,10 +667,16 @@ function HorizontalTable({ title, data, hasScroll }) {
                 <td className="text-center border-r border-slate-400 font-bold">{row.leads_totales}</td>
                 <td className="text-center border-r border-slate-100">{row.ventas_crm}</td>
                 <td className="text-center border-r border-slate-400">{row.ingresos_reales}</td>
-                <td className="text-center border-r border-slate-400 font-bold">{row.efectividad_activas_vs_pauta}%</td>
+                <td className="text-center border-r border-slate-400 font-bold">{row.efectividad_real}%</td>
                 <td className="text-center border-r border-slate-400">{row.descarte}%</td>
                 <td className="text-center border-r border-slate-400">{row.tasa_instalacion}%</td>
                 <td className="text-center border-r border-slate-400 font-bold bg-slate-50">{row.eficiencia}%</td>
+                <td className="text-center border-r border-slate-400 text-amber-600 font-bold">
+                  {row.ingresos_reales > 0 ? ((Number(row.tarjeta_credito) / Number(row.ingresos_reales)) * 100).toFixed(1) : 0}%
+                </td>
+                <td className="text-center border-r border-slate-400 text-pink-600 font-bold">
+                  {row.real_mes > 0 ? ((Number(row.tercera_edad) / Number(row.real_mes)) * 100).toFixed(1) : 0}%
+                </td>
                 <td className="text-center font-bold">{row.regularizacion}</td>
               </tr>
             ))}
@@ -789,10 +757,7 @@ function DataVisor({ title, data, onDownload, color }) {
           <h3 className="text-[10px] font-black tracking-[0.2em]">{title}</h3>
           <span className="text-[8px] font-bold opacity-60 italic">MOSTRANDO ÚLTIMOS {Math.min(data.length, 30)} DE {data.length} REGISTROS</span>
         </div>
-        <button 
-          onClick={onDownload} 
-          className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2"
-        >
+        <button onClick={onDownload} className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2">
           ⬇️ DESCARGAR EXCEL
         </button>
       </div>

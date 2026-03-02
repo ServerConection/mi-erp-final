@@ -11,6 +11,11 @@ const formatFechaCorta = (fechaStr) => {
   return `${partes[2]}`; 
 };
 
+// ✅ FIX: Fecha correcta en Ecuador desde el frontend
+const getFechaHoyEcuador = () => {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+};
+
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
@@ -26,6 +31,7 @@ export default function ReporteComercialCore() {
     graficoBarrasDia: [],
     etapasCRM: [],
     porcentajeTerceraEdad: 0,
+     porcentajeTarjeta: 0,  // 
   });
   
   const [monitoreoData, setMonitoreoData] = useState({ 
@@ -34,8 +40,8 @@ export default function ReporteComercialCore() {
   });
 
   const [filtros, setFiltros] = useState({
-    fechaDesde: new Date().toISOString().split("T")[0],
-    fechaHasta: new Date().toISOString().split("T")[0],
+    fechaDesde: getFechaHoyEcuador(),
+    fechaHasta: getFechaHoyEcuador(),
     asesor: "",
     supervisor: "",
     estadoNetlife: "",
@@ -72,7 +78,7 @@ export default function ReporteComercialCore() {
           setAlertas(prev => prev.filter(a => a.id !== alerta.id));
         }, alerta.duracion);
       });
-    }
+    } 
   };
 
   const fetchDashboard = async (filtrosOverride) => {
@@ -130,19 +136,22 @@ export default function ReporteComercialCore() {
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const stats = useMemo(() => {
+const stats = useMemo(() => {
     const s = data.supervisores || [];
     const n = s.length || 1;
+    const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
+    const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
+    const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
-      gestionables: s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0),
+      gestionables: totalGestionables,
       regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
-      ingresosJotform: s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0),
+      ingresosJotform: totalJotform,
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      efectividad: (s.reduce((acc, c) => acc + Number(c.eficiencia || 0), 0) / n).toFixed(1),
-      tasaInstalacion: (s.reduce((acc, c) => acc + Number(c.tasa_instalacion || 0), 0) / n).toFixed(1),
-      tarjetaCredito: (s.reduce((acc, c) => acc + Number(c.real_tarjeta || 0), 0) / n).toFixed(1),
+      efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
+      tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
+      tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
       activas: s.reduce((acc, c) => acc + Number(c.activas || 0), 0),
@@ -324,7 +333,7 @@ export default function ReporteComercialCore() {
             <KpiMini label="Tarjeta %" meta="30%" real={`${stats.tarjetaCredito}%`} color="border-l-amber-500" />
             <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini label="3ra Edad %" max="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
+            <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
             <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
             <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
           </div>

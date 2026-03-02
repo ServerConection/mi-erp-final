@@ -181,7 +181,6 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // ✅ Label activos — aparece encima de la barra en azul
   const CustomActivosLabel = (props) => {
     const { x, y, width, value } = props;
     if (!value) return null;
@@ -237,21 +236,18 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // ✅ Datos para gráficos de monitoreo — campos reales del backend
-  // real_dia_leads = gestionables HOY (b_cerrado::date = hoy AND etapa IN gestionables)
-  // v_subida_jot_hoy = ingresos JOT HOY (j_fecha_registro_sistema::date = hoy, excluye fuera cobertura/desiste/rechazado)
- // ✅ Datos para gráficos de monitoreo — CORREGIDO PARA QUE LA GRÁFICA LOS LEA
+  // ✅ Mapeo correcto — campos reales del backend
   const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
     nombre: a.nombre_grupo,
-    gestionables: Number(a.real_dia_leads || 0),   // ✅ campo real del backend
-    ingresos: Number(a.v_subida_jot_hoy || 0),     // ✅ campo real del backend
-}));
+    gestionables: Number(a.real_dia_leads || 0),
+    ingresos: Number(a.v_subida_jot_hoy || 0),
+  }));
 
-const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
+  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
     nombre: s.nombre_grupo,
-    gestionables: Number(s.real_dia_leads || 0),   // ✅ campo real del backend
-    ingresos: Number(s.v_subida_jot_hoy || 0),     // ✅ campo real del backend
-}));
+    gestionables: Number(s.real_dia_leads || 0),
+    ingresos: Number(s.v_subida_jot_hoy || 0),
+  }));
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
@@ -391,7 +387,6 @@ const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-            {/* ✅ PRODUCCIÓN POR DÍA — barra ACTIVOS visible al lado (sin stackId propio) */}
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
@@ -429,14 +424,12 @@ const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
                       }}
                     />
                     <ReferenceLine y={65} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
-                    {/* Stack REAL + FALTANTE */}
                     <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={22}>
                       <LabelList dataKey="total" content={CustomBarLabel} />
                     </Bar>
                     <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4, 4, 0, 0]} barSize={22}>
                       <LabelList dataKey="faltante" content={CustomFaltanteLabel} />
                     </Bar>
-                    {/* ✅ ACTIVOS: sin stackId → aparece como barra independiente al lado */}
                     <Bar dataKey="activos" fill="#60a5fa" radius={[4, 4, 0, 0]} barSize={12}>
                       <LabelList dataKey="activos" content={CustomActivosLabel} />
                     </Bar>
@@ -509,7 +502,6 @@ const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            {/* ✅ ASESORES — gestionables = real_dia_leads | ingresos = v_subida_jot_hoy */}
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
@@ -546,7 +538,6 @@ const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
               </div>
             </div>
 
-            {/* ✅ SUPERVISORES — gestionables = real_dia_leads | ingresos = v_subida_jot_hoy */}
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
@@ -614,7 +605,6 @@ const KpiMini = ({ label, value, meta, real, color }) => {
   );
 };
 
-// ✅ TABLA CORREGIDA: cada columna lee el campo correcto del backend
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
   return (

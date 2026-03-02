@@ -240,17 +240,18 @@ export default function ReporteComercialCore() {
   // ✅ Datos para gráficos de monitoreo — campos reales del backend
   // real_dia_leads = gestionables HOY (b_cerrado::date = hoy AND etapa IN gestionables)
   // v_subida_jot_hoy = ingresos JOT HOY (j_fecha_registro_sistema::date = hoy, excluye fuera cobertura/desiste/rechazado)
+ // ✅ Datos para gráficos de monitoreo — CORREGIDO PARA QUE LA GRÁFICA LOS LEA
   const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
     nombre: a.nombre_grupo,
-    gestionables: Number(a.real_dia_leads || 0),
-    ingresos: Number(a.v_subida_jot_hoy || 0),
-  }));
+    gestionables: Number(a.real_dia_leads || 0),   // ✅ campo real del backend
+    ingresos: Number(a.v_subida_jot_hoy || 0),     // ✅ campo real del backend
+}));
 
-  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
+const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
     nombre: s.nombre_grupo,
-    gestionables: Number(s.real_dia_leads || 0),
-    ingresos: Number(s.v_subida_jot_hoy || 0),
-  }));
+    gestionables: Number(s.real_dia_leads || 0),   // ✅ campo real del backend
+    ingresos: Number(s.v_subida_jot_hoy || 0),     // ✅ campo real del backend
+}));
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">

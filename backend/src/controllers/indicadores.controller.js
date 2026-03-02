@@ -325,96 +325,97 @@ const getMonitoreoDiario = async (req, res) => {
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
         const queryMonitoreo = (columna) => `
-            SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+    SELECT
+        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
 
-                -- LEADS ACUMULADOS DEL MES (por b_creado_el_fecha)
-                COUNT(*) FILTER (
-                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                ) AS real_mes_leads,
+        -- LEADS ACUMULADOS DEL MES
+        COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        ) AS real_mes_leads,
 
-                -- GESTIONABLES AYER (prueba con fecha ayer)
-                COUNT(*) FILTER (
-                    WHERE mb.b_cerrado IS NOT NULL
-                    AND TRIM(mb.b_cerrado::text) <> ''
-                    AND mb.b_cerrado::date = $2::date - INTERVAL '1 day'
-                    AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
-                ) AS real_dia_leads,
+        -- ✅ GESTIONABLES HOY — usa b_cerrado::date = HOY (sin restar 1 día)
+        COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_cerrado IS NOT NULL
+            AND TRIM(mb.b_cerrado::text) <> ''
+            AND mb.b_cerrado::date = $2::date
+            AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+        ) AS real_dia_leads,
 
-                -- CRM ACUMULADO MES
-                COUNT(*) FILTER (
-                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                ) AS crm_acumulado,
+        -- CRM ACUMULADO MES
+        COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        ) AS crm_acumulado,
 
-                -- CRM HOY
-                COUNT(*) FILTER (
-                    WHERE mb.b_cerrado IS NOT NULL
-                    AND TRIM(mb.b_cerrado::text) <> ''
-                    AND mb.b_cerrado::date = $2::date
-                ) AS crm_dia,
+        -- CRM HOY
+        COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_cerrado IS NOT NULL
+            AND TRIM(mb.b_cerrado::text) <> ''
+            AND mb.b_cerrado::date = $2::date
+        ) AS crm_dia,
 
-                -- VENTAS SUBIDAS CRM HOY
-                COUNT(*) FILTER (
-                    WHERE mb.b_cerrado IS NOT NULL
-                    AND TRIM(mb.b_cerrado::text) <> ''
-                    AND mb.b_cerrado::date = $2::date
-                    AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-                ) AS v_subida_crm_hoy,
+        -- VENTAS SUBIDAS CRM HOY
+        COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_cerrado IS NOT NULL
+            AND TRIM(mb.b_cerrado::text) <> ''
+            AND mb.b_cerrado::date = $2::date
+            AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+        ) AS v_subida_crm_hoy,
 
-                -- INGRESOS JOT AYER (prueba con fecha ayer)
-                COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema IS NOT NULL
-                    AND TRIM(mb.j_fecha_registro_sistema::text) <> ''
-                    AND mb.j_fecha_registro_sistema::date = $2::date - INTERVAL '1 day'
-                    AND mb.j_netlife_estatus_real IS NOT NULL
-                    AND TRIM(COALESCE(mb.j_netlife_estatus_real, '')) <> ''
-                    AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-                ) AS v_subida_jot_hoy,
+        -- ✅ INGRESOS JOT HOY — sin restar 1 día, con DISTINCT para evitar duplicados
+        COUNT(DISTINCT mb.b_id) FILTER (
+    WHERE mb.j_fecha_registro_sistema IS NOT NULL
+    AND TRIM(mb.j_fecha_registro_sistema::text) <> ''
+    AND mb.j_fecha_registro_sistema::date = $2::date
+    AND mb.j_netlife_estatus_real IS NOT NULL          -- ← agregar esto
+    AND TRIM(mb.j_netlife_estatus_real) <> ''          -- ← agregar esto
+   ) AS v_subida_jot_hoy,
 
-                -- EFECTIVIDAD REAL MES
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS real_efectividad,
+        -- EFECTIVIDAD REAL MES
+        ROUND(COALESCE(
+            COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            )::numeric
+            / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+            ), 0)
+        , 0) * 100, 2) AS real_efectividad,
 
-                -- DESCARTE REAL MES
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (
-                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
-                    )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS real_descarte,
+        -- DESCARTE REAL MES
+        ROUND(COALESCE(
+            COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+            )::numeric
+            / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+            ), 0)
+        , 0) * 100, 2) AS real_descarte,
 
-                -- TARJETA REAL MES
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                        AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                    )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    ), 0)
-                , 0) * 100, 2) AS real_tarjeta
+        -- TARJETA REAL MES
+        ROUND(COALESCE(
+            COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
+            )::numeric
+            / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
+                WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            ), 0)
+        , 0) * 100, 2) AS real_tarjeta
 
-            FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE (
-                mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                OR (mb.b_cerrado IS NOT NULL AND TRIM(mb.b_cerrado::text) <> '' AND mb.b_cerrado::date BETWEEN $1::date AND $2::date)
-            )
-            GROUP BY 1
-            ORDER BY real_mes_leads DESC
-        `;
+    FROM public.mestra_bitrix mb
+    LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+    WHERE (
+        mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+        OR (mb.b_cerrado IS NOT NULL 
+            AND TRIM(mb.b_cerrado::text) <> '' 
+            AND mb.b_cerrado::date BETWEEN $1::date AND $2::date)
+    )
+    GROUP BY 1
+    ORDER BY real_mes_leads DESC
+`;
 
         const [resSup, resAses] = await Promise.all([
             pool.query(queryMonitoreo('e.supervisor'), [iniciomes, hoy]),

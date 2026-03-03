@@ -324,9 +324,6 @@ const getMonitoreoDiario = async (req, res) => {
 
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
-        // =============================================
-        // QUERY PRINCIPAL — datos del mes y gestionables hoy
-        // =============================================
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -384,10 +381,6 @@ const getMonitoreoDiario = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
-        // =============================================
-        // QUERY SEPARADA — ingresos JOT de hoy
-        // FIX: COUNT(*) en lugar de COUNT(DISTINCT b_id) porque b_id es NULL en registros jotform
-        // =============================================
         const queryJotHoy = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -411,7 +404,6 @@ const getMonitoreoDiario = async (req, res) => {
             pool.query(queryJotHoy('mb.b_persona_responsable'), [hoy]),
         ]);
 
-        // Combinar resultados: merge de jot_hoy en el resultado principal
         const mergeJot = (filas, jotRows) => {
             return filas.map(row => {
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
@@ -444,7 +436,184 @@ const getMonitoreoDiario = async (req, res) => {
     }
 };
 
+const getReporte180 = async (req, res) => {
+    try {
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+
+        const hoy = getFechaEcuador();
+        const desde = fechaDesde ? fechaDesde : hoy;
+        const hasta = fechaHasta ? fechaHasta : hoy;
+
+        let values = [desde, hasta];
+        let filters = "";
+
+        if (asesor) {
+            values.push(`%${asesor}%`);
+            filters += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+        }
+        if (supervisor) {
+            values.push(`%${supervisor}%`);
+            filters += ` AND e.supervisor ILIKE $${values.length}`;
+        }
+        if (estadoNetlife) {
+            values.push(`%${estadoNetlife}%`);
+            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+        if (estadoRegularizacion) {
+            values.push(`%${estadoRegularizacion}%`);
+            filters += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+        }
+        if (etapaCRM) {
+            values.push(`%${etapaCRM}%`);
+            filters += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+        }
+        if (etapaJotform) {
+            values.push(`%${etapaJotform}%`);
+            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+
+        const ETAPAS_GESTIONABLES = `(
+            'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
+            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
+            'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
+            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
+            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
+            'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200',
+            'SEGUIMIENTO PLAN 200'
+        )`;
+
+        const ETAPAS_DESCARTE = `(
+            'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
+            'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
+            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
+        )`;
+
+        // KPIs globales para las tarjetas
+        const queryKPIs = `
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                ) AS ingresos_jot,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                ) AS ventas_activas,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                        AND ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    ), 0)
+                , 0) * 100, 2) AS pct_descarte,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
+                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    ), 0)
+                , 0) * 100, 2) AS pct_efectividad,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
+                        AND mb.j_netlife_estatus_real = 'ACTIVO'
+                        AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    )::numeric
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                        AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    ), 0)
+                , 0) * 100, 2) AS pct_tercera_edad
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE (
+                ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            ) ${filters}
+        `;
+
+        // Embudo CRM
+        const queryEmbудоCRM = `
+            SELECT
+                COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
+                COUNT(*)::int AS total
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filters}
+            GROUP BY mb.b_etapa_de_la_negociacion
+            ORDER BY total DESC
+        `;
+
+        // Embudo Jotform
+        const queryEmbudoJotform = `
+            SELECT
+                COALESCE(mb.j_netlife_estatus_real, 'SIN ESTADO') AS etapa,
+                COUNT(*)::int AS total
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filters}
+            GROUP BY mb.j_netlife_estatus_real
+            ORDER BY total DESC
+        `;
+
+        // Mapa de calor: ciudad x fecha
+        const queryMapaCalor = `
+            SELECT
+                TRIM(mb.j_fecha_registro_sistema) AS fecha,
+                COALESCE(TRIM(mb.j_ciudad), 'SIN CIUDAD') AS ciudad,
+                COUNT(*)::int AS total
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE mb.j_fecha_registro_sistema IS NOT NULL
+            AND TRIM(mb.j_fecha_registro_sistema) != ''
+            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND mb.j_ciudad IS NOT NULL
+            AND TRIM(mb.j_ciudad) != ''
+            ${filters}
+            GROUP BY 1, 2
+            ORDER BY 1 ASC, 3 DESC
+        `;
+
+        const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor] = await Promise.all([
+            pool.query(queryKPIs, values),
+            pool.query(queryEmbудоCRM, values),
+            pool.query(queryEmbudoJotform, values),
+            pool.query(queryMapaCalor, values),
+        ]);
+
+        const kpis = resKPIs.rows[0] || {};
+
+        console.log(`[REPORTE180] Ejecutado desde ${desde} hasta ${hasta}`);
+
+        res.json({
+            success: true,
+            kpis: {
+                ingresos_jot: Number(kpis.ingresos_jot || 0),
+                ventas_activas: Number(kpis.ventas_activas || 0),
+                pct_descarte: Number(kpis.pct_descarte || 0),
+                pct_efectividad: Number(kpis.pct_efectividad || 0),
+                pct_tercera_edad: Number(kpis.pct_tercera_edad || 0),
+            },
+            embudoCRM: resEmbCRM.rows,
+            embudoJotform: resEmbJot.rows,
+            mapaCalor: resMapaCalor.rows,
+        });
+
+    } catch (error) {
+        console.error("ERROR REPORTE180:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     getIndicadoresDashboard,
-    getMonitoreoDiario
+    getMonitoreoDiario,
+    getReporte180
 };

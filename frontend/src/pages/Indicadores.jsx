@@ -38,7 +38,25 @@ export default function ReporteComercialCore() {
     asesores: [] 
   });
 
+  const [reporte180Data, setReporte180Data] = useState({
+    kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 },
+    embudoCRM: [],
+    embudoJotform: [],
+    mapaCalor: [],
+  });
+
   const [filtros, setFiltros] = useState({
+    fechaDesde: getFechaHoyEcuador(),
+    fechaHasta: getFechaHoyEcuador(),
+    asesor: "",
+    supervisor: "",
+    estadoNetlife: "",
+    estadoRegularizacion: "",
+    etapaCRM: "",
+    etapaJotform: "",
+  });
+
+  const [filtros180, setFiltros180] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
     asesor: "",
@@ -116,6 +134,22 @@ export default function ReporteComercialCore() {
     }
   };
 
+  const fetchReporte180 = async (filtrosOverride) => {
+    setLoading(true);
+    try {
+      const filtrosActivos = filtrosOverride || filtros180;
+      const params = Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== ""));
+      const p = new URLSearchParams(params);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`);
+      const result = await res.json();
+      if (result.success) setReporte180Data(result);
+    } catch (e) {
+      console.error("Error Reporte180:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleClickTarjetaJotform = (estado) => {
     const nuevosFiltros = { ...filtros, etapaJotform: estado };
     setFiltros(nuevosFiltros);
@@ -125,8 +159,10 @@ export default function ReporteComercialCore() {
   useEffect(() => { 
     if(tabActiva === "GENERAL") {
       fetchDashboard();
-    } else {
+    } else if(tabActiva === "MONITOREO") {
       fetchMonitoreo();
+    } else if(tabActiva === "REPORTE180") {
+      fetchReporte180();
     }
   }, [tabActiva]);
 
@@ -236,7 +272,6 @@ export default function ReporteComercialCore() {
     );
   };
 
-  // ✅ Mapeo correcto — campos reales del backend
   const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
     nombre: a.nombre_grupo,
     gestionables: Number(a.real_dia_leads || 0),
@@ -277,6 +312,12 @@ export default function ReporteComercialCore() {
             className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
           >
             ⏱️ MONITOREO LEADS
+          </button>
+          <button 
+            onClick={() => setTabActiva("REPORTE180")} 
+            className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "REPORTE180" ? "bg-violet-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}
+          >
+            🔭 REPORTE 180°
           </button>
         </div>
       </div>
@@ -482,7 +523,8 @@ export default function ReporteComercialCore() {
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-900" />
           </div>
         </div>
-      ) : (
+
+      ) : tabActiva === "MONITOREO" ? (
         <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
           <div className="bg-emerald-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-emerald-700">
              <div>
@@ -501,7 +543,6 @@ export default function ReporteComercialCore() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
               <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
@@ -513,24 +554,11 @@ export default function ReporteComercialCore() {
               </h3>
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={dataGraficoAsesores}
-                    margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
-                    barCategoryGap="25%"
-                    barGap={3}
-                  >
+                  <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                     <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip
-                      cursor={{ fill: '#1e293b' }}
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
-                      formatter={(value, name) => {
-                        if (name === 'gestionables') return [value, 'GESTIONABLES HOY'];
-                        if (name === 'ingresos') return [value, 'INGRESOS JOT HOY'];
-                        return [value, name];
-                      }}
-                    />
+                    <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(value, name) => { if (name === 'gestionables') return [value, 'GESTIONABLES HOY']; if (name === 'ingresos') return [value, 'INGRESOS JOT HOY']; return [value, name]; }} />
                     <Bar dataKey="gestionables" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }} />
                     <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
                   </BarChart>
@@ -549,24 +577,11 @@ export default function ReporteComercialCore() {
               </h3>
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={dataGraficoSupervisores}
-                    margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
-                    barCategoryGap="25%"
-                    barGap={3}
-                  >
+                  <BarChart data={dataGraficoSupervisores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                     <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip
-                      cursor={{ fill: '#1e293b' }}
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }}
-                      formatter={(value, name) => {
-                        if (name === 'gestionables') return [value, 'GESTIONABLES HOY'];
-                        if (name === 'ingresos') return [value, 'INGRESOS JOT HOY'];
-                        return [value, name];
-                      }}
-                    />
+                    <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(value, name) => { if (name === 'gestionables') return [value, 'GESTIONABLES HOY']; if (name === 'ingresos') return [value, 'INGRESOS JOT HOY']; return [value, name]; }} />
                     <Bar dataKey="gestionables" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }} />
                     <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
                   </BarChart>
@@ -578,11 +593,317 @@ export default function ReporteComercialCore() {
           <DailyMonitoringTable title="CONTROL OPERATIVO: SUPERVISORES" data={monitoreoData.supervisores} />
           <DailyMonitoringTable title="CONTROL OPERATIVO: ASESORES" data={monitoreoData.asesores} hasScroll={true} />
         </div>
+
+      ) : (
+        <Reporte180
+          data={reporte180Data}
+          filtros={filtros180}
+          setFiltros={setFiltros180}
+          onFetch={fetchReporte180}
+          loading={loading}
+          etapasCRM={data.etapasCRM}
+          ETAPAS_JOTFORM={ETAPAS_JOTFORM}
+        />
       )}
     </div>
   );
 }
 
+// ======================================================
+// REPORTE 180° — Componente separado
+// ======================================================
+function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
+  const { kpis, embudoCRM, embudoJotform, mapaCalor } = data;
+
+  const METAS = { ingresos_jot: 1100, ventas_activas: 1000, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
+  const COLORES_EMBUDO_CRM  = ['#1d4ed8','#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe'];
+  const COLORES_EMBUDO_JOT  = ['#065f46','#047857','#059669','#10b981','#34d399','#6ee7b7'];
+
+  // Mapa de calor
+  const fechas   = [...new Set((mapaCalor || []).map(r => r.fecha))].sort();
+  const ciudades = [...new Set((mapaCalor || []).map(r => r.ciudad))];
+  const mapaIndex = {};
+  (mapaCalor || []).forEach(r => { mapaIndex[`${r.ciudad}__${r.fecha}`] = r.total; });
+  const maxCalor  = Math.max(...(mapaCalor || []).map(r => r.total), 1);
+
+  const heatColor = (val) => {
+    if (!val) return '#1e293b';
+    const ratio = val / maxCalor;
+    if (ratio < 0.25) return '#164e63';
+    if (ratio < 0.5)  return '#0e7490';
+    if (ratio < 0.75) return '#06b6d4';
+    return '#22d3ee';
+  };
+
+  const CustomFunnelLabelCRM = (props) => {
+    const { x, y, width, height, index } = props;
+    if (height < 22) return null;
+    const item = (embudoCRM || [])[index];
+    if (!item) return null;
+    return (
+      <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
+        {`${item.etapa} = ${item.total}`}
+      </text>
+    );
+  };
+
+  const CustomFunnelLabelJOT = (props) => {
+    const { x, y, width, height, index } = props;
+    if (height < 22) return null;
+    const item = (embudoJotform || [])[index];
+    if (!item) return null;
+    return (
+      <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
+        {`${item.etapa} = ${item.total}`}
+      </text>
+    );
+  };
+
+  return (
+    <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
+
+      {/* HEADER */}
+      <div className="bg-violet-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-violet-700">
+        <div>
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2">
+            🔭 REPORTE 180° — VISIÓN ANALÍTICA
+          </h2>
+          <p className="text-[9px] font-bold text-violet-300 tracking-[0.2em]">KPIs · EMBUDOS · MAPA DE CALOR</p>
+        </div>
+        <button onClick={() => onFetch()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20">
+          {loading ? "CARGANDO..." : "APLICAR"}
+        </button>
+      </div>
+
+      {/* FILTROS */}
+      <div className="bg-[#0F172A] rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
+        <div className="p-5 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 items-end">
+          <div className="lg:col-span-2 flex flex-col gap-2">
+            <label className="text-[9px] font-black text-violet-400 italic tracking-widest">PERÍODO</label>
+            <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
+              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaDesde} onChange={e => setFiltros({...filtros, fechaDesde: e.target.value})} />
+              <div className="text-slate-600 px-2 font-black self-center">-</div>
+              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-black text-slate-500 italic">ASESOR</label>
+            <input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors" value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-black text-slate-500 italic">SUPERVISOR</label>
+            <input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors" value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-black text-slate-500 italic">ETAPA CRM</label>
+            <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}>
+              <option value="">TODAS</option>
+              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-black text-slate-500 italic">NETLIFE</label>
+            <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}>
+              <option value="">TODOS</option>
+              <option value="ACTIVO">ACTIVO</option>
+              <option value="RECHAZADO">RECHAZADO</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-black text-slate-500 italic">ETAPA JOT</label>
+            <select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}>
+              <option value="">TODAS</option>
+              {(ETAPAS_JOTFORM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+            </select>
+          </div>
+          <button onClick={() => onFetch(filtros)} className="bg-violet-600 hover:bg-violet-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95">
+            APLICAR FILTROS
+          </button>
+        </div>
+      </div>
+
+      {/* KPI CARDS CON BARRA DE PROGRESO */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <KpiCard180 label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot} real={kpis.ingresos_jot} tipo="numero" color="violet" />
+        <KpiCard180 label="VENTAS ACTIVAS" meta={METAS.ventas_activas} real={kpis.ventas_activas} tipo="numero" color="emerald" />
+        <KpiCard180 label="DESCARTE" meta={METAS.pct_descarte} real={Number(kpis.pct_descarte)} tipo="porcentaje" color="rose" invertido={true} />
+        <KpiCard180 label="EFECTIVIDAD" meta={METAS.pct_efectividad} real={Number(kpis.pct_efectividad)} tipo="porcentaje" color="blue" />
+        <KpiCard180 label="TERCERA EDAD" meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="pink" />
+      </div>
+
+      {/* EMBUDOS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+          <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+            EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
+          </h3>
+          <div className="flex gap-4 h-[340px]">
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <FunnelChart>
+                  <Funnel data={embudoCRM || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelCRM}>
+                    {(embudoCRM || []).map((_, index) => (
+                      <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />
+                    ))}
+                  </Funnel>
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+                </FunnelChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+              {(embudoCRM || []).slice(0, 15).map((entry, index) => (
+                <div key={index} className="flex items-center gap-2 min-w-0">
+                  <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} />
+                  <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                  <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+          <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            EMBUDO JOTFORM — ESTADOS NETLIFE
+          </h3>
+          <div className="flex gap-4 h-[340px]">
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <FunnelChart>
+                  <Funnel data={embudoJotform || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelJOT}>
+                    {(embudoJotform || []).map((_, index) => (
+                      <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />
+                    ))}
+                  </Funnel>
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+                </FunnelChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+              {(embudoJotform || []).slice(0, 15).map((entry, index) => (
+                <div key={index} className="flex items-center gap-2 min-w-0">
+                  <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} />
+                  <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                  <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* MAPA DE CALOR */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+        <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2">
+          <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></span>
+          MAPA DE CALOR — INGRESOS JOT POR CIUDAD Y FECHA
+          <span className="ml-auto flex items-center gap-3 text-[8px] not-italic font-bold text-slate-500">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block" style={{backgroundColor:'#164e63'}}></span> BAJO</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block" style={{backgroundColor:'#0e7490'}}></span> MEDIO</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block" style={{backgroundColor:'#22d3ee'}}></span> ALTO</span>
+          </span>
+        </h3>
+        {fechas.length === 0 ? (
+          <div className="text-center text-slate-500 text-[10px] py-12">SIN DATOS PARA EL PERÍODO SELECCIONADO</div>
+        ) : (
+          <div className="overflow-auto max-h-[500px]">
+            <table className="text-[8px] font-mono border-collapse w-full">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th className="bg-slate-800 text-slate-400 p-2 text-left font-black sticky left-0 z-20 border-r border-slate-700 min-w-[120px]">CIUDAD</th>
+                  {fechas.map(f => (
+                    <th key={f} className="bg-slate-800 text-slate-400 p-1 font-black min-w-[36px] text-center border-l border-slate-700">
+                      {f ? f.split('-').slice(1).join('/') : f}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ciudades.map((ciudad, ci) => (
+                  <tr key={ci} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="sticky left-0 bg-slate-900 border-r border-slate-700 p-2 font-black text-slate-300 uppercase truncate max-w-[120px]">{ciudad}</td>
+                    {fechas.map(f => {
+                      const val = mapaIndex[`${ciudad}__${f}`] || 0;
+                      return (
+                        <td key={f} className="p-0.5 text-center border-l border-slate-800">
+                          <div
+                            className="rounded flex items-center justify-center font-black transition-all hover:scale-110 cursor-default"
+                            style={{ backgroundColor: heatColor(val), width: 32, height: 24, margin: '0 auto', color: val ? '#fff' : 'transparent', fontSize: 8 }}
+                            title={`${ciudad} | ${f} | ${val}`}
+                          >
+                            {val || ''}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+// ======================================================
+// KPI CARD 180° con barra de progreso
+// ======================================================
+function KpiCard180({ label, meta, real, tipo, color, invertido }) {
+  const pct = meta > 0 ? Math.min((real / meta) * 100, 100) : 0;
+  const cumple = invertido ? real <= meta : real >= meta;
+
+  const colores = {
+    violet: { bg: 'bg-violet-900/40', border: 'border-violet-700', text: 'text-violet-300', bar: 'bg-violet-500', badge: 'bg-violet-800 text-violet-200' },
+    emerald: { bg: 'bg-emerald-900/40', border: 'border-emerald-700', text: 'text-emerald-300', bar: 'bg-emerald-500', badge: 'bg-emerald-800 text-emerald-200' },
+    rose: { bg: 'bg-rose-900/40', border: 'border-rose-700', text: 'text-rose-300', bar: 'bg-rose-500', badge: 'bg-rose-800 text-rose-200' },
+    blue: { bg: 'bg-blue-900/40', border: 'border-blue-700', text: 'text-blue-300', bar: 'bg-blue-500', badge: 'bg-blue-800 text-blue-200' },
+    pink: { bg: 'bg-pink-900/40', border: 'border-pink-700', text: 'text-pink-300', bar: 'bg-pink-500', badge: 'bg-pink-800 text-pink-200' },
+  };
+  const c = colores[color] || colores.violet;
+
+  return (
+    <div className={`${c.bg} border ${c.border} rounded-2xl p-5 flex flex-col gap-3 shadow-xl`}>
+      <span className={`text-[9px] font-black tracking-widest italic ${c.text}`}>{label}</span>
+      <div className="flex justify-between items-end">
+        <div className="flex flex-col">
+          <span className="text-[8px] text-slate-500 font-bold">REAL</span>
+          <span className="text-2xl font-black text-white">
+            {tipo === 'porcentaje' ? `${real}%` : real.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex flex-col items-end">
+          <span className="text-[8px] text-slate-500 font-bold">META</span>
+          <span className="text-sm font-black text-slate-400">
+            {tipo === 'porcentaje' ? `${meta}%` : meta.toLocaleString()}
+          </span>
+        </div>
+      </div>
+      <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+        <div
+          className={`h-2.5 rounded-full transition-all duration-700 ${cumple ? c.bar : 'bg-red-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex justify-between items-center">
+        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${c.badge}`}>{pct.toFixed(1)}% DE META</span>
+        <span className={`text-[9px] font-black ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
+          {cumple ? '✓ OK' : '✗ BAJO'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ======================================================
+// Componentes reutilizables existentes (sin cambios)
+// ======================================================
 const KpiMini = ({ label, value, meta, real, color }) => {
   return (
     <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>

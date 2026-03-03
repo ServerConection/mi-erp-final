@@ -96,11 +96,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
                 COUNT(*) FILTER (
-                  WHERE mb.j_fecha_activacion_netlife >= $1::date
-                  AND mb.j_fecha_activacion_netlife < ($1::date + INTERVAL '1 month')
-                  AND mb.j_netlife_estatus_real = 'ACTIVO'
-                  AND mb.j_fecha_registro_sistema::date < $1::date
-                ) AS backlog,
+    WHERE mb.j_fecha_activacion_netlife::date >= $1::date
+    AND mb.j_fecha_activacion_netlife::date < ($1::date + INTERVAL '1 month')
+    AND mb.j_netlife_estatus_real = 'ACTIVO'
+    AND mb.j_fecha_registro_sistema::date < $1::date
+) AS backlog,
                 (
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NOT NULL) +
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NULL)

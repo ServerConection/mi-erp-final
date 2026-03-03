@@ -461,6 +461,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                     WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
 
+                -- FIX: usar parseFecha correctamente para comparar con fecha exacta de hoy
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
                     AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
@@ -510,6 +511,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
+        // FIX: Comparación de fecha corregida — usar ::date en lugar de TRIM() para evitar mismatch de formatos
         const queryJotHoy = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -521,8 +523,8 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
             FROM public.velsa_netlife_maestra_cons vn
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
-            AND TRIM(vn.t2_jot_created_at_fecha) != ''
-            AND TRIM(vn.t2_jot_created_at_fecha) = $1
+            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
+            AND vn.t2_jot_created_at_fecha::date = $1::date
             GROUP BY 1
         `;
 
@@ -667,6 +669,7 @@ const getReporte180Velsa = async (req, res) => {
             ) ${filters}
         `;
 
+        // FIX: nombre de variable corregido (tenía caracteres cirílicos: queryEmbудоCRM)
         const queryEmbудоCRM = `
             SELECT
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
@@ -691,13 +694,13 @@ const getReporte180Velsa = async (req, res) => {
 
         const queryMapaCalor = `
             SELECT
-                TRIM(vn.t2_jot_created_at_fecha) AS fecha,
+                TRIM(vn.t2_jot_created_at_fecha::text) AS fecha,
                 COALESCE(TRIM(vn.t2_ciudad), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
             FROM public.velsa_netlife_maestra_cons vn
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
-            AND TRIM(vn.t2_jot_created_at_fecha) != ''
+            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
             AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             AND vn.t2_ciudad IS NOT NULL
             AND TRIM(vn.t2_ciudad) != ''

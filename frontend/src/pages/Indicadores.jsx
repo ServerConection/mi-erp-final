@@ -260,7 +260,7 @@ export default function ReporteComercialCore() {
     );
   };
 
- const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+  const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
   const CustomFunnelLabel = (props) => {
     const { x, y, width, height, index } = props;
@@ -286,6 +286,8 @@ export default function ReporteComercialCore() {
     gestionables: Number(s.real_dia_leads || 0),
     ingresos: Number(s.v_subida_jot_hoy || 0),
   }));
+
+  const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
@@ -435,6 +437,9 @@ export default function ReporteComercialCore() {
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
+                <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">
+                  TOTAL: {totalBarrasDia}
+                </span>
                 <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
                   <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> REAL
                   <span className="w-3 h-2 bg-blue-400 rounded inline-block"></span> ACTIVOS
@@ -486,6 +491,9 @@ export default function ReporteComercialCore() {
               <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
+                <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">
+                  TOTAL: {totalBaseEmbudo}
+                </span>
               </h3>
               <div className="flex gap-4 h-[300px]">
                 <div className="flex-1">
@@ -642,7 +650,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     return '#22d3ee';
   };
 
- const totalBaseEmbudoCRM = (embudoCRM || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+  const totalBaseEmbudoCRM = (embudoCRM || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
   const CustomFunnelLabelCRM = (props) => {
     const { x, y, width, height, index } = props;
@@ -657,7 +665,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     );
   };
 
-     const totalBaseEmbudoJOT = (embudoJotform || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+  const totalBaseEmbudoJOT = (embudoJotform || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
   const CustomFunnelLabelJOT = (props) => {
     const { x, y, width, height, index } = props;
@@ -751,6 +759,9 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
+            <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">
+              TOTAL: {totalBaseEmbudoCRM}
+            </span>
           </h3>
           <div className="flex gap-4 h-[340px]">
             <div className="flex-1">
@@ -785,6 +796,9 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             EMBUDO JOTFORM — ESTADOS NETLIFE
+            <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">
+              TOTAL: {totalBaseEmbudoJOT}
+            </span>
           </h3>
           <div className="flex gap-4 h-[340px]">
             <div className="flex-1">
@@ -799,7 +813,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
                 </FunnelChart>
               </ResponsiveContainer>
             </div>
-             <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
               {(embudoJotform || []).slice(0, 15).map((entry, index) => {
                 const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
                 return (
@@ -949,10 +963,33 @@ const KpiMini = ({ label, value, meta, real, color }) => {
 
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
+  const n = safeData.length || 1;
+
+  const totals = {
+    real_mes:                 safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0),
+    backlog:                  safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
+    total_activas_calculada:  safeData.reduce((a, r) => a + Number(r.total_activas_calculada || 0), 0),
+    gestionables:             safeData.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+    ventas_crm:               safeData.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+    ingresos_reales:          safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
+    regularizacion:           safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
+    efectividad_real:         (safeData.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+    descarte:                 (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
+    tasa_instalacion:         (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
+    eficiencia:               (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
+    tarjeta_pct:              totals => totals.ingresos_reales > 0 ? ((safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0) / safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0)) * 100).toFixed(1) : '0.0',
+    tercera_edad_pct:         totals => totals.real_mes > 0 ? ((safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0) / safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0)) * 100).toFixed(1) : '0.0',
+  };
+
+  const totalTarjetaCredito = safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
+  const totalTerceraEdad    = safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0);
+  const tarjetaPct          = totals.ingresos_reales > 0 ? ((totalTarjetaCredito / totals.ingresos_reales) * 100).toFixed(1) : '0.0';
+  const terceraEdadPct      = totals.real_mes > 0 ? ((totalTerceraEdad / totals.real_mes) * 100).toFixed(1) : '0.0';
+
   return (
     <div className="bg-white border border-slate-400 shadow-sm rounded-sm overflow-hidden">
       <div className="px-2 py-1 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
-        <h2 className="text-[9px] font-black uppercase">{title}</h2>
+        <h2 className="text-[9px] font-black uppercase">{title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span></h2>
         <span className="text-[8px] text-slate-400 font-mono">V2.0_ENGINE</span>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[350px]' : ''}`}>
@@ -988,6 +1025,24 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className="border-r border-slate-400 w-12">REAL</th>
               <th className="w-12">REAL</th>
             </tr>
+            {/* FILA DE TOTALES ARRIBA */}
+            <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
+              <td className="p-1 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
+              <td className="text-center border-r border-slate-700 py-1">{totals.real_mes}</td>
+              <td className="text-center border-r border-slate-700">{totals.backlog}</td>
+              <td className="text-center border-r border-slate-700 bg-slate-700">{totals.total_activas_calculada}</td>
+              <td className="text-center border-r border-slate-600 text-slate-400">—</td>
+              <td className="text-center border-r border-slate-600">{totals.gestionables}</td>
+              <td className="text-center border-r border-slate-700">{totals.ventas_crm}</td>
+              <td className="text-center border-r border-slate-600">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-slate-600 text-emerald-300">{totals.efectividad_real}%</td>
+              <td className="text-center border-r border-slate-600 text-rose-300">{totals.descarte}%</td>
+              <td className="text-center border-r border-slate-600 text-cyan-300">{totals.tasa_instalacion}%</td>
+              <td className="text-center border-r border-slate-600 bg-slate-700 text-yellow-300">{totals.eficiencia}%</td>
+              <td className="text-center border-r border-slate-600 text-amber-300">{tarjetaPct}%</td>
+              <td className="text-center border-r border-slate-600 text-pink-300">{terceraEdadPct}%</td>
+              <td className="text-center">{totals.regularizacion}</td>
+            </tr>
           </thead>
           <tbody className="font-mono leading-none">
             {safeData.map((row, idx) => (
@@ -1022,10 +1077,24 @@ function HorizontalTable({ title, data, hasScroll }) {
 
 function DailyMonitoringTable({ title, data, hasScroll }) {
   const safeData = data || [];
+  const n = safeData.length || 1;
+
+  const totals = {
+    real_mes_leads:    safeData.reduce((a, r) => a + Number(r.real_mes_leads || 0), 0),
+    real_dia_leads:    safeData.reduce((a, r) => a + Number(r.real_dia_leads || 0), 0),
+    crm_acumulado:     safeData.reduce((a, r) => a + Number(r.crm_acumulado || 0), 0),
+    crm_dia:           safeData.reduce((a, r) => a + Number(r.crm_dia || 0), 0),
+    v_subida_crm_hoy:  safeData.reduce((a, r) => a + Number(r.v_subida_crm_hoy || 0), 0),
+    v_subida_jot_hoy:  safeData.reduce((a, r) => a + Number(r.v_subida_jot_hoy || 0), 0),
+    real_efectividad:  (safeData.reduce((a, r) => a + Number(r.real_efectividad || 0), 0) / n).toFixed(1),
+    real_descarte:     (safeData.reduce((a, r) => a + Number(r.real_descarte || 0), 0) / n).toFixed(1),
+    real_tarjeta:      (safeData.reduce((a, r) => a + Number(r.real_tarjeta || 0), 0) / n).toFixed(1),
+  };
+
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden uppercase">
       <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex justify-between items-center text-white">
-        <span className="text-[10px] font-black italic tracking-[0.2em]">{title}</span>
+        <span className="text-[10px] font-black italic tracking-[0.2em]">{title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span></span>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[500px]' : ''}`}>
         <table className="w-full text-[10px] border-collapse whitespace-nowrap">
@@ -1053,6 +1122,23 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
               <th className="p-2 border-r border-slate-100 w-14 italic text-blue-600">EFECT %</th>
               <th className="p-2 border-r border-slate-100 w-14 italic text-rose-600">DESC %</th>
               <th className="p-2 w-14 italic text-amber-600">TJC %</th>
+            </tr>
+            {/* FILA DE TOTALES ARRIBA */}
+            <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
+              <td className="p-2 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
+              <td className="p-2 text-center text-slate-400">—</td>
+              <td className="p-2 text-center">{totals.real_mes_leads}</td>
+              <td className="p-2 text-center text-red-300">{(2000 * safeData.length - totals.real_mes_leads).toLocaleString()}</td>
+              <td className="p-2 text-center text-slate-400">—</td>
+              <td className="p-2 text-center text-indigo-300">{totals.real_dia_leads}</td>
+              <td className="p-2 text-center text-red-300">{Math.max(0, 70 * safeData.length - totals.real_dia_leads)}</td>
+              <td className="p-2 text-center">{totals.crm_acumulado}</td>
+              <td className="p-2 text-center">{totals.crm_dia}</td>
+              <td className="p-2 text-center">{totals.v_subida_crm_hoy}</td>
+              <td className="p-2 text-center text-emerald-300">{totals.v_subida_jot_hoy}</td>
+              <td className={`p-2 text-center ${Number(totals.real_efectividad) < 80 ? 'text-red-300' : 'text-emerald-300'}`}>{totals.real_efectividad}%</td>
+              <td className={`p-2 text-center ${Number(totals.real_descarte) > 20 ? 'text-red-300' : 'text-slate-300'}`}>{totals.real_descarte}%</td>
+              <td className="p-2 text-center text-amber-300">{totals.real_tarjeta}%</td>
             </tr>
           </thead>
           <tbody className="font-mono divide-y divide-slate-100">

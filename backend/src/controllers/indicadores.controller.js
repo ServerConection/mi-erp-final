@@ -76,73 +76,79 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_realz,
+                ROUND( COALESCE( COUNT(*) FILTER ( WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 )::numeric / NULLIF( COUNT(*) FILTER ( WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                     AND mb.j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS por_regularizar,
                 COUNT(*) FILTER (
-                    WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
+                    WHERE (
+                        (TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2)
+                        OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                    )
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS gestionables,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                 ) AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero'
                 ) AS activas,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                     AND mb.b_fecha_venta_subida IS NOT NULL
                 ) AS real_mes,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                     AND mb.b_fecha_venta_subida IS NULL
                 ) AS backlog,
                 (
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NOT NULL) +
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NULL)
+                    COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NOT NULL) +
+                    COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero' AND mb.b_fecha_venta_subida IS NULL)
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 COUNT(*) FILTER (
                     WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                 ) AS tarjeta_credito,
                 COUNT(*) FILTER (
                     WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
-                    AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                 ) AS tercera_edad,
                 (COUNT(*) FILTER (
                     WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
                     AND ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 )::numeric /
                 NULLIF(COUNT(*) FILTER (
-                    WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
+                    WHERE (
+                        (TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2)
+                        OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                    )
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ), 0) * 100)::numeric(10,2) AS descarte,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                     AND mb.j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
                     AND mb.j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS regularizacion,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_real,
+                ROUND( COALESCE( COUNT(*) FILTER ( WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ( (TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2) OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date), 0)
+                    COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
+                    / NULLIF(COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
+                    COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
+                    / NULLIF(COUNT(*) FILTER (WHERE ( (TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2) OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
+                ROUND( COALESCE( COUNT(*) FILTER ( WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                OR TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
             ) ${filters}
             GROUP BY 1
             ORDER BY gestionables DESC
@@ -179,7 +185,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filters}
+            WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 ${filters}
             LIMIT 6000
         `;
 
@@ -190,12 +196,12 @@ const getIndicadoresDashboard = async (req, res) => {
 
         const queryEstados = `
             SELECT
-                ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = '${est}') AS "${est}"`).join(',')}
+                ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2 AND mb.j_netlife_estatus_real = '${est}') AS "${est}"`).join(',')}
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                OR TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
             ) ${filters}
         `;
 
@@ -212,12 +218,13 @@ const getIndicadoresDashboard = async (req, res) => {
 
         const queryPorDia = `
             SELECT
-                mb.j_fecha_registro_sistema::date AS fecha,
+                TRIM(mb.j_fecha_registro_sistema) AS fecha,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
-            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND TRIM(mb.j_fecha_registro_sistema) != ''
+            AND TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
             ${filters}
             GROUP BY 1
             ORDER BY fecha ASC
@@ -242,7 +249,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS total_activos
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
             ${filters}
         `;
 
@@ -254,7 +261,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) AS total_jotform
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
             ${filters}
         `;
 
@@ -324,9 +331,6 @@ const getMonitoreoDiario = async (req, res) => {
 
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
-        // =============================================
-        // QUERY PRINCIPAL — datos del mes y gestionables hoy
-        // =============================================
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -366,11 +370,11 @@ const getMonitoreoDiario = async (req, res) => {
 
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                         AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        WHERE TRIM(mb.j_fecha_registro_sistema) BETWEEN $1 AND $2
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
 
@@ -386,7 +390,7 @@ const getMonitoreoDiario = async (req, res) => {
 
         // =============================================
         // QUERY SEPARADA — ingresos JOT de hoy
-        // Completamente independiente, solo busca j_fecha_registro_sistema = hoy
+        // FIX: TRIM + comparacion directa como texto, sin cast ::date
         // =============================================
         const queryJotHoy = (columna) => `
             SELECT
@@ -399,7 +403,8 @@ const getMonitoreoDiario = async (req, res) => {
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
-            AND mb.j_fecha_registro_sistema::date = $1::date
+            AND TRIM(mb.j_fecha_registro_sistema) != ''
+            AND TRIM(mb.j_fecha_registro_sistema) = $1
             GROUP BY 1
         `;
 
@@ -410,7 +415,6 @@ const getMonitoreoDiario = async (req, res) => {
             pool.query(queryJotHoy('mb.b_persona_responsable'), [hoy]),
         ]);
 
-        // Combinar resultados: merge de jot_hoy en el resultado principal
         const mergeJot = (filas, jotRows) => {
             return filas.map(row => {
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);

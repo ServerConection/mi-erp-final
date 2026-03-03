@@ -1,0 +1,14 @@
+const express = require('express');
+const router = express.Router();
+
+const {
+  getIndicadoresDashboardVelsa,
+  getMonitoreoDiarioVelsa,
+  getReporte180Velsa
+} = require('../controllers/indicadoresVelsa.controller');
+
+router.get('/dashboard', getIndicadoresDashboardVelsa);
+router.get('/monitoreo-diario', getMonitoreoDiarioVelsa);
+router.get('/reporte180', getReporte180Velsa);
+
+module.exports = router;

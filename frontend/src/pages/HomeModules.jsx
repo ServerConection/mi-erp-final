@@ -13,6 +13,13 @@ export default function HomeModules() {
       desc: "Dashboard principal, KPIs y métricas clave en tiempo real."
     },
     {
+      title: "Indicadores Velsa",
+      path: "/indicadores-velsa",
+      icon: "📊",
+      color: "text-blue-400",
+      desc: "Dashboard principal, KPIs y métricas clave en tiempo real."
+    },
+    {
       title: "Ventas CRM",
       path: "/ventas",
       icon: "📈",

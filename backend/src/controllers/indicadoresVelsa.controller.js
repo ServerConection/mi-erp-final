@@ -68,86 +68,214 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        const queryKPI = (columna) => `
-            SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-                COUNT(*) FILTER (WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date) AS leads_totales,
-                COUNT(*) FILTER (
+const queryKPI = (columna) => `
+SELECT
+    COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+    ) AS leads_totales,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
+        AND vn.t1_pipeline_stage_id = 'VENTA SUBIDA'
+    ) AS ventas_crm,
+
+    ROUND(
+        COALESCE(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            )::numeric
+            /
+            NULLIF(
+                COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t1_pipeline_stage_id = 'VENTA SUBIDA'
-                ) AS ventas_crm,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_realz,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_regularizado = 'POR REGULARIZAR'
-                ) AS por_regularizar,
-                COUNT(*) FILTER (
-                    WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
                     AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
-                ) AS gestionables,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                ) AS ingresos_reales,
-                COUNT(*) FILTER (
-                    WHERE EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
-                    AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
-                ) AS activas,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
-                    AND vn.t1_hgl_updated_at_fecha IS NOT NULL
-                ) AS real_mes,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
-                    AND vn.t1_hgl_updated_at_fecha IS NULL
-                ) AS backlog,
-                (
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026 AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February' AND vn.t1_hgl_updated_at_fecha IS NOT NULL) +
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026 AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February' AND vn.t1_hgl_updated_at_fecha IS NULL)
-                ) AS total_activas_calculada,
-                0 AS crec_vs_ma,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_forma_pago = 'TARJETA DE CREDITO.'
-                    AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                ) AS tarjeta_credito,
-                COUNT(*) FILTER (
-                    WHERE vn.t2_parroquia_barrio = 'SI POR TERCERA EDAD'
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
-                    AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                ) AS tercera_edad,
-                (COUNT(*) FILTER (
-                    WHERE vn.t1_pipeline_stage_id IN ${ETAPAS_DESCARTE}
-                    AND ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
-                )::numeric /
-                NULLIF(COUNT(*) FILTER (
-                    WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
+                ),
+                0
+            ),
+            0
+        ) * 100,
+        2
+    ) AS efectividad_realz,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+        AND vn.t2_regularizado = 'POR REGULARIZAR'
+    ) AS por_regularizar,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE (
+            ${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
+            OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+        )
+        AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+    ) AS gestionables,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+    ) AS ingresos_reales,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
+        AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+    ) AS activas,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+        AND vn.t2_estado_venta_netlife = 'ACTIVO'
+        AND vn.t1_hgl_updated_at_fecha IS NOT NULL
+    ) AS real_mes,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+        AND vn.t2_estado_venta_netlife = 'ACTIVO'
+        AND vn.t1_hgl_updated_at_fecha IS NULL
+    ) AS backlog,
+
+    (
+        COUNT(DISTINCT vn.id_unificado) FILTER (
+            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
+            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+            AND vn.t1_hgl_updated_at_fecha IS NOT NULL
+        )
+        +
+        COUNT(DISTINCT vn.id_unificado) FILTER (
+            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
+            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+            AND vn.t1_hgl_updated_at_fecha IS NULL
+        )
+    ) AS total_activas_calculada,
+
+    0 AS crec_vs_ma,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_forma_pago = 'TARJETA DE CREDITO.'
+        AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+    ) AS tarjeta_credito,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_parroquia_barrio = 'SI POR TERCERA EDAD'
+        AND vn.t2_estado_venta_netlife = 'ACTIVO'
+        AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+    ) AS tercera_edad,
+
+    (
+        COUNT(DISTINCT vn.id_unificado) FILTER (
+            WHERE vn.t1_pipeline_stage_id IN ${ETAPAS_DESCARTE}
+            AND ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+        )::numeric
+        /
+        NULLIF(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE (
+                    ${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
+                    OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+                )
+                AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+            ),
+            0
+        ) * 100
+    )::numeric(10,2) AS descarte,
+
+    COUNT(DISTINCT vn.id_unificado) FILTER (
+        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+        AND vn.t2_estado_venta_netlife NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
+        AND vn.t2_regularizado = 'POR REGULARIZAR'
+    ) AS regularizacion,
+
+    ROUND(
+        COALESCE(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            )::numeric
+            /
+            NULLIF(
+                COUNT(DISTINCT vn.id_unificado) FILTER (
+                    WHERE (
+                        ${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
+                        OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+                    )
                     AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
-                ), 0) * 100)::numeric(10,2) AS descarte,
-                COUNT(*) FILTER (
+                ),
+                0
+            ),
+            0
+        ) * 100,
+        2
+    ) AS efectividad_real,
+
+    ROUND(
+        COALESCE(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                AND vn.t2_estado_venta_netlife = 'ACTIVO'
+            )::numeric
+            /
+            NULLIF(
+                COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-                    AND vn.t2_regularizado = 'POR REGULARIZAR'
-                ) AS regularizacion,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date) AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS efectividad_real,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date), 0)
-                , 0) * 100, 2) AS tasa_instalacion,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date) AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}), 0)
-                , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
-            FROM public.velsa_netlife_maestra_cons vn
-            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
-            WHERE (
-                ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
-                OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-            ) ${filters}
-            GROUP BY 1
-            ORDER BY gestionables DESC
-        `;
+                ),
+                0
+            ),
+            0
+        ) * 100,
+        2
+    ) AS tasa_instalacion,
+
+    ROUND(
+        COALESCE(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                AND vn.t2_estado_venta_netlife = 'ACTIVO'
+            )::numeric
+            /
+            NULLIF(
+                COUNT(DISTINCT vn.id_unificado) FILTER (
+                    WHERE (
+                        ${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
+                        OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+                    )
+                    AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                ),
+                0
+            ),
+            0
+        ) * 100,
+        2
+    ) AS efectividad_activas_vs_pauta,
+
+    ROUND(
+        COALESCE(
+            COUNT(DISTINCT vn.id_unificado) FILTER (
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            )::numeric
+            /
+            NULLIF(
+                COUNT(DISTINCT vn.id_unificado) FILTER (
+                    WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+                    AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                ),
+                0
+            ),
+            0
+        ) * 100,
+        2
+    ) AS eficiencia
+
+FROM public.velsa_netlife_maestra_cons vn
+LEFT JOIN public.empleados e
+    ON vn.t1_assigned_to = e.nombre_completo
+WHERE (
+    ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+    OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+)
+${filters}
+GROUP BY 1
+ORDER BY gestionables DESC
+`;
 
         const queryCRM = `
             SELECT

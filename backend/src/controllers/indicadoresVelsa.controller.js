@@ -118,7 +118,7 @@ SELECT
 
     COUNT(DISTINCT vn.id_unificado) FILTER (
         WHERE EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
-        AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+        AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'March'
     ) AS activas,
 
     COUNT(DISTINCT vn.id_unificado) FILTER (
@@ -128,23 +128,24 @@ SELECT
     ) AS real_mes,
 
     COUNT(DISTINCT vn.id_unificado) FILTER (
-        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+        WHERE vn.t2_fecha_activacion_telcos::date >= $1::date
+        AND vn.t2_fecha_activacion_telcos::date < ($1::date + INTERVAL '1 month')
         AND vn.t2_estado_venta_netlife = 'ACTIVO'
-        AND vn.t1_hgl_updated_at_fecha IS NULL
+        AND vn.t2_jot_created_at_fecha::date < $1::date
     ) AS backlog,
 
     (
         COUNT(DISTINCT vn.id_unificado) FILTER (
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
-            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'March'
             AND vn.t1_hgl_updated_at_fecha IS NOT NULL
         )
         +
         COUNT(DISTINCT vn.id_unificado) FILTER (
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             AND EXTRACT(YEAR FROM vn.t2_fecha_activacion_telcos::date) = 2026
-            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'February'
+            AND TRIM(TO_CHAR(vn.t2_fecha_activacion_telcos::date, 'Month')) ILIKE 'March'
             AND vn.t1_hgl_updated_at_fecha IS NULL
         )
     ) AS total_activas_calculada,
@@ -461,7 +462,6 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                     WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
 
-                -- FIX: usar parseFecha correctamente para comparar con fecha exacta de hoy
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
                     AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
@@ -669,8 +669,7 @@ const getReporte180Velsa = async (req, res) => {
             ) ${filters}
         `;
 
-        // FIX: nombre de variable corregido (tenía caracteres cirílicos: queryEmbудоCRM)
-        const queryEmbудоCRM = `
+        const queryEmbudoCRM = `
             SELECT
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
@@ -711,7 +710,7 @@ const getReporte180Velsa = async (req, res) => {
 
         const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor] = await Promise.all([
             pool.query(queryKPIs, values),
-            pool.query(queryEmbудоCRM, values),
+            pool.query(queryEmbudoCRM, values),
             pool.query(queryEmbudoJotform, values),
             pool.query(queryMapaCalor, values),
         ]);

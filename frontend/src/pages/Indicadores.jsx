@@ -260,14 +260,17 @@ export default function ReporteComercialCore() {
     );
   };
 
+ const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+
   const CustomFunnelLabel = (props) => {
     const { x, y, width, height, index } = props;
     if (height < 22) return null;
     const item = (data.graficoEmbudo || [])[index];
     if (!item) return null;
+    const pct = ((Number(item.total) / totalBaseEmbudo) * 100).toFixed(1);
     return (
       <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
-        {`${item.etapa} = ${item.total}`}
+        {`${item.etapa} = ${item.total} (${pct}%)`}
       </text>
     );
   };
@@ -498,13 +501,17 @@ export default function ReporteComercialCore() {
                   </ResponsiveContainer>
                 </div>
                 <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-                  {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => (
-                    <div key={index} className="flex items-center gap-2 min-w-0">
-                      <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
-                      <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
-                      <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
-                    </div>
-                  ))}
+                  {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => {
+                    const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
+                    return (
+                      <div key={index} className="flex items-center gap-2 min-w-0">
+                        <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
+                        <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                        <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                        <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -635,26 +642,32 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     return '#22d3ee';
   };
 
+ const totalBaseEmbudoCRM = (embudoCRM || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+
   const CustomFunnelLabelCRM = (props) => {
     const { x, y, width, height, index } = props;
     if (height < 22) return null;
     const item = (embudoCRM || [])[index];
     if (!item) return null;
+    const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
     return (
       <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
-        {`${item.etapa} = ${item.total}`}
+        {`${item.etapa} = ${item.total} (${pct}%)`}
       </text>
     );
   };
+
+     const totalBaseEmbudoJOT = (embudoJotform || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
   const CustomFunnelLabelJOT = (props) => {
     const { x, y, width, height, index } = props;
     if (height < 22) return null;
     const item = (embudoJotform || [])[index];
     if (!item) return null;
+    const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
     return (
       <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
-        {`${item.etapa} = ${item.total}`}
+        {`${item.etapa} = ${item.total} (${pct}%)`}
       </text>
     );
   };
@@ -753,13 +766,17 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
               </ResponsiveContainer>
             </div>
             <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-              {(embudoCRM || []).slice(0, 15).map((entry, index) => (
-                <div key={index} className="flex items-center gap-2 min-w-0">
-                  <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} />
-                  <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
-                  <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
-                </div>
-              ))}
+              {(embudoCRM || []).slice(0, 15).map((entry, index) => {
+                const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
+                return (
+                  <div key={index} className="flex items-center gap-2 min-w-0">
+                    <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} />
+                    <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                    <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                    <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -782,14 +799,18 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
                 </FunnelChart>
               </ResponsiveContainer>
             </div>
-            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-              {(embudoJotform || []).slice(0, 15).map((entry, index) => (
-                <div key={index} className="flex items-center gap-2 min-w-0">
-                  <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} />
-                  <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
-                  <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
-                </div>
-              ))}
+             <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+              {(embudoJotform || []).slice(0, 15).map((entry, index) => {
+                const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
+                return (
+                  <div key={index} className="flex items-center gap-2 min-w-0">
+                    <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} />
+                    <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                    <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+                    <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -976,7 +997,7 @@ function HorizontalTable({ title, data, hasScroll }) {
                 <td className="text-center border-r border-slate-100">{row.backlog}</td>
                 <td className="text-center border-r border-slate-100 font-bold bg-slate-50">{row.total_activas_calculada}</td>
                 <td className="text-center border-r border-slate-400 text-slate-400">{row.crec_vs_ma}</td>
-                <td className="text-center border-r border-slate-400 font-bold">{row.leads_totales}</td>
+                <td className="text-center border-r border-slate-400 font-bold">{row.gestionables}</td>
                 <td className="text-center border-r border-slate-100">{row.ventas_crm}</td>
                 <td className="text-center border-r border-slate-400">{row.ingresos_reales}</td>
                 <td className="text-center border-r border-slate-400 font-bold">{row.efectividad_real}%</td>

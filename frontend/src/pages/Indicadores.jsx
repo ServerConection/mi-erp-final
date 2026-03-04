@@ -974,7 +974,6 @@ function HorizontalTable({ title, data, hasScroll }) {
     backlog:                  safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
     total_activas_calculada:  safeData.reduce((a, r) => a + Number(r.total_activas_calculada || 0), 0),
     gestionables:             safeData.reduce((a, r) => a + Number(r.gestionables || 0), 0),
-    
     ventas_crm:               safeData.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
     ingresos_reales:          safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
     regularizacion:           safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
@@ -982,8 +981,6 @@ function HorizontalTable({ title, data, hasScroll }) {
     descarte:                 (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
     tasa_instalacion:         (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
     eficiencia:               (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
-    tarjeta_pct:              totals => totals.ingresos_reales > 0 ? ((safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0) / safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0)) * 100).toFixed(1) : '0.0',
-    tercera_edad_pct:         totals => totals.real_mes > 0 ? ((safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0) / safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0)) * 100).toFixed(1) : '0.0',
   };
 
   const totalTarjetaCredito = safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
@@ -991,86 +988,123 @@ function HorizontalTable({ title, data, hasScroll }) {
   const tarjetaPct          = totals.ingresos_reales > 0 ? ((totalTarjetaCredito / totals.ingresos_reales) * 100).toFixed(1) : '0.0';
   const terceraEdadPct      = totals.real_mes > 0 ? ((totalTerceraEdad / totals.real_mes) * 100).toFixed(1) : '0.0';
 
+  // Celda de dato: padding generoso, ancho fijo amplio
+  const tdData = "text-center px-3 py-2 border-r border-slate-100 w-16 whitespace-nowrap";
+  const tdDataBold = "text-center px-3 py-2 border-r border-slate-400 w-16 whitespace-nowrap font-black";
+  const thData = "px-3 py-2 border-r border-slate-100 w-16 text-center whitespace-nowrap";
+  const thDataBold = "px-3 py-2 border-r border-slate-400 w-16 text-center whitespace-nowrap";
+
   return (
     <div className="bg-white border border-slate-400 shadow-sm rounded-sm overflow-hidden">
-      <div className="px-2 py-1 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
-        <h2 className="text-[9px] font-black uppercase">{title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span></h2>
+      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
+        <h2 className="text-[9px] font-black uppercase">
+          {title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span>
+        </h2>
         <span className="text-[8px] text-slate-400 font-mono">V2.0_ENGINE</span>
       </div>
-      <div className={`overflow-auto ${hasScroll ? 'max-h-[350px]' : ''}`}>
-        <table className="w-full text-[9px] border-collapse">
+
+      <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
+        <table className="text-[9px] border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead>
-            <tr className="bg-slate-200 border-b border-slate-400 font-black">
-              <th className="p-1 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left">ENTIDAD</th>
-              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-200/50">PRES. VENTAS ACTIVAS</th>
-              <th className="border-r border-slate-400 text-center">LEADS</th>
-              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-200/50">VENTAS SUBIDAS</th>
-              <th className="border-r border-slate-400 text-center">EFECT. %</th>
-              <th className="border-r border-slate-400 text-center">DESC. %</th>
-              <th className="border-r border-slate-400 text-center">INST. %</th>
-              <th className="border-r border-slate-400 text-center bg-slate-50">EFIC. %</th>
-              <th className="border-r border-slate-400 text-center">TJC. %</th>
-              <th className="border-r border-slate-400 text-center">3ED. %</th>
-              <th>REGU.</th>
+            {/* FILA GRUPOS */}
+            <tr className="bg-slate-200 border-b border-slate-400 font-black text-[8px]">
+              {/* Nombre — fijo y pequeño */}
+              <th
+                className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left whitespace-nowrap"
+                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
+              >
+                ENTIDAD
+              </th>
+              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-100 py-1">PRES. VENTAS ACTIVAS</th>
+              <th className="border-r border-slate-400 text-center px-3">LEADS</th>
+              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-100">VENTAS SUBIDAS</th>
+              <th className="border-r border-slate-400 text-center px-3">EFECT. %</th>
+              <th className="border-r border-slate-400 text-center px-3">DESC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">INST. %</th>
+              <th className="border-r border-slate-400 text-center px-3 bg-slate-50">EFIC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">TJC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">3ED. %</th>
+              <th className="text-center px-3">REGU.</th>
             </tr>
-            <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500">
-              <th className="p-1 border-r border-slate-400 sticky left-0 bg-white z-10">NOMBRE</th>
-              <th className="border-r border-slate-100 w-10">REAL</th>
-              <th className="border-r border-slate-100 w-10">BACK</th>
-              <th className="border-r border-slate-100 w-10 bg-slate-50 font-bold">TOT</th>
-              <th className="border-r border-slate-400 w-10">CREC</th>
-              <th className="border-r border-slate-400 w-12">TOT</th>
-              <th className="border-r border-slate-100 w-10">CRM</th>
-              <th className="border-r border-slate-400 w-10">JOTF</th>
-              <th className="border-r border-slate-400 w-12">REAL</th>
-              <th className="border-r border-slate-400 w-12">REAL</th>
-              <th className="border-r border-slate-400 w-12">REAL</th>
-              <th className="border-r border-slate-400 w-12 bg-slate-50 font-bold">REAL</th>
-              <th className="border-r border-slate-400 w-12">REAL</th>
-              <th className="border-r border-slate-400 w-12">REAL</th>
-              <th className="w-12">REAL</th>
+
+            {/* FILA SUBENCABEZADOS */}
+            <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500 font-black">
+              <th
+                className="p-2 border-r border-slate-400 sticky left-0 bg-white z-10 text-left"
+                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
+              >
+                NOMBRE
+              </th>
+              <th className={thData}>REAL</th>
+              <th className={thData}>BACK</th>
+              <th className="px-3 py-2 border-r border-slate-100 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">TOT</th>
+              <th className={thDataBold}>CREC</th>
+              <th className={thDataBold}>TOT</th>
+              <th className={thData}>CRM</th>
+              <th className={thDataBold}>JOTF</th>
+              <th className={thDataBold}>REAL</th>
+              <th className={thDataBold}>REAL</th>
+              <th className={thDataBold}>REAL</th>
+              <th className="px-3 py-2 border-r border-slate-400 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">REAL</th>
+              <th className={thDataBold}>REAL</th>
+              <th className={thDataBold}>REAL</th>
+              <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
             </tr>
-            {/* FILA DE TOTALES ARRIBA */}
+
+            {/* FILA TOTALES */}
             <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
-              <td className="p-1 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
-              <td className="text-center border-r border-slate-700 py-1">{totals.real_mes}</td>
-              <td className="text-center border-r border-slate-700">{totals.backlog}</td>
-              <td className="text-center border-r border-slate-700 bg-slate-700">{totals.total_activas_calculada}</td>
-              <td className="text-center border-r border-slate-600 text-slate-400">—</td>
-              <td className="text-center border-r border-slate-600">{totals.gestionables}</td>
-              <td className="text-center border-r border-slate-700">{totals.ventas_crm}</td>
-              <td className="text-center border-r border-slate-600">{totals.ingresos_reales}</td>
-              <td className="text-center border-r border-slate-600 text-emerald-300">{totals.efectividad_real}%</td>
-              <td className="text-center border-r border-slate-600 text-rose-300">{totals.descarte}%</td>
-              <td className="text-center border-r border-slate-600 text-cyan-300">{totals.tasa_instalacion}%</td>
-              <td className="text-center border-r border-slate-600 bg-slate-700 text-yellow-300">{totals.eficiencia}%</td>
-              <td className="text-center border-r border-slate-600 text-amber-300">{tarjetaPct}%</td>
-              <td className="text-center border-r border-slate-600 text-pink-300">{terceraEdadPct}%</td>
-              <td className="text-center">{totals.regularizacion}</td>
+              <td
+                className="px-2 py-1.5 border-r border-slate-600 sticky left-0 bg-slate-800 z-10 whitespace-nowrap"
+                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
+              >
+                ▶ TOTAL
+              </td>
+              <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
+              <td className="text-center border-r border-slate-700 px-3">{totals.backlog}</td>
+              <td className="text-center border-r border-slate-700 px-3 bg-slate-700">{totals.total_activas_calculada}</td>
+              <td className="text-center border-r border-slate-600 px-3 text-slate-400">—</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.gestionables}</td>
+              <td className="text-center border-r border-slate-700 px-3">{totals.ventas_crm}</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-slate-600 px-3 text-emerald-300">{totals.efectividad_real}%</td>
+              <td className="text-center border-r border-slate-600 px-3 text-rose-300">{totals.descarte}%</td>
+              <td className="text-center border-r border-slate-600 px-3 text-cyan-300">{totals.tasa_instalacion}%</td>
+              <td className="text-center border-r border-slate-600 px-3 bg-slate-700 text-yellow-300">{totals.eficiencia}%</td>
+              <td className="text-center border-r border-slate-600 px-3 text-amber-300">{tarjetaPct}%</td>
+              <td className="text-center border-r border-slate-600 px-3 text-pink-300">{terceraEdadPct}%</td>
+              <td className="text-center px-3">{totals.regularizacion}</td>
             </tr>
           </thead>
+
           <tbody className="font-mono leading-none">
             {safeData.map((row, idx) => (
               <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                <td className="p-1 border-r border-slate-400 sticky left-0 bg-white font-bold truncate max-w-[150px]">{row.nombre_grupo}</td>
-                <td className="text-center border-r border-slate-100 py-1">{row.real_mes}</td>
-                <td className="text-center border-r border-slate-100">{row.backlog}</td>
-                <td className="text-center border-r border-slate-100 font-bold bg-slate-50">{row.total_activas_calculada}</td>
-                <td className="text-center border-r border-slate-400 text-slate-400">{row.crec_vs_ma}</td>
-                <td className="text-center border-r border-slate-400 font-bold">{row.gestionables}</td>
-                <td className="text-center border-r border-slate-100">{row.ventas_crm}</td>
-                <td className="text-center border-r border-slate-400">{row.ingresos_reales}</td>
-                <td className="text-center border-r border-slate-400 font-bold">{row.efectividad_real}%</td>
-                <td className="text-center border-r border-slate-400">{row.descarte}%</td>
-                <td className="text-center border-r border-slate-400">{row.tasa_instalacion}%</td>
-                <td className="text-center border-r border-slate-400 font-bold bg-slate-50">{row.eficiencia}%</td>
-                <td className="text-center border-r border-slate-400 text-amber-600 font-bold">
+                {/* Nombre truncado y pequeño */}
+                <td
+                  className="px-2 py-2 border-r border-slate-400 sticky left-0 bg-white font-bold text-[8px] truncate"
+                  style={{ width: 110, minWidth: 110, maxWidth: 110 }}
+                  title={row.nombre_grupo}
+                >
+                  {row.nombre_grupo}
+                </td>
+                <td className={tdData}>{row.real_mes}</td>
+                <td className={tdData}>{row.backlog}</td>
+                <td className="text-center px-3 py-2 border-r border-slate-100 w-16 font-bold bg-slate-50 whitespace-nowrap">{row.total_activas_calculada}</td>
+                <td className={`${tdDataBold} text-slate-400`}>{row.crec_vs_ma}</td>
+                <td className={tdDataBold}>{row.gestionables}</td>
+                <td className={tdData}>{row.ventas_crm}</td>
+                <td className={tdDataBold}>{row.ingresos_reales}</td>
+                <td className={`${tdDataBold} font-bold`}>{row.efectividad_real}%</td>
+                <td className={tdDataBold}>{row.descarte}%</td>
+                <td className={tdDataBold}>{row.tasa_instalacion}%</td>
+                <td className="text-center px-3 py-2 border-r border-slate-400 w-16 font-bold bg-slate-50 whitespace-nowrap">{row.eficiencia}%</td>
+                <td className={`${tdDataBold} text-amber-600`}>
                   {row.ingresos_reales > 0 ? ((Number(row.tarjeta_credito) / Number(row.ingresos_reales)) * 100).toFixed(1) : 0}%
                 </td>
-                <td className="text-center border-r border-slate-400 text-pink-600 font-bold">
+                <td className={`${tdDataBold} text-pink-600`}>
                   {row.real_mes > 0 ? ((Number(row.tercera_edad) / Number(row.real_mes)) * 100).toFixed(1) : 0}%
                 </td>
-                <td className="text-center font-bold">{row.regularizacion}</td>
+                <td className="text-center px-3 py-2 w-16 font-bold whitespace-nowrap">{row.regularizacion}</td>
               </tr>
             ))}
           </tbody>

@@ -899,42 +899,99 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
   const cumple = invertido ? real <= meta : real >= meta;
 
   const colores = {
-    violet: { bg: 'bg-violet-900/40', border: 'border-violet-700', text: 'text-violet-300', bar: 'bg-violet-500', badge: 'bg-violet-800 text-violet-200' },
-    emerald: { bg: 'bg-emerald-900/40', border: 'border-emerald-700', text: 'text-emerald-300', bar: 'bg-emerald-500', badge: 'bg-emerald-800 text-emerald-200' },
-    rose: { bg: 'bg-rose-900/40', border: 'border-rose-700', text: 'text-rose-300', bar: 'bg-rose-500', badge: 'bg-rose-800 text-rose-200' },
-    blue: { bg: 'bg-blue-900/40', border: 'border-blue-700', text: 'text-blue-300', bar: 'bg-blue-500', badge: 'bg-blue-800 text-blue-200' },
-    pink: { bg: 'bg-pink-900/40', border: 'border-pink-700', text: 'text-pink-300', bar: 'bg-pink-500', badge: 'bg-pink-800 text-pink-200' },
+    violet: {
+      wrap:   'bg-[#0f0a1e] border-[#4c1d95]',
+      accent: 'bg-[#7c3aed]',
+      glow:   'shadow-[0_0_24px_rgba(124,58,237,0.25)]',
+      label:  'text-violet-400',
+      bar:    'bg-gradient-to-r from-violet-600 to-violet-400',
+      badge:  'bg-violet-950 text-violet-300 border border-violet-700',
+      icon:   '💜',
+    },
+    emerald: {
+      wrap:   'bg-[#051a10] border-[#065f46]',
+      accent: 'bg-[#059669]',
+      glow:   'shadow-[0_0_24px_rgba(5,150,105,0.25)]',
+      label:  'text-emerald-400',
+      bar:    'bg-gradient-to-r from-emerald-600 to-emerald-400',
+      badge:  'bg-emerald-950 text-emerald-300 border border-emerald-700',
+      icon:   '📈',
+    },
+    rose: {
+      wrap:   'bg-[#1a0508] border-[#9f1239]',
+      accent: 'bg-[#e11d48]',
+      glow:   'shadow-[0_0_24px_rgba(225,29,72,0.25)]',
+      label:  'text-rose-400',
+      bar:    'bg-gradient-to-r from-rose-600 to-rose-400',
+      badge:  'bg-rose-950 text-rose-300 border border-rose-700',
+      icon:   '🎯',
+    },
+    blue: {
+      wrap:   'bg-[#030d1a] border-[#1e3a5f]',
+      accent: 'bg-[#2563eb]',
+      glow:   'shadow-[0_0_24px_rgba(37,99,235,0.25)]',
+      label:  'text-blue-400',
+      bar:    'bg-gradient-to-r from-blue-600 to-blue-400',
+      badge:  'bg-blue-950 text-blue-300 border border-blue-700',
+      icon:   '⚡',
+    },
+    pink: {
+      wrap:   'bg-[#1a0512] border-[#831843]',
+      accent: 'bg-[#db2777]',
+      glow:   'shadow-[0_0_24px_rgba(219,39,119,0.25)]',
+      label:  'text-pink-400',
+      bar:    'bg-gradient-to-r from-pink-600 to-pink-400',
+      badge:  'bg-pink-950 text-pink-300 border border-pink-700',
+      icon:   '👥',
+    },
   };
   const c = colores[color] || colores.violet;
 
   return (
-    <div className={`${c.bg} border ${c.border} rounded-2xl p-5 flex flex-col gap-3 shadow-xl`}>
-      <span className={`text-[9px] font-black tracking-widest italic ${c.text}`}>{label}</span>
+    <div className={`${c.wrap} ${c.glow} border rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden`}>
+      {/* Franja de acento superior */}
+      <div className={`absolute top-0 left-0 right-0 h-[3px] ${c.accent}`} />
+
+      {/* Label + ícono */}
+      <div className="flex items-center justify-between pt-1">
+        <span className={`text-[9px] font-black tracking-[0.15em] uppercase ${c.label}`}>{label}</span>
+        <span className="text-base leading-none">{c.icon}</span>
+      </div>
+
+      {/* Valores REAL / META */}
       <div className="flex justify-between items-end">
-        <div className="flex flex-col">
-          <span className="text-[8px] text-slate-500 font-bold">REAL</span>
-          <span className="text-2xl font-black text-white">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[8px] text-slate-500 font-bold tracking-widest">REAL</span>
+          <span className="text-3xl font-black text-white leading-none tracking-tight">
             {tipo === 'porcentaje' ? `${real}%` : real.toLocaleString()}
           </span>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[8px] text-slate-500 font-bold">META</span>
-          <span className="text-sm font-black text-slate-400">
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-[8px] text-slate-500 font-bold tracking-widest">META</span>
+          <span className="text-base font-black text-slate-400 leading-none">
             {tipo === 'porcentaje' ? `${meta}%` : meta.toLocaleString()}
           </span>
         </div>
       </div>
-      <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-        <div
-          className={`h-2.5 rounded-full transition-all duration-700 ${cumple ? c.bar : 'bg-red-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="flex justify-between items-center">
-        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${c.badge}`}>{pct.toFixed(1)}% DE META</span>
-        <span className={`text-[9px] font-black ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
-          {cumple ? '✓ OK' : '✗ BAJO'}
-        </span>
+
+      {/* Barra de progreso */}
+      <div className="flex flex-col gap-1.5">
+        <div className="w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div
+            className={`h-2 rounded-full transition-all duration-700 ${cumple ? c.bar : 'bg-gradient-to-r from-red-700 to-red-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {/* Footer badge + estado */}
+        <div className="flex justify-between items-center">
+          <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${c.badge}`}>
+            {pct.toFixed(1)}% DE META
+          </span>
+          <span className={`text-[9px] font-black flex items-center gap-1 ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${cumple ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+            {cumple ? 'ON TRACK' : 'BAJO META'}
+          </span>
+        </div>
       </div>
     </div>
   );

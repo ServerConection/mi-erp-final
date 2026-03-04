@@ -13,6 +13,13 @@ const getPrimerDiaMesEcuador = () => {
 
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
+// Subquery deduplicado: garantiza 1 fila por id_unificado (toma el registro más reciente)
+const dedupVN = `(
+    SELECT DISTINCT ON (id_unificado) *
+    FROM public.velsa_netlife_maestra_cons
+    ORDER BY id_unificado, t1_hgl_updated_at_fecha DESC NULLS LAST
+) vn`;
+
 const getIndicadoresDashboardVelsa = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
@@ -260,7 +267,7 @@ SELECT
         2
     ) AS eficiencia
 
-FROM public.velsa_netlife_maestra_cons vn
+FROM ${dedupVN}
 LEFT JOIN public.empleados e
     ON vn.t1_assigned_to = e.nombre_completo
 WHERE (
@@ -280,7 +287,7 @@ ORDER BY gestionables DESC
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
             AND vn.t2_jot_created_at_fecha IS NOT NULL
@@ -305,7 +312,7 @@ ORDER BY gestionables DESC
                 vn.t1_hgl_updated_at_fecha AS "FECHA_MODIFICACION",
                 vn.t1_hgl_updated_at_hora AS "HORA_MODIFICACION",
                 vn.t1_relation_tags AS "ORIGEN"
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             LIMIT 6000
@@ -323,7 +330,7 @@ ORDER BY gestionables DESC
                 vn.t2_forma_pago AS "FORMA_PAGO",
                 vn.t1_assigned_to AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}
             LIMIT 6000
@@ -337,7 +344,7 @@ ORDER BY gestionables DESC
         const queryEstados = `
             SELECT
                 ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = '${est}') AS "${est}"`).join(',')}
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
@@ -349,7 +356,7 @@ ORDER BY gestionables DESC
             SELECT
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t1_pipeline_stage_id
@@ -360,7 +367,7 @@ ORDER BY gestionables DESC
             SELECT
                 vn.t2_jot_created_at_fecha::date AS fecha,
                 COUNT(*)::int AS total
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -371,7 +378,7 @@ ORDER BY gestionables DESC
 
         const queryEtapasCRM = `
             SELECT DISTINCT vn.t1_pipeline_stage_id AS etapa
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             WHERE vn.t1_pipeline_stage_id IS NOT NULL
             AND TRIM(vn.t1_pipeline_stage_id) <> ''
             ORDER BY etapa ASC
@@ -386,7 +393,7 @@ ORDER BY gestionables DESC
                 COUNT(*) FILTER (
                     WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
                 ) AS total_activos
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
@@ -398,7 +405,7 @@ ORDER BY gestionables DESC
                     WHERE vn.t2_forma_pago = 'TARJETA DE CREDITO.'
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
@@ -534,7 +541,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
 
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -552,7 +559,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                     COUNT(*) FILTER (WHERE vn.t2_forma_pago = 'TARJETA DE CREDITO.')::numeric
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
@@ -693,7 +700,7 @@ const getReporte180Velsa = async (req, res) => {
                         AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
@@ -705,7 +712,7 @@ const getReporte180Velsa = async (req, res) => {
             SELECT
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t1_pipeline_stage_id
@@ -716,7 +723,7 @@ const getReporte180Velsa = async (req, res) => {
             SELECT
                 COALESCE(vn.t2_estado_venta_netlife, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t2_estado_venta_netlife
@@ -728,7 +735,7 @@ const getReporte180Velsa = async (req, res) => {
                 TRIM(vn.t2_jot_created_at_fecha::text) AS fecha,
                 COALESCE(TRIM(vn.t2_ciudad), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
-            FROM public.velsa_netlife_maestra_cons vn
+            FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''

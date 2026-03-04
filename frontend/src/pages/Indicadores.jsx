@@ -179,8 +179,8 @@ export default function ReporteComercialCore() {
     const s = data.supervisores || [];
     const n = s.length || 1;
     const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
+    const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalActivas = s.reduce((acc, c) => acc + Number(c.activas || 0), 0);
     const tarjetaCredito = Number(data.porcentajeTarjeta || 0).toFixed(1);
@@ -638,7 +638,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const COLORES_EMBUDO_CRM  = ['#1d4ed8','#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe'];
   const COLORES_EMBUDO_JOT  = ['#065f46','#047857','#059669','#10b981','#34d399','#6ee7b7'];
 
-  // Mapa de calor
   const fechas   = [...new Set((mapaCalor || []).map(r => r.fecha))].sort();
   const ciudades = [...new Set((mapaCalor || []).map(r => r.ciudad))];
   const mapaIndex = {};
@@ -687,7 +686,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   return (
     <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
 
-      {/* HEADER */}
       <div className="bg-violet-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-violet-700">
         <div>
           <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2">
@@ -700,7 +698,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         </button>
       </div>
 
-      {/* FILTROS */}
       <div className="bg-[#0F172A] rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
         <div className="p-5 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 items-end">
           <div className="lg:col-span-2 flex flex-col gap-2">
@@ -756,9 +753,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         <KpiCard180 label="TERCERA EDAD" meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="pink" />
       </div>
 
-      {/* EMBUDOS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
           <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
@@ -832,10 +827,8 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* MAPA DE CALOR */}
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
         <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2">
           <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></span>
@@ -892,56 +885,112 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 }
 
 // ======================================================
-// KPI CARD 180° con barra de progreso
+// KPI CARD 180° — Diseño profesional con fondos profundos
 // ======================================================
 function KpiCard180({ label, meta, real, tipo, color, invertido }) {
   const pct = meta > 0 ? Math.min((real / meta) * 100, 100) : 0;
   const cumple = invertido ? real <= meta : real >= meta;
 
   const colores = {
-    violet: { bg: 'bg-violet-900/40', border: 'border-violet-700', text: 'text-violet-300', bar: 'bg-violet-500', badge: 'bg-violet-800 text-violet-200' },
-    emerald: { bg: 'bg-emerald-900/40', border: 'border-emerald-700', text: 'text-emerald-300', bar: 'bg-emerald-500', badge: 'bg-emerald-800 text-emerald-200' },
-    rose: { bg: 'bg-rose-900/40', border: 'border-rose-700', text: 'text-rose-300', bar: 'bg-rose-500', badge: 'bg-rose-800 text-rose-200' },
-    blue: { bg: 'bg-blue-900/40', border: 'border-blue-700', text: 'text-blue-300', bar: 'bg-blue-500', badge: 'bg-blue-800 text-blue-200' },
-    pink: { bg: 'bg-pink-900/40', border: 'border-pink-700', text: 'text-pink-300', bar: 'bg-pink-500', badge: 'bg-pink-800 text-pink-200' },
+    violet: {
+      wrap:   'bg-[#0f0a1e] border-[#4c1d95]',
+      accent: 'bg-[#7c3aed]',
+      glow:   'shadow-[0_0_24px_rgba(124,58,237,0.25)]',
+      label:  'text-violet-400',
+      bar:    'bg-gradient-to-r from-violet-600 to-violet-400',
+      badge:  'bg-violet-950 text-violet-300 border border-violet-700',
+      icon:   '💜',
+    },
+    emerald: {
+      wrap:   'bg-[#051a10] border-[#065f46]',
+      accent: 'bg-[#059669]',
+      glow:   'shadow-[0_0_24px_rgba(5,150,105,0.25)]',
+      label:  'text-emerald-400',
+      bar:    'bg-gradient-to-r from-emerald-600 to-emerald-400',
+      badge:  'bg-emerald-950 text-emerald-300 border border-emerald-700',
+      icon:   '📈',
+    },
+    rose: {
+      wrap:   'bg-[#1a0508] border-[#9f1239]',
+      accent: 'bg-[#e11d48]',
+      glow:   'shadow-[0_0_24px_rgba(225,29,72,0.25)]',
+      label:  'text-rose-400',
+      bar:    'bg-gradient-to-r from-rose-600 to-rose-400',
+      badge:  'bg-rose-950 text-rose-300 border border-rose-700',
+      icon:   '🎯',
+    },
+    blue: {
+      wrap:   'bg-[#030d1a] border-[#1e3a5f]',
+      accent: 'bg-[#2563eb]',
+      glow:   'shadow-[0_0_24px_rgba(37,99,235,0.25)]',
+      label:  'text-blue-400',
+      bar:    'bg-gradient-to-r from-blue-600 to-blue-400',
+      badge:  'bg-blue-950 text-blue-300 border border-blue-700',
+      icon:   '⚡',
+    },
+    pink: {
+      wrap:   'bg-[#1a0512] border-[#831843]',
+      accent: 'bg-[#db2777]',
+      glow:   'shadow-[0_0_24px_rgba(219,39,119,0.25)]',
+      label:  'text-pink-400',
+      bar:    'bg-gradient-to-r from-pink-600 to-pink-400',
+      badge:  'bg-pink-950 text-pink-300 border border-pink-700',
+      icon:   '👥',
+    },
   };
   const c = colores[color] || colores.violet;
 
   return (
-    <div className={`${c.bg} border ${c.border} rounded-2xl p-5 flex flex-col gap-3 shadow-xl`}>
-      <span className={`text-[9px] font-black tracking-widest italic ${c.text}`}>{label}</span>
+    <div className={`${c.wrap} ${c.glow} border rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden`}>
+      {/* Franja de acento superior */}
+      <div className={`absolute top-0 left-0 right-0 h-[3px] ${c.accent}`} />
+
+      {/* Label + ícono */}
+      <div className="flex items-center justify-between pt-1">
+        <span className={`text-[9px] font-black tracking-[0.15em] uppercase ${c.label}`}>{label}</span>
+        <span className="text-base leading-none">{c.icon}</span>
+      </div>
+
+      {/* Valores REAL / META */}
       <div className="flex justify-between items-end">
-        <div className="flex flex-col">
-          <span className="text-[8px] text-slate-500 font-bold">REAL</span>
-          <span className="text-2xl font-black text-white">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[8px] text-slate-500 font-bold tracking-widest">REAL</span>
+          <span className="text-3xl font-black text-white leading-none tracking-tight">
             {tipo === 'porcentaje' ? `${real}%` : real.toLocaleString()}
           </span>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[8px] text-slate-500 font-bold">META</span>
-          <span className="text-sm font-black text-slate-400">
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-[8px] text-slate-500 font-bold tracking-widest">META</span>
+          <span className="text-base font-black text-slate-400 leading-none">
             {tipo === 'porcentaje' ? `${meta}%` : meta.toLocaleString()}
           </span>
         </div>
       </div>
-      <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-        <div
-          className={`h-2.5 rounded-full transition-all duration-700 ${cumple ? c.bar : 'bg-red-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="flex justify-between items-center">
-        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${c.badge}`}>{pct.toFixed(1)}% DE META</span>
-        <span className={`text-[9px] font-black ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
-          {cumple ? '✓ OK' : '✗ BAJO'}
-        </span>
+
+      {/* Barra de progreso */}
+      <div className="flex flex-col gap-1.5">
+        <div className="w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div
+            className={`h-2 rounded-full transition-all duration-700 ${cumple ? c.bar : 'bg-gradient-to-r from-red-700 to-red-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="flex justify-between items-center">
+          <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${c.badge}`}>
+            {pct.toFixed(1)}% DE META
+          </span>
+          <span className={`text-[9px] font-black flex items-center gap-1 ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${cumple ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+            {cumple ? 'ON TRACK' : 'BAJO META'}
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
 // ======================================================
-// Componentes reutilizables existentes (sin cambios)
+// Componentes reutilizables
 // ======================================================
 const KpiMini = ({ label, value, meta, real, color }) => {
   return (
@@ -988,123 +1037,85 @@ function HorizontalTable({ title, data, hasScroll }) {
   const tarjetaPct          = totals.ingresos_reales > 0 ? ((totalTarjetaCredito / totals.ingresos_reales) * 100).toFixed(1) : '0.0';
   const terceraEdadPct      = totals.real_mes > 0 ? ((totalTerceraEdad / totals.real_mes) * 100).toFixed(1) : '0.0';
 
-  // Celda de dato: padding generoso, ancho fijo amplio
-  const tdData = "text-center px-3 py-2 border-r border-slate-100 w-16 whitespace-nowrap";
-  const tdDataBold = "text-center px-3 py-2 border-r border-slate-400 w-16 whitespace-nowrap font-black";
-  const thData = "px-3 py-2 border-r border-slate-100 w-16 text-center whitespace-nowrap";
-  const thDataBold = "px-3 py-2 border-r border-slate-400 w-16 text-center whitespace-nowrap";
-
   return (
     <div className="bg-white border border-slate-400 shadow-sm rounded-sm overflow-hidden">
-      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
-        <h2 className="text-[9px] font-black uppercase">
-          {title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span>
-        </h2>
+      <div className="px-2 py-1 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
+        <h2 className="text-[9px] font-black uppercase">{title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span></h2>
         <span className="text-[8px] text-slate-400 font-mono">V2.0_ENGINE</span>
       </div>
-
-      <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
-        <table className="text-[9px] border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+      <div className={`overflow-auto ${hasScroll ? 'max-h-[350px]' : ''}`}>
+        <table className="w-full text-[9px] border-collapse">
           <thead>
-            {/* FILA GRUPOS */}
-            <tr className="bg-slate-200 border-b border-slate-400 font-black text-[8px]">
-              {/* Nombre — fijo y pequeño */}
-              <th
-                className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left whitespace-nowrap"
-                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
-              >
-                ENTIDAD
-              </th>
-              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-100 py-1">PRES. VENTAS ACTIVAS</th>
-              <th className="border-r border-slate-400 text-center px-3">LEADS</th>
-              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-100">VENTAS SUBIDAS</th>
-              <th className="border-r border-slate-400 text-center px-3">EFECT. %</th>
-              <th className="border-r border-slate-400 text-center px-3">DESC. %</th>
-              <th className="border-r border-slate-400 text-center px-3">INST. %</th>
-              <th className="border-r border-slate-400 text-center px-3 bg-slate-50">EFIC. %</th>
-              <th className="border-r border-slate-400 text-center px-3">TJC. %</th>
-              <th className="border-r border-slate-400 text-center px-3">3ED. %</th>
-              <th className="text-center px-3">REGU.</th>
+            <tr className="bg-slate-200 border-b border-slate-400 font-black">
+              <th className="p-1 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left">ENTIDAD</th>
+              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-200/50">PRES. VENTAS ACTIVAS</th>
+              <th className="border-r border-slate-400 text-center">LEADS</th>
+              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-200/50">VENTAS SUBIDAS</th>
+              <th className="border-r border-slate-400 text-center">EFECT. %</th>
+              <th className="border-r border-slate-400 text-center">DESC. %</th>
+              <th className="border-r border-slate-400 text-center">INST. %</th>
+              <th className="border-r border-slate-400 text-center bg-slate-50">EFIC. %</th>
+              <th className="border-r border-slate-400 text-center">TJC. %</th>
+              <th className="border-r border-slate-400 text-center">3ED. %</th>
+              <th>REGU.</th>
             </tr>
-
-            {/* FILA SUBENCABEZADOS */}
-            <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500 font-black">
-              <th
-                className="p-2 border-r border-slate-400 sticky left-0 bg-white z-10 text-left"
-                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
-              >
-                NOMBRE
-              </th>
-              <th className={thData}>REAL</th>
-              <th className={thData}>BACK</th>
-              <th className="px-3 py-2 border-r border-slate-100 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">TOT</th>
-              <th className={thDataBold}>CREC</th>
-              <th className={thDataBold}>TOT</th>
-              <th className={thData}>CRM</th>
-              <th className={thDataBold}>JOTF</th>
-              <th className={thDataBold}>REAL</th>
-              <th className={thDataBold}>REAL</th>
-              <th className={thDataBold}>REAL</th>
-              <th className="px-3 py-2 border-r border-slate-400 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">REAL</th>
-              <th className={thDataBold}>REAL</th>
-              <th className={thDataBold}>REAL</th>
-              <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
+            <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500">
+              <th className="p-1 border-r border-slate-400 sticky left-0 bg-white z-10">NOMBRE</th>
+              <th className="border-r border-slate-100 w-10">REAL</th>
+              <th className="border-r border-slate-100 w-10">BACK</th>
+              <th className="border-r border-slate-100 w-10 bg-slate-50 font-bold">TOT</th>
+              <th className="border-r border-slate-400 w-10">CREC</th>
+              <th className="border-r border-slate-400 w-12">TOT</th>
+              <th className="border-r border-slate-100 w-10">CRM</th>
+              <th className="border-r border-slate-400 w-10">JOTF</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="border-r border-slate-400 w-12 bg-slate-50 font-bold">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="border-r border-slate-400 w-12">REAL</th>
+              <th className="w-12">REAL</th>
             </tr>
-
-            {/* FILA TOTALES */}
             <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
-              <td
-                className="px-2 py-1.5 border-r border-slate-600 sticky left-0 bg-slate-800 z-10 whitespace-nowrap"
-                style={{ width: 110, minWidth: 110, maxWidth: 110 }}
-              >
-                ▶ TOTAL
-              </td>
-              <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
-              <td className="text-center border-r border-slate-700 px-3">{totals.backlog}</td>
-              <td className="text-center border-r border-slate-700 px-3 bg-slate-700">{totals.total_activas_calculada}</td>
-              <td className="text-center border-r border-slate-600 px-3 text-slate-400">—</td>
-              <td className="text-center border-r border-slate-600 px-3">{totals.gestionables}</td>
-              <td className="text-center border-r border-slate-700 px-3">{totals.ventas_crm}</td>
-              <td className="text-center border-r border-slate-600 px-3">{totals.ingresos_reales}</td>
-              <td className="text-center border-r border-slate-600 px-3 text-emerald-300">{totals.efectividad_real}%</td>
-              <td className="text-center border-r border-slate-600 px-3 text-rose-300">{totals.descarte}%</td>
-              <td className="text-center border-r border-slate-600 px-3 text-cyan-300">{totals.tasa_instalacion}%</td>
-              <td className="text-center border-r border-slate-600 px-3 bg-slate-700 text-yellow-300">{totals.eficiencia}%</td>
-              <td className="text-center border-r border-slate-600 px-3 text-amber-300">{tarjetaPct}%</td>
-              <td className="text-center border-r border-slate-600 px-3 text-pink-300">{terceraEdadPct}%</td>
-              <td className="text-center px-3">{totals.regularizacion}</td>
+              <td className="p-1 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
+              <td className="text-center border-r border-slate-700 py-1">{totals.real_mes}</td>
+              <td className="text-center border-r border-slate-700">{totals.backlog}</td>
+              <td className="text-center border-r border-slate-700 bg-slate-700">{totals.total_activas_calculada}</td>
+              <td className="text-center border-r border-slate-600 text-slate-400">—</td>
+              <td className="text-center border-r border-slate-600">{totals.gestionables}</td>
+              <td className="text-center border-r border-slate-700">{totals.ventas_crm}</td>
+              <td className="text-center border-r border-slate-600">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-slate-600 text-emerald-300">{totals.efectividad_real}%</td>
+              <td className="text-center border-r border-slate-600 text-rose-300">{totals.descarte}%</td>
+              <td className="text-center border-r border-slate-600 text-cyan-300">{totals.tasa_instalacion}%</td>
+              <td className="text-center border-r border-slate-600 bg-slate-700 text-yellow-300">{totals.eficiencia}%</td>
+              <td className="text-center border-r border-slate-600 text-amber-300">{tarjetaPct}%</td>
+              <td className="text-center border-r border-slate-600 text-pink-300">{terceraEdadPct}%</td>
+              <td className="text-center">{totals.regularizacion}</td>
             </tr>
           </thead>
-
           <tbody className="font-mono leading-none">
             {safeData.map((row, idx) => (
               <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                {/* Nombre truncado y pequeño */}
-                <td
-                  className="px-2 py-2 border-r border-slate-400 sticky left-0 bg-white font-bold text-[8px] truncate"
-                  style={{ width: 110, minWidth: 110, maxWidth: 110 }}
-                  title={row.nombre_grupo}
-                >
-                  {row.nombre_grupo}
-                </td>
-                <td className={tdData}>{row.real_mes}</td>
-                <td className={tdData}>{row.backlog}</td>
-                <td className="text-center px-3 py-2 border-r border-slate-100 w-16 font-bold bg-slate-50 whitespace-nowrap">{row.total_activas_calculada}</td>
-                <td className={`${tdDataBold} text-slate-400`}>{row.crec_vs_ma}</td>
-                <td className={tdDataBold}>{row.gestionables}</td>
-                <td className={tdData}>{row.ventas_crm}</td>
-                <td className={tdDataBold}>{row.ingresos_reales}</td>
-                <td className={`${tdDataBold} font-bold`}>{row.efectividad_real}%</td>
-                <td className={tdDataBold}>{row.descarte}%</td>
-                <td className={tdDataBold}>{row.tasa_instalacion}%</td>
-                <td className="text-center px-3 py-2 border-r border-slate-400 w-16 font-bold bg-slate-50 whitespace-nowrap">{row.eficiencia}%</td>
-                <td className={`${tdDataBold} text-amber-600`}>
+                <td className="p-1 border-r border-slate-400 sticky left-0 bg-white font-bold truncate max-w-[150px]">{row.nombre_grupo}</td>
+                <td className="text-center border-r border-slate-100 py-1">{row.real_mes}</td>
+                <td className="text-center border-r border-slate-100">{row.backlog}</td>
+                <td className="text-center border-r border-slate-100 font-bold bg-slate-50">{row.total_activas_calculada}</td>
+                <td className="text-center border-r border-slate-400 text-slate-400">{row.crec_vs_ma}</td>
+                <td className="text-center border-r border-slate-400 font-bold">{row.leads_totales}</td>
+                <td className="text-center border-r border-slate-100">{row.ventas_crm}</td>
+                <td className="text-center border-r border-slate-400">{row.ingresos_reales}</td>
+                <td className="text-center border-r border-slate-400 font-bold">{row.efectividad_real}%</td>
+                <td className="text-center border-r border-slate-400">{row.descarte}%</td>
+                <td className="text-center border-r border-slate-400">{row.tasa_instalacion}%</td>
+                <td className="text-center border-r border-slate-400 font-bold bg-slate-50">{row.eficiencia}%</td>
+                <td className="text-center border-r border-slate-400 text-amber-600 font-bold">
                   {row.ingresos_reales > 0 ? ((Number(row.tarjeta_credito) / Number(row.ingresos_reales)) * 100).toFixed(1) : 0}%
                 </td>
-                <td className={`${tdDataBold} text-pink-600`}>
+                <td className="text-center border-r border-slate-400 text-pink-600 font-bold">
                   {row.real_mes > 0 ? ((Number(row.tercera_edad) / Number(row.real_mes)) * 100).toFixed(1) : 0}%
                 </td>
-                <td className="text-center px-3 py-2 w-16 font-bold whitespace-nowrap">{row.regularizacion}</td>
+                <td className="text-center font-bold">{row.regularizacion}</td>
               </tr>
             ))}
           </tbody>
@@ -1162,7 +1173,6 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
               <th className="p-2 border-r border-slate-100 w-14 italic text-rose-600">DESC %</th>
               <th className="p-2 w-14 italic text-amber-600">TJC %</th>
             </tr>
-            {/* FILA DE TOTALES ARRIBA */}
             <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
               <td className="p-2 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
               <td className="p-2 text-center text-slate-400">—</td>

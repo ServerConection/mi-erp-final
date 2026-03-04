@@ -180,6 +180,7 @@ export default function ReporteComercialCore() {
     const n = s.length || 1;
     const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
     const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
+    const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalActivas = s.reduce((acc, c) => acc + Number(c.activas || 0), 0);
     const tarjetaCredito = Number(data.porcentajeTarjeta || 0).toFixed(1);
@@ -197,6 +198,7 @@ export default function ReporteComercialCore() {
       terceraEdad,
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       activas: totalActivos,
+      backlog: totalBacklog,
     };
   }, [data]);
 
@@ -402,7 +404,9 @@ export default function ReporteComercialCore() {
             <KpiMini label="Descarte %" meta="25%" real={`${stats.descartePorc}%`} color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta" meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
             <KpiMini label="3ra Edad %" meta="15%" real={`${stats.terceraEdad}%`} color="border-l-pink-500" />
-            <KpiMini label="Activas Mes" meta={1000} real={stats.activas} color="border-l-emerald-500" />
+            <KpiMini label="Activas Mes"     meta={1000} real={stats.activas - stats.backlog} color="border-l-emerald-500" />
+            <KpiMini label="Activas Backlog" meta={200}  real={stats.backlog}                 color="border-l-cyan-500" />
+            <KpiMini label="Activas Total"   meta={1000} real={stats.activas}                 color="border-l-teal-500" />
             <KpiMini label="Por Regularizar" value={stats.regularizar} color="border-l-pink-500" />
           </div>
 
@@ -970,6 +974,7 @@ function HorizontalTable({ title, data, hasScroll }) {
     backlog:                  safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
     total_activas_calculada:  safeData.reduce((a, r) => a + Number(r.total_activas_calculada || 0), 0),
     gestionables:             safeData.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+    
     ventas_crm:               safeData.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
     ingresos_reales:          safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
     regularizacion:           safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),

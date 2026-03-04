@@ -95,12 +95,6 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
-                COUNT(*) FILTER (
-    WHERE mb.j_fecha_activacion_netlife::date >= $1::date
-   
-    AND mb.j_netlife_estatus_real = 'ACTIVO'
-    AND mb.j_fecha_registro_sistema::date < $1::date
-) AS backlog,
                 (
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NOT NULL) +
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NULL)
@@ -148,6 +142,28 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY gestionables DESC
         `;
 
+        // ============================================================
+        // QUERY BACKLOG SEPARADA — Sin restricción del WHERE principal
+        // Backlog = registrados ANTES del período pero activados DENTRO
+        // ============================================================
+        const queryBacklog = (columna) => `
+            SELECT
+                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(*)::int AS backlog
+            FROM public.mestra_bitrix mb
+            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+            AND mb.j_fecha_registro_sistema IS NOT NULL
+            AND TRIM(mb.j_fecha_registro_sistema::text) != ''
+            AND mb.j_fecha_registro_sistema::date < $1::date
+            AND mb.j_fecha_activacion_netlife IS NOT NULL
+            AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+            AND mb.j_fecha_activacion_netlife::date >= $1::date
+            AND mb.j_fecha_activacion_netlife::date <= $2::date
+            ${filters}
+            GROUP BY 1
+        `;
+
         const queryCRM = `
             SELECT
                 mb.b_id AS "ID_CRM",
@@ -175,6 +191,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
                 mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
                 mb.j_forma_pago AS "FORMA_PAGO",
+                mb.j_netlife_login AS "LOGIN", 
                 mb.b_persona_responsable AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
@@ -258,7 +275,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ${filters}
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta] = await Promise.all([
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('mb.b_persona_responsable'), values),
             pool.query(queryCRM, values),
@@ -269,7 +286,23 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryEtapasCRM),
             pool.query(queryTerceraEdad, values),
             pool.query(queryTarjeta, values),
+            pool.query(queryBacklog('e.supervisor'), values),         // ← BACKLOG SUPERVISORES
+            pool.query(queryBacklog('mb.b_persona_responsable'), values), // ← BACKLOG ASESORES
         ]);
+
+        // Mergear backlog en supervisores y asesores
+        const mergeBacklog = (filas, backlogRows) => {
+            return filas.map(row => {
+                const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
+                return {
+                    ...row,
+                    backlog: bl ? Number(bl.backlog) : 0,
+                };
+            });
+        };
+
+        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
+        const asesoresConBacklog = mergeBacklog(resAses.rows, resBacklogAses.rows);
 
         const estadosRow = resEstados.rows[0] || {};
         const estadosNetlife = ESTADOS_ORDEN.map(est => ({
@@ -291,12 +324,14 @@ const getIndicadoresDashboard = async (req, res) => {
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2))
             : 0;
 
-        console.log(`[DASHBOARD] Supervisores: ${resSup.rows.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+        // Log backlog para debug
+        const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
+        console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
         res.json({
             success: true,
-            supervisores: resSup.rows,
-            asesores: resAses.rows,
+            supervisores: supervisoresConBacklog,
+            asesores: asesoresConBacklog,
             dataCRM: resCRM.rows,
             dataNetlife: resNet.rows,
             estadosNetlife,
@@ -538,7 +573,7 @@ const getReporte180 = async (req, res) => {
             ) ${filters}
         `;
 
-        const queryEmbудоCRM = `
+        const queryEmbudoCRM = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
@@ -579,7 +614,7 @@ const getReporte180 = async (req, res) => {
 
         const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor] = await Promise.all([
             pool.query(queryKPIs, values),
-            pool.query(queryEmbудоCRM, values),
+            pool.query(queryEmbudoCRM, values),
             pool.query(queryEmbudoJotform, values),
             pool.query(queryMapaCalor, values),
         ]);

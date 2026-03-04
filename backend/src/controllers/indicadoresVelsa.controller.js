@@ -127,13 +127,6 @@ SELECT
         AND vn.t1_hgl_updated_at_fecha IS NOT NULL
     ) AS real_mes,
 
-    COUNT(DISTINCT vn.id_unificado) FILTER (
-        WHERE vn.t2_fecha_activacion_telcos::date >= $1::date
-        AND vn.t2_fecha_activacion_telcos::date < ($1::date + INTERVAL '1 month')
-        AND vn.t2_estado_venta_netlife = 'ACTIVO'
-        AND vn.t2_jot_created_at_fecha::date < $1::date
-    ) AS backlog,
-
     (
         COUNT(DISTINCT vn.id_unificado) FILTER (
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -151,6 +144,7 @@ SELECT
     ) AS total_activas_calculada,
 
     0 AS crec_vs_ma,
+    0 AS backlog,
 
     COUNT(DISTINCT vn.id_unificado) FILTER (
         WHERE vn.t2_forma_pago = 'TARJETA DE CREDITO.'
@@ -278,6 +272,28 @@ GROUP BY 1
 ORDER BY gestionables DESC
 `;
 
+        // ============================================================
+        // QUERY BACKLOG SEPARADA — Sin restricción del WHERE principal
+        // Backlog = registrados ANTES del período pero activados DENTRO
+        // ============================================================
+        const queryBacklog = (columna) => `
+            SELECT
+                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(*)::int AS backlog
+            FROM public.velsa_netlife_maestra_cons vn
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
+            WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
+            AND vn.t2_jot_created_at_fecha IS NOT NULL
+            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
+            AND vn.t2_jot_created_at_fecha::date < $1::date
+            AND vn.t2_fecha_activacion_telcos IS NOT NULL
+            AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
+            AND vn.t2_fecha_activacion_telcos::date >= $1::date
+            AND vn.t2_fecha_activacion_telcos::date <= $2::date
+            ${filters}
+            GROUP BY 1
+        `;
+
         const queryCRM = `
             SELECT
                 vn.id_unificado AS "ID_CRM",
@@ -388,7 +404,7 @@ ORDER BY gestionables DESC
             ${filters}
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta] = await Promise.all([
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('vn.t1_assigned_to'), values),
             pool.query(queryCRM, values),
@@ -399,7 +415,23 @@ ORDER BY gestionables DESC
             pool.query(queryEtapasCRM),
             pool.query(queryTerceraEdad, values),
             pool.query(queryTarjeta, values),
+            pool.query(queryBacklog('e.supervisor'), values),              // ← BACKLOG SUPERVISORES
+            pool.query(queryBacklog('vn.t1_assigned_to'), values),         // ← BACKLOG ASESORES
         ]);
+
+        // Mergear backlog en supervisores y asesores
+        const mergeBacklog = (filas, backlogRows) => {
+            return filas.map(row => {
+                const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
+                return {
+                    ...row,
+                    backlog: bl ? Number(bl.backlog) : 0,
+                };
+            });
+        };
+
+        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
+        const asesoresConBacklog = mergeBacklog(resAses.rows, resBacklogAses.rows);
 
         const estadosRow = resEstados.rows[0] || {};
         const estadosNetlife = ESTADOS_ORDEN.map(est => ({
@@ -421,12 +453,13 @@ ORDER BY gestionables DESC
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2))
             : 0;
 
-        console.log(`[DASHBOARD VELSA] Supervisores: ${resSup.rows.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+        const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
+        console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
         res.json({
             success: true,
-            supervisores: resSup.rows,
-            asesores: resAses.rows,
+            supervisores: supervisoresConBacklog,
+            asesores: asesoresConBacklog,
             dataCRM: resCRM.rows,
             dataNetlife: resNet.rows,
             estadosNetlife,
@@ -511,7 +544,6 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
-        // FIX: Comparación de fecha corregida — usar ::date en lugar de TRIM() para evitar mismatch de formatos
         const queryJotHoy = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,

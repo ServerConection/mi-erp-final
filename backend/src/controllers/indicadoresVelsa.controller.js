@@ -13,9 +13,7 @@ const getPrimerDiaMesEcuador = () => {
 
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
-// Subquery deduplicado: garantiza 1 fila por id_unificado (toma el registro mas reciente)
-// La columna "supervisor_asignado" ya viene dentro de velsa_netlife_maestra_cons,
-// NO se necesita JOIN con ninguna tabla externa.
+// Subquery deduplicado: garantiza 1 fila por id_unificado (toma el registro más reciente)
 const dedupVN = `(
     SELECT DISTINCT ON (id_unificado) *
     FROM public.velsa_netlife_maestra_cons
@@ -39,7 +37,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
-            filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`;
+            filters += ` AND e.supervisor ILIKE $${values.length}`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
@@ -60,25 +58,24 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         const ETAPAS_GESTIONABLES = `(
             'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
-            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACION','INNEGOCIABLE','CONTRATO NETLIFE',
+            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
             'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
-            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','OPORTUNIDADES',
-            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTION DIARIA',
-            'SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO',
-            'SEGUIMIENTO NEGOCIACION','DESCARTE PLAN DE 200',
+            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
+            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
+            'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200',
             'SEGUIMIENTO PLAN 200'
         )`;
 
         const ETAPAS_DESCARTE = `(
             'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
             'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO'
+            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        // columna puede ser 'vn.supervisor_asignado' o 'vn.t1_assigned_to'
-        const queryKPI = (columna) => `
+const queryKPI = (columna) => `
 SELECT
     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
 
@@ -271,6 +268,8 @@ SELECT
     ) AS eficiencia
 
 FROM ${dedupVN}
+LEFT JOIN public.empleados e
+    ON vn.t1_assigned_to = e.nombre_completo
 WHERE (
     ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
     OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -280,11 +279,16 @@ GROUP BY 1
 ORDER BY gestionables DESC
 `;
 
+        // ============================================================
+        // QUERY BACKLOG SEPARADA — Sin restricción del WHERE principal
+        // Backlog = registrados ANTES del período pero activados DENTRO
+        // ============================================================
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
             AND vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
@@ -304,11 +308,12 @@ ORDER BY gestionables DESC
                 vn.t1_hgl_created_at_fecha AS "FECHA_CREACION_CRM",
                 vn.t1_assigned_to AS "ASESOR",
                 vn.t1_hgl_created_at_hora AS "HORA_CREACION",
-                vn.supervisor_asignado AS "SUPERVISOR_ASIGNADO",
+                e.supervisor AS "SUPERVISOR_ASIGNADO",
                 vn.t1_hgl_updated_at_fecha AS "FECHA_MODIFICACION",
                 vn.t1_hgl_updated_at_hora AS "HORA_MODIFICACION",
                 vn.t1_relation_tags AS "ORIGEN"
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             LIMIT 6000
         `;
@@ -324,8 +329,9 @@ ORDER BY gestionables DESC
                 vn.t2_estado_regularizacion_novo AS "MOTIVO_REGULARIZAR",
                 vn.t2_forma_pago AS "FORMA_PAGO",
                 vn.t1_assigned_to AS "ASESOR",
-                vn.supervisor_asignado AS "SUPERVISOR_ASIGNADO"
+                e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}
             LIMIT 6000
         `;
@@ -339,6 +345,7 @@ ORDER BY gestionables DESC
             SELECT
                 ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = '${est}') AS "${est}"`).join(',')}
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
                 OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -350,6 +357,7 @@ ORDER BY gestionables DESC
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t1_pipeline_stage_id
             ORDER BY total DESC
@@ -360,6 +368,7 @@ ORDER BY gestionables DESC
                 vn.t2_jot_created_at_fecha::date AS fecha,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
@@ -385,6 +394,7 @@ ORDER BY gestionables DESC
                     WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
                 ) AS total_activos
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
         `;
@@ -396,12 +406,13 @@ ORDER BY gestionables DESC
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
         `;
 
         const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
-            pool.query(queryKPI('vn.supervisor_asignado'), values),
+            pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('vn.t1_assigned_to'), values),
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
@@ -411,14 +422,18 @@ ORDER BY gestionables DESC
             pool.query(queryEtapasCRM),
             pool.query(queryTerceraEdad, values),
             pool.query(queryTarjeta, values),
-            pool.query(queryBacklog('vn.supervisor_asignado'), values),
-            pool.query(queryBacklog('vn.t1_assigned_to'), values),
+            pool.query(queryBacklog('e.supervisor'), values),              // ← BACKLOG SUPERVISORES
+            pool.query(queryBacklog('vn.t1_assigned_to'), values),         // ← BACKLOG ASESORES
         ]);
 
+        // Mergear backlog en supervisores y asesores
         const mergeBacklog = (filas, backlogRows) => {
             return filas.map(row => {
                 const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
-                return { ...row, backlog: bl ? Number(bl.backlog) : 0 };
+                return {
+                    ...row,
+                    backlog: bl ? Number(bl.backlog) : 0,
+                };
             });
         };
 
@@ -435,13 +450,15 @@ ORDER BY gestionables DESC
         const totalTerceraEdad = Number(rowTercera.total_tercera_edad || 0);
         const totalActivosTercera = Number(rowTercera.total_activos || 0);
         const porcentajeTerceraEdad = totalActivosTercera > 0
-            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2))
+            : 0;
 
         const rowTarjeta = resTarjeta.rows[0] || {};
         const totalTarjeta = Number(rowTarjeta.total_tarjeta || 0);
         const totalJotformTarjeta = Number(rowTarjeta.total_jotform || 0);
         const porcentajeTarjeta = totalJotformTarjeta > 0
-            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2))
+            : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
@@ -473,30 +490,36 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
 
         console.log(`[MONITOREO VELSA] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACION','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTION DIARIA','SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
+        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
 
-        const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO')";
+        const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
+
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
                     AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
                 ) AS real_dia_leads,
+
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
+
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
                 ) AS crm_dia,
+
                 COUNT(DISTINCT vn.id_unificado) FILTER (
                     WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
                     AND vn.t1_pipeline_stage_id = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
+
                 ROUND(COALESCE(
                     COUNT(DISTINCT vn.id_unificado) FILTER (
                         WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -507,6 +530,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                         AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
+
                 ROUND(COALESCE(
                     COUNT(DISTINCT vn.id_unificado) FILTER (
                         WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -516,7 +540,9 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                         WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
+
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
                 OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
@@ -534,6 +560,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
             AND vn.t2_jot_created_at_fecha::date = $1::date
@@ -541,9 +568,9 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
         `;
 
         const [resSup, resAses, resJotSupHoy, resJotAsesHoy] = await Promise.all([
-            pool.query(queryMonitoreo('vn.supervisor_asignado'), [iniciomes, hoy]),
+            pool.query(queryMonitoreo('e.supervisor'), [iniciomes, hoy]),
             pool.query(queryMonitoreo('vn.t1_assigned_to'), [iniciomes, hoy]),
-            pool.query(queryJotHoy('vn.supervisor_asignado'), [hoy]),
+            pool.query(queryJotHoy('e.supervisor'), [hoy]),
             pool.query(queryJotHoy('vn.t1_assigned_to'), [hoy]),
         ]);
 
@@ -596,7 +623,7 @@ const getReporte180Velsa = async (req, res) => {
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
-            filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`;
+            filters += ` AND e.supervisor ILIKE $${values.length}`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
@@ -617,20 +644,21 @@ const getReporte180Velsa = async (req, res) => {
 
         const ETAPAS_GESTIONABLES = `(
             'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
-            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACION','INNEGOCIABLE','CONTRATO NETLIFE',
+            'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
             'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
-            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','OPORTUNIDADES',
-            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTION DIARIA',
-            'SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO',
-            'SEGUIMIENTO NEGOCIACION','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
+            'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
+            'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
+            'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200',
+            'SEGUIMIENTO PLAN 200'
         )`;
 
         const ETAPAS_DESCARTE = `(
             'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
             'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO'
+            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
         const queryKPIs = `
@@ -648,8 +676,7 @@ const getReporte180Velsa = async (req, res) => {
                         AND ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
-                            OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
+                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
                         AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS pct_descarte,
@@ -658,8 +685,7 @@ const getReporte180Velsa = async (req, res) => {
                         WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
-                            OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
+                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
                         AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS pct_efectividad,
@@ -675,6 +701,7 @@ const getReporte180Velsa = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE (
                 ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
                 OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -686,6 +713,7 @@ const getReporte180Velsa = async (req, res) => {
                 COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t1_pipeline_stage_id
             ORDER BY total DESC
@@ -696,6 +724,7 @@ const getReporte180Velsa = async (req, res) => {
                 COALESCE(vn.t2_estado_venta_netlife, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}
             GROUP BY vn.t2_estado_venta_netlife
             ORDER BY total DESC
@@ -707,6 +736,7 @@ const getReporte180Velsa = async (req, res) => {
                 COALESCE(TRIM(vn.t2_ciudad), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
+            LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
             AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -725,6 +755,7 @@ const getReporte180Velsa = async (req, res) => {
         ]);
 
         const kpis = resKPIs.rows[0] || {};
+
         console.log(`[REPORTE180 VELSA] Ejecutado desde ${desde} hasta ${hasta}`);
 
         res.json({

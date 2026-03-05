@@ -1057,7 +1057,7 @@ function HorizontalTable({ title, data, hasScroll }) {
             <tr className="bg-slate-200 border-b border-slate-400 font-black">
               <th className="p-1 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left">ENTIDAD</th>
               <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-200/50">PRES. VENTAS ACTIVAS</th>
-              <th className="border-r border-slate-400 text-center">LEADS</th>
+              <th className="border-r border-slate-400 text-center">GEST.</th>
               <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-200/50">VENTAS SUBIDAS</th>
               <th className="border-r border-slate-400 text-center">EFECT. %</th>
               <th className="border-r border-slate-400 text-center">DESC. %</th>

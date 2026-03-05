@@ -13,6 +13,17 @@ const getPrimerDiaMesEcuador = () => {
 
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: filtro de supervisor como subquery EXISTS para evitar duplicados
+// Se usa en queries que NO hacen JOIN con empleados en su SELECT principal
+// ─────────────────────────────────────────────────────────────────────────────
+const supervisorExistsFilter = (paramIndex) =>
+    `AND EXISTS (
+        SELECT 1 FROM public.empleados _e
+        WHERE _e.nombre_completo = mb.b_persona_responsable
+        AND _e.supervisor ILIKE $${paramIndex}
+    )`;
+
 const getIndicadoresDashboard = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
@@ -22,31 +33,41 @@ const getIndicadoresDashboard = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-        let filters = "";
+
+        // filters para queries CON JOIN (queryKPI, queryBacklog)
+        let filtersJoin = "";
+        // filters para queries SIN JOIN (queryPorDia, queryEmbudo, etc.)
+        let filtersNoJoin = "";
 
         if (asesor) {
             values.push(`%${asesor}%`);
-            filters += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            filtersJoin    += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            filtersNoJoin  += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
-            filters += ` AND e.supervisor ILIKE $${values.length}`;
+            filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
+            filtersNoJoin += ` ${supervisorExistsFilter(values.length)}`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
-            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
         if (estadoRegularizacion) {
             values.push(`%${estadoRegularizacion}%`);
-            filters += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
         if (etapaCRM) {
             values.push(`%${etapaCRM}%`);
-            filters += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
         }
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
-            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
         const ETAPAS_GESTIONABLES = `(
@@ -68,6 +89,7 @@ const getIndicadoresDashboard = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
+        // queryKPI necesita JOIN porque agrupa por e.supervisor o mb.b_persona_responsable
         const queryKPI = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -137,15 +159,12 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filters}
+            ) ${filtersJoin}
             GROUP BY 1
             ORDER BY gestionables DESC
         `;
 
-        // ============================================================
-        // QUERY BACKLOG SEPARADA — Sin restricción del WHERE principal
-        // Backlog = registrados ANTES del período pero activados DENTRO
-        // ============================================================
+        // queryBacklog necesita JOIN porque agrupa por e.supervisor
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -160,7 +179,7 @@ const getIndicadoresDashboard = async (req, res) => {
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
             AND mb.j_fecha_activacion_netlife::date >= $1::date
             AND mb.j_fecha_activacion_netlife::date <= $2::date
-            ${filters}
+            ${filtersJoin}
             GROUP BY 1
         `;
 
@@ -177,7 +196,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_origen AS "ORIGEN"
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filters}
+            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersJoin}
             LIMIT 6000
         `;
 
@@ -191,12 +210,12 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
                 mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
                 mb.j_forma_pago AS "FORMA_PAGO",
-                mb.j_netlife_login AS "LOGIN", 
+                mb.j_netlife_login AS "LOGIN",
                 mb.b_persona_responsable AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filters}
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersJoin}
             LIMIT 6000
         `;
 
@@ -205,37 +224,37 @@ const getIndicadoresDashboard = async (req, res) => {
             'DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'
         ];
 
+        // SIN JOIN — usa filtersNoJoin para evitar duplicados
         const queryEstados = `
             SELECT
                 ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = '${est}') AS "${est}"`).join(',')}
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filters}
+            ) ${filtersNoJoin}
         `;
 
+        // SIN JOIN — usa filtersNoJoin
         const queryEmbudo = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filters}
+            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
 
+        // SIN JOIN — usa filtersNoJoin — este era el gráfico de barras con duplicados
         const queryPorDia = `
             SELECT
                 mb.j_fecha_registro_sistema::date AS fecha,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ${filters}
+            ${filtersNoJoin}
             GROUP BY 1
             ORDER BY fecha ASC
         `;
@@ -248,6 +267,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY etapa ASC
         `;
 
+        // SIN JOIN — usa filtersNoJoin
         const queryTerceraEdad = `
             SELECT
                 COUNT(*) FILTER (
@@ -258,11 +278,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS total_activos
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ${filters}
+            ${filtersNoJoin}
         `;
 
+        // SIN JOIN — usa filtersNoJoin
         const queryTarjeta = `
             SELECT
                 COUNT(*) FILTER (
@@ -270,9 +290,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ${filters}
+            ${filtersNoJoin}
         `;
 
         const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
@@ -286,18 +305,14 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryEtapasCRM),
             pool.query(queryTerceraEdad, values),
             pool.query(queryTarjeta, values),
-            pool.query(queryBacklog('e.supervisor'), values),         // ← BACKLOG SUPERVISORES
-            pool.query(queryBacklog('mb.b_persona_responsable'), values), // ← BACKLOG ASESORES
+            pool.query(queryBacklog('e.supervisor'), values),
+            pool.query(queryBacklog('mb.b_persona_responsable'), values),
         ]);
 
-        // Mergear backlog en supervisores y asesores
         const mergeBacklog = (filas, backlogRows) => {
             return filas.map(row => {
                 const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
-                return {
-                    ...row,
-                    backlog: bl ? Number(bl.backlog) : 0,
-                };
+                return { ...row, backlog: bl ? Number(bl.backlog) : 0 };
             });
         };
 
@@ -314,17 +329,14 @@ const getIndicadoresDashboard = async (req, res) => {
         const totalTerceraEdad = Number(rowTercera.total_tercera_edad || 0);
         const totalActivosTercera = Number(rowTercera.total_activos || 0);
         const porcentajeTerceraEdad = totalActivosTercera > 0
-            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2))
-            : 0;
+            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
 
         const rowTarjeta = resTarjeta.rows[0] || {};
         const totalTarjeta = Number(rowTarjeta.total_tarjeta || 0);
         const totalJotformTarjeta = Number(rowTarjeta.total_jotform || 0);
         const porcentajeTarjeta = totalJotformTarjeta > 0
-            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2))
-            : 0;
+            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
-        // Log backlog para debug
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
@@ -359,32 +371,27 @@ const getMonitoreoDiario = async (req, res) => {
 
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
+        // queryMonitoreo necesita JOIN porque agrupa por e.supervisor
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
-
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
                     AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS real_dia_leads,
-
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
-
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
                 ) AS crm_dia,
-
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
-
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -395,7 +402,6 @@ const getMonitoreoDiario = async (req, res) => {
                         AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
-
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -405,7 +411,6 @@ const getMonitoreoDiario = async (req, res) => {
                         WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
-
             FROM public.mestra_bitrix mb
             LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
@@ -416,6 +421,7 @@ const getMonitoreoDiario = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
+        // queryJotHoy necesita JOIN porque agrupa por e.supervisor
         const queryJotHoy = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -480,31 +486,38 @@ const getReporte180 = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-        let filters = "";
+        let filtersJoin = "";
+        let filtersNoJoin = "";
 
         if (asesor) {
             values.push(`%${asesor}%`);
-            filters += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
-            filters += ` AND e.supervisor ILIKE $${values.length}`;
+            filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
+            filtersNoJoin += ` ${supervisorExistsFilter(values.length)}`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
-            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
         if (estadoRegularizacion) {
             values.push(`%${estadoRegularizacion}%`);
-            filters += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
         if (etapaCRM) {
             values.push(`%${etapaCRM}%`);
-            filters += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
         }
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
-            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
         const ETAPAS_GESTIONABLES = `(
@@ -515,8 +528,7 @@ const getReporte180 = async (req, res) => {
             'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
             'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200',
-            'SEGUIMIENTO PLAN 200'
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
         )`;
 
         const ETAPAS_DESCARTE = `(
@@ -526,6 +538,7 @@ const getReporte180 = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
+        // SIN JOIN — filtersNoJoin
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (
@@ -566,48 +579,47 @@ const getReporte180 = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filters}
+            ) ${filtersNoJoin}
         `;
 
+        // SIN JOIN — filtersNoJoin
         const queryEmbudoCRM = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filters}
+            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
 
+        // SIN JOIN — filtersNoJoin
         const queryEmbudoJotform = `
             SELECT
                 COALESCE(mb.j_netlife_estatus_real, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filters}
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.j_netlife_estatus_real
             ORDER BY total DESC
         `;
 
+        // SIN JOIN — filtersNoJoin
         const queryMapaCalor = `
             SELECT
                 TRIM(mb.j_fecha_registro_sistema) AS fecha,
                 COALESCE(TRIM(mb.j_ciudad), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
             AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
             AND mb.j_ciudad IS NOT NULL
             AND TRIM(mb.j_ciudad) != ''
-            ${filters}
+            ${filtersNoJoin}
             GROUP BY 1, 2
             ORDER BY 1 ASC, 3 DESC
         `;
@@ -620,7 +632,6 @@ const getReporte180 = async (req, res) => {
         ]);
 
         const kpis = resKPIs.rows[0] || {};
-
         console.log(`[REPORTE180] Ejecutado desde ${desde} hasta ${hasta}`);
 
         res.json({

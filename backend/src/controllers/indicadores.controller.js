@@ -24,6 +24,16 @@ const supervisorExistsFilter = (paramIndex) =>
         AND _e.supervisor ILIKE $${paramIndex}
     )`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: JOIN deduplicado con empleados — garantiza 1 fila por asesor
+// Evita que asesores con múltiples filas en empleados multipliquen los COUNT(*)
+// ─────────────────────────────────────────────────────────────────────────────
+const joinEmpleadosDedup = `LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo`;
+
 const getIndicadoresDashboard = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
@@ -111,15 +121,16 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                 ) AS ingresos_reales,
                 COUNT(*) FILTER (
-                    WHERE mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Febrero'
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS activas,
                 COUNT(*) FILTER (
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
-                (
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NOT NULL) +
-                    COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_año_activacion_netlife = '2026' AND mb.j_mes_activacion_netlife = 'Marzo' AND mb.b_fecha_venta_subida IS NULL)
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 COUNT(*) FILTER (
@@ -155,7 +166,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -170,7 +185,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
             AND mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema::text) != ''
@@ -195,7 +214,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_modificado_el_hora AS "HORA_MODIFICACION",
                 mb.b_origen AS "ORIGEN"
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersJoin}
             LIMIT 6000
         `;
@@ -214,7 +237,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_persona_responsable AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersJoin}
             LIMIT 6000
         `;
@@ -412,7 +439,11 @@ const getMonitoreoDiario = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE (
                 mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 OR ${parseFecha('mb.b_cerrado')} BETWEEN $1::date AND $2::date
@@ -431,7 +462,11 @@ const getMonitoreoDiario = async (req, res) => {
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
             FROM public.mestra_bitrix mb
-            LEFT JOIN public.empleados e ON mb.b_persona_responsable = e.nombre_completo
+            LEFT JOIN (
+    SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor
+    FROM public.empleados
+    ORDER BY nombre_completo
+) e ON mb.b_persona_responsable = e.nombre_completo
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
             AND TRIM(mb.j_fecha_registro_sistema) = $1

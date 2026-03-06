@@ -10,11 +10,12 @@ const router = express.Router();
 router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, username, nombres_completos, correo, rol, activo FROM users ORDER BY id ASC'
+      `SELECT id, nombres, apellidos, correo, cargo, perfil, empresa, activo, usuario 
+       FROM usuarios ORDER BY id ASC`
     );
     return res.json({ success: true, data: result.rows });
   } catch (error) {
-    console.error('[users.routes] GET /:', error);
+    console.error('[usuarios.routes] GET /:', error);
     return res.status(500).json({ success: false, error: 'Error obteniendo usuarios' });
   }
 });
@@ -22,38 +23,67 @@ router.get('/', auth, isAdmin, async (req, res) => {
 // ─── CREAR USUARIO ────────────────────────────────────────────────────────────
 router.post('/', auth, isAdmin, async (req, res) => {
   try {
-    const { username, password, nombres, correo, identificacion, rol } = req.body;
+    const { nombres, apellidos, correo, cargo, perfil, empresa, usuario, password } = req.body;
 
-    if (!username || !password || !nombres || !correo || !identificacion || !rol) {
+    if (!nombres || !apellidos || !correo || !cargo || !perfil || !empresa || !usuario || !password) {
       return res.status(400).json({ success: false, error: 'Todos los campos son requeridos' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 8 caracteres' });
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    // Verificar si el username ya existe
     const existe = await pool.query(
-      'SELECT id FROM users WHERE username = $1 OR correo = $2',
-      [username, correo]
+      'SELECT id FROM usuarios WHERE usuario = $1 OR correo = $2',
+      [usuario, correo]
     );
     if (existe.rows.length > 0) {
       return res.status(409).json({ success: false, error: 'El usuario o correo ya está registrado' });
     }
 
-    const hash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
-    await pool.query(
-      `INSERT INTO users (username, password_hash, nombres_completos, correo, identificacion, rol)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [username, hash, nombres, correo, identificacion, rol]
+    const result = await pool.query(
+      `INSERT INTO usuarios (nombres, apellidos, correo, cargo, perfil, empresa, activo, usuario, contraseña)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SI', $7, $8)
+       RETURNING id`,
+      [nombres, apellidos, correo, cargo, perfil, empresa, usuario, passwordHash]
     );
 
-    return res.status(201).json({ success: true, message: 'Usuario creado correctamente' });
+    return res.status(201).json({
+      success: true,
+      message: 'Usuario creado correctamente',
+      id: result.rows[0].id
+    });
 
   } catch (error) {
-    console.error('[users.routes] POST /:', error);
+    console.error('[usuarios.routes] POST /:', error);
     return res.status(500).json({ success: false, error: 'Error creando usuario' });
+  }
+});
+
+// ─── ACTUALIZAR USUARIO ───────────────────────────────────────────────────────
+router.put('/:id', auth, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombres, apellidos, correo, cargo, perfil, empresa, activo } = req.body;
+
+    const result = await pool.query(
+      `UPDATE usuarios
+       SET nombres=$1, apellidos=$2, correo=$3, cargo=$4, perfil=$5, empresa=$6, activo=$7
+       WHERE id=$8 RETURNING id`,
+      [nombres, apellidos, correo, cargo, perfil, empresa, activo, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
+
+    return res.json({ success: true, message: 'Usuario actualizado' });
+
+  } catch (error) {
+    console.error('[usuarios.routes] PUT /:id:', error);
+    return res.status(500).json({ success: false, error: 'Error actualizando usuario' });
   }
 });
 
@@ -63,7 +93,7 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      'DELETE FROM users WHERE id = $1 RETURNING id',
+      'DELETE FROM usuarios WHERE id = $1 RETURNING id',
       [id]
     );
 
@@ -74,7 +104,7 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
     return res.json({ success: true, message: 'Usuario eliminado' });
 
   } catch (error) {
-    console.error('[users.routes] DELETE /:id:', error);
+    console.error('[usuarios.routes] DELETE /:id:', error);
     return res.status(500).json({ success: false, error: 'Error eliminando usuario' });
   }
 });

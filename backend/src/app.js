@@ -3,7 +3,6 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes             = require('./routes/auth.routes');
-const userRoutes             = require('./routes/users.routes');
 const usuariosRoutes         = require('./routes/usuarios.routes');
 const loginOtpRoutes         = require('./routes/login.otp.routes');
 const passwordRoutes         = require('./routes/password.routes');
@@ -21,12 +20,11 @@ app.use(express.json());
 // Auth sin OTP (token directo)
 app.use('/api/auth',         authRoutes);
 
-// Auth con OTP (login → correo → verify)
+// Auth con OTP
 app.use('/api/otp',          loginOtpRoutes);
 app.use('/api/otp',          verifyOtpRoutes);
 
-// Usuarios
-app.use('/api/admin/users',  userRoutes);
+// Gestión de usuarios (tabla: usuarios)
 app.use('/api/usuarios',     usuariosRoutes);
 
 // Password

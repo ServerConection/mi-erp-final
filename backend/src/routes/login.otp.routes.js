@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { enviarOTP } = require('../services/email.service');
 
 // ─── Rate limiting simple en memoria ─────────────────────────────────────────
@@ -47,7 +48,6 @@ router.post('/login', async (req, res) => {
     const match = await bcrypt.compare(password, hashReal);
 
     if (result.rows.length === 0 || !match) {
-      // Log intento fallido
       await pool.query(
         'INSERT INTO login_logs (usuario_id, ip, user_agent, success) VALUES ($1,$2,$3,$4)',
         [result.rows[0]?.id || null, ip, userAgent, false]
@@ -67,19 +67,16 @@ router.post('/login', async (req, res) => {
       for (const device of devices.rows) {
         const deviceMatch = await bcrypt.compare(device_token, device.device_token);
         if (deviceMatch) {
-          // Actualizar last_used_at
           await pool.query(
             'UPDATE trusted_devices SET last_used_at = NOW() WHERE id = $1',
             [device.id]
           );
 
-          // Log exitoso
           await pool.query(
             'INSERT INTO login_logs (usuario_id, ip, user_agent, success) VALUES ($1,$2,$3,$4)',
             [user.id, ip, userAgent, true]
           );
 
-          // Generar JWT directo sin OTP
           const token = jwt.sign(
             { id: user.id, rol: user.perfil },
             process.env.JWT_SECRET,

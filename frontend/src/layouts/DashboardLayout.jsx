@@ -16,10 +16,11 @@ export default function DashboardLayout() {
     setUser(JSON.parse(userData));
   }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
-  };
+const handleLogout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("userProfile");
+  navigate("/login");
+};
 
   if (!user) return null;
 

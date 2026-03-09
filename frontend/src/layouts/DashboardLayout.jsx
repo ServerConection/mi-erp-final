@@ -32,6 +32,8 @@ const handleLogout = () => {
     { name: "Horarios", path: "/horarios", icon: "⏰" },
     { name: "Billetera", path: "/billetera", icon: "💳" },
     { name: "Comisiones", path: "/comisiones", icon: "💰" },
+    { name: "Seguimient Venta", path: "/Seguimiento_Venta", icon: "✔️" },
+    { name: "Redes", path: "/redes", icon: "🚩" },
   ];
 
   return (

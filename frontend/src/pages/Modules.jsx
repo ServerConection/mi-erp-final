@@ -61,3 +61,25 @@ export const Comisiones = () => (
     description="Cálculo automático de incentivos basado en cumplimiento de KPIs mensuales."
   />
 );
+
+// 6. Ingreso Ventas
+export const Seguimiento_Venta = () => (
+  <ModuleCard 
+    title="Seguimiento Ventas" 
+    icon="✔️" 
+    color="bg-yellow-500/20 text-white-400"
+    description="Seguimieto de ingresos en Jot para generar la continuidad de sus registros."
+  />
+
+);
+
+// 7. Ingreso Ventas
+export const Redes = () => (
+  <ModuleCard 
+    title="Redes" 
+    icon="✔️" 
+    color="bg-yellow-500/20 text-white-400"
+    description="Seguimieto de ingresos en Jot para generar la continuidad de sus registros."
+  />
+
+);

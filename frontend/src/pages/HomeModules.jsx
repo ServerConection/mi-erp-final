@@ -53,6 +53,20 @@ export default function HomeModules() {
       icon: "💰",
       color: "text-yellow-400",
       desc: "Cálculo automatizado de incentivos y bonos por desempeño."
+    },
+      {
+      title: "Seguimiento Ventas",
+      path: "/Seguimiento_Venta",
+      icon: "✔️",
+      color: "text-yellow-400",
+      desc: "Cálculo automatizado de incentivos y bonos por desempeño."
+    },
+          {
+      title: "Redes",
+      path: "/redes",
+      icon: "🚩",
+      color: "text-yellow-400",
+      desc: "Cálculo automatizado de incentivos y bonos por desempeño."
     }
   ];
 

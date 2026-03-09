@@ -4,7 +4,9 @@ import Indicadores from "./pages/Indicadores";
 import IndicadoresVelsa from "./pages/IndicadoresVelsa";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules from "./pages/HomeModules"; // <--- 1. IMPORTAMOS EL NUEVO HOME
-import { Ventas, RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
+import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS EL NUEVO HOME
+import Redes from "./pages/Redes"; // <--- 1. IMPORTAMOS EL NUEVO HOME
+import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -30,6 +32,8 @@ export default function App() {
           <Route path="horarios" element={<Horarios />} />
           <Route path="billetera" element={<Billetera />} />
           <Route path="comisiones" element={<Comisiones />} />
+          <Route path="Seguimiento_Venta" element={<Seguimientoventas />} />
+          <Route path="redes" element={<Redes />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" />} />

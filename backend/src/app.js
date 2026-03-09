@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes             = require('./routes/auth.routes');
+const redesRoutes = require('./routes/Redes.routes');
 const usuariosRoutes         = require('./routes/usuarios.routes');
 const loginOtpRoutes         = require('./routes/login.otp.routes');
 const passwordRoutes         = require('./routes/password.routes');
@@ -37,5 +38,8 @@ app.use('/api',              testEmailRoutes);
 // Indicadores
 app.use('/api/indicadores',       indicadoresRoutes);
 app.use('/api/indicadores-velsa', indicadoresVelsaRoutes);
+
+//Redes
+app.use('/api/redes',             redesRoutes);
 
 module.exports = app;

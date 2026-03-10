@@ -15,24 +15,20 @@ const getFechaHoyEcuador = () => {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 };
 
-// Calcula cuántos días del mes tiene el período del filtro (inclusive ambos extremos)
 const calcularDiasFiltro = (fechaDesde, fechaHasta) => {
   if (!fechaDesde || !fechaHasta) return 30;
   const desde = new Date(fechaDesde + 'T00:00:00');
   const hasta  = new Date(fechaHasta  + 'T00:00:00');
   const diff   = Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
-  return Math.max(1, diff + 1); // +1 porque incluye ambos extremos
+  return Math.max(1, diff + 1);
 };
 
-// Detecta cuántos días tiene el mes de la fecha "desde"
 const diasDelMes = (fechaDesde) => {
   if (!fechaDesde) return 30;
   const d = new Date(fechaDesde + 'T00:00:00');
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 };
 
-// Regla de tres: si metaMensual es para N días del mes, cuánto es para los días del filtro
-// Devuelve entero truncado
 const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
   const dias  = calcularDiasFiltro(fechaDesde, fechaHasta);
   const total = diasDelMes(fechaDesde);
@@ -124,7 +120,9 @@ export default function ReporteComercialCore() {
   }, [data]);
 
   const ETAPAS_JOTFORM = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
-  const COLORES_EMBUDO = ['#1d4ed8','#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe'];
+
+  // ── Paleta de embudo mejorada: degradado verde→amarillo→rojo para reflejar conversión ──
+  const COLORES_EMBUDO = ['#10b981','#34d399','#6ee7b7','#fbbf24','#f97316','#ef4444'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
   const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 4} fill="#60a5fa" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
@@ -146,47 +144,57 @@ export default function ReporteComercialCore() {
   const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
+  // ── Estilos compartidos para inputs/selects del panel de filtros ──
+  const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
+  const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
+
   return (
-    <div className="min-h-screen bg-[#F1F5F9] p-6 font-['Inter',_sans-serif] text-slate-900 uppercase">
+    // ── QUITADO: uppercase global. Ahora se aplica solo donde corresponde ──
+    <div className="min-h-screen bg-slate-100 p-6 font-['Inter',_sans-serif] text-slate-900">
+
+      {/* Alertas flotantes */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
         {alertas.map(alerta => (
-          <div key={alerta.id} className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm`}>{alerta.mensaje}</div>
+          <div key={alerta.id} className={`${alerta.color} text-white px-6 py-4 rounded-2xl shadow-2xl text-[11px] font-black tracking-wider animate-in slide-in-from-right-5 duration-300 border max-w-sm uppercase`}>{alerta.mensaje}</div>
         ))}
       </div>
 
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase">
           <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> SISTEMA DE INDICADORES
         </h1>
         <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
-          <button onClick={() => setTabActiva("GENERAL")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>📊 REPORTE GENERAL D-1</button>
-          <button onClick={() => setTabActiva("MONITOREO")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>⏱️ MONITOREO LEADS</button>
-          <button onClick={() => setTabActiva("REPORTE180")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all ${tabActiva === "REPORTE180" ? "bg-violet-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>🔭 REPORTE 180°</button>
+          <button onClick={() => setTabActiva("GENERAL")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>📊 REPORTE GENERAL D-1</button>
+          <button onClick={() => setTabActiva("MONITOREO")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>⏱️ MONITOREO LEADS</button>
+          <button onClick={() => setTabActiva("REPORTE180")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "REPORTE180" ? "bg-violet-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>🔭 REPORTE 180°</button>
         </div>
       </div>
 
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
+          {/* Panel de filtros */}
           <div className="bg-[#0F172A] rounded-2xl shadow-2xl mb-8 overflow-hidden border border-slate-800">
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               <div className="lg:col-span-2 flex flex-col gap-2">
-                <label className="text-[9px] font-black text-blue-400 italic tracking-widest">PERÍODO DE CONSULTA</label>
+                <label className="text-[9px] font-black text-blue-400 italic tracking-widest uppercase">PERÍODO DE CONSULTA</label>
                 <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
                   <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaDesde} onChange={e => setFiltros({...filtros, fechaDesde: e.target.value})} />
                   <div className="text-slate-600 px-2 font-black self-center">-</div>
                   <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
                 </div>
               </div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ASESOR</label><input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors" value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors" value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ETAPA CRM</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">NETLIFE</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ETAPA JOTFORM</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{ETAPAS_JOTFORM.map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">REGULARIZACIÓN</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoRegularizacion} onChange={e => setFiltros({...filtros, estadoRegularizacion: e.target.value})}><option value="">TODOS</option><option value="POR REGULARIZAR">POR REGULARIZAR</option><option value="REGULARIZADO">REGULARIZADO</option></select></div>
-              <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label><select className={selectCls} value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label><select className={selectCls} value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOTFORM</label><select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{ETAPAS_JOTFORM.map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
+              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">REGULARIZACIÓN</label><select className={selectCls} value={filtros.estadoRegularizacion} onChange={e => setFiltros({...filtros, estadoRegularizacion: e.target.value})}><option value="">TODOS</option><option value="POR REGULARIZAR">POR REGULARIZAR</option><option value="REGULARIZADO">REGULARIZADO</option></select></div>
+              <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
             </div>
           </div>
 
+          {/* KPIs Mini — ahora con feedback visual de cumplimiento */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
             <KpiMini label="Leads Totales"   meta={metaDinamica(6122,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}             color="border-l-emerald-500" />
             <KpiMini label="Gestionables"    meta={metaDinamica(3061,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                  color="border-l-violet-500" />
@@ -197,19 +205,20 @@ export default function ReporteComercialCore() {
             <KpiMini label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
             <KpiMini label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
             <KpiMini label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}             color="border-l-pink-500" />
+            <KpiMini label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
             <KpiMini label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
             <KpiMini label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
             <KpiMini label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
             <KpiMini label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
+          {/* Tarjetas Etapas Jotform */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               Etapas Jotform
               {filtros.etapaJotform && (
-                <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black normal-case">
+                <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
                   FILTRO ACTIVO: {filtros.etapaJotform}
                   <button onClick={() => { const f = {...filtros, etapaJotform: ""}; setFiltros(f); fetchDashboard(f); }} className="ml-1 text-blue-400 hover:text-red-500">✕</button>
                 </span>
@@ -225,9 +234,10 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
+          {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap">
+              <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
                 <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBarrasDia}</span>
@@ -255,10 +265,10 @@ export default function ReporteComercialCore() {
             </div>
 
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+              <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
-                <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
+                <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
               </h3>
               <div className="flex gap-4 h-[300px]">
                 <div className="flex-1">
@@ -277,7 +287,7 @@ export default function ReporteComercialCore() {
                     return (
                       <div key={index} className="flex items-center gap-2 min-w-0">
                         <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
-                        <span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span>
+                        <span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
                         <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
                         <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
                       </div>
@@ -288,6 +298,7 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
+          {/* Tablas */}
           <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
           <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} /></div>
           <div className="grid grid-cols-1 gap-4">
@@ -300,18 +311,18 @@ export default function ReporteComercialCore() {
         <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
           <div className="bg-emerald-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-emerald-700">
             <div>
-              <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2">
+              <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">
                 <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
                 MONITOREO DE GESTIÓN EN VIVO
               </h2>
-              <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em]">DATOS ACUMULADOS DEL MES Y DÍA ACTUAL</p>
+              <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em] uppercase">DATOS ACUMULADOS DEL MES Y DÍA ACTUAL</p>
             </div>
-            <button onClick={fetchMonitoreo} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
+            <button onClick={fetchMonitoreo} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
+              <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
                 <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
@@ -330,7 +341,7 @@ export default function ReporteComercialCore() {
               </div>
             </div>
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
-              <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap">
+              <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
                 SUPERVISORES — GESTIONABLES VS INGRESOS HOY
                 <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-cyan-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
@@ -365,9 +376,7 @@ export default function ReporteComercialCore() {
 // ======================================================
 function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
   const { kpis, embudoCRM, embudoJotform, mapaCalor } = data;
-  // Metas base mensuales — la función metaDinamica las ajusta según el rango de fechas
   const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
-  // Solo los KPIs numéricos escalan con días; los porcentuales son fijos
   const METAS = {
     ingresos_jot:     metaDinamica(METAS_BASE.ingresos_jot,     filtros.fechaDesde, filtros.fechaHasta),
     ventas_activas:   metaDinamica(METAS_BASE.ventas_activas,   filtros.fechaDesde, filtros.fechaHasta),
@@ -391,41 +400,43 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoCRM || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
   const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoJotform || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
 
+  const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
+  const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
+
   return (
     <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
       <div className="bg-violet-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-violet-700">
         <div>
-          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2">🔭 REPORTE 180° — VISIÓN ANALÍTICA</h2>
-          <p className="text-[9px] font-bold text-violet-300 tracking-[0.2em]">
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">🔭 REPORTE 180° — VISIÓN ANALÍTICA</h2>
+          <p className="text-[9px] font-bold text-violet-300 tracking-[0.2em] uppercase">
             KPIs · EMBUDOS · MAPA DE CALOR
             <span className="ml-3 bg-violet-700 px-2 py-0.5 rounded-full text-violet-200 not-italic">
               📅 {calcularDiasFiltro(filtros.fechaDesde, filtros.fechaHasta)} DÍA(S) DE {diasDelMes(filtros.fechaDesde)}
             </span>
           </p>
         </div>
-        <button onClick={() => onFetch()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20">{loading ? "CARGANDO..." : "APLICAR"}</button>
+        <button onClick={() => onFetch()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "CARGANDO..." : "APLICAR"}</button>
       </div>
 
       <div className="bg-[#0F172A] rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
         <div className="p-5 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 items-end">
           <div className="lg:col-span-2 flex flex-col gap-2">
-            <label className="text-[9px] font-black text-violet-400 italic tracking-widest">PERÍODO</label>
+            <label className="text-[9px] font-black text-violet-400 italic tracking-widest uppercase">PERÍODO</label>
             <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
               <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaDesde} onChange={e => setFiltros({...filtros, fechaDesde: e.target.value})} />
               <div className="text-slate-600 px-2 font-black self-center">-</div>
               <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
             </div>
           </div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ASESOR</label><input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors" value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors" value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ETAPA CRM</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">NETLIFE</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic">ETAPA JOT</label><select className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none" value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{(ETAPAS_JOTFORM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-          <button onClick={() => onFetch(filtros)} className="bg-violet-600 hover:bg-violet-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95">APLICAR FILTROS</button>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label><select className={selectCls} value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label><select className={selectCls} value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOT</label><select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{(ETAPAS_JOTFORM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
+          <button onClick={() => onFetch(filtros)} className="bg-violet-600 hover:bg-violet-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase">APLICAR FILTROS</button>
         </div>
       </div>
 
-      {/* ── KPI CARDS NUEVO DISEÑO ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard180 label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot}     real={kpis.ingresos_jot}             tipo="numero"     color="indigo" />
         <KpiCard180 label="VENTAS ACTIVAS"       meta={METAS.ventas_activas}   real={kpis.ventas_activas}           tipo="numero"     color="teal" />
@@ -436,7 +447,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-          <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2">
+          <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
             <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoCRM}</span>
@@ -455,14 +466,14 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
               {(embudoCRM || []).slice(0, 15).map((entry, index) => {
                 const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
-                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
               })}
             </div>
           </div>
         </div>
 
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-          <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2">
+          <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             EMBUDO JOTFORM — ESTADOS NETLIFE
             <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
@@ -481,7 +492,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
               {(embudoJotform || []).slice(0, 15).map((entry, index) => {
                 const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
-                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
               })}
             </div>
           </div>
@@ -489,7 +500,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       </div>
 
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-        <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2">
+        <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
           <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></span>
           MAPA DE CALOR — INGRESOS JOT POR CIUDAD Y FECHA
           <span className="ml-auto flex items-center gap-3 text-[8px] not-italic font-bold text-slate-500">
@@ -499,13 +510,13 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           </span>
         </h3>
         {fechas.length === 0 ? (
-          <div className="text-center text-slate-500 text-[10px] py-12">SIN DATOS PARA EL PERÍODO SELECCIONADO</div>
+          <div className="text-center text-slate-500 text-[10px] py-12 uppercase">SIN DATOS PARA EL PERÍODO SELECCIONADO</div>
         ) : (
           <div className="overflow-auto max-h-[500px]">
             <table className="text-[8px] font-mono border-collapse w-full">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  <th className="bg-slate-800 text-slate-400 p-2 text-left font-black sticky left-0 z-20 border-r border-slate-700 min-w-[120px]">CIUDAD</th>
+                  <th className="bg-slate-800 text-slate-400 p-2 text-left font-black sticky left-0 z-20 border-r border-slate-700 min-w-[120px] uppercase">CIUDAD</th>
                   {fechas.map(f => <th key={f} className="bg-slate-800 text-slate-400 p-1 font-black min-w-[36px] text-center border-l border-slate-700">{f ? f.split('-').slice(1).join('/') : f}</th>)}
                 </tr>
               </thead>
@@ -526,7 +537,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 }
 
 // ======================================================
-// KPI CARD 180° — Monocromático con acentos profesionales
+// KPI CARD 180°
 // ======================================================
 function KpiCard180({ label, meta, real, tipo, color, invertido }) {
   const pct    = meta > 0 ? Math.min((real / meta) * 100, 100) : 0;
@@ -574,24 +585,50 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
 }
 
 // ======================================================
-// KPI MINI
+// KPI MINI — con barra de progreso y color de cumplimiento
 // ======================================================
-const KpiMini = ({ label, value, meta, real, color }) => (
-  <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
-    <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
-    {meta !== undefined ? (
-      <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
-        <div className="flex flex-col"><span className="text-[8px] font-bold text-slate-400">META</span><span className="text-[12px] font-black text-slate-700">{meta}</span></div>
-        <div className="flex flex-col border-l border-slate-100 pl-2"><span className="text-[8px] font-bold text-slate-400">REAL</span><span className="text-[12px] font-black text-blue-600">{real}</span></div>
-      </div>
-    ) : (
-      <span className="text-xl font-black text-slate-800 mt-1">{value}</span>
-    )}
-  </div>
-);
+const KpiMini = ({ label, value, meta, real, color }) => {
+  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%', '')) : null;
+  const realNum = real !== undefined ? parseFloat(String(real).replace('%', '')) : null;
+  const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
+
+  // Verde si llegó al 97% o más, ámbar si no llegó (nada de rojo)
+  const cumple  = metaNum !== null && realNum !== null && pct >= 97;
+  const realColor   = cumple ? '#059669' : '#f59e0b';   // emerald-600 | amber-400
+  const barColor    = cumple ? '#10b981' : '#fbbf24';   // emerald-500 | amber-300
+
+  return (
+    <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
+      <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
+      {meta !== undefined ? (
+        <>
+          <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
+            <div className="flex flex-col">
+              <span className="text-[8px] font-bold text-slate-400 uppercase">META</span>
+              <span className="text-[12px] font-black text-slate-500">{meta}</span>
+            </div>
+            <div className="flex flex-col border-l border-slate-100 pl-2">
+              <span className="text-[8px] font-bold text-slate-400 uppercase">REAL</span>
+              <span className="text-[12px] font-black" style={{ color: realColor }}>{real}</span>
+            </div>
+          </div>
+          {/* Barra de progreso mini */}
+          <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+            <div
+              className="h-1 rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, backgroundColor: barColor }}
+            />
+          </div>
+        </>
+      ) : (
+        <span className="text-xl font-black text-slate-800 mt-1">{value}</span>
+      )}
+    </div>
+  );
+};
 
 // ======================================================
-// HORIZONTAL TABLE
+// HORIZONTAL TABLE — estilo unificado con DailyMonitoringTable
 // ======================================================
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
@@ -621,13 +658,17 @@ function HorizontalTable({ title, data, hasScroll }) {
   const NW   = 110;
 
   return (
-    <div className="bg-white border border-slate-400 shadow-sm rounded-sm overflow-hidden">
-      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-400 flex justify-between items-center">
-        <h2 className="text-[9px] font-black uppercase">{title} <span className="text-slate-400 font-mono">({safeData.length} registros)</span></h2>
-        <span className="text-[8px] text-slate-400 font-mono">V2.0_ENGINE</span>
+    // ── Estilo unificado: rounded-xl, shadow-2xl, header oscuro igual que DailyMonitoringTable ──
+    <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+        <h2 className="text-[10px] font-black uppercase italic tracking-[0.2em] text-white flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
+          {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
+        </h2>
+        <span className="text-[8px] text-slate-500 font-mono uppercase">V2.0_ENGINE</span>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
-        <table className="text-[9px] border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+        <table className="text-[9px] border-collapse uppercase" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead>
             <tr className="bg-slate-200 border-b border-slate-400 font-black text-[8px]">
               <th className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>ENTIDAD</th>
@@ -652,11 +693,12 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className={thDB}>REAL</th><th className={thDB}>REAL</th>
               <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
             </tr>
+            {/* ── Fila de totales: corregido typo total_activas_calculada ── */}
             <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
               <td className="px-2 py-1.5 border-r border-slate-600 sticky left-0 bg-slate-800 z-10 whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>▶ TOTAL</td>
               <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
               <td className="text-center border-r border-slate-700 px-3">{totals.backlog}</td>
-              <td className="text-center border-r border-slate-700 px-3 bg-slate-700">{totals.total_activas_calculacada}</td>
+              <td className="text-center border-r border-slate-700 px-3 bg-slate-700">{totals.total_activas_calculada}</td>
               <td className="text-center border-r border-slate-600 px-3 text-slate-400">—</td>
               <td className="text-center border-r border-slate-600 px-3">{totals.gestionables}</td>
               <td className="text-center border-r border-slate-700 px-3">{totals.ventas_crm}</td>
@@ -673,7 +715,7 @@ function HorizontalTable({ title, data, hasScroll }) {
           <tbody className="font-mono leading-none">
             {safeData.map((row, idx) => (
               <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                <td className="px-2 py-2 border-r border-slate-400 sticky left-0 bg-white font-bold text-[8px] truncate" style={{ width: NW, minWidth: NW, maxWidth: NW }} title={row.nombre_grupo}>{row.nombre_grupo}</td>
+                <td className="px-2 py-2 border-r border-slate-400 sticky left-0 bg-white font-bold text-[8px] truncate uppercase" style={{ width: NW, minWidth: NW, maxWidth: NW }} title={row.nombre_grupo}>{row.nombre_grupo}</td>
                 <td className={tdD}>{row.real_mes}</td>
                 <td className={tdD}>{row.backlog}</td>
                 <td className="text-center px-3 py-2 border-r border-slate-100 w-16 font-bold bg-slate-50 whitespace-nowrap">{row.total_activas_calculada}</td>
@@ -716,8 +758,11 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
   };
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden uppercase">
-      <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex justify-between items-center text-white">
-        <span className="text-[10px] font-black italic tracking-[0.2em]">{title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span></span>
+      <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center text-white">
+        <span className="text-[10px] font-black italic tracking-[0.2em] flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+          {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
+        </span>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[500px]' : ''}`}>
         <table className="w-full text-[10px] border-collapse whitespace-nowrap">
@@ -766,7 +811,7 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
           <tbody className="font-mono divide-y divide-slate-100">
             {safeData.map((row, idx) => (
               <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                <td className="p-3 font-black text-slate-800 sticky left-0 bg-white border-r border-slate-200 z-10">{row.nombre_grupo}</td>
+                <td className="p-3 font-black text-slate-800 sticky left-0 bg-white border-r border-slate-200 z-10 uppercase">{row.nombre_grupo}</td>
                 <td className="p-3 text-center text-slate-400">2000</td>
                 <td className="p-3 text-center font-black">{row.real_mes_leads}</td>
                 <td className="p-3 text-center bg-red-50/50 font-black text-red-600 italic">{(2000 - Number(row.real_mes_leads)).toLocaleString()}</td>
@@ -798,15 +843,15 @@ function DataVisor({ title, data, onDownload, color }) {
     <div className="bg-white border border-slate-300 shadow-lg rounded-2xl overflow-hidden mb-4">
       <div className={`${color} text-white px-6 py-3 flex justify-between items-center`}>
         <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-[0.2em]">{title}</h3>
-          <span className="text-[8px] font-bold opacity-60 italic">MOSTRANDO ÚLTIMOS {Math.min(data.length, 30)} DE {data.length} REGISTROS</span>
+          <h3 className="text-[10px] font-black tracking-[0.2em] uppercase">{title}</h3>
+          <span className="text-[8px] font-bold opacity-60 italic uppercase">MOSTRANDO ÚLTIMOS {Math.min(data.length, 30)} DE {data.length} REGISTROS</span>
         </div>
-        <button onClick={onDownload} className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2">⬇️ DESCARGAR EXCEL</button>
+        <button onClick={onDownload} className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 uppercase">⬇️ DESCARGAR EXCEL</button>
       </div>
       <div className="max-h-56 overflow-auto text-[9px] font-bold text-slate-600 font-mono">
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-100 sticky top-0 border-b border-slate-300 z-10 shadow-sm">
-            <tr>{Object.keys(data[0]).map(h => <th key={h} className="px-4 py-2 border-r border-slate-200 text-[8px] text-slate-400 font-black">{h}</th>)}</tr>
+            <tr>{Object.keys(data[0]).map(h => <th key={h} className="px-4 py-2 border-r border-slate-200 text-[8px] text-slate-400 font-black uppercase">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {data.slice(0, 30).map((row, i) => (

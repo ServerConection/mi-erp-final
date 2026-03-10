@@ -252,7 +252,7 @@ SELECT
     ROUND(
         COALESCE(
             COUNT(DISTINCT vn.id_unificado) FILTER (
-                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
             )::numeric
             /
             NULLIF(
@@ -315,7 +315,7 @@ ORDER BY gestionables DESC
             FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
-            LIMIT 6000
+           
         `;
 
         const queryJotform = `
@@ -333,7 +333,7 @@ ORDER BY gestionables DESC
             FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}
-            LIMIT 6000
+           
         `;
 
         const ESTADOS_ORDEN = [

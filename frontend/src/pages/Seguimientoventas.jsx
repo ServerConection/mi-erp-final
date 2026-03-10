@@ -4,76 +4,138 @@ const APPSHEET_URL =
   "https://www.appsheet.com/start/64aaca5b-4eba-4bc7-8dce-512ef8a1f118";
 
 export default function SeguimientoVentas() {
-  const [hover, setHover] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   return (
     <div
-      className="flex flex-col items-center justify-center w-full"
-      style={{ minHeight: "calc(100vh - 64px)", background: "linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f0f4ff 100%)" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "calc(100vh - 64px)",
+        background: "#060d1a",
+        fontFamily: "sans-serif",
+      }}
     >
-      {/* Card */}
+      {/* Barra superior */}
       <div
-        className="flex flex-col items-center gap-8 px-8 py-12 rounded-3xl bg-white max-w-md w-full mx-4"
-        style={{ boxShadow: "0 20px 60px rgba(37,99,235,0.12)" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 20px",
+          background: "#0a1628",
+          borderBottom: "1px solid #1a3a5c",
+          flexShrink: 0,
+        }}
       >
-        {/* Icon */}
-        <div className="relative">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
-            className="w-24 h-24 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)" }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <span
-            className="absolute -inset-1 rounded-2xl border-2 border-blue-300 opacity-40 animate-ping"
-            style={{ animationDuration: "2s" }}
-          ></span>
+            style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: "#00e676",
+              boxShadow: "0 0 6px #00e676",
+            }}
+          />
+          <span style={{ color: "#00e5ff", fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>
+            Seguimiento de Ventas — AppSheet
+          </span>
         </div>
-
-        {/* Text */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Seguimiento de Ventas</h1>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            Accede al formulario de seguimiento comercial para registrar y gestionar tus ventas en tiempo real.
-          </p>
-        </div>
-
-        {/* Main Button */}
         <a
           href={APPSHEET_URL}
           target="_blank"
           rel="noopener noreferrer"
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
-          className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl text-white font-semibold text-base transition-all duration-300"
           style={{
-            background: hover
-              ? "linear-gradient(135deg, #1d4ed8 0%, #1e3a5f 100%)"
-              : "linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)",
-            boxShadow: hover
-              ? "0 8px 30px rgba(37,99,235,0.5)"
-              : "0 4px 15px rgba(37,99,235,0.35)",
-            transform: hover ? "translateY(-2px)" : "translateY(0)",
+            padding: "6px 16px",
+            background: "linear-gradient(135deg, #00b4d8, #0077b6)",
+            color: "#fff",
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 1,
+            textDecoration: "none",
+            textTransform: "uppercase",
           }}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          Abrir Formulario
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
+          ↗ Abrir en nueva pestaña
         </a>
+      </div>
 
-        {/* Info note */}
-        <p className="text-xs text-gray-400 flex items-center gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Se abrirá en una nueva pestaña
-        </p>
+      {/* Iframe o fallback */}
+      <div style={{ flex: 1, position: "relative" }}>
+        {loading && !iframeError && (
+          <div
+            style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              background: "#060d1a", zIndex: 1, gap: 16,
+            }}
+          >
+            <div
+              style={{
+                width: 36, height: 36,
+                border: "3px solid rgba(0,229,255,0.15)",
+                borderTopColor: "#00e5ff",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }}
+            />
+            <span style={{ color: "#5a7a9a", fontSize: 13, letterSpacing: 1 }}>
+              Cargando AppSheet...
+            </span>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {iframeError ? (
+          <div
+            style={{
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              height: "100%", gap: 20,
+              background: "#060d1a",
+            }}
+          >
+            <div style={{ fontSize: 48 }}>📊</div>
+            <div style={{ color: "#00e5ff", fontSize: 18, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>
+              Seguimiento de Ventas
+            </div>
+            <div style={{ color: "#5a7a9a", fontSize: 13, textAlign: "center", maxWidth: 360, lineHeight: 1.6 }}>
+              El navegador bloqueó el iframe. Usa el botón para abrir AppSheet directamente.
+            </div>
+            <a
+              href={APPSHEET_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "14px 32px",
+                background: "linear-gradient(135deg, #00b4d8, #0077b6)",
+                color: "#fff", borderRadius: 12,
+                fontSize: 14, fontWeight: 700,
+                letterSpacing: 2, textDecoration: "none",
+                textTransform: "uppercase",
+                boxShadow: "0 0 20px rgba(0,180,216,0.35)",
+              }}
+            >
+              ⚡ Abrir AppSheet
+            </a>
+          </div>
+        ) : (
+          <iframe
+            src={APPSHEET_URL}
+            title="Seguimiento de Ventas"
+            onLoad={() => setLoading(false)}
+            onError={() => { setIframeError(true); setLoading(false); }}
+            style={{
+              width: "100%",
+              height: "100%",
+              border: "none",
+              display: "block",
+            }}
+            allow="camera; microphone; geolocation"
+          />
+        )}
       </div>
     </div>
   );

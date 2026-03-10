@@ -6,23 +6,7 @@ const pool = new Pool({
 
 const getMonitoreoRedes = async (req, res) => {
   try {
-    const query = `
-      SELECT * FROM pivot_etapas_mes() AS t(
-        etapa text,
-        total bigint,
-        "09/03/2026" bigint,
-        "08/03/2026" bigint,
-        "07/03/2026" bigint,
-        "06/03/2026" bigint,
-        "05/03/2026" bigint,
-        "04/03/2026" bigint,
-        "03/03/2026" bigint,
-        "02/03/2026" bigint,
-        "01/03/2026" bigint
-      )
-    `;
-
-    const result = await pool.query(query);
+    const result = await pool.query(`SELECT * FROM pivot_etapas_mes()`);
 
     res.json({
       success: true,
@@ -42,7 +26,6 @@ const getMonitoreoRedes = async (req, res) => {
 
 const getMonitoreoCosto = async (req, res) => {
   try {
-    // TODO: Implementar query para monitoreo de costos
     res.json({
       success: true,
       data: [],

@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes             = require('./routes/auth.routes');
-const redesRoutes = require('./routes/Redes.routes');
+const redesRoutes = require('./routes/redes.routes');
 const usuariosRoutes         = require('./routes/usuarios.routes');
 const loginOtpRoutes         = require('./routes/login.otp.routes');
 const passwordRoutes         = require('./routes/password.routes');

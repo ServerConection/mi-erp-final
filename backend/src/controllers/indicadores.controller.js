@@ -164,7 +164,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-                ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
+                ROUND( COALESCE( COUNT(*) FILTER ( WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO') )::numeric / NULLIF( COUNT(*) FILTER ( WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES} ), 0), 0 ) * 100, 2) AS eficiencia
             FROM mestra_bitrix mb
             LEFT JOIN (
     SELECT DISTINCT ON (nombre_completo) nombre_completo, supervisor

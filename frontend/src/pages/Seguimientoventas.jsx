@@ -1,7 +1,7 @@
 import React from "react";
 
 const APPSHEET_URL =
-  "https://www.appsheet.com/start/64aaca5b-4eba-4bc7-8dce-512ef8a1f118";
+  "https://www.jotform.com/213356674788673";
 
 export default function AppSheetEmbed() {
   return (

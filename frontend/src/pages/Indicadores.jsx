@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -34,6 +34,58 @@ const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
   const total = diasDelMes(fechaDesde);
   return Math.floor((metaMensual * dias) / total);
 };
+
+// ======================================================
+// MODAL FULLSCREEN PARA GRÁFICAS
+// ======================================================
+function ChartModal({ open, onClose, title, children }) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700">
+          <span className="text-[11px] font-black text-white uppercase tracking-widest italic">{title}</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl font-black transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700">✕</button>
+        </div>
+        <div className="flex-1 p-6 overflow-auto" style={{ minHeight: 400 }}>
+          {children}
+        </div>
+        <div className="px-6 py-3 border-t border-slate-800 text-center">
+          <span className="text-[9px] text-slate-600 uppercase tracking-widest">PRESIONA ESC O CLICK FUERA PARA CERRAR</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ======================================================
+// WRAPPER CLICKEABLE PARA GRÁFICAS
+// ======================================================
+function ExpandableChart({ title, className = "", modalHeight = 500, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className={`${className} cursor-zoom-in relative group`} onClick={() => setOpen(true)}>
+        {children}
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 text-white text-[8px] font-black px-2 py-1 rounded-lg border border-white/20 backdrop-blur-sm pointer-events-none">
+          ⛶ EXPANDIR
+        </div>
+      </div>
+      <ChartModal open={open} onClose={() => setOpen(false)} title={title}>
+        <div style={{ height: modalHeight }}>
+          {children}
+        </div>
+      </ChartModal>
+    </>
+  );
+}
 
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
@@ -120,8 +172,6 @@ export default function ReporteComercialCore() {
   }, [data]);
 
   const ETAPAS_JOTFORM = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
-
-  // ── Paleta de embudo mejorada: degradado verde→amarillo→rojo para reflejar conversión ──
   const COLORES_EMBUDO = ['#10b981','#34d399','#6ee7b7','#fbbf24','#f97316','#ef4444'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
@@ -144,12 +194,82 @@ export default function ReporteComercialCore() {
   const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
-  // ── Estilos compartidos para inputs/selects del panel de filtros ──
   const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
+  // ── Gráfica reutilizable: barras por día ──
+  const GraficoBarrasDia = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={(data.graficoBarrasDia || []).map(d => ({ ...d, faltante: Math.max(0, 65 - Number(d.total)), activos: Number(d.activos || 0) }))} margin={{ top: 24, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+        <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} domain={[0, dataMax => Math.max(dataMax, 70)]} />
+        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(value, name) => { if (name === 'total') return [value, 'REAL']; if (name === 'activos') return [value, 'ACTIVOS']; if (name === 'faltante') return [value, 'FALTANTE']; return [value, name]; }} />
+        <ReferenceLine y={65} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
+        <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0,0,0,0]} barSize={22}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
+        <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={22}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
+        <Bar dataKey="activos" fill="#60a5fa" radius={[4,4,0,0]} barSize={12}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  // ── Gráfica reutilizable: embudo general ──
+  const GraficoEmbudo = () => (
+    <div className="flex gap-4 h-full">
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <FunnelChart>
+            <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
+              {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
+            </Funnel>
+            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+          </FunnelChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+        {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => {
+          const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
+          return (
+            <div key={index} className="flex items-center gap-2 min-w-0">
+              <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
+              <span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
+              <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+              <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // ── Gráficas monitoreo ──
+  const GraficoAsesores = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+        <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
+        <Bar dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }} />
+        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  const GraficoSupervisores = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={dataGraficoSupervisores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+        <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
+        <Bar dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }} />
+        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
   return (
-    // ── QUITADO: uppercase global. Ahora se aplica solo donde corresponde ──
     <div className="min-h-screen bg-slate-100 p-6 font-['Inter',_sans-serif] text-slate-900">
 
       {/* Alertas flotantes */}
@@ -194,7 +314,7 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          {/* KPIs Mini — ahora con feedback visual de cumplimiento */}
+          {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
             <KpiMini label="Leads Totales"   meta={metaDinamica(6122,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}             color="border-l-emerald-500" />
             <KpiMini label="Gestionables"    meta={metaDinamica(3061,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                  color="border-l-violet-500" />
@@ -234,9 +354,9 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          {/* Gráficas */}
+          {/* Gráficas — con expand */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
@@ -248,54 +368,17 @@ export default function ReporteComercialCore() {
                   <span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META 65
                 </span>
               </h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={(data.graficoBarrasDia || []).map(d => ({ ...d, faltante: Math.max(0, 65 - Number(d.total)), activos: Number(d.activos || 0) }))} margin={{ top: 24, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} domain={[0, dataMax => Math.max(dataMax, 70)]} />
-                    <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(value, name) => { if (name === 'total') return [value, 'REAL']; if (name === 'activos') return [value, 'ACTIVOS']; if (name === 'faltante') return [value, 'FALTANTE']; return [value, name]; }} />
-                    <ReferenceLine y={65} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
-                    <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0,0,0,0]} barSize={22}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
-                    <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={22}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
-                    <Bar dataKey="activos" fill="#60a5fa" radius={[4,4,0,0]} barSize={12}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+              <div className="h-[300px]"><GraficoBarrasDia /></div>
+            </ExpandableChart>
 
-            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
                 <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
               </h3>
-              <div className="flex gap-4 h-[300px]">
-                <div className="flex-1">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <FunnelChart>
-                      <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
-                        {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
-                      </Funnel>
-                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
-                    </FunnelChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-                  {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => {
-                    const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
-                    return (
-                      <div key={index} className="flex items-center gap-2 min-w-0">
-                        <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
-                        <span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
-                        <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
-                        <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+              <div className="h-[300px]"><GraficoEmbudo /></div>
+            </ExpandableChart>
           </div>
 
           {/* Tablas */}
@@ -321,51 +404,39 @@ export default function ReporteComercialCore() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
+            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
                 <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
               </h3>
-              <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-                    <Bar dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }} />
-                    <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl">
+              <div className="h-[320px]"><GraficoAsesores /></div>
+            </ExpandableChart>
+
+            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
                 SUPERVISORES — GESTIONABLES VS INGRESOS HOY
                 <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-cyan-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
               </h3>
-              <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataGraficoSupervisores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                    <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-                    <Bar dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }} />
-                    <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+              <div className="h-[320px]"><GraficoSupervisores /></div>
+            </ExpandableChart>
           </div>
+
           <DailyMonitoringTable title="CONTROL OPERATIVO: SUPERVISORES" data={monitoreoData.supervisores} />
           <DailyMonitoringTable title="CONTROL OPERATIVO: ASESORES" data={monitoreoData.asesores} hasScroll={true} />
         </div>
 
       ) : (
-        <Reporte180 data={reporte180Data} filtros={filtros180} setFiltros={setFiltros180} onFetch={fetchReporte180} loading={loading} etapasCRM={data.etapasCRM} ETAPAS_JOTFORM={ETAPAS_JOTFORM} />
+        <Reporte180
+          data={reporte180Data}
+          filtros={filtros180}
+          setFiltros={setFiltros180}
+          onFetch={fetchReporte180}
+          loading={loading}
+          etapasCRM={data.etapasCRM}
+          ETAPAS_JOTFORM={ETAPAS_JOTFORM}
+        />
       )}
     </div>
   );
@@ -402,6 +473,48 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 
   const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
+
+  const GraficoEmbudoCRM = () => (
+    <div className="flex gap-4 h-full">
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <FunnelChart>
+            <Funnel data={embudoCRM || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelCRM}>
+              {(embudoCRM || []).map((_, index) => <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />)}
+            </Funnel>
+            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+          </FunnelChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+        {(embudoCRM || []).slice(0, 15).map((entry, index) => {
+          const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
+          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+        })}
+      </div>
+    </div>
+  );
+
+  const GraficoEmbudoJOT = () => (
+    <div className="flex gap-4 h-full">
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <FunnelChart>
+            <Funnel data={embudoJotform || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelJOT}>
+              {(embudoJotform || []).map((_, index) => <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />)}
+            </Funnel>
+            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+          </FunnelChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
+        {(embudoJotform || []).slice(0, 15).map((entry, index) => {
+          const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
+          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
@@ -446,57 +559,23 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+        <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={550}>
           <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
             <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoCRM}</span>
           </h3>
-          <div className="flex gap-4 h-[340px]">
-            <div className="flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Funnel data={embudoCRM || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelCRM}>
-                    {(embudoCRM || []).map((_, index) => <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />)}
-                  </Funnel>
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
-                </FunnelChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-              {(embudoCRM || []).slice(0, 15).map((entry, index) => {
-                const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
-                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
-              })}
-            </div>
-          </div>
-        </div>
+          <div className="h-[340px]"><GraficoEmbudoCRM /></div>
+        </ExpandableChart>
 
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+        <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={550}>
           <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             EMBUDO JOTFORM — ESTADOS NETLIFE
             <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
           </h3>
-          <div className="flex gap-4 h-[340px]">
-            <div className="flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Funnel data={embudoJotform || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelJOT}>
-                    {(embudoJotform || []).map((_, index) => <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />)}
-                  </Funnel>
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
-                </FunnelChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-              {(embudoJotform || []).slice(0, 15).map((entry, index) => {
-                const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
-                return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
-              })}
-            </div>
-          </div>
-        </div>
+          <div className="h-[340px]"><GraficoEmbudoJOT /></div>
+        </ExpandableChart>
       </div>
 
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
@@ -542,7 +621,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 function KpiCard180({ label, meta, real, tipo, color, invertido }) {
   const pct    = meta > 0 ? Math.min((real / meta) * 100, 100) : 0;
   const cumple = invertido ? real <= meta : real >= meta;
-
   const colores = {
     indigo: { accent: '#4f46e5', accentBg: '#eef2ff', accentText: '#4338ca', bar: '#4f46e5', icon: '📥' },
     teal:   { accent: '#0d9488', accentBg: '#f0fdfa', accentText: '#0f766e', bar: '#0d9488', icon: '✅' },
@@ -550,11 +628,9 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
     sky:    { accent: '#0284c7', accentBg: '#f0f9ff', accentText: '#0369a1', bar: '#0284c7', icon: '🎯' },
     rose:   { accent: '#e11d48', accentBg: '#fff1f2', accentText: '#be123c', bar: '#e11d48', icon: '👴' },
   };
-
   const c        = colores[color] || colores.indigo;
   const barColor = cumple ? c.bar : '#94a3b8';
   const pctLabel = cumple ? `✓ ${pct.toFixed(1)}%` : `✗ ${pct.toFixed(1)}%`;
-
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col" style={{ borderTop: `3px solid ${c.accent}` }}>
       <div className="px-4 pt-4 pb-2 flex items-center gap-2">
@@ -585,18 +661,15 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
 }
 
 // ======================================================
-// KPI MINI — con barra de progreso y color de cumplimiento
+// KPI MINI
 // ======================================================
 const KpiMini = ({ label, value, meta, real, color }) => {
   const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%', '')) : null;
   const realNum = real !== undefined ? parseFloat(String(real).replace('%', '')) : null;
   const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
-
-  // Verde si llegó al 97% o más, ámbar si no llegó (nada de rojo)
   const cumple  = metaNum !== null && realNum !== null && pct >= 97;
-  const realColor   = cumple ? '#059669' : '#f59e0b';   // emerald-600 | amber-400
-  const barColor    = cumple ? '#10b981' : '#fbbf24';   // emerald-500 | amber-300
-
+  const realColor   = cumple ? '#059669' : '#f59e0b';
+  const barColor    = cumple ? '#10b981' : '#fbbf24';
   return (
     <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
       <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
@@ -612,12 +685,8 @@ const KpiMini = ({ label, value, meta, real, color }) => {
               <span className="text-[12px] font-black" style={{ color: realColor }}>{real}</span>
             </div>
           </div>
-          {/* Barra de progreso mini */}
           <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1 overflow-hidden">
-            <div
-              className="h-1 rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, backgroundColor: barColor }}
-            />
+            <div className="h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
           </div>
         </>
       ) : (
@@ -628,11 +697,20 @@ const KpiMini = ({ label, value, meta, real, color }) => {
 };
 
 // ======================================================
-// HORIZONTAL TABLE — estilo unificado con DailyMonitoringTable
+// HORIZONTAL TABLE — con descarga Excel
 // ======================================================
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
   const n = safeData.length || 1;
+
+  const descargarExcel = () => {
+    if (!safeData.length) return;
+    const ws = XLSX.utils.json_to_sheet(safeData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+    XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const totals = {
     real_mes: safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0),
     backlog: safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
@@ -658,14 +736,13 @@ function HorizontalTable({ title, data, hasScroll }) {
   const NW   = 110;
 
   return (
-    // ── Estilo unificado: rounded-xl, shadow-2xl, header oscuro igual que DailyMonitoringTable ──
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden">
       <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
         <h2 className="text-[10px] font-black uppercase italic tracking-[0.2em] text-white flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
           {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
         </h2>
-        <span className="text-[8px] text-slate-500 font-mono uppercase">V2.0_ENGINE</span>
+        <button onClick={descargarExcel} className="text-[9px] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
         <table className="text-[9px] border-collapse uppercase" style={{ minWidth: '100%', tableLayout: 'auto' }}>
@@ -693,7 +770,6 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className={thDB}>REAL</th><th className={thDB}>REAL</th>
               <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
             </tr>
-            {/* ── Fila de totales: corregido typo total_activas_calculada ── */}
             <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
               <td className="px-2 py-1.5 border-r border-slate-600 sticky left-0 bg-slate-800 z-10 whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>▶ TOTAL</td>
               <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
@@ -740,11 +816,20 @@ function HorizontalTable({ title, data, hasScroll }) {
 }
 
 // ======================================================
-// DAILY MONITORING TABLE
+// DAILY MONITORING TABLE — con descarga Excel
 // ======================================================
 function DailyMonitoringTable({ title, data, hasScroll }) {
   const safeData = data || [];
   const n = safeData.length || 1;
+
+  const descargarExcel = () => {
+    if (!safeData.length) return;
+    const ws = XLSX.utils.json_to_sheet(safeData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+    XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const totals = {
     real_mes_leads:   safeData.reduce((a, r) => a + Number(r.real_mes_leads || 0), 0),
     real_dia_leads:   safeData.reduce((a, r) => a + Number(r.real_dia_leads || 0), 0),
@@ -756,6 +841,7 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
     real_descarte:    (safeData.reduce((a, r) => a + Number(r.real_descarte || 0), 0) / n).toFixed(1),
     real_tarjeta:     (safeData.reduce((a, r) => a + Number(r.real_tarjeta || 0), 0) / n).toFixed(1),
   };
+
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden uppercase">
       <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center text-white">
@@ -763,6 +849,7 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
           {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
         </span>
+        <button onClick={descargarExcel} className="text-[9px] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 uppercase">⬇️ EXCEL</button>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[500px]' : ''}`}>
         <table className="w-full text-[10px] border-collapse whitespace-nowrap">

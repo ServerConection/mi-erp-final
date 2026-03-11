@@ -311,7 +311,8 @@ ORDER BY gestionables DESC
                 e.supervisor AS "SUPERVISOR_ASIGNADO",
                 vn.t1_hgl_updated_at_fecha AS "FECHA_MODIFICACION",
                 vn.t1_hgl_updated_at_hora AS "HORA_MODIFICACION",
-                vn.t1_relation_tags AS "ORIGEN"
+                vn.t1_relation_tags AS "ORIGEN",
+                vn.ventasdiajot AS "VENTASDIASJOT"
             FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date ${filters}
@@ -329,7 +330,10 @@ ORDER BY gestionables DESC
                 vn.t2_estado_regularizacion_novo AS "MOTIVO_REGULARIZAR",
                 vn.t2_forma_pago AS "FORMA_PAGO",
                 vn.t1_assigned_to AS "ASESOR",
+                vn.t1_phone AS "TELF",
+                vn.t2_inicio_sesion_netlife AS "LOGIN",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
+
             FROM ${dedupVN}
             LEFT JOIN public.empleados e ON vn.t1_assigned_to = e.nombre_completo
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date ${filters}

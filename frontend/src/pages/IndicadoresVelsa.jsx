@@ -155,6 +155,11 @@ export default function ReporteVelsa() {
     etapaJotform: "",
   });
 
+  // ✅ CORRECCIÓN: ETAPAS_JOTFORM derivado dinámicamente de los datos reales del backend
+  const ETAPAS_JOTFORM = useMemo(() => {
+    return (data.estadosNetlife || []).map(e => e.estado).filter(Boolean);
+  }, [data.estadosNetlife]);
+
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
     const supEficienciaBaja = (supervisores || []).filter(s => Number(s.eficiencia) < 5);
@@ -250,7 +255,6 @@ export default function ReporteVelsa() {
     };
   }, [data]);
 
-  const ETAPAS_JOTFORM = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
   const COLORES_EMBUDO = ['#f97316','#fb923c','#fdba74','#fbbf24','#34d399','#10b981'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
@@ -277,7 +281,6 @@ export default function ReporteVelsa() {
   const inputCls = "bg-stone-950 border border-stone-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-orange-500 transition-colors uppercase";
   const selectCls = "bg-stone-950 border border-stone-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
-  // ── Gráfica reutilizable: barras por día ──
   const GraficoBarrasDia = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
@@ -297,7 +300,6 @@ export default function ReporteVelsa() {
     </ResponsiveContainer>
   );
 
-  // ── Gráfica reutilizable: embudo general ──
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
@@ -326,7 +328,6 @@ export default function ReporteVelsa() {
     </div>
   );
 
-  // ── Gráficas monitoreo ──
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
@@ -411,6 +412,7 @@ export default function ReporteVelsa() {
                   <option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option>
                 </select>
               </div>
+              {/* ✅ CORRECCIÓN: select usa ETAPAS_JOTFORM dinámico derivado de data.estadosNetlife */}
               <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ETAPA JOTFORM</label>
                 <select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}>
                   <option value="">TODAS</option>
@@ -446,7 +448,7 @@ export default function ReporteVelsa() {
             <KpiMini label="Por Regularizar" value={stats.regularizar}                                          color="border-l-rose-500" />
           </div>
 
-          {/* Tarjetas Etapas Jotform */}
+          {/* Tarjetas Etapas Jotform — ✅ ahora muestra TODOS los estados reales */}
           <div className="bg-white border border-stone-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-stone-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
@@ -472,7 +474,7 @@ export default function ReporteVelsa() {
             </div>
           </div>
 
-          {/* Gráficas — con expand */}
+          {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-stone-950 p-6 rounded-2xl border border-stone-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-orange-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
@@ -683,6 +685,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
               <option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option>
             </select>
           </div>
+          {/* ✅ CORRECCIÓN: usa ETAPAS_JOTFORM dinámico pasado como prop */}
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ETAPA JOT</label>
             <select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}>
               <option value="">TODAS</option>
@@ -840,7 +843,7 @@ const KpiMini = ({ label, value, meta, real, color }) => {
 };
 
 // ======================================================
-// HORIZONTAL TABLE — con descarga Excel
+// HORIZONTAL TABLE
 // ======================================================
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
@@ -959,7 +962,7 @@ function HorizontalTable({ title, data, hasScroll }) {
 }
 
 // ======================================================
-// DAILY MONITORING TABLE — con descarga Excel
+// DAILY MONITORING TABLE
 // ======================================================
 function DailyMonitoringTable({ title, data, hasScroll }) {
   const safeData = data || [];

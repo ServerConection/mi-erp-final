@@ -248,7 +248,7 @@ const getIndicadoresDashboard = async (req, res) => {
 
         const ESTADOS_ORDEN = [
             'ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO',
-            'DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'
+            'DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTIÓN','FACTIBLE'
         ];
 
         // SIN JOIN — usa filtersNoJoin para evitar duplicados

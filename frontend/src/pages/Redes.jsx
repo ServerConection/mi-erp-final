@@ -1,4 +1,27 @@
 import { useEffect, useState } from "react";
+import {
+  BarChart, Bar, LineChart, Line, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, Cell
+} from "recharts";
+
+// ── Paleta corporativa clara ──────────────────────────────────────────────────
+const C = {
+  primary:   "#1e40af",
+  success:   "#059669",
+  warning:   "#d97706",
+  danger:    "#dc2626",
+  violet:    "#7c3aed",
+  cyan:      "#0891b2",
+  slate:     "#475569",
+  bg:        "#f8fafc",
+  card:      "#ffffff",
+  border:    "#e2e8f0",
+  text:      "#1e293b",
+  muted:     "#64748b",
+};
+
+const ETAPAS_COLORS = [C.primary, C.success, C.warning, C.danger, C.violet, C.cyan, "#f59e0b", "#10b981"];
 
 const getFechaHoy = () =>
   new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
@@ -6,575 +29,771 @@ const getFechaHoy = () =>
 const formatFecha = (f) => {
   if (!f) return "—";
   const d = String(f).split("T")[0];
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const [, m, day] = d.split("-");
+  return `${day}/${m}`;
 };
 
-// ── Colores semáforo ──────────────────────────────────────────────────────────
-const pctColor = (v) => {
+const fmt2   = (v) => Number(v || 0).toFixed(2);
+const fmtPct = (v) => `${Number(v || 0).toFixed(1)}%`;
+const fmtUsd = (v) => `$${Number(v || 0).toFixed(0)}`;
+
+const pctStyle = (v) => {
   const n = Number(v);
-  if (n >= 80) return "text-emerald-600 font-black";
-  if (n >= 50) return "text-amber-500 font-black";
-  return "text-red-500 font-black";
+  if (n >= 80) return { color: C.success, fontWeight: 800 };
+  if (n >= 50) return { color: C.warning, fontWeight: 800 };
+  return { color: C.danger, fontWeight: 800 };
 };
 
-// ── Componente: filtro de fechas ──────────────────────────────────────────────
+const API = import.meta.env.VITE_API_URL;
+const apiUrl = (ruta, desde, hasta) =>
+  `${API}/api/redes/${ruta}?fechaDesde=${desde}&fechaHasta=${hasta}`;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UI ATOMS
+// ══════════════════════════════════════════════════════════════════════════════
+function Card({ children, className = "" }) {
+  return (
+    <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function CardHeader({ title, subtitle, accent = C.primary, badge }) {
+  return (
+    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3">
+        <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: accent }} />
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
+          {subtitle && <div className="text-[9px] text-slate-400 font-medium mt-0.5">{subtitle}</div>}
+        </div>
+      </div>
+      {badge}
+    </div>
+  );
+}
+
+function KpiCard({ label, value, color = C.primary, icon }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+        style={{ background: `${color}15` }}>{icon}</div>
+      <div className="min-w-0">
+        <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</div>
+        <div className="text-lg font-black leading-tight truncate" style={{ color }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
 function FiltroPeriodo({ fechaDesde, fechaHasta, onChange, onAplicar, loading }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 mb-6">
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Desde</label>
-        <input
-          type="date"
-          value={fechaDesde}
-          onChange={(e) => onChange("fechaDesde", e.target.value)}
-          className="bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-[11px] font-bold text-white outline-none focus:border-orange-500 [color-scheme:dark]"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Hasta</label>
-        <input
-          type="date"
-          value={fechaHasta}
-          onChange={(e) => onChange("fechaHasta", e.target.value)}
-          className="bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-[11px] font-bold text-white outline-none focus:border-orange-500 [color-scheme:dark]"
-        />
-      </div>
-      <button
-        onClick={onAplicar}
-        className="bg-orange-600 hover:bg-orange-500 active:scale-95 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg shadow-orange-900/30"
-      >
+    <div className="flex flex-wrap items-end gap-3">
+      {[["Desde", "fechaDesde", fechaDesde], ["Hasta", "fechaHasta", fechaHasta]].map(([label, key, val]) => (
+        <div key={key} className="flex flex-col gap-1">
+          <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>{label}</label>
+          <input type="date" value={val}
+            onChange={(e) => onChange(key, e.target.value)}
+            className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white [color-scheme:light]"
+          />
+        </div>
+      ))}
+      <button onClick={onAplicar}
+        className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
+        style={{ background: C.primary }}>
         {loading ? "Cargando..." : "Aplicar"}
       </button>
     </div>
   );
 }
 
-// ── Componente: badge de total ────────────────────────────────────────────────
-function TotalBadge({ label, value, color = "bg-orange-900/60 text-orange-300" }) {
+function VistaToggle({ value, onChange, options, color = C.primary }) {
   return (
-    <span className={`${color} text-[9px] font-black px-2 py-0.5 rounded-full uppercase`}>
-      {label}: {value ?? "—"}
-    </span>
+    <div className="flex rounded-lg overflow-hidden border border-slate-200">
+      {options.map((o) => (
+        <button key={o.value} onClick={() => onChange(o.value)}
+          className="px-3 py-1.5 text-[8px] font-black uppercase transition-all"
+          style={value === o.value ? { background: color, color: "#fff" } : { background: "#fff", color: C.muted }}>
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-[10px] max-w-xs">
+      <div className="font-black text-slate-600 mb-2 uppercase text-[9px]">{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2 mb-0.5">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+          <span className="text-slate-500 truncate">{p.name}:</span>
+          <span className="font-black text-slate-800">{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
-// TABLA 1 — MONITOREO PRINCIPAL
+// HOOK CENTRAL DE DATOS
 // ══════════════════════════════════════════════════════════════════════════════
-function TablaMonitoreoRedes({ fechaDesde, fechaHasta }) {
-  const [data, setData] = useState([]);
-  const [totales, setTotales] = useState(null);
+function useMonitoreoData(desde, hasta) {
+  const [data,    setData]    = useState({ principal: null, ciudad: null, hora: null, atc: null });
   const [loading, setLoading] = useState(false);
 
-  const fetch_ = async () => {
+  useEffect(() => {
+    if (!desde || !hasta) return;
     setLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/redes/monitoreo-redes?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`
-      );
-      const r = await res.json();
-      if (r.success) { setData(r.data); setTotales(r.totales); }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
+    Promise.all([
+      fetch(apiUrl("monitoreo-redes",  desde, hasta)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-ciudad", desde, hasta)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-hora",   desde, hasta)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-atc",    desde, hasta)).then(r => r.json()).catch(() => null),
+    ]).then(([p, c, h, a]) => {
+      setData({
+        principal: p?.success ? p : null,
+        ciudad:    c?.success ? c : null,
+        hora:      h?.success ? h : null,
+        atc:       a?.success ? a : null,
+      });
+    }).finally(() => setLoading(false));
+  }, [desde, hasta]);
 
-  useEffect(() => { fetch_(); }, [fechaDesde, fechaHasta]);
+  return { data, loading };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 1 — MONITOREO GENERAL
+// ══════════════════════════════════════════════════════════════════════════════
+function TabMonitoreoGeneral({ data, loading }) {
+  const { principal, ciudad, hora, atc } = data;
+  const [vistaCity, setVistaCity] = useState("resumen");
+  const [vistaHora, setVistaHora] = useState("resumen");
+  const [vistaAtc,  setVistaAtc]  = useState("resumen");
+
+  const totP  = principal?.totales || {};
+  const diasP = principal?.data    || [];
 
   const cols = [
-    { key: "fecha",                  label: "FECHA",           fmt: formatFecha },
-    { key: "dia_semana",             label: "DÍA" },
-    { key: "n_leads",                label: "LEADS" },
-    { key: "negociables",            label: "NEGOC." },
-    { key: "atc_soporte",            label: "ATC" },
-    { key: "fuera_cobertura",        label: "F.COB." },
-    { key: "zonas_peligrosas",       label: "Z.PELIG." },
-    { key: "innegociable",           label: "INNEG." },
-    { key: "venta_subida_bitrix",    label: "V.SUBIDA" },
-    { key: "seguimiento_negociacion",label: "SEGUIM." },
-    { key: "ingreso_jot",            label: "ING.JOT" },
-    { key: "ingreso_bitrix_mismo_dia",label: "ING.BITRIX" },
-    { key: "activo_backlog",         label: "BACKLOG" },
-    { key: "activos_mes",            label: "ACTIVOS" },
-    { key: "pago_cuenta",            label: "P.CUENTA" },
-    { key: "pago_efectivo",          label: "P.EFECT." },
-    { key: "pago_tarjeta",           label: "P.TARJ." },
-    { key: "ciclo_0_dias",           label: "C.0D" },
-    { key: "ciclo_1_dia",            label: "C.1D" },
-    { key: "ciclo_2_dias",           label: "C.2D" },
-    { key: "ciclo_3_dias",           label: "C.3D" },
-    { key: "ciclo_4_dias",           label: "C.4D" },
-    { key: "ciclo_mas5_dias",        label: "C.+5D" },
-    { key: "inversion_usd",          label: "INV.$", fmt: (v) => `$${Number(v).toFixed(2)}` },
-    { key: "cpl",                    label: "CPL", fmt: (v) => `$${v}` },
-    { key: "costo_activa",           label: "C.ACTIVA", fmt: (v) => `$${v}` },
-    { key: "costo_por_negociable",   label: "C.NEGOC.", fmt: (v) => `$${v}` },
-    { key: "pct_atc",                label: "% ATC", fmt: (v) => `${v}%`, cls: pctColor },
-    { key: "pct_negociable",         label: "% NEGOC.", fmt: (v) => `${v}%` },
-    { key: "efectividad_total",      label: "% EFECT.", fmt: (v) => `${v}%`, cls: pctColor },
+    { key: "fecha",                 label: "FECHA",    fmt: formatFecha },
+    { key: "dia_semana",            label: "DÍA" },
+    { key: "n_leads",               label: "LEADS",    color: C.primary },
+    { key: "negociables",           label: "NEGOC.",   color: C.success },
+    { key: "atc_soporte",           label: "ATC",      color: C.danger },
+    { key: "fuera_cobertura",       label: "F.COB." },
+    { key: "innegociable",          label: "INNEG.",   color: C.warning },
+    { key: "venta_subida_bitrix",   label: "V.SUBIDA", color: C.primary },
+    { key: "ingreso_jot",           label: "ING.JOT",  color: C.success },
+    { key: "activo_backlog",        label: "BACKLOG" },
+    { key: "activos_mes",           label: "ACTIVOS",  color: C.success },
+    { key: "pago_cuenta",           label: "P.CTA" },
+    { key: "pago_efectivo",         label: "P.EFECT" },
+    { key: "pago_tarjeta",          label: "P.TARJ" },
+    { key: "ciclo_0_dias",          label: "C.0D" },
+    { key: "ciclo_1_dia",           label: "C.1D" },
+    { key: "ciclo_2_dias",          label: "C.2D" },
+    { key: "ciclo_3_dias",          label: "C.3D" },
+    { key: "ciclo_4_dias",          label: "C.4D" },
+    { key: "ciclo_mas5_dias",       label: "C.+5D" },
+    { key: "inversion_usd",         label: "INV.$",    fmt: fmtUsd,             color: C.violet },
+    { key: "cpl",                   label: "CPL",      fmt: v=>`$${fmt2(v)}`,   color: C.violet },
+    { key: "costo_activa",          label: "C.ACTIVA", fmt: v=>`$${fmt2(v)}` },
+    { key: "pct_atc",               label: "% ATC",    fmt: fmtPct, pct: true },
+    { key: "pct_negociable",        label: "% NEGOC.", fmt: fmtPct },
+    { key: "efectividad_total",     label: "% EFECT.", fmt: fmtPct, pct: true },
   ];
 
-  const totalRow = totales ? {
-    fecha: "TOTAL",
-    dia_semana: "",
-    ...totales,
-  } : null;
+  if (loading) return <div className="text-center py-20 text-slate-400 text-sm font-medium">Cargando datos...</div>;
 
   return (
-    <div className="bg-stone-950 rounded-2xl border border-stone-800 shadow-2xl overflow-hidden mb-8">
-      {/* Header */}
-      <div className="px-5 py-3 bg-stone-900 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[10px] font-black text-orange-400 uppercase italic tracking-widest flex items-center gap-2">
-          <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
-          Monitoreo Principal — Métricas por Día
-        </h3>
-        <div className="flex flex-wrap gap-2">
-          <TotalBadge label="Leads" value={totales?.n_leads} />
-          <TotalBadge label="Negoc." value={totales?.negociables} color="bg-amber-900/60 text-amber-300" />
-          <TotalBadge label="Ing.JOT" value={totales?.ingreso_jot} color="bg-emerald-900/60 text-emerald-300" />
-          <TotalBadge label="Activos" value={totales?.activos_mes} color="bg-cyan-900/60 text-cyan-300" />
-          <TotalBadge label="Inv." value={totales?.inversion_usd ? `$${Number(totales.inversion_usd).toFixed(0)}` : "—"} color="bg-violet-900/60 text-violet-300" />
-        </div>
+    <div className="space-y-6">
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KpiCard label="Leads"        value={totP.n_leads      ?? "—"} icon="👥" color={C.primary} />
+        <KpiCard label="Negociables"  value={totP.negociables  ?? "—"} icon="🤝" color={C.success} />
+        <KpiCard label="Ing. JOT"     value={totP.ingreso_jot  ?? "—"} icon="📋" color={C.cyan} />
+        <KpiCard label="Activos"      value={totP.activos_mes  ?? "—"} icon="✅" color={C.success} />
+        <KpiCard label="Inversión"    value={totP.inversion_usd ? fmtUsd(totP.inversion_usd) : "—"} icon="💰" color={C.violet} />
+        <KpiCard label="% Efectividad" value={totP.efectividad_total ? fmtPct(totP.efectividad_total) : "—"} icon="📈" color={C.warning} />
       </div>
 
-      {/* Tabla */}
-      <div className="overflow-auto max-h-[480px]">
-        {loading ? (
-          <div className="text-center py-12 text-stone-500 text-[10px] uppercase">Cargando...</div>
-        ) : (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {cols.map((c) => (
-                  <th key={c.key} className="px-3 py-2 border-r border-stone-700 text-center last:border-r-0">
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-              {/* Fila TOTAL */}
-              {totalRow && (
-                <tr className="bg-orange-950 text-orange-200 font-black border-b border-orange-800">
-                  {cols.map((c) => {
-                    const val = totalRow[c.key];
-                    const display = c.fmt ? c.fmt(val ?? 0) : (val ?? "—");
-                    return (
-                      <td key={c.key} className="px-3 py-2 border-r border-orange-900 text-center last:border-r-0">
-                        {c.key === "fecha" ? "▶ TOTAL" : display}
-                      </td>
-                    );
-                  })}
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {data.length === 0 ? (
-                <tr><td colSpan={cols.length} className="text-center py-10 text-stone-500 uppercase text-[9px]">Sin datos para el período</td></tr>
-              ) : (
-                data.map((row, i) => (
-                  <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                    {cols.map((c) => {
-                      const val = row[c.key];
-                      const display = c.fmt ? c.fmt(val ?? 0) : (val ?? "—");
-                      const cls = c.cls ? c.cls(val) : "text-stone-300";
+      {/* Tabla principal */}
+      <Card>
+        <CardHeader title="Métricas Diarias" subtitle="mv_monitoreo_publicidad" accent={C.primary}
+          badge={<span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background:`${C.primary}12`, color:C.primary }}>{diasP.length} días</span>} />
+        <div className="overflow-auto max-h-96">
+          {diasP.length === 0
+            ? <div className="text-center py-12 text-slate-400 text-xs">Sin datos para el período</div>
+            : (
+              <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-slate-50 border-b-2 border-slate-200 text-slate-500 font-black uppercase">
+                    {cols.map(c => <th key={c.key} className="px-3 py-2 border-r border-slate-100 text-center last:border-r-0">{c.label}</th>)}
+                  </tr>
+                  <tr className="border-b-2 border-blue-100" style={{ background:`${C.primary}06` }}>
+                    {cols.map(c => {
+                      const raw = totP[c.key];
+                      const display = c.fmt ? c.fmt(raw ?? 0) : (raw ?? "—");
                       return (
-                        <td key={c.key} className={`px-3 py-1.5 border-r border-stone-800 text-center last:border-r-0 ${c.key === "fecha" ? "text-orange-300 font-black" : cls}`}>
-                          {display}
+                        <td key={c.key} className="px-3 py-2 border-r border-slate-100 text-center last:border-r-0 font-black"
+                          style={c.key==="fecha" ? {color:C.primary} : c.pct ? pctStyle(raw) : {color:c.color||C.slate}}>
+                          {c.key==="fecha" ? "▶ TOTAL" : display}
                         </td>
                       );
                     })}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TABLA 2 — POR CIUDAD
-// ══════════════════════════════════════════════════════════════════════════════
-function TablaMonitoreoCiudad({ fechaDesde, fechaHasta }) {
-  const [data, setData] = useState([]);
-  const [totales, setTotales] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [vista, setVista] = useState("detalle"); // detalle | resumen
-
-  const fetch_ = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/redes/monitoreo-ciudad?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`
-      );
-      const r = await res.json();
-      if (r.success) { setData(r.data); setTotales(r.totales); }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetch_(); }, [fechaDesde, fechaHasta]);
-
-  const totalLeads   = totales.reduce((a, r) => a + Number(r.total_leads || 0), 0);
-  const totalActivos = totales.reduce((a, r) => a + Number(r.activos || 0), 0);
-  const totalJot     = totales.reduce((a, r) => a + Number(r.ingresos_jot || 0), 0);
-
-  return (
-    <div className="bg-stone-950 rounded-2xl border border-stone-800 shadow-2xl overflow-hidden mb-8">
-      <div className="px-5 py-3 bg-stone-900 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[10px] font-black text-amber-400 uppercase italic tracking-widest flex items-center gap-2">
-          <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-          Distribución por Ciudad
-        </h3>
-        <div className="flex items-center gap-3">
-          <TotalBadge label="Leads" value={totalLeads} />
-          <TotalBadge label="Activos" value={totalActivos} color="bg-emerald-900/60 text-emerald-300" />
-          <TotalBadge label="Ing.JOT" value={totalJot} color="bg-cyan-900/60 text-cyan-300" />
-          <div className="flex bg-stone-800 rounded-lg p-0.5">
-            {["detalle", "resumen"].map((v) => (
-              <button key={v} onClick={() => setVista(v)}
-                className={`px-3 py-1 text-[8px] font-black uppercase rounded-md transition-all ${vista === v ? "bg-amber-600 text-white" : "text-stone-400 hover:text-white"}`}>
-                {v}
-              </button>
-            ))}
-          </div>
+                </thead>
+                <tbody>
+                  {diasP.map((row, i) => (
+                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      {cols.map(c => {
+                        const raw = row[c.key];
+                        const display = c.fmt ? c.fmt(raw ?? 0) : (raw ?? "—");
+                        return (
+                          <td key={c.key} className="px-3 py-1.5 border-r border-slate-100 text-center last:border-r-0"
+                            style={c.key==="fecha" ? {color:C.primary,fontWeight:800} : c.pct ? pctStyle(raw) : {color:c.color||C.slate}}>
+                            {display}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
         </div>
-      </div>
+      </Card>
 
-      <div className="overflow-auto max-h-[400px]">
-        {loading ? (
-          <div className="text-center py-12 text-stone-500 text-[10px] uppercase">Cargando...</div>
-        ) : vista === "resumen" ? (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["CIUDAD", "PROVINCIA", "LEADS", "ACTIVOS", "ING.JOT", "% ACTIVOS"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {totales.map((row, i) => (
-                <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-amber-300 font-black uppercase">{row.ciudad}</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-stone-400">{row.provincia}</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-center text-stone-300">{row.total_leads}</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-center text-emerald-400 font-black">{row.activos}</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-center text-cyan-400">{row.ingresos_jot}</td>
-                  <td className={`px-4 py-1.5 text-center ${pctColor(row.pct_activos)}`}>{row.pct_activos}%</td>
+      {/* Ciudad + ATC */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="Por Ciudad" accent={C.cyan}
+            badge={<VistaToggle value={vistaCity} onChange={setVistaCity} color={C.cyan}
+              options={[{value:"resumen",label:"Resumen"},{value:"detalle",label:"Detalle"}]} />} />
+          <div className="overflow-auto max-h-72">
+            <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+              <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                <tr className="text-slate-500 font-black uppercase">
+                  {(vistaCity==="resumen"
+                    ? ["CIUDAD","PROVINCIA","LEADS","ACTIVOS","ING.JOT","% ACTIVOS"]
+                    : ["FECHA","CIUDAD","LEADS","ACTIVOS","% ACTIVOS"]
+                  ).map(h=><th key={h} className="px-3 py-2 border-r border-slate-100 text-center last:border-r-0">{h}</th>)}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["FECHA", "CIUDAD", "PROVINCIA", "LEADS", "ACTIVOS", "ING.JOT", "% ACTIVOS"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-10 text-stone-500 uppercase text-[9px]">Sin datos</td></tr>
-              ) : (
-                data.map((row, i) => (
-                  <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-orange-300 font-black">{formatFecha(row.fecha)}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-amber-300 font-bold uppercase">{row.ciudad}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-stone-400">{row.provincia}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-stone-300">{row.total_leads}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-emerald-400 font-black">{row.activos}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-cyan-400">{row.ingresos_jot}</td>
-                    <td className={`px-4 py-1.5 text-center ${pctColor(row.pct_activos)}`}>{row.pct_activos}%</td>
+              </thead>
+              <tbody>
+                {(vistaCity==="resumen" ? ciudad?.totales||[] : ciudad?.data||[]).map((row,i)=>(
+                  <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                    {vistaCity==="resumen" ? <>
+                      <td className="px-3 py-1.5 border-r border-slate-100 font-black" style={{color:C.cyan}}>{row.ciudad}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-slate-500">{row.provincia}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-center text-slate-700">{row.total_leads}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-center font-black" style={{color:C.success}}>{row.activos}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-center text-slate-700">{row.ingresos_jot}</td>
+                      <td className="px-3 py-1.5 text-center font-black" style={pctStyle(row.pct_activos)}>{row.pct_activos}%</td>
+                    </> : <>
+                      <td className="px-3 py-1.5 border-r border-slate-100 font-black" style={{color:C.primary}}>{formatFecha(row.fecha)}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 font-black" style={{color:C.cyan}}>{row.ciudad}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-center text-slate-700">{row.total_leads}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 text-center font-black" style={{color:C.success}}>{row.activos}</td>
+                      <td className="px-3 py-1.5 text-center font-black" style={pctStyle(row.pct_activos)}>{row.pct_activos}%</td>
+                    </>}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TABLA 3 — POR HORA
-// ══════════════════════════════════════════════════════════════════════════════
-function TablaMonitoreoHora({ fechaDesde, fechaHasta }) {
-  const [data, setData] = useState([]);
-  const [totales, setTotales] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [vista, setVista] = useState("resumen");
-
-  const fetch_ = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/redes/monitoreo-hora?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`
-      );
-      const r = await res.json();
-      if (r.success) { setData(r.data); setTotales(r.totales); }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetch_(); }, [fechaDesde, fechaHasta]);
-
-  const totalLeads = totales.reduce((a, r) => a + Number(r.n_leads || 0), 0);
-  const totalAtc   = totales.reduce((a, r) => a + Number(r.atc || 0), 0);
-
-  return (
-    <div className="bg-stone-950 rounded-2xl border border-stone-800 shadow-2xl overflow-hidden mb-8">
-      <div className="px-5 py-3 bg-stone-900 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[10px] font-black text-cyan-400 uppercase italic tracking-widest flex items-center gap-2">
-          <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
-          Leads por Hora del Día
-        </h3>
-        <div className="flex items-center gap-3">
-          <TotalBadge label="Leads" value={totalLeads} color="bg-cyan-900/60 text-cyan-300" />
-          <TotalBadge label="ATC" value={totalAtc} color="bg-rose-900/60 text-rose-300" />
-          <div className="flex bg-stone-800 rounded-lg p-0.5">
-            {["resumen", "detalle"].map((v) => (
-              <button key={v} onClick={() => setVista(v)}
-                className={`px-3 py-1 text-[8px] font-black uppercase rounded-md transition-all ${vista === v ? "bg-cyan-600 text-white" : "text-stone-400 hover:text-white"}`}>
-                {v}
-              </button>
-            ))}
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </div>
+        </Card>
 
-      <div className="overflow-auto max-h-[400px]">
-        {loading ? (
-          <div className="text-center py-12 text-stone-500 text-[10px] uppercase">Cargando...</div>
-        ) : vista === "resumen" ? (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["HORA", "LEADS", "ATC", "% ATC"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {totales.map((row, i) => (
-                <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-cyan-300 font-black text-center">{String(row.hora).padStart(2,"0")}:00</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-center text-stone-300">{row.n_leads}</td>
-                  <td className="px-4 py-1.5 border-r border-stone-800 text-center text-rose-400">{row.atc}</td>
-                  <td className={`px-4 py-1.5 text-center ${pctColor(row.pct_atc_hora)}`}>{row.pct_atc_hora}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["FECHA", "HORA", "LEADS", "ATC", "% ATC"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-10 text-stone-500 uppercase text-[9px]">Sin datos</td></tr>
-              ) : (
-                data.map((row, i) => (
-                  <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-orange-300 font-black">{formatFecha(row.fecha)}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-cyan-300 font-black text-center">{String(row.hora).padStart(2,"0")}:00</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-stone-300">{row.n_leads}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-rose-400">{row.atc}</td>
-                    <td className={`px-4 py-1.5 text-center ${pctColor(row.pct_atc_hora)}`}>{row.pct_atc_hora}%</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TABLA 4 — MOTIVOS ATC
-// ══════════════════════════════════════════════════════════════════════════════
-function TablaMonitoreoAtc({ fechaDesde, fechaHasta }) {
-  const [data, setData] = useState([]);
-  const [totales, setTotales] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [vista, setVista] = useState("resumen");
-
-  const fetch_ = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/redes/monitoreo-atc?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`
-      );
-      const r = await res.json();
-      if (r.success) { setData(r.data); setTotales(r.totales); }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetch_(); }, [fechaDesde, fechaHasta]);
-
-  const totalAtc = totales.reduce((a, r) => a + Number(r.cantidad || 0), 0);
-
-  return (
-    <div className="bg-stone-950 rounded-2xl border border-stone-800 shadow-2xl overflow-hidden mb-8">
-      <div className="px-5 py-3 bg-stone-900 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[10px] font-black text-rose-400 uppercase italic tracking-widest flex items-center gap-2">
-          <span className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-          Motivos ATC
-        </h3>
-        <div className="flex items-center gap-3">
-          <TotalBadge label="Total ATC" value={totalAtc} color="bg-rose-900/60 text-rose-300" />
-          <div className="flex bg-stone-800 rounded-lg p-0.5">
-            {["resumen", "detalle"].map((v) => (
-              <button key={v} onClick={() => setVista(v)}
-                className={`px-3 py-1 text-[8px] font-black uppercase rounded-md transition-all ${vista === v ? "bg-rose-600 text-white" : "text-stone-400 hover:text-white"}`}>
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-auto max-h-[400px]">
-        {loading ? (
-          <div className="text-center py-12 text-stone-500 text-[10px] uppercase">Cargando...</div>
-        ) : vista === "resumen" ? (
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["MOTIVO ATC", "CANTIDAD", "% DEL TOTAL"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {totales.map((row, i) => {
-                const pct = totalAtc > 0 ? ((Number(row.cantidad) / totalAtc) * 100).toFixed(1) : 0;
-                return (
-                  <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-rose-300 font-bold uppercase">{row.motivo_atc}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-center text-white font-black">{row.cantidad}</td>
-                    <td className="px-4 py-1.5 text-center">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-stone-800 rounded-full h-1.5 overflow-hidden">
-                          <div className="h-1.5 bg-rose-500 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="text-rose-300 font-black w-10 text-right">{pct}%</span>
+        <Card>
+          <CardHeader title="Motivos ATC" accent={C.danger}
+            badge={<VistaToggle value={vistaAtc} onChange={setVistaAtc} color={C.danger}
+              options={[{value:"resumen",label:"Resumen"},{value:"detalle",label:"Detalle"}]} />} />
+          <div className="overflow-auto max-h-72">
+            {vistaAtc==="resumen" ? (
+              <div className="p-4 space-y-2.5">
+                {(atc?.totales||[]).map((row,i)=>{
+                  const total=(atc?.totales||[]).reduce((a,r)=>a+Number(r.cantidad||0),0);
+                  const pct=total>0?((Number(row.cantidad)/total)*100).toFixed(1):0;
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="text-[9px] font-bold text-slate-600 w-40 truncate">{row.motivo_atc}</div>
+                      <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="h-1.5 rounded-full" style={{width:`${pct}%`,background:C.danger}} />
                       </div>
-                    </td>
+                      <div className="text-[9px] font-black w-8 text-right" style={{color:C.danger}}>{row.cantidad}</div>
+                      <div className="text-[9px] text-slate-400 w-10 text-right">{pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                  <tr className="text-slate-500 font-black uppercase">
+                    {["FECHA","MOTIVO","CANTIDAD"].map(h=><th key={h} className="px-3 py-2 border-r border-slate-100 text-center last:border-r-0">{h}</th>)}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
+                </thead>
+                <tbody>
+                  {(atc?.data||[]).map((row,i)=>(
+                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-1.5 border-r border-slate-100 font-black" style={{color:C.primary}}>{formatFecha(row.fecha)}</td>
+                      <td className="px-3 py-1.5 border-r border-slate-100 font-bold" style={{color:C.danger}}>{row.motivo_atc}</td>
+                      <td className="px-3 py-1.5 text-center font-black text-slate-800">{row.cantidad}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Hora */}
+      <Card>
+        <CardHeader title="Leads por Hora" accent={C.violet}
+          badge={<VistaToggle value={vistaHora} onChange={setVistaHora} color={C.violet}
+            options={[{value:"resumen",label:"Resumen"},{value:"detalle",label:"Detalle"}]} />} />
+        <div className="overflow-auto max-h-72">
           <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-stone-800 text-stone-400 font-black uppercase">
-                {["FECHA", "MOTIVO ATC", "CANTIDAD"].map((h) => (
-                  <th key={h} className="px-4 py-2 border-r border-stone-700 text-center last:border-r-0">{h}</th>
-                ))}
+            <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+              <tr className="text-slate-500 font-black uppercase">
+                {(vistaHora==="resumen" ? ["HORA","LEADS","ATC","% ATC"] : ["FECHA","HORA","LEADS","ATC","% ATC"])
+                  .map(h=><th key={h} className="px-3 py-2 border-r border-slate-100 text-center last:border-r-0">{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {data.length === 0 ? (
-                <tr><td colSpan={3} className="text-center py-10 text-stone-500 uppercase text-[9px]">Sin datos</td></tr>
-              ) : (
-                data.map((row, i) => (
-                  <tr key={i} className="border-b border-stone-800 hover:bg-stone-900 transition-colors">
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-orange-300 font-black">{formatFecha(row.fecha)}</td>
-                    <td className="px-4 py-1.5 border-r border-stone-800 text-rose-300 font-bold uppercase">{row.motivo_atc}</td>
-                    <td className="px-4 py-1.5 text-center text-white font-black">{row.cantidad}</td>
-                  </tr>
-                ))
-              )}
+              {(vistaHora==="resumen" ? hora?.totales||[] : hora?.data||[]).map((row,i)=>(
+                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                  {vistaHora==="detalle" && <td className="px-3 py-1.5 border-r border-slate-100 font-black" style={{color:C.primary}}>{formatFecha(row.fecha)}</td>}
+                  <td className="px-3 py-1.5 border-r border-slate-100 text-center font-black" style={{color:C.violet}}>{String(row.hora).padStart(2,"0")}:00</td>
+                  <td className="px-3 py-1.5 border-r border-slate-100 text-center text-slate-700">{row.n_leads}</td>
+                  <td className="px-3 py-1.5 border-r border-slate-100 text-center" style={{color:C.danger}}>{row.atc}</td>
+                  <td className="px-3 py-1.5 text-center font-black" style={pctStyle(row.pct_atc_hora)}>{row.pct_atc_hora}%</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 2 — GRÁFICOS GERENCIA
+// ══════════════════════════════════════════════════════════════════════════════
+function TabGraficos({ data, loading }) {
+  const { principal, hora, atc } = data;
+
+  if (loading) return <div className="text-center py-20 text-slate-400 text-sm font-medium">Generando gráficos...</div>;
+  if (!principal) return <div className="text-center py-20 text-slate-400 text-sm">Sin datos — aplica un filtro de fechas.</div>;
+
+  const totP   = principal?.totales || {};
+  const diasRaw = (principal?.data || []).slice().reverse();
+
+  // Series diarias
+  const diasData = diasRaw.map(d => ({
+    fecha:       formatFecha(d.fecha),
+    "Leads":     Number(d.n_leads         || 0),
+    "Negoc.":    Number(d.negociables      || 0),
+    "Ing.JOT":   Number(d.ingreso_jot      || 0),
+    "Activos":   Number(d.activos_mes      || 0),
+    "ATC":       Number(d.atc_soporte      || 0),
+    "V.Subida":  Number(d.venta_subida_bitrix || 0),
+    "% Efect":   Number(d.efectividad_total || 0),
+    "% ATC":     Number(d.pct_atc          || 0),
+    "Inv.$":     Number(d.inversion_usd    || 0),
+    "CPL":       Number(d.cpl              || 0),
+  }));
+
+  // Hora acumulada
+  const horaData = (hora?.totales || []).map(h => ({
+    hora:    `${String(h.hora).padStart(2,"0")}h`,
+    "Leads": Number(h.n_leads || 0),
+    "ATC":   Number(h.atc    || 0),
+    "% ATC": Number(h.pct_atc_hora || 0),
+  }));
+
+  const maxLeads = Math.max(1, ...horaData.map(h => h["Leads"]));
+  const maxAtc   = Math.max(1, ...horaData.map(h => h["ATC"]));
+
+  // ATC ranking
+  const atcData = (atc?.totales || []).map(a => ({
+    name:     (a.motivo_atc || "").length > 22 ? (a.motivo_atc||"").slice(0,20)+"…" : a.motivo_atc,
+    Cantidad: Number(a.cantidad || 0),
+  }));
+
+  // Mapa de calor hora × día
+  const DIAS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+  const heatRaw = {};
+  (hora?.data || []).forEach(row => {
+    const h   = `${String(row.hora).padStart(2,"0")}h`;
+    const fd  = new Date(String(row.fecha).split("T")[0] + "T12:00:00");
+    const dow = fd.getDay();
+    const dia = DIAS[dow === 0 ? 6 : dow - 1];
+    if (!heatRaw[h]) heatRaw[h] = {};
+    heatRaw[h][dia] = (heatRaw[h][dia] || 0) + Number(row.n_leads || 0);
+  });
+  const heatHoras = Object.keys(heatRaw).sort();
+  const heatMax   = Math.max(1, ...Object.values(heatRaw).flatMap(v => Object.values(v)));
+  const heatColor = (v) => {
+    if (!v) return "#f1f5f9";
+    const t = v / heatMax;
+    if (t > 0.75) return "#1e40af";
+    if (t > 0.5)  return "#3b82f6";
+    if (t > 0.25) return "#93c5fd";
+    return "#dbeafe";
+  };
+
+  // Embudo
+  const embudo = [
+    { etapa: "Leads",        valor: Number(totP.n_leads            || 0) },
+    { etapa: "Gestionables", valor: Number(totP.total_gestionables || 0) },
+    { etapa: "Negociables",  valor: Number(totP.negociables        || 0) },
+    { etapa: "V. Subida CRM",valor: Number(totP.venta_subida_bitrix|| 0) },
+    { etapa: "Ing. JOT",     valor: Number(totP.ingreso_jot        || 0) },
+    { etapa: "Activos mes",  valor: Number(totP.activos_mes        || 0) },
+  ];
+
+  const pagoData = [
+    { name:"Cuenta",   Ingresos:Number(totP.pago_cuenta   ||0), Activas:Number(totP.pago_cuenta_activa  ||0) },
+    { name:"Efectivo", Ingresos:Number(totP.pago_efectivo ||0), Activas:Number(totP.pago_efectivo_activa||0) },
+    { name:"Tarjeta",  Ingresos:Number(totP.pago_tarjeta  ||0), Activas:Number(totP.pago_tarjeta_activa ||0) },
+  ];
+
+  const cicloData = [
+    { ciclo:"0d",  valor:Number(totP.ciclo_0_dias   ||0) },
+    { ciclo:"1d",  valor:Number(totP.ciclo_1_dia    ||0) },
+    { ciclo:"2d",  valor:Number(totP.ciclo_2_dias   ||0) },
+    { ciclo:"3d",  valor:Number(totP.ciclo_3_dias   ||0) },
+    { ciclo:"4d",  valor:Number(totP.ciclo_4_dias   ||0) },
+    { ciclo:"+5d", valor:Number(totP.ciclo_mas5_dias||0) },
+  ];
+  const cicloColors = [C.success, C.cyan, C.primary, C.warning, C.danger, "#7c3aed"];
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── 1. Área: funnel diario ── */}
+      <Card>
+        <CardHeader title="Evolución del Funnel Diario" accent={C.primary}
+          subtitle="Leads · Negociables · Ingresos JOT · Activos" />
+        <div className="p-5">
+          <ResponsiveContainer width="100%" height={270}>
+            <AreaChart data={diasData} margin={{top:5,right:10,left:0,bottom:5}}>
+              <defs>
+                {[["l",C.primary],["n",C.success],["j",C.cyan],["a","#10b981"]].map(([id,c])=>(
+                  <linearGradient key={id} id={`g${id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={c} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={c} stopOpacity={0.02} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="fecha" tick={{fontSize:9,fill:C.muted}} />
+              <YAxis tick={{fontSize:9,fill:C.muted}} width={32} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend wrapperStyle={{fontSize:10}} />
+              <Area type="monotone" dataKey="Leads"    stroke={C.primary} fill="url(#gl)" strokeWidth={2} dot={{r:2.5}} />
+              <Area type="monotone" dataKey="Negoc."   stroke={C.success} fill="url(#gn)" strokeWidth={2} dot={{r:2.5}} />
+              <Area type="monotone" dataKey="Ing.JOT"  stroke={C.cyan}    fill="url(#gj)" strokeWidth={2} dot={{r:2.5}} />
+              <Area type="monotone" dataKey="Activos"  stroke="#10b981"   fill="url(#ga)" strokeWidth={2} dot={{r:2.5}} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {/* ── 2. Efectividad % + CPL/Inversión ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="% Efectividad vs % ATC" accent={C.warning} subtitle="Indicadores de calidad diarios" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={230}>
+              <LineChart data={diasData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="fecha" tick={{fontSize:9,fill:C.muted}} />
+                <YAxis tick={{fontSize:9,fill:C.muted}} width={35} unit="%" domain={[0,100]} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{fontSize:10}} />
+                <Line type="monotone" dataKey="% Efect" stroke={C.success} strokeWidth={2.5} dot={{r:3}} activeDot={{r:5}} />
+                <Line type="monotone" dataKey="% ATC"   stroke={C.danger}  strokeWidth={2.5} dot={{r:3}} strokeDasharray="5 3" activeDot={{r:5}} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Inversión & CPL Diario" accent={C.violet} subtitle="Costo de adquisición por día" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={diasData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="fecha" tick={{fontSize:9,fill:C.muted}} />
+                <YAxis yAxisId="l" tick={{fontSize:9,fill:C.muted}} width={42} />
+                <YAxis yAxisId="r" orientation="right" tick={{fontSize:9,fill:C.muted}} width={35} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{fontSize:10}} />
+                <Bar  yAxisId="l" dataKey="Inv.$" fill={C.violet} radius={[4,4,0,0]} opacity={0.8} />
+                <Line yAxisId="r" type="monotone" dataKey="CPL" stroke={C.warning} strokeWidth={2.5} dot={{r:3}} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* ── 3. Leads por hora + ATC por hora ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="Leads por Hora del Día" accent={C.cyan} subtitle="Acumulado del período" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={horaData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="hora" tick={{fontSize:8,fill:C.muted}} />
+                <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="Leads" radius={[4,4,0,0]}>
+                  {horaData.map((d,i) => (
+                    <Cell key={i} fill={d["Leads"]===maxLeads ? C.primary : "#93c5fd"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Soporte ATC por Hora" accent={C.danger} subtitle="Horarios de mayor demanda ATC" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={horaData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="hora" tick={{fontSize:8,fill:C.muted}} />
+                <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="ATC" radius={[4,4,0,0]}>
+                  {horaData.map((d,i) => (
+                    <Cell key={i} fill={d["ATC"]===maxAtc ? C.danger : "#fca5a5"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* ── 4. Mapa de calor ── */}
+      {heatHoras.length > 0 && (
+        <Card>
+          <CardHeader title="Mapa de Calor — Leads · Hora × Día de Semana" accent={C.primary}
+            subtitle="Identifica los horarios de mayor tráfico por día" />
+          <div className="p-5 overflow-auto">
+            <div className="inline-flex gap-1.5 text-[8px]">
+              {/* etiquetas hora */}
+              <div className="flex flex-col gap-1.5">
+                <div className="h-7" />
+                {heatHoras.map(h => (
+                  <div key={h} className="h-8 w-9 flex items-center justify-end pr-1 font-black text-slate-400">{h}</div>
+                ))}
+              </div>
+              {/* columnas días */}
+              {DIAS.map(dia => (
+                <div key={dia} className="flex flex-col gap-1.5">
+                  <div className="h-7 w-12 flex items-center justify-center font-black text-slate-500 uppercase text-[8px]">{dia}</div>
+                  {heatHoras.map(h => {
+                    const v = heatRaw[h]?.[dia] || 0;
+                    return (
+                      <div key={h} title={`${h} ${dia}: ${v} leads`}
+                        className="h-8 w-12 rounded-lg flex items-center justify-center font-black cursor-default transition-all hover:opacity-80"
+                        style={{ background: heatColor(v), color: v/heatMax > 0.45 ? "#fff" : C.slate }}>
+                        {v > 0 ? v : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            {/* leyenda */}
+            <div className="flex items-center gap-2 mt-4 text-[9px] text-slate-400">
+              <span className="font-medium">Bajo</span>
+              {["#dbeafe","#93c5fd","#3b82f6","#1e40af"].map(c => (
+                <div key={c} className="w-8 h-3 rounded" style={{background:c}} />
+              ))}
+              <span className="font-medium">Alto</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ── 5. Motivos ATC + Embudo ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="Ranking Motivos ATC" accent={C.danger} subtitle="Acumulado del período" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={atcData} layout="vertical" margin={{top:5,right:30,left:5,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" tick={{fontSize:9,fill:C.muted}} />
+                <YAxis type="category" dataKey="name" tick={{fontSize:8,fill:C.muted}} width={130} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="Cantidad" fill={C.danger} radius={[0,4,4,0]} opacity={0.85} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Embudo de Conversión" accent={C.success} subtitle="Del lead al activo" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={embudo} layout="vertical" margin={{top:5,right:30,left:5,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" tick={{fontSize:9,fill:C.muted}} />
+                <YAxis type="category" dataKey="etapa" tick={{fontSize:9,fill:C.muted}} width={120} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="valor" radius={[0,4,4,0]}>
+                  {embudo.map((_,i) => <Cell key={i} fill={ETAPAS_COLORS[i]} opacity={0.85} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* ── 6. Forma de pago + Ciclo de venta ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="Forma de Pago" accent={C.cyan} subtitle="Ingresos JOT vs Activos por tipo" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={pagoData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{fontSize:10,fill:C.muted}} />
+                <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{fontSize:10}} />
+                <Bar dataKey="Ingresos" fill={C.cyan}    radius={[4,4,0,0]} opacity={0.9} />
+                <Bar dataKey="Activas"  fill={C.success} radius={[4,4,0,0]} opacity={0.9} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Ciclo de Venta" accent={C.violet} subtitle="Días entre lead e ingreso JOT" />
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={cicloData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="ciclo" tick={{fontSize:10,fill:C.muted}} />
+                <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="valor" radius={[4,4,0,0]}>
+                  {cicloData.map((_,i) => <Cell key={i} fill={cicloColors[i]} opacity={0.85} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 3 — PRÓXIMAMENTE
+// ══════════════════════════════════════════════════════════════════════════════
+function TabProximamente() {
+  return (
+    <div className="flex flex-col items-center justify-center py-28 gap-5">
+      <div className="w-20 h-20 rounded-3xl bg-slate-100 flex items-center justify-center text-4xl shadow-inner">🚀</div>
+      <div className="text-xl font-black text-slate-700 tracking-tight">Próximamente</div>
+      <div className="text-sm text-slate-400 text-center max-w-sm leading-relaxed">
+        Este módulo está en desarrollo. Aquí encontrarás nuevos análisis, reportes comparativos y proyecciones.
       </div>
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL — Redes.jsx
+// ROOT
 // ══════════════════════════════════════════════════════════════════════════════
+const TABS = [
+  { id: "general",      label: "Monitoreo General", icon: "📊" },
+  { id: "graficos",     label: "Gráficos Gerencia", icon: "📈" },
+  { id: "proximamente", label: "Próximamente",       icon: "🚀" },
+];
+
 export default function Redes() {
   const hoy = getFechaHoy();
+  const [tab,        setTab]        = useState("general");
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
-  const [filtroActivo, setFiltroActivo] = useState({ desde: hoy, hasta: hoy });
-  const [loading, setLoading] = useState(false);
+  const [filtro,     setFiltro]     = useState({ desde: hoy, hasta: hoy });
+  const [applying,   setApplying]   = useState(false);
 
-  const handleChange = (key, val) => {
-    if (key === "fechaDesde") setFechaDesde(val);
-    else setFechaHasta(val);
-  };
+  const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta);
 
   const handleAplicar = () => {
-    setLoading(true);
-    setFiltroActivo({ desde: fechaDesde, hasta: fechaHasta });
-    setTimeout(() => setLoading(false), 300);
+    setApplying(true);
+    setFiltro({ desde: fechaDesde, hasta: fechaHasta });
+    setTimeout(() => setApplying(false), 500);
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 p-6 font-['Inter',_sans-serif]">
+    <div className="min-h-screen bg-slate-50 p-5 md:p-7">
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2 mb-1">
-          <span className="bg-orange-600 text-white px-2 py-0.5 rounded italic text-lg">VLS</span>
-          Monitoreo Redes General
-        </h1>
-        <p className="text-[9px] text-stone-500 uppercase tracking-widest font-bold">
-          Inversión · Leads · Ciudad · Hora · ATC — Actualización cada 15 min
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
+              style={{ background: C.primary }}>V</div>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Monitoreo Redes</h1>
+            <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase"
+              style={{ background:`${C.success}15`, color:C.success }}>● Live</span>
+          </div>
+          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-12">
+            VELSA NETLIFE — Actualización cada 15 minutos
+          </p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm">
+          <FiltroPeriodo
+            fechaDesde={fechaDesde} fechaHasta={fechaHasta}
+            onChange={(k,v) => k==="fechaDesde" ? setFechaDesde(v) : setFechaHasta(v)}
+            onAplicar={handleAplicar} loading={applying||loading}
+          />
+          <p className="text-[8px] text-slate-400 font-medium mt-2 uppercase tracking-wide">
+            Mostrando: {filtro.desde} → {filtro.hasta}
+          </p>
+        </div>
       </div>
 
-      {/* Filtro */}
-      <div className="bg-stone-900 border border-stone-800 rounded-2xl px-5 py-4 mb-8">
-        <FiltroPeriodo
-          fechaDesde={fechaDesde}
-          fechaHasta={fechaHasta}
-          onChange={handleChange}
-          onAplicar={handleAplicar}
-          loading={loading}
-        />
-        <p className="text-[8px] text-stone-600 uppercase font-bold">
-          Período activo: {formatFecha(filtroActivo.desde)} → {formatFecha(filtroActivo.hasta)}
-        </p>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-white border border-slate-200 rounded-2xl p-1 mb-7 w-fit shadow-sm">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all"
+            style={tab===t.id
+              ? { background:C.primary, color:"#fff", boxShadow:`0 2px 10px ${C.primary}35` }
+              : { color:C.muted }}>
+            <span className="text-sm">{t.icon}</span>
+            <span className="hidden sm:inline">{t.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Tabla 1 */}
-      <TablaMonitoreoRedes
-        fechaDesde={filtroActivo.desde}
-        fechaHasta={filtroActivo.hasta}
-      />
-
-      {/* Tabla 2 */}
-      <TablaMonitoreoCiudad
-        fechaDesde={filtroActivo.desde}
-        fechaHasta={filtroActivo.hasta}
-      />
-
-      {/* Tabla 3 */}
-      <TablaMonitoreoHora
-        fechaDesde={filtroActivo.desde}
-        fechaHasta={filtroActivo.hasta}
-      />
-
-      {/* Tabla 4 */}
-      <TablaMonitoreoAtc
-        fechaDesde={filtroActivo.desde}
-        fechaHasta={filtroActivo.hasta}
-      />
+      {/* Contenido */}
+      {tab==="general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
+      {tab==="graficos"     && <TabGraficos         data={data} loading={loading} />}
+      {tab==="proximamente" && <TabProximamente />}
 
     </div>
   );

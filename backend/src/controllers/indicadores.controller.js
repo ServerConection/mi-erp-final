@@ -294,6 +294,13 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY etapa ASC
         `;
 
+        // NUEVO: trae todas las etapas distintas de j_netlife_estatus_real
+        const queryEtapasJotform = `
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
+            FROM public.mestra_bitrix mb
+            ORDER BY etapa ASC
+        `;
+
         // SIN JOIN — usa filtersNoJoin
         const queryTerceraEdad = `
             SELECT
@@ -321,7 +328,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ${filtersNoJoin}
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resEtapasJotform, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryKPI('e.supervisor'), values),
             pool.query(queryKPI('mb.b_persona_responsable'), values),
             pool.query(queryCRM, values),
@@ -330,6 +337,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryEmbudo, values),
             pool.query(queryPorDia, values),
             pool.query(queryEtapasCRM),
+            pool.query(queryEtapasJotform),
             pool.query(queryTerceraEdad, values),
             pool.query(queryTarjeta, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -377,6 +385,7 @@ const getIndicadoresDashboard = async (req, res) => {
             graficoEmbudo: resEmbudo.rows,
             graficoBarrasDia: resDia.rows,
             etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
+            etapasJotform: resEtapasJotform.rows.map(r => r.etapa),
             porcentajeTerceraEdad,
             porcentajeTarjeta,
         });

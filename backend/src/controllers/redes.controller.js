@@ -1,8 +1,4 @@
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const pool = require('../config/db');
 
 // ─── Helper: parsea fechas del query ────────────────────────────────────────
 const getFiltroFechas = (query) => {

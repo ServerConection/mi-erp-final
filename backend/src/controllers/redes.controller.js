@@ -264,10 +264,147 @@ const getMonitoreoCosto = async (req, res) => {
   }
 };
 
+// ─── 6. MONITOREO METAS vs LOGROS (mestra_bitrix) ────────────────────────────
+const getMonitoreoMetas = async (req, res) => {
+  try {
+    const { fechaDesde, fechaHasta, modo } = req.query;
+    const hoy = new Date().toISOString().split('T')[0];
+    const desde = fechaDesde || hoy;
+    const hasta  = fechaHasta || hoy;
+
+    // origenes puede venir como "GOOGLE,META" separado por comas
+    const origenesRaw = req.query.origenes || '';
+    const origenes = origenesRaw
+      ? origenesRaw.split(',').map((o) => o.trim()).filter(Boolean)
+      : [];
+
+    // ── WHERE de fecha ────────────────────────────────────────────────────────
+    // modo = 'mes'   → LIKE '%YYYY-MM%'
+    // modo = 'rango' → BETWEEN (por defecto)
+    let fechaWhere;
+    let fechaParams;
+
+    if (modo === 'mes') {
+      const mes = desde.slice(0, 7); // "2026-03"
+      fechaWhere  = `b_creado_el_fecha LIKE $1`;
+      fechaParams = [`%${mes}%`];
+    } else {
+      fechaWhere  = `b_creado_el_fecha::date BETWEEN $1::date AND $2::date`;
+      fechaParams = [desde, hasta];
+    }
+
+    const paramOffset = fechaParams.length;
+
+    // ── WHERE de orígenes ─────────────────────────────────────────────────────
+    let origenWhere  = '';
+    let origenParams = [];
+
+    if (origenes.length > 0) {
+      const placeholders = origenes.map((_, i) => `$${paramOffset + i + 1}`).join(', ');
+      origenWhere  = `AND b_origen IN (${placeholders})`;
+      origenParams = origenes;
+    }
+
+    const allParams = [...fechaParams, ...origenParams];
+
+    // ── Etapas por origen ─────────────────────────────────────────────────────
+    const etapasResult = await pool.query(`
+      SELECT
+        b_origen,
+        b_etapa_de_la_negociacion,
+        COUNT(*) AS total
+      FROM public.mestra_bitrix
+      WHERE ${fechaWhere}
+        ${origenWhere}
+      GROUP BY b_origen, b_etapa_de_la_negociacion
+      ORDER BY b_origen, total DESC
+    `, allParams);
+
+    // ── Totales por origen ────────────────────────────────────────────────────
+    const totalesResult = await pool.query(`
+      SELECT
+        b_origen,
+        COUNT(*) AS total_leads
+      FROM public.mestra_bitrix
+      WHERE ${fechaWhere}
+        ${origenWhere}
+      GROUP BY b_origen
+      ORDER BY total_leads DESC
+    `, allParams);
+
+    // ── Orígenes disponibles (para el selector del frontend) ─────────────────
+    const origenesDisp = await pool.query(`
+      SELECT DISTINCT b_origen
+      FROM public.mestra_bitrix
+      WHERE ${fechaWhere}
+        AND b_origen IS NOT NULL
+        AND b_origen <> ''
+      ORDER BY b_origen ASC
+    `, fechaParams);
+
+    // ── Agrupación por origen ─────────────────────────────────────────────────
+    const byOrigen = {};
+
+    totalesResult.rows.forEach((r) => {
+      byOrigen[r.b_origen] = {
+        origen:           r.b_origen,
+        total_leads:      Number(r.total_leads),
+        inversion_usd:    0,
+        atc_soporte:      0,
+        fuera_cobertura:  0,
+        zonas_peligrosas: 0,
+        innegociable:     0,
+        venta_subida:     0,
+        ingreso_jot:      0,
+      };
+    });
+
+    etapasResult.rows.forEach((r) => {
+      const o = byOrigen[r.b_origen];
+      if (!o) return;
+      const etapa = (r.b_etapa_de_la_negociacion || '').toUpperCase().trim();
+      const n = Number(r.total);
+
+      if (etapa === 'ATC/SOPORTE')        o.atc_soporte      += n;
+      if (etapa === 'FUERA DE COBERTURA') o.fuera_cobertura  += n;
+      if (etapa === 'ZONAS PELIGROSAS')   o.zonas_peligrosas += n;
+      if (etapa === 'INNEGOCIABLE')       o.innegociable     += n;
+      if (etapa === 'VENTA SUBIDA')       o.venta_subida     += n;
+      if (etapa === 'INGRESO JOT' || etapa === 'VENTA JOT') o.ingreso_jot += n;
+    });
+
+    // ── Métricas derivadas ────────────────────────────────────────────────────
+    const canales = Object.values(byOrigen).map((o) => {
+      const sac     = o.atc_soporte + o.fuera_cobertura + o.zonas_peligrosas + o.innegociable;
+      const calidad = o.total_leads - sac;
+      return {
+        ...o,
+        leads_sac:      sac,
+        leads_calidad:  calidad,
+        pct_sac:        o.total_leads > 0 ? (sac            / o.total_leads) * 100 : 0,
+        pct_calidad:    o.total_leads > 0 ? (calidad         / o.total_leads) * 100 : 0,
+        pct_ventas:     o.total_leads > 0 ? (o.venta_subida  / o.total_leads) * 100 : 0,
+        pct_ventas_jot: o.total_leads > 0 ? (o.ingreso_jot   / o.total_leads) * 100 : 0,
+      };
+    });
+
+    res.json({
+      success: true,
+      canales,
+      origenes_disponibles: origenesDisp.rows.map((r) => r.b_origen),
+    });
+
+  } catch (error) {
+    console.error('Error en getMonitoreoMetas:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
+  }
+};
+
 module.exports = {
   getMonitoreoRedes,
   getMonitoreoCiudad,
   getMonitoreoHora,
   getMonitoreoAtc,
   getMonitoreoCosto,
+  getMonitoreoMetas,
 };

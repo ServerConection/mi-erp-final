@@ -396,7 +396,6 @@ function TabGraficos({ data, loading }) {
   const totP   = principal?.totales || {};
   const diasRaw = (principal?.data || []).slice().reverse();
 
-  // Series diarias
   const diasData = diasRaw.map(d => ({
     fecha:       formatFecha(d.fecha),
     "Leads":     Number(d.n_leads         || 0),
@@ -411,7 +410,6 @@ function TabGraficos({ data, loading }) {
     "CPL":       Number(d.cpl              || 0),
   }));
 
-  // Hora acumulada
   const horaData = (hora?.totales || []).map(h => ({
     hora:    `${String(h.hora).padStart(2,"0")}h`,
     "Leads": Number(h.n_leads || 0),
@@ -422,13 +420,11 @@ function TabGraficos({ data, loading }) {
   const maxLeads = Math.max(1, ...horaData.map(h => h["Leads"]));
   const maxAtc   = Math.max(1, ...horaData.map(h => h["ATC"]));
 
-  // ATC ranking
   const atcData = (atc?.totales || []).map(a => ({
     name:     (a.motivo_atc || "").length > 22 ? (a.motivo_atc||"").slice(0,20)+"…" : a.motivo_atc,
     Cantidad: Number(a.cantidad || 0),
   }));
 
-  // Mapa de calor hora × día
   const DIAS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
   const heatRaw = {};
   (hora?.data || []).forEach(row => {
@@ -450,7 +446,6 @@ function TabGraficos({ data, loading }) {
     return "#dbeafe";
   };
 
-  // Embudo
   const embudo = [
     { etapa: "Leads",        valor: Number(totP.n_leads            || 0) },
     { etapa: "Gestionables", valor: Number(totP.total_gestionables || 0) },
@@ -479,7 +474,6 @@ function TabGraficos({ data, loading }) {
   return (
     <div className="space-y-6">
 
-      {/* ── 1. Área: funnel diario ── */}
       <Card>
         <CardHeader title="Evolución del Funnel Diario" accent={C.primary}
           subtitle="Leads · Negociables · Ingresos JOT · Activos" />
@@ -508,7 +502,6 @@ function TabGraficos({ data, loading }) {
         </div>
       </Card>
 
-      {/* ── 2. Efectividad % + CPL/Inversión ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader title="% Efectividad vs % ATC" accent={C.warning} subtitle="Indicadores de calidad diarios" />
@@ -546,7 +539,6 @@ function TabGraficos({ data, loading }) {
         </Card>
       </div>
 
-      {/* ── 3. Leads por hora + ATC por hora ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader title="Leads por Hora del Día" accent={C.cyan} subtitle="Acumulado del período" />
@@ -587,21 +579,18 @@ function TabGraficos({ data, loading }) {
         </Card>
       </div>
 
-      {/* ── 4. Mapa de calor ── */}
       {heatHoras.length > 0 && (
         <Card>
           <CardHeader title="Mapa de Calor — Leads · Hora × Día de Semana" accent={C.primary}
             subtitle="Identifica los horarios de mayor tráfico por día" />
           <div className="p-5 overflow-auto">
             <div className="inline-flex gap-1.5 text-[8px]">
-              {/* etiquetas hora */}
               <div className="flex flex-col gap-1.5">
                 <div className="h-7" />
                 {heatHoras.map(h => (
                   <div key={h} className="h-8 w-9 flex items-center justify-end pr-1 font-black text-slate-400">{h}</div>
                 ))}
               </div>
-              {/* columnas días */}
               {DIAS.map(dia => (
                 <div key={dia} className="flex flex-col gap-1.5">
                   <div className="h-7 w-12 flex items-center justify-center font-black text-slate-500 uppercase text-[8px]">{dia}</div>
@@ -618,7 +607,6 @@ function TabGraficos({ data, loading }) {
                 </div>
               ))}
             </div>
-            {/* leyenda */}
             <div className="flex items-center gap-2 mt-4 text-[9px] text-slate-400">
               <span className="font-medium">Bajo</span>
               {["#dbeafe","#93c5fd","#3b82f6","#1e40af"].map(c => (
@@ -630,7 +618,6 @@ function TabGraficos({ data, loading }) {
         </Card>
       )}
 
-      {/* ── 5. Motivos ATC + Embudo ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader title="Ranking Motivos ATC" accent={C.danger} subtitle="Acumulado del período" />
@@ -665,7 +652,6 @@ function TabGraficos({ data, loading }) {
         </Card>
       </div>
 
-      {/* ── 6. Forma de pago + Ciclo de venta ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader title="Forma de Pago" accent={C.cyan} subtitle="Ingresos JOT vs Activos por tipo" />
@@ -707,7 +693,409 @@ function TabGraficos({ data, loading }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 3 — PRÓXIMAMENTE
+// TAB 3 — METAS VS LOGROS  ← NUEVO
+// ══════════════════════════════════════════════════════════════════════════════
+
+function MetaInput({ label, value, onChange, prefix = "", suffix = "", placeholder = "0" }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[8px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</label>
+      <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-400 transition-all">
+        {prefix && <span className="px-2 text-[10px] font-black text-slate-400 bg-slate-50 border-r border-slate-100">{prefix}</span>}
+        <input
+          type="number"
+          step="any"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none bg-white min-w-0"
+        />
+        {suffix && <span className="px-2 text-[10px] font-black text-slate-400 bg-slate-50 border-l border-slate-100">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function DiffCell({ objetivo, logro, esPct = false, esMonto = false, invertirColor = false }) {
+  const obj = Number(objetivo || 0);
+  const log = Number(logro    || 0);
+  if (!obj && !log) return <td className="px-3 py-2 text-center text-slate-300 border-r border-slate-100 last:border-r-0">—</td>;
+  const diff  = log - obj;
+  const fmtV  = (v) => esMonto ? `$${Math.abs(v).toFixed(2)}` : esPct ? `${Math.abs(v).toFixed(1)}%` : String(Math.abs(Math.round(v)));
+  const sign  = diff >= 0 ? "+" : "-";
+  const bueno = invertirColor ? diff < 0 : diff >= 0;
+  const color = diff === 0 ? C.slate : bueno ? C.success : C.danger;
+  const pctDif = obj !== 0 ? `${((log / obj) * 100).toFixed(1)}%` : null;
+  return (
+    <td className="px-3 py-2 text-center border-r border-slate-100 last:border-r-0">
+      <div className="font-black text-[10px]" style={{ color }}>{sign}{fmtV(diff)}</div>
+      {pctDif && <div className="text-[8px] text-slate-400 font-medium">{pctDif}</div>}
+    </td>
+  );
+}
+
+function TabMetas({ filtro }) {
+  const [fechaDesde,   setFechaDesde]   = useState(filtro.desde);
+  const [fechaHasta,   setFechaHasta]   = useState(filtro.hasta);
+  const [modoFecha,    setModoFecha]    = useState("rango");
+  const [origenes,     setOrigenes]     = useState([]);
+  const [origenesDisp, setOrigenesDisp] = useState([]);
+  const [loadingOrig,  setLoadingOrig]  = useState(false);
+  const [canales,      setCanales]      = useState([]);
+  const [loadingData,  setLoadingData]  = useState(false);
+
+  const [metas, setMetas] = useState({
+    leads_totales: "", pct_sac: "", pct_calidad: "", pct_ventas: "",
+    pct_ventas_jot: "", presupuesto: "", ctr: "", cpl: "",
+    cpl_gest: "", cpa: "", cpa_jot: "",
+  });
+  const setMeta = (k) => (v) => setMetas((p) => ({ ...p, [k]: v }));
+
+  // Cargar orígenes disponibles
+  useEffect(() => {
+    if (!fechaDesde || !fechaHasta) return;
+    setLoadingOrig(true);
+    const params = new URLSearchParams({ fechaDesde, fechaHasta, modo: modoFecha });
+    fetch(`${API}/api/redes/monitoreo-metas?${params}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setOrigenesDisp(d.origenes_disponibles || []); })
+      .catch(() => {})
+      .finally(() => setLoadingOrig(false));
+  }, [fechaDesde, fechaHasta, modoFecha]);
+
+  const handleAplicar = () => {
+    if (!fechaDesde || !fechaHasta) return;
+    setLoadingData(true);
+    const params = new URLSearchParams({
+      fechaDesde, fechaHasta, modo: modoFecha, origenes: origenes.join(","),
+    });
+    fetch(`${API}/api/redes/monitoreo-metas?${params}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setCanales(d.canales || []); })
+      .catch(() => {})
+      .finally(() => setLoadingData(false));
+  };
+
+  const toggleOrigen = (o) =>
+    setOrigenes((prev) => prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]);
+
+  const mLeads   = Number(metas.leads_totales || 0);
+  const mPctSac  = Number(metas.pct_sac       || 0);
+  const mPctCal  = Number(metas.pct_calidad   || 0);
+  const mPctVen  = Number(metas.pct_ventas    || 0);
+  const mPctJot  = Number(metas.pct_ventas_jot|| 0);
+  const mPresu   = Number(metas.presupuesto   || 0);
+  const mCtr     = Number(metas.ctr           || 0);
+  const mCpl     = Number(metas.cpl           || 0);
+  const mCplGest = Number(metas.cpl_gest      || 0);
+  const mCpa     = Number(metas.cpa           || 0);
+  const mCpaJot  = Number(metas.cpa_jot       || 0);
+  const mConsum10 = mPresu * 1.1;
+
+  // Filas de la tabla
+  const filas = [
+    {
+      label: "LEADS TOTALES",
+      objetivo: mLeads,
+      fmtObj: (v) => String(Number(v)),
+      getLogro: (c) => c.total_leads,
+      fmtLog: (v) => String(Number(v)),
+      esPct: false, esMonto: false, invertir: false,
+    },
+    {
+      label: "LEADS SAC / ATC",
+      objetivo: mPctSac,
+      fmtObj: (v) => `${Number(v).toFixed(1)}%`,
+      getLogro: (c) => c.pct_sac,
+      fmtLog: (v) => `${Number(v).toFixed(1)}% (${0})`,
+      esPct: true, esMonto: false, invertir: true,
+      getLogroRaw: (c) => ({ pct: c.pct_sac, abs: c.leads_sac }),
+    },
+    {
+      label: "LEADS CALIDAD",
+      objetivo: mPctCal,
+      fmtObj: (v) => `${Number(v).toFixed(1)}%`,
+      getLogro: (c) => c.pct_calidad,
+      esPct: true, esMonto: false, invertir: false,
+      getLogroRaw: (c) => ({ pct: c.pct_calidad, abs: c.leads_calidad }),
+    },
+    {
+      label: "VENTAS (VENTA SUBIDA)",
+      objetivo: mPctVen,
+      fmtObj: (v) => `${Number(v).toFixed(1)}%`,
+      getLogro: (c) => c.pct_ventas,
+      esPct: true, esMonto: false, invertir: false,
+      getLogroRaw: (c) => ({ pct: c.pct_ventas, abs: c.venta_subida }),
+    },
+    {
+      label: "VENTAS JOT",
+      objetivo: mPctJot,
+      fmtObj: (v) => `${Number(v).toFixed(1)}%`,
+      getLogro: (c) => c.pct_ventas_jot,
+      esPct: true, esMonto: false, invertir: false,
+      getLogroRaw: (c) => ({ pct: c.pct_ventas_jot, abs: c.ingreso_jot }),
+    },
+    {
+      label: "CONSUMO PRESUPUESTO",
+      objetivo: mPresu,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: () => null,
+      esMonto: true, invertir: true,
+      manual: true,
+    },
+    {
+      label: "CONSUMO + 10%",
+      objetivo: mConsum10,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: () => null,
+      esMonto: true, invertir: true,
+      manual: true,
+    },
+    {
+      label: "CTR / OBJETIVO CTR",
+      objetivo: mCtr,
+      fmtObj: (v) => v > 0 ? `${Number(v).toFixed(1)}%` : "—",
+      getLogro: () => null,
+      esPct: true, invertir: false,
+      manual: true,
+    },
+    {
+      label: "CPL / OBJETIVO CPL",
+      objetivo: mCpl,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: (c) => c.total_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.total_leads : null,
+      esMonto: true, invertir: true,
+    },
+    {
+      label: "CPL GEST / OBJETIVO CPL GEST",
+      objetivo: mCplGest,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: (c) => c.leads_calidad > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.leads_calidad : null,
+      esMonto: true, invertir: true,
+    },
+    {
+      label: "CPA / OBJETIVO CPA",
+      objetivo: mCpa,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: (c) => c.venta_subida > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.venta_subida : null,
+      esMonto: true, invertir: true,
+    },
+    {
+      label: "CPA JOT / OBJETIVO CPA JOT",
+      objetivo: mCpaJot,
+      fmtObj: (v) => v > 0 ? `$${Number(v).toFixed(2)}` : "—",
+      getLogro: (c) => c.ingreso_jot > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.ingreso_jot : null,
+      esMonto: true, invertir: true,
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+
+      {/* FILTROS */}
+      <Card>
+        <CardHeader title="Filtros — Metas vs Logros" accent={C.primary} />
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modo Fecha</span>
+            <VistaToggle value={modoFecha} onChange={setModoFecha} color={C.primary}
+              options={[{ value: "rango", label: "Rango" }, { value: "mes", label: "Por Mes" }]} />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            {modoFecha === "rango" ? (
+              [["Desde", fechaDesde, setFechaDesde], ["Hasta", fechaHasta, setFechaHasta]].map(([label, val, setter]) => (
+                <div key={label} className="flex flex-col gap-1">
+                  <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>{label}</label>
+                  <input type="date" value={val} onChange={(e) => setter(e.target.value)}
+                    className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white [color-scheme:light]" />
+                </div>
+              ))
+            ) : (
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Mes</label>
+                <input type="month" value={fechaDesde.slice(0, 7)}
+                  onChange={(e) => { setFechaDesde(e.target.value + "-01"); setFechaHasta(e.target.value + "-31"); }}
+                  className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white [color-scheme:light]" />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">
+              Orígenes (b_origen)
+              {loadingOrig && <span className="text-blue-400 normal-case font-medium ml-2">cargando...</span>}
+            </div>
+            {origenesDisp.length === 0 && !loadingOrig && (
+              <div className="text-[9px] text-slate-400 italic">Selecciona un período para ver los orígenes disponibles</div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {origenesDisp.map((o) => {
+                const sel = origenes.includes(o);
+                return (
+                  <button key={o} onClick={() => toggleOrigen(o)}
+                    className="px-3 py-1 rounded-full text-[9px] font-black uppercase border transition-all"
+                    style={sel
+                      ? { background: C.primary, color: "#fff", borderColor: C.primary }
+                      : { background: "#fff", color: C.muted, borderColor: "#e2e8f0" }}>
+                    {o}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button onClick={handleAplicar}
+            className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
+            style={{ background: C.primary }}>
+            {loadingData ? "Cargando..." : "Aplicar y Calcular"}
+          </button>
+        </div>
+      </Card>
+
+      {/* FORMULARIO METAS */}
+      <Card>
+        <CardHeader title="Ingreso de Objetivos / Metas" accent={C.violet}
+          subtitle="Completa los valores objetivo para comparar con los logros reales" />
+        <div className="p-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            <MetaInput label="Leads Totales"       value={metas.leads_totales}  onChange={setMeta("leads_totales")}  placeholder="133" />
+            <MetaInput label="% SAC / ATC"         value={metas.pct_sac}        onChange={setMeta("pct_sac")}        suffix="%" placeholder="45" />
+            <MetaInput label="% Calidad"           value={metas.pct_calidad}    onChange={setMeta("pct_calidad")}    suffix="%" placeholder="60" />
+            <MetaInput label="% Ventas"            value={metas.pct_ventas}     onChange={setMeta("pct_ventas")}     suffix="%" placeholder="45" />
+            <MetaInput label="% Ventas JOT"        value={metas.pct_ventas_jot} onChange={setMeta("pct_ventas_jot")} suffix="%" placeholder="45" />
+            <MetaInput label="Presupuesto $"       value={metas.presupuesto}    onChange={setMeta("presupuesto")}    prefix="$" placeholder="585.20" />
+            <MetaInput label="CTR Objetivo %"      value={metas.ctr}            onChange={setMeta("ctr")}            suffix="%" placeholder="35" />
+            <MetaInput label="CPL Objetivo $"      value={metas.cpl}            onChange={setMeta("cpl")}            prefix="$" placeholder="4.40" />
+            <MetaInput label="CPL Gest Objetivo $" value={metas.cpl_gest}       onChange={setMeta("cpl_gest")}       prefix="$" placeholder="8.00" />
+            <MetaInput label="CPA Objetivo $"      value={metas.cpa}            onChange={setMeta("cpa")}            prefix="$" placeholder="22.00" />
+            <MetaInput label="CPA JOT Objetivo $"  value={metas.cpa_jot}        onChange={setMeta("cpa_jot")}        prefix="$" placeholder="22.00" />
+          </div>
+          {mPresu > 0 && (
+            <div className="mt-3 text-[9px] text-slate-400 font-medium">
+              💡 Consumo + 10% calculado automáticamente: <span className="font-black" style={{ color: C.violet }}>${mConsum10.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* TABLA COMPARATIVA */}
+      {canales.length > 0 && (
+        <Card>
+          <CardHeader title="Metas vs Logros por Canal" accent={C.success}
+            subtitle={`${canales.length} canal(es) · ${fechaDesde} → ${fechaHasta}`}
+            badge={
+              <span className="text-[9px] font-black px-3 py-1 rounded-full"
+                style={{ background: `${C.success}15`, color: C.success }}>
+                NETLIFE VELSA
+              </span>
+            }
+          />
+          <div className="overflow-auto">
+            <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+              <thead className="sticky top-0 z-10">
+                {/* Grupo de cabeceras */}
+                <tr className="bg-slate-50 border-b border-slate-200 text-[8px] font-black uppercase">
+                  <th rowSpan={2} className="px-4 py-2 border-r border-slate-200 text-left text-slate-600 sticky left-0 bg-slate-50 min-w-[180px]">CANAL</th>
+                  <th rowSpan={2} className="px-4 py-2 border-r border-slate-200 text-center min-w-[100px]" style={{ color: C.primary }}>OBJETIVO METAS</th>
+                  <th colSpan={canales.length} className="px-4 py-2 border-r border-slate-200 text-center" style={{ color: C.success }}>LOGRO</th>
+                  <th colSpan={canales.length} className="px-4 py-2 text-center" style={{ color: C.warning }}>DIFERENCIAL</th>
+                </tr>
+                <tr className="bg-slate-50 border-b-2 border-slate-300 text-[8px] font-black uppercase">
+                  {canales.map((c) => (
+                    <th key={`l-${c.origen}`} className="px-3 py-2 border-r border-slate-100 text-center max-w-[120px] truncate" style={{ color: C.cyan }}>
+                      {c.origen}
+                    </th>
+                  ))}
+                  {canales.map((c) => (
+                    <th key={`d-${c.origen}`} className="px-3 py-2 border-r border-slate-100 last:border-r-0 text-center max-w-[120px] truncate" style={{ color: C.warning }}>
+                      {c.origen}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((fila, fi) => (
+                  <tr key={fi}
+                    className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${fila.label.includes("CONSUMO") || fila.label.includes("10%") ? "bg-violet-50 hover:bg-violet-100" : ""}`}>
+                    {/* Etiqueta */}
+                    <td className={`px-4 py-2 font-black text-[9px] text-slate-700 border-r border-slate-200 sticky left-0 ${fila.label.includes("CONSUMO") || fila.label.includes("10%") ? "bg-violet-50" : "bg-white"}`}>
+                      {fila.label}
+                    </td>
+                    {/* Objetivo */}
+                    <td className="px-4 py-2 text-center text-[10px] font-bold border-r border-slate-200" style={{ color: C.primary }}>
+                      {fila.fmtObj(fila.objetivo)}
+                    </td>
+                    {/* Logros por canal */}
+                    {canales.map((c) => {
+                      const logroRaw = fila.getLogroRaw ? fila.getLogroRaw(c) : null;
+                      const logro    = fila.getLogro(c);
+                      return (
+                        <td key={`l-${c.origen}-${fi}`} className="px-3 py-2 text-center text-[10px] border-r border-slate-100">
+                          {fila.manual ? (
+                            <span className="text-slate-300 italic text-[8px]">—</span>
+                          ) : logro === null || logro === undefined ? (
+                            <span className="text-slate-300 text-[8px]">—</span>
+                          ) : logroRaw ? (
+                            <span className="font-black" style={{ color: C.slate }}>
+                              {logroRaw.abs} <span className="text-[8px] text-slate-400">({Number(logroRaw.pct).toFixed(1)}%)</span>
+                            </span>
+                          ) : (
+                            <span className="font-black" style={{ color: C.slate }}>
+                              {fila.esMonto ? `$${Number(logro).toFixed(2)}` : fila.esPct ? `${Number(logro).toFixed(1)}%` : String(Number(logro))}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    {/* Diferencial por canal */}
+                    {canales.map((c) => {
+                      const logro = fila.getLogro(c);
+                      if (fila.manual || logro === null || logro === undefined) {
+                        return <td key={`d-${c.origen}-${fi}`} className="px-3 py-2 text-center text-slate-300 border-r border-slate-100 last:border-r-0 text-[8px]">—</td>;
+                      }
+                      return (
+                        <DiffCell key={`d-${c.origen}-${fi}`}
+                          objetivo={fila.esPct ? fila.objetivo : fila.objetivo}
+                          logro={fila.getLogroRaw ? fila.getLogroRaw(c).pct : logro}
+                          esPct={fila.esPct}
+                          esMonto={fila.esMonto}
+                          invertirColor={fila.invertir}
+                        />
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Leyenda */}
+          <div className="px-5 py-3 border-t border-slate-100 flex items-center gap-4 flex-wrap text-[8px] font-bold text-slate-400">
+            <span className="font-black text-slate-500 uppercase tracking-widest">Semáforo:</span>
+            <span style={{ color: C.success }}>● Verde = supera el objetivo</span>
+            <span style={{ color: C.danger  }}>● Rojo  = por debajo del objetivo</span>
+            <span style={{ color: C.slate   }}>● Gris  = sin datos o sin meta</span>
+            <span className="text-slate-300 ml-2">| % SAC/ATC: menor es mejor</span>
+          </div>
+        </Card>
+      )}
+
+      {canales.length === 0 && !loadingData && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="text-4xl">🎯</div>
+          <div className="text-sm font-black text-slate-600">Selecciona orígenes y aplica el filtro</div>
+          <div className="text-xs text-slate-400 text-center max-w-sm leading-relaxed">
+            Elige el período, selecciona uno o más canales de origen, completa los objetivos y presiona "Aplicar y Calcular".
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 4 — PRÓXIMAMENTE
 // ══════════════════════════════════════════════════════════════════════════════
 function TabProximamente() {
   return (
@@ -727,6 +1115,7 @@ function TabProximamente() {
 const TABS = [
   { id: "general",      label: "Monitoreo General", icon: "📊" },
   { id: "graficos",     label: "Gráficos Gerencia", icon: "📈" },
+  { id: "metas",        label: "Metas vs Logros",   icon: "🎯" },
   { id: "proximamente", label: "Próximamente",       icon: "🚀" },
 ];
 
@@ -793,6 +1182,7 @@ export default function Redes() {
       {/* Contenido */}
       {tab==="general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
       {tab==="graficos"     && <TabGraficos         data={data} loading={loading} />}
+      {tab==="metas"        && <TabMetas            filtro={filtro} />}
       {tab==="proximamente" && <TabProximamente />}
 
     </div>

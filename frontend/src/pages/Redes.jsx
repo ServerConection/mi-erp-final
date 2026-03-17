@@ -4,6 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell
 } from "recharts";
+import TabReporteData from "./TabReporteData";
 
 // ── Paleta corporativa clara ──────────────────────────────────────────────────
 const C = {
@@ -469,8 +470,7 @@ function TabGraficos({ data, loading }) {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Evolución del Funnel Diario" accent={C.primary}
-          subtitle="Leads · Negociables · Ingresos JOT · Activos" />
+        <CardHeader title="Evolución del Funnel Diario" accent={C.primary} subtitle="Leads · Negociables · Ingresos JOT · Activos" />
         <div className="p-5">
           <ResponsiveContainer width="100%" height={270}>
             <AreaChart data={diasData} margin={{top:5,right:10,left:0,bottom:5}}>
@@ -513,7 +513,6 @@ function TabGraficos({ data, loading }) {
             </ResponsiveContainer>
           </div>
         </Card>
-
         <Card>
           <CardHeader title="Inversión & CPL Diario" accent={C.violet} subtitle="Costo de adquisición por día" />
           <div className="p-5">
@@ -544,15 +543,12 @@ function TabGraficos({ data, loading }) {
                 <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="Leads" radius={[4,4,0,0]}>
-                  {horaData.map((d,i) => (
-                    <Cell key={i} fill={d["Leads"]===maxLeads ? C.primary : "#93c5fd"} />
-                  ))}
+                  {horaData.map((d,i) => <Cell key={i} fill={d["Leads"]===maxLeads ? C.primary : "#93c5fd"} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
-
         <Card>
           <CardHeader title="Soporte ATC por Hora" accent={C.danger} subtitle="Horarios de mayor demanda ATC" />
           <div className="p-5">
@@ -563,9 +559,7 @@ function TabGraficos({ data, loading }) {
                 <YAxis tick={{fontSize:9,fill:C.muted}} width={30} />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="ATC" radius={[4,4,0,0]}>
-                  {horaData.map((d,i) => (
-                    <Cell key={i} fill={d["ATC"]===maxAtc ? C.danger : "#fca5a5"} />
-                  ))}
+                  {horaData.map((d,i) => <Cell key={i} fill={d["ATC"]===maxAtc ? C.danger : "#fca5a5"} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -575,8 +569,7 @@ function TabGraficos({ data, loading }) {
 
       {heatHoras.length > 0 && (
         <Card>
-          <CardHeader title="Mapa de Calor — Leads · Hora × Día de Semana" accent={C.primary}
-            subtitle="Identifica los horarios de mayor tráfico por día" />
+          <CardHeader title="Mapa de Calor — Leads · Hora × Día de Semana" accent={C.primary} subtitle="Identifica los horarios de mayor tráfico por día" />
           <div className="p-5 overflow-auto">
             <div className="inline-flex gap-1.5 text-[8px]">
               <div className="flex flex-col gap-1.5">
@@ -627,7 +620,6 @@ function TabGraficos({ data, loading }) {
             </ResponsiveContainer>
           </div>
         </Card>
-
         <Card>
           <CardHeader title="Embudo de Conversión" accent={C.success} subtitle="Del lead al activo" />
           <div className="p-5">
@@ -663,7 +655,6 @@ function TabGraficos({ data, loading }) {
             </ResponsiveContainer>
           </div>
         </Card>
-
         <Card>
           <CardHeader title="Ciclo de Venta" accent={C.violet} subtitle="Días entre lead e ingreso JOT" />
           <div className="p-5">
@@ -695,20 +686,15 @@ function MetaInput({ label, value, onChange, prefix = "", suffix = "", placehold
       <label className="text-[8px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</label>
       <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-400 transition-all">
         {prefix && <span className="px-2 text-[10px] font-black text-slate-400 bg-slate-50 border-r border-slate-100">{prefix}</span>}
-        <input
-          type="number" step="any" value={value}
-          onChange={(e) => onChange(e.target.value)}
+        <input type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none bg-white min-w-0"
-        />
+          className="w-full px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none bg-white min-w-0" />
         {suffix && <span className="px-2 text-[10px] font-black text-slate-400 bg-slate-50 border-l border-slate-100">{suffix}</span>}
       </div>
     </div>
   );
 }
 
-// Dado un diferencial, devuelve color semáforo
-// invertir=true → diferencial negativo es BUENO (ej: costos, SAC)
 function colorDiff(diff, invertir) {
   if (diff === null || diff === undefined || isNaN(Number(diff))) return C.slate;
   const n = Number(diff);
@@ -716,288 +702,91 @@ function colorDiff(diff, invertir) {
   return (invertir ? n < 0 : n > 0) ? C.success : C.danger;
 }
 
-// Construye las 12 filas de la tabla para un canal dado + las metas
 function buildFilas(canal, metas) {
-  const leads     = Number(canal.total_leads   || 0);
-  const sac       = Number(canal.leads_sac     || 0);
-  const calidad   = Number(canal.leads_calidad || 0);
-  const ventas    = Number(canal.venta_subida  || 0);
-  const jot       = Number(canal.ingreso_jot   || 0);
-  const inversion = Number(canal.inversion_usd || 0);
-
-  // % reales desde BD
-  const pctSac   = leads > 0 ? (sac    / leads) * 100 : 0;
-  const pctCal   = leads > 0 ? (calidad/ leads) * 100 : 0;
-  const pctVen   = leads > 0 ? (ventas / leads) * 100 : 0;
-  const pctJot   = leads > 0 ? (jot    / leads) * 100 : 0;
-
-  // Costos reales desde BD (solo si hay inversión)
-  const cplReal    = leads  > 0 && inversion > 0 ? inversion / leads   : null;
-  const cplGReal   = calidad> 0 && inversion > 0 ? inversion / calidad : null;
-  const cpaReal    = ventas > 0 && inversion > 0 ? inversion / ventas  : null;
-  const cpaJotReal = jot    > 0 && inversion > 0 ? inversion / jot     : null;
-
-  // Metas ingresadas
-  const mLeads   = Number(metas.leads_totales  || 0);
-  const mPctSac  = Number(metas.pct_sac        || 0);
-  const mPctCal  = Number(metas.pct_calidad    || 0);
-  const mPctVen  = Number(metas.pct_ventas     || 0);
-  const mPctJot  = Number(metas.pct_ventas_jot || 0);
-  const mPresu   = Number(metas.presupuesto    || 0);
-  const mCtr     = Number(metas.ctr            || 0);
-  const mCpl     = Number(metas.cpl            || 0);
-  const mCplG    = Number(metas.cpl_gest       || 0);
-  const mCpa     = Number(metas.cpa            || 0);
-  const mCpaJot  = Number(metas.cpa_jot        || 0);
-
-  const d  = (logro, meta) => (meta > 0 && logro !== null) ? logro - meta : null;
-  const p  = (logro, meta) => (meta > 0 && logro !== null) ? (logro / meta) * 100 : null;
-
+  const leads = Number(canal.total_leads || 0), sac = Number(canal.leads_sac || 0);
+  const calidad = Number(canal.leads_calidad || 0), ventas = Number(canal.venta_subida || 0);
+  const jot = Number(canal.ingreso_jot || 0), inversion = Number(canal.inversion_usd || 0);
+  const pctSac = leads > 0 ? (sac/leads)*100 : 0;
+  const pctCal = leads > 0 ? (calidad/leads)*100 : 0;
+  const pctVen = leads > 0 ? (ventas/leads)*100 : 0;
+  const pctJot = leads > 0 ? (jot/leads)*100 : 0;
+  const cplReal    = leads  > 0 && inversion > 0 ? inversion/leads   : null;
+  const cplGReal   = calidad> 0 && inversion > 0 ? inversion/calidad : null;
+  const cpaReal    = ventas > 0 && inversion > 0 ? inversion/ventas  : null;
+  const cpaJotReal = jot    > 0 && inversion > 0 ? inversion/jot     : null;
+  const mLeads=Number(metas.leads_totales||0), mPctSac=Number(metas.pct_sac||0);
+  const mPctCal=Number(metas.pct_calidad||0), mPctVen=Number(metas.pct_ventas||0);
+  const mPctJot=Number(metas.pct_ventas_jot||0), mPresu=Number(metas.presupuesto||0);
+  const mCtr=Number(metas.ctr||0), mCpl=Number(metas.cpl||0), mCplG=Number(metas.cpl_gest||0);
+  const mCpa=Number(metas.cpa||0), mCpaJot=Number(metas.cpa_jot||0);
+  const d=(logro,meta)=>(meta>0&&logro!==null)?logro-meta:null;
+  const p=(logro,meta)=>(meta>0&&logro!==null)?(logro/meta)*100:null;
   return [
-    // ── LEADS TOTALES ──────────────────────────────────────────────────────
-    {
-      label:    "LEADS TOTALES",
-      objetivo: mLeads > 0 ? mLeads : null,
-      logro:    leads,
-      diff:     d(leads, mLeads),
-      pct:      p(leads, mLeads),
-      fmtO:     (v) => String(Math.round(v)),
-      fmtL:     (v) => String(Math.round(v)),
-      fmtD:     (v) => v >= 0 ? `+${Math.round(v)}` : String(Math.round(v)),
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: false,
-      rowBg:    "",
-    },
-    // ── LEADS SAC / ATC ────────────────────────────────────────────────────
-    {
-      label:    "LEADS SAC / ATC",
-      objetivo: mPctSac > 0 ? mPctSac : null,
-      logro:    sac,
-      logroSub: `${pctSac.toFixed(1)}%`,   // sub-texto del logro
-      diff:     d(pctSac, mPctSac),
-      pct:      mPctSac > 0 ? pctSac - mPctSac : null,
-      fmtO:     (v) => `${Number(v).toFixed(2)}%`,
-      fmtL:     (v) => String(Math.round(v)),
-      fmtD:     (v) => v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`,
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: true,   // menos SAC = mejor
-      rowBg:    "",
-    },
-    // ── LEADS CALIDAD ──────────────────────────────────────────────────────
-    {
-      label:    "LEADS CALIDAD",
-      objetivo: mPctCal > 0 ? mPctCal : null,
-      logro:    calidad,
-      logroSub: `${pctCal.toFixed(1)}%`,
-      diff:     d(pctCal, mPctCal),
-      pct:      mPctCal > 0 ? pctCal - mPctCal : null,
-      fmtO:     (v) => `${Number(v).toFixed(2)}%`,
-      fmtL:     (v) => String(Math.round(v)),
-      fmtD:     (v) => v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`,
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: false,
-      rowBg:    "",
-    },
-    // ── VENTAS ────────────────────────────────────────────────────────────
-    {
-      label:    "VENTAS",
-      objetivo: mPctVen > 0 ? mPctVen : null,
-      logro:    ventas,
-      logroSub: `${pctVen.toFixed(1)}%`,
-      diff:     d(pctVen, mPctVen),
-      pct:      mPctVen > 0 ? pctVen - mPctVen : null,
-      fmtO:     (v) => `${Number(v).toFixed(2)}%`,
-      fmtL:     (v) => String(Math.round(v)),
-      fmtD:     (v) => v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`,
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: false,
-      rowBg:    "",
-    },
-    // ── VENTAS JOT ────────────────────────────────────────────────────────
-    {
-      label:    "VENTAS JOT",
-      objetivo: mPctJot > 0 ? mPctJot : null,
-      logro:    jot,
-      logroSub: `${pctJot.toFixed(1)}%`,
-      diff:     d(pctJot, mPctJot),
-      pct:      mPctJot > 0 ? pctJot - mPctJot : null,
-      fmtO:     (v) => `${Number(v).toFixed(2)}%`,
-      fmtL:     (v) => String(Math.round(v)),
-      fmtD:     (v) => v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`,
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: false,
-      rowBg:    "",
-    },
-    // ── CONSUMO PRESUPUESTO ───────────────────────────────────────────────
-    {
-      label:    "CONSUMO PRESUPUESTO",
-      objetivo: mPresu > 0 ? mPresu : null,
-      logro:    inversion > 0 ? inversion : null,
-      diff:     mPresu > 0 && inversion > 0 ? inversion - mPresu : null,
-      pct:      mPresu > 0 && inversion > 0 ? (inversion / mPresu) * 100 : null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtD:     (v) => v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`,
-      fmtP:     (v) => `${v.toFixed(2)}%`,
-      invertir: true,
-      rowBg:    "bg-violet-50",
-    },
-    // ── CONSUMO + 10% ─────────────────────────────────────────────────────
-    {
-      label:    "CONSUMO + 10%",
-      objetivo: mPresu > 0 ? mPresu * 1.1 : null,
-      logro:    inversion > 0 ? inversion * 1.1 : null,
-      diff:     null,
-      pct:      null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtD:     () => "—",
-      fmtP:     () => "—",
-      invertir: false,
-      rowBg:    "bg-violet-50",
-    },
-    // ── CTR ──────────────────────────────────────────────────────────────
-    {
-      label:    "CTR / OBJETIVO CTR",
-      objetivo: mCtr > 0 ? mCtr : null,
-      logro:    null,   // dato externo, no está en BD
-      diff:     null,
-      pct:      null,
-      fmtO:     (v) => `${Number(v).toFixed(2)}%`,
-      fmtL:     () => "—",
-      fmtD:     () => "—",
-      fmtP:     () => "—",
-      invertir: false,
-      rowBg:    "",
-      esManual: true,
-    },
-    // ── CPL ──────────────────────────────────────────────────────────────
-    {
-      label:    "CPL / OBJETIVO CPL",
-      objetivo: mCpl > 0 ? mCpl : null,
-      logro:    cplReal,
-      diff:     mCpl > 0 && cplReal !== null ? cplReal - mCpl : null,
-      pct:      null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => v !== null ? `$${Number(v).toFixed(2)}` : "—",
-      fmtD:     (v) => v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`,
-      fmtP:     () => "—",
-      invertir: true,
-      rowBg:    "",
-    },
-    // ── CPL GEST ─────────────────────────────────────────────────────────
-    {
-      label:    "CPL GEST / OBJETIVO CPL GEST",
-      objetivo: mCplG > 0 ? mCplG : null,
-      logro:    cplGReal,
-      diff:     mCplG > 0 && cplGReal !== null ? cplGReal - mCplG : null,
-      pct:      null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => v !== null ? `$${Number(v).toFixed(2)}` : "—",
-      fmtD:     (v) => v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`,
-      fmtP:     () => "—",
-      invertir: true,
-      rowBg:    "",
-    },
-    // ── CPA ──────────────────────────────────────────────────────────────
-    {
-      label:    "CPA / OBJETIVO CPA",
-      objetivo: mCpa > 0 ? mCpa : null,
-      logro:    cpaReal,
-      diff:     mCpa > 0 && cpaReal !== null ? cpaReal - mCpa : null,
-      pct:      null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => v !== null ? `$${Number(v).toFixed(2)}` : "—",
-      fmtD:     (v) => v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`,
-      fmtP:     () => "—",
-      invertir: true,
-      rowBg:    "",
-    },
-    // ── CPA JOT ──────────────────────────────────────────────────────────
-    {
-      label:    "CPA JOT / OBJETIVO CPA JOT",
-      objetivo: mCpaJot > 0 ? mCpaJot : null,
-      logro:    cpaJotReal,
-      diff:     mCpaJot > 0 && cpaJotReal !== null ? cpaJotReal - mCpaJot : null,
-      pct:      null,
-      fmtO:     (v) => `$${Number(v).toFixed(2)}`,
-      fmtL:     (v) => v !== null ? `$${Number(v).toFixed(2)}` : "—",
-      fmtD:     (v) => v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`,
-      fmtP:     () => "—",
-      invertir: true,
-      rowBg:    "",
-    },
+    { label:"LEADS TOTALES", objetivo:mLeads>0?mLeads:null, logro:leads, diff:d(leads,mLeads), pct:p(leads,mLeads), fmtO:v=>String(Math.round(v)), fmtL:v=>String(Math.round(v)), fmtD:v=>v>=0?`+${Math.round(v)}`:String(Math.round(v)), fmtP:v=>`${v.toFixed(2)}%`, invertir:false, rowBg:"" },
+    { label:"LEADS SAC / ATC", objetivo:mPctSac>0?mPctSac:null, logro:sac, logroSub:`${pctSac.toFixed(1)}%`, diff:d(pctSac,mPctSac), pct:mPctSac>0?pctSac-mPctSac:null, fmtO:v=>`${Number(v).toFixed(2)}%`, fmtL:v=>String(Math.round(v)), fmtD:v=>v>=0?`+${v.toFixed(2)}%`:`${v.toFixed(2)}%`, fmtP:v=>`${v.toFixed(2)}%`, invertir:true, rowBg:"" },
+    { label:"LEADS CALIDAD", objetivo:mPctCal>0?mPctCal:null, logro:calidad, logroSub:`${pctCal.toFixed(1)}%`, diff:d(pctCal,mPctCal), pct:mPctCal>0?pctCal-mPctCal:null, fmtO:v=>`${Number(v).toFixed(2)}%`, fmtL:v=>String(Math.round(v)), fmtD:v=>v>=0?`+${v.toFixed(2)}%`:`${v.toFixed(2)}%`, fmtP:v=>`${v.toFixed(2)}%`, invertir:false, rowBg:"" },
+    { label:"VENTAS", objetivo:mPctVen>0?mPctVen:null, logro:ventas, logroSub:`${pctVen.toFixed(1)}%`, diff:d(pctVen,mPctVen), pct:mPctVen>0?pctVen-mPctVen:null, fmtO:v=>`${Number(v).toFixed(2)}%`, fmtL:v=>String(Math.round(v)), fmtD:v=>v>=0?`+${v.toFixed(2)}%`:`${v.toFixed(2)}%`, fmtP:v=>`${v.toFixed(2)}%`, invertir:false, rowBg:"" },
+    { label:"VENTAS JOT", objetivo:mPctJot>0?mPctJot:null, logro:jot, logroSub:`${pctJot.toFixed(1)}%`, diff:d(pctJot,mPctJot), pct:mPctJot>0?pctJot-mPctJot:null, fmtO:v=>`${Number(v).toFixed(2)}%`, fmtL:v=>String(Math.round(v)), fmtD:v=>v>=0?`+${v.toFixed(2)}%`:`${v.toFixed(2)}%`, fmtP:v=>`${v.toFixed(2)}%`, invertir:false, rowBg:"" },
+    { label:"CONSUMO PRESUPUESTO", objetivo:mPresu>0?mPresu:null, logro:inversion>0?inversion:null, diff:mPresu>0&&inversion>0?inversion-mPresu:null, pct:mPresu>0&&inversion>0?(inversion/mPresu)*100:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>`$${Number(v).toFixed(2)}`, fmtD:v=>v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`, fmtP:v=>`${v.toFixed(2)}%`, invertir:true, rowBg:"bg-violet-50" },
+    { label:"CONSUMO + 10%", objetivo:mPresu>0?mPresu*1.1:null, logro:inversion>0?inversion*1.1:null, diff:null, pct:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>`$${Number(v).toFixed(2)}`, fmtD:()=>"—", fmtP:()=>"—", invertir:false, rowBg:"bg-violet-50" },
+    { label:"CTR / OBJETIVO CTR", objetivo:mCtr>0?mCtr:null, logro:null, diff:null, pct:null, fmtO:v=>`${Number(v).toFixed(2)}%`, fmtL:()=>"—", fmtD:()=>"—", fmtP:()=>"—", invertir:false, rowBg:"", esManual:true },
+    { label:"CPL / OBJETIVO CPL", objetivo:mCpl>0?mCpl:null, logro:cplReal, diff:mCpl>0&&cplReal!==null?cplReal-mCpl:null, pct:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>v!==null?`$${Number(v).toFixed(2)}`:"—", fmtD:v=>v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`, fmtP:()=>"—", invertir:true, rowBg:"" },
+    { label:"CPL GEST / OBJETIVO CPL GEST", objetivo:mCplG>0?mCplG:null, logro:cplGReal, diff:mCplG>0&&cplGReal!==null?cplGReal-mCplG:null, pct:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>v!==null?`$${Number(v).toFixed(2)}`:"—", fmtD:v=>v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`, fmtP:()=>"—", invertir:true, rowBg:"" },
+    { label:"CPA / OBJETIVO CPA", objetivo:mCpa>0?mCpa:null, logro:cpaReal, diff:mCpa>0&&cpaReal!==null?cpaReal-mCpa:null, pct:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>v!==null?`$${Number(v).toFixed(2)}`:"—", fmtD:v=>v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`, fmtP:()=>"—", invertir:true, rowBg:"" },
+    { label:"CPA JOT / OBJETIVO CPA JOT", objetivo:mCpaJot>0?mCpaJot:null, logro:cpaJotReal, diff:mCpaJot>0&&cpaJotReal!==null?cpaJotReal-mCpaJot:null, pct:null, fmtO:v=>`$${Number(v).toFixed(2)}`, fmtL:v=>v!==null?`$${Number(v).toFixed(2)}`:"—", fmtD:v=>v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`, fmtP:()=>"—", invertir:true, rowBg:"" },
   ];
 }
 
 const CANAL_COLORS = [C.primary, C.success, C.warning, C.violet, C.cyan, C.danger];
 
 function TabMetas({ filtro }) {
-  const [fechaDesde,   setFechaDesde]   = useState(filtro.desde);
-  const [fechaHasta,   setFechaHasta]   = useState(filtro.hasta);
-  const [modoFecha,    setModoFecha]    = useState("rango");
-  const [origenes,     setOrigenes]     = useState([]);
+  const [fechaDesde, setFechaDesde] = useState(filtro.desde);
+  const [fechaHasta, setFechaHasta] = useState(filtro.hasta);
+  const [modoFecha,  setModoFecha]  = useState("rango");
+  const [origenes,   setOrigenes]   = useState([]);
   const [origenesDisp, setOrigenesDisp] = useState([]);
   const [loadingOrig,  setLoadingOrig]  = useState(false);
-  const [canales,      setCanales]      = useState([]);
-  const [loadingData,  setLoadingData]  = useState(false);
-
-  const [metas, setMetas] = useState({
-    leads_totales: "", pct_sac: "", pct_calidad: "", pct_ventas: "",
-    pct_ventas_jot: "", presupuesto: "", ctr: "", cpl: "",
-    cpl_gest: "", cpa: "", cpa_jot: "",
-  });
+  const [canales,    setCanales]    = useState([]);
+  const [loadingData,setLoadingData] = useState(false);
+  const [metas, setMetas] = useState({ leads_totales:"", pct_sac:"", pct_calidad:"", pct_ventas:"", pct_ventas_jot:"", presupuesto:"", ctr:"", cpl:"", cpl_gest:"", cpa:"", cpa_jot:"" });
   const setMeta = (k) => (v) => setMetas((p) => ({ ...p, [k]: v }));
 
-  // Cargar orígenes disponibles al cambiar período
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setLoadingOrig(true);
     const params = new URLSearchParams({ fechaDesde, fechaHasta, modo: modoFecha });
     fetch(`${API}/api/redes/monitoreo-metas?${params}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setOrigenesDisp(d.origenes_disponibles || []); })
-      .catch(() => {})
-      .finally(() => setLoadingOrig(false));
+      .then(r => r.json()).then(d => { if (d.success) setOrigenesDisp(d.origenes_disponibles || []); })
+      .catch(() => {}).finally(() => setLoadingOrig(false));
   }, [fechaDesde, fechaHasta, modoFecha]);
 
   const handleAplicar = () => {
     if (!fechaDesde || !fechaHasta) return;
     setLoadingData(true);
-    const params = new URLSearchParams({
-      fechaDesde, fechaHasta, modo: modoFecha,
-      origenes: origenes.join(","),
-    });
+    const params = new URLSearchParams({ fechaDesde, fechaHasta, modo: modoFecha, origenes: origenes.join(",") });
     fetch(`${API}/api/redes/monitoreo-metas?${params}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setCanales(d.canales || []); })
-      .catch(() => {})
-      .finally(() => setLoadingData(false));
+      .then(r => r.json()).then(d => { if (d.success) setCanales(d.canales || []); })
+      .catch(() => {}).finally(() => setLoadingData(false));
   };
 
-  const toggleOrigen = (o) =>
-    setOrigenes(prev => prev.includes(o) ? prev.filter(x => x !== o) : [...prev, o]);
+  const toggleOrigen = (o) => setOrigenes(prev => prev.includes(o) ? prev.filter(x => x !== o) : [...prev, o]);
+  const mPresu = Number(metas.presupuesto || 0);
 
   return (
     <div className="space-y-6">
-
-      {/* ── FILTROS ─────────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader title="Filtros — Metas vs Logros" accent={C.primary} />
         <div className="p-5 space-y-4">
-
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modo Fecha</span>
-            <VistaToggle value={modoFecha} onChange={setModoFecha} color={C.primary}
-              options={[{value:"rango",label:"Rango"},{value:"mes",label:"Por Mes"}]} />
+            <VistaToggle value={modoFecha} onChange={setModoFecha} color={C.primary} options={[{value:"rango",label:"Rango"},{value:"mes",label:"Por Mes"}]} />
           </div>
-
           <div className="flex flex-wrap items-end gap-3">
             {modoFecha === "rango" ? (
-              [["Desde", fechaDesde, setFechaDesde],["Hasta", fechaHasta, setFechaHasta]].map(([label,val,setter]) => (
+              [["Desde",fechaDesde,setFechaDesde],["Hasta",fechaHasta,setFechaHasta]].map(([label,val,setter]) => (
                 <div key={label} className="flex flex-col gap-1">
                   <label className="text-[9px] font-black uppercase tracking-widest" style={{color:C.primary}}>{label}</label>
-                  <input type="date" value={val} onChange={e => setter(e.target.value)}
+                  <input type="date" value={val} onChange={e=>setter(e.target.value)}
                     className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white [color-scheme:light]" />
                 </div>
               ))
@@ -1005,47 +794,35 @@ function TabMetas({ filtro }) {
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-black uppercase tracking-widest" style={{color:C.primary}}>Mes</label>
                 <input type="month" value={fechaDesde.slice(0,7)}
-                  onChange={e => { setFechaDesde(e.target.value+"-01"); setFechaHasta(e.target.value+"-31"); }}
+                  onChange={e=>{setFechaDesde(e.target.value+"-01");setFechaHasta(e.target.value+"-31");}}
                   className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white [color-scheme:light]" />
               </div>
             )}
           </div>
-
           <div>
             <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">
-              Orígenes (b_origen)
-              {loadingOrig && <span className="text-blue-400 normal-case font-medium ml-2">cargando...</span>}
+              Orígenes {loadingOrig && <span className="text-blue-400 normal-case font-medium ml-2">cargando...</span>}
             </div>
-            {origenesDisp.length === 0 && !loadingOrig && (
-              <p className="text-[9px] text-slate-400 italic">Selecciona un período para ver los orígenes disponibles</p>
-            )}
+            {origenesDisp.length === 0 && !loadingOrig && <p className="text-[9px] text-slate-400 italic">Selecciona un período para ver los orígenes disponibles</p>}
             <div className="flex flex-wrap gap-2">
-              {origenesDisp.map((o, idx) => {
-                const sel = origenes.includes(o);
-                const col = CANAL_COLORS[idx % CANAL_COLORS.length];
+              {origenesDisp.map((o,idx) => {
+                const sel=origenes.includes(o), col=CANAL_COLORS[idx%CANAL_COLORS.length];
                 return (
-                  <button key={o} onClick={() => toggleOrigen(o)}
+                  <button key={o} onClick={()=>toggleOrigen(o)}
                     className="px-3 py-1 rounded-full text-[9px] font-black uppercase border transition-all"
-                    style={sel ? {background:col,color:"#fff",borderColor:col} : {background:"#fff",color:C.muted,borderColor:"#e2e8f0"}}>
-                    {o}
-                  </button>
+                    style={sel?{background:col,color:"#fff",borderColor:col}:{background:"#fff",color:C.muted,borderColor:"#e2e8f0"}}>{o}</button>
                 );
               })}
             </div>
           </div>
-
           <button onClick={handleAplicar}
             className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
-            style={{background:C.primary}}>
-            {loadingData ? "Cargando..." : "Aplicar y Calcular"}
-          </button>
+            style={{background:C.primary}}>{loadingData?"Cargando...":"Aplicar y Calcular"}</button>
         </div>
       </Card>
 
-      {/* ── FORMULARIO METAS ────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader title="Ingreso de Objetivos / Metas" accent={C.violet}
-          subtitle="Los logros se calculan automáticamente desde la base de datos" />
+        <CardHeader title="Ingreso de Objetivos / Metas" accent={C.violet} subtitle="Los logros se calculan automáticamente desde la base de datos" />
         <div className="p-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
             <MetaInput label="Leads Totales"       value={metas.leads_totales}  onChange={setMeta("leads_totales")}  placeholder="133" />
@@ -1060,105 +837,53 @@ function TabMetas({ filtro }) {
             <MetaInput label="CPA Objetivo $"      value={metas.cpa}            onChange={setMeta("cpa")}            prefix="$" placeholder="22.00" />
             <MetaInput label="CPA JOT Objetivo $"  value={metas.cpa_jot}        onChange={setMeta("cpa_jot")}        prefix="$" placeholder="22.00" />
           </div>
+          {mPresu > 0 && <p className="mt-3 text-[9px] text-slate-400 font-medium">💡 Consumo + 10%: <span className="font-black" style={{color:C.violet}}>${(mPresu*1.1).toFixed(2)}</span></p>}
         </div>
       </Card>
 
-      {/* ── TABLAS POR CANAL — exactamente como el cuadro original ─────────── */}
-      {loadingData && (
-        <div className="text-center py-12 text-slate-400 text-sm font-medium">Calculando logros...</div>
-      )}
+      {loadingData && <div className="text-center py-12 text-slate-400 text-sm font-medium">Calculando logros...</div>}
 
       {!loadingData && canales.length > 0 && (
         <div className="space-y-6">
           {canales.map((canal, idx) => {
-            const col   = CANAL_COLORS[idx % CANAL_COLORS.length];
+            const col = CANAL_COLORS[idx % CANAL_COLORS.length];
             const filas = buildFilas(canal, metas);
             return (
               <Card key={canal.origen}>
-                <CardHeader
-                  title={`NETLIFE VELSA — ${canal.origen}`}
-                  accent={col}
+                <CardHeader title={`NETLIFE VELSA — ${canal.origen}`} accent={col}
                   subtitle={`${fechaDesde} → ${fechaHasta}`}
-                  badge={
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black px-3 py-1 rounded-full"
-                        style={{background:`${col}15`,color:col}}>
-                        {canal.total_leads} leads
-                      </span>
-                    </div>
-                  }
-                />
+                  badge={<span className="text-[9px] font-black px-3 py-1 rounded-full" style={{background:`${col}15`,color:col}}>{canal.total_leads} leads</span>} />
                 <div className="overflow-auto">
                   <table className="w-full border-collapse text-[10px] whitespace-nowrap">
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b-2 border-slate-200">
                       <tr>
-                        <th className="px-5 py-3 text-left font-black uppercase tracking-widest text-slate-600 border-r border-slate-200 min-w-[220px]">
-                          CANAL
-                        </th>
-                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[140px]"
-                          style={{color:C.primary}}>
-                          OBJETIVO METAS
-                        </th>
-                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[140px]"
-                          style={{color:C.success}}>
-                          LOGRO
-                        </th>
-                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[130px]"
-                          style={{color:C.warning}}>
-                          DIFERENCIAL
-                        </th>
-                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest min-w-[100px]"
-                          style={{color:C.violet}}>
-                          %
-                        </th>
+                        <th className="px-5 py-3 text-left font-black uppercase tracking-widest text-slate-600 border-r border-slate-200 min-w-[220px]">CANAL</th>
+                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[140px]" style={{color:C.primary}}>OBJETIVO METAS</th>
+                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[140px]" style={{color:C.success}}>LOGRO</th>
+                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest border-r border-slate-200 min-w-[130px]" style={{color:C.warning}}>DIFERENCIAL</th>
+                        <th className="px-5 py-3 text-center font-black uppercase tracking-widest min-w-[100px]" style={{color:C.violet}}>%</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filas.map((f, fi) => {
-                        const cDiff = f.diff !== null ? colorDiff(f.diff, f.invertir) : C.slate;
-                        const cPct  = f.pct  !== null ? colorDiff(f.invertir ? -f.pct : f.pct, false) : C.slate;
+                        const cD = f.diff !== null ? colorDiff(f.diff, f.invertir) : C.slate;
+                        const cP = f.pct  !== null ? colorDiff(f.invertir ? -f.pct : f.pct, false) : C.slate;
                         return (
-                          <tr key={fi}
-                            className={`border-b border-slate-100 transition-colors hover:brightness-[0.97] ${f.rowBg || "bg-white"}`}>
-
-                            {/* CANAL / Etiqueta */}
-                            <td className={`px-5 py-2.5 font-black text-slate-700 border-r border-slate-200 ${f.rowBg || "bg-white"}`}>
-                              {f.label}
+                          <tr key={fi} className={`border-b border-slate-100 transition-colors hover:brightness-[0.97] ${f.rowBg||"bg-white"}`}>
+                            <td className={`px-5 py-2.5 font-black text-slate-700 border-r border-slate-200 ${f.rowBg||"bg-white"}`}>{f.label}</td>
+                            <td className="px-5 py-2.5 text-center font-bold border-r border-slate-200" style={{color:C.primary}}>
+                              {f.objetivo!==null?f.fmtO(f.objetivo):<span className="text-slate-300 text-[9px]">Sin meta</span>}
                             </td>
-
-                            {/* OBJETIVO METAS */}
-                            <td className="px-5 py-2.5 text-center font-bold border-r border-slate-200"
-                              style={{color:C.primary}}>
-                              {f.objetivo !== null ? f.fmtO(f.objetivo) : <span className="text-slate-300 text-[9px]">Sin meta</span>}
+                            <td className="px-5 py-2.5 text-center font-black border-r border-slate-200" style={{color:f.esManual?C.muted:C.slate}}>
+                              {f.esManual?<span className="text-[9px] italic text-slate-400">Externo</span>
+                                :f.logro!==null&&f.logro!==undefined?<span>{f.fmtL(f.logro)}{f.logroSub&&<span className="ml-1 text-[8px] text-slate-400">({f.logroSub})</span>}</span>
+                                :<span className="text-slate-300 text-[9px]">—</span>}
                             </td>
-
-                            {/* LOGRO */}
-                            <td className="px-5 py-2.5 text-center font-black border-r border-slate-200"
-                              style={{color: f.esManual ? C.muted : C.slate}}>
-                              {f.esManual ? (
-                                <span className="text-[9px] italic text-slate-400">Externo</span>
-                              ) : f.logro !== null && f.logro !== undefined ? (
-                                <span>
-                                  {f.fmtL(f.logro)}
-                                  {f.logroSub && (
-                                    <span className="ml-1 text-[8px] text-slate-400">({f.logroSub})</span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 text-[9px]">—</span>
-                              )}
+                            <td className="px-5 py-2.5 text-center font-black border-r border-slate-200" style={{color:cD}}>
+                              {f.diff!==null?f.fmtD(f.diff):<span className="text-slate-300 text-[9px]">—</span>}
                             </td>
-
-                            {/* DIFERENCIAL */}
-                            <td className="px-5 py-2.5 text-center font-black border-r border-slate-200"
-                              style={{color: cDiff}}>
-                              {f.diff !== null ? f.fmtD(f.diff) : <span className="text-slate-300 text-[9px]">—</span>}
-                            </td>
-
-                            {/* % */}
-                            <td className="px-5 py-2.5 text-center font-black"
-                              style={{color: cPct}}>
-                              {f.pct !== null ? f.fmtP(f.pct) : <span className="text-slate-300 text-[9px]">—</span>}
+                            <td className="px-5 py-2.5 text-center font-black" style={{color:cP}}>
+                              {f.pct!==null?f.fmtP(f.pct):<span className="text-slate-300 text-[9px]">—</span>}
                             </td>
                           </tr>
                         );
@@ -1166,10 +891,9 @@ function TabMetas({ filtro }) {
                     </tbody>
                   </table>
                 </div>
-                {/* Leyenda semáforo */}
                 <div className="px-5 py-2.5 border-t border-slate-100 flex items-center gap-4 text-[8px] font-bold flex-wrap">
                   <span style={{color:C.success}}>● Verde = supera la meta</span>
-                  <span style={{color:C.danger}}>● Rojo = por debajo de la meta</span>
+                  <span style={{color:C.danger}}>● Rojo = bajo meta</span>
                   <span className="text-slate-300 ml-1">| Costos y SAC/ATC: menor es mejor</span>
                 </div>
               </Card>
@@ -1187,13 +911,12 @@ function TabMetas({ filtro }) {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 4 — PRÓXIMAMENTE
+// TAB 5 — PRÓXIMAMENTE
 // ══════════════════════════════════════════════════════════════════════════════
 function TabProximamente() {
   return (
@@ -1214,7 +937,8 @@ const TABS = [
   { id: "general",      label: "Monitoreo General", icon: "📊" },
   { id: "graficos",     label: "Gráficos Gerencia", icon: "📈" },
   { id: "metas",        label: "Metas vs Logros",   icon: "🎯" },
-  { id: "proximamente", label: "Próximamente",       icon: "🚀" },
+  { id: "reporte",      label: "Reporte Data",       icon: "📑" },
+  { id: "proximamente", label: "Próximamente",        icon: "🚀" },
 ];
 
 export default function Redes() {
@@ -1235,8 +959,6 @@ export default function Redes() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-5 md:p-7">
-
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -1250,20 +972,16 @@ export default function Redes() {
             VELSA NETLIFE — Actualización cada 15 minutos
           </p>
         </div>
-
         <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm">
-          <FiltroPeriodo
-            fechaDesde={fechaDesde} fechaHasta={fechaHasta}
+          <FiltroPeriodo fechaDesde={fechaDesde} fechaHasta={fechaHasta}
             onChange={(k,v) => k==="fechaDesde" ? setFechaDesde(v) : setFechaHasta(v)}
-            onAplicar={handleAplicar} loading={applying||loading}
-          />
+            onAplicar={handleAplicar} loading={applying||loading} />
           <p className="text-[8px] text-slate-400 font-medium mt-2 uppercase tracking-wide">
             Mostrando: {filtro.desde} → {filtro.hasta}
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-white border border-slate-200 rounded-2xl p-1 mb-7 w-fit shadow-sm">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -1277,12 +995,11 @@ export default function Redes() {
         ))}
       </div>
 
-      {/* Contenido */}
       {tab==="general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
       {tab==="graficos"     && <TabGraficos         data={data} loading={loading} />}
       {tab==="metas"        && <TabMetas            filtro={filtro} />}
+      {tab==="reporte"      && <TabReporteData />}
       {tab==="proximamente" && <TabProximamente />}
-
     </div>
   );
 }

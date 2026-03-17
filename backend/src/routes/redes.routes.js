@@ -7,6 +7,7 @@ const {
   getMonitoreoHora,
   getMonitoreoAtc,
   getMonitoreoCosto,
+  getMonitoreoMetas,       // ← NUEVO
 } = require('../controllers/redes.controller');
 
 router.get('/monitoreo-redes',   getMonitoreoRedes);
@@ -14,5 +15,6 @@ router.get('/monitoreo-ciudad',  getMonitoreoCiudad);
 router.get('/monitoreo-hora',    getMonitoreoHora);
 router.get('/monitoreo-atc',     getMonitoreoAtc);
 router.get('/monitoreo-costo',   getMonitoreoCosto);
+router.get('/monitoreo-metas',   getMonitoreoMetas);  // ← NUEVO
 
 module.exports = router;

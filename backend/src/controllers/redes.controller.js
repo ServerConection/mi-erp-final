@@ -13,7 +13,6 @@ const getMonitoreoRedes = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
 
-    // Totales del período
     const totalesResult = await pool.query(`
       SELECT
         SUM(n_leads)              AS n_leads,
@@ -69,7 +68,6 @@ const getMonitoreoRedes = async (req, res) => {
       WHERE fecha BETWEEN $1 AND $2
     `, [fechaDesde, fechaHasta]);
 
-    // Detalle por día (orden descendente)
     const detalleResult = await pool.query(`
       SELECT
         fecha,
@@ -264,28 +262,26 @@ const getMonitoreoCosto = async (req, res) => {
   }
 };
 
-// ─── 6. MONITOREO METAS vs LOGROS (mestra_bitrix) ────────────────────────────
+// ─── 6. MONITOREO METAS vs LOGROS ────────────────────────────────────────────
+// Verde (desde SQL): leads totales, sac, calidad, ventas, jot, inversion
+// Rojo  (formulario): objetivos — los recibe el frontend, no el backend
 const getMonitoreoMetas = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta, modo } = req.query;
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy   = new Date().toISOString().split('T')[0];
     const desde = fechaDesde || hoy;
-    const hasta  = fechaHasta || hoy;
+    const hasta = fechaHasta || hoy;
 
-    // origenes puede venir como "GOOGLE,META" separado por comas
+    // origenes separados por coma: "FORMULARIO LANDING 4,BASE 593-979083368"
     const origenesRaw = req.query.origenes || '';
-    const origenes = origenesRaw
-      ? origenesRaw.split(',').map((o) => o.trim()).filter(Boolean)
+    const origenes    = origenesRaw
+      ? origenesRaw.split(',').map(o => o.trim()).filter(Boolean)
       : [];
 
-    // ── WHERE de fecha ────────────────────────────────────────────────────────
-    // modo = 'mes'   → LIKE '%YYYY-MM%'
-    // modo = 'rango' → BETWEEN (por defecto)
-    let fechaWhere;
-    let fechaParams;
-
+    // ── WHERE fecha ───────────────────────────────────────────────────────────
+    let fechaWhere, fechaParams;
     if (modo === 'mes') {
-      const mes = desde.slice(0, 7); // "2026-03"
+      const mes   = desde.slice(0, 7);           // "2026-03"
       fechaWhere  = `b_creado_el_fecha LIKE $1`;
       fechaParams = [`%${mes}%`];
     } else {
@@ -293,38 +289,32 @@ const getMonitoreoMetas = async (req, res) => {
       fechaParams = [desde, hasta];
     }
 
-    const paramOffset = fechaParams.length;
+    const offset = fechaParams.length;
 
-    // ── WHERE de orígenes ─────────────────────────────────────────────────────
+    // ── WHERE origenes ────────────────────────────────────────────────────────
     let origenWhere  = '';
     let origenParams = [];
-
     if (origenes.length > 0) {
-      const placeholders = origenes.map((_, i) => `$${paramOffset + i + 1}`).join(', ');
-      origenWhere  = `AND b_origen IN (${placeholders})`;
+      const ph     = origenes.map((_, i) => `$${offset + i + 1}`).join(', ');
+      origenWhere  = `AND b_origen IN (${ph})`;
       origenParams = origenes;
     }
 
     const allParams = [...fechaParams, ...origenParams];
 
-    // ── Etapas por origen ─────────────────────────────────────────────────────
-    const etapasResult = await pool.query(`
+    // ── 1. Totales por origen ─────────────────────────────────────────────────
+    const totalesRes = await pool.query(`
       SELECT
         b_origen,
-        b_etapa_de_la_negociacion,
-        COUNT(*) AS total
-      FROM public.mestra_bitrix
-      WHERE ${fechaWhere}
-        ${origenWhere}
-      GROUP BY b_origen, b_etapa_de_la_negociacion
-      ORDER BY b_origen, total DESC
-    `, allParams);
-
-    // ── Totales por origen ────────────────────────────────────────────────────
-    const totalesResult = await pool.query(`
-      SELECT
-        b_origen,
-        COUNT(*) AS total_leads
+        COUNT(*)                                                        AS total_leads,
+        COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion IN (
+          'ATC/SOPORTE','FUERA DE COBERTURA',
+          'ZONAS PELIGROSAS','INNEGOCIABLE'
+        ))                                                              AS leads_sac,
+        COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'VENTA SUBIDA') AS venta_subida,
+        COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion IN (
+          'INGRESO JOT','VENTA JOT'
+        ))                                                              AS ingreso_jot
       FROM public.mestra_bitrix
       WHERE ${fechaWhere}
         ${origenWhere}
@@ -332,8 +322,28 @@ const getMonitoreoMetas = async (req, res) => {
       ORDER BY total_leads DESC
     `, allParams);
 
-    // ── Orígenes disponibles (para el selector del frontend) ─────────────────
-    const origenesDisp = await pool.query(`
+    // ── 2. Inversión desde mv_monitoreo_publicidad filtrada por origen ────────
+    // Trae la inversión acumulada del período para cruzar con cada origen
+    // (si tu tabla mv_monitoreo_publicidad tiene canal_publicidad = b_origen)
+    let inversionPorOrigen = {};
+    try {
+      const invRes = await pool.query(`
+        SELECT
+          canal_publicidad,
+          SUM(inversion_usd) AS inversion_usd
+        FROM public.mv_monitoreo_publicidad
+        WHERE fecha BETWEEN $1::date AND $2::date
+        GROUP BY canal_publicidad
+      `, [desde, hasta]);
+      invRes.rows.forEach(r => {
+        inversionPorOrigen[r.canal_publicidad] = Number(r.inversion_usd || 0);
+      });
+    } catch (_) {
+      // Si falla, la inversión quedará en 0 — no rompe el resto
+    }
+
+    // ── 3. Orígenes disponibles (para el selector del frontend) ──────────────
+    const origenesDispRes = await pool.query(`
       SELECT DISTINCT b_origen
       FROM public.mestra_bitrix
       WHERE ${fechaWhere}
@@ -342,56 +352,40 @@ const getMonitoreoMetas = async (req, res) => {
       ORDER BY b_origen ASC
     `, fechaParams);
 
-    // ── Agrupación por origen ─────────────────────────────────────────────────
-    const byOrigen = {};
+    // ── 4. Construir respuesta por canal ──────────────────────────────────────
+    const canales = totalesRes.rows.map(r => {
+      const total     = Number(r.total_leads  || 0);
+      const sac       = Number(r.leads_sac    || 0);
+      const ventas    = Number(r.venta_subida || 0);
+      const jot       = Number(r.ingreso_jot  || 0);
+      const calidad   = total - sac;
+      const inversion = inversionPorOrigen[r.b_origen] || 0;
 
-    totalesResult.rows.forEach((r) => {
-      byOrigen[r.b_origen] = {
-        origen:           r.b_origen,
-        total_leads:      Number(r.total_leads),
-        inversion_usd:    0,
-        atc_soporte:      0,
-        fuera_cobertura:  0,
-        zonas_peligrosas: 0,
-        innegociable:     0,
-        venta_subida:     0,
-        ingreso_jot:      0,
-      };
-    });
-
-    etapasResult.rows.forEach((r) => {
-      const o = byOrigen[r.b_origen];
-      if (!o) return;
-      const etapa = (r.b_etapa_de_la_negociacion || '').toUpperCase().trim();
-      const n = Number(r.total);
-
-      if (etapa === 'ATC/SOPORTE')        o.atc_soporte      += n;
-      if (etapa === 'FUERA DE COBERTURA') o.fuera_cobertura  += n;
-      if (etapa === 'ZONAS PELIGROSAS')   o.zonas_peligrosas += n;
-      if (etapa === 'INNEGOCIABLE')       o.innegociable     += n;
-      if (etapa === 'VENTA SUBIDA')       o.venta_subida     += n;
-      if (etapa === 'INGRESO JOT' || etapa === 'VENTA JOT') o.ingreso_jot += n;
-    });
-
-    // ── Métricas derivadas ────────────────────────────────────────────────────
-    const canales = Object.values(byOrigen).map((o) => {
-      const sac     = o.atc_soporte + o.fuera_cobertura + o.zonas_peligrosas + o.innegociable;
-      const calidad = o.total_leads - sac;
       return {
-        ...o,
-        leads_sac:      sac,
-        leads_calidad:  calidad,
-        pct_sac:        o.total_leads > 0 ? (sac            / o.total_leads) * 100 : 0,
-        pct_calidad:    o.total_leads > 0 ? (calidad         / o.total_leads) * 100 : 0,
-        pct_ventas:     o.total_leads > 0 ? (o.venta_subida  / o.total_leads) * 100 : 0,
-        pct_ventas_jot: o.total_leads > 0 ? (o.ingreso_jot   / o.total_leads) * 100 : 0,
+        origen:        r.b_origen,
+        total_leads:   total,
+        leads_sac:     sac,
+        leads_calidad: calidad,
+        venta_subida:  ventas,
+        ingreso_jot:   jot,
+        inversion_usd: inversion,
+        // porcentajes precalculados
+        pct_sac:       total > 0 ? (sac    / total) * 100 : 0,
+        pct_calidad:   total > 0 ? (calidad/ total) * 100 : 0,
+        pct_ventas:    total > 0 ? (ventas / total) * 100 : 0,
+        pct_ventas_jot:total > 0 ? (jot    / total) * 100 : 0,
+        // costos
+        cpl:     total   > 0 && inversion > 0 ? inversion / total   : null,
+        cpl_gest:calidad > 0 && inversion > 0 ? inversion / calidad : null,
+        cpa:     ventas  > 0 && inversion > 0 ? inversion / ventas  : null,
+        cpa_jot: jot     > 0 && inversion > 0 ? inversion / jot     : null,
       };
     });
 
     res.json({
       success: true,
       canales,
-      origenes_disponibles: origenesDisp.rows.map((r) => r.b_origen),
+      origenes_disponibles: origenesDispRes.rows.map(r => r.b_origen),
     });
 
   } catch (error) {

@@ -246,20 +246,17 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 6000
         `;
 
-        const ESTADOS_ORDEN = [
-            'ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO',
-            'DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTIÓN','FACTIBLE'
-        ];
-
+        // ─── CAMBIO CLAVE: query dinámico que agrupa por etapa (SIN lista fija) ───
         // SIN JOIN — usa filtersNoJoin para evitar duplicados
         const queryEstados = `
             SELECT
-                ${ESTADOS_ORDEN.map(est => `COUNT(*) FILTER (WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND mb.j_netlife_estatus_real = '${est}') AS "${est}"`).join(',')}
-            FROM mestra_bitrix mb
-            WHERE (
-                ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filtersNoJoin}
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
+                COUNT(*)::int AS total
+            FROM public.mestra_bitrix mb
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            ${filtersNoJoin}
+            GROUP BY 1
+            ORDER BY total DESC
         `;
 
         // SIN JOIN — usa filtersNoJoin
@@ -273,7 +270,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // SIN JOIN — usa filtersNoJoin — este era el gráfico de barras con duplicados
+        // SIN JOIN — usa filtersNoJoin
         const queryPorDia = `
             SELECT
                 mb.j_fecha_registro_sistema::date AS fecha,
@@ -294,7 +291,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY etapa ASC
         `;
 
-        // NUEVO: trae todas las etapas distintas de j_netlife_estatus_real
         const queryEtapasJotform = `
             SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
             FROM public.mestra_bitrix mb
@@ -354,10 +350,10 @@ const getIndicadoresDashboard = async (req, res) => {
         const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
         const asesoresConBacklog = mergeBacklog(resAses.rows, resBacklogAses.rows);
 
-        const estadosRow = resEstados.rows[0] || {};
-        const estadosNetlife = ESTADOS_ORDEN.map(est => ({
-            estado: est,
-            total: Number(estadosRow[est] || 0),
+        // ─── CAMBIO CLAVE: estadosNetlife ahora viene directo de las filas del query dinámico ───
+        const estadosNetlife = resEstados.rows.map(r => ({
+            estado: r.estado,
+            total: Number(r.total || 0),
         }));
 
         const rowTercera = resTerceraEdad.rows[0] || {};
@@ -373,7 +369,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
-        console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
+        console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup} | Etapas Jotform: ${estadosNetlife.length}`);
 
         res.json({
             success: true,
@@ -407,7 +403,6 @@ const getMonitoreoDiario = async (req, res) => {
 
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
-        // queryMonitoreo necesita JOIN porque agrupa por e.supervisor
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -461,7 +456,6 @@ const getMonitoreoDiario = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
-        // queryJotHoy necesita JOIN porque agrupa por e.supervisor
         const queryJotHoy = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -582,7 +576,6 @@ const getReporte180 = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        // SIN JOIN — filtersNoJoin
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (
@@ -629,7 +622,6 @@ const getReporte180 = async (req, res) => {
             ) ${filtersNoJoin}
         `;
 
-        // SIN JOIN — filtersNoJoin
         const queryEmbudoCRM = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
@@ -640,7 +632,6 @@ const getReporte180 = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // SIN JOIN — filtersNoJoin
         const queryEmbudoJotform = `
             SELECT
                 COALESCE(mb.j_netlife_estatus_real, 'SIN ESTADO') AS etapa,
@@ -651,7 +642,6 @@ const getReporte180 = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // SIN JOIN — filtersNoJoin
         const queryMapaCalor = `
             SELECT
                 TRIM(mb.j_fecha_registro_sistema) AS fecha,

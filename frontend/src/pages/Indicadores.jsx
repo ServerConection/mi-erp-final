@@ -134,6 +134,7 @@ export default function ReporteComercialCore() {
     } catch (e) { console.error("Error Reporte180:", e); } finally { setLoading(false); }
   };
 
+  // ─── CAMBIO CLAVE: handleClickTarjetaJotform filtra por estado dinámico ───
   const handleClickTarjetaJotform = (estado) => { const nuevosFiltros = { ...filtros, etapaJotform: estado }; setFiltros(nuevosFiltros); fetchDashboard(nuevosFiltros); };
 
   useEffect(() => {
@@ -332,11 +333,14 @@ export default function ReporteComercialCore() {
             <KpiMini label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
-          {/* Tarjetas Etapas Jotform */}
+          {/* ─── CAMBIO CLAVE: Tarjetas Etapas Jotform — ahora muestra TODAS las etapas dinámicas ─── */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               Etapas Jotform
+              <span className="ml-1 bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[8px] font-black">
+                {(data.estadosNetlife || []).length} ETAPAS
+              </span>
               {filtros.etapaJotform && (
                 <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
                   FILTRO ACTIVO: {filtros.etapaJotform}
@@ -344,13 +348,32 @@ export default function ReporteComercialCore() {
                 </span>
               )}
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* Grid dinámico: ajusta columnas según la cantidad de etapas */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {(data.estadosNetlife || []).map((e, i) => (
-                <div key={i} onClick={() => handleClickTarjetaJotform(e.estado)} className={`px-3 py-3 rounded-xl flex justify-between items-center shadow-sm cursor-pointer transition-all border hover:scale-105 active:scale-95 ${filtros.etapaJotform === e.estado ? 'bg-blue-50 border-blue-400 shadow-blue-100' : 'bg-white border-slate-100 hover:border-blue-300'}`}>
+                <div
+                  key={i}
+                  onClick={() => handleClickTarjetaJotform(e.estado)}
+                  className={`px-3 py-3 rounded-xl flex justify-between items-center shadow-sm cursor-pointer transition-all border hover:scale-105 active:scale-95 ${
+                    filtros.etapaJotform === e.estado
+                      ? 'bg-blue-50 border-blue-400 shadow-blue-100'
+                      : 'bg-white border-slate-100 hover:border-blue-300'
+                  }`}
+                >
                   <span className="text-[10px] font-bold text-slate-600 uppercase leading-tight pr-2">{e.estado}</span>
-                  <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${filtros.etapaJotform === e.estado ? 'text-white bg-blue-500' : 'text-blue-600 bg-blue-50'}`}>{e.total}</span>
+                  <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${
+                    filtros.etapaJotform === e.estado ? 'text-white bg-blue-500' : 'text-blue-600 bg-blue-50'
+                  }`}>
+                    {e.total}
+                  </span>
                 </div>
               ))}
+              {/* Mensaje vacío si no hay etapas */}
+              {(data.estadosNetlife || []).length === 0 && (
+                <div className="col-span-full text-center text-slate-400 text-[10px] py-6 uppercase">
+                  SIN DATOS PARA EL PERÍODO SELECCIONADO
+                </div>
+              )}
             </div>
           </div>
 

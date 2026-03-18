@@ -17,23 +17,27 @@ const TABS = [
 
 export default function TabbedEmbed() {
   const [activeTab, setActiveTab] = useState("jotform");
+  const [showAppSheet, setShowAppSheet] = useState(false); // 👈 NUEVO
+
+  const handleTabClick = (tab) => {
+    if (tab.id === "appsheet") {
+      setShowAppSheet(true); // 👈 abre el "módulo"
+    } else {
+      setActiveTab(tab.id);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100vh", fontFamily: "sans-serif" }}>
-      {/* Tab Bar */}
-      <div
-        style={{
-          display: "flex",
-          borderBottom: "2px solid #e2e8f0",
-          backgroundColor: "#f8fafc",
-        }}
-      >
+      
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: "2px solid #e2e8f0", backgroundColor: "#f8fafc" }}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab)}
               style={{
                 padding: "12px 24px",
                 fontSize: "14px",
@@ -44,7 +48,6 @@ export default function TabbedEmbed() {
                 borderBottom: isActive ? "2px solid #2563eb" : "2px solid transparent",
                 marginBottom: "-2px",
                 cursor: "pointer",
-                transition: "all 0.2s",
               }}
             >
               {tab.label}
@@ -53,9 +56,9 @@ export default function TabbedEmbed() {
         })}
       </div>
 
-      {/* Iframe Content */}
+      {/* Iframe SOLO JotForm */}
       <div style={{ flex: 1, position: "relative" }}>
-        {TABS.map((tab) => (
+        {TABS.filter(tab => tab.id !== "appsheet").map((tab) => (
           <iframe
             key={tab.id}
             src={tab.url}
@@ -69,10 +72,75 @@ export default function TabbedEmbed() {
               left: 0,
               display: activeTab === tab.id ? "block" : "none",
             }}
-            allow="fullscreen"
           />
         ))}
       </div>
+
+      {/* 🔥 MODULO SIMULADO AppSheet */}
+      {showAppSheet && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "#ffffff",
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              padding: "12px",
+              background: "#2563eb",
+              color: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>AppSheet - Ventas</span>
+            <button
+              onClick={() => setShowAppSheet(false)}
+              style={{
+                background: "#fff",
+                color: "#2563eb",
+                border: "none",
+                padding: "6px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Cerrar
+            </button>
+          </div>
+
+          {/* Contenido */}
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center" }}>
+            <button
+              onClick={() =>
+                window.open(
+                  "https://www.appsheet.com/start/64aaca5b-4eba-4bc7-8dce-512ef8a1f118",
+                  "_blank"
+                )
+              }
+              style={{
+                padding: "14px 24px",
+                fontSize: "16px",
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: "6px",
+              }}
+            >
+              Abrir AppSheet
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,7 +10,7 @@ const TABS = [
   {
     id: "appsheet",
     label: "AppSheet",
-    url: "https://www.appsheet.com/start/64aaca5b-4eba-4bc7-8dce-512ef8a1f118",
+    url: "https://sites.google.com/view/panel-de-registro?usp=sharing",
     title: "AppSheet App",
   },
 ];

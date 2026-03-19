@@ -6,6 +6,7 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules from "./pages/HomeModules"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import Redes from "./pages/Redes"; // <--- 1. IMPORTAMOS EL NUEVO HOME
+import VistaAsesor from "./pages/VistaAsesor"; // <--- VISTA MÓDULO ASESOR
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="comisiones" element={<Comisiones />} />
           <Route path="Seguimiento_Venta" element={<Seguimientoventas />} />
           <Route path="redes" element={<Redes />} />
+          <Route path="vista-asesor" element={<VistaAsesor />} /> {/* MÓDULO ASESOR */}
         </Route>
 
         <Route path="*" element={<Navigate to="/login" />} />

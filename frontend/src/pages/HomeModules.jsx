@@ -67,6 +67,13 @@ export default function HomeModules() {
       icon: "🚩",
       color: "text-yellow-400",
       desc: "Cálculo automatizado de incentivos y bonos por desempeño."
+    },
+    {
+      title: "Vista Asesor",
+      path: "/vista-asesor",
+      icon: "🧑‍💼",
+      color: "text-sky-400",
+      desc: "Tablero personal de ventas: leads, ingresos CRM, Jotform y activas."
     }
   ];
 

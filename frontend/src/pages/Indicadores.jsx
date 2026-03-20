@@ -97,6 +97,12 @@ export default function ReporteComercialCore() {
   const [filtros, setFiltros] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
   const [filtros180, setFiltros180] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
+  // ── Nombres de asesores para el dropdown ─────────────────────────────────
+  const nombresAsesores = useMemo(
+    () => [...(data.asesores || [])].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
+    [data.asesores]
+  );
+
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
     const supEficienciaBaja = (supervisores || []).filter(s => Number(s.eficiencia) < 5);
@@ -134,7 +140,14 @@ export default function ReporteComercialCore() {
     } catch (e) { console.error("Error Reporte180:", e); } finally { setLoading(false); }
   };
 
-  // ─── CAMBIO CLAVE: handleClickTarjetaJotform filtra por estado dinámico ───
+  // ── Helper: actualiza filtro y dispara fetch inmediatamente ───────────────
+  const updateFiltro = (campo, valor) => {
+    const nuevosFiltros = { ...filtros, [campo]: valor };
+    setFiltros(nuevosFiltros);
+    fetchDashboard(nuevosFiltros);
+  };
+
+  // ─── handleClickTarjetaJotform filtra por estado dinámico ───
   const handleClickTarjetaJotform = (estado) => { const nuevosFiltros = { ...filtros, etapaJotform: estado }; setFiltros(nuevosFiltros); fetchDashboard(nuevosFiltros); };
 
   useEffect(() => {
@@ -198,7 +211,6 @@ export default function ReporteComercialCore() {
   const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
-  // ── Gráfica reutilizable: barras por día ──
   const GraficoBarrasDia = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={(data.graficoBarrasDia || []).map(d => ({ ...d, faltante: Math.max(0, 65 - Number(d.total)), activos: Number(d.activos || 0) }))} margin={{ top: 24, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}>
@@ -214,7 +226,6 @@ export default function ReporteComercialCore() {
     </ResponsiveContainer>
   );
 
-  // ── Gráfica reutilizable: embudo general ──
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
@@ -243,7 +254,6 @@ export default function ReporteComercialCore() {
     </div>
   );
 
-  // ── Gráficas monitoreo ──
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
@@ -300,17 +310,70 @@ export default function ReporteComercialCore() {
               <div className="lg:col-span-2 flex flex-col gap-2">
                 <label className="text-[9px] font-black text-blue-400 italic tracking-widest uppercase">PERÍODO DE CONSULTA</label>
                 <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
-                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaDesde} onChange={e => setFiltros({...filtros, fechaDesde: e.target.value})} />
+                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                    value={filtros.fechaDesde} onChange={e => updateFiltro('fechaDesde', e.target.value)} />
                   <div className="text-slate-600 px-2 font-black self-center">-</div>
-                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
+                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                    value={filtros.fechaHasta} onChange={e => updateFiltro('fechaHasta', e.target.value)} />
                 </div>
               </div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label><select className={selectCls} value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label><select className={selectCls} value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOTFORM</label><select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{ETAPAS_JOTFORM.map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-              <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">REGULARIZACIÓN</label><select className={selectCls} value={filtros.estadoRegularizacion} onChange={e => setFiltros({...filtros, estadoRegularizacion: e.target.value})}><option value="">TODOS</option><option value="POR REGULARIZAR">POR REGULARIZAR</option><option value="REGULARIZADO">REGULARIZADO</option></select></div>
+
+              {/* ASESOR — dropdown con nombres reales del backend */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>
+                <select className={selectCls} value={filtros.asesor}
+                  onChange={e => updateFiltro('asesor', e.target.value)}>
+                  <option value="">TODOS</option>
+                  {nombresAsesores.map((a) => (
+                    <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
+                <input type="text" placeholder="BUSCAR..." className={inputCls}
+                  value={filtros.supervisor} onChange={e => updateFiltro('supervisor', e.target.value)} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
+                <select className={selectCls} value={filtros.etapaCRM}
+                  onChange={e => updateFiltro('etapaCRM', e.target.value)}>
+                  <option value="">TODAS</option>
+                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label>
+                <select className={selectCls} value={filtros.estadoNetlife}
+                  onChange={e => updateFiltro('estadoNetlife', e.target.value)}>
+                  <option value="">TODOS</option>
+                  <option value="ACTIVO">ACTIVO</option>
+                  <option value="RECHAZADO">RECHAZADO</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOTFORM</label>
+                <select className={selectCls} value={filtros.etapaJotform}
+                  onChange={e => updateFiltro('etapaJotform', e.target.value)}>
+                  <option value="">TODAS</option>
+                  {ETAPAS_JOTFORM.map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-slate-500 italic uppercase">REGULARIZACIÓN</label>
+                <select className={selectCls} value={filtros.estadoRegularizacion}
+                  onChange={e => updateFiltro('estadoRegularizacion', e.target.value)}>
+                  <option value="">TODOS</option>
+                  <option value="POR REGULARIZAR">POR REGULARIZAR</option>
+                  <option value="REGULARIZADO">REGULARIZADO</option>
+                </select>
+              </div>
+
               <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
             </div>
           </div>
@@ -333,7 +396,7 @@ export default function ReporteComercialCore() {
             <KpiMini label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
-          {/* ─── CAMBIO CLAVE: Tarjetas Etapas Jotform — ahora muestra TODAS las etapas dinámicas ─── */}
+          {/* Tarjetas Etapas Jotform */}
           <div className="bg-white border border-slate-200 shadow-sm p-6 mb-6 rounded-2xl">
             <h3 className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-widest flex items-center gap-2 italic">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -344,11 +407,10 @@ export default function ReporteComercialCore() {
               {filtros.etapaJotform && (
                 <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
                   FILTRO ACTIVO: {filtros.etapaJotform}
-                  <button onClick={() => { const f = {...filtros, etapaJotform: ""}; setFiltros(f); fetchDashboard(f); }} className="ml-1 text-blue-400 hover:text-red-500">✕</button>
+                  <button onClick={() => updateFiltro('etapaJotform', '')} className="ml-1 text-blue-400 hover:text-red-500">✕</button>
                 </span>
               )}
             </h3>
-            {/* Grid dinámico: ajusta columnas según la cantidad de etapas */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {(data.estadosNetlife || []).map((e, i) => (
                 <div
@@ -368,7 +430,6 @@ export default function ReporteComercialCore() {
                   </span>
                 </div>
               ))}
-              {/* Mensaje vacío si no hay etapas */}
               {(data.estadosNetlife || []).length === 0 && (
                 <div className="col-span-full text-center text-slate-400 text-[10px] py-6 uppercase">
                   SIN DATOS PARA EL PERÍODO SELECCIONADO
@@ -377,7 +438,7 @@ export default function ReporteComercialCore() {
             </div>
           </div>
 
-          {/* Gráficas — con expand */}
+          {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
               <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
@@ -494,6 +555,13 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoCRM || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
   const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoJotform || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
 
+  // ── Helper: actualiza filtro 180 y dispara fetch ──────────────────────────
+  const updateFiltro180 = (campo, valor) => {
+    const nuevos = { ...filtros, [campo]: valor };
+    setFiltros(nuevos);
+    onFetch(nuevos);
+  };
+
   const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
@@ -551,7 +619,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             </span>
           </p>
         </div>
-        <button onClick={() => onFetch()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "CARGANDO..." : "APLICAR"}</button>
+        <button onClick={() => onFetch(filtros)} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "CARGANDO..." : "APLICAR"}</button>
       </div>
 
       <div className="bg-[#0F172A] rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
@@ -559,16 +627,38 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <div className="lg:col-span-2 flex flex-col gap-2">
             <label className="text-[9px] font-black text-violet-400 italic tracking-widest uppercase">PERÍODO</label>
             <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
-              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaDesde} onChange={e => setFiltros({...filtros, fechaDesde: e.target.value})} />
+              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                value={filtros.fechaDesde} onChange={e => updateFiltro180('fechaDesde', e.target.value)} />
               <div className="text-slate-600 px-2 font-black self-center">-</div>
-              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]" value={filtros.fechaHasta} onChange={e => setFiltros({...filtros, fechaHasta: e.target.value})} />
+              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                value={filtros.fechaHasta} onChange={e => updateFiltro180('fechaHasta', e.target.value)} />
             </div>
           </div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.asesor} onChange={e => setFiltros({...filtros, asesor: e.target.value})} /></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label><input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => setFiltros({...filtros, supervisor: e.target.value})} /></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label><select className={selectCls} value={filtros.etapaCRM} onChange={e => setFiltros({...filtros, etapaCRM: e.target.value})}><option value="">TODAS</option>{(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label><select className={selectCls} value={filtros.estadoNetlife} onChange={e => setFiltros({...filtros, estadoNetlife: e.target.value})}><option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option></select></div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOT</label><select className={selectCls} value={filtros.etapaJotform} onChange={e => setFiltros({...filtros, etapaJotform: e.target.value})}><option value="">TODAS</option>{(ETAPAS_JOTFORM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}</select></div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>
+            <input type="text" placeholder="BUSCAR..." className={inputCls}
+              value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
+            <input type="text" placeholder="BUSCAR..." className={inputCls}
+              value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
+            <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>
+              <option value="">TODAS</option>
+              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label>
+            <select className={selectCls} value={filtros.estadoNetlife} onChange={e => updateFiltro180('estadoNetlife', e.target.value)}>
+              <option value="">TODOS</option><option value="ACTIVO">ACTIVO</option><option value="RECHAZADO">RECHAZADO</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOT</label>
+            <select className={selectCls} value={filtros.etapaJotform} onChange={e => updateFiltro180('etapaJotform', e.target.value)}>
+              <option value="">TODAS</option>
+              {(ETAPAS_JOTFORM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+            </select>
+          </div>
           <button onClick={() => onFetch(filtros)} className="bg-violet-600 hover:bg-violet-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase">APLICAR FILTROS</button>
         </div>
       </div>
@@ -720,7 +810,7 @@ const KpiMini = ({ label, value, meta, real, color }) => {
 };
 
 // ======================================================
-// HORIZONTAL TABLE — con descarga Excel
+// HORIZONTAL TABLE
 // ======================================================
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
@@ -839,7 +929,7 @@ function HorizontalTable({ title, data, hasScroll }) {
 }
 
 // ======================================================
-// DAILY MONITORING TABLE — con descarga Excel
+// DAILY MONITORING TABLE
 // ======================================================
 function DailyMonitoringTable({ title, data, hasScroll }) {
   const safeData = data || [];

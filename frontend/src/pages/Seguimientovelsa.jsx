@@ -84,13 +84,13 @@ const initials = (n = "") =>
 // PALETA POR SUPERVISOR — colores de acento para tema claro
 // ─────────────────────────────────────────────────────────────────────────────
 const SUP_PALETTE = [
-  { accent: "#0ea5e9", light: "#e0f2fe", text: "#0369a1", border: "#bae6fd" },
-  { accent: "#10b981", light: "#d1fae5", text: "#065f46", border: "#a7f3d0" },
-  { accent: "#8b5cf6", light: "#ede9fe", text: "#5b21b6", border: "#ddd6fe" },
-  { accent: "#f59e0b", light: "#fef3c7", text: "#92400e", border: "#fde68a" },
+  { accent: "#f97316", light: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
+  { accent: "#eab308", light: "#fefce8", text: "#a16207", border: "#fef08a" },
   { accent: "#ef4444", light: "#fee2e2", text: "#991b1b", border: "#fecaca" },
-  { accent: "#ec4899", light: "#fce7f3", text: "#9d174d", border: "#fbcfe8" },
-  { accent: "#06b6d4", light: "#cffafe", text: "#155e75", border: "#a5f3fc" },
+  { accent: "#f59e0b", light: "#fffbeb", text: "#92400e", border: "#fde68a" },
+  { accent: "#fb923c", light: "#fff7ed", text: "#9a3412", border: "#fdba74" },
+  { accent: "#dc2626", light: "#fef2f2", text: "#991b1b", border: "#fca5a5" },
+  { accent: "#d97706", light: "#fffbeb", text: "#78350f", border: "#fcd34d" },
 ];
 const supColor = (i) => SUP_PALETTE[i % SUP_PALETTE.length];
 
@@ -348,7 +348,7 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
     <div style={{
       background: "#fff",
       border: "1px solid #e2e8f0",
-      borderTop: "3px solid #0f172a",
+      borderTop: "3px solid #ea580c",
       borderRadius: 14,
       overflow: "hidden",
       boxShadow: "0 1px 8px rgba(0,0,0,.06)",
@@ -357,13 +357,13 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
       <div style={{
         padding: "16px 20px",
         borderBottom: "1px solid #f1f5f9",
-        background: "#fafafa",
+        background: "#fffbf5",
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{
             width: 38, height: 38, borderRadius: 10,
-            background: "#f8fafc", border: "1px solid #e2e8f0",
+            background: "#fff7ed", border: "1px solid #fed7aa",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 18,
           }}>
@@ -438,7 +438,7 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFETI — piezas aleatorias
 // ─────────────────────────────────────────────────────────────────────────────
-const CONFETTI_COLORS = ["#fbbf24","#10b981","#0ea5e9","#f472b6","#a78bfa","#f97316","#34d399"];
+const CONFETTI_COLORS = ["#f97316","#fbbf24","#ef4444","#f59e0b","#fb923c","#fde68a","#dc2626"];
 const CONFETTI_PIECES = Array.from({ length: 48 }, (_, i) => ({
   id: i,
   color:  CONFETTI_COLORS[i % CONFETTI_COLORS.length],
@@ -567,7 +567,7 @@ function LiderSplash({ lider, show }) {
   );
 }
 
-export default function Seguimientoventas() {
+export default function Seguimientovelsa() {
   const [loading, setLoading]     = useState(false);
   const [asesores, setAsesores]   = useState([]);
   const [ultimaAct, setUltimaAct] = useState(null);
@@ -588,7 +588,7 @@ export default function Seguimientoventas() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta });
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)
@@ -626,7 +626,7 @@ export default function Seguimientoventas() {
           const supIdx  = Object.keys(
             enriched.reduce((m, a) => { m[a.supervisor] = true; return m; }, {})
           ).indexOf(top.supervisor);
-          const accent  = ["#0ea5e9","#10b981","#8b5cf6","#f59e0b","#ef4444","#ec4899","#06b6d4"][
+          const accent  = ["#f97316","#eab308","#ef4444","#f59e0b","#fb923c","#dc2626","#d97706"][
             Math.max(0, supIdx) % 7
           ];
           if (liderTimer.current) clearTimeout(liderTimer.current);
@@ -729,11 +729,11 @@ export default function Seguimientoventas() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <span style={{
-                background: "#0f172a", color: "#fff",
+                background: "#ea580c", color: "#fff",
                 padding: "3px 10px", borderRadius: 5,
                 fontSize: 10, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase",
               }}>
-                SEGUIMIENTO
+                VELSA
               </span>
               <h1 style={{
                 fontSize: 22, fontWeight: 900, color: "#0f172a", margin: 0,
@@ -743,7 +743,7 @@ export default function Seguimientoventas() {
               </h1>
             </div>
             <p style={{ margin: 0, fontSize: 11, color: "#64748b", fontWeight: 500 }}>
-              Ingresos Jotform y activas totales por asesor · agrupado por supervisor
+              Ingresos Jotform y activas totales por asesor · Velsa · agrupado por supervisor
               {ultimaAct && (
                 <span style={{ marginLeft: 10, color: "#94a3b8" }}>
                   · Actualizado {ultimaAct.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
@@ -755,10 +755,10 @@ export default function Seguimientoventas() {
           {/* KPI strip */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
-              { label: "Total Jotform",   val: totales.jot,      color: "#0ea5e9" },
-              { label: "Total activas",   val: totales.act,      color: "#10b981" },
-              { label: "Supervisores",    val: grupos.length,    color: "#8b5cf6" },
-              { label: "Asesores",        val: asesores.length,  color: "#f59e0b" },
+              { label: "Total Jotform",   val: totales.jot,      color: "#f97316" },
+              { label: "Total activas",   val: totales.act,      color: "#eab308" },
+              { label: "Supervisores",    val: grupos.length,    color: "#ef4444" },
+              { label: "Asesores",        val: asesores.length,  color: "#fb923c" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: "#fff", border: "1px solid #e2e8f0",
@@ -814,7 +814,7 @@ export default function Seguimientoventas() {
           <button
             onClick={() => fetchData(filtros)}
             style={{
-              background: loading ? "#f1f5f9" : "#0f172a",
+              background: loading ? "#f1f5f9" : "#ea580c",
               color: loading ? "#94a3b8" : "#fff",
               border: "none", borderRadius: 7, padding: "7px 16px",
               fontSize: 10, fontWeight: 800, cursor: loading ? "default" : "pointer",
@@ -891,7 +891,7 @@ export default function Seguimientoventas() {
         textAlign: "center", fontSize: 9, color: "#cbd5e1", fontWeight: 600,
         textTransform: "uppercase", letterSpacing: ".12em",
       }}>
-        Seguimiento de ventas · Novonet · Datos en tiempo real
+        Seguimiento de ventas · Velsa · Datos en tiempo real
       </div>
     </div>
   );

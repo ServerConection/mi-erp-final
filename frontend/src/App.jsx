@@ -7,6 +7,8 @@ import HomeModules from "./pages/HomeModules"; // <--- 1. IMPORTAMOS EL NUEVO HO
 import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import Redes from "./pages/Redes"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import VistaAsesor from "./pages/VistaAsesor"; // <--- VISTA MÓDULO ASESOR
+import Seguimientovelsa from "./pages/Seguimientovelsa";
+import VistaAsesorVelsa from "./pages/VistaAsesorVelsa"
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
@@ -36,6 +38,8 @@ export default function App() {
           <Route path="Seguimiento_Venta" element={<Seguimientoventas />} />
           <Route path="redes" element={<Redes />} />
           <Route path="vista-asesor" element={<VistaAsesor />} /> {/* MÓDULO ASESOR */}
+          <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} /> {/* MÓDULO ASESOR VELSA*/}
+          <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
         </Route>
 
         <Route path="*" element={<Navigate to="/login" />} />

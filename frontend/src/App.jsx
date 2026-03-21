@@ -10,6 +10,8 @@ import VistaAsesor from "./pages/VistaAsesor"; // <--- VISTA MÓDULO ASESOR
 import Seguimientovelsa from "./pages/Seguimientovelsa";
 import VistaAsesorVelsa from "./pages/VistaAsesorVelsa";
 import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICACIONES
+import BroadcastPanel from "./pages/BroadcastPanel";  // <--- BROADCAST TV
+import TVMode from "./pages/TVMode";                  // <--- TV FULLSCREEN
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
@@ -42,8 +44,10 @@ export default function App() {
           <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} /> {/* MÓDULO ASESOR VELSA*/}
           <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
           <Route path="notificaciones" element={<Notificaciones />} /> {/* CENTRO DE NOTIFICACIONES */}
+          <Route path="broadcast" element={<BroadcastPanel />} />         {/* BROADCAST TV */}
         </Route>
 
+        <Route path="tv" element={<TVMode />} />                        {/* TV FULLSCREEN — sin login */}
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>

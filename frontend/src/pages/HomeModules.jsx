@@ -95,6 +95,13 @@ export default function HomeModules() {
       icon: "🔔",
       color: "text-emerald-400",
       desc: "Centro de alertas: WhatsApp, correo y ERP. Escanea QR y ve el historial."
+    },
+    {
+      title: "Broadcast TV",
+      path: "/broadcast",
+      icon: "📡",
+      color: "text-rose-400",
+      desc: "Envía mensajes, alertas y rankings en tiempo real a todas las pantallas."
     }
   ];
 

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path    = require('path');
 const cors = require('cors');
 
 const authRoutes             = require('./routes/auth.routes');
@@ -13,6 +14,7 @@ const verifyOtpRoutes        = require('./routes/verify.otp.routes');
 const indicadoresRoutes      = require('./routes/indicadores.routes');
 const indicadoresVelsaRoutes = require('./routes/indicadoresVelsa.routes');
 const alertasRoutes          = require('./routes/alertas.routes');  // ← NUEVO
+const broadcastRoutes        = require('./routes/broadcast.routes'); // ← NUEVO
 
 const app = express();
 
@@ -45,5 +47,9 @@ app.use('/api/redes',             redesRoutes);
 
 // Alertas y notificaciones                                         ← NUEVO
 app.use('/api/alertas',           alertasRoutes);
+
+// Broadcast TV                                                      ← NUEVO
+app.use('/uploads', express.static(require('path').join(process.cwd(), 'uploads')));
+app.use('/api/broadcast',         broadcastRoutes);
 
 module.exports = app;

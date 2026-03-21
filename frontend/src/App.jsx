@@ -8,7 +8,8 @@ import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS
 import Redes from "./pages/Redes"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import VistaAsesor from "./pages/VistaAsesor"; // <--- VISTA MÓDULO ASESOR
 import Seguimientovelsa from "./pages/Seguimientovelsa";
-import VistaAsesorVelsa from "./pages/VistaAsesorVelsa"
+import VistaAsesorVelsa from "./pages/VistaAsesorVelsa";
+import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICACIONES
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="vista-asesor" element={<VistaAsesor />} /> {/* MÓDULO ASESOR */}
           <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} /> {/* MÓDULO ASESOR VELSA*/}
           <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
+          <Route path="notificaciones" element={<Notificaciones />} /> {/* CENTRO DE NOTIFICACIONES */}
         </Route>
 
         <Route path="*" element={<Navigate to="/login" />} />

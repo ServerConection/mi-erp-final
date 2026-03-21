@@ -76,19 +76,26 @@ export default function HomeModules() {
       desc: "Tablero personal de ventas: leads, ingresos CRM, Jotform y activas."
     },
     {
-  title: "Vista Asesor Velsa",
-  path: "/vista-asesor-velsa",
-  icon: "🟣",
-  color: "text-purple-400",
-  desc: "Tablero personal de ventas Velsa: leads, ingresos CRM, Jotform y activas."
-},
-     {
+      title: "Vista Asesor Velsa",
+      path: "/vista-asesor-velsa",
+      icon: "🟣",
+      color: "text-purple-400",
+      desc: "Tablero personal de ventas Velsa: leads, ingresos CRM, Jotform y activas."
+    },
+    {
       title: "Seguimiento Velsa",
       path: "/seguimiento-velsa",
       icon: "🔥",
       color: "text-orange-400",
       desc: "Ranking de ventas Velsa por asesor y supervisor."
-}
+    },
+    {
+      title: "Notificaciones",
+      path: "/notificaciones",
+      icon: "🔔",
+      color: "text-emerald-400",
+      desc: "Centro de alertas: WhatsApp, correo y ERP. Escanea QR y ve el historial."
+    }
   ];
 
   return (

@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes             = require('./routes/auth.routes');
-const redesRoutes = require('./routes/redes.routes');
+const redesRoutes            = require('./routes/redes.routes');
 const usuariosRoutes         = require('./routes/usuarios.routes');
 const loginOtpRoutes         = require('./routes/login.otp.routes');
 const passwordRoutes         = require('./routes/password.routes');
@@ -12,6 +12,7 @@ const testEmailRoutes        = require('./routes/test.email.routes');
 const verifyOtpRoutes        = require('./routes/verify.otp.routes');
 const indicadoresRoutes      = require('./routes/indicadores.routes');
 const indicadoresVelsaRoutes = require('./routes/indicadoresVelsa.routes');
+const alertasRoutes          = require('./routes/alertas.routes');  // ← NUEVO
 
 const app = express();
 
@@ -39,7 +40,10 @@ app.use('/api',              testEmailRoutes);
 app.use('/api/indicadores',       indicadoresRoutes);
 app.use('/api/indicadores-velsa', indicadoresVelsaRoutes);
 
-//Redes
+// Redes
 app.use('/api/redes',             redesRoutes);
+
+// Alertas y notificaciones                                         ← NUEVO
+app.use('/api/alertas',           alertasRoutes);
 
 module.exports = app;

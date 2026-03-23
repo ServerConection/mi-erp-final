@@ -13,11 +13,7 @@ const getPrimerDiaMesEcuador = () => {
 
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
-const dedupVN = `(
-    SELECT DISTINCT ON (id_unificado) *
-    FROM public.velsa_netlife_maestra_cons
-    ORDER BY id_unificado, t1_hgl_updated_at_fecha DESC NULLS LAST
-) vn`;
+const dedupVN = `public.velsa_netlife_maestra_cons vn`;
 
 const getIndicadoresDashboardVelsa = async (req, res) => {
     try {

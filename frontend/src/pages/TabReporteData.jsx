@@ -488,35 +488,58 @@ function buildCicloFilas(d, dias) {
 export default function TabReporteData({ filtro }) {
   const hoy = new Date();
 
-  // El reporte es mensual — tiene su propio selector de mes/año
-  // pero no duplica el filtro de fechas del header principal
-  const [anio, setAnio]         = useState(hoy.getFullYear());
-  const [mes,  setMes]          = useState(hoy.getMonth() + 1);
-  const [origenes, setOrigenes] = useState([]);
-  const [origenesDisp, setOrigenesDisp] = useState([]);
-  const [data,    setData]      = useState(null);
-  const [loading, setLoading]   = useState(false);
+  // El reporte es mensual — selector de mes/año propio
+  const [anio,         setAnio]         = useState(hoy.getFullYear());
+  const [mes,          setMes]          = useState(hoy.getMonth() + 1);
+  // Filtro por CANAL (no por origen individual)
+  // El canal es lo que manda en la pauta — VIDIKA GOOGLE, ARTS, etc.
+  const [canalesSel,   setCanalesSel]   = useState([]); // canales seleccionados
+  const [canalesDisp,  setCanalesDisp]  = useState([]); // canales disponibles en el período
+  const [data,         setData]         = useState(null);
+  const [loading,      setLoading]      = useState(false);
 
-  const toggleOrigen = (o) =>
-    setOrigenes((prev) => prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]);
+  const toggleCanal = (canal) =>
+    setCanalesSel((prev) => prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal]);
 
-  // Cargar orígenes disponibles al cambiar mes/año
+  // Canales disponibles: derivados de los orígenes disponibles del backend
   useEffect(() => {
     fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setOrigenesDisp(d.origenes_disponibles || []); })
+      .then((d) => {
+        if (d.success) {
+          // Convertir orígenes → canales únicos (sin MAL INGRESO / SIN MAPEO)
+          const canalesUnicos = [...new Set(
+            (d.origenes_disponibles || [])
+              .map(getCanal)
+              .filter((c) => c !== "MAL INGRESO" && c !== "SIN MAPEO")
+          )];
+          setCanalesDisp(canalesUnicos);
+        }
+      })
       .catch(() => {});
   }, [anio, mes]);
 
   const handleCargar = useCallback(() => {
     setLoading(true);
-    const params = new URLSearchParams({ anio, mes, origenes: origenes.join(",") });
+    // Convertir canales seleccionados → todos sus orígenes correspondientes
+    // Si no hay selección, mandar vacío = todos
+    const origenesDeCanales = canalesSel.length === 0
+      ? []
+      : Object.entries(ORIGEN_CANAL)
+          .filter(([, canal]) => canalesSel.includes(canal))
+          .map(([origen]) => origen);
+
+    const params = new URLSearchParams({
+      anio,
+      mes,
+      origenes: origenesDeCanales.join(","),
+    });
     fetch(`${API}/api/redes/reporte-data?${params}`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setData(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [anio, mes, origenes]);
+  }, [anio, mes, canalesSel]);
 
   // ── Exportar a Excel ──────────────────────────────────────────────────────
   const handleExport = () => {
@@ -593,120 +616,110 @@ export default function TabReporteData({ filtro }) {
     XLSX.writeFile(wb, `ReporteData_${MESES[mes - 1]}_${anio}.xlsx`);
   };
 
-  // Agrupa orígenes disponibles por canal
-  const canalesAgr = {};
-  origenesDisp.forEach((o) => {
-    const canal = getCanal(o);
-    if (!canalesAgr[canal]) canalesAgr[canal] = [];
-    canalesAgr[canal].push(o);
-  });
-
   const dias = data?.meta?.dias || [];
 
   return (
     <div className="space-y-4">
 
-      {/* ── Filtros ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-1 h-7 rounded-full" style={{ background: C.primary }} />
-          <span className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
-            Filtros — Reporte Data
-          </span>
-        </div>
+      {/* ── Panel de filtros compacto ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
 
-        {/* Selector de mes/año (distinto al filtro de fechas global — este es por mes completo) */}
-        <div className="flex flex-wrap items-end gap-4 mb-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Año</label>
+        {/* Fila superior: mes/año + botones */}
+        <div className="px-5 py-4 flex flex-wrap items-end gap-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-6 rounded-full bg-blue-800" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-800">Reporte Data</span>
+          </div>
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            {/* Selector año */}
             <select
               value={anio}
               onChange={(e) => setAnio(Number(e.target.value))}
-              className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white"
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-700 outline-none bg-white focus:border-blue-400 cursor-pointer"
             >
               {[2024, 2025, 2026, 2027].map((y) => <option key={y}>{y}</option>)}
             </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Mes</label>
+            {/* Selector mes */}
             <select
               value={mes}
               onChange={(e) => setMes(Number(e.target.value))}
-              className="border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400 bg-white"
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-700 outline-none bg-white focus:border-blue-400 cursor-pointer"
             >
               {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
-          </div>
-          <button
-            onClick={handleCargar}
-            className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
-            style={{ background: C.primary }}
-          >
-            {loading ? "Cargando..." : "Cargar Reporte"}
-          </button>
-          {data && (
+            {/* Botón cargar */}
             <button
-              onClick={handleExport}
-              className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm flex items-center gap-2"
-              style={{ background: C.success }}
+              onClick={handleCargar}
+              className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
+              style={{ background: C.primary }}
             >
-              ⬇ Exportar Excel
+              {loading ? "Cargando..." : "Cargar"}
             </button>
-          )}
+            {/* Botón exportar */}
+            {data && (
+              <button
+                onClick={handleExport}
+                className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm flex items-center gap-1.5"
+                style={{ background: C.success }}
+              >
+                ⬇ Excel
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Orígenes agrupados por canal */}
-        {origenesDisp.length > 0 && (
-          <div className="mt-2">
-            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-3">
-              Filtrar por Origen (sin selección = todos)
-            </div>
-            {Object.entries(canalesAgr).map(([canal, lineas]) => {
-              const cfg    = getCfg(canal);
-              const allSel = lineas.every((l) => origenes.includes(l));
+        {/* Fila inferior: filtro por canal — CHIPS COMPACTOS */}
+        {canalesDisp.length > 0 && (
+          <div className="px-5 py-3 flex flex-wrap items-center gap-2">
+            <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 mr-1 flex-shrink-0">
+              Canal:
+            </span>
+
+            {/* Chip "Todos" */}
+            <button
+              onClick={() => setCanalesSel([])}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+              style={canalesSel.length === 0
+                ? { background: C.primary, color: "#fff", borderColor: C.primary }
+                : { background: "#fff", color: C.muted, borderColor: C.border }
+              }
+            >
+              Todos
+            </button>
+
+            {/* Un chip por canal */}
+            {canalesDisp.map((canal) => {
+              const cfg = getCfg(canal);
+              const sel = canalesSel.includes(canal);
               return (
-                <div key={canal} className="mb-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[8px] font-black uppercase" style={{ color: cfg.color }}>
-                      {cfg.icon} {cfg.label}
-                    </span>
-                    <button
-                      onClick={() => allSel
-                        ? setOrigenes((p) => p.filter((o) => !lineas.includes(o)))
-                        : setOrigenes((p) => [...new Set([...p, ...lineas])])
-                      }
-                      className="text-[7px] font-black uppercase px-2 py-0.5 rounded-full border transition-all"
-                      style={allSel
-                        ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
-                        : { background: cfg.bg,    color: cfg.color, borderColor: `${cfg.color}40` }
-                      }
-                    >
-                      {allSel ? "✓ Todos" : "Sel. todos"}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 ml-4">
-                    {lineas.map((o) => {
-                      const sel = origenes.includes(o);
-                      return (
-                        <button
-                          key={o}
-                          onClick={() => toggleOrigen(o)}
-                          className="px-2 py-0.5 rounded-full text-[8px] font-bold border transition-all"
-                          style={sel
-                            ? { background: cfg.color, color: "#fff",   borderColor: cfg.color }
-                            : { background: "#fff",     color: C.muted,  borderColor: C.border }
-                          }
-                        >{o}</button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <button
+                  key={canal}
+                  onClick={() => toggleCanal(canal)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
+                  style={sel
+                    ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
+                    : { background: cfg.bg,    color: cfg.color, borderColor: `${cfg.color}40` }
+                  }
+                >
+                  <span>{cfg.icon}</span>
+                  <span>{cfg.label}</span>
+                </button>
               );
             })}
-            {origenes.length > 0 && (
-              <div className="text-[8px] font-medium mt-1" style={{ color: C.muted }}>
-                Canal(es): {[...new Set(origenes.map((o) => getCfg(getCanal(o)).label))].join(" · ")}
-              </div>
+
+            {/* Resumen selección */}
+            {canalesSel.length > 0 && (
+              <span className="text-[8px] font-medium ml-1 flex-shrink-0" style={{ color: C.muted }}>
+                {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""} seleccionado{canalesSel.length !== 1 ? "s" : ""}
+                {" · "}
+                <button
+                  onClick={() => setCanalesSel([])}
+                  className="underline hover:no-underline"
+                  style={{ color: C.danger }}
+                >
+                  limpiar
+                </button>
+              </span>
             )}
           </div>
         )}
@@ -725,7 +738,10 @@ export default function TabReporteData({ filtro }) {
                 Reporte Data — {MESES[data.meta.mes - 1]} {data.meta.anio}
               </div>
               <div className="text-[9px] text-slate-400 font-medium uppercase tracking-widest mt-0.5">
-                NETLIFE VELSA · {origenes.length > 0 ? origenes.join(" · ") : "Todos los orígenes"}
+                NETLIFE VELSA · {canalesSel.length > 0
+                  ? canalesSel.map((c) => getCfg(c).label).join(" · ")
+                  : "Todos los canales"
+                }
               </div>
             </div>
             <span className="text-[9px] font-black px-3 py-1 rounded-full"

@@ -8,10 +8,74 @@ const getFiltroFechas = (query) => {
   return { fechaDesde, fechaHasta };
 };
 
+// ─── MAPEO HARDCODEADO: Origen Bitrix → Canal Publicidad ────────────────────
+// Columna izquierda  = b_origen en mestra_bitrix
+// Columna derecha    = canal_publicidad en mv_monitoreo_publicidad
+const ORIGEN_A_CANAL = {
+  'Base 593-979083368':      'ARTS - Base 593-979083368',
+  'Base 593-995211968':      'ARTS FACEBOOK - Base 593-995211968',
+  'Base 593-992827793':      'ARTS GOOGLE - Base 593-992827793',
+  'Fomulario Landing 3':     'ARTS GOOGLE - Fomulario Landing 3',
+  'Llamada Landing 3':       'ARTS GOOGLE - Llamada Landing 3',
+  'Por Recomendación':       'POR RECOMENDACIÓN - Por Recomendación',
+  'Referido Personal':       'POR RECOMENDACIÓN - Referido Personal',
+  'Tienda online':           'POR RECOMENDACIÓN - Tienda online',
+  'Base 593-958993371':      'REMARKETING - Base 593-958993371',
+  'BASE 593-984414273':      'REMARKETING - BASE 593-984414273',
+  'Base 593-995967355':      'REMARKETING - Base 593-995967355',
+  'Whatsapp 593958993371':   'REMARKETING - Whatsapp 593958993371',
+  'Base 593-987133635':      'VIDIKA GOOGLE',
+  'BASE API 593963463480':   'VIDIKA GOOGLE',
+  'Formulario Landing 4':    'VIDIKA GOOGLE',
+  'Llamada':                 'VIDIKA GOOGLE',
+  'Llamada Landing 4':       'VIDIKA GOOGLE',
+  'Base 593-962881280':      'VIDIKA GOOGLE',
+};
+
+// Inverso automático: canal → [lista de orígenes de bitrix]
+const CANAL_A_ORIGENES = Object.entries(ORIGEN_A_CANAL).reduce((acc, [origen, canal]) => {
+  if (!acc[canal]) acc[canal] = [];
+  acc[canal].push(origen);
+  return acc;
+}, {});
+
+// Lista de canales únicos (para devolver al frontend como "canales_disponibles")
+const CANALES_DISPONIBLES = Object.keys(CANAL_A_ORIGENES).sort();
+
+// ─── Helper: resuelve canales seleccionados → orígenes bitrix + canales pub ──
+// canales = array de strings con nombres de canal (ej: ['VIDIKA GOOGLE', 'ARTS GOOGLE - ...'])
+// retorna:
+//   origenesBitrix      → para filtrar mestra_bitrix por b_origen
+//   canalesPublicidad   → para filtrar mv_monitoreo_publicidad por canal_publicidad
+const resolverFiltroCanales = (canales = []) => {
+  if (canales.length === 0) return { origenesBitrix: [], canalesPublicidad: [] };
+  const origenesBitrix    = [];
+  const canalesPublicidad = new Set();
+  canales.forEach(canal => {
+    (CANAL_A_ORIGENES[canal] || []).forEach(o => origenesBitrix.push(o));
+    canalesPublicidad.add(canal);
+  });
+  return { origenesBitrix, canalesPublicidad: [...canalesPublicidad] };
+};
+
+// ─── Helper: construye cláusula WHERE + params para un array de valores ──────
+const buildInWhere = (valores, offsetInicial, field) => {
+  if (!valores || valores.length === 0) return { where: '', params: [] };
+  const ph = valores.map((_, i) => `$${offsetInicial + i + 1}`).join(', ');
+  return { where: `AND ${field} IN (${ph})`, params: valores };
+};
+
+
 // ─── 1. MONITOREO REDES GENERAL ─────────────────────────────────────────────
 const getMonitoreoRedes = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+
+    // Soporte filtro por canal
+    const canalesRaw = req.query.canales || '';
+    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+    const { canalesPublicidad } = resolverFiltroCanales(canalesSel);
+    const { where: canalWhere, params: canalParams } = buildInWhere(canalesPublicidad, 2, 'canal_publicidad');
 
     const totalesResult = await pool.query(`
       SELECT
@@ -66,7 +130,8 @@ const getMonitoreoRedes = async (req, res) => {
         ROUND(AVG(efectividad_negociables)::numeric * 100, 1) AS efectividad_negociables
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
-    `, [fechaDesde, fechaHasta]);
+        ${canalWhere}
+    `, [fechaDesde, fechaHasta, ...canalParams]);
 
     const detalleResult = await pool.query(`
       SELECT
@@ -93,10 +158,20 @@ const getMonitoreoRedes = async (req, res) => {
         ROUND(efectividad_negociables::numeric * 100, 1) AS efectividad_negociables
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
+        ${canalWhere}
       ORDER BY fecha DESC
-    `, [fechaDesde, fechaHasta]);
+    `, [fechaDesde, fechaHasta, ...canalParams]);
 
-    res.json({ success: true, totales: totalesResult.rows[0], data: detalleResult.rows });
+    res.json({
+      success: true,
+      totales: totalesResult.rows[0],
+      data: detalleResult.rows,
+      // Devuelve la estructura de canales para que el frontend pueda armar el selector
+      canales_disponibles: CANALES_DISPONIBLES.map(canal => ({
+        canal,
+        lineas: CANAL_A_ORIGENES[canal],
+      })),
+    });
   } catch (error) {
     console.error('Error en getMonitoreoRedes:', error);
     res.status(500).json({ success: false, message: 'Error al obtener datos', error: error.message });
@@ -205,9 +280,12 @@ const getMonitoreoMetas = async (req, res) => {
     const desde = fechaDesde || hoy;
     const hasta = fechaHasta || hoy;
 
-    const origenesRaw = req.query.origenes || '';
-    const origenes    = origenesRaw ? origenesRaw.split(',').map(o => o.trim()).filter(Boolean) : [];
+    // ── Nuevo: recibe ?canales=VIDIKA GOOGLE,ARTS GOOGLE - ... ───────────────
+    const canalesRaw = req.query.canales || '';
+    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+    const { origenesBitrix, canalesPublicidad } = resolverFiltroCanales(canalesSel);
 
+    // ── Fecha WHERE ───────────────────────────────────────────────────────────
     let fechaWhere, fechaParams;
     if (modo === 'mes') {
       fechaWhere  = `b_creado_el_fecha LIKE $1`;
@@ -217,15 +295,12 @@ const getMonitoreoMetas = async (req, res) => {
       fechaParams = [desde, hasta];
     }
 
-    const offset = fechaParams.length;
-    let origenWhere = '', origenParams = [];
-    if (origenes.length > 0) {
-      origenWhere  = `AND b_origen IN (${origenes.map((_, i) => `$${offset + i + 1}`).join(', ')})`;
-      origenParams = origenes;
-    }
+    // ── Filtro orígenes en mestra_bitrix ─────────────────────────────────────
+    const offsetBit = fechaParams.length;
+    const { where: bitrixWhere, params: bitrixParams } = buildInWhere(origenesBitrix, offsetBit, 'b_origen');
+    const allParamsBitrix = [...fechaParams, ...bitrixParams];
 
-    const allParams = [...fechaParams, ...origenParams];
-
+    // ── Query mestra_bitrix agrupado por b_origen ─────────────────────────────
     const totalesRes = await pool.query(`
       SELECT
         b_origen,
@@ -236,46 +311,100 @@ const getMonitoreoMetas = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'VENTA SUBIDA') AS venta_subida,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion IN ('INGRESO JOT','VENTA JOT')) AS ingreso_jot
       FROM public.mestra_bitrix
-      WHERE ${fechaWhere} ${origenWhere}
+      WHERE ${fechaWhere} ${bitrixWhere}
       GROUP BY b_origen ORDER BY total_leads DESC
-    `, allParams);
+    `, allParamsBitrix);
 
-    let inversionPorOrigen = {};
+    // ── Inversión: UNA SOLA VEZ por canal (sin multiplicar por líneas) ────────
+    // Filtramos mv_monitoreo_publicidad por canal_publicidad, NO por b_origen
+    const { where: pubWhere, params: pubParams } = buildInWhere(canalesPublicidad, 2, 'canal_publicidad');
+    let inversionPorCanal = {};
     try {
       const invRes = await pool.query(`
         SELECT canal_publicidad, SUM(inversion_usd) AS inversion_usd
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1::date AND $2::date
+          ${pubWhere}
         GROUP BY canal_publicidad
-      `, [desde, hasta]);
-      invRes.rows.forEach(r => { inversionPorOrigen[r.canal_publicidad] = Number(r.inversion_usd || 0); });
+      `, [desde, hasta, ...pubParams]);
+      invRes.rows.forEach(r => {
+        inversionPorCanal[r.canal_publicidad] = Number(r.inversion_usd || 0);
+      });
     } catch (_) {}
 
-    const origenesDispRes = await pool.query(`
-      SELECT DISTINCT b_origen FROM public.mestra_bitrix
-      WHERE ${fechaWhere} AND b_origen IS NOT NULL AND b_origen <> ''
-      ORDER BY b_origen ASC
-    `, fechaParams);
+    // ── Construir respuesta: agrupar por canal, listar líneas debajo ──────────
+    // Agrupar los rows de bitrix por canal usando el mapeo
+    const canalMap = {};
+    totalesRes.rows.forEach(r => {
+      const canal = ORIGEN_A_CANAL[r.b_origen] || r.b_origen; // fallback al origen si no está en el mapa
+      if (!canalMap[canal]) {
+        canalMap[canal] = {
+          canal,
+          inversion_usd: inversionPorCanal[canal] || 0,
+          lineas: [],
+          // acumuladores del canal
+          total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0,
+        };
+      }
+      const total  = Number(r.total_leads  || 0);
+      const sac    = Number(r.leads_sac    || 0);
+      const ventas = Number(r.venta_subida || 0);
+      const jot    = Number(r.ingreso_jot  || 0);
+      const calidad = total - sac;
 
-    const canales = totalesRes.rows.map(r => {
-      const total = Number(r.total_leads || 0), sac = Number(r.leads_sac || 0);
-      const ventas = Number(r.venta_subida || 0), jot = Number(r.ingreso_jot || 0);
-      const calidad = total - sac, inversion = inversionPorOrigen[r.b_origen] || 0;
-      return {
-        origen: r.b_origen, total_leads: total, leads_sac: sac,
-        leads_calidad: calidad, venta_subida: ventas, ingreso_jot: jot, inversion_usd: inversion,
+      // Acumular en el canal
+      canalMap[canal].total_leads  += total;
+      canalMap[canal].leads_sac    += sac;
+      canalMap[canal].venta_subida += ventas;
+      canalMap[canal].ingreso_jot  += jot;
+
+      // Línea individual
+      canalMap[canal].lineas.push({
+        origen: r.b_origen,
+        total_leads: total,
+        leads_sac: sac,
+        leads_calidad: calidad,
+        venta_subida: ventas,
+        ingreso_jot: jot,
         pct_sac:        total > 0 ? (sac    / total) * 100 : 0,
-        pct_calidad:    total > 0 ? (calidad/ total) * 100 : 0,
-        pct_ventas:     total > 0 ? (ventas / total) * 100 : 0,
-        pct_ventas_jot: total > 0 ? (jot    / total) * 100 : 0,
-        cpl:     total   > 0 && inversion > 0 ? inversion / total   : null,
-        cpl_gest:calidad > 0 && inversion > 0 ? inversion / calidad : null,
-        cpa:     ventas  > 0 && inversion > 0 ? inversion / ventas  : null,
-        cpa_jot: jot     > 0 && inversion > 0 ? inversion / jot     : null,
+        pct_calidad:    total > 0 ? (calidad / total) * 100 : 0,
+        pct_ventas:     total > 0 ? (ventas  / total) * 100 : 0,
+        pct_ventas_jot: total > 0 ? (jot     / total) * 100 : 0,
+      });
+    });
+
+    // Calcular métricas finales por canal (inversión dividida una sola vez)
+    const canales = Object.values(canalMap).map(c => {
+      const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
+      const leads_calidad = total_leads - leads_sac;
+      return {
+        canal:          c.canal,
+        inversion_usd,
+        total_leads,
+        leads_sac,
+        leads_calidad,
+        venta_subida,
+        ingreso_jot,
+        lineas:         c.lineas,   // <-- las líneas aparecen debajo del canal
+        pct_sac:        total_leads > 0 ? (leads_sac     / total_leads) * 100 : 0,
+        pct_calidad:    total_leads > 0 ? (leads_calidad / total_leads) * 100 : 0,
+        pct_ventas:     total_leads > 0 ? (venta_subida  / total_leads) * 100 : 0,
+        pct_ventas_jot: total_leads > 0 ? (ingreso_jot   / total_leads) * 100 : 0,
+        // CPL / CPA calculados sobre la inversión del canal completo (no multiplicada)
+        cpl:      total_leads   > 0 && inversion_usd > 0 ? inversion_usd / total_leads   : null,
+        cpl_gest: leads_calidad > 0 && inversion_usd > 0 ? inversion_usd / leads_calidad : null,
+        cpa:      venta_subida  > 0 && inversion_usd > 0 ? inversion_usd / venta_subida  : null,
+        cpa_jot:  ingreso_jot   > 0 && inversion_usd > 0 ? inversion_usd / ingreso_jot   : null,
       };
     });
 
-    res.json({ success: true, canales, origenes_disponibles: origenesDispRes.rows.map(r => r.b_origen) });
+    // ── Canales disponibles para el selector del frontend ─────────────────────
+    const canalesDisponibles = CANALES_DISPONIBLES.map(canal => ({
+      canal,
+      lineas: CANAL_A_ORIGENES[canal],
+    }));
+
+    res.json({ success: true, canales, canales_disponibles: canalesDisponibles });
   } catch (error) {
     console.error('Error en getMonitoreoMetas:', error);
     res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
@@ -283,7 +412,6 @@ const getMonitoreoMetas = async (req, res) => {
 };
 
 // ─── 7. REPORTE DATA ─────────────────────────────────────────────────────────
-// Retorna todos los bloques del Excel por día del mes, filtrable por origen
 const getReporteData = async (req, res) => {
   try {
     const { anio, mes } = req.query;
@@ -293,18 +421,19 @@ const getReporteData = async (req, res) => {
     const desde = `${y}-${String(m).padStart(2,'0')}-01`;
     const hasta  = `${y}-${String(m).padStart(2,'0')}-31`;
 
-    const origenesRaw = req.query.origenes || '';
-    const origenes    = origenesRaw ? origenesRaw.split(',').map(o => o.trim()).filter(Boolean) : [];
+    // ── Nuevo: recibe ?canales=... en lugar de ?origenes=... ─────────────────
+    const canalesRaw = req.query.canales || '';
+    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+    const { origenesBitrix, canalesPublicidad } = resolverFiltroCanales(canalesSel);
 
-    // WHERE origen para mestra_bitrix
-    const buildOrigenWhere = (offset, field = 'b_origen') => {
-      if (origenes.length === 0) return { where: '', params: [] };
-      const ph = origenes.map((_, i) => `$${offset + i + 1}`).join(', ');
-      return { where: `AND ${field} IN (${ph})`, params: origenes };
-    };
+    // ── Helpers para construir WHERE según fuente ─────────────────────────────
+    // Para mv_monitoreo_publicidad → filtra por canal_publicidad
+    const buildPubWhere = (offset) => buildInWhere(canalesPublicidad, offset, 'canal_publicidad');
+    // Para mestra_bitrix → filtra por b_origen
+    const buildBitWhere = (offset) => buildInWhere(origenesBitrix, offset, 'b_origen');
 
     // ── BLOQUE 1: Inversión diaria desde mv_monitoreo_publicidad ─────────────
-    const { where: invOrigenWhere, params: invOrigenParams } = buildOrigenWhere(2, 'canal_publicidad');
+    const { where: invOrigenWhere, params: invOrigenParams } = buildPubWhere(2);
     const inversionRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM fecha)::int AS dia,
@@ -328,7 +457,7 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...invOrigenParams]);
 
     // ── BLOQUE 2: Leads + Etapas por día (mestra_bitrix) ────────────────────
-    const { where: bitOrigenWhere, params: bitOrigenParams } = buildOrigenWhere(2);
+    const { where: bitOrigenWhere, params: bitOrigenParams } = buildBitWhere(2);
     const etapasRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
@@ -358,7 +487,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitOrigenParams]);
 
-    // ── BLOQUE 3: Estatus ventas JOT por día (mv_monitoreo_publicidad) ───────
+    // ── BLOQUE 3: Estatus ventas JOT por día ─────────────────────────────────
     const statusJotRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM fecha)::int AS dia,
@@ -404,7 +533,6 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, provincia ORDER BY activos DESC NULLS LAST
     `, [desde, hasta]);
 
-    // Ciudad por día (para columnas diarias)
     const ciudadDiaRes = await pool.query(`
       SELECT ciudad, EXTRACT(DAY FROM fecha)::int AS dia,
         SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot
@@ -422,7 +550,6 @@ const getReporteData = async (req, res) => {
       GROUP BY hora ORDER BY hora ASC
     `, [desde, hasta]);
 
-    // Leads por hora por día (para la tabla cruzada hora×día)
     const horaDiaRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora,
         SUM(n_leads) AS n_leads, SUM(atc) AS atc
@@ -457,20 +584,11 @@ const getReporteData = async (req, res) => {
       GROUP BY motivo_atc, dia ORDER BY motivo_atc, dia
     `, [desde, hasta]);
 
-    // Totales motivos ATC
     const atcTotRes = await pool.query(`
       SELECT motivo_atc, SUM(cantidad) AS cantidad
       FROM public.mv_monitoreo_atc
       WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY motivo_atc ORDER BY cantidad DESC
-    `, [desde, hasta]);
-
-    // ── Orígenes disponibles ──────────────────────────────────────────────────
-    const origenesDispRes = await pool.query(`
-      SELECT DISTINCT b_origen FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND b_origen IS NOT NULL AND b_origen <> ''
-      ORDER BY b_origen ASC
     `, [desde, hasta]);
 
     // ── Días del mes con nombre ───────────────────────────────────────────────
@@ -485,7 +603,11 @@ const getReporteData = async (req, res) => {
     res.json({
       success: true,
       meta: { anio: y, mes: m, dias: diasMes },
-      origenes_disponibles: origenesDispRes.rows.map(r => r.b_origen),
+      // Devuelve estructura canal → lineas para el selector
+      canales_disponibles: CANALES_DISPONIBLES.map(canal => ({
+        canal,
+        lineas: CANAL_A_ORIGENES[canal],
+      })),
       inversion:   inversionRes.rows,
       etapas:      etapasRes.rows,
       status_jot:  statusJotRes.rows,

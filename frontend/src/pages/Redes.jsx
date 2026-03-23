@@ -280,107 +280,103 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SELECTOR DE ORÍGENES — componente reutilizable con UX mejorado
+// SELECTOR DE CANALES — compacto, una sola línea de chips
+// Filtra por canal de publicidad (no por origen individual)
+// Los orígenes de cada canal se mapean automáticamente al enviar al backend
 // ─────────────────────────────────────────────────────────────────────────────
 function OrigenesSelector({ origenesDisp, origenes, setOrigenes, loadingOrig = false }) {
-  const toggle = (o) => setOrigenes((p) => p.includes(o) ? p.filter((x) => x !== o) : [...p, o]);
+  // Derivar canales únicos disponibles (sin MAL INGRESO / SIN MAPEO)
+  const canalesDisp = [...new Set(
+    origenesDisp
+      .map(getCanal)
+      .filter((c) => esPublicidad(c))
+  )];
 
-  const canalesAgr = {};
-  origenesDisp.forEach((o) => {
-    const c = getCanal(o);
-    if (!canalesAgr[c]) canalesAgr[c] = [];
-    canalesAgr[c].push(o);
-  });
+  // Canales actualmente seleccionados (derivado de los orígenes seleccionados)
+  const canalesSel = [...new Set(origenes.map(getCanal).filter(esPublicidad))];
+
+  const toggleCanal = (canal) => {
+    // Obtener todos los orígenes que pertenecen a este canal
+    const origenesDelCanal = Object.entries(ORIGEN_CANAL)
+      .filter(([, c]) => c === canal)
+      .map(([o]) => o);
+
+    const yaSeleccionado = canalesSel.includes(canal);
+    if (yaSeleccionado) {
+      // Quitar todos los orígenes de este canal
+      setOrigenes((prev) => prev.filter((o) => !origenesDelCanal.includes(o)));
+    } else {
+      // Agregar todos los orígenes de este canal que existan en origenesDisp
+      const disponibles = origenesDelCanal.filter((o) => origenesDisp.includes(o));
+      setOrigenes((prev) => [...new Set([...prev, ...disponibles])]);
+    }
+  };
 
   if (!origenesDisp.length && !loadingOrig) return (
-    <p className="text-[9px] italic py-2" style={{ color: C.muted }}>Aplica un período para ver los canales disponibles.</p>
+    <p className="text-[9px] italic" style={{ color: C.muted }}>
+      Aplica un período para ver los canales disponibles.
+    </p>
   );
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-wrap items-center gap-2">
       {loadingOrig && (
-        <div className="flex items-center gap-2 py-1">
-          <div className="w-3 h-3 border-2 rounded-full animate-spin" style={{ borderColor: `${C.sky}30`, borderTopColor: C.sky }} />
-          <span className="text-[9px]" style={{ color: C.muted }}>Cargando canales...</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 border-2 rounded-full animate-spin"
+            style={{ borderColor: `${C.sky}30`, borderTopColor: C.sky }} />
+          <span className="text-[9px]" style={{ color: C.muted }}>Cargando...</span>
         </div>
       )}
 
-      {Object.entries(canalesAgr).map(([canal, lineas]) => {
-        const cfg     = getCfg(canal);
-        const allSel  = lineas.every((l) => origenes.includes(l));
-        const someSel = lineas.some((l) => origenes.includes(l));
-        const count   = lineas.filter((l) => origenes.includes(l)).length;
-
-        return (
-          <div key={canal} className="rounded-xl border overflow-hidden transition-all"
-            style={{ borderColor: someSel ? `${cfg.color}50` : C.border }}>
-
-            {/* Cabecera del canal — click = seleccionar todos / deseleccionar todos */}
-            <div className="flex items-center justify-between px-3 py-2 cursor-pointer select-none transition-colors"
-              style={{ background: someSel ? `${cfg.color}08` : C.light }}
-              onClick={() => allSel
-                ? setOrigenes((p) => p.filter((o) => !lineas.includes(o)))
-                : setOrigenes((p) => [...new Set([...p, ...lineas])])
-              }>
-              <div className="flex items-center gap-2.5">
-                {/* Checkbox visual */}
-                <div className="w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 transition-all"
-                  style={{
-                    background: allSel ? cfg.color : someSel ? `${cfg.color}25` : "#fff",
-                    border: `2px solid ${allSel || someSel ? cfg.color : C.border}`,
-                  }}>
-                  {allSel  && <span className="text-white text-[8px] font-black leading-none">✓</span>}
-                  {!allSel && someSel && <span className="text-[8px] font-black leading-none" style={{ color: cfg.color }}>−</span>}
-                </div>
-
-                <span className="text-[9px] font-black uppercase" style={{ color: cfg.color }}>
-                  {cfg.icon} {cfg.label}
-                </span>
-
-                {count > 0 && (
-                  <span className="text-[7px] font-black px-1.5 py-0.5 rounded-full" style={{ background: cfg.color, color: "#fff" }}>
-                    {count}/{lineas.length}
-                  </span>
-                )}
-              </div>
-              <span className="text-[8px]" style={{ color: C.muted }}>{lineas.length} línea{lineas.length !== 1 ? "s" : ""}</span>
-            </div>
-
-            {/* Líneas individuales del canal */}
-            <div className="px-3 py-2 flex flex-wrap gap-1.5 bg-white">
-              {lineas.map((o) => {
-                const sel = origenes.includes(o);
-                return (
-                  <button key={o} onClick={() => toggle(o)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-semibold border transition-all hover:shadow-sm"
-                    style={sel
-                      ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
-                      : { background: "#fafafa", color: C.slate, borderColor: C.border }}>
-                    {sel && <span className="text-[7px] leading-none">✓</span>}
-                    {o}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Resumen + limpiar */}
-      {origenes.length > 0 && (
-        <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
-          <div className="flex flex-wrap gap-1">
-            {[...new Set(origenes.map((o) => getCanal(o)))].map((canal) => (
-              <span key={canal} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-                style={{ background: getCfg(canal).bg, color: getCfg(canal).color, border: `1px solid ${getCfg(canal).color}30` }}>
-                {getCfg(canal).icon} {getCfg(canal).label}
-              </span>
-            ))}
-          </div>
-          <button onClick={() => setOrigenes([])} className="text-[8px] font-bold hover:underline" style={{ color: C.danger }}>
-            Limpiar selección
+      {!loadingOrig && (
+        <>
+          {/* Chip "Todos" */}
+          <button
+            onClick={() => setOrigenes([])}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+            style={origenes.length === 0
+              ? { background: C.primary, color: "#fff", borderColor: C.primary }
+              : { background: "#fff",    color: C.muted, borderColor: C.border }
+            }
+          >
+            Todos
           </button>
-        </div>
+
+          {/* Un chip por canal disponible */}
+          {canalesDisp.map((canal) => {
+            const cfg = getCfg(canal);
+            const sel = canalesSel.includes(canal);
+            return (
+              <button
+                key={canal}
+                onClick={() => toggleCanal(canal)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
+                style={sel
+                  ? { background: cfg.color, color: "#fff",   borderColor: cfg.color }
+                  : { background: cfg.bg,    color: cfg.color, borderColor: `${cfg.color}40` }
+                }
+              >
+                <span>{cfg.icon}</span>
+                <span>{cfg.label}</span>
+              </button>
+            );
+          })}
+
+          {/* Indicador de selección */}
+          {canalesSel.length > 0 && (
+            <span className="text-[8px] font-medium" style={{ color: C.muted }}>
+              {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
+              {" · "}
+              <button
+                onClick={() => setOrigenes([])}
+                className="underline hover:no-underline"
+                style={{ color: C.danger }}
+              >
+                limpiar
+              </button>
+            </span>
+          )}
+        </>
       )}
     </div>
   );
@@ -1334,18 +1330,30 @@ function TabMetas({ filtro }) {
         <span className="text-[9px] text-blue-400">(cambia las fechas desde el filtro principal)</span>
       </div>
 
-      {/* Selector de orígenes — componente mejorado */}
-      <Card>
-        <CardHeader title="Seleccionar Canales / Orígenes" accent={C.primary} />
-        <div className="p-5 space-y-4">
-          <OrigenesSelector origenesDisp={origenesDisp} origenes={origenes} setOrigenes={setOrigenes} loadingOrig={loadingOrig} />
-          <button onClick={handleAplicar}
-            className="mt-2 px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
-            style={{ background: C.primary }}>
-            {loadingData ? "Calculando..." : "Calcular Logros"}
+      {/* Selector de canal + botón calcular — todo en una sola barra compacta */}
+      <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
+        <div className="px-5 py-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} />
+            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <OrigenesSelector
+              origenesDisp={origenesDisp}
+              origenes={origenes}
+              setOrigenes={setOrigenes}
+              loadingOrig={loadingOrig}
+            />
+          </div>
+          <button
+            onClick={handleAplicar}
+            className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm flex-shrink-0"
+            style={{ background: C.primary }}
+          >
+            {loadingData ? "..." : "Calcular"}
           </button>
         </div>
-      </Card>
+      </div>
 
       {/* Objetivos modificables */}
       <Card>

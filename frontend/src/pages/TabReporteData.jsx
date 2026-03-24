@@ -52,9 +52,10 @@ function fmtCantPct(cant, pct) {
   return String(c);
 }
 
+// FIX: Number() en la key para evitar mismatch string vs number entre PG y JS
 function byDiaMap(rows, diaKey, valueKey) {
   const map = {};
-  rows.forEach((r) => { map[r[diaKey]] = n(r[valueKey]); });
+  rows.forEach((r) => { map[Number(r[diaKey])] = n(r[valueKey]); });
   return map;
 }
 function totalFromMap(map) {
@@ -121,8 +122,9 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
               {fila.label}
             </td>
             {dias.map((d) => {
-              const val = fila.byDia?.[d.dia];
-              const pct = fila.pctDia?.[d.dia];
+              // FIX: Number(d.dia) para que el lookup coincida con las keys del map
+              const val = fila.byDia?.[Number(d.dia)];
+              const pct = fila.pctDia?.[Number(d.dia)];
               let display = "";
               if (!fila.separador) {
                 if (fila.fmt)          display = fila.fmt(val);
@@ -152,13 +154,6 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BLOQUE 1 — Inversión & Costos
-// TODOS los denominadores vienen del campo correspondiente en d.inversion[]
-// que a su vez viene del backend combinando mv_monitoreo_publicidad + JOT real.
-//
-// Campos disponibles en cada fila de d.inversion:
-//   inversion_usd, n_leads, venta_subida, negociables,
-//   activos_mes, activo_backlog, ingreso_jot, ingreso_bitrix,
-//   preplaneados, asignados, preservicio
 // ─────────────────────────────────────────────────────────────────────────────
 function buildInversionFilas(d, dias) {
   if (!d.inversion || d.inversion.length === 0) return [];
@@ -166,16 +161,15 @@ function buildInversionFilas(d, dias) {
 
   const inv          = g("inversion_usd");
   const leads        = g("n_leads");
-  const vsBitrix     = g("ingreso_bitrix");   // ingresos Bitrix mismo día (venta subida ingresada)
-  const jotMes       = g("ingreso_jot");      // ingresos JOT del mes (del JOT real)
-  const activosMes   = g("activos_mes");      // activos del mes con fecha activación (JOT real)
-  const backlog      = g("activo_backlog");   // activos cualquier fecha (JOT real)
-  const negoc        = g("negociables");      // leads totales − SAC
-  const preplaneados = g("preplaneados");     // estado PREPLANEADO/REPLANIFICADO (JOT real)
-  const asignados    = g("asignados");        // estado ASIGNADO (JOT real)
-  const preservicio  = g("preservicio");      // estado PRESERVICIO (JOT real)
+  const vsBitrix     = g("ingreso_bitrix");
+  const jotMes       = g("ingreso_jot");
+  const activosMes   = g("activos_mes");
+  const backlog      = g("activo_backlog");
+  const negoc        = g("negociables");
+  const preplaneados = g("preplaneados");
+  const asignados    = g("asignados");
+  const preservicio  = g("preservicio");
 
-  // Denominadores compuestos
   const actPlanAsig        = addMaps(activosMes,  preplaneados, asignados);
   const actPlanAsigPre     = addMaps(activosMes,  preplaneados, asignados, preservicio);
   const actBackPlanAsigPre = addMaps(backlog,      preplaneados, asignados, preservicio);
@@ -267,7 +261,7 @@ function buildEtapasFilas(d, dias) {
 
   const negocMap = {};
   dias.forEach(({ dia }) => {
-    negocMap[dia] = Math.max(0, n(leads[dia]) - n(atc[dia]) - n(fc[dia]) - n(zp[dia]) - n(inn[dia]));
+    negocMap[Number(dia)] = Math.max(0, n(leads[Number(dia)]) - n(atc[Number(dia)]) - n(fc[Number(dia)]) - n(zp[Number(dia)]) - n(inn[Number(dia)]));
   });
 
   const tL   = totalFromMap(leads), tA  = totalFromMap(atc);
@@ -339,8 +333,8 @@ function buildPagoFilas(d, dias) {
   const pc  = g("pago_cuenta"),        pe  = g("pago_efectivo"),        pt  = g("pago_tarjeta");
   const pca = g("pago_cuenta_activa"), pea = g("pago_efectivo_activa"), pta = g("pago_tarjeta_activa");
 
-  const totIngMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pc[dia]) + n(pe[dia]) + n(pt[dia])]));
-  const totActMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pca[dia]) + n(pea[dia]) + n(pta[dia])]));
+  const totIngMap = Object.fromEntries(dias.map(({ dia }) => [Number(dia), n(pc[Number(dia)]) + n(pe[Number(dia)]) + n(pt[Number(dia)])]));
+  const totActMap = Object.fromEntries(dias.map(({ dia }) => [Number(dia), n(pca[Number(dia)]) + n(pea[Number(dia)]) + n(pta[Number(dia)])]));
 
   const tPC = totalFromMap(pc), tPE = totalFromMap(pe), tPT = totalFromMap(pt);
   const tPCA = totalFromMap(pca), tPEA = totalFromMap(pea), tPTA = totalFromMap(pta);
@@ -360,7 +354,7 @@ function buildPagoFilas(d, dias) {
 
 // BLOQUE 5: Ciclo de venta
 function buildCicloFilas(d, dias) {
-  if (!d.ciclo) return [];
+  if (!d.ciclo || d.ciclo.length === 0) return [];
   const g = (k) => byDiaMap(d.ciclo, "dia", k);
 
   const keys   = ["ciclo_0","ciclo_1","ciclo_2","ciclo_3","ciclo_4","ciclo_mas5"];
@@ -371,7 +365,7 @@ function buildCicloFilas(d, dias) {
   const totTotal = tots.reduce((a, b) => a + b, 0);
 
   const totalDiaMap = Object.fromEntries(
-    dias.map(({ dia }) => [dia, keys.reduce((s, _k, i) => s + n(maps[i][dia]), 0)])
+    dias.map(({ dia }) => [Number(dia), keys.reduce((s, _k, i) => s + n(maps[i][Number(dia)]), 0)])
   );
 
   return [
@@ -399,11 +393,8 @@ export default function TabReporteData({ filtro }) {
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(false);
 
-  // Ref para saber si ya hay data cargada (para auto-recargar al cambiar canal)
   const dataLoaded = useRef(false);
 
-  // ── FIX 1: Cargar canales disponibles cuando cambia mes/año ────────────────
-  // Solo limpia selección y data al cambiar período (no al cambiar canal)
   useEffect(() => {
     setCanalesSel([]);
     setData(null);
@@ -420,7 +411,6 @@ export default function TabReporteData({ filtro }) {
       .catch(() => {});
   }, [anio, mes]);
 
-  // ── Función que carga datos (reutilizable) ────────────────────────────────
   const cargarDatos = useCallback((canalesSel_, anio_, mes_) => {
     setLoading(true);
     const params = new URLSearchParams({ anio: anio_, mes: mes_ });
@@ -432,7 +422,6 @@ export default function TabReporteData({ filtro }) {
         if (d.success) {
           setData(d);
           dataLoaded.current = true;
-          // Actualizar canales disponibles si vienen en la respuesta
           if (d.canales_disponibles) {
             setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
           }
@@ -444,13 +433,10 @@ export default function TabReporteData({ filtro }) {
 
   const handleCargar = () => cargarDatos(canalesSel, anio, mes);
 
-  // ── FIX 2: Al cambiar canal, si ya hay data, recargar automáticamente ─────
   const toggleCanal = (canal) => {
     setCanalesSel((prev) => {
       const next = prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal];
-      // Si ya había data cargada, recargar con los nuevos canales
       if (dataLoaded.current) {
-        // Usamos setTimeout para que el estado se actualice antes de la llamada
         setTimeout(() => cargarDatos(next, anio, mes), 0);
       }
       return next;
@@ -464,7 +450,6 @@ export default function TabReporteData({ filtro }) {
     }
   };
 
-  // ── Exportar a Excel ──────────────────────────────────────────────────────
   const handleExport = () => {
     if (!data) return;
     const wb   = XLSX.utils.book_new();
@@ -476,8 +461,8 @@ export default function TabReporteData({ filtro }) {
         const row = [f.label];
         dias.forEach((d) => {
           if (f.separador) { row.push(""); return; }
-          const val = f.byDia?.[d.dia];
-          const pct = f.pctDia?.[d.dia];
+          const val = f.byDia?.[Number(d.dia)];
+          const pct = f.pctDia?.[Number(d.dia)];
           if (f.fmt)          { row.push(f.fmt(val)); return; }
           if (f.showPct)      { row.push(fmtCantPct(val, pct)); return; }
           row.push(val !== undefined && n(val) !== 0 ? n(val) : "");
@@ -587,7 +572,6 @@ export default function TabReporteData({ filtro }) {
                 Canal de Publicidad:
               </span>
 
-              {/* Chip "Todos" */}
               <button
                 onClick={limpiarCanales}
                 className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
@@ -604,7 +588,6 @@ export default function TabReporteData({ filtro }) {
                 const isDetail = canalDetalle === canal;
                 return (
                   <div key={canal} className="inline-flex items-center gap-0.5">
-                    {/* Chip principal: selecciona el canal */}
                     <button onClick={() => toggleCanal(canal)}
                       className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
                       style={sel
@@ -613,7 +596,6 @@ export default function TabReporteData({ filtro }) {
                       }>
                       <span>{cfg.icon}</span><span>{cfg.label}</span>
                     </button>
-                    {/* Botón "ver líneas" */}
                     <button onClick={() => setCanalDetalle(isDetail ? null : canal)}
                       className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[9px] font-black border-l-0 border transition-all"
                       style={isDetail
@@ -639,7 +621,6 @@ export default function TabReporteData({ filtro }) {
                 </span>
               )}
 
-              {/* Indicador de auto-recarga */}
               {loading && dataLoaded.current && (
                 <span className="text-[8px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
                   <span className="inline-block w-2 h-2 border border-current rounded-full animate-spin border-t-transparent" />
@@ -648,7 +629,6 @@ export default function TabReporteData({ filtro }) {
               )}
             </div>
 
-            {/* Panel lateral de líneas del canal seleccionado para detallar */}
             {canalDetalle && (
               <div className="border-l flex-shrink-0 px-4 py-3 min-w-[220px] max-w-[280px]"
                 style={{ borderColor: C.border, background: `${getCfg(canalDetalle).bg}` }}>
@@ -659,7 +639,6 @@ export default function TabReporteData({ filtro }) {
                   <button onClick={() => setCanalDetalle(null)} className="text-[9px] font-bold hover:opacity-70"
                     style={{ color: getCfg(canalDetalle).color }}>✕</button>
                 </div>
-                {/* Líneas del canal (vienen de canalesDisp o del mapeo fijo) */}
                 <div className="space-y-1">
                   {(data?.canales_disponibles?.find(c => c.canal === canalDetalle)?.lineas
                     || []).map((linea) => (
@@ -676,15 +655,12 @@ export default function TabReporteData({ filtro }) {
         )}
       </div>
 
-      {/* Loading inicial */}
       {loading && !dataLoaded.current && (
         <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>Generando reporte...</div>
       )}
 
-      {/* Contenido */}
       {data && (
         <div style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}>
-          {/* Cabecera de período */}
           <div className="bg-white rounded-xl border shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3 mb-4"
             style={{ borderColor: C.border }}>
             <div>
@@ -828,7 +804,6 @@ export default function TabReporteData({ filtro }) {
         </div>
       )}
 
-      {/* Estado vacío */}
       {!loading && !data && (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: `${C.primary}10` }}>📑</div>

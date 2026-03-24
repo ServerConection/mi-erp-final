@@ -401,10 +401,15 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
-    const { where: bitWhere, params: bitParams } = buildInWhere(origenesBitrix,   2, 'b_origen');
+    // FIX inversión: cuando no hay canales seleccionados, no filtrar (todos los canales)
+    const invWhereFixed   = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
+    const invParamsFixed  = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
 
-    // Inversion diaria
+    const { where: bitWhere, params: bitParams } = origenesBitrix.length > 0
+      ? buildInWhere(origenesBitrix, 2, 'b_origen')
+      : { where: '', params: [] };
+
+    // Inversion diaria — FIX: usar invWhereFixed/invParamsFixed
     const inversionRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
       FROM (
@@ -412,12 +417,12 @@ const getReporteData = async (req, res) => {
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1::date AND $2::date
           AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
-          ${invWhere}
+          ${invWhereFixed}
         GROUP BY fecha, canal_inversion
       ) sub
       GROUP BY EXTRACT(DAY FROM fecha)::int
       ORDER BY dia ASC
-    `, [desde, hasta, ...invParams]);
+    `, [desde, hasta, ...invParamsFixed]);
 
     // Leads + Etapas Bitrix
     const etapasRes = await pool.query(`
@@ -447,10 +452,6 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // FIX 1 + FIX 2 + FIX 3:
-    // - TO_DATE() para campos TEXT (j_fecha_registro_sistema, j_fecha_activacion_netlife)
-    // - alias ingreso_bitrix_mismo_dia correcto para que llegue al finalArray
-    // - filtro bitWhere incluido para que canales funcione
     const jotDenomsRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -570,7 +571,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // FIX 1: Ciclo de venta - TO_DATE para j_fecha_activacion_netlife (TEXT)
+    // FIX ciclo: agrupa por día del lead (b_creado_el_fecha) — sin filtro de activación en WHERE principal
     const cicloRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
@@ -587,8 +588,6 @@ const getReporteData = async (req, res) => {
           AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) >= 5 THEN 1 ELSE 0 END) AS ciclo_mas5
       FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j_fecha_activacion_netlife IS NOT NULL
-        AND j_fecha_activacion_netlife <> ''
         ${bitWhere}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
@@ -678,7 +677,6 @@ const getReporteData = async (req, res) => {
       invMap[dia].negociables = Math.max(0, Number(r.total_leads || 0) - sac);
     });
 
-    // FIX 3: alias correcto ingreso_bitrix_mismo_dia → ingreso_bitrix en finalArray
     jotDenomsRes.rows.forEach(r => {
       const dia = Number(r.dia);
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };

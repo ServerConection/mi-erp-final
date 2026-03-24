@@ -189,71 +189,120 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BUILDERS DE FILAS
-// ─────────────────────────────────────────────────────────────────────────────
-
 // BLOQUE 1: Inversión & Costos
-// Los denominadores vienen del backend combinados en d.inversion:
-//   inversion_usd   → MAX por canal×día (correcto, sin duplicar)
-//   n_leads         → COUNT desde mestra_bitrix
-//   venta_subida    → VENTA SUBIDA desde mestra_bitrix
-//   negociables     → leads - SAC desde mestra_bitrix
-//   ingreso_jot     → COUNT desde vw_jotform_submissions_parsed
-//   activos_mes     → ACTIVO con fecha_activacion desde JOT
-//   activo_backlog  → ACTIVO sin restricción de fecha desde JOT
-//   preplaneados    → PREPLANEADO + REPLANIFICADO desde JOT
-//   asignados       → ASIGNADO desde JOT
-//   preservicio     → PRESERVICIO desde JOT
+// Denominadores según definición del negocio:
+//   CPL                      = inv ÷ n_leads (leads totales Bitrix)
+//   Costo Ingreso Bitrix     = inv ÷ venta_subida (tipificados VENTA SUBIDA)
+//   Costo Ingreso Jot        = inv ÷ ingreso_jot (ingresos JOT mismo mes)
+//   Costo Activa             = inv ÷ activos_mes (leads del mes con fecha activación)
+//   Costo Activa + Backlog   = inv ÷ activo_backlog (activos cualquier fecha)
+//   Costo Act-Plan-Asig      = inv ÷ activos_mes + preplaneados + asignados
+//   Costo Act-Plan-Asig-Pre  = inv ÷ activos_mes + preplaneados + asignados + preservicio
+//   Costo por Negociable     = inv ÷ negociables
+//   Costo Act-Back-Plan-Asig-Pre = inv ÷ activo_backlog + preplaneados + asignados + preservicio
+// ─────────────────────────────────────────────────────────────────────────────
 function buildInversionFilas(d, dias) {
   if (!d.inversion) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
 
   const inv          = g("inversion_usd");
   const leads        = g("n_leads");
-  const vsBitrix     = g("venta_subida");
-  const jotMes       = g("ingreso_jot");
-  const activosMes   = g("activos_mes");
-  const backlog      = g("activo_backlog");
+  const vsBitrix     = g("venta_subida");     // leads tipificados VENTA SUBIDA en Bitrix
+  const jotMes       = g("ingreso_jot");      // ingresos JOT mismo mes
+  const activosMes   = g("activos_mes");      // activos del mes, leads del mes
+  const backlog      = g("activo_backlog");   // activos cualquier fecha
   const negoc        = g("negociables");
-  const preplaneados = g("preplaneados");
-  const asignados    = g("asignados");
-  const preservicio  = g("preservicio");
+  const preplaneados = g("preplaneados");     // PREPLANEADO + REPLANIFICADO
+  const asignados    = g("asignados");        // ASIGNADO
+  const preservicio  = g("preservicio");      // PRESERVICIO
 
-  const actPlanAsigMes = {};
-  Object.keys({ ...activosMes, ...preplaneados, ...asignados }).forEach((d) => {
-    actPlanAsigMes[d] = n(activosMes[d]) + n(preplaneados[d]) + n(asignados[d]);
-  });
-  const actPlanAsigPreMes = {};
-  Object.keys({ ...actPlanAsigMes, ...preservicio }).forEach((d) => {
-    actPlanAsigPreMes[d] = n(actPlanAsigMes[d]) + n(preservicio[d]);
-  });
-  const actBackPlanAsigPre = {};
-  Object.keys({ ...backlog, ...preplaneados, ...asignados, ...preservicio }).forEach((d) => {
-    actBackPlanAsigPre[d] = n(backlog[d]) + n(preplaneados[d]) + n(asignados[d]) + n(preservicio[d]);
-  });
+  // Denominadores compuestos
+  const actPlanAsigMes = addMaps(activosMes, preplaneados, asignados);
+  const actPlanAsigPreMes = addMaps(activosMes, preplaneados, asignados, preservicio);
+  const actBackPlanAsigPre = addMaps(backlog, preplaneados, asignados, preservicio);
 
-  const tInv            = totalFromMap(inv);
-  const tLeads          = totalFromMap(leads);
-  const tVsBitrix       = totalFromMap(vsBitrix);
-  const tJotMes         = totalFromMap(jotMes);
-  const tActivosMes     = totalFromMap(activosMes);
-  const tBacklog        = totalFromMap(backlog);
-  const tNegoc          = totalFromMap(negoc);
-  const tActPlanAsig    = totalFromMap(actPlanAsigMes);
-  const tActPlanAsigPre = totalFromMap(actPlanAsigPreMes);
-  const tActBackAll     = totalFromMap(actBackPlanAsigPre);
+  const tInv               = totalFromMap(inv);
+  const tLeads             = totalFromMap(leads);
+  const tVsBitrix          = totalFromMap(vsBitrix);
+  const tJotMes            = totalFromMap(jotMes);
+  const tActivosMes        = totalFromMap(activosMes);
+  const tBacklog           = totalFromMap(backlog);
+  const tNegoc             = totalFromMap(negoc);
+  const tActPlanAsig       = totalFromMap(actPlanAsigMes);
+  const tActPlanAsigPre    = totalFromMap(actPlanAsigPreMes);
+  const tActBackAll        = totalFromMap(actBackPlanAsigPre);
 
   return [
-    { label: "INVERSIÓN DIARIA",                                        byDia: inv,              total: tInv,                                          fmt: usd, color: C.violet  },
-    { label: "CPL  (inv ÷ leads totales Bitrix)",                       byDia: divDiaMap(inv, leads),        total: tLeads > 0        ? tInv / tLeads        : null, fmt: usd, color: C.primary },
-    { label: "COSTO INGRESO BITRIX  (inv ÷ venta subida)",              byDia: divDiaMap(inv, vsBitrix),     total: tVsBitrix > 0     ? tInv / tVsBitrix     : null, fmt: usd, color: C.cyan    },
-    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",       byDia: divDiaMap(inv, jotMes),       total: tJotMes > 0       ? tInv / tJotMes       : null, fmt: usd, color: C.cyan    },
-    { label: "COSTO ACTIVA  (inv ÷ activos mes, leads del mes)",        byDia: divDiaMap(inv, activosMes),   total: tActivosMes > 0   ? tInv / tActivosMes   : null, fmt: usd, color: C.success },
-    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos, cualq. fecha)",   byDia: divDiaMap(inv, backlog),      total: tBacklog > 0      ? tInv / tBacklog      : null, fmt: usd, color: C.success },
-    { label: "COSTO ACT-PLAN-ASIG  (inv ÷ act+preplaneados+asignados)", byDia: divDiaMap(inv, actPlanAsigMes),    total: tActPlanAsig > 0    ? tInv / tActPlanAsig    : null, fmt: usd, color: C.warning },
-    { label: "COSTO ACT-PLAN-ASIG-PRE  (inv ÷ act+plan+asig+pre)",     byDia: divDiaMap(inv, actPlanAsigPreMes), total: tActPlanAsigPre > 0 ? tInv / tActPlanAsigPre : null, fmt: usd, color: C.warning },
-    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",               byDia: divDiaMap(inv, negoc),        total: tNegoc > 0        ? tInv / tNegoc        : null, fmt: usd, color: C.slate   },
-    { label: "COSTO ACT-BACK-PLAN-ASIG-PRE  (inv ÷ backlog+plan+asig+pre)", byDia: divDiaMap(inv, actBackPlanAsigPre), total: tActBackAll > 0 ? tInv / tActBackAll : null, fmt: usd, color: C.slate },
+    {
+      label: "INVERSIÓN DIARIA",
+      byDia: inv,
+      total: tInv,
+      fmt:   usd,
+      color: C.violet,
+    },
+    {
+      label: "CPL  (inv ÷ leads totales Bitrix)",
+      byDia: divDiaMap(inv, leads),
+      total: tLeads > 0 ? tInv / tLeads : null,
+      fmt:   usd,
+      color: C.primary,
+    },
+    {
+      label: "COSTO INGRESO (BITRIX)  (inv ÷ venta subida Bitrix)",
+      byDia: divDiaMap(inv, vsBitrix),
+      total: tVsBitrix > 0 ? tInv / tVsBitrix : null,
+      fmt:   usd,
+      color: C.cyan,
+    },
+    {
+      label: "COSTO INGRESO (JOT)  (inv ÷ ingresos JOT mismo mes)",
+      byDia: divDiaMap(inv, jotMes),
+      total: tJotMes > 0 ? tInv / tJotMes : null,
+      fmt:   usd,
+      color: C.cyan,
+    },
+    {
+      label: "COSTO ACTIVA  (inv ÷ activos mes, leads del mes)",
+      byDia: divDiaMap(inv, activosMes),
+      total: tActivosMes > 0 ? tInv / tActivosMes : null,
+      fmt:   usd,
+      color: C.success,
+    },
+    {
+      label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",
+      byDia: divDiaMap(inv, backlog),
+      total: tBacklog > 0 ? tInv / tBacklog : null,
+      fmt:   usd,
+      color: C.success,
+    },
+    {
+      label: "COSTO ACT-PLAN-ASIG  (inv ÷ activos+preplaneados+asignados)",
+      byDia: divDiaMap(inv, actPlanAsigMes),
+      total: tActPlanAsig > 0 ? tInv / tActPlanAsig : null,
+      fmt:   usd,
+      color: C.warning,
+    },
+    {
+      label: "COSTO ACT-PLAN-ASIG-PRE  (inv ÷ activos+plan+asig+preservicio)",
+      byDia: divDiaMap(inv, actPlanAsigPreMes),
+      total: tActPlanAsigPre > 0 ? tInv / tActPlanAsigPre : null,
+      fmt:   usd,
+      color: C.warning,
+    },
+    {
+      label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",
+      byDia: divDiaMap(inv, negoc),
+      total: tNegoc > 0 ? tInv / tNegoc : null,
+      fmt:   usd,
+      color: C.slate,
+    },
+    {
+      label: "COSTO ACT-BACK-PLAN-ASIG-PRE  (inv ÷ backlog+plan+asig+pre)",
+      byDia: divDiaMap(inv, actBackPlanAsigPre),
+      total: tActBackAll > 0 ? tInv / tActBackAll : null,
+      fmt:   usd,
+      color: C.slate,
+    },
   ];
 }
 
@@ -403,9 +452,11 @@ export default function TabReporteData({ filtro }) {
 
   const toggleCanal = (canal) => {
     setCanalesSel((prev) => prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal]);
+    // ── FIX: NO limpiar data ni canalesDisp al cambiar selección de canal ──
   };
 
-  // Cargar canales disponibles al cambiar mes/año (sin filtro de canal)
+  // ── FIX: Cargar canales disponibles SOLO cuando cambia mes/año ────────────
+  // NO limpiar data aquí — solo actualizar la lista de canales disponibles
   useEffect(() => {
     fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`)
       .then((r) => r.json())
@@ -420,12 +471,12 @@ export default function TabReporteData({ filtro }) {
         }
       })
       .catch(() => {});
-    // Al cambiar mes/año limpiar selección y datos
+    // Al cambiar mes/año sí limpiamos selección y datos (cambio de período)
     setCanalesSel([]);
     setData(null);
   }, [anio, mes]);
 
-  // FIX: solo enviar ?canales= si hay selección; vacío = todos
+  // ── FIX: handleCargar no resetea nada, solo trae datos con los canales sel ─
   const handleCargar = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({ anio, mes });

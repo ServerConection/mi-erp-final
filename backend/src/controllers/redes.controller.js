@@ -401,17 +401,19 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    // FIX inversión: cuando no hay canales seleccionados, no filtrar (todos los canales)
-    const invWhereFixed   = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
-    const invParamsFixed  = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
+    // ── FIX inversión: cuando no hay canales seleccionados no filtrar (todos los canales)
+    const invWhereFixed  = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
+    const invParamsFixed = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
 
+    // ── FIX bitrix: mismo patrón
     const { where: bitWhere, params: bitParams } = origenesBitrix.length > 0
       ? buildInWhere(origenesBitrix, 2, 'b_origen')
       : { where: '', params: [] };
 
-    // Inversion diaria — FIX: usar invWhereFixed/invParamsFixed
+    // ── Inversión diaria — agrupada correctamente por día
     const inversionRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
+      SELECT EXTRACT(DAY FROM fecha)::int AS dia,
+             SUM(max_inv) AS inversion_usd
       FROM (
         SELECT fecha, canal_inversion, MAX(inversion_usd) AS max_inv
         FROM public.mv_monitoreo_publicidad
@@ -424,7 +426,7 @@ const getReporteData = async (req, res) => {
       ORDER BY dia ASC
     `, [desde, hasta, ...invParamsFixed]);
 
-    // Leads + Etapas Bitrix
+    // ── Leads + Etapas Bitrix
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -501,51 +503,42 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // Estatus JOT
-    const statusJotRes = await pool.query(`
-      SELECT
-        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS ingreso_jot,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS ingreso_bitrix,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS activo_backlog,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-            AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS activos,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS total_ventas_jot,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE '%DESISTE%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS desiste_servicio_jot,
-        COUNT(*) FILTER (
-          WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
-            AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-            AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS regularizados,
-        COUNT(*) FILTER (
-          WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS por_regularizar
-      FROM public.mestra_bitrix
-      WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
-        AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${bitWhere}
-      GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitParams]);
+    // ── Estatus JOT
+const statusJotRes = await pool.query(`
+  SELECT
+    EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+    COUNT(*) AS ingreso_jot,
+    COUNT(DISTINCT b.b_id) AS ingreso_bitrix,
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
+    ) AS activo_backlog,
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
+        AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+        AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS activos,
+    COUNT(*) AS total_ventas_jot,
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real ILIKE '%DESISTE%'
+    ) AS desiste_servicio_jot,
+    COUNT(*) FILTER (
+      WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
+        AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
+        AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
+    ) AS regularizados,
+    COUNT(*) FILTER (
+      WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
+    ) AS por_regularizar
+  FROM public.mestra_bitrix j
+  LEFT JOIN public.mestra_bitrix b ON j.j_id_bitrix = b.b_id
+  WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+    AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ${bitWhere}
+  GROUP BY dia
+  ORDER BY dia ASC
+`, [desde, hasta, ...bitParams]);
 
-    // Forma de pago
+    // ── Forma de pago
     const pagoRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -571,7 +564,8 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // FIX ciclo: agrupa por día del lead (b_creado_el_fecha) — sin filtro de activación en WHERE principal
+    // ── FIX CICLO: agregamos el filtro bitWhere correctamente con offset 2
+    //   y añadimos condición de activación para que solo aparezcan leads que sí se activaron
     const cicloRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
@@ -588,11 +582,13 @@ const getReporteData = async (req, res) => {
           AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) >= 5 THEN 1 ELSE 0 END) AS ciclo_mas5
       FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        AND j_fecha_activacion_netlife IS NOT NULL
+        AND j_fecha_activacion_netlife <> ''
         ${bitWhere}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // Ciudad
+    // ── Ciudad
     const ciudadRes = await pool.query(`
       SELECT ciudad, provincia,
         SUM(total_leads) AS total_leads, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot,
@@ -610,7 +606,7 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, dia ORDER BY ciudad, dia
     `, [desde, hasta]);
 
-    // Hora
+    // ── Hora
     const horaRes = await pool.query(`
       SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
         ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
@@ -624,7 +620,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia, hora ORDER BY dia, hora
     `, [desde, hasta]);
 
-    // ATC
+    // ── ATC
     const atcRes = await pool.query(`
       SELECT motivo_atc, EXTRACT(DAY FROM fecha)::int AS dia, SUM(cantidad) AS cantidad
       FROM public.mv_monitoreo_atc WHERE fecha BETWEEN $1::date AND $2::date
@@ -637,7 +633,7 @@ const getReporteData = async (req, res) => {
       GROUP BY motivo_atc ORDER BY cantidad DESC
     `, [desde, hasta]);
 
-    // Canales disponibles
+    // ── Canales disponibles
     const origenesDispRes = await pool.query(`
       SELECT DISTINCT b_origen FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -653,14 +649,14 @@ const getReporteData = async (req, res) => {
     });
     const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
 
-    // Dias del mes
+    // ── Días del mes
     const diasMes = [];
     const DIAS_NOMBRE = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
     for (let d = 1; d <= ultimoDia; d++) {
       diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y, m - 1, d).getDay()] });
     }
 
-    // Combinar en finalArray
+    // ── Combinar inversión + etapas en finalArray
     const invMap = {};
 
     inversionRes.rows.forEach(r => {

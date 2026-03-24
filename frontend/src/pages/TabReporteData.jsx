@@ -4,7 +4,7 @@
 // ║  Al seleccionar canal se muestran sus líneas en panel lateral            ║
 // ║  La inversión se asigna UNA VEZ por canal (no se multiplica por líneas)  ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 
 const C = {
@@ -23,54 +23,16 @@ const C = {
   bgHeader: "#eff6ff",
 };
 
-const CANALES = {
-  "ARTS":               { color: "#2563eb", bg: "#eff6ff", icon: "🎨", label: "ARTS" },
-  "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
-  "ARTS GOOGLE":        { color: "#dc2626", bg: "#fef2f2", icon: "🔍", label: "ARTS GG" },
-  "REMARKETING":        { color: "#7c3aed", bg: "#f5f3ff", icon: "🔁", label: "REMARKETING" },
-  "VIDIKA GOOGLE":      { color: "#16a34a", bg: "#f0fdf4", icon: "📺", label: "VIDIKA GG" },
-  "POR RECOMENDACIÓN":  { color: "#d97706", bg: "#fffbeb", icon: "🤝", label: "RECOMEND." },
-  "MAL INGRESO":        { color: "#94a3b8", bg: "#f8fafc", icon: "⚠️", label: "MAL ING." },
-  "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "❓", label: "SIN MAPEO" },
+// ── Identidad visual por grupo ────────────────────────────────────────────────
+const CANAL_CFG = {
+  "ARTS":              { color: "#2563eb", bg: "#eff6ff",  icon: "🎨", label: "ARTS" },
+  "ARTS FACEBOOK":     { color: "#1877f2", bg: "#eff6ff",  icon: "📘", label: "ARTS FB" },
+  "ARTS GOOGLE":       { color: "#dc2626", bg: "#fef2f2",  icon: "🔍", label: "ARTS GG" },
+  "REMARKETING":       { color: "#7c3aed", bg: "#f5f3ff",  icon: "🔁", label: "REMARKETING" },
+  "VIDIKA GOOGLE":     { color: "#16a34a", bg: "#f0fdf4",  icon: "📺", label: "VIDIKA GG" },
+  "POR RECOMENDACIÓN": { color: "#d97706", bg: "#fffbeb",  icon: "🤝", label: "RECOMEND." },
 };
-
-const ORIGEN_CANAL = {
-  "BASE 593-979083368":                   "ARTS",
-  "BASE 593-995211968":                   "ARTS FACEBOOK",
-  "BASE 593-992827793":                   "ARTS GOOGLE",
-  "FORMULARIO LANDING 3":                 "ARTS GOOGLE",
-  "LLAMADA LANDING 3":                    "ARTS GOOGLE",
-  "POR RECOMENDACIÓN":                    "POR RECOMENDACIÓN",
-  "REFERIDO PERSONAL":                    "POR RECOMENDACIÓN",
-  "TIENDA ONLINE":                        "POR RECOMENDACIÓN",
-  "BASE 593-958993371":                   "REMARKETING",
-  "BASE 593-984414273":                   "REMARKETING",
-  "BASE 593-995967355":                   "REMARKETING",
-  "WHATSAPP 593958993371":                "REMARKETING",
-  "BASE 593-962881280":                   "VIDIKA GOOGLE",
-  "BASE 593-987133635":                   "VIDIKA GOOGLE",
-  "BASE API 593963463480":                "VIDIKA GOOGLE",
-  "FORMULARIO LANDING 4":                 "VIDIKA GOOGLE",
-  "LLAMADA":                              "VIDIKA GOOGLE",
-  "LLAMADA LANDING 4":                    "VIDIKA GOOGLE",
-  "BASE 593-958688121":                   "MAL INGRESO",
-  "CONTRATO NETLIFE":                     "MAL INGRESO",
-  "NO VOLVER A CONTACTAR":                "MAL INGRESO",
-  "OPORTUNIDADES":                        "MAL INGRESO",
-  "WAZZUP: WHATSAPP - ECUANET REGESTION": "MAL INGRESO",
-  "ZONAS PELIGROSAS":                     "MAL INGRESO",
-  "VENTA ECUANET DIRECTA":                "MAL INGRESO",
-};
-
-const CANAL_LINEAS = {};
-Object.entries(ORIGEN_CANAL).forEach(([origen, canal]) => {
-  if (!CANAL_LINEAS[canal]) CANAL_LINEAS[canal] = [];
-  CANAL_LINEAS[canal].push(origen);
-});
-
-const getCanal      = (origen) => (!origen ? "SIN MAPEO" : ORIGEN_CANAL[origen.toUpperCase()] || ORIGEN_CANAL[origen] || "SIN MAPEO");
-const getCfg        = (canal)  => CANALES[canal] || { color: C.muted, bg: "#f8fafc", icon: "•", label: canal };
-const esPublicidad  = (c)      => c !== "MAL INGRESO" && c !== "SIN MAPEO";
+const getCfg = (canal) => CANAL_CFG[canal] || { color: C.muted, bg: "#f8fafc", icon: "•", label: canal };
 
 const API   = import.meta.env.VITE_API_URL;
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -139,7 +101,7 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
     <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
       <thead className="sticky top-0 z-10 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
         <tr>
-          <th className="px-3 py-2 text-left font-black border-r min-w-[220px] sticky left-0"
+          <th className="px-3 py-2 text-left font-black border-r min-w-[260px] sticky left-0"
             style={{ background: C.bgHeader, color: C.slate, borderColor: C.border }}>MÉTRICA</th>
           {dias.map((d) => (
             <th key={d.dia} className="px-2 py-2 text-center font-black border-r min-w-[52px]"
@@ -189,119 +151,104 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BLOQUE 1: Inversión & Costos
-// Denominadores según definición del negocio:
-//   CPL                      = inv ÷ n_leads (leads totales Bitrix)
-//   Costo Ingreso Bitrix     = inv ÷ venta_subida (tipificados VENTA SUBIDA)
-//   Costo Ingreso Jot        = inv ÷ ingreso_jot (ingresos JOT mismo mes)
-//   Costo Activa             = inv ÷ activos_mes (leads del mes con fecha activación)
-//   Costo Activa + Backlog   = inv ÷ activo_backlog (activos cualquier fecha)
-//   Costo Act-Plan-Asig      = inv ÷ activos_mes + preplaneados + asignados
-//   Costo Act-Plan-Asig-Pre  = inv ÷ activos_mes + preplaneados + asignados + preservicio
-//   Costo por Negociable     = inv ÷ negociables
-//   Costo Act-Back-Plan-Asig-Pre = inv ÷ activo_backlog + preplaneados + asignados + preservicio
+// BLOQUE 1 — Inversión & Costos
+// TODOS los denominadores vienen del campo correspondiente en d.inversion[]
+// que a su vez viene del backend combinando mv_monitoreo_publicidad + JOT real.
+//
+// Campos disponibles en cada fila de d.inversion:
+//   inversion_usd, n_leads, venta_subida, negociables,
+//   activos_mes, activo_backlog, ingreso_jot, ingreso_bitrix,
+//   preplaneados, asignados, preservicio
 // ─────────────────────────────────────────────────────────────────────────────
 function buildInversionFilas(d, dias) {
-  if (!d.inversion) return [];
+  if (!d.inversion || d.inversion.length === 0) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
 
   const inv          = g("inversion_usd");
   const leads        = g("n_leads");
-  const vsBitrix     = g("venta_subida");     // leads tipificados VENTA SUBIDA en Bitrix
-  const jotMes       = g("ingreso_jot");      // ingresos JOT mismo mes
-  const activosMes   = g("activos_mes");      // activos del mes, leads del mes
-  const backlog      = g("activo_backlog");   // activos cualquier fecha
-  const negoc        = g("negociables");
-  const preplaneados = g("preplaneados");     // PREPLANEADO + REPLANIFICADO
-  const asignados    = g("asignados");        // ASIGNADO
-  const preservicio  = g("preservicio");      // PRESERVICIO
+  const vsBitrix     = g("ingreso_bitrix");   // ingresos Bitrix mismo día (venta subida ingresada)
+  const jotMes       = g("ingreso_jot");      // ingresos JOT del mes (del JOT real)
+  const activosMes   = g("activos_mes");      // activos del mes con fecha activación (JOT real)
+  const backlog      = g("activo_backlog");   // activos cualquier fecha (JOT real)
+  const negoc        = g("negociables");      // leads totales − SAC
+  const preplaneados = g("preplaneados");     // estado PREPLANEADO/REPLANIFICADO (JOT real)
+  const asignados    = g("asignados");        // estado ASIGNADO (JOT real)
+  const preservicio  = g("preservicio");      // estado PRESERVICIO (JOT real)
 
   // Denominadores compuestos
-  const actPlanAsigMes = addMaps(activosMes, preplaneados, asignados);
-  const actPlanAsigPreMes = addMaps(activosMes, preplaneados, asignados, preservicio);
-  const actBackPlanAsigPre = addMaps(backlog, preplaneados, asignados, preservicio);
+  const actPlanAsig        = addMaps(activosMes,  preplaneados, asignados);
+  const actPlanAsigPre     = addMaps(activosMes,  preplaneados, asignados, preservicio);
+  const actBackPlanAsigPre = addMaps(backlog,      preplaneados, asignados, preservicio);
 
-  const tInv               = totalFromMap(inv);
-  const tLeads             = totalFromMap(leads);
-  const tVsBitrix          = totalFromMap(vsBitrix);
-  const tJotMes            = totalFromMap(jotMes);
-  const tActivosMes        = totalFromMap(activosMes);
-  const tBacklog           = totalFromMap(backlog);
-  const tNegoc             = totalFromMap(negoc);
-  const tActPlanAsig       = totalFromMap(actPlanAsigMes);
-  const tActPlanAsigPre    = totalFromMap(actPlanAsigPreMes);
-  const tActBackAll        = totalFromMap(actBackPlanAsigPre);
+  const tInv    = totalFromMap(inv);
+  const tLeads  = totalFromMap(leads);
+  const tBitrix = totalFromMap(vsBitrix);
+  const tJot    = totalFromMap(jotMes);
+  const tAct    = totalFromMap(activosMes);
+  const tBack   = totalFromMap(backlog);
+  const tNegoc  = totalFromMap(negoc);
+  const tAPA    = totalFromMap(actPlanAsig);
+  const tAPAPre = totalFromMap(actPlanAsigPre);
+  const tABAll  = totalFromMap(actBackPlanAsigPre);
 
   return [
     {
       label: "INVERSIÓN DIARIA",
-      byDia: inv,
-      total: tInv,
-      fmt:   usd,
-      color: C.violet,
+      byDia: inv, total: tInv, fmt: usd, color: C.violet,
     },
     {
       label: "CPL  (inv ÷ leads totales Bitrix)",
       byDia: divDiaMap(inv, leads),
       total: tLeads > 0 ? tInv / tLeads : null,
-      fmt:   usd,
-      color: C.primary,
+      fmt: usd, color: C.primary,
     },
     {
-      label: "COSTO INGRESO (BITRIX)  (inv ÷ venta subida Bitrix)",
+      label: "COSTO INGRESO BITRIX  (inv ÷ ingresos Bitrix mismo día)",
       byDia: divDiaMap(inv, vsBitrix),
-      total: tVsBitrix > 0 ? tInv / tVsBitrix : null,
-      fmt:   usd,
-      color: C.cyan,
+      total: tBitrix > 0 ? tInv / tBitrix : null,
+      fmt: usd, color: C.cyan,
     },
     {
-      label: "COSTO INGRESO (JOT)  (inv ÷ ingresos JOT mismo mes)",
+      label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",
       byDia: divDiaMap(inv, jotMes),
-      total: tJotMes > 0 ? tInv / tJotMes : null,
-      fmt:   usd,
-      color: C.cyan,
+      total: tJot > 0 ? tInv / tJot : null,
+      fmt: usd, color: C.cyan,
     },
     {
-      label: "COSTO ACTIVA  (inv ÷ activos mes, leads del mes)",
+      label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",
       byDia: divDiaMap(inv, activosMes),
-      total: tActivosMes > 0 ? tInv / tActivosMes : null,
-      fmt:   usd,
-      color: C.success,
+      total: tAct > 0 ? tInv / tAct : null,
+      fmt: usd, color: C.success,
     },
     {
       label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",
       byDia: divDiaMap(inv, backlog),
-      total: tBacklog > 0 ? tInv / tBacklog : null,
-      fmt:   usd,
-      color: C.success,
+      total: tBack > 0 ? tInv / tBack : null,
+      fmt: usd, color: C.success,
     },
     {
-      label: "COSTO ACT-PLAN-ASIG  (inv ÷ activos+preplaneados+asignados)",
-      byDia: divDiaMap(inv, actPlanAsigMes),
-      total: tActPlanAsig > 0 ? tInv / tActPlanAsig : null,
-      fmt:   usd,
-      color: C.warning,
+      label: "COSTO ACT+PLAN+ASIG  (inv ÷ activos+preplaneados+asignados)",
+      byDia: divDiaMap(inv, actPlanAsig),
+      total: tAPA > 0 ? tInv / tAPA : null,
+      fmt: usd, color: C.warning,
     },
     {
-      label: "COSTO ACT-PLAN-ASIG-PRE  (inv ÷ activos+plan+asig+preservicio)",
-      byDia: divDiaMap(inv, actPlanAsigPreMes),
-      total: tActPlanAsigPre > 0 ? tInv / tActPlanAsigPre : null,
-      fmt:   usd,
-      color: C.warning,
+      label: "COSTO ACT+PLAN+ASIG+PRE  (inv ÷ activos+plan+asig+preservicio)",
+      byDia: divDiaMap(inv, actPlanAsigPre),
+      total: tAPAPre > 0 ? tInv / tAPAPre : null,
+      fmt: usd, color: C.warning,
     },
     {
       label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",
       byDia: divDiaMap(inv, negoc),
       total: tNegoc > 0 ? tInv / tNegoc : null,
-      fmt:   usd,
-      color: C.slate,
+      fmt: usd, color: C.slate,
     },
     {
-      label: "COSTO ACT-BACK-PLAN-ASIG-PRE  (inv ÷ backlog+plan+asig+pre)",
+      label: "COSTO BACK+PLAN+ASIG+PRE  (inv ÷ backlog+plan+asig+pre)",
       byDia: divDiaMap(inv, actBackPlanAsigPre),
-      total: tActBackAll > 0 ? tInv / tActBackAll : null,
-      fmt:   usd,
-      color: C.slate,
+      total: tABAll > 0 ? tInv / tABAll : null,
+      fmt: usd, color: C.slate,
     },
   ];
 }
@@ -371,14 +318,16 @@ function buildJotFilas(d, dias) {
   const tJot = totalFromMap(jot), tAct = totalFromMap(act), tBk = totalFromMap(bk);
 
   return [
-    { label: "INGRESO EN BITRIX",    byDia: bit,             total: totalFromMap(bit), color: C.primary },
-    { label: "INGRESO EN JOT",       byDia: jot,             total: tJot,              color: C.success },
-    { label: "ACTIVO + BACKLOG",      byDia: addMaps(act, bk), total: tAct + tBk, pctDia: pctDiaMap(addMaps(act, bk), jot), totalPct: tJot > 0 ? ((tAct + tBk) / tJot) * 100 : null, showPct: true },
-    { label: "ACTIVO (MISMO MES)",   byDia: act,             total: tAct, pctDia: pctDiaMap(act, jot), totalPct: tJot > 0 ? (tAct / tJot) * 100 : null, showPct: true, color: C.success },
-    { label: "TOTAL VENTAS JOT",     byDia: tvj,             total: totalFromMap(tvj) },
-    { label: "DESISTE SERVICIO JOT", byDia: dsj,             total: totalFromMap(dsj),  color: C.danger  },
-    { label: "REGULARIZADOS",        byDia: reg,             total: totalFromMap(reg),  color: C.cyan    },
-    { label: "POR REGULARIZAR",      byDia: preg,            total: totalFromMap(preg), color: C.warning },
+    { label: "INGRESO EN BITRIX",    byDia: bit,              total: totalFromMap(bit),  color: C.primary },
+    { label: "INGRESO EN JOT",       byDia: jot,              total: tJot,               color: C.success },
+    { label: "ACTIVO + BACKLOG",     byDia: addMaps(act, bk), total: tAct + tBk,
+      pctDia: pctDiaMap(addMaps(act, bk), jot), totalPct: tJot > 0 ? ((tAct + tBk) / tJot) * 100 : null, showPct: true },
+    { label: "ACTIVO (MISMO MES)",   byDia: act,              total: tAct,
+      pctDia: pctDiaMap(act, jot), totalPct: tJot > 0 ? (tAct / tJot) * 100 : null, showPct: true, color: C.success },
+    { label: "TOTAL VENTAS JOT",     byDia: tvj,              total: totalFromMap(tvj)  },
+    { label: "DESISTE SERVICIO JOT", byDia: dsj,              total: totalFromMap(dsj),  color: C.danger  },
+    { label: "REGULARIZADOS",        byDia: reg,              total: totalFromMap(reg),  color: C.cyan    },
+    { label: "POR REGULARIZAR",      byDia: preg,             total: totalFromMap(preg), color: C.warning },
   ];
 }
 
@@ -387,8 +336,8 @@ function buildPagoFilas(d, dias) {
   if (!d.pago) return [];
   const g = (k) => byDiaMap(d.pago, "dia", k);
 
-  const pc  = g("pago_cuenta"),         pe  = g("pago_efectivo"),         pt  = g("pago_tarjeta");
-  const pca = g("pago_cuenta_activa"),  pea = g("pago_efectivo_activa"),  pta = g("pago_tarjeta_activa");
+  const pc  = g("pago_cuenta"),        pe  = g("pago_efectivo"),        pt  = g("pago_tarjeta");
+  const pca = g("pago_cuenta_activa"), pea = g("pago_efectivo_activa"), pta = g("pago_tarjeta_activa");
 
   const totIngMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pc[dia]) + n(pe[dia]) + n(pt[dia])]));
   const totActMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pca[dia]) + n(pea[dia]) + n(pta[dia])]));
@@ -450,45 +399,70 @@ export default function TabReporteData({ filtro }) {
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(false);
 
-  const toggleCanal = (canal) => {
-    setCanalesSel((prev) => prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal]);
-    // ── FIX: NO limpiar data ni canalesDisp al cambiar selección de canal ──
-  };
+  // Ref para saber si ya hay data cargada (para auto-recargar al cambiar canal)
+  const dataLoaded = useRef(false);
 
-  // ── FIX: Cargar canales disponibles SOLO cuando cambia mes/año ────────────
-  // NO limpiar data aquí — solo actualizar la lista de canales disponibles
+  // ── FIX 1: Cargar canales disponibles cuando cambia mes/año ────────────────
+  // Solo limpia selección y data al cambiar período (no al cambiar canal)
   useEffect(() => {
+    setCanalesSel([]);
+    setData(null);
+    dataLoaded.current = false;
+    setCanalDetalle(null);
+
     fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) {
-          if (d.canales_disponibles) {
-            setCanalesDisp(d.canales_disponibles.map((c) => c.canal).filter(esPublicidad));
-          } else {
-            const unicos = [...new Set((d.origenes_disponibles || []).map(getCanal).filter(esPublicidad))];
-            setCanalesDisp(unicos);
-          }
+        if (d.success && d.canales_disponibles) {
+          setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
         }
       })
       .catch(() => {});
-    // Al cambiar mes/año sí limpiamos selección y datos (cambio de período)
-    setCanalesSel([]);
-    setData(null);
   }, [anio, mes]);
 
-  // ── FIX: handleCargar no resetea nada, solo trae datos con los canales sel ─
-  const handleCargar = useCallback(() => {
+  // ── Función que carga datos (reutilizable) ────────────────────────────────
+  const cargarDatos = useCallback((canalesSel_, anio_, mes_) => {
     setLoading(true);
-    const params = new URLSearchParams({ anio, mes });
-    if (canalesSel.length > 0) {
-      params.set("canales", canalesSel.join(","));
-    }
+    const params = new URLSearchParams({ anio: anio_, mes: mes_ });
+    if (canalesSel_.length > 0) params.set("canales", canalesSel_.join(","));
+
     fetch(`${API}/api/redes/reporte-data?${params}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setData(d); })
+      .then((d) => {
+        if (d.success) {
+          setData(d);
+          dataLoaded.current = true;
+          // Actualizar canales disponibles si vienen en la respuesta
+          if (d.canales_disponibles) {
+            setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [anio, mes, canalesSel]);
+  }, []);
+
+  const handleCargar = () => cargarDatos(canalesSel, anio, mes);
+
+  // ── FIX 2: Al cambiar canal, si ya hay data, recargar automáticamente ─────
+  const toggleCanal = (canal) => {
+    setCanalesSel((prev) => {
+      const next = prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal];
+      // Si ya había data cargada, recargar con los nuevos canales
+      if (dataLoaded.current) {
+        // Usamos setTimeout para que el estado se actualice antes de la llamada
+        setTimeout(() => cargarDatos(next, anio, mes), 0);
+      }
+      return next;
+    });
+  };
+
+  const limpiarCanales = () => {
+    setCanalesSel([]);
+    if (dataLoaded.current) {
+      setTimeout(() => cargarDatos([], anio, mes), 0);
+    }
+  };
 
   // ── Exportar a Excel ──────────────────────────────────────────────────────
   const handleExport = () => {
@@ -508,14 +482,14 @@ export default function TabReporteData({ filtro }) {
           if (f.showPct)      { row.push(fmtCantPct(val, pct)); return; }
           row.push(val !== undefined && n(val) !== 0 ? n(val) : "");
         });
-        if (f.separador)   row.push("");
-        else if (f.fmt)    row.push(f.fmt(f.total));
+        if (f.separador)    row.push("");
+        else if (f.fmt)     row.push(f.fmt(f.total));
         else if (f.showPct) row.push(fmtCantPct(f.total, f.totalPct));
-        else row.push(f.total !== null && f.total !== undefined ? n(f.total) : "");
+        else                row.push(f.total !== null && f.total !== undefined ? n(f.total) : "");
         return row;
       });
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-      ws["!cols"] = [{ wch: 38 }, ...dias.map(() => ({ wch: 12 })), { wch: 14 }];
+      ws["!cols"] = [{ wch: 42 }, ...dias.map(() => ({ wch: 12 })), { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, ws, nombre.slice(0, 31));
     };
 
@@ -561,7 +535,6 @@ export default function TabReporteData({ filtro }) {
   };
 
   const dias = data?.meta?.dias || [];
-  const lineasCanalDetalle = canalDetalle ? (CANAL_LINEAS[canalDetalle] || []) : [];
 
   return (
     <div className="space-y-4" style={{ background: C.bgPage }}>
@@ -590,8 +563,9 @@ export default function TabReporteData({ filtro }) {
             </select>
 
             <button onClick={handleCargar}
-              className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95"
-              style={{ background: loading ? C.muted : C.primary }}>
+              disabled={loading}
+              className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 disabled:opacity-60"
+              style={{ background: C.primary }}>
               {loading ? "Cargando..." : "Generar"}
             </button>
 
@@ -605,7 +579,7 @@ export default function TabReporteData({ filtro }) {
           </div>
         </div>
 
-        {/* Fila 2: Chips de canal */}
+        {/* Fila 2: Chips de canal + panel lateral de líneas */}
         {canalesDisp.length > 0 && (
           <div className="flex items-stretch">
             <div className="flex-1 px-5 py-3 flex flex-wrap items-center gap-2">
@@ -615,38 +589,40 @@ export default function TabReporteData({ filtro }) {
 
               {/* Chip "Todos" */}
               <button
-                onClick={() => { setCanalesSel([]); setCanalDetalle(null); }}
+                onClick={limpiarCanales}
                 className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
                 style={canalesSel.length === 0
                   ? { background: C.primary, color: "#fff", borderColor: C.primary }
-                  : { background: "#fff", color: C.muted, borderColor: C.border }
+                  : { background: "#fff",    color: C.muted, borderColor: C.border }
                 }>
                 Todos
               </button>
 
               {canalesDisp.map((canal) => {
-                const cfg = getCfg(canal);
-                const sel = canalesSel.includes(canal);
+                const cfg      = getCfg(canal);
+                const sel      = canalesSel.includes(canal);
                 const isDetail = canalDetalle === canal;
                 return (
                   <div key={canal} className="inline-flex items-center gap-0.5">
+                    {/* Chip principal: selecciona el canal */}
                     <button onClick={() => toggleCanal(canal)}
                       className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
                       style={sel
-                        ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
-                        : { background: cfg.bg, color: cfg.color, borderColor: `${cfg.color}40` }
+                        ? { background: cfg.color, color: "#fff",    borderColor: cfg.color }
+                        : { background: cfg.bg,    color: cfg.color, borderColor: `${cfg.color}40` }
                       }>
                       <span>{cfg.icon}</span><span>{cfg.label}</span>
                     </button>
+                    {/* Botón "ver líneas" */}
                     <button onClick={() => setCanalDetalle(isDetail ? null : canal)}
                       className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[9px] font-black border-l-0 border transition-all"
                       style={isDetail
-                        ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
+                        ? { background: cfg.color,         color: "#fff", borderColor: cfg.color }
                         : sel
                           ? { background: `${cfg.color}cc`, color: "#fff", borderColor: `${cfg.color}cc` }
-                          : { background: cfg.bg, color: cfg.color, borderColor: `${cfg.color}40` }
+                          : { background: cfg.bg,           color: cfg.color, borderColor: `${cfg.color}40` }
                       }
-                      title={`Ver líneas de ${getCfg(canal).label}`}>
+                      title={`Ver líneas de ${cfg.label}`}>
                       {isDetail ? "▴" : "▾"}
                     </button>
                   </div>
@@ -655,17 +631,25 @@ export default function TabReporteData({ filtro }) {
 
               {canalesSel.length > 0 && (
                 <span className="text-[8px] font-medium ml-1" style={{ color: C.muted }}>
-                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}{" · "}
-                  <button onClick={() => { setCanalesSel([]); setCanalDetalle(null); }}
-                    className="underline hover:no-underline" style={{ color: C.danger }}>
+                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
+                  {" · "}
+                  <button onClick={limpiarCanales} className="underline hover:no-underline" style={{ color: C.danger }}>
                     limpiar
                   </button>
                 </span>
               )}
+
+              {/* Indicador de auto-recarga */}
+              {loading && dataLoaded.current && (
+                <span className="text-[8px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
+                  <span className="inline-block w-2 h-2 border border-current rounded-full animate-spin border-t-transparent" />
+                  Actualizando...
+                </span>
+              )}
             </div>
 
-            {/* Panel lateral de líneas */}
-            {canalDetalle && lineasCanalDetalle.length > 0 && (
+            {/* Panel lateral de líneas del canal seleccionado para detallar */}
+            {canalDetalle && (
               <div className="border-l flex-shrink-0 px-4 py-3 min-w-[220px] max-w-[280px]"
                 style={{ borderColor: C.border, background: `${getCfg(canalDetalle).bg}` }}>
                 <div className="flex items-center justify-between mb-2">
@@ -675,8 +659,10 @@ export default function TabReporteData({ filtro }) {
                   <button onClick={() => setCanalDetalle(null)} className="text-[9px] font-bold hover:opacity-70"
                     style={{ color: getCfg(canalDetalle).color }}>✕</button>
                 </div>
+                {/* Líneas del canal (vienen de canalesDisp o del mapeo fijo) */}
                 <div className="space-y-1">
-                  {lineasCanalDetalle.map((linea) => (
+                  {(data?.canales_disponibles?.find(c => c.canal === canalDetalle)?.lineas
+                    || []).map((linea) => (
                     <div key={linea} className="text-[8px] px-2 py-1 rounded-md font-medium"
                       style={{ background: "#ffffff80", color: C.slate }}>{linea}</div>
                   ))}
@@ -690,15 +676,16 @@ export default function TabReporteData({ filtro }) {
         )}
       </div>
 
-      {/* Loading */}
-      {loading && (
+      {/* Loading inicial */}
+      {loading && !dataLoaded.current && (
         <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>Generando reporte...</div>
       )}
 
       {/* Contenido */}
-      {!loading && data && (
-        <>
-          <div className="bg-white rounded-xl border shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3"
+      {data && (
+        <div style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}>
+          {/* Cabecera de período */}
+          <div className="bg-white rounded-xl border shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3 mb-4"
             style={{ borderColor: C.border }}>
             <div>
               <div className="text-lg font-black" style={{ color: C.slate }}>
@@ -838,7 +825,7 @@ export default function TabReporteData({ filtro }) {
               </tbody>
             </table>
           </Block>
-        </>
+        </div>
       )}
 
       {/* Estado vacío */}

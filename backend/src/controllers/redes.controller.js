@@ -533,48 +533,68 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Estatus JOT ───────────────────────────────────────────────────────────
-    const statusJotRes = await pool.query(`
-      SELECT
-        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS ingreso_jot,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS ingreso_bitrix,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS activo_backlog,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-            AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS activos,
-        COUNT(*) FILTER (
-          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS total_ventas_jot,
-        COUNT(*) FILTER (
-          WHERE j_netlife_estatus_real ILIKE '%DESISTE%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS desiste_servicio_jot,
-        COUNT(*) FILTER (
-          WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
-            AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-            AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS regularizados,
-        COUNT(*) FILTER (
-          WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
-            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ) AS por_regularizar
-      FROM public.mestra_bitrix
-      WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
-        AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${bitWhereClause}
-      GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitParamsExtra]);
+   const statusJotRes = await pool.query(`
+  SELECT
+    EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+
+    COUNT(*) FILTER (
+      WHERE TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS ingreso_jot,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_fecha_registro_sistema IS NOT NULL
+        AND t2.b_creado_el_fecha IS NOT NULL
+        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') 
+            = TO_DATE(t2.b_creado_el_fecha, 'YYYY-MM-DD')
+        AND TO_DATE(t2.b_creado_el_fecha, 'YYYY-MM-DD') 
+            BETWEEN $1::date AND $2::date
+    ) AS ingreso_bitrix,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS activo_backlog,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+        AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
+        AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS activos,
+
+    COUNT(*) FILTER (
+      WHERE TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS total_ventas_jot,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%'
+        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS desiste_servicio_jot,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
+        AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
+        AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
+        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS regularizados,
+
+    COUNT(*) FILTER (
+      WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
+        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS por_regularizar
+
+  FROM public.mestra_bitrix t1
+
+  LEFT JOIN public.mestra_bitrix t2
+    ON t1.j_id_bitrix = t2.b_id
+
+  WHERE t1.j_fecha_registro_sistema IS NOT NULL 
+    AND t1.j_fecha_registro_sistema <> ''
+    AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ${bitWhereClause}
+
+  GROUP BY dia 
+  ORDER BY dia ASC
+`, [desde, hasta, ...bitParamsExtra]);
 
     // ── Forma de pago ─────────────────────────────────────────────────────────
     const pagoRes = await pool.query(`

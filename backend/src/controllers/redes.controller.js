@@ -8,74 +8,10 @@ const getFiltroFechas = (query) => {
   return { fechaDesde, fechaHasta };
 };
 
-// ─── MAPEO HARDCODEADO: Origen Bitrix → Canal Publicidad ────────────────────
-// Columna izquierda  = b_origen en mestra_bitrix
-// Columna derecha    = canal_publicidad en mv_monitoreo_publicidad
-const ORIGEN_A_CANAL = {
-  'Base 593-979083368':      'ARTS - Base 593-979083368',
-  'Base 593-995211968':      'ARTS FACEBOOK - Base 593-995211968',
-  'Base 593-992827793':      'ARTS GOOGLE - Base 593-992827793',
-  'Fomulario Landing 3':     'ARTS GOOGLE - Fomulario Landing 3',
-  'Llamada Landing 3':       'ARTS GOOGLE - Llamada Landing 3',
-  'Por Recomendación':       'POR RECOMENDACIÓN - Por Recomendación',
-  'Referido Personal':       'POR RECOMENDACIÓN - Referido Personal',
-  'Tienda online':           'POR RECOMENDACIÓN - Tienda online',
-  'Base 593-958993371':      'REMARKETING - Base 593-958993371',
-  'BASE 593-984414273':      'REMARKETING - BASE 593-984414273',
-  'Base 593-995967355':      'REMARKETING - Base 593-995967355',
-  'Whatsapp 593958993371':   'REMARKETING - Whatsapp 593958993371',
-  'Base 593-987133635':      'VIDIKA GOOGLE',
-  'BASE API 593963463480':   'VIDIKA GOOGLE',
-  'Formulario Landing 4':    'VIDIKA GOOGLE',
-  'Llamada':                 'VIDIKA GOOGLE',
-  'Llamada Landing 4':       'VIDIKA GOOGLE',
-  'Base 593-962881280':      'VIDIKA GOOGLE',
-};
-
-// Inverso automático: canal → [lista de orígenes de bitrix]
-const CANAL_A_ORIGENES = Object.entries(ORIGEN_A_CANAL).reduce((acc, [origen, canal]) => {
-  if (!acc[canal]) acc[canal] = [];
-  acc[canal].push(origen);
-  return acc;
-}, {});
-
-// Lista de canales únicos (para devolver al frontend como "canales_disponibles")
-const CANALES_DISPONIBLES = Object.keys(CANAL_A_ORIGENES).sort();
-
-// ─── Helper: resuelve canales seleccionados → orígenes bitrix + canales pub ──
-// canales = array de strings con nombres de canal (ej: ['VIDIKA GOOGLE', 'ARTS GOOGLE - ...'])
-// retorna:
-//   origenesBitrix      → para filtrar mestra_bitrix por b_origen
-//   canalesPublicidad   → para filtrar mv_monitoreo_publicidad por canal_publicidad
-const resolverFiltroCanales = (canales = []) => {
-  if (canales.length === 0) return { origenesBitrix: [], canalesPublicidad: [] };
-  const origenesBitrix    = [];
-  const canalesPublicidad = new Set();
-  canales.forEach(canal => {
-    (CANAL_A_ORIGENES[canal] || []).forEach(o => origenesBitrix.push(o));
-    canalesPublicidad.add(canal);
-  });
-  return { origenesBitrix, canalesPublicidad: [...canalesPublicidad] };
-};
-
-// ─── Helper: construye cláusula WHERE + params para un array de valores ──────
-const buildInWhere = (valores, offsetInicial, field) => {
-  if (!valores || valores.length === 0) return { where: '', params: [] };
-  const ph = valores.map((_, i) => `$${offsetInicial + i + 1}`).join(', ');
-  return { where: `AND ${field} IN (${ph})`, params: valores };
-};
-
-
 // ─── 1. MONITOREO REDES GENERAL ─────────────────────────────────────────────
 const getMonitoreoRedes = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
-
-    // Soporte filtro por canal
-    const canalesRaw = req.query.canales || '';
-    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { canalesPublicidad } = resolverFiltroCanales(canalesSel);
-    const { where: canalWhere, params: canalParams } = buildInWhere(canalesPublicidad, 2, 'canal_publicidad');
 
     const totalesResult = await pool.query(`
       SELECT
@@ -130,8 +66,7 @@ const getMonitoreoRedes = async (req, res) => {
         ROUND(AVG(efectividad_negociables)::numeric * 100, 1) AS efectividad_negociables
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
-        ${canalWhere}
-    `, [fechaDesde, fechaHasta, ...canalParams]);
+    `, [fechaDesde, fechaHasta]);
 
     const detalleResult = await pool.query(`
       SELECT
@@ -158,20 +93,10 @@ const getMonitoreoRedes = async (req, res) => {
         ROUND(efectividad_negociables::numeric * 100, 1) AS efectividad_negociables
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
-        ${canalWhere}
       ORDER BY fecha DESC
-    `, [fechaDesde, fechaHasta, ...canalParams]);
+    `, [fechaDesde, fechaHasta]);
 
-    res.json({
-      success: true,
-      totales: totalesResult.rows[0],
-      data: detalleResult.rows,
-      // Devuelve la estructura de canales para que el frontend pueda armar el selector
-      canales_disponibles: CANALES_DISPONIBLES.map(canal => ({
-        canal,
-        lineas: CANAL_A_ORIGENES[canal],
-      })),
-    });
+    res.json({ success: true, totales: totalesResult.rows[0], data: detalleResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoRedes:', error);
     res.status(500).json({ success: false, message: 'Error al obtener datos', error: error.message });
@@ -280,12 +205,9 @@ const getMonitoreoMetas = async (req, res) => {
     const desde = fechaDesde || hoy;
     const hasta = fechaHasta || hoy;
 
-    // ── Nuevo: recibe ?canales=VIDIKA GOOGLE,ARTS GOOGLE - ... ───────────────
-    const canalesRaw = req.query.canales || '';
-    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { origenesBitrix, canalesPublicidad } = resolverFiltroCanales(canalesSel);
+    const origenesRaw = req.query.origenes || '';
+    const origenes    = origenesRaw ? origenesRaw.split(',').map(o => o.trim()).filter(Boolean) : [];
 
-    // ── Fecha WHERE ───────────────────────────────────────────────────────────
     let fechaWhere, fechaParams;
     if (modo === 'mes') {
       fechaWhere  = `b_creado_el_fecha LIKE $1`;
@@ -295,12 +217,15 @@ const getMonitoreoMetas = async (req, res) => {
       fechaParams = [desde, hasta];
     }
 
-    // ── Filtro orígenes en mestra_bitrix ─────────────────────────────────────
-    const offsetBit = fechaParams.length;
-    const { where: bitrixWhere, params: bitrixParams } = buildInWhere(origenesBitrix, offsetBit, 'b_origen');
-    const allParamsBitrix = [...fechaParams, ...bitrixParams];
+    const offset = fechaParams.length;
+    let origenWhere = '', origenParams = [];
+    if (origenes.length > 0) {
+      origenWhere  = `AND b_origen IN (${origenes.map((_, i) => `$${offset + i + 1}`).join(', ')})`;
+      origenParams = origenes;
+    }
 
-    // ── Query mestra_bitrix agrupado por b_origen ─────────────────────────────
+    const allParams = [...fechaParams, ...origenParams];
+
     const totalesRes = await pool.query(`
       SELECT
         b_origen,
@@ -311,93 +236,46 @@ const getMonitoreoMetas = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'VENTA SUBIDA') AS venta_subida,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion IN ('INGRESO JOT','VENTA JOT')) AS ingreso_jot
       FROM public.mestra_bitrix
-      WHERE ${fechaWhere} ${bitrixWhere}
+      WHERE ${fechaWhere} ${origenWhere}
       GROUP BY b_origen ORDER BY total_leads DESC
-    `, allParamsBitrix);
+    `, allParams);
 
-    // ── Inversión: UNA SOLA VEZ por canal (sin multiplicar por líneas) ────────
-    // Filtramos mv_monitoreo_publicidad por canal_publicidad, NO por b_origen
-    const { where: pubWhere, params: pubParams } = buildInWhere(canalesPublicidad, 2, 'canal_publicidad');
-    let inversionPorCanal = {};
+    let inversionPorOrigen = {};
     try {
       const invRes = await pool.query(`
         SELECT canal_publicidad, SUM(inversion_usd) AS inversion_usd
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1::date AND $2::date
-          ${pubWhere}
         GROUP BY canal_publicidad
-      `, [desde, hasta, ...pubParams]);
-      invRes.rows.forEach(r => {
-        inversionPorCanal[r.canal_publicidad] = Number(r.inversion_usd || 0);
-      });
+      `, [desde, hasta]);
+      invRes.rows.forEach(r => { inversionPorOrigen[r.canal_publicidad] = Number(r.inversion_usd || 0); });
     } catch (_) {}
 
-    // ── Construir respuesta: agrupar por canal, listar líneas debajo ──────────
-    const canalMap = {};
-    totalesRes.rows.forEach(r => {
-      const canal = ORIGEN_A_CANAL[r.b_origen] || r.b_origen; // fallback al origen si no está en el mapa
-      if (!canalMap[canal]) {
-        canalMap[canal] = {
-          canal,
-          inversion_usd: inversionPorCanal[canal] || 0,
-          lineas: [],
-          total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0,
-        };
-      }
-      const total  = Number(r.total_leads  || 0);
-      const sac    = Number(r.leads_sac    || 0);
-      const ventas = Number(r.venta_subida || 0);
-      const jot    = Number(r.ingreso_jot  || 0);
-      const calidad = total - sac;
+    const origenesDispRes = await pool.query(`
+      SELECT DISTINCT b_origen FROM public.mestra_bitrix
+      WHERE ${fechaWhere} AND b_origen IS NOT NULL AND b_origen <> ''
+      ORDER BY b_origen ASC
+    `, fechaParams);
 
-      canalMap[canal].total_leads  += total;
-      canalMap[canal].leads_sac    += sac;
-      canalMap[canal].venta_subida += ventas;
-      canalMap[canal].ingreso_jot  += jot;
-
-      canalMap[canal].lineas.push({
-        origen: r.b_origen,
-        total_leads: total,
-        leads_sac: sac,
-        leads_calidad: calidad,
-        venta_subida: ventas,
-        ingreso_jot: jot,
-        pct_sac:        total > 0 ? (sac    / total) * 100 : 0,
-        pct_calidad:    total > 0 ? (calidad / total) * 100 : 0,
-        pct_ventas:     total > 0 ? (ventas  / total) * 100 : 0,
-        pct_ventas_jot: total > 0 ? (jot     / total) * 100 : 0,
-      });
-    });
-
-    const canales = Object.values(canalMap).map(c => {
-      const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
-      const leads_calidad = total_leads - leads_sac;
+    const canales = totalesRes.rows.map(r => {
+      const total = Number(r.total_leads || 0), sac = Number(r.leads_sac || 0);
+      const ventas = Number(r.venta_subida || 0), jot = Number(r.ingreso_jot || 0);
+      const calidad = total - sac, inversion = inversionPorOrigen[r.b_origen] || 0;
       return {
-        canal:          c.canal,
-        inversion_usd,
-        total_leads,
-        leads_sac,
-        leads_calidad,
-        venta_subida,
-        ingreso_jot,
-        lineas:         c.lineas,
-        pct_sac:        total_leads > 0 ? (leads_sac     / total_leads) * 100 : 0,
-        pct_calidad:    total_leads > 0 ? (leads_calidad / total_leads) * 100 : 0,
-        pct_ventas:     total_leads > 0 ? (venta_subida  / total_leads) * 100 : 0,
-        pct_ventas_jot: total_leads > 0 ? (ingreso_jot   / total_leads) * 100 : 0,
-        cpl:      total_leads   > 0 && inversion_usd > 0 ? inversion_usd / total_leads   : null,
-        cpl_gest: leads_calidad > 0 && inversion_usd > 0 ? inversion_usd / leads_calidad : null,
-        cpa:      venta_subida  > 0 && inversion_usd > 0 ? inversion_usd / venta_subida  : null,
-        cpa_jot:  ingreso_jot   > 0 && inversion_usd > 0 ? inversion_usd / ingreso_jot   : null,
+        origen: r.b_origen, total_leads: total, leads_sac: sac,
+        leads_calidad: calidad, venta_subida: ventas, ingreso_jot: jot, inversion_usd: inversion,
+        pct_sac:        total > 0 ? (sac    / total) * 100 : 0,
+        pct_calidad:    total > 0 ? (calidad/ total) * 100 : 0,
+        pct_ventas:     total > 0 ? (ventas / total) * 100 : 0,
+        pct_ventas_jot: total > 0 ? (jot    / total) * 100 : 0,
+        cpl:     total   > 0 && inversion > 0 ? inversion / total   : null,
+        cpl_gest:calidad > 0 && inversion > 0 ? inversion / calidad : null,
+        cpa:     ventas  > 0 && inversion > 0 ? inversion / ventas  : null,
+        cpa_jot: jot     > 0 && inversion > 0 ? inversion / jot     : null,
       };
     });
 
-    const canalesDisponibles = CANALES_DISPONIBLES.map(canal => ({
-      canal,
-      lineas: CANAL_A_ORIGENES[canal],
-    }));
-
-    res.json({ success: true, canales, canales_disponibles: canalesDisponibles });
+    res.json({ success: true, canales, origenes_disponibles: origenesDispRes.rows.map(r => r.b_origen) });
   } catch (error) {
     console.error('Error en getMonitoreoMetas:', error);
     res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
@@ -405,6 +283,7 @@ const getMonitoreoMetas = async (req, res) => {
 };
 
 // ─── 7. REPORTE DATA ─────────────────────────────────────────────────────────
+// Retorna todos los bloques del Excel por día del mes, filtrable por origen
 const getReporteData = async (req, res) => {
   try {
     const { anio, mes } = req.query;
@@ -414,17 +293,18 @@ const getReporteData = async (req, res) => {
     const desde = `${y}-${String(m).padStart(2,'0')}-01`;
     const hasta  = `${y}-${String(m).padStart(2,'0')}-31`;
 
-    // ── Recibe canales en lugar de origenes ─────────────────────────────────
-    const canalesRaw = req.query.canales || '';
-    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { origenesBitrix, canalesPublicidad } = resolverFiltroCanales(canalesSel);
+    const origenesRaw = req.query.origenes || '';
+    const origenes    = origenesRaw ? origenesRaw.split(',').map(o => o.trim()).filter(Boolean) : [];
 
-    // ── Helpers para construir WHERE según fuente ─────────────────────────────
-    const buildPubWhere = (offset) => buildInWhere(canalesPublicidad, offset, 'canal_publicidad');
-    const buildBitWhere = (offset) => buildInWhere(origenesBitrix, offset, 'b_origen');
+    // WHERE origen para mestra_bitrix
+    const buildOrigenWhere = (offset, field = 'b_origen') => {
+      if (origenes.length === 0) return { where: '', params: [] };
+      const ph = origenes.map((_, i) => `$${offset + i + 1}`).join(', ');
+      return { where: `AND ${field} IN (${ph})`, params: origenes };
+    };
 
     // ── BLOQUE 1: Inversión diaria desde mv_monitoreo_publicidad ─────────────
-    const { where: invOrigenWhere, params: invOrigenParams } = buildPubWhere(2);
+    const { where: invOrigenWhere, params: invOrigenParams } = buildOrigenWhere(2, 'canal_publicidad');
     const inversionRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM fecha)::int AS dia,
@@ -448,7 +328,7 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...invOrigenParams]);
 
     // ── BLOQUE 2: Leads + Etapas por día (mestra_bitrix) ────────────────────
-    const { where: bitOrigenWhere, params: bitOrigenParams } = buildBitWhere(2);
+    const { where: bitOrigenWhere, params: bitOrigenParams } = buildOrigenWhere(2);
     const etapasRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
@@ -467,6 +347,7 @@ const getReporteData = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'NO VOLVER A CONTACTAR') AS no_volver_contactar,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'NO INTERESA COSTO PLAN') AS no_interesa_costo,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'DESISTE DE COMPRA')    AS desiste_compra,
+        COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'ZONAS PELIGROSAS')     AS zonas_pel2,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'CLIENTE DISCAPACIDAD') AS cliente_discapacidad,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'OPORTUNIDADES')        AS oportunidades,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'DUPLICADO')            AS duplicado,
@@ -477,50 +358,41 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitOrigenParams]);
 
-    // ── BLOQUE 3: Estatus ventas JOT desde velsa_netlife_maestra_cons ─────────
-    // Este bloque reemplaza el antiguo statusJotRes (que usaba mv_monitoreo_publicidad)
+    // ── BLOQUE 3: Estatus ventas JOT por día (mv_monitoreo_publicidad) ───────
     const statusJotRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM b.b_creado_el_fecha::date)::int AS dia,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_fecha_ingresa_telcos IS NOT NULL) AS ingreso_jot,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_fecha_ingresa_telcos = b.b_creado_el_fecha::date) AS ingreso_bitrix,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_estado_venta_netlife ILIKE '%ACTIVO%') AS activo_backlog,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_estado_venta_netlife ILIKE '%ACTIVO%' AND j.t2_fecha_activacion_telcos IS NOT NULL) AS activos,
-        COUNT(j.t2_id_bitrix_ghl) AS total_ventas_jot,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_estado_venta_netlife ILIKE '%DESISTE%') AS desiste_servicio_jot,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (
-          WHERE j.t2_regularizado ILIKE '%REGULARIZADO%'
-            AND j.t2_regularizado NOT ILIKE '%NO REQUIERE%'
-            AND j.t2_regularizado NOT ILIKE '%POR REGULARIZAR%'
-        ) AS regularizados,
-        COUNT(j.t2_id_bitrix_ghl) FILTER (WHERE j.t2_regularizado ILIKE '%POR REGULARIZAR%') AS por_regularizar
-      FROM public.mestra_bitrix b
-      JOIN public.velsa_netlife_maestra_cons j ON j.t2_id_bitrix_ghl = b.b_id::text
-      WHERE b.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j.t2_id_bitrix_ghl IS NOT NULL AND TRIM(j.t2_id_bitrix_ghl) <> ''
-        ${bitOrigenWhere}
+        EXTRACT(DAY FROM fecha)::int AS dia,
+        SUM(ingreso_jot)             AS ingreso_jot,
+        SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix,
+        SUM(activo_backlog)          AS activo_backlog,
+        SUM(activos_mes)             AS activos,
+        SUM(total_ventas_jot)        AS total_ventas_jot,
+        SUM(desiste_servicio_jot)    AS desiste_servicio_jot,
+        SUM(regularizados)           AS regularizados,
+        SUM(por_regularizar)         AS por_regularizar
+      FROM public.mv_monitoreo_publicidad
+      WHERE fecha BETWEEN $1::date AND $2::date
+        ${invOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitOrigenParams]);
+    `, [desde, hasta, ...invOrigenParams]);
 
-    // ── BLOQUE 4: Forma de pago desde velsa_netlife_maestra_cons ─────────────
+    // ── BLOQUE 4: Forma de pago por día ──────────────────────────────────────
     const pagoRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM b.b_creado_el_fecha::date)::int AS dia,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%CUENTA%'   THEN 1 END) AS pago_cuenta,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%EFECTIVO%' THEN 1 END) AS pago_efectivo,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%TARJETA%'  THEN 1 END) AS pago_tarjeta,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%CUENTA%'   AND j.t2_estado_venta_netlife ILIKE '%ACTIVO%' AND j.t2_fecha_activacion_telcos IS NOT NULL THEN 1 END) AS pago_cuenta_activa,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%EFECTIVO%' AND j.t2_estado_venta_netlife ILIKE '%ACTIVO%' AND j.t2_fecha_activacion_telcos IS NOT NULL THEN 1 END) AS pago_efectivo_activa,
-        COUNT(CASE WHEN j.t2_forma_pago ILIKE '%TARJETA%'  AND j.t2_estado_venta_netlife ILIKE '%ACTIVO%' AND j.t2_fecha_activacion_telcos IS NOT NULL THEN 1 END) AS pago_tarjeta_activa
-      FROM public.mestra_bitrix b
-      JOIN public.velsa_netlife_maestra_cons j ON j.t2_id_bitrix_ghl = b.b_id::text
-      WHERE b.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j.t2_id_bitrix_ghl IS NOT NULL AND TRIM(j.t2_id_bitrix_ghl) <> ''
-        ${bitOrigenWhere}
+        EXTRACT(DAY FROM fecha)::int AS dia,
+        SUM(pago_cuenta)          AS pago_cuenta,
+        SUM(pago_efectivo)        AS pago_efectivo,
+        SUM(pago_tarjeta)         AS pago_tarjeta,
+        SUM(pago_cuenta_activa)   AS pago_cuenta_activa,
+        SUM(pago_efectivo_activa) AS pago_efectivo_activa,
+        SUM(pago_tarjeta_activa)  AS pago_tarjeta_activa
+      FROM public.mv_monitoreo_publicidad
+      WHERE fecha BETWEEN $1::date AND $2::date
+        ${invOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitOrigenParams]);
+    `, [desde, hasta, ...invOrigenParams]);
 
-    // ── BLOQUE 5: Activos e Ingresos por ciudad (sin cambios, viene de mv_monitoreo_ciudad) ──
+    // ── BLOQUE 5: Activos e Ingresos por ciudad ───────────────────────────────
     const ciudadRes = await pool.query(`
       SELECT ciudad, provincia,
         SUM(total_leads) AS total_leads,
@@ -532,6 +404,7 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, provincia ORDER BY activos DESC NULLS LAST
     `, [desde, hasta]);
 
+    // Ciudad por día (para columnas diarias)
     const ciudadDiaRes = await pool.query(`
       SELECT ciudad, EXTRACT(DAY FROM fecha)::int AS dia,
         SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot
@@ -540,7 +413,7 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, dia ORDER BY ciudad, dia
     `, [desde, hasta]);
 
-    // ── BLOQUE 6: Leads por hora (sin cambios, viene de mv_monitoreo_hora) ───
+    // ── BLOQUE 6: Leads por hora ──────────────────────────────────────────────
     const horaRes = await pool.query(`
       SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
         ROUND(SUM(atc)::numeric / NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
@@ -549,6 +422,7 @@ const getReporteData = async (req, res) => {
       GROUP BY hora ORDER BY hora ASC
     `, [desde, hasta]);
 
+    // Leads por hora por día (para la tabla cruzada hora×día)
     const horaDiaRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora,
         SUM(n_leads) AS n_leads, SUM(atc) AS atc
@@ -557,31 +431,23 @@ const getReporteData = async (req, res) => {
       GROUP BY dia, hora ORDER BY dia, hora
     `, [desde, hasta]);
 
-    // ── BLOQUE 7: Ciclo de venta desde velsa_netlife_maestra_cons ────────────
+    // ── BLOQUE 7: Ciclo de venta por día ─────────────────────────────────────
     const cicloRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM b.b_creado_el_fecha::date)::int AS dia,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) = 0  THEN 1 END) AS ciclo_0,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) = 1  THEN 1 END) AS ciclo_1,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) = 2  THEN 1 END) AS ciclo_2,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) = 3  THEN 1 END) AS ciclo_3,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) = 4  THEN 1 END) AS ciclo_4,
-        COUNT(CASE WHEN j.t2_fecha_activacion_telcos IS NOT NULL 
-                   AND (j.t2_fecha_activacion_telcos - b.b_creado_el_fecha::date) >= 5 THEN 1 END) AS ciclo_mas5
-      FROM public.mestra_bitrix b
-      JOIN public.velsa_netlife_maestra_cons j ON j.t2_id_bitrix_ghl = b.b_id::text
-      WHERE b.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j.t2_id_bitrix_ghl IS NOT NULL AND TRIM(j.t2_id_bitrix_ghl) <> ''
-        ${bitOrigenWhere}
+        EXTRACT(DAY FROM fecha)::int AS dia,
+        SUM(ciclo_0_dias)    AS ciclo_0,
+        SUM(ciclo_1_dia)     AS ciclo_1,
+        SUM(ciclo_2_dias)    AS ciclo_2,
+        SUM(ciclo_3_dias)    AS ciclo_3,
+        SUM(ciclo_4_dias)    AS ciclo_4,
+        SUM(ciclo_mas5_dias) AS ciclo_mas5
+      FROM public.mv_monitoreo_publicidad
+      WHERE fecha BETWEEN $1::date AND $2::date
+        ${invOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitOrigenParams]);
+    `, [desde, hasta, ...invOrigenParams]);
 
-    // ── BLOQUE 8: Motivos ATC por día (sin cambios) ───────────────────────────
+    // ── BLOQUE 8: Motivos ATC por día ─────────────────────────────────────────
     const atcRes = await pool.query(`
       SELECT motivo_atc,
         EXTRACT(DAY FROM fecha)::int AS dia,
@@ -591,11 +457,20 @@ const getReporteData = async (req, res) => {
       GROUP BY motivo_atc, dia ORDER BY motivo_atc, dia
     `, [desde, hasta]);
 
+    // Totales motivos ATC
     const atcTotRes = await pool.query(`
       SELECT motivo_atc, SUM(cantidad) AS cantidad
       FROM public.mv_monitoreo_atc
       WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY motivo_atc ORDER BY cantidad DESC
+    `, [desde, hasta]);
+
+    // ── Orígenes disponibles ──────────────────────────────────────────────────
+    const origenesDispRes = await pool.query(`
+      SELECT DISTINCT b_origen FROM public.mestra_bitrix
+      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        AND b_origen IS NOT NULL AND b_origen <> ''
+      ORDER BY b_origen ASC
     `, [desde, hasta]);
 
     // ── Días del mes con nombre ───────────────────────────────────────────────
@@ -610,10 +485,7 @@ const getReporteData = async (req, res) => {
     res.json({
       success: true,
       meta: { anio: y, mes: m, dias: diasMes },
-      canales_disponibles: CANALES_DISPONIBLES.map(canal => ({
-        canal,
-        lineas: CANAL_A_ORIGENES[canal],
-      })),
+      origenes_disponibles: origenesDispRes.rows.map(r => r.b_origen),
       inversion:   inversionRes.rows,
       etapas:      etapasRes.rows,
       status_jot:  statusJotRes.rows,

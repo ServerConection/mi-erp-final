@@ -539,19 +539,10 @@ const getReporteData = async (req, res) => {
         COUNT(*) FILTER (
           WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_jot,
-(
-  SELECT COUNT(*) 
-  FROM public.mestra_bitrix t1
-  JOIN public.mestra_bitrix t2
-    ON t1.j_id_bitrix = t2.b_id
-  WHERE t1.j_fecha_registro_sistema IS NOT NULL
-    AND t2.b_creado_el_fecha IS NOT NULL
-    AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') 
-        = TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD')
-    AND TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') 
-        BETWEEN $1::date AND $2::date
-) AS ingreso_bitrix
-
+        COUNT(*) FILTER (
+          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ) AS ingreso_bitrix,
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
             AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date

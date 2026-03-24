@@ -579,33 +579,40 @@ const getReporteData = async (req, res) => {
     // El filtro de activación va DENTRO de cada CASE WHEN (no en el WHERE principal)
     // para no excluir leads sin activación. El HAVING filtra días donde al menos
     // un lead tenga fecha de activación (para no mostrar filas todas en cero).
-    const cicloRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 0
-          THEN 1 ELSE 0 END) AS ciclo_0,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 1
-          THEN 1 ELSE 0 END) AS ciclo_1,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 2
-          THEN 1 ELSE 0 END) AS ciclo_2,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 3
-          THEN 1 ELSE 0 END) AS ciclo_3,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 4
-          THEN 1 ELSE 0 END) AS ciclo_4,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
-          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) >= 5
-          THEN 1 ELSE 0 END) AS ciclo_mas5
-      FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        ${bitWhereClause}
-      GROUP BY dia
-      HAVING SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> '' THEN 1 ELSE 0 END) > 0
-      ORDER BY dia ASC
-    `, [desde, hasta, ...bitParamsExtra]);
+const cicloRes = await pool.query(`
+  SELECT 
+    EXTRACT(DAY FROM fecha_creacion)::int AS dia,
+
+    COUNT(*) FILTER (WHERE diff = 0) AS ciclo_0,
+    COUNT(*) FILTER (WHERE diff = 1) AS ciclo_1,
+    COUNT(*) FILTER (WHERE diff = 2) AS ciclo_2,
+    COUNT(*) FILTER (WHERE diff = 3) AS ciclo_3,
+    COUNT(*) FILTER (WHERE diff = 4) AS ciclo_4,
+    COUNT(*) FILTER (WHERE diff >= 5) AS ciclo_mas5
+
+  FROM (
+    SELECT 
+      TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') 
+      - TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS diff,
+
+      TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS fecha_creacion
+
+    FROM public.mestra_bitrix t1
+
+    JOIN public.mestra_bitrix t2
+      ON t1.j_id_bitrix = t2.b_id
+
+    WHERE t1.j_fecha_activacion_netlife IS NOT NULL
+      AND t2.b_creado_el_fecha IS NOT NULL
+      AND TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') 
+          BETWEEN $1::date AND $2::date
+      ${bitWhereClause}
+
+  ) t
+
+  GROUP BY dia
+  ORDER BY dia ASC
+`, [desde, hasta, ...bitParamsExtra]);
 
     // ── Ciudad ────────────────────────────────────────────────────────────────
     const ciudadRes = await pool.query(`

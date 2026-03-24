@@ -8,26 +8,25 @@ const getFiltroFechas = (query) => {
   };
 };
 
-// ─── MAPEO: b_origen (mestra_bitrix) → canal_inversion (mv_monitoreo_publicidad) ──
 const ORIGEN_A_CANAL_INV = {
-  'BASE 593-979083368':                   'ARTS',
-  'BASE 593-995211968':                   'ARTS FACEBOOK',
-  'BASE 593-992827793':                   'ARTS GOOGLE',
-  'FORMULARIO LANDING 3':                 'ARTS GOOGLE',
-  'LLAMADA LANDING 3':                    'ARTS GOOGLE',
-  'POR RECOMENDACIÓN':                    'POR RECOMENDACIÓN',
-  'REFERIDO PERSONAL':                    'POR RECOMENDACIÓN',
-  'TIENDA ONLINE':                        'POR RECOMENDACIÓN',
-  'BASE 593-958993371':                   'REMARKETING',
-  'BASE 593-984414273':                   'REMARKETING',
-  'BASE 593-995967355':                   'REMARKETING',
-  'WHATSAPP 593958993371':                'REMARKETING',
-  'BASE 593-962881280':                   'VIDIKA GOOGLE',
-  'BASE 593-987133635':                   'VIDIKA GOOGLE',
-  'BASE API 593963463480':                'VIDIKA GOOGLE',
-  'FORMULARIO LANDING 4':                 'VIDIKA GOOGLE',
-  'LLAMADA':                              'VIDIKA GOOGLE',
-  'LLAMADA LANDING 4':                    'VIDIKA GOOGLE',
+  'BASE 593-979083368':    'ARTS',
+  'BASE 593-995211968':    'ARTS FACEBOOK',
+  'BASE 593-992827793':    'ARTS GOOGLE',
+  'FORMULARIO LANDING 3':  'ARTS GOOGLE',
+  'LLAMADA LANDING 3':     'ARTS GOOGLE',
+  'POR RECOMENDACIÓN':     'POR RECOMENDACIÓN',
+  'REFERIDO PERSONAL':     'POR RECOMENDACIÓN',
+  'TIENDA ONLINE':         'POR RECOMENDACIÓN',
+  'BASE 593-958993371':    'REMARKETING',
+  'BASE 593-984414273':    'REMARKETING',
+  'BASE 593-995967355':    'REMARKETING',
+  'WHATSAPP 593958993371': 'REMARKETING',
+  'BASE 593-962881280':    'VIDIKA GOOGLE',
+  'BASE 593-987133635':    'VIDIKA GOOGLE',
+  'BASE API 593963463480': 'VIDIKA GOOGLE',
+  'FORMULARIO LANDING 4':  'VIDIKA GOOGLE',
+  'LLAMADA':               'VIDIKA GOOGLE',
+  'LLAMADA LANDING 4':     'VIDIKA GOOGLE',
 };
 
 const GRUPO_A_CANAL_INV = {
@@ -58,16 +57,16 @@ const buildInWhere = (valores, offsetInicial, field) => {
 
 const resolverGrupos = (gruposSel = []) => {
   if (gruposSel.length === 0) return { origenesBitrix: [], canalesInversion: [] };
-  const origenesBitrix  = [];
+  const origenesBitrix   = [];
   const canalesInversion = new Set();
   gruposSel.forEach(g => {
-    (GRUPO_A_ORIGENES[g]   || []).forEach(o => origenesBitrix.push(o));
-    (GRUPO_A_CANAL_INV[g]  || []).forEach(c => canalesInversion.add(c));
+    (GRUPO_A_ORIGENES[g]  || []).forEach(o => origenesBitrix.push(o));
+    (GRUPO_A_CANAL_INV[g] || []).forEach(c => canalesInversion.add(c));
   });
   return { origenesBitrix: [...new Set(origenesBitrix)], canalesInversion: [...canalesInversion] };
 };
 
-// ─── 1. MONITOREO REDES GENERAL ──────────────────────────────────────────────
+// 1. MONITOREO REDES GENERAL
 const getMonitoreoRedes = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -194,10 +193,7 @@ const getMonitoreoRedes = async (req, res) => {
       success: true,
       totales: totalesResult.rows[0],
       data: detalleResult.rows,
-      canales_disponibles: GRUPOS_DISPONIBLES.map(g => ({
-        canal: g,
-        lineas: GRUPO_A_ORIGENES[g],
-      })),
+      canales_disponibles: GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] })),
     });
   } catch (error) {
     console.error('Error en getMonitoreoRedes:', error);
@@ -205,7 +201,7 @@ const getMonitoreoRedes = async (req, res) => {
   }
 };
 
-// ─── 2. MONITOREO POR CIUDAD ──────────────────────────────────────────────────
+// 2. MONITOREO POR CIUDAD
 const getMonitoreoCiudad = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -230,7 +226,7 @@ const getMonitoreoCiudad = async (req, res) => {
   }
 };
 
-// ─── 3. MONITOREO POR HORA ────────────────────────────────────────────────────
+// 3. MONITOREO POR HORA
 const getMonitoreoHora = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -253,7 +249,7 @@ const getMonitoreoHora = async (req, res) => {
   }
 };
 
-// ─── 4. MONITOREO MOTIVOS ATC ─────────────────────────────────────────────────
+// 4. MONITOREO MOTIVOS ATC
 const getMonitoreoAtc = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -272,7 +268,7 @@ const getMonitoreoAtc = async (req, res) => {
   }
 };
 
-// ─── 5. MONITOREO COSTO (placeholder) ────────────────────────────────────────
+// 5. MONITOREO COSTO (placeholder)
 const getMonitoreoCosto = async (req, res) => {
   try {
     res.json({ success: true, data: [], message: 'En desarrollo' });
@@ -282,7 +278,7 @@ const getMonitoreoCosto = async (req, res) => {
   }
 };
 
-// ─── 6. MONITOREO METAS vs LOGROS ────────────────────────────────────────────
+// 6. MONITOREO METAS vs LOGROS
 const getMonitoreoMetas = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta, modo } = req.query;
@@ -324,8 +320,7 @@ const getMonitoreoMetas = async (req, res) => {
     try {
       const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
       const invRes = await pool.query(`
-        SELECT canal_inversion,
-          SUM(max_inv) AS inversion_usd
+        SELECT canal_inversion, SUM(max_inv) AS inversion_usd
         FROM (
           SELECT canal_inversion, fecha, MAX(inversion_usd) AS max_inv
           FROM public.mv_monitoreo_publicidad
@@ -346,32 +341,24 @@ const getMonitoreoMetas = async (req, res) => {
       const origenUp = (r.b_origen || '').toUpperCase();
       const grupo    = ORIGEN_A_CANAL_INV[origenUp] || 'SIN MAPEO';
       if (!grupoMap[grupo]) {
-        grupoMap[grupo] = {
-          canal: grupo,
-          inversion_usd: inversionPorGrupo[grupo] || 0,
-          lineas: [],
-          total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0,
-        };
+        grupoMap[grupo] = { canal: grupo, inversion_usd: inversionPorGrupo[grupo] || 0, lineas: [], total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0 };
       }
       const total   = Number(r.total_leads  || 0);
       const sac     = Number(r.leads_sac    || 0);
       const ventas  = Number(r.venta_subida || 0);
       const jot     = Number(r.ingreso_jot  || 0);
       const calidad = total - sac;
-
       grupoMap[grupo].total_leads  += total;
       grupoMap[grupo].leads_sac    += sac;
       grupoMap[grupo].venta_subida += ventas;
       grupoMap[grupo].ingreso_jot  += jot;
-
       grupoMap[grupo].lineas.push({
-        origen: r.b_origen,
-        total_leads: total, leads_sac: sac, leads_calidad: calidad,
+        origen: r.b_origen, total_leads: total, leads_sac: sac, leads_calidad: calidad,
         venta_subida: ventas, ingreso_jot: jot,
-        pct_sac:        total > 0 ? (sac    / total) * 100 : 0,
-        pct_calidad:    total > 0 ? (calidad / total) * 100 : 0,
-        pct_ventas:     total > 0 ? (ventas  / total) * 100 : 0,
-        pct_ventas_jot: total > 0 ? (jot     / total) * 100 : 0,
+        pct_sac: total > 0 ? (sac / total) * 100 : 0,
+        pct_calidad: total > 0 ? (calidad / total) * 100 : 0,
+        pct_ventas: total > 0 ? (ventas / total) * 100 : 0,
+        pct_ventas_jot: total > 0 ? (jot / total) * 100 : 0,
       });
     });
 
@@ -379,8 +366,7 @@ const getMonitoreoMetas = async (req, res) => {
       const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
       const leads_calidad = total_leads - leads_sac;
       return {
-        canal: c.canal, inversion_usd, total_leads, leads_sac,
-        leads_calidad, venta_subida, ingreso_jot, lineas: c.lineas,
+        canal: c.canal, inversion_usd, total_leads, leads_sac, leads_calidad, venta_subida, ingreso_jot, lineas: c.lineas,
         pct_sac:        total_leads > 0 ? (leads_sac     / total_leads) * 100 : 0,
         pct_calidad:    total_leads > 0 ? (leads_calidad / total_leads) * 100 : 0,
         pct_ventas:     total_leads > 0 ? (venta_subida  / total_leads) * 100 : 0,
@@ -392,51 +378,35 @@ const getMonitoreoMetas = async (req, res) => {
       };
     });
 
-    const canalesDisponibles = GRUPOS_DISPONIBLES.map(g => ({
-      canal: g, lineas: GRUPO_A_ORIGENES[g],
-    }));
-
-    res.json({ success: true, canales, canales_disponibles: canalesDisponibles });
+    res.json({ success: true, canales, canales_disponibles: GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] })) });
   } catch (error) {
     console.error('Error en getMonitoreoMetas:', error);
     res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
   }
 };
 
-// ─── 7. REPORTE DATA ─────────────────────────────────────────────────────────
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  CORRECCIÓN PRINCIPAL:                                                   ║
-// ║  Los cálculos de JOT (activos, preplaneados, asignados, preservicio)     ║
-// ║  se agrupan por DÍA DE ACTIVACIÓN (j_fecha_activacion_netlife) y         ║
-// ║  DÍA DE REGISTRO EN JOT (j_fecha_registro_sistema), no por              ║
-// ║  b_creado_el_fecha. Así los conteos cuadran con el mes real.             ║
-// ║                                                                          ║
-// ║  Para los denominadores del bloque Inversión (que se muestra por         ║
-// ║  día en TabReporteData), se agrupa por día de b_creado_el_fecha         ║
-// ║  PERO el ingreso_jot y activos se sacan de las fechas JOT reales.        ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// 7. REPORTE DATA
 const getReporteData = async (req, res) => {
   try {
     const { anio, mes } = req.query;
     const hoy = new Date();
     const y = parseInt(anio || hoy.getFullYear());
-    const m = parseInt(mes || (hoy.getMonth() + 1));
+    const m = parseInt(mes  || (hoy.getMonth() + 1));
 
-    const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+    const desde     = `${y}-${String(m).padStart(2,'0')}-01`;
     const ultimoDia = new Date(y, m, 0).getDate();
-    const hasta = `${y}-${String(m).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+    const hasta     = `${y}-${String(m).padStart(2,'0')}-${String(ultimoDia).padStart(2,'0')}`;
 
     const gruposRaw = req.query.canales || '';
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
     const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
-    const { where: bitWhere, params: bitParams } = buildInWhere(origenesBitrix, 2, 'b_origen');
+    const { where: bitWhere, params: bitParams } = buildInWhere(origenesBitrix,   2, 'b_origen');
 
-    // ── Inversión diaria ──────────────────────────────────────────────────────
+    // Inversion diaria
     const inversionRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM fecha)::int AS dia,
-        SUM(max_inv) AS inversion_usd
+      SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
       FROM (
         SELECT fecha, canal_inversion, MAX(inversion_usd) AS max_inv
         FROM public.mv_monitoreo_publicidad
@@ -449,7 +419,7 @@ const getReporteData = async (req, res) => {
       ORDER BY dia ASC
     `, [desde, hasta, ...invParams]);
 
-    // ── Leads + Etapas Bitrix por día de creación ─────────────────────────────
+    // Leads + Etapas Bitrix
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -477,215 +447,156 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // CORRECCIÓN CLAVE — Denominadores JOT agrupados por día de REGISTRO JOT
-    // (j_fecha_registro_sistema) y día de ACTIVACIÓN (j_fecha_activacion_netlife)
-    // Se filtra por b_origen pero se agrupa por el día real del evento JOT.
-    //
-    // activos_mes     → activados en el mes (j_fecha_activacion_netlife en el mes)
-    // activo_backlog  → estatus ACTIVO sin importar cuándo se activó
-    // ingreso_jot     → tiene j_fecha_registro_sistema en el mes
-    // ingreso_bitrix  → j_fecha_registro_sistema = b_creado_el_fecha (mismo día)
-    // preplaneados    → j_netlife_estatus_real contiene PREPLAN o REPLAN
-    // asignados       → j_netlife_estatus_real contiene ASIGNADO
-    // preservicio     → j_netlife_estatus_real contiene PRESERVICIO
-    // ══════════════════════════════════════════════════════════════════════════
+    // FIX 1 + FIX 2 + FIX 3:
+    // - TO_DATE() para campos TEXT (j_fecha_registro_sistema, j_fecha_activacion_netlife)
+    // - alias ingreso_bitrix_mismo_dia correcto para que llegue al finalArray
+    // - filtro bitWhere incluido para que canales funcione
     const jotDenomsRes = await pool.query(`
       SELECT
-        -- Agrupamos por día de registro en JOT (cuándo ingresó al sistema JOT)
-        EXTRACT(DAY FROM j_fecha_registro_sistema::date)::int AS dia,
-
-        -- INGRESO JOT: registros que entraron a JOT en este mes
+        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
         COUNT(*) FILTER (
-          WHERE j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_jot,
-
-        -- INGRESO BITRIX MISMO DÍA: ingresó a JOT el mismo día que se creó en Bitrix
         COUNT(*) FILTER (
-          WHERE j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date = b_creado_el_fecha::date
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
         ) AS ingreso_bitrix_mismo_dia,
-
-        -- ACTIVOS MES: activados dentro del mes consultado
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+            AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activos_mes,
-
-        -- ACTIVO BACKLOG: cualquier registro con estatus ACTIVO (sin importar fecha activación)
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activo_backlog,
-
-        -- PREPLANIFICADOS / REPLANIFICADOS
         COUNT(*) FILTER (
-          WHERE (
-            j_netlife_estatus_real ILIKE '%PREPLANIFICADO%'
-            OR j_netlife_estatus_real ILIKE '%REPLANIFICADO%'
-          )
-          AND j_fecha_registro_sistema IS NOT NULL
-          AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE (j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS preplaneados,
-
-        -- ASIGNADOS
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE '%ASIGNADO%'
-            AND j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS asignados,
-
-        -- PRESERVICIO
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE '%PRESERVICIO%'
-            AND j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS preservicio
-
       FROM public.mestra_bitrix
-      WHERE
-        -- Traemos todos los registros que tienen actividad JOT en el mes
-        -- (sea por registro o por activación)
-        (
-          (j_fecha_registro_sistema IS NOT NULL
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date)
-          OR
-          (j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date)
-        )
-        ${bitWhere}
-      GROUP BY dia
-      ORDER BY dia ASC
+      WHERE (
+        (j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+          AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+        OR
+        (j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+      )
+      ${bitWhere}
+      GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── Estatus JOT por día (agrupado por día de registro JOT) ────────────────
+    // Estatus JOT
     const statusJotRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM j_fecha_registro_sistema::date)::int AS dia,
-
+        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
         COUNT(*) FILTER (
-          WHERE j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_jot,
-
         COUNT(*) FILTER (
-          WHERE j_fecha_registro_sistema::date = b_creado_el_fecha::date
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_bitrix,
-
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activo_backlog,
-
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+            AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activos,
-
         COUNT(*) FILTER (
-          WHERE j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS total_ventas_jot,
-
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE '%DESISTE%'
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS desiste_servicio_jot,
-
         COUNT(*) FILTER (
           WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
             AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
             AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS regularizados,
-
         COUNT(*) FILTER (
           WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
-            AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS por_regularizar
-
       FROM public.mestra_bitrix
-      WHERE j_fecha_registro_sistema IS NOT NULL
-        AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-        ${bitWhere}
-      GROUP BY dia
-      ORDER BY dia ASC
-    `, [desde, hasta, ...bitParams]);
-
-    // ── Forma de pago por día (agrupado por día de registro JOT) ─────────────
-    // j_forma_pago es el campo correcto según el schema
-    const pagoRes = await pool.query(`
-      SELECT
-        EXTRACT(DAY FROM j_fecha_registro_sistema::date)::int AS dia,
-
-        SUM(CASE WHEN j_forma_pago ILIKE '%CUENTA%'   THEN 1 ELSE 0 END) AS pago_cuenta,
-        SUM(CASE WHEN j_forma_pago ILIKE '%EFECTIVO%' THEN 1 ELSE 0 END) AS pago_efectivo,
-        SUM(CASE WHEN j_forma_pago ILIKE '%TARJETA%'  THEN 1 ELSE 0 END) AS pago_tarjeta,
-
-        SUM(CASE
-          WHEN j_forma_pago ILIKE '%CUENTA%'
-            AND j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
-          THEN 1 ELSE 0
-        END) AS pago_cuenta_activa,
-
-        SUM(CASE
-          WHEN j_forma_pago ILIKE '%EFECTIVO%'
-            AND j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
-          THEN 1 ELSE 0
-        END) AS pago_efectivo_activa,
-
-        SUM(CASE
-          WHEN j_forma_pago ILIKE '%TARJETA%'
-            AND j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND j_fecha_activacion_netlife IS NOT NULL
-            AND j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
-          THEN 1 ELSE 0
-        END) AS pago_tarjeta_activa
-
-      FROM public.mestra_bitrix
-      WHERE j_fecha_registro_sistema IS NOT NULL
-        AND j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-        ${bitWhere}
-      GROUP BY dia
-      ORDER BY dia ASC
-    `, [desde, hasta, ...bitParams]);
-
-    // ── Ciclo de venta (días entre lead Bitrix y activación Netlife) ──────────
-    // Agrupado por día de b_creado_el_fecha para mantener coherencia con leads
-    const cicloRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) = 0  THEN 1 ELSE 0 END) AS ciclo_0,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) = 1  THEN 1 ELSE 0 END) AS ciclo_1,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) = 2  THEN 1 ELSE 0 END) AS ciclo_2,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) = 3  THEN 1 ELSE 0 END) AS ciclo_3,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) = 4  THEN 1 ELSE 0 END) AS ciclo_4,
-        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL
-          AND (j_fecha_activacion_netlife::date - b_creado_el_fecha::date) >= 5 THEN 1 ELSE 0 END) AS ciclo_mas5
-      FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j_fecha_activacion_netlife IS NOT NULL
+      WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+        AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ${bitWhere}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── Ciudad ────────────────────────────────────────────────────────────────
+    // Forma de pago
+    const pagoRes = await pool.query(`
+      SELECT
+        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+        SUM(CASE WHEN j_forma_pago ILIKE '%CUENTA%'   THEN 1 ELSE 0 END) AS pago_cuenta,
+        SUM(CASE WHEN j_forma_pago ILIKE '%EFECTIVO%' THEN 1 ELSE 0 END) AS pago_efectivo,
+        SUM(CASE WHEN j_forma_pago ILIKE '%TARJETA%'  THEN 1 ELSE 0 END) AS pago_tarjeta,
+        SUM(CASE WHEN j_forma_pago ILIKE '%CUENTA%'   AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          THEN 1 ELSE 0 END) AS pago_cuenta_activa,
+        SUM(CASE WHEN j_forma_pago ILIKE '%EFECTIVO%' AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          THEN 1 ELSE 0 END) AS pago_efectivo_activa,
+        SUM(CASE WHEN j_forma_pago ILIKE '%TARJETA%'  AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          THEN 1 ELSE 0 END) AS pago_tarjeta_activa
+      FROM public.mestra_bitrix
+      WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+        AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ${bitWhere}
+      GROUP BY dia ORDER BY dia ASC
+    `, [desde, hasta, ...bitParams]);
+
+    // FIX 1: Ciclo de venta - TO_DATE para j_fecha_activacion_netlife (TEXT)
+    const cicloRes = await pool.query(`
+      SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 0  THEN 1 ELSE 0 END) AS ciclo_0,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 1  THEN 1 ELSE 0 END) AS ciclo_1,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 2  THEN 1 ELSE 0 END) AS ciclo_2,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 3  THEN 1 ELSE 0 END) AS ciclo_3,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) = 4  THEN 1 ELSE 0 END) AS ciclo_4,
+        SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND (TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') - b_creado_el_fecha::date) >= 5 THEN 1 ELSE 0 END) AS ciclo_mas5
+      FROM public.mestra_bitrix
+      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        AND j_fecha_activacion_netlife IS NOT NULL
+        AND j_fecha_activacion_netlife <> ''
+        ${bitWhere}
+      GROUP BY dia ORDER BY dia ASC
+    `, [desde, hasta, ...bitParams]);
+
+    // Ciudad
     const ciudadRes = await pool.query(`
       SELECT ciudad, provincia,
-        SUM(total_leads) AS total_leads, SUM(activos) AS activos,
-        SUM(ingresos_jot) AS ingresos_jot,
+        SUM(total_leads) AS total_leads, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot,
         ROUND(SUM(activos)::numeric/NULLIF(SUM(total_leads),0)*100,1) AS pct_activos
       FROM public.mv_monitoreo_ciudad
       WHERE fecha BETWEEN $1::date AND $2::date
@@ -700,28 +611,24 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, dia ORDER BY ciudad, dia
     `, [desde, hasta]);
 
-    // ── Hora ──────────────────────────────────────────────────────────────────
+    // Hora
     const horaRes = await pool.query(`
       SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
         ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
-      FROM public.mv_monitoreo_hora
-      WHERE fecha BETWEEN $1::date AND $2::date
+      FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY hora ORDER BY hora ASC
     `, [desde, hasta]);
 
     const horaDiaRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora,
-        SUM(n_leads) AS n_leads, SUM(atc) AS atc
-      FROM public.mv_monitoreo_hora
-      WHERE fecha BETWEEN $1::date AND $2::date
+      SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc
+      FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY dia, hora ORDER BY dia, hora
     `, [desde, hasta]);
 
-    // ── ATC ───────────────────────────────────────────────────────────────────
+    // ATC
     const atcRes = await pool.query(`
       SELECT motivo_atc, EXTRACT(DAY FROM fecha)::int AS dia, SUM(cantidad) AS cantidad
-      FROM public.mv_monitoreo_atc
-      WHERE fecha BETWEEN $1::date AND $2::date
+      FROM public.mv_monitoreo_atc WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY motivo_atc, dia ORDER BY motivo_atc, dia
     `, [desde, hasta]);
 
@@ -731,7 +638,7 @@ const getReporteData = async (req, res) => {
       GROUP BY motivo_atc ORDER BY cantidad DESC
     `, [desde, hasta]);
 
-    // ── Canales disponibles ───────────────────────────────────────────────────
+    // Canales disponibles
     const origenesDispRes = await pool.query(`
       SELECT DISTINCT b_origen FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -745,91 +652,65 @@ const getReporteData = async (req, res) => {
       const g  = ORIGEN_A_CANAL_INV[up];
       if (g) gruposEncontrados.add(g);
     });
+    const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
 
-    const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({
-      canal: g,
-      lineas: GRUPO_A_ORIGENES[g] || [],
-    }));
-
-    // ── Días del mes ──────────────────────────────────────────────────────────
+    // Dias del mes
     const diasMes = [];
     const DIAS_NOMBRE = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
     for (let d = 1; d <= ultimoDia; d++) {
       diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y, m - 1, d).getDay()] });
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // COMBINAR: Para el bloque Inversión & Costos del frontend necesitamos
-    // un array por día con: inversion_usd + denominadores JOT
-    //
-    // Los denominadores JOT (jotDenomsRes) vienen agrupados por día de evento
-    // JOT. Los cruzamos con la inversión (que es por día calendario).
-    //
-    // IMPORTANTE: el frontend (buildInversionFilas) usa d.inversion[] con
-    // campos: inversion_usd, n_leads, ingreso_bitrix, ingreso_jot,
-    //         activos_mes, activo_backlog, negociables,
-    //         preplaneados, asignados, preservicio
-    // ══════════════════════════════════════════════════════════════════════════
+    // Combinar en finalArray
     const invMap = {};
 
-    // Paso 1: inversión diaria
     inversionRes.rows.forEach(r => {
       const dia = Number(r.dia);
       invMap[dia] = { dia, inversion_usd: Number(r.inversion_usd || 0) };
     });
 
-    // Paso 2: leads + negociables del día (para CPL y costo por negociable)
     etapasRes.rows.forEach(r => {
       const dia = Number(r.dia);
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };
-      const sac = Number(r.atc_soporte || 0) + Number(r.fuera_cobertura || 0)
-                + Number(r.zonas_peligrosas || 0) + Number(r.innegociable || 0);
-      invMap[dia].n_leads      = Number(r.total_leads || 0);
-      invMap[dia].negociables  = Math.max(0, Number(r.total_leads || 0) - sac);
+      const sac = Number(r.atc_soporte||0) + Number(r.fuera_cobertura||0)
+                + Number(r.zonas_peligrosas||0) + Number(r.innegociable||0);
+      invMap[dia].n_leads     = Number(r.total_leads || 0);
+      invMap[dia].negociables = Math.max(0, Number(r.total_leads || 0) - sac);
     });
 
-    // Paso 3: denominadores JOT reales (agrupados por día JOT)
+    // FIX 3: alias correcto ingreso_bitrix_mismo_dia → ingreso_bitrix en finalArray
     jotDenomsRes.rows.forEach(r => {
       const dia = Number(r.dia);
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };
-      invMap[dia].activos_mes          = Number(r.activos_mes          || 0);
-      invMap[dia].activo_backlog       = Number(r.activo_backlog       || 0);
-      invMap[dia].ingreso_jot          = Number(r.ingreso_jot          || 0);
-      invMap[dia].ingreso_bitrix       = Number(r.ingreso_bitrix_mismo_dia || 0);
-      invMap[dia].preplaneados         = Number(r.preplaneados         || 0);
-      invMap[dia].asignados            = Number(r.asignados            || 0);
-      invMap[dia].preservicio          = Number(r.preservicio          || 0);
+      invMap[dia].activos_mes    = Number(r.activos_mes              || 0);
+      invMap[dia].activo_backlog = Number(r.activo_backlog           || 0);
+      invMap[dia].ingreso_jot    = Number(r.ingreso_jot              || 0);
+      invMap[dia].ingreso_bitrix = Number(r.ingreso_bitrix_mismo_dia || 0);
+      invMap[dia].preplaneados   = Number(r.preplaneados             || 0);
+      invMap[dia].asignados      = Number(r.asignados                || 0);
+      invMap[dia].preservicio    = Number(r.preservicio              || 0);
     });
 
-    // Paso 4: garantizar todos los días del mes presentes
     const allDaysMap = {};
     for (let d = 1; d <= ultimoDia; d++) {
-      allDaysMap[d] = {
-        dia: d, inversion_usd: 0,
-        n_leads: 0, negociables: 0,
-        activos_mes: 0, activo_backlog: 0,
-        ingreso_jot: 0, ingreso_bitrix: 0,
-        preplaneados: 0, asignados: 0, preservicio: 0,
-      };
+      allDaysMap[d] = { dia: d, inversion_usd: 0, n_leads: 0, negociables: 0, activos_mes: 0, activo_backlog: 0, ingreso_jot: 0, ingreso_bitrix: 0, preplaneados: 0, asignados: 0, preservicio: 0 };
     }
-    Object.values(invMap).forEach(day => {
-      allDaysMap[day.dia] = { ...allDaysMap[day.dia], ...day };
-    });
+    Object.values(invMap).forEach(day => { allDaysMap[day.dia] = { ...allDaysMap[day.dia], ...day }; });
     const finalArray = Object.values(allDaysMap).sort((a, b) => a.dia - b.dia);
 
     res.json({
       success: true,
       meta:                { anio: y, mes: m, dias: diasMes },
       canales_disponibles: canalesDisponibles,
-      inversion:   finalArray,      // ← bloque Inversión & Costos
-      etapas:      etapasRes.rows,  // ← bloque Leads + Etapas Bitrix
-      status_jot:  statusJotRes.rows, // ← bloque Estatus Ventas JOT
-      pago:        pagoRes.rows,    // ← bloque Forma de Pago
+      inversion:   finalArray,
+      etapas:      etapasRes.rows,
+      status_jot:  statusJotRes.rows,
+      pago:        pagoRes.rows,
       ciudad:      ciudadRes.rows,
       ciudad_dia:  ciudadDiaRes.rows,
       hora:        horaRes.rows,
       hora_dia:    horaDiaRes.rows,
-      ciclo:       cicloRes.rows,   // ← bloque Ciclo de Venta
+      ciclo:       cicloRes.rows,
       atc_motivos: atcRes.rows,
       atc_totales: atcTotRes.rows,
     });

@@ -7,9 +7,6 @@
 import { useEffect, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PALETA GERENCIAL — tonos suaves, profesionales
-// ─────────────────────────────────────────────────────────────────────────────
 const C = {
   primary:  "#2563eb",
   sky:      "#38bdf8",
@@ -26,9 +23,6 @@ const C = {
   bgHeader: "#eff6ff",
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CANALES CON IDENTIDAD VISUAL
-// ─────────────────────────────────────────────────────────────────────────────
 const CANALES = {
   "ARTS":               { color: "#2563eb", bg: "#eff6ff", icon: "🎨", label: "ARTS" },
   "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
@@ -40,7 +34,6 @@ const CANALES = {
   "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "❓", label: "SIN MAPEO" },
 };
 
-// Mapeo origen → canal de publicidad
 const ORIGEN_CANAL = {
   "BASE 593-979083368":                   "ARTS",
   "BASE 593-995211968":                   "ARTS FACEBOOK",
@@ -69,16 +62,15 @@ const ORIGEN_CANAL = {
   "VENTA ECUANET DIRECTA":                "MAL INGRESO",
 };
 
-// Canales → lista de sus líneas (orígenes)
 const CANAL_LINEAS = {};
 Object.entries(ORIGEN_CANAL).forEach(([origen, canal]) => {
   if (!CANAL_LINEAS[canal]) CANAL_LINEAS[canal] = [];
   CANAL_LINEAS[canal].push(origen);
 });
 
-const getCanal = (origen) => (!origen ? "SIN MAPEO" : ORIGEN_CANAL[origen.toUpperCase()] || ORIGEN_CANAL[origen] || "SIN MAPEO");
-const getCfg   = (canal) => CANALES[canal] || { color: C.muted, bg: "#f8fafc", icon: "•", label: canal };
-const esPublicidad = (c) => c !== "MAL INGRESO" && c !== "SIN MAPEO";
+const getCanal      = (origen) => (!origen ? "SIN MAPEO" : ORIGEN_CANAL[origen.toUpperCase()] || ORIGEN_CANAL[origen] || "SIN MAPEO");
+const getCfg        = (canal)  => CANALES[canal] || { color: C.muted, bg: "#f8fafc", icon: "•", label: canal };
+const esPublicidad  = (c)      => c !== "MAL INGRESO" && c !== "SIN MAPEO";
 
 const API   = import.meta.env.VITE_API_URL;
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -86,23 +78,18 @@ const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto"
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILIDADES
 // ─────────────────────────────────────────────────────────────────────────────
-const n    = (v) => Number(v || 0);
-const usd  = (v) => (v !== null && v !== undefined && !isNaN(n(v)) && n(v) !== 0) ? `$${n(v).toFixed(2)}` : "—";
-const pf   = (v) => (v !== null && v !== undefined && !isNaN(n(v))) ? `${n(v).toFixed(1)}%` : "—";
+const n   = (v) => Number(v || 0);
+const usd = (v) => (v !== null && v !== undefined && !isNaN(n(v)) && n(v) !== 0) ? `$${n(v).toFixed(2)}` : "—";
+const pf  = (v) => (v !== null && v !== undefined && !isNaN(n(v))) ? `${n(v).toFixed(1)}%` : "—";
 
 function fmtCantPct(cant, pct) {
   if (cant === undefined || cant === null) return "—";
   const c = n(cant);
   if (c === 0) return "—";
-  if (pct !== null && pct !== undefined && !isNaN(n(pct))) {
-    return `${c} (${n(pct).toFixed(1)}%)`;
-  }
+  if (pct !== null && pct !== undefined && !isNaN(n(pct))) return `${c} (${n(pct).toFixed(1)}%)`;
   return String(c);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS MAPAS DÍA → VALOR
-// ─────────────────────────────────────────────────────────────────────────────
 function byDiaMap(rows, diaKey, valueKey) {
   const map = {};
   rows.forEach((r) => { map[r[diaKey]] = n(r[valueKey]); });
@@ -132,18 +119,14 @@ function addMaps(...maps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UI ATOMS — Diseño gerencial suave
+// UI ATOMS
 // ─────────────────────────────────────────────────────────────────────────────
 function Block({ title, accent = C.primary, children, id }) {
   return (
-    <div id={id} className="bg-white rounded-xl border shadow-sm overflow-hidden mb-5"
-      style={{ borderColor: C.border }}>
-      <div className="px-5 py-3 border-b flex items-center gap-3"
-        style={{ background: C.bgHeader, borderColor: C.border }}>
+    <div id={id} className="bg-white rounded-xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
+      <div className="px-5 py-3 border-b flex items-center gap-3" style={{ background: C.bgHeader, borderColor: C.border }}>
         <div className="w-1 h-5 rounded-full" style={{ background: accent }} />
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: accent }}>
-          {title}
-        </span>
+        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</span>
       </div>
       <div className="overflow-auto">{children}</div>
     </div>
@@ -151,42 +134,28 @@ function Block({ title, accent = C.primary, children, id }) {
 }
 
 function TablaHorizontal({ filas, dias, accent = C.primary }) {
-  if (!filas || filas.length === 0) {
-    return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos</p>;
-  }
+  if (!filas || filas.length === 0) return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos</p>;
   return (
     <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
-      <thead className="sticky top-0 z-10 border-b-2"
-        style={{ background: C.bgHeader, borderColor: C.border }}>
+      <thead className="sticky top-0 z-10 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
         <tr>
           <th className="px-3 py-2 text-left font-black border-r min-w-[220px] sticky left-0"
-            style={{ background: C.bgHeader, color: C.slate, borderColor: C.border }}>
-            MÉTRICA
-          </th>
+            style={{ background: C.bgHeader, color: C.slate, borderColor: C.border }}>MÉTRICA</th>
           {dias.map((d) => (
             <th key={d.dia} className="px-2 py-2 text-center font-black border-r min-w-[52px]"
               style={{ color: accent, borderColor: C.border }}>
-              {d.dia}<br />
-              <span className="font-medium" style={{ color: C.muted }}>{d.nombre}</span>
+              {d.dia}<br /><span className="font-medium" style={{ color: C.muted }}>{d.nombre}</span>
             </th>
           ))}
-          <th className="px-3 py-2 text-center font-black border-l min-w-[72px]"
-            style={{ color: accent, borderColor: C.border }}>
-            TOTAL
-          </th>
+          <th className="px-3 py-2 text-center font-black border-l min-w-[72px]" style={{ color: accent, borderColor: C.border }}>TOTAL</th>
         </tr>
       </thead>
       <tbody>
         {filas.map((fila, fi) => (
-          <tr key={fi}
-            className={`border-b transition-colors ${fila.separador ? "" : "hover:bg-blue-50/30"}`}
+          <tr key={fi} className={`border-b transition-colors ${fila.separador ? "" : "hover:bg-blue-50/30"}`}
             style={{ borderColor: C.border, background: fila.separador ? "#f8fafc" : "white" }}>
             <td className="px-3 py-1.5 font-black text-[8px] border-r sticky left-0"
-              style={{
-                background: fila.separador ? "#f8fafc" : "white",
-                color: fila.separador ? C.muted : C.slate,
-                borderColor: C.border,
-              }}>
+              style={{ background: fila.separador ? "#f8fafc" : "white", color: fila.separador ? C.muted : C.slate, borderColor: C.border }}>
               {fila.label}
             </td>
             {dias.map((d) => {
@@ -194,19 +163,17 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
               const pct = fila.pctDia?.[d.dia];
               let display = "";
               if (!fila.separador) {
-                if (fila.fmt)     display = fila.fmt(val);
+                if (fila.fmt)          display = fila.fmt(val);
                 else if (fila.showPct) display = fmtCantPct(val, pct);
                 else display = (val !== undefined && val !== null && n(val) !== 0) ? String(n(val)) : "—";
               }
               return (
-                <td key={d.dia} className="px-2 py-1.5 text-center border-r"
-                  style={{ color: fila.color || C.muted, borderColor: C.border }}>
+                <td key={d.dia} className="px-2 py-1.5 text-center border-r" style={{ color: fila.color || C.muted, borderColor: C.border }}>
                   {display}
                 </td>
               );
             })}
-            <td className="px-3 py-1.5 text-center font-black border-l"
-              style={{ color: fila.color || C.muted, borderColor: C.border }}>
+            <td className="px-3 py-1.5 text-center font-black border-l" style={{ color: fila.color || C.muted, borderColor: C.border }}>
               {fila.separador ? "" :
                 fila.fmt ? fila.fmt(fila.total) :
                 fila.showPct ? fmtCantPct(fila.total, fila.totalPct) :
@@ -225,60 +192,46 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 // BUILDERS DE FILAS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * BLOQUE 1: Inversión & Costos
- *
- * REGLAS DE CÁLCULO (especificación exacta del negocio):
- * - CPL                    = Inversión total / Leads totales en Bitrix
- * - Costo Ingreso Bitrix   = Inversión total / Leads tipificados como VENTA SUBIDA en Bitrix
- * - Costo Ingreso JOT      = Inversión total / Ingresos en JOT del mismo mes
- * - Costo Activa           = Inversión total / Ventas activas del mes (leads del mes)
- * - Costo Activa + Backlog = Inversión total / Ventas activas del mes (leads de cualquier fecha)
- * - Costo Act-Plan-Asig    = Inversión total / (Activos + Preplaneados + Asignados) del mes
- * - Costo Act-Plan-Asig-Pre= Inversión total / (Activos + Preplaneados + Asignados + Preservicio)
- * - Costo Negociable       = Inversión total / Leads negociables
- * - Costo Act Back-Plan-Asig-Pre = Inversión total / (Activos backlog + Planificados + Asignados + Preservicio)
- *
- * NOTA INVERSIÓN: la inversión viene del backend ya CORRECTA (MAX por canal×día, no SUM).
- * Si el canal VIDIKA tiene $320 asignados ese día, llegan $320 — no $320 × 6 líneas.
- */
+// BLOQUE 1: Inversión & Costos
+// Los denominadores vienen del backend combinados en d.inversion:
+//   inversion_usd   → MAX por canal×día (correcto, sin duplicar)
+//   n_leads         → COUNT desde mestra_bitrix
+//   venta_subida    → VENTA SUBIDA desde mestra_bitrix
+//   negociables     → leads - SAC desde mestra_bitrix
+//   ingreso_jot     → COUNT desde vw_jotform_submissions_parsed
+//   activos_mes     → ACTIVO con fecha_activacion desde JOT
+//   activo_backlog  → ACTIVO sin restricción de fecha desde JOT
+//   preplaneados    → PREPLANEADO + REPLANIFICADO desde JOT
+//   asignados       → ASIGNADO desde JOT
+//   preservicio     → PRESERVICIO desde JOT
 function buildInversionFilas(d, dias) {
   if (!d.inversion) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
 
-  const inv        = g("inversion_usd");   // Inversión correcta (ya sin duplicar)
-  const leads      = g("n_leads");         // Leads totales en Bitrix
-  const vsBitrix   = g("venta_subida");    // Tipificados como VENTA SUBIDA en Bitrix
-  const jotMes     = g("ingreso_jot");     // Ingresos JOT del mismo mes
-  const activosMes = g("activos_mes");     // Activos del mes (leads del mes)
-  const backlog    = g("activo_backlog");  // Activos del mes (leads de cualquier fecha)
-  const negoc      = g("negociables");     // Leads negociables
+  const inv          = g("inversion_usd");
+  const leads        = g("n_leads");
+  const vsBitrix     = g("venta_subida");
+  const jotMes       = g("ingreso_jot");
+  const activosMes   = g("activos_mes");
+  const backlog      = g("activo_backlog");
+  const negoc        = g("negociables");
+  const preplaneados = g("preplaneados");
+  const asignados    = g("asignados");
+  const preservicio  = g("preservicio");
 
-  // Nuevas métricas: preplaneados, asignados, preservicio
-  // Vienen del backend como campos adicionales en inversion[]
-  const preplaneados = g("preplaneados");   // PREPLANEADO + REPLANIFICADO
-  const asignados    = g("asignados");      // ASIGNADO
-  const preservicio  = g("preservicio");    // PRESERVICIO
-
-  // Mapa compuesto: Activos + Preplaneados + Asignados (mismo mes)
   const actPlanAsigMes = {};
   Object.keys({ ...activosMes, ...preplaneados, ...asignados }).forEach((d) => {
     actPlanAsigMes[d] = n(activosMes[d]) + n(preplaneados[d]) + n(asignados[d]);
   });
-
-  // Mapa compuesto: Activos + Preplaneados + Asignados + Preservicio (mismo mes)
   const actPlanAsigPreMes = {};
   Object.keys({ ...actPlanAsigMes, ...preservicio }).forEach((d) => {
     actPlanAsigPreMes[d] = n(actPlanAsigMes[d]) + n(preservicio[d]);
   });
-
-  // Mapa compuesto: Activos Backlog + Preplaneados + Asignados + Preservicio
   const actBackPlanAsigPre = {};
   Object.keys({ ...backlog, ...preplaneados, ...asignados, ...preservicio }).forEach((d) => {
     actBackPlanAsigPre[d] = n(backlog[d]) + n(preplaneados[d]) + n(asignados[d]) + n(preservicio[d]);
   });
 
-  // Totales acumulados del mes (para calcular costo total del período)
   const tInv            = totalFromMap(inv);
   const tLeads          = totalFromMap(leads);
   const tVsBitrix       = totalFromMap(vsBitrix);
@@ -291,80 +244,20 @@ function buildInversionFilas(d, dias) {
   const tActBackAll     = totalFromMap(actBackPlanAsigPre);
 
   return [
-    {
-      label: "INVERSIÓN DIARIA",
-      byDia: inv,
-      total: tInv,
-      fmt:   usd,
-      color: C.violet,
-    },
-    {
-      label: "CPL  (inv ÷ leads totales Bitrix)",
-      byDia: divDiaMap(inv, leads),
-      total: tLeads > 0 ? tInv / tLeads : null,
-      fmt:   usd,
-      color: C.primary,
-    },
-    {
-      label: "COSTO INGRESO BITRIX  (inv ÷ venta subida)",
-      byDia: divDiaMap(inv, vsBitrix),
-      total: tVsBitrix > 0 ? tInv / tVsBitrix : null,
-      fmt:   usd,
-      color: C.cyan,
-    },
-    {
-      label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",
-      byDia: divDiaMap(inv, jotMes),
-      total: tJotMes > 0 ? tInv / tJotMes : null,
-      fmt:   usd,
-      color: C.cyan,
-    },
-    {
-      label: "COSTO ACTIVA  (inv ÷ activos mes, leads del mes)",
-      byDia: divDiaMap(inv, activosMes),
-      total: tActivosMes > 0 ? tInv / tActivosMes : null,
-      fmt:   usd,
-      color: C.success,
-    },
-    {
-      label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos, leads cualq. fecha)",
-      byDia: divDiaMap(inv, backlog),
-      total: tBacklog > 0 ? tInv / tBacklog : null,
-      fmt:   usd,
-      color: C.success,
-    },
-    {
-      label: "COSTO ACT-PLAN-ASIG  (inv ÷ activos+preplaneados+asignados)",
-      byDia: divDiaMap(inv, actPlanAsigMes),
-      total: tActPlanAsig > 0 ? tInv / tActPlanAsig : null,
-      fmt:   usd,
-      color: C.warning,
-    },
-    {
-      label: "COSTO ACT-PLAN-ASIG-PRE  (inv ÷ act+plan+asig+preservicio)",
-      byDia: divDiaMap(inv, actPlanAsigPreMes),
-      total: tActPlanAsigPre > 0 ? tInv / tActPlanAsigPre : null,
-      fmt:   usd,
-      color: C.warning,
-    },
-    {
-      label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",
-      byDia: divDiaMap(inv, negoc),
-      total: tNegoc > 0 ? tInv / tNegoc : null,
-      fmt:   usd,
-      color: C.slate,
-    },
-    {
-      label: "COSTO ACT-BACK-PLAN-ASIG-PRE  (inv ÷ backlog+plan+asig+pre)",
-      byDia: divDiaMap(inv, actBackPlanAsigPre),
-      total: tActBackAll > 0 ? tInv / tActBackAll : null,
-      fmt:   usd,
-      color: C.slate,
-    },
+    { label: "INVERSIÓN DIARIA",                                        byDia: inv,              total: tInv,                                          fmt: usd, color: C.violet  },
+    { label: "CPL  (inv ÷ leads totales Bitrix)",                       byDia: divDiaMap(inv, leads),        total: tLeads > 0        ? tInv / tLeads        : null, fmt: usd, color: C.primary },
+    { label: "COSTO INGRESO BITRIX  (inv ÷ venta subida)",              byDia: divDiaMap(inv, vsBitrix),     total: tVsBitrix > 0     ? tInv / tVsBitrix     : null, fmt: usd, color: C.cyan    },
+    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",       byDia: divDiaMap(inv, jotMes),       total: tJotMes > 0       ? tInv / tJotMes       : null, fmt: usd, color: C.cyan    },
+    { label: "COSTO ACTIVA  (inv ÷ activos mes, leads del mes)",        byDia: divDiaMap(inv, activosMes),   total: tActivosMes > 0   ? tInv / tActivosMes   : null, fmt: usd, color: C.success },
+    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos, cualq. fecha)",   byDia: divDiaMap(inv, backlog),      total: tBacklog > 0      ? tInv / tBacklog      : null, fmt: usd, color: C.success },
+    { label: "COSTO ACT-PLAN-ASIG  (inv ÷ act+preplaneados+asignados)", byDia: divDiaMap(inv, actPlanAsigMes),    total: tActPlanAsig > 0    ? tInv / tActPlanAsig    : null, fmt: usd, color: C.warning },
+    { label: "COSTO ACT-PLAN-ASIG-PRE  (inv ÷ act+plan+asig+pre)",     byDia: divDiaMap(inv, actPlanAsigPreMes), total: tActPlanAsigPre > 0 ? tInv / tActPlanAsigPre : null, fmt: usd, color: C.warning },
+    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",               byDia: divDiaMap(inv, negoc),        total: tNegoc > 0        ? tInv / tNegoc        : null, fmt: usd, color: C.slate   },
+    { label: "COSTO ACT-BACK-PLAN-ASIG-PRE  (inv ÷ backlog+plan+asig+pre)", byDia: divDiaMap(inv, actBackPlanAsigPre), total: tActBackAll > 0 ? tInv / tActBackAll : null, fmt: usd, color: C.slate },
   ];
 }
 
-/** BLOQUE 2: Leads + Etapas Bitrix */
+// BLOQUE 2: Leads + Etapas Bitrix
 function buildEtapasFilas(d, dias) {
   if (!d.etapas) return [];
   const g = (key) => byDiaMap(d.etapas, "dia", key);
@@ -381,28 +274,28 @@ function buildEtapasFilas(d, dias) {
     negocMap[dia] = Math.max(0, n(leads[dia]) - n(atc[dia]) - n(fc[dia]) - n(zp[dia]) - n(inn[dia]));
   });
 
-  const tL   = totalFromMap(leads), tA   = totalFromMap(atc);
-  const tFC  = totalFromMap(fc),    tZP  = totalFromMap(zp);
+  const tL   = totalFromMap(leads), tA  = totalFromMap(atc);
+  const tFC  = totalFromMap(fc),    tZP = totalFromMap(zp);
   const tI   = totalFromMap(inn);
   const tNeg = Math.max(0, tL - tA - tFC - tZP - tI);
   const tVS  = totalFromMap(vs);
 
   const etapasExtra = [
-    "seguimiento", "gestion_diaria", "doc_pendientes", "volver_llamar",
-    "mantiene_proveedor", "otro_proveedor", "no_volver_contactar",
-    "no_interesa_costo", "desiste_compra", "cliente_discapacidad",
-    "oportunidades", "duplicado", "contrato_netlife",
+    "seguimiento","gestion_diaria","doc_pendientes","volver_llamar",
+    "mantiene_proveedor","otro_proveedor","no_volver_contactar",
+    "no_interesa_costo","desiste_compra","cliente_discapacidad",
+    "oportunidades","duplicado","contrato_netlife",
   ];
 
   return [
     { label: "N LEADS",              byDia: leads,    total: tL,   color: C.primary },
-    { label: "ATC / SOPORTE",        byDia: atc,      total: tA,   pctDia: pctDiaMap(atc, leads), totalPct: tL > 0 ? (tA / tL) * 100 : null,   showPct: true, color: C.danger },
-    { label: "FUERA COBERTURA",      byDia: fc,       total: tFC,  pctDia: pctDiaMap(fc, leads),  totalPct: tL > 0 ? (tFC / tL) * 100 : null,  showPct: true },
-    { label: "ZONAS PELIGROSAS",     byDia: zp,       total: tZP,  pctDia: pctDiaMap(zp, leads),  totalPct: tL > 0 ? (tZP / tL) * 100 : null,  showPct: true },
-    { label: "INNEGOCIABLE",         byDia: inn,      total: tI,   pctDia: pctDiaMap(inn, leads), totalPct: tL > 0 ? (tI / tL) * 100 : null,   showPct: true, color: C.warning },
+    { label: "ATC / SOPORTE",        byDia: atc,      total: tA,   pctDia: pctDiaMap(atc, leads),     totalPct: tL > 0 ? (tA / tL) * 100  : null, showPct: true, color: C.danger  },
+    { label: "FUERA COBERTURA",      byDia: fc,       total: tFC,  pctDia: pctDiaMap(fc, leads),      totalPct: tL > 0 ? (tFC / tL) * 100 : null, showPct: true },
+    { label: "ZONAS PELIGROSAS",     byDia: zp,       total: tZP,  pctDia: pctDiaMap(zp, leads),      totalPct: tL > 0 ? (tZP / tL) * 100 : null, showPct: true },
+    { label: "INNEGOCIABLE",         byDia: inn,      total: tI,   pctDia: pctDiaMap(inn, leads),     totalPct: tL > 0 ? (tI / tL) * 100  : null, showPct: true, color: C.warning },
     { label: "NEGOCIABLES",          byDia: negocMap, total: tNeg, pctDia: pctDiaMap(negocMap, leads), totalPct: tL > 0 ? (tNeg / tL) * 100 : null, showPct: true, color: C.success },
-    { label: "VENTA SUBIDA",         byDia: vs,       total: tVS,  pctDia: pctDiaMap(vs, leads),  totalPct: tL > 0 ? (tVS / tL) * 100 : null,  showPct: true, color: C.primary },
-    { label: "% EFECTIVIDAD TOTAL",  byDia: pctDiaMap(vs, leads),    total: tL   > 0 ? (tVS / tL)   * 100 : null, fmt: pf, color: C.cyan },
+    { label: "VENTA SUBIDA",         byDia: vs,       total: tVS,  pctDia: pctDiaMap(vs, leads),      totalPct: tL > 0 ? (tVS / tL) * 100 : null, showPct: true, color: C.primary },
+    { label: "% EFECTIVIDAD TOTAL",  byDia: pctDiaMap(vs, leads),    total: tL   > 0 ? (tVS / tL)   * 100 : null, fmt: pf, color: C.cyan   },
     { label: "% EFECT. NEGOCIABLES", byDia: pctDiaMap(vs, negocMap), total: tNeg > 0 ? (tVS / tNeg) * 100 : null, fmt: pf, color: C.violet },
     { label: "── ETAPAS DETALLE ──", separador: true, byDia: {}, total: null },
     ...etapasExtra.map((k) => {
@@ -412,7 +305,7 @@ function buildEtapasFilas(d, dias) {
   ];
 }
 
-/** BLOQUE 3: Estatus ventas JOT */
+// BLOQUE 3: Estatus ventas JOT
 function buildJotFilas(d, dias) {
   if (!d.status_jot) return [];
   const g = (k) => byDiaMap(d.status_jot, "dia", k);
@@ -429,24 +322,24 @@ function buildJotFilas(d, dias) {
   const tJot = totalFromMap(jot), tAct = totalFromMap(act), tBk = totalFromMap(bk);
 
   return [
-    { label: "INGRESO EN BITRIX",    byDia: bit,  total: totalFromMap(bit), color: C.primary },
-    { label: "INGRESO EN JOT",       byDia: jot,  total: tJot,              color: C.success },
-    { label: "ACTIVO + BACKLOG",     byDia: addMaps(act, bk), total: tAct + tBk, pctDia: pctDiaMap(addMaps(act, bk), jot), totalPct: tJot > 0 ? ((tAct + tBk) / tJot) * 100 : null, showPct: true },
-    { label: "ACTIVO (MISMO MES)",   byDia: act,  total: tAct, pctDia: pctDiaMap(act, jot), totalPct: tJot > 0 ? (tAct / tJot) * 100 : null, showPct: true, color: C.success },
-    { label: "TOTAL VENTAS JOT",     byDia: tvj,  total: totalFromMap(tvj) },
-    { label: "DESISTE SERVICIO JOT", byDia: dsj,  total: totalFromMap(dsj),  color: C.danger },
-    { label: "REGULARIZADOS",        byDia: reg,  total: totalFromMap(reg),  color: C.cyan },
-    { label: "POR REGULARIZAR",      byDia: preg, total: totalFromMap(preg), color: C.warning },
+    { label: "INGRESO EN BITRIX",    byDia: bit,             total: totalFromMap(bit), color: C.primary },
+    { label: "INGRESO EN JOT",       byDia: jot,             total: tJot,              color: C.success },
+    { label: "ACTIVO + BACKLOG",      byDia: addMaps(act, bk), total: tAct + tBk, pctDia: pctDiaMap(addMaps(act, bk), jot), totalPct: tJot > 0 ? ((tAct + tBk) / tJot) * 100 : null, showPct: true },
+    { label: "ACTIVO (MISMO MES)",   byDia: act,             total: tAct, pctDia: pctDiaMap(act, jot), totalPct: tJot > 0 ? (tAct / tJot) * 100 : null, showPct: true, color: C.success },
+    { label: "TOTAL VENTAS JOT",     byDia: tvj,             total: totalFromMap(tvj) },
+    { label: "DESISTE SERVICIO JOT", byDia: dsj,             total: totalFromMap(dsj),  color: C.danger  },
+    { label: "REGULARIZADOS",        byDia: reg,             total: totalFromMap(reg),  color: C.cyan    },
+    { label: "POR REGULARIZAR",      byDia: preg,            total: totalFromMap(preg), color: C.warning },
   ];
 }
 
-/** BLOQUE 4: Forma de pago */
+// BLOQUE 4: Forma de pago
 function buildPagoFilas(d, dias) {
   if (!d.pago) return [];
   const g = (k) => byDiaMap(d.pago, "dia", k);
 
-  const pc  = g("pago_cuenta"),   pe  = g("pago_efectivo"),   pt  = g("pago_tarjeta");
-  const pca = g("pago_cuenta_activa"), pea = g("pago_efectivo_activa"), pta = g("pago_tarjeta_activa");
+  const pc  = g("pago_cuenta"),         pe  = g("pago_efectivo"),         pt  = g("pago_tarjeta");
+  const pca = g("pago_cuenta_activa"),  pea = g("pago_efectivo_activa"),  pta = g("pago_tarjeta_activa");
 
   const totIngMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pc[dia]) + n(pe[dia]) + n(pt[dia])]));
   const totActMap = Object.fromEntries(dias.map(({ dia }) => [dia, n(pca[dia]) + n(pea[dia]) + n(pta[dia])]));
@@ -456,24 +349,24 @@ function buildPagoFilas(d, dias) {
   const tI = tPC + tPE + tPT, tA = tPCA + tPEA + tPTA;
 
   return [
-    { label: "── INGRESOS JOT ──",  separador: true, byDia: {}, total: null },
-    { label: "CUENTA",   byDia: pc,  total: tPC,  pctDia: pctDiaMap(pc,  totIngMap), totalPct: tI > 0 ? (tPC  / tI) * 100 : null, showPct: true, color: C.cyan },
+    { label: "── INGRESOS JOT ──", separador: true, byDia: {}, total: null },
+    { label: "CUENTA",   byDia: pc,  total: tPC,  pctDia: pctDiaMap(pc,  totIngMap), totalPct: tI > 0 ? (tPC  / tI) * 100 : null, showPct: true, color: C.cyan    },
     { label: "EFECTIVO", byDia: pe,  total: tPE,  pctDia: pctDiaMap(pe,  totIngMap), totalPct: tI > 0 ? (tPE  / tI) * 100 : null, showPct: true, color: C.success },
     { label: "TARJETA",  byDia: pt,  total: tPT,  pctDia: pctDiaMap(pt,  totIngMap), totalPct: tI > 0 ? (tPT  / tI) * 100 : null, showPct: true, color: C.primary },
-    { label: "── ACTIVAS ──",        separador: true, byDia: {}, total: null },
-    { label: "CUENTA",   byDia: pca, total: tPCA, pctDia: pctDiaMap(pca, totActMap), totalPct: tA > 0 ? (tPCA / tA) * 100 : null, showPct: true, color: C.cyan },
+    { label: "── ACTIVAS ──",       separador: true, byDia: {}, total: null },
+    { label: "CUENTA",   byDia: pca, total: tPCA, pctDia: pctDiaMap(pca, totActMap), totalPct: tA > 0 ? (tPCA / tA) * 100 : null, showPct: true, color: C.cyan    },
     { label: "EFECTIVO", byDia: pea, total: tPEA, pctDia: pctDiaMap(pea, totActMap), totalPct: tA > 0 ? (tPEA / tA) * 100 : null, showPct: true, color: C.success },
     { label: "TARJETA",  byDia: pta, total: tPTA, pctDia: pctDiaMap(pta, totActMap), totalPct: tA > 0 ? (tPTA / tA) * 100 : null, showPct: true, color: C.primary },
   ];
 }
 
-/** BLOQUE 5: Ciclo de venta */
+// BLOQUE 5: Ciclo de venta
 function buildCicloFilas(d, dias) {
   if (!d.ciclo) return [];
   const g = (k) => byDiaMap(d.ciclo, "dia", k);
 
-  const keys   = ["ciclo_0", "ciclo_1", "ciclo_2", "ciclo_3", "ciclo_4", "ciclo_mas5"];
-  const labels = ["0 DÍAS", "1 DÍA", "2 DÍAS", "3 DÍAS", "4 DÍAS", "MÁS DE 5 DÍAS"];
+  const keys   = ["ciclo_0","ciclo_1","ciclo_2","ciclo_3","ciclo_4","ciclo_mas5"];
+  const labels = ["0 DÍAS","1 DÍA","2 DÍAS","3 DÍAS","4 DÍAS","MÁS DE 5 DÍAS"];
   const colors = [C.success, C.cyan, C.primary, C.warning, C.danger, C.violet];
   const maps   = keys.map((k) => g(k));
   const tots   = maps.map((m) => totalFromMap(m));
@@ -500,56 +393,45 @@ function buildCicloFilas(d, dias) {
 export default function TabReporteData({ filtro }) {
   const hoy = new Date();
 
-  const [anio,        setAnio]        = useState(hoy.getFullYear());
-  const [mes,         setMes]         = useState(hoy.getMonth() + 1);
-  const [canalesSel,  setCanalesSel]  = useState([]);   // canales seleccionados
-  const [canalesDisp, setCanalesDisp] = useState([]);   // canales disponibles en el período
-  const [canalDetalle, setCanalDetalle] = useState(null); // canal cuyas líneas se muestran en panel
-  const [data,        setData]        = useState(null);
-  const [loading,     setLoading]     = useState(false);
+  const [anio,         setAnio]         = useState(hoy.getFullYear());
+  const [mes,          setMes]          = useState(hoy.getMonth() + 1);
+  const [canalesSel,   setCanalesSel]   = useState([]);
+  const [canalesDisp,  setCanalesDisp]  = useState([]);
+  const [canalDetalle, setCanalDetalle] = useState(null);
+  const [data,         setData]         = useState(null);
+  const [loading,      setLoading]      = useState(false);
 
   const toggleCanal = (canal) => {
-    setCanalesSel((prev) =>
-      prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal]
-    );
+    setCanalesSel((prev) => prev.includes(canal) ? prev.filter((c) => c !== canal) : [...prev, canal]);
   };
 
-  // Cargar canales disponibles al cambiar mes/año
+  // Cargar canales disponibles al cambiar mes/año (sin filtro de canal)
   useEffect(() => {
     fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
-          // El backend ahora devuelve canales_disponibles directamente
           if (d.canales_disponibles) {
             setCanalesDisp(d.canales_disponibles.map((c) => c.canal).filter(esPublicidad));
           } else {
-            // Fallback: derivar de origenes_disponibles
-            const unicos = [...new Set(
-              (d.origenes_disponibles || []).map(getCanal).filter(esPublicidad)
-            )];
+            const unicos = [...new Set((d.origenes_disponibles || []).map(getCanal).filter(esPublicidad))];
             setCanalesDisp(unicos);
           }
         }
       })
       .catch(() => {});
+    // Al cambiar mes/año limpiar selección y datos
+    setCanalesSel([]);
+    setData(null);
   }, [anio, mes]);
 
+  // FIX: solo enviar ?canales= si hay selección; vacío = todos
   const handleCargar = useCallback(() => {
     setLoading(true);
-    // Enviar canales seleccionados al backend (el backend mapea a orígenes internamente)
-    const params = new URLSearchParams({
-      anio,
-      mes,
-      // Si el backend acepta ?canales= úsalo; si sigue con ?origenes= convertir aquí:
-      canales: canalesSel.join(","),
-      origenes: canalesSel.length === 0
-        ? ""
-        : Object.entries(ORIGEN_CANAL)
-            .filter(([, canal]) => canalesSel.includes(canal))
-            .map(([origen]) => origen)
-            .join(","),
-    });
+    const params = new URLSearchParams({ anio, mes });
+    if (canalesSel.length > 0) {
+      params.set("canales", canalesSel.join(","));
+    }
     fetch(`${API}/api/redes/reporte-data?${params}`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setData(d); })
@@ -571,12 +453,12 @@ export default function TabReporteData({ filtro }) {
           if (f.separador) { row.push(""); return; }
           const val = f.byDia?.[d.dia];
           const pct = f.pctDia?.[d.dia];
-          if (f.fmt)     { row.push(f.fmt(val)); return; }
-          if (f.showPct) { row.push(fmtCantPct(val, pct)); return; }
+          if (f.fmt)          { row.push(f.fmt(val)); return; }
+          if (f.showPct)      { row.push(fmtCantPct(val, pct)); return; }
           row.push(val !== undefined && n(val) !== 0 ? n(val) : "");
         });
-        if (f.separador)    row.push("");
-        else if (f.fmt)     row.push(f.fmt(f.total));
+        if (f.separador)   row.push("");
+        else if (f.fmt)    row.push(f.fmt(f.total));
         else if (f.showPct) row.push(fmtCantPct(f.total, f.totalPct));
         else row.push(f.total !== null && f.total !== undefined ? n(f.total) : "");
         return row;
@@ -586,18 +468,18 @@ export default function TabReporteData({ filtro }) {
       XLSX.utils.book_append_sheet(wb, ws, nombre.slice(0, 31));
     };
 
-    if (data.inversion?.length)  addSheet("Inversión-Costos",  buildInversionFilas(data, dias));
-    if (data.etapas?.length)     addSheet("Leads-Etapas",       buildEtapasFilas(data, dias));
-    if (data.status_jot?.length) addSheet("Estatus JOT",        buildJotFilas(data, dias));
-    if (data.pago?.length)       addSheet("Forma de Pago",      buildPagoFilas(data, dias));
-    if (data.ciclo?.length)      addSheet("Ciclo Venta",        buildCicloFilas(data, dias));
+    if (data.inversion?.length)  addSheet("Inversión-Costos", buildInversionFilas(data, dias));
+    if (data.etapas?.length)     addSheet("Leads-Etapas",     buildEtapasFilas(data, dias));
+    if (data.status_jot?.length) addSheet("Estatus JOT",      buildJotFilas(data, dias));
+    if (data.pago?.length)       addSheet("Forma de Pago",    buildPagoFilas(data, dias));
+    if (data.ciclo?.length)      addSheet("Ciclo Venta",      buildCicloFilas(data, dias));
 
     if (data.hora?.length) {
       const totalH = data.hora.reduce((s, r) => s + n(r.n_leads), 0);
       const ws = XLSX.utils.json_to_sheet(data.hora.map((h) => ({
-        HORA:   `${String(h.hora).padStart(2, "0")}:00`,
-        LEADS:  `${n(h.n_leads)} (${totalH > 0 ? ((n(h.n_leads) / totalH) * 100).toFixed(1) : 0}%)`,
-        ATC:    n(h.atc),
+        HORA:    `${String(h.hora).padStart(2, "0")}:00`,
+        LEADS:   `${n(h.n_leads)} (${totalH > 0 ? ((n(h.n_leads) / totalH) * 100).toFixed(1) : 0}%)`,
+        ATC:     n(h.atc),
         "% ATC": `${n(h.pct_atc).toFixed(1)}%`,
       })));
       XLSX.utils.book_append_sheet(wb, ws, "Leads por Hora");
@@ -628,75 +510,55 @@ export default function TabReporteData({ filtro }) {
   };
 
   const dias = data?.meta?.dias || [];
-
-  // Líneas del canal en detalle (para el panel lateral)
   const lineasCanalDetalle = canalDetalle ? (CANAL_LINEAS[canalDetalle] || []) : [];
 
   return (
     <div className="space-y-4" style={{ background: C.bgPage }}>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          PANEL DE FILTROS — Diseño gerencial en 2 filas compactas
-         ══════════════════════════════════════════════════════════════════════ */}
+      {/* PANEL DE FILTROS */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
 
         {/* Fila 1: Título + Mes/Año + Botones */}
-        <div className="px-5 py-3 flex flex-wrap items-center gap-3 border-b"
-          style={{ background: C.bgHeader, borderColor: C.border }}>
+        <div className="px-5 py-3 flex flex-wrap items-center gap-3 border-b" style={{ background: C.bgHeader, borderColor: C.border }}>
           <div className="flex items-center gap-2">
             <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} />
-            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
-              Reporte Data
-            </span>
+            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Reporte Data</span>
           </div>
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <select
-              value={anio}
-              onChange={(e) => { setAnio(Number(e.target.value)); setData(null); }}
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
               className="border rounded-lg px-2.5 py-1.5 text-[10px] font-semibold outline-none bg-white cursor-pointer"
-              style={{ borderColor: C.border, color: C.slate }}
-            >
+              style={{ borderColor: C.border, color: C.slate }}>
               {[2024, 2025, 2026, 2027].map((y) => <option key={y}>{y}</option>)}
             </select>
 
-            <select
-              value={mes}
-              onChange={(e) => { setMes(Number(e.target.value)); setData(null); }}
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}
               className="border rounded-lg px-2.5 py-1.5 text-[10px] font-semibold outline-none bg-white cursor-pointer"
-              style={{ borderColor: C.border, color: C.slate }}
-            >
+              style={{ borderColor: C.border, color: C.slate }}>
               {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
 
-            <button
-              onClick={handleCargar}
+            <button onClick={handleCargar}
               className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95"
-              style={{ background: loading ? C.muted : C.primary }}
-            >
+              style={{ background: loading ? C.muted : C.primary }}>
               {loading ? "Cargando..." : "Generar"}
             </button>
 
             {data && (
-              <button
-                onClick={handleExport}
+              <button onClick={handleExport}
                 className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
-                style={{ background: C.success }}
-              >
+                style={{ background: C.success }}>
                 ↓ Excel
               </button>
             )}
           </div>
         </div>
 
-        {/* Fila 2: Chips de canal + panel lateral de líneas */}
+        {/* Fila 2: Chips de canal */}
         {canalesDisp.length > 0 && (
           <div className="flex items-stretch">
-
-            {/* Zona de chips */}
             <div className="flex-1 px-5 py-3 flex flex-wrap items-center gap-2">
-              <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0"
-                style={{ color: C.muted }}>
+              <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
                 Canal de Publicidad:
               </span>
 
@@ -707,33 +569,25 @@ export default function TabReporteData({ filtro }) {
                 style={canalesSel.length === 0
                   ? { background: C.primary, color: "#fff", borderColor: C.primary }
                   : { background: "#fff", color: C.muted, borderColor: C.border }
-                }
-              >
+                }>
                 Todos
               </button>
 
-              {/* Un chip por canal */}
               {canalesDisp.map((canal) => {
                 const cfg = getCfg(canal);
                 const sel = canalesSel.includes(canal);
                 const isDetail = canalDetalle === canal;
                 return (
                   <div key={canal} className="inline-flex items-center gap-0.5">
-                    {/* Chip principal: selecciona el canal */}
-                    <button
-                      onClick={() => toggleCanal(canal)}
+                    <button onClick={() => toggleCanal(canal)}
                       className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
                       style={sel
                         ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
                         : { background: cfg.bg, color: cfg.color, borderColor: `${cfg.color}40` }
-                      }
-                    >
-                      <span>{cfg.icon}</span>
-                      <span>{cfg.label}</span>
+                      }>
+                      <span>{cfg.icon}</span><span>{cfg.label}</span>
                     </button>
-                    {/* Botón "▾" para ver líneas del canal */}
-                    <button
-                      onClick={() => setCanalDetalle(isDetail ? null : canal)}
+                    <button onClick={() => setCanalDetalle(isDetail ? null : canal)}
                       className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[9px] font-black border-l-0 border transition-all"
                       style={isDetail
                         ? { background: cfg.color, color: "#fff", borderColor: cfg.color }
@@ -741,31 +595,25 @@ export default function TabReporteData({ filtro }) {
                           ? { background: `${cfg.color}cc`, color: "#fff", borderColor: `${cfg.color}cc` }
                           : { background: cfg.bg, color: cfg.color, borderColor: `${cfg.color}40` }
                       }
-                      title={`Ver líneas de ${getCfg(canal).label}`}
-                    >
+                      title={`Ver líneas de ${getCfg(canal).label}`}>
                       {isDetail ? "▴" : "▾"}
                     </button>
                   </div>
                 );
               })}
 
-              {/* Indicador de selección */}
               {canalesSel.length > 0 && (
                 <span className="text-[8px] font-medium ml-1" style={{ color: C.muted }}>
-                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
-                  {" · "}
-                  <button
-                    onClick={() => { setCanalesSel([]); setCanalDetalle(null); }}
-                    className="underline hover:no-underline"
-                    style={{ color: C.danger }}
-                  >
+                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}{" · "}
+                  <button onClick={() => { setCanalesSel([]); setCanalDetalle(null); }}
+                    className="underline hover:no-underline" style={{ color: C.danger }}>
                     limpiar
                   </button>
                 </span>
               )}
             </div>
 
-            {/* Panel lateral de líneas (aparece al presionar ▾) */}
+            {/* Panel lateral de líneas */}
             {canalDetalle && lineasCanalDetalle.length > 0 && (
               <div className="border-l flex-shrink-0 px-4 py-3 min-w-[220px] max-w-[280px]"
                 style={{ borderColor: C.border, background: `${getCfg(canalDetalle).bg}` }}>
@@ -773,18 +621,13 @@ export default function TabReporteData({ filtro }) {
                   <span className="text-[8px] font-black uppercase" style={{ color: getCfg(canalDetalle).color }}>
                     {getCfg(canalDetalle).icon} {getCfg(canalDetalle).label} — Líneas
                   </span>
-                  <button
-                    onClick={() => setCanalDetalle(null)}
-                    className="text-[9px] font-bold hover:opacity-70"
-                    style={{ color: getCfg(canalDetalle).color }}
-                  >✕</button>
+                  <button onClick={() => setCanalDetalle(null)} className="text-[9px] font-bold hover:opacity-70"
+                    style={{ color: getCfg(canalDetalle).color }}>✕</button>
                 </div>
                 <div className="space-y-1">
                   {lineasCanalDetalle.map((linea) => (
                     <div key={linea} className="text-[8px] px-2 py-1 rounded-md font-medium"
-                      style={{ background: "#ffffff80", color: C.slate }}>
-                      {linea}
-                    </div>
+                      style={{ background: "#ffffff80", color: C.slate }}>{linea}</div>
                   ))}
                 </div>
                 <p className="text-[7px] mt-2" style={{ color: C.muted }}>
@@ -798,15 +641,12 @@ export default function TabReporteData({ filtro }) {
 
       {/* Loading */}
       {loading && (
-        <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>
-          Generando reporte...
-        </div>
+        <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>Generando reporte...</div>
       )}
 
-      {/* Contenido del reporte */}
+      {/* Contenido */}
       {!loading && data && (
         <>
-          {/* Cabecera del reporte */}
           <div className="bg-white rounded-xl border shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3"
             style={{ borderColor: C.border }}>
             <div>
@@ -814,10 +654,7 @@ export default function TabReporteData({ filtro }) {
                 Reporte Data — {MESES[data.meta.mes - 1]} {data.meta.anio}
               </div>
               <div className="text-[9px] font-medium uppercase tracking-widest mt-0.5" style={{ color: C.muted }}>
-                NETLIFE VELSA · {canalesSel.length > 0
-                  ? canalesSel.map((c) => getCfg(c).label).join(" · ")
-                  : "Todos los canales"
-                }
+                NETLIFE VELSA · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -830,44 +667,37 @@ export default function TabReporteData({ filtro }) {
                   </span>
                 );
               })}
-              <span className="text-[9px] font-black px-3 py-1 rounded-full"
-                style={{ background: `${C.primary}12`, color: C.primary }}>
+              <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>
                 {data.meta.dias.length} días
               </span>
             </div>
           </div>
 
-          {/* BLOQUE 1 — Inversión & Costos */}
           <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">
             <TablaHorizontal filas={buildInversionFilas(data, dias)} dias={dias} accent={C.violet} />
           </Block>
 
-          {/* BLOQUE 2 — Leads + Etapas Bitrix */}
           <Block title="Leads por Canal + Etapas Bitrix" accent={C.primary} id="bloque-etapas">
             <TablaHorizontal filas={buildEtapasFilas(data, dias)} dias={dias} accent={C.primary} />
           </Block>
 
-          {/* BLOQUE 3 — Estatus Ventas JOT */}
           <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
             <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
           </Block>
 
-          {/* BLOQUE 4 — Forma de Pago */}
           <Block title="Forma de Pago" accent={C.cyan} id="bloque-pago">
             <TablaHorizontal filas={buildPagoFilas(data, dias)} dias={dias} accent={C.cyan} />
           </Block>
 
-          {/* BLOQUE 5 — Ciclo de Venta */}
           <Block title="Ciclo de Venta" accent={C.warning} id="bloque-ciclo">
             <TablaHorizontal filas={buildCicloFilas(data, dias)} dias={dias} accent={C.warning} />
           </Block>
 
-          {/* BLOQUE 6 — Leads por Hora */}
           <Block title="Leads por Hora del Día" accent={C.cyan} id="bloque-hora">
             <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
               <thead className="sticky top-0 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
                 <tr>
-                  {["HORA", "LEADS (%)", "ATC", "% ATC"].map((h) => (
+                  {["HORA","LEADS (%)","ATC","% ATC"].map((h) => (
                     <th key={h} className="px-4 py-2 text-center font-black border-r last:border-r-0"
                       style={{ color: C.cyan, borderColor: C.border }}>{h}</th>
                   ))}
@@ -901,7 +731,6 @@ export default function TabReporteData({ filtro }) {
             </table>
           </Block>
 
-          {/* BLOQUE 7 — Motivos ATC */}
           <Block title="Motivos ATC" accent={C.danger} id="bloque-atc">
             <div className="p-5 space-y-3">
               {(() => {
@@ -910,18 +739,12 @@ export default function TabReporteData({ filtro }) {
                   const pct = total > 0 ? ((n(r.cantidad) / total) * 100).toFixed(1) : "0";
                   return (
                     <div key={i} className="flex items-center gap-3">
-                      <div className="text-[9px] font-semibold w-52 truncate" style={{ color: C.slate }}>
-                        {r.motivo_atc}
-                      </div>
+                      <div className="text-[9px] font-semibold w-52 truncate" style={{ color: C.slate }}>{r.motivo_atc}</div>
                       <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: `${C.danger}15` }}>
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: C.danger }} />
                       </div>
-                      <div className="text-[9px] font-black w-10 text-right" style={{ color: C.danger }}>
-                        {n(r.cantidad)}
-                      </div>
-                      <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>
-                        {pct}%
-                      </div>
+                      <div className="text-[9px] font-black w-10 text-right" style={{ color: C.danger }}>{n(r.cantidad)}</div>
+                      <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>{pct}%</div>
                     </div>
                   );
                 });
@@ -929,12 +752,11 @@ export default function TabReporteData({ filtro }) {
             </div>
           </Block>
 
-          {/* BLOQUE 8 — Activos e Ingresos por Ciudad */}
           <Block title="Activos e Ingresos por Ciudad" accent={C.primary} id="bloque-ciudad">
             <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
               <thead className="sticky top-0 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
                 <tr>
-                  {["CIUDAD", "PROVINCIA", "LEADS (%)", "ACTIVOS", "INGRESOS JOT", "% ACTIVOS"].map((h) => (
+                  {["CIUDAD","PROVINCIA","LEADS (%)","ACTIVOS","INGRESOS JOT","% ACTIVOS"].map((h) => (
                     <th key={h} className="px-4 py-2 text-center font-black border-r last:border-r-0"
                       style={{ color: C.primary, borderColor: C.border }}>{h}</th>
                   ))}
@@ -947,21 +769,13 @@ export default function TabReporteData({ filtro }) {
                     const pct = totalC > 0 ? ((n(r.total_leads) / totalC) * 100).toFixed(1) : "0";
                     return (
                       <tr key={i} className="border-b hover:bg-blue-50/20" style={{ borderColor: C.border }}>
-                        <td className="px-4 py-1.5 font-black border-r" style={{ color: C.cyan, borderColor: C.border }}>
-                          {r.ciudad}
-                        </td>
-                        <td className="px-4 py-1.5 border-r" style={{ color: C.muted, borderColor: C.border }}>
-                          {r.provincia}
-                        </td>
+                        <td className="px-4 py-1.5 font-black border-r" style={{ color: C.cyan, borderColor: C.border }}>{r.ciudad}</td>
+                        <td className="px-4 py-1.5 border-r" style={{ color: C.muted, borderColor: C.border }}>{r.provincia}</td>
                         <td className="px-4 py-1.5 text-center border-r" style={{ color: C.primary, borderColor: C.border }}>
                           {n(r.total_leads)} <span style={{ color: C.muted }}>({pct}%)</span>
                         </td>
-                        <td className="px-4 py-1.5 text-center font-black border-r" style={{ color: C.success, borderColor: C.border }}>
-                          {n(r.activos)}
-                        </td>
-                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.slate, borderColor: C.border }}>
-                          {n(r.ingresos_jot)}
-                        </td>
+                        <td className="px-4 py-1.5 text-center font-black border-r" style={{ color: C.success, borderColor: C.border }}>{n(r.activos)}</td>
+                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.slate, borderColor: C.border }}>{n(r.ingresos_jot)}</td>
                         <td className="px-4 py-1.5 text-center font-black"
                           style={{ color: n(r.pct_activos) >= 10 ? C.success : n(r.pct_activos) >= 5 ? C.warning : C.danger }}>
                           {n(r.pct_activos).toFixed(1)}%
@@ -979,11 +793,8 @@ export default function TabReporteData({ filtro }) {
       {/* Estado vacío */}
       {!loading && !data && (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
-            style={{ background: `${C.primary}10` }}>📑</div>
-          <div className="text-sm font-black" style={{ color: C.slate }}>
-            Selecciona mes, año y presiona "Generar"
-          </div>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: `${C.primary}10` }}>📑</div>
+          <div className="text-sm font-black" style={{ color: C.slate }}>Selecciona mes, año y presiona "Generar"</div>
           <div className="text-xs text-center max-w-sm leading-relaxed" style={{ color: C.muted }}>
             Filtra por canal de publicidad para ver datos específicos, o deja en "Todos" para el consolidado.
           </div>

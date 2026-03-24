@@ -139,8 +139,36 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(inversion_usd) AS inversion_usd,
         ROUND(CASE WHEN SUM(n_leads)>0 AND SUM(inversion_usd)>0
           THEN SUM(inversion_usd)/SUM(n_leads) ELSE 0 END::numeric,2) AS cpl,
-        ROUND(CASE WHEN SUM(ingreso_bitrix_mismo_dia)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(ingreso_bitrix_mismo_dia) ELSE 0 END::numeric,2) AS costo_ingreso_bitrix,
+        ROUND(
+  CASE 
+    WHEN SUM(inversion_usd) > 0 
+     AND (
+        SELECT COUNT(*) 
+        FROM public.mestra_bitrix t1
+        JOIN public.mestra_bitrix t2
+          ON t1.j_id_bitrix = t2.b_id
+        WHERE t1.j_fecha_registro_sistema IS NOT NULL
+          AND t2.b_creado_el_fecha IS NOT NULL
+          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') 
+              = TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD')
+      ) > 0
+
+    THEN 
+      SUM(inversion_usd) / (
+        SELECT COUNT(*) 
+        FROM public.mestra_bitrix t1
+        JOIN public.mestra_bitrix t2
+          ON t1.j_id_bitrix = t2.b_id
+        WHERE t1.j_fecha_registro_sistema IS NOT NULL
+          AND t2.b_creado_el_fecha IS NOT NULL
+          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') 
+              = TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD')
+      )
+
+    ELSE 0 
+  END::numeric
+,2) AS costo_ingreso_bitrix,
+
         ROUND(CASE WHEN SUM(ingreso_jot)>0 AND SUM(inversion_usd)>0
           THEN SUM(inversion_usd)/SUM(ingreso_jot) ELSE 0 END::numeric,2) AS costo_ingreso_jot,
         ROUND(CASE WHEN SUM(activos_mes)>0 AND SUM(inversion_usd)>0

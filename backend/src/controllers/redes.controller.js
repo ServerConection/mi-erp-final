@@ -401,32 +401,25 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    // ── FIX inversión: cuando no hay canales seleccionados no filtrar (todos los canales)
-    const invWhereFixed  = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
-    const invParamsFixed = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
+    const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
+    const { where: bitWhere, params: bitParams } = buildInWhere(origenesBitrix,   2, 'b_origen');
 
-    // ── FIX bitrix: mismo patrón
-    const { where: bitWhere, params: bitParams } = origenesBitrix.length > 0
-      ? buildInWhere(origenesBitrix, 2, 'b_origen')
-      : { where: '', params: [] };
-
-    // ── Inversión diaria — agrupada correctamente por día
+    // Inversion diaria
     const inversionRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM fecha)::int AS dia,
-             SUM(max_inv) AS inversion_usd
+      SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
       FROM (
         SELECT fecha, canal_inversion, MAX(inversion_usd) AS max_inv
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1::date AND $2::date
           AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
-          ${invWhereFixed}
+          ${invWhere}
         GROUP BY fecha, canal_inversion
       ) sub
       GROUP BY EXTRACT(DAY FROM fecha)::int
       ORDER BY dia ASC
-    `, [desde, hasta, ...invParamsFixed]);
+    `, [desde, hasta, ...invParams]);
 
-    // ── Leads + Etapas Bitrix
+    // Leads + Etapas Bitrix
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -454,6 +447,10 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
+    // FIX 1 + FIX 2 + FIX 3:
+    // - TO_DATE() para campos TEXT (j_fecha_registro_sistema, j_fecha_activacion_netlife)
+    // - alias ingreso_bitrix_mismo_dia correcto para que llegue al finalArray
+    // - filtro bitWhere incluido para que canales funcione
     const jotDenomsRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -503,17 +500,17 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── Estatus JOT
+    // Estatus JOT
     const statusJotRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
         COUNT(*) FILTER (
           WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_jot,
- COUNT(DISTINCT b.b_id) FILTER (
-  WHERE j.j_id_bitrix = b.b_id
-    AND TO_DATE(j.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-) AS ingreso_bitrix,
+        COUNT(*) FILTER (
+          WHERE TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ) AS ingreso_bitrix,
         COUNT(*) FILTER (
           WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
             AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
@@ -544,11 +541,10 @@ const getReporteData = async (req, res) => {
       WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
         AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ${bitWhere}
-        LEFT JOIN public.mestra_bitrix b ON j.j_id_bitrix = b.b_id
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── Forma de pago
+    // Forma de pago
     const pagoRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -574,8 +570,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── FIX CICLO: agregamos el filtro bitWhere correctamente con offset 2
-    //   y añadimos condición de activación para que solo aparezcan leads que sí se activaron
+    // FIX 1: Ciclo de venta - TO_DATE para j_fecha_activacion_netlife (TEXT)
     const cicloRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         SUM(CASE WHEN j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
@@ -598,7 +593,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParams]);
 
-    // ── Ciudad
+    // Ciudad
     const ciudadRes = await pool.query(`
       SELECT ciudad, provincia,
         SUM(total_leads) AS total_leads, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot,
@@ -616,7 +611,7 @@ const getReporteData = async (req, res) => {
       GROUP BY ciudad, dia ORDER BY ciudad, dia
     `, [desde, hasta]);
 
-    // ── Hora
+    // Hora
     const horaRes = await pool.query(`
       SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
         ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
@@ -630,7 +625,7 @@ const getReporteData = async (req, res) => {
       GROUP BY dia, hora ORDER BY dia, hora
     `, [desde, hasta]);
 
-    // ── ATC
+    // ATC
     const atcRes = await pool.query(`
       SELECT motivo_atc, EXTRACT(DAY FROM fecha)::int AS dia, SUM(cantidad) AS cantidad
       FROM public.mv_monitoreo_atc WHERE fecha BETWEEN $1::date AND $2::date
@@ -643,7 +638,7 @@ const getReporteData = async (req, res) => {
       GROUP BY motivo_atc ORDER BY cantidad DESC
     `, [desde, hasta]);
 
-    // ── Canales disponibles
+    // Canales disponibles
     const origenesDispRes = await pool.query(`
       SELECT DISTINCT b_origen FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -659,14 +654,14 @@ const getReporteData = async (req, res) => {
     });
     const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
 
-    // ── Días del mes
+    // Dias del mes
     const diasMes = [];
     const DIAS_NOMBRE = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
     for (let d = 1; d <= ultimoDia; d++) {
       diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y, m - 1, d).getDay()] });
     }
 
-    // ── Combinar inversión + etapas en finalArray
+    // Combinar en finalArray
     const invMap = {};
 
     inversionRes.rows.forEach(r => {
@@ -683,6 +678,7 @@ const getReporteData = async (req, res) => {
       invMap[dia].negociables = Math.max(0, Number(r.total_leads || 0) - sac);
     });
 
+    // FIX 3: alias correcto ingreso_bitrix_mismo_dia → ingreso_bitrix en finalArray
     jotDenomsRes.rows.forEach(r => {
       const dia = Number(r.dia);
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };

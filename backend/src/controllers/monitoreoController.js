@@ -522,25 +522,58 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParams]);
 
     // ── Estatus JOT por día (usando campos j_) ─────────────────────────────────
-    const statusJotRes = await pool.query(`
-      SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
-        COUNT(*) FILTER (WHERE j_fecha_registro_sistema IS NOT NULL) AS ingreso_jot,
-        COUNT(*) FILTER (WHERE j_fecha_registro_sistema = b_creado_el_fecha::date) AS ingreso_bitrix,
-        COUNT(*) FILTER (WHERE j_netlife_estatus_real = 'ACTIVO') AS activo_backlog,
-        COUNT(*) FILTER (WHERE j_netlife_estatus_real = 'ACTIVO' AND j_fecha_activacion_netlife IS NOT NULL) AS activos,
-        COUNT(*) AS total_ventas_jot,
-        COUNT(*) FILTER (WHERE j_netlife_estatus_real ILIKE '%DESISTE%') AS desiste_servicio_jot,
-        COUNT(*) FILTER (
-          WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
-            AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-            AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
-        ) AS regularizados,
-        COUNT(*) FILTER (WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%') AS por_regularizar
-      FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        ${bitWhere}
-      GROUP BY dia ORDER BY dia ASC
-    `, [desde, hasta, ...bitParams]);
+const statusJotRes = await pool.query(`
+  SELECT 
+    EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
+
+    COUNT(*) FILTER (
+      WHERE j_fecha_registro_sistema IS NOT NULL
+        AND TO_DATE(j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+    ) AS ingreso_jot,
+
+    COUNT(*) FILTER (
+      WHERE j_fecha_registro_sistema IS NOT NULL
+        AND b_creado_el_fecha IS NOT NULL
+        AND TO_DATE(j_fecha_registro_sistema,'YYYY-MM-DD') = b_creado_el_fecha::date
+        AND b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+    ) AS ingreso_bitrix,
+
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real = 'ACTIVO'
+    ) AS activo_backlog,
+
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real = 'ACTIVO'
+        AND j_fecha_activacion_netlife IS NOT NULL
+        AND TO_DATE(j_fecha_activacion_netlife,'YYYY-MM-DD') 
+            BETWEEN $1::date AND $2::date
+    ) AS activos,
+
+    COUNT(*) AS total_ventas_jot,
+
+    COUNT(*) FILTER (
+      WHERE j_netlife_estatus_real ILIKE '%DESISTE%'
+    ) AS desiste_servicio_jot,
+
+    COUNT(*) FILTER (
+      WHERE j_estatus_regularizacion ILIKE '%REGULARIZADO%'
+        AND j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
+        AND j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
+    ) AS regularizados,
+
+    COUNT(*) FILTER (
+      WHERE j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
+    ) AS por_regularizar
+
+  FROM public.mestra_bitrix
+
+  WHERE b_creado_el_fecha IS NOT NULL
+    AND b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+    ${bitWhere}
+
+  GROUP BY dia 
+  ORDER BY dia ASC
+`, [desde, hasta, ...bitParams]);
 
     // ── Forma de pago por día (usando j_forma_pago) ───────────────────────────
     const pagoRes = await pool.query(`

@@ -11,6 +11,7 @@ import Seguimientovelsa from "./pages/Seguimientovelsa";
 import VistaAsesorVelsa from "./pages/VistaAsesorVelsa";
 import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICACIONES
 import BroadcastPanel from "./pages/BroadcastPanel";  // <--- BROADCAST TV
+import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";  // <--- Guiaplanesmarzo
 import TVMode from "./pages/TVMode";                  // <--- TV FULLSCREEN
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
           <Route path="notificaciones" element={<Notificaciones />} /> {/* CENTRO DE NOTIFICACIONES */}
           <Route path="broadcast" element={<BroadcastPanel />} />         {/* BROADCAST TV */}
+          <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />         {/* Guiaplanesmarzo */}
         </Route>
 
         <Route path="tv" element={<TVMode />} />                        {/* TV FULLSCREEN — sin login */}

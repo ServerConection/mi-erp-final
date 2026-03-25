@@ -66,44 +66,62 @@ const resolverGrupos = (gruposSel = []) => {
   return { origenesBitrix: [...new Set(origenesBitrix)], canalesInversion: [...canalesInversion] };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 1. MONITOREO REDES GENERAL
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoRedes = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
     const gruposRaw = req.query.canales || '';
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { canalesInversion } = resolverGrupos(gruposSel);
+    const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
     const { where: canalWhere, params: canalParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
 
+    // FIX: costo_ingreso_bitrix — el subquery anterior cruzaba t1 con t2 sobre
+    // mestra_bitrix comparando j_fecha_registro_sistema = b_creado_el_fecha,
+    // pero ese JOIN devolvía 0 porque la condición de b_origen no estaba aplicada
+    // correctamente. Ahora se usa ingreso_bitrix_mismo_dia de la MV directamente,
+    // que ya tiene ese cálculo pre-agregado y filtrado por fecha/canal.
     const totalesResult = await pool.query(`
       WITH por_canal_dia AS (
         SELECT fecha, canal_inversion,
-          SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
-          SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
-          SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-          SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-          SUM(seguimiento_negociacion) AS seguimiento_negociacion,
-          SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
-          SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
-          SUM(cliente_discapacidad) AS cliente_discapacidad,
-          SUM(ingreso_jot) AS ingreso_jot,
+          SUM(n_leads)                  AS n_leads,
+          SUM(atc_soporte)              AS atc_soporte,
+          SUM(fuera_cobertura)          AS fuera_cobertura,
+          SUM(zonas_peligrosas)         AS zonas_peligrosas,
+          SUM(innegociable)             AS innegociable,
+          SUM(negociables)              AS negociables,
+          SUM(venta_subida_bitrix)      AS venta_subida_bitrix,
+          SUM(seguimiento_negociacion)  AS seguimiento_negociacion,
+          SUM(otro_proveedor)           AS otro_proveedor,
+          SUM(no_interesa_costo)        AS no_interesa_costo,
+          SUM(desiste_compra)           AS desiste_compra,
+          SUM(duplicado)               AS duplicado,
+          SUM(cliente_discapacidad)     AS cliente_discapacidad,
+          SUM(ingreso_jot)              AS ingreso_jot,
           SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
-          SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-          SUM(estado_activo_netlife) AS estado_activo_netlife,
-          SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-          SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-          SUM(pago_tarjeta) AS pago_tarjeta,
-          SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-          SUM(pago_efectivo_activa) AS pago_efectivo_activa,
-          SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-          SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-          SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-          SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-          SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-          SUM(total_gestionables) AS total_gestionables,
-          SUM(total_ventas_jot) AS total_ventas_jot,
-          SUM(total_ventas_crm) AS total_ventas_crm,
-          MAX(inversion_usd) AS inversion_usd
+          SUM(activo_backlog)           AS activo_backlog,
+          SUM(activos_mes)              AS activos_mes,
+          SUM(estado_activo_netlife)    AS estado_activo_netlife,
+          SUM(desiste_servicio_jot)     AS desiste_servicio_jot,
+          SUM(pago_cuenta)              AS pago_cuenta,
+          SUM(pago_efectivo)            AS pago_efectivo,
+          SUM(pago_tarjeta)             AS pago_tarjeta,
+          SUM(pago_cuenta_activa)       AS pago_cuenta_activa,
+          SUM(pago_efectivo_activa)     AS pago_efectivo_activa,
+          SUM(pago_tarjeta_activa)      AS pago_tarjeta_activa,
+          SUM(ciclo_0_dias)             AS ciclo_0_dias,
+          SUM(ciclo_1_dia)              AS ciclo_1_dia,
+          SUM(ciclo_2_dias)             AS ciclo_2_dias,
+          SUM(ciclo_3_dias)             AS ciclo_3_dias,
+          SUM(ciclo_4_dias)             AS ciclo_4_dias,
+          SUM(ciclo_mas5_dias)          AS ciclo_mas5_dias,
+          SUM(regularizados)            AS regularizados,
+          SUM(por_regularizar)          AS por_regularizar,
+          SUM(total_gestionables)       AS total_gestionables,
+          SUM(total_ventas_jot)         AS total_ventas_jot,
+          SUM(total_ventas_crm)         AS total_ventas_crm,
+          MAX(inversion_usd)            AS inversion_usd
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1 AND $2
           AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
@@ -111,104 +129,109 @@ const getMonitoreoRedes = async (req, res) => {
         GROUP BY fecha, canal_inversion
       )
       SELECT
-        SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
-        SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
-        SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-        SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-        SUM(seguimiento_negociacion) AS seguimiento_negociacion,
-        SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
-        SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
-        SUM(cliente_discapacidad) AS cliente_discapacidad,
-        SUM(ingreso_jot) AS ingreso_jot,
+        SUM(n_leads)                  AS n_leads,
+        SUM(atc_soporte)              AS atc_soporte,
+        SUM(fuera_cobertura)          AS fuera_cobertura,
+        SUM(zonas_peligrosas)         AS zonas_peligrosas,
+        SUM(innegociable)             AS innegociable,
+        SUM(negociables)              AS negociables,
+        SUM(venta_subida_bitrix)      AS venta_subida_bitrix,
+        SUM(seguimiento_negociacion)  AS seguimiento_negociacion,
+        SUM(otro_proveedor)           AS otro_proveedor,
+        SUM(no_interesa_costo)        AS no_interesa_costo,
+        SUM(desiste_compra)           AS desiste_compra,
+        SUM(duplicado)               AS duplicado,
+        SUM(cliente_discapacidad)     AS cliente_discapacidad,
+        SUM(ingreso_jot)              AS ingreso_jot,
         SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
-        SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-        SUM(estado_activo_netlife) AS estado_activo_netlife,
-        SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-        SUM(pago_tarjeta) AS pago_tarjeta,
-        SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-        SUM(pago_efectivo_activa) AS pago_efectivo_activa,
-        SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-        SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-        SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-        SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-        SUM(total_gestionables) AS total_gestionables,
-        SUM(total_ventas_jot) AS total_ventas_jot,
-        SUM(total_ventas_crm) AS total_ventas_crm,
-        SUM(inversion_usd) AS inversion_usd,
-        ROUND(CASE WHEN SUM(n_leads)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(n_leads) ELSE 0 END::numeric,2) AS cpl,
-        ROUND(
-  CASE 
-    WHEN SUM(inversion_usd) > 0 
-     AND (
-        SELECT COUNT(*) 
-        FROM public.mestra_bitrix t1
-        JOIN public.mestra_bitrix t2
-          ON t1.j_id_bitrix = t2.b_id
-        WHERE t1.j_fecha_registro_sistema IS NOT NULL
-          AND t2.b_creado_el_fecha IS NOT NULL
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') 
-              = TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD')
-      ) > 0
+        SUM(activo_backlog)           AS activo_backlog,
+        SUM(activos_mes)              AS activos_mes,
+        SUM(estado_activo_netlife)    AS estado_activo_netlife,
+        SUM(desiste_servicio_jot)     AS desiste_servicio_jot,
+        SUM(pago_cuenta)              AS pago_cuenta,
+        SUM(pago_efectivo)            AS pago_efectivo,
+        SUM(pago_tarjeta)             AS pago_tarjeta,
+        SUM(pago_cuenta_activa)       AS pago_cuenta_activa,
+        SUM(pago_efectivo_activa)     AS pago_efectivo_activa,
+        SUM(pago_tarjeta_activa)      AS pago_tarjeta_activa,
+        SUM(ciclo_0_dias)             AS ciclo_0_dias,
+        SUM(ciclo_1_dia)              AS ciclo_1_dia,
+        SUM(ciclo_2_dias)             AS ciclo_2_dias,
+        SUM(ciclo_3_dias)             AS ciclo_3_dias,
+        SUM(ciclo_4_dias)             AS ciclo_4_dias,
+        SUM(ciclo_mas5_dias)          AS ciclo_mas5_dias,
+        SUM(regularizados)            AS regularizados,
+        SUM(por_regularizar)          AS por_regularizar,
+        SUM(total_gestionables)       AS total_gestionables,
+        SUM(total_ventas_jot)         AS total_ventas_jot,
+        SUM(total_ventas_crm)         AS total_ventas_crm,
+        SUM(inversion_usd)            AS inversion_usd,
 
-    THEN 
-      SUM(inversion_usd) / (
-        SELECT COUNT(*) 
-        FROM public.mestra_bitrix t1
-        JOIN public.mestra_bitrix t2
-          ON t1.j_id_bitrix = t2.b_id
-        WHERE t1.j_fecha_registro_sistema IS NOT NULL
-          AND t2.b_creado_el_fecha IS NOT NULL
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') 
-              = TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD')
-      )
+        -- CPL
+        ROUND(CASE WHEN SUM(n_leads) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(n_leads) ELSE 0 END::numeric, 2) AS cpl,
 
-    ELSE 0 
-  END::numeric
-,2) AS costo_ingreso_bitrix,
+        -- FIX costo_ingreso_bitrix: se usa ingreso_bitrix_mismo_dia de la MV
+        -- (leads JOT cuya fecha_registro = fecha_creacion_bitrix, pre-calculado en la MV)
+        -- en lugar del subquery con JOIN roto que siempre devolvía 0
+        ROUND(CASE WHEN SUM(ingreso_bitrix_mismo_dia) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(ingreso_bitrix_mismo_dia) ELSE 0 END::numeric, 2) AS costo_ingreso_bitrix,
 
-        ROUND(CASE WHEN SUM(ingreso_jot)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(ingreso_jot) ELSE 0 END::numeric,2) AS costo_ingreso_jot,
-        ROUND(CASE WHEN SUM(activos_mes)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(activos_mes) ELSE 0 END::numeric,2) AS costo_activa,
-        ROUND(CASE WHEN SUM(activo_backlog)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(activo_backlog) ELSE 0 END::numeric,2) AS costo_activa_backlog,
-        ROUND(CASE WHEN SUM(negociables)>0 AND SUM(inversion_usd)>0
-          THEN SUM(inversion_usd)/SUM(negociables) ELSE 0 END::numeric,2) AS costo_por_negociable
+        ROUND(CASE WHEN SUM(ingreso_jot) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(ingreso_jot) ELSE 0 END::numeric, 2) AS costo_ingreso_jot,
+
+        ROUND(CASE WHEN SUM(activos_mes) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(activos_mes) ELSE 0 END::numeric, 2) AS costo_activa,
+
+        ROUND(CASE WHEN SUM(activo_backlog) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(activo_backlog) ELSE 0 END::numeric, 2) AS costo_activa_backlog,
+
+        ROUND(CASE WHEN SUM(negociables) > 0 AND SUM(inversion_usd) > 0
+          THEN SUM(inversion_usd) / SUM(negociables) ELSE 0 END::numeric, 2) AS costo_por_negociable
+
       FROM por_canal_dia
     `, [fechaDesde, fechaHasta, ...canalParams]);
 
     const detalleResult = await pool.query(`
       SELECT fecha, MIN(dia_semana) AS dia_semana,
         canal_inversion, canal_inversion AS canal_publicidad,
-        SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
-        SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
-        SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-        SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-        SUM(seguimiento_negociacion) AS seguimiento_negociacion,
-        SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
-        SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
-        SUM(cliente_discapacidad) AS cliente_discapacidad,
-        SUM(ingreso_jot) AS ingreso_jot,
+        SUM(n_leads)                  AS n_leads,
+        SUM(atc_soporte)              AS atc_soporte,
+        SUM(fuera_cobertura)          AS fuera_cobertura,
+        SUM(zonas_peligrosas)         AS zonas_peligrosas,
+        SUM(innegociable)             AS innegociable,
+        SUM(negociables)              AS negociables,
+        SUM(venta_subida_bitrix)      AS venta_subida_bitrix,
+        SUM(seguimiento_negociacion)  AS seguimiento_negociacion,
+        SUM(otro_proveedor)           AS otro_proveedor,
+        SUM(no_interesa_costo)        AS no_interesa_costo,
+        SUM(desiste_compra)           AS desiste_compra,
+        SUM(duplicado)               AS duplicado,
+        SUM(cliente_discapacidad)     AS cliente_discapacidad,
+        SUM(ingreso_jot)              AS ingreso_jot,
         SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
-        SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-        SUM(estado_activo_netlife) AS estado_activo_netlife,
-        SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-        SUM(pago_tarjeta) AS pago_tarjeta,
-        SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-        SUM(pago_efectivo_activa) AS pago_efectivo_activa,
-        SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-        SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-        SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-        SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-        SUM(total_gestionables) AS total_gestionables,
-        SUM(total_ventas_jot) AS total_ventas_jot,
-        SUM(total_ventas_crm) AS total_ventas_crm,
-        MAX(inversion_usd) AS inversion_usd
+        SUM(activo_backlog)           AS activo_backlog,
+        SUM(activos_mes)              AS activos_mes,
+        SUM(estado_activo_netlife)    AS estado_activo_netlife,
+        SUM(desiste_servicio_jot)     AS desiste_servicio_jot,
+        SUM(pago_cuenta)              AS pago_cuenta,
+        SUM(pago_efectivo)            AS pago_efectivo,
+        SUM(pago_tarjeta)             AS pago_tarjeta,
+        SUM(pago_cuenta_activa)       AS pago_cuenta_activa,
+        SUM(pago_efectivo_activa)     AS pago_efectivo_activa,
+        SUM(pago_tarjeta_activa)      AS pago_tarjeta_activa,
+        SUM(ciclo_0_dias)             AS ciclo_0_dias,
+        SUM(ciclo_1_dia)              AS ciclo_1_dia,
+        SUM(ciclo_2_dias)             AS ciclo_2_dias,
+        SUM(ciclo_3_dias)             AS ciclo_3_dias,
+        SUM(ciclo_4_dias)             AS ciclo_4_dias,
+        SUM(ciclo_mas5_dias)          AS ciclo_mas5_dias,
+        SUM(regularizados)            AS regularizados,
+        SUM(por_regularizar)          AS por_regularizar,
+        SUM(total_gestionables)       AS total_gestionables,
+        SUM(total_ventas_jot)         AS total_ventas_jot,
+        SUM(total_ventas_crm)         AS total_ventas_crm,
+        MAX(inversion_usd)            AS inversion_usd
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
         AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
@@ -229,7 +252,9 @@ const getMonitoreoRedes = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 2. MONITOREO POR CIUDAD
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoCiudad = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -254,7 +279,9 @@ const getMonitoreoCiudad = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. MONITOREO POR HORA
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoHora = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -277,7 +304,9 @@ const getMonitoreoHora = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 4. MONITOREO MOTIVOS ATC
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoAtc = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -296,7 +325,9 @@ const getMonitoreoAtc = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 5. MONITOREO COSTO (placeholder)
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoCosto = async (req, res) => {
   try {
     res.json({ success: true, data: [], message: 'En desarrollo' });
@@ -306,7 +337,9 @@ const getMonitoreoCosto = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 6. MONITOREO METAS vs LOGROS
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoMetas = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta, modo } = req.query;
@@ -413,7 +446,9 @@ const getMonitoreoMetas = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // 7. REPORTE DATA
+// ─────────────────────────────────────────────────────────────────────────────
 const getReporteData = async (req, res) => {
   try {
     const { anio, mes } = req.query;
@@ -429,13 +464,9 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    // FIX INVERSIÓN: si hay canales seleccionados filtra por canal_inversion,
-    // si no hay filtro trae todos (sin WHERE adicional)
     const invWhereClause = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
     const invParamsExtra = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
 
-    // FIX BITRIX: si hay canales seleccionados filtra por TODAS las líneas (b_origen)
-    // que pertenecen a esos canales, si no hay filtro trae todos
     const bitWhereClause = origenesBitrix.length > 0 ? buildInWhere(origenesBitrix, 2, 'b_origen').where  : '';
     const bitParamsExtra = origenesBitrix.length > 0 ? buildInWhere(origenesBitrix, 2, 'b_origen').params : [];
 
@@ -533,68 +564,89 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Estatus JOT ───────────────────────────────────────────────────────────
-   const statusJotRes = await pool.query(`
-  SELECT
-    EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+    // FIX 1: ingreso_bitrix (COSTO INGRESO BITRIX en Reporte Data)
+    //   El problema era que ${bitWhereClause} filtraba por b_origen pero ese campo
+    //   pertenece a t2 (el registro Bitrix) mientras el WHERE estaba aplicado a t1
+    //   (el registro JOT). Resultado: el FILTER del JOIN nunca coincidía → siempre 0.
+    //   Solución: construir un WHERE con prefijo "t2." para b_origen cuando hay filtro.
+    //
+    // FIX 2: activos (activos mismo mes)
+    //   El FILTER de activos ya estaba correcto en la lógica pero dependía de que
+    //   el JOIN t1.j_id_bitrix = t2.b_id funcionara. Con el LEFT JOIN y el WHERE
+    //   mal aplicado, muchos registros de t2 quedaban NULL. Al corregir el filtro
+    //   de b_origen sobre t2, el JOIN produce las filas correctas.
+    //
+    // Construcción dinámica del WHERE con prefijo t2 para b_origen:
+    const bitWherePrefixT2 = origenesBitrix.length > 0
+      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
+      : '';
 
-    COUNT(*) FILTER (
-      WHERE TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS ingreso_jot,
+    const statusJotRes = await pool.query(`
+      SELECT
+        EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
 
-    COUNT(*) FILTER (
+        -- Todos los registros JOT del mes (ya filtrados por WHERE principal)
+        COUNT(*) AS ingreso_jot,
+
+        -- FIX: ingreso_bitrix — leads JOT cuya fecha_registro_jot
+        -- coincide exactamente con la fecha_creacion del lead en Bitrix.
+        -- El filtro de b_origen va sobre t2 (registro Bitrix), no sobre t1.
+        COUNT(*) FILTER (
+          WHERE t2.b_creado_el_fecha IS NOT NULL
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD')
+                = t2.b_creado_el_fecha::date
+        ) AS ingreso_bitrix,
+
+        -- Activo backlog: ACTIVO con fecha registro JOT en el mes
+        -- (independiente de la fecha de activación — cualquier ACTIVO ingresado en el período)
+        COUNT(*) FILTER (
+          WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+        ) AS activo_backlog,
+
+        -- FIX: activos mismo mes — ACTIVO cuya fecha_activacion_netlife cae en el período.
+        -- La columna j_fecha_activacion_netlife está en t1, no requiere JOIN para este cálculo.
+        COUNT(*) FILTER (
+          WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+            AND t1.j_fecha_activacion_netlife IS NOT NULL
+            AND t1.j_fecha_activacion_netlife <> ''
+            AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ) AS activos,
+
+        -- Total ventas JOT = todos los ingresos del período (igual a ingreso_jot)
+        COUNT(*) AS total_ventas_jot,
+
+        -- Desiste servicio
+        COUNT(*) FILTER (
+          WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%'
+        ) AS desiste_servicio_jot,
+
+        -- Regularizados
+        COUNT(*) FILTER (
+          WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
+            AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
+            AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
+        ) AS regularizados,
+
+        -- Por regularizar
+        COUNT(*) FILTER (
+          WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
+        ) AS por_regularizar
+
+      FROM public.mestra_bitrix t1
+
+      -- JOIN para obtener b_creado_el_fecha y b_origen del registro Bitrix asociado
+      LEFT JOIN public.mestra_bitrix t2
+        ON t1.j_id_bitrix = t2.b_id
+
       WHERE t1.j_fecha_registro_sistema IS NOT NULL
-        AND t2.b_creado_el_fecha IS NOT NULL
-        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') 
-            = TO_DATE(t2.b_creado_el_fecha, 'YYYY-MM-DD')
-        AND TO_DATE(t2.b_creado_el_fecha, 'YYYY-MM-DD') 
-            BETWEEN $1::date AND $2::date
-    ) AS ingreso_bitrix,
-
-    COUNT(*) FILTER (
-      WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+        AND t1.j_fecha_registro_sistema <> ''
         AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS activo_backlog,
+        -- FIX: filtro de b_origen aplicado sobre t2 (registro Bitrix), no t1 (JOT)
+        ${bitWherePrefixT2}
 
-    COUNT(*) FILTER (
-      WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-        AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-        AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS activos,
-
-    COUNT(*) FILTER (
-      WHERE TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS total_ventas_jot,
-
-    COUNT(*) FILTER (
-      WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%'
-        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS desiste_servicio_jot,
-
-    COUNT(*) FILTER (
-      WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
-        AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-        AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
-        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS regularizados,
-
-    COUNT(*) FILTER (
-      WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
-        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ) AS por_regularizar
-
-  FROM public.mestra_bitrix t1
-
-  LEFT JOIN public.mestra_bitrix t2
-    ON t1.j_id_bitrix = t2.b_id
-
-  WHERE t1.j_fecha_registro_sistema IS NOT NULL 
-    AND t1.j_fecha_registro_sistema <> ''
-    AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-    ${bitWhereClause}
-
-  GROUP BY dia 
-  ORDER BY dia ASC
-`, [desde, hasta, ...bitParamsExtra]);
+      GROUP BY dia
+      ORDER BY dia ASC
+    `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Forma de pago ─────────────────────────────────────────────────────────
     const pagoRes = await pool.query(`
@@ -623,44 +675,34 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Ciclo de venta ────────────────────────────────────────────────────────
-    // Agrupa por día del lead (b_creado_el_fecha).
-    // El filtro de activación va DENTRO de cada CASE WHEN (no en el WHERE principal)
-    // para no excluir leads sin activación. El HAVING filtra días donde al menos
-    // un lead tenga fecha de activación (para no mostrar filas todas en cero).
-const cicloRes = await pool.query(`
-  SELECT 
-    EXTRACT(DAY FROM fecha_creacion)::int AS dia,
-
-    COUNT(*) FILTER (WHERE diff = 0) AS ciclo_0,
-    COUNT(*) FILTER (WHERE diff = 1) AS ciclo_1,
-    COUNT(*) FILTER (WHERE diff = 2) AS ciclo_2,
-    COUNT(*) FILTER (WHERE diff = 3) AS ciclo_3,
-    COUNT(*) FILTER (WHERE diff = 4) AS ciclo_4,
-    COUNT(*) FILTER (WHERE diff >= 5) AS ciclo_mas5
-
-  FROM (
-    SELECT 
-      TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') 
-      - TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS diff,
-
-      TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS fecha_creacion
-
-    FROM public.mestra_bitrix t1
-
-    JOIN public.mestra_bitrix t2
-      ON t1.j_id_bitrix = t2.b_id
-
-    WHERE t1.j_fecha_activacion_netlife IS NOT NULL
-      AND t2.b_creado_el_fecha IS NOT NULL
-      AND TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') 
-          BETWEEN $1::date AND $2::date
-      ${bitWhereClause}
-
-  ) t
-
-  GROUP BY dia
-  ORDER BY dia ASC
-`, [desde, hasta, ...bitParamsExtra]);
+    const cicloRes = await pool.query(`
+      SELECT
+        EXTRACT(DAY FROM fecha_creacion)::int AS dia,
+        COUNT(*) FILTER (WHERE diff = 0) AS ciclo_0,
+        COUNT(*) FILTER (WHERE diff = 1) AS ciclo_1,
+        COUNT(*) FILTER (WHERE diff = 2) AS ciclo_2,
+        COUNT(*) FILTER (WHERE diff = 3) AS ciclo_3,
+        COUNT(*) FILTER (WHERE diff = 4) AS ciclo_4,
+        COUNT(*) FILTER (WHERE diff >= 5) AS ciclo_mas5
+      FROM (
+        SELECT
+          TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD')
+          - TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS diff,
+          TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS fecha_creacion
+        FROM public.mestra_bitrix t1
+        JOIN public.mestra_bitrix t2
+          ON t1.j_id_bitrix = t2.b_id
+        WHERE t1.j_fecha_activacion_netlife IS NOT NULL
+          AND t2.b_creado_el_fecha IS NOT NULL
+          AND TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          -- FIX: filtro de b_origen aplicado sobre t2 (registro Bitrix)
+          ${origenesBitrix.length > 0
+            ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
+            : ''}
+      ) t
+      GROUP BY dia
+      ORDER BY dia ASC
+    `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Ciudad ────────────────────────────────────────────────────────────────
     const ciudadRes = await pool.query(`

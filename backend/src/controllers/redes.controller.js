@@ -448,11 +448,23 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    const invWhereClause = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').where  : '';
-    const invParamsExtra = canalesInversion.length > 0 ? buildInWhere(canalesInversion, 2, 'canal_inversion').params : [];
+    // ── Helpers de WHERE con offset correcto ──────────────────────────────────
+    // Todas las queries base usan $1=desde $2=hasta, entonces origenes empiezan en offset=2
+    const bitOffset = 2; // $1=desde, $2=hasta → origenes desde $3
+    const bitWhereClause = origenesBitrix.length > 0
+      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${bitOffset + i + 1}`).join(', ')})`
+      : '';
+    const bitParamsExtra = origenesBitrix;
 
-    const bitWhereClause = origenesBitrix.length > 0 ? buildInWhere(origenesBitrix, 2, 'b_origen').where  : '';
-    const bitParamsExtra = origenesBitrix.length > 0 ? buildInWhere(origenesBitrix, 2, 'b_origen').params : [];
+    // Para queries sin JOIN (etapasRes) el filtro va sobre b_origen directo
+    const etapasWhereClause = origenesBitrix.length > 0
+      ? `AND b_origen IN (${origenesBitrix.map((_, i) => `$${bitOffset + i + 1}`).join(', ')})`
+      : '';
+
+    const invWhereClause = canalesInversion.length > 0
+      ? `AND canal_inversion IN (${canalesInversion.map((_, i) => `$${bitOffset + i + 1}`).join(', ')})`
+      : '';
+    const invParamsExtra = canalesInversion;
 
     // ── Inversión diaria ──────────────────────────────────────────────────────
     const inversionRes = await pool.query(`
@@ -470,10 +482,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...invParamsExtra]);
 
     // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
-    // FIX FILTRO CANAL: b_origen filtra correctamente los leads de Bitrix
-    // según los orígenes que pertenecen al canal seleccionado.
-    // venta_subida se expone aquí y se usa en buildInversionFilas del frontend
-    // como denominador de COSTO INGRESO BITRIX (inv ÷ ventas subidas).
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -498,18 +506,11 @@ const getReporteData = async (req, res) => {
       FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
         AND j_id_bitrix IS NULL
-        ${bitWhereClause}
+        ${etapasWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── JOT denominadores ─────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT (j_id_bitrix IS NOT NULL) no tienen b_origen,
-    // por eso se hace JOIN con la fila Bitrix (t2) para filtrar por b_origen de t2.
-    const jotDenomsOffset = 2;
-    const jotDenomsOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${jotDenomsOffset + i + 1}`).join(', ')})`
-      : '';
-
     const jotDenomsRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -558,20 +559,11 @@ const getReporteData = async (req, res) => {
           (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
             AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
         )
-        ${jotDenomsOrigenWhere}
+        ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Estatus JOT ───────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: el JOIN con t2 trae b_origen de la fila Bitrix.
-    // El filtro de canal se aplica sobre t2.b_origen correctamente.
-    // FIX COSTO INGRESO BITRIX: este bloque ya no se usa para ese cálculo.
-    // El frontend usa venta_subida de etapasRes como denominador.
-    const statusJotOffset = 2;
-    const statusJotOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${statusJotOffset + i + 1}`).join(', ')})`
-      : '';
-
     const statusJotRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -607,18 +599,12 @@ const getReporteData = async (req, res) => {
         AND t1.j_fecha_registro_sistema IS NOT NULL
         AND t1.j_fecha_registro_sistema <> ''
         AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${statusJotOrigenWhere}
+        ${bitWhereClause}
       GROUP BY dia
       ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Forma de pago ─────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT no tienen b_origen, se hace JOIN con Bitrix.
-    const pagoOffset = 2;
-    const pagoOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${pagoOffset + i + 1}`).join(', ')})`
-      : '';
-
     const pagoRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
@@ -642,13 +628,14 @@ const getReporteData = async (req, res) => {
       WHERE t1.j_id_bitrix IS NOT NULL
         AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
         AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${pagoOrigenWhere}
+        ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Ciclo de venta ────────────────────────────────────────────────────────
-    const cicloOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
+    // Para ciclo el filtro también va sobre t2.b_origen vía JOIN
+    const cicloWhereClause = origenesBitrix.length > 0
+      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${bitOffset + i + 1}`).join(', ')})`
       : '';
 
     const cicloRes = await pool.query(`
@@ -672,7 +659,7 @@ const getReporteData = async (req, res) => {
           AND t1.j_fecha_activacion_netlife <> ''
           AND t2.b_creado_el_fecha IS NOT NULL
           AND t2.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-          ${cicloOrigenWhere}
+          ${cicloWhereClause}
       ) t
       GROUP BY dia
       ORDER BY dia ASC
@@ -748,8 +735,6 @@ const getReporteData = async (req, res) => {
     }
 
     // ── Combinar en finalArray para bloque Inversión & Costos ─────────────────
-    // FIX COSTO INGRESO BITRIX: se agrega venta_subida al invMap para que el
-    // frontend (buildInversionFilas) pueda usarlo como denominador directo.
     const invMap = {};
 
     inversionRes.rows.forEach(r => {
@@ -764,7 +749,6 @@ const getReporteData = async (req, res) => {
                 + Number(r.zonas_peligrosas||0) + Number(r.innegociable||0);
       invMap[dia].n_leads       = Number(r.total_leads  || 0);
       invMap[dia].negociables   = Math.max(0, Number(r.total_leads || 0) - sac);
-      // FIX: venta_subida expuesto para COSTO INGRESO BITRIX
       invMap[dia].venta_subida  = Number(r.venta_subida || 0);
     });
 

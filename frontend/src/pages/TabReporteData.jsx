@@ -52,7 +52,6 @@ function fmtCantPct(cant, pct) {
   return String(c);
 }
 
-// FIX: Number() en la key para que no haya mismatch string vs number entre PG y JS
 function byDiaMap(rows, diaKey, valueKey) {
   const map = {};
   rows.forEach((r) => { map[Number(r[diaKey])] = n(r[valueKey]); });
@@ -96,7 +95,6 @@ function Block({ title, accent = C.primary, children, id }) {
   );
 }
 
-// FIX: Number(d.dia) en el lookup para que coincida con las keys numéricas del map
 function TablaHorizontal({ filas, dias, accent = C.primary }) {
   if (!filas || filas.length === 0) return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos</p>;
   return (
@@ -161,7 +159,10 @@ function buildInversionFilas(d, dias) {
 
   const inv          = g("inversion_usd");
   const leads        = g("n_leads");
-  const vsBitrix     = g("ingreso_bitrix");
+  // FIX COSTO INGRESO BITRIX: se usa venta_subida (leads con etapa VENTA SUBIDA
+  // en Bitrix) como denominador en lugar de ingreso_bitrix que siempre era 0
+  // por el JOIN roto entre filas JOT y Bitrix en mestra_bitrix.
+  const ventaSubida  = g("venta_subida");
   const jotMes       = g("ingreso_jot");
   const activosMes   = g("activos_mes");
   const backlog      = g("activo_backlog");
@@ -174,28 +175,28 @@ function buildInversionFilas(d, dias) {
   const actPlanAsigPre     = addMaps(activosMes,  preplaneados, asignados, preservicio);
   const actBackPlanAsigPre = addMaps(backlog,      preplaneados, asignados, preservicio);
 
-  const tInv    = totalFromMap(inv);
-  const tLeads  = totalFromMap(leads);
-  const tBitrix = totalFromMap(vsBitrix);
-  const tJot    = totalFromMap(jotMes);
-  const tAct    = totalFromMap(activosMes);
-  const tBack   = totalFromMap(backlog);
-  const tNegoc  = totalFromMap(negoc);
-  const tAPA    = totalFromMap(actPlanAsig);
-  const tAPAPre = totalFromMap(actPlanAsigPre);
-  const tABAll  = totalFromMap(actBackPlanAsigPre);
+  const tInv         = totalFromMap(inv);
+  const tLeads       = totalFromMap(leads);
+  const tVentaSubida = totalFromMap(ventaSubida);
+  const tJot         = totalFromMap(jotMes);
+  const tAct         = totalFromMap(activosMes);
+  const tBack        = totalFromMap(backlog);
+  const tNegoc       = totalFromMap(negoc);
+  const tAPA         = totalFromMap(actPlanAsig);
+  const tAPAPre      = totalFromMap(actPlanAsigPre);
+  const tABAll       = totalFromMap(actBackPlanAsigPre);
 
   return [
-    { label: "INVERSIÓN DIARIA",                                                          byDia: inv,                        total: tInv,                                      fmt: usd, color: C.violet  },
-    { label: "CPL  (inv ÷ leads totales Bitrix)",                                         byDia: divDiaMap(inv, leads),      total: tLeads  > 0 ? tInv / tLeads  : null,       fmt: usd, color: C.primary },
-    { label: "COSTO INGRESO BITRIX  (inv ÷ ingresos Bitrix mismo día)",                   byDia: divDiaMap(inv, vsBitrix),   total: tBitrix > 0 ? tInv / tBitrix : null,       fmt: usd, color: C.cyan    },
-    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",                        byDia: divDiaMap(inv, jotMes),     total: tJot    > 0 ? tInv / tJot    : null,       fmt: usd, color: C.cyan    },
-    { label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",                    byDia: divDiaMap(inv, activosMes), total: tAct    > 0 ? tInv / tAct    : null,       fmt: usd, color: C.success },
-    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",                   byDia: divDiaMap(inv, backlog),    total: tBack   > 0 ? tInv / tBack   : null,       fmt: usd, color: C.success },
-    { label: "COSTO ACT+PLAN+ASIG  (inv ÷ activos+preplaneados+asignados)",               byDia: divDiaMap(inv, actPlanAsig),     total: tAPA   > 0 ? tInv / tAPA   : null,   fmt: usd, color: C.warning },
-    { label: "COSTO ACT+PLAN+ASIG+PRE  (inv ÷ activos+plan+asig+preservicio)",            byDia: divDiaMap(inv, actPlanAsigPre),  total: tAPAPre > 0 ? tInv / tAPAPre : null, fmt: usd, color: C.warning },
-    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",                                 byDia: divDiaMap(inv, negoc),      total: tNegoc  > 0 ? tInv / tNegoc  : null,       fmt: usd, color: C.slate   },
-    { label: "COSTO BACK+PLAN+ASIG+PRE  (inv ÷ backlog+plan+asig+pre)",                   byDia: divDiaMap(inv, actBackPlanAsigPre), total: tABAll > 0 ? tInv / tABAll : null, fmt: usd, color: C.slate   },
+    { label: "INVERSIÓN DIARIA",                                                          byDia: inv,                           total: tInv,                                            fmt: usd, color: C.violet  },
+    { label: "CPL  (inv ÷ leads totales Bitrix)",                                         byDia: divDiaMap(inv, leads),         total: tLeads       > 0 ? tInv / tLeads       : null,   fmt: usd, color: C.primary },
+    { label: "COSTO INGRESO BITRIX  (inv ÷ ventas subidas Bitrix)",                       byDia: divDiaMap(inv, ventaSubida),   total: tVentaSubida > 0 ? tInv / tVentaSubida : null,   fmt: usd, color: C.cyan    },
+    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",                        byDia: divDiaMap(inv, jotMes),        total: tJot         > 0 ? tInv / tJot         : null,   fmt: usd, color: C.cyan    },
+    { label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",                    byDia: divDiaMap(inv, activosMes),    total: tAct         > 0 ? tInv / tAct         : null,   fmt: usd, color: C.success },
+    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",                   byDia: divDiaMap(inv, backlog),       total: tBack        > 0 ? tInv / tBack        : null,   fmt: usd, color: C.success },
+    { label: "COSTO ACT+PLAN+ASIG  (inv ÷ activos+preplaneados+asignados)",               byDia: divDiaMap(inv, actPlanAsig),   total: tAPA         > 0 ? tInv / tAPA         : null,   fmt: usd, color: C.warning },
+    { label: "COSTO ACT+PLAN+ASIG+PRE  (inv ÷ activos+plan+asig+preservicio)",            byDia: divDiaMap(inv, actPlanAsigPre), total: tAPAPre     > 0 ? tInv / tAPAPre     : null,   fmt: usd, color: C.warning },
+    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",                                 byDia: divDiaMap(inv, negoc),         total: tNegoc       > 0 ? tInv / tNegoc       : null,   fmt: usd, color: C.slate   },
+    { label: "COSTO BACK+PLAN+ASIG+PRE  (inv ÷ backlog+plan+asig+pre)",                   byDia: divDiaMap(inv, actBackPlanAsigPre), total: tABAll  > 0 ? tInv / tABAll       : null,   fmt: usd, color: C.slate   },
   ];
 }
 
@@ -305,9 +306,6 @@ function buildPagoFilas(d, dias) {
 }
 
 // BLOQUE 5: Ciclo de venta
-// El backend agrupa por día del lead (b_creado_el_fecha) y calcula
-// (TO_DATE(j_fecha_activacion_netlife) - b_creado_el_fecha) para cada ciclo.
-// Solo aparecen días donde al menos un lead tiene fecha de activación (HAVING > 0).
 function buildCicloFilas(d, dias) {
   if (!d.ciclo || d.ciclo.length === 0) return [];
   const g = (k) => byDiaMap(d.ciclo, "dia", k);
@@ -544,7 +542,6 @@ export default function TabReporteData({ filtro }) {
                 const isDetail = canalDetalle === canal;
                 return (
                   <div key={canal} className="inline-flex items-center gap-0.5">
-                    {/* Chip principal: selecciona el canal */}
                     <button onClick={() => toggleCanal(canal)}
                       className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
                       style={sel
@@ -553,7 +550,6 @@ export default function TabReporteData({ filtro }) {
                       }>
                       <span>{cfg.icon}</span><span>{cfg.label}</span>
                     </button>
-                    {/* Botón "ver líneas" */}
                     <button onClick={() => setCanalDetalle(isDetail ? null : canal)}
                       className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[9px] font-black border-l-0 border transition-all"
                       style={isDetail
@@ -579,7 +575,6 @@ export default function TabReporteData({ filtro }) {
                 </span>
               )}
 
-              {/* Indicador de auto-recarga */}
               {loading && dataLoaded.current && (
                 <span className="text-[8px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
                   <span className="inline-block w-2 h-2 border border-current rounded-full animate-spin border-t-transparent" />
@@ -588,7 +583,6 @@ export default function TabReporteData({ filtro }) {
               )}
             </div>
 
-            {/* Panel lateral de líneas del canal seleccionado para detallar */}
             {canalDetalle && (
               <div className="border-l flex-shrink-0 px-4 py-3 min-w-[220px] max-w-[280px]"
                 style={{ borderColor: C.border, background: `${getCfg(canalDetalle).bg}` }}>
@@ -599,7 +593,6 @@ export default function TabReporteData({ filtro }) {
                   <button onClick={() => setCanalDetalle(null)} className="text-[9px] font-bold hover:opacity-70"
                     style={{ color: getCfg(canalDetalle).color }}>✕</button>
                 </div>
-                {/* Líneas del canal (vienen de canalesDisp o del mapeo fijo) */}
                 <div className="space-y-1">
                   {(data?.canales_disponibles?.find(c => c.canal === canalDetalle)?.lineas
                     || []).map((linea) => (
@@ -616,15 +609,12 @@ export default function TabReporteData({ filtro }) {
         )}
       </div>
 
-      {/* Loading inicial */}
       {loading && !dataLoaded.current && (
         <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>Generando reporte...</div>
       )}
 
-      {/* Contenido */}
       {data && (
         <div style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}>
-          {/* Cabecera de período */}
           <div className="bg-white rounded-xl border shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3 mb-4"
             style={{ borderColor: C.border }}>
             <div>
@@ -768,7 +758,6 @@ export default function TabReporteData({ filtro }) {
         </div>
       )}
 
-      {/* Estado vacío */}
       {!loading && !data && (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: `${C.primary}10` }}>📑</div>

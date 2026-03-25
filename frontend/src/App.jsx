@@ -11,7 +11,7 @@ import Seguimientovelsa from "./pages/Seguimientovelsa";
 import VistaAsesorVelsa from "./pages/VistaAsesorVelsa";
 import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICACIONES
 import BroadcastPanel from "./pages/BroadcastPanel";  // <--- BROADCAST TV
-import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";  // <--- Guiaplanesmarzo
+import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";  // <--- Guiaplanesmarzo TV
 import TVMode from "./pages/TVMode";                  // <--- TV FULLSCREEN
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 

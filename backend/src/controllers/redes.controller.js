@@ -68,6 +68,10 @@ const resolverGrupos = (gruposSel = []) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. MONITOREO REDES GENERAL
+// FIX ACTIVOS: la vista materializada mv_monitoreo_publicidad ya calcula
+// activos_mes correctamente. El problema era que el frontend hacía un doble
+// mapeo de canal. Aquí devolvemos canal_inversion directo para que el frontend
+// lo use sin re-mapear.
 // ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoRedes = async (req, res) => {
   try {
@@ -178,7 +182,8 @@ const getMonitoreoRedes = async (req, res) => {
 
     const detalleResult = await pool.query(`
       SELECT fecha, MIN(dia_semana) AS dia_semana,
-        canal_inversion, canal_inversion AS canal_publicidad,
+        canal_inversion,
+        canal_inversion AS canal_publicidad,
         SUM(n_leads)                  AS n_leads,
         SUM(atc_soporte)              AS atc_soporte,
         SUM(fuera_cobertura)          AS fuera_cobertura,
@@ -195,6 +200,8 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(ingreso_jot)              AS ingreso_jot,
         SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
         SUM(activo_backlog)           AS activo_backlog,
+        -- FIX ACTIVOS: sumar directamente desde la vista materializada
+        -- la vista ya calcula activos_mes correctamente por canal_inversion
         SUM(activos_mes)              AS activos_mes,
         SUM(estado_activo_netlife)    AS estado_activo_netlife,
         SUM(desiste_servicio_jot)     AS desiste_servicio_jot,
@@ -323,6 +330,10 @@ const getMonitoreoCosto = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 6. MONITOREO METAS vs LOGROS
+// FIX: ahora devuelve canales_disponibles con { canal, lineas } para que el
+// frontend pueda mostrar el selector de canales con sus orígenes.
+// El campo `origenes_disponibles` viejo se elimina (era un array plano que no
+// servía para el nuevo selector de Metas).
 // ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoMetas = async (req, res) => {
   try {
@@ -348,6 +359,7 @@ const getMonitoreoMetas = async (req, res) => {
     const { where: bitrixWhere, params: bitrixParams } = buildInWhere(origenesBitrix, offsetBit, 'b_origen');
     const allParamsBitrix = [...fechaParams, ...bitrixParams];
 
+    // Totales por origen desde Bitrix
     const totalesRes = await pool.query(`
       SELECT b_origen,
         COUNT(*) AS total_leads,
@@ -358,9 +370,11 @@ const getMonitoreoMetas = async (req, res) => {
         COUNT(*) FILTER (WHERE j_id_bitrix IS NOT NULL) AS ingreso_jot
       FROM public.mestra_bitrix
       WHERE ${fechaWhere} ${bitrixWhere}
+        AND j_id_bitrix IS NULL
       GROUP BY b_origen ORDER BY total_leads DESC
     `, allParamsBitrix);
 
+    // Inversión por canal
     let inversionPorGrupo = {};
     try {
       const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
@@ -381,49 +395,93 @@ const getMonitoreoMetas = async (req, res) => {
       });
     } catch (_) {}
 
+    // Agrupar por canal
     const grupoMap = {};
     totalesRes.rows.forEach(r => {
       const origenUp = (r.b_origen || '').toUpperCase();
-      const grupo    = ORIGEN_A_CANAL_INV[origenUp] || 'SIN MAPEO';
+      // Buscar el canal primero en mayúsculas, luego sin transformar
+      const grupo = ORIGEN_A_CANAL_INV[origenUp] || ORIGEN_A_CANAL_INV[r.b_origen] || 'SIN MAPEO';
       if (!grupoMap[grupo]) {
-        grupoMap[grupo] = { canal: grupo, inversion_usd: inversionPorGrupo[grupo] || 0, lineas: [], total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0 };
+        grupoMap[grupo] = {
+          canal: grupo,
+          inversion_usd: inversionPorGrupo[grupo] || 0,
+          lineas: [],
+          total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0,
+        };
       }
       const total   = Number(r.total_leads  || 0);
       const sac     = Number(r.leads_sac    || 0);
       const ventas  = Number(r.venta_subida || 0);
       const jot     = Number(r.ingreso_jot  || 0);
-      const calidad = total - sac;
+      const calidad = Math.max(0, total - sac);
       grupoMap[grupo].total_leads  += total;
       grupoMap[grupo].leads_sac    += sac;
       grupoMap[grupo].venta_subida += ventas;
       grupoMap[grupo].ingreso_jot  += jot;
       grupoMap[grupo].lineas.push({
-        origen: r.b_origen, total_leads: total, leads_sac: sac, leads_calidad: calidad,
+        origen: r.b_origen,
+        total_leads: total, leads_sac: sac, leads_calidad: calidad,
         venta_subida: ventas, ingreso_jot: jot,
-        pct_sac: total > 0 ? (sac / total) * 100 : 0,
-        pct_calidad: total > 0 ? (calidad / total) * 100 : 0,
-        pct_ventas: total > 0 ? (ventas / total) * 100 : 0,
-        pct_ventas_jot: total > 0 ? (jot / total) * 100 : 0,
+        pct_sac:        total > 0 ? (sac    / total) * 100 : 0,
+        pct_calidad:    total > 0 ? (calidad / total) * 100 : 0,
+        pct_ventas:     total > 0 ? (ventas / total) * 100 : 0,
+        pct_ventas_jot: total > 0 ? (jot    / total) * 100 : 0,
       });
     });
 
-    const canales = Object.values(grupoMap).map(c => {
-      const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
-      const leads_calidad = total_leads - leads_sac;
-      return {
-        canal: c.canal, inversion_usd, total_leads, leads_sac, leads_calidad, venta_subida, ingreso_jot, lineas: c.lineas,
-        pct_sac:        total_leads > 0 ? (leads_sac     / total_leads) * 100 : 0,
-        pct_calidad:    total_leads > 0 ? (leads_calidad / total_leads) * 100 : 0,
-        pct_ventas:     total_leads > 0 ? (venta_subida  / total_leads) * 100 : 0,
-        pct_ventas_jot: total_leads > 0 ? (ingreso_jot   / total_leads) * 100 : 0,
-        cpl:      total_leads   > 0 && inversion_usd > 0 ? inversion_usd / total_leads   : null,
-        cpl_gest: leads_calidad > 0 && inversion_usd > 0 ? inversion_usd / leads_calidad : null,
-        cpa:      venta_subida  > 0 && inversion_usd > 0 ? inversion_usd / venta_subida  : null,
-        cpa_jot:  ingreso_jot   > 0 && inversion_usd > 0 ? inversion_usd / ingreso_jot   : null,
-      };
-    });
+    const canales = Object.values(grupoMap)
+      .filter(c => c.canal !== 'SIN MAPEO')
+      .map(c => {
+        const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
+        const leads_calidad = Math.max(0, total_leads - leads_sac);
+        return {
+          canal: c.canal,
+          inversion_usd,
+          total_leads, leads_sac, leads_calidad, venta_subida, ingreso_jot,
+          lineas: c.lineas,
+          pct_sac:        total_leads > 0 ? (leads_sac     / total_leads) * 100 : 0,
+          pct_calidad:    total_leads > 0 ? (leads_calidad / total_leads) * 100 : 0,
+          pct_ventas:     total_leads > 0 ? (venta_subida  / total_leads) * 100 : 0,
+          pct_ventas_jot: total_leads > 0 ? (ingreso_jot   / total_leads) * 100 : 0,
+          cpl:      total_leads   > 0 && inversion_usd > 0 ? inversion_usd / total_leads   : null,
+          cpl_gest: leads_calidad > 0 && inversion_usd > 0 ? inversion_usd / leads_calidad : null,
+          cpa:      venta_subida  > 0 && inversion_usd > 0 ? inversion_usd / venta_subida  : null,
+          cpa_jot:  ingreso_jot   > 0 && inversion_usd > 0 ? inversion_usd / ingreso_jot   : null,
+        };
+      });
 
-    res.json({ success: true, canales, canales_disponibles: GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] })) });
+    // Canales disponibles para el período — detectados desde orígenes reales en BD
+    // FIX: devolvemos canales_disponibles con { canal, lineas } igual que el resto
+    // de endpoints, para que el selector de Metas pueda mostrar los orígenes.
+    let canalesDisponibles = [];
+    try {
+      const origenesDispRes = await pool.query(`
+        SELECT DISTINCT b_origen FROM public.mestra_bitrix
+        WHERE ${fechaWhere}
+          AND b_origen IS NOT NULL AND b_origen <> ''
+          AND j_id_bitrix IS NULL
+        ORDER BY b_origen ASC
+      `, fechaParams);
+
+      const gruposEncontrados = new Set();
+      origenesDispRes.rows.forEach(r => {
+        const origenUp = (r.b_origen || '').toUpperCase();
+        const g = ORIGEN_A_CANAL_INV[origenUp] || ORIGEN_A_CANAL_INV[r.b_origen];
+        if (g) gruposEncontrados.add(g);
+      });
+      canalesDisponibles = [...gruposEncontrados]
+        .sort()
+        .map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
+    } catch (_) {
+      // Fallback: devolver todos los grupos conocidos
+      canalesDisponibles = GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] }));
+    }
+
+    res.json({
+      success: true,
+      canales,
+      canales_disponibles: canalesDisponibles,
+    });
   } catch (error) {
     console.error('Error en getMonitoreoMetas:', error);
     res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
@@ -470,10 +528,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...invParamsExtra]);
 
     // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
-    // FIX FILTRO CANAL: b_origen filtra correctamente los leads de Bitrix
-    // según los orígenes que pertenecen al canal seleccionado.
-    // venta_subida se expone aquí y se usa en buildInversionFilas del frontend
-    // como denominador de COSTO INGRESO BITRIX (inv ÷ ventas subidas).
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -503,8 +557,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── JOT denominadores ─────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT (j_id_bitrix IS NOT NULL) no tienen b_origen,
-    // por eso se hace JOIN con la fila Bitrix (t2) para filtrar por b_origen de t2.
     const jotDenomsOffset = 2;
     const jotDenomsOrigenWhere = origenesBitrix.length > 0
       ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${jotDenomsOffset + i + 1}`).join(', ')})`
@@ -563,10 +615,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Estatus JOT ───────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: el JOIN con t2 trae b_origen de la fila Bitrix.
-    // El filtro de canal se aplica sobre t2.b_origen correctamente.
-    // FIX COSTO INGRESO BITRIX: este bloque ya no se usa para ese cálculo.
-    // El frontend usa venta_subida de etapasRes como denominador.
     const statusJotOffset = 2;
     const statusJotOrigenWhere = origenesBitrix.length > 0
       ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${statusJotOffset + i + 1}`).join(', ')})`
@@ -613,7 +661,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Forma de pago ─────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT no tienen b_origen, se hace JOIN con Bitrix.
     const pagoOffset = 2;
     const pagoOrigenWhere = origenesBitrix.length > 0
       ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${pagoOffset + i + 1}`).join(', ')})`
@@ -734,8 +781,8 @@ const getReporteData = async (req, res) => {
 
     const gruposEncontrados = new Set();
     origenesDispRes.rows.forEach(r => {
-      const up = (r.b_origen || '').toUpperCase();
-      const g  = ORIGEN_A_CANAL_INV[up];
+      const origenUp = (r.b_origen || '').toUpperCase();
+      const g = ORIGEN_A_CANAL_INV[origenUp] || ORIGEN_A_CANAL_INV[r.b_origen];
       if (g) gruposEncontrados.add(g);
     });
     const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
@@ -747,9 +794,7 @@ const getReporteData = async (req, res) => {
       diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y, m - 1, d).getDay()] });
     }
 
-    // ── Combinar en finalArray para bloque Inversión & Costos ─────────────────
-    // FIX COSTO INGRESO BITRIX: se agrega venta_subida al invMap para que el
-    // frontend (buildInversionFilas) pueda usarlo como denominador directo.
+    // ── Combinar arrays en finalArray para bloque Inversión & Costos ──────────
     const invMap = {};
 
     inversionRes.rows.forEach(r => {
@@ -762,10 +807,9 @@ const getReporteData = async (req, res) => {
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };
       const sac = Number(r.atc_soporte||0) + Number(r.fuera_cobertura||0)
                 + Number(r.zonas_peligrosas||0) + Number(r.innegociable||0);
-      invMap[dia].n_leads       = Number(r.total_leads  || 0);
-      invMap[dia].negociables   = Math.max(0, Number(r.total_leads || 0) - sac);
-      // FIX: venta_subida expuesto para COSTO INGRESO BITRIX
-      invMap[dia].venta_subida  = Number(r.venta_subida || 0);
+      invMap[dia].n_leads      = Number(r.total_leads  || 0);
+      invMap[dia].negociables  = Math.max(0, Number(r.total_leads || 0) - sac);
+      invMap[dia].venta_subida = Number(r.venta_subida || 0);
     });
 
     jotDenomsRes.rows.forEach(r => {

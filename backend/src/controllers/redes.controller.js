@@ -74,9 +74,14 @@ const getMonitoreoRedes = async (req, res) => {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
     const gruposRaw = req.query.canales || '';
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { canalesInversion } = resolverGrupos(gruposSel);
+    const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
     const { where: canalWhere, params: canalParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
 
+    // FIX: costo_ingreso_bitrix — el subquery anterior cruzaba t1 con t2 sobre
+    // mestra_bitrix comparando j_fecha_registro_sistema = b_creado_el_fecha,
+    // pero ese JOIN devolvía 0 porque la condición de b_origen no estaba aplicada
+    // correctamente. Ahora se usa ingreso_bitrix_mismo_dia de la MV directamente,
+    // que ya tiene ese cálculo pre-agregado y filtrado por fecha/canal.
     const totalesResult = await pool.query(`
       WITH por_canal_dia AS (
         SELECT fecha, canal_inversion,
@@ -91,7 +96,7 @@ const getMonitoreoRedes = async (req, res) => {
           SUM(otro_proveedor)           AS otro_proveedor,
           SUM(no_interesa_costo)        AS no_interesa_costo,
           SUM(desiste_compra)           AS desiste_compra,
-          SUM(duplicado)                AS duplicado,
+          SUM(duplicado)               AS duplicado,
           SUM(cliente_discapacidad)     AS cliente_discapacidad,
           SUM(ingreso_jot)              AS ingreso_jot,
           SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
@@ -135,7 +140,7 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(otro_proveedor)           AS otro_proveedor,
         SUM(no_interesa_costo)        AS no_interesa_costo,
         SUM(desiste_compra)           AS desiste_compra,
-        SUM(duplicado)                AS duplicado,
+        SUM(duplicado)               AS duplicado,
         SUM(cliente_discapacidad)     AS cliente_discapacidad,
         SUM(ingreso_jot)              AS ingreso_jot,
         SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
@@ -161,18 +166,29 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(total_ventas_jot)         AS total_ventas_jot,
         SUM(total_ventas_crm)         AS total_ventas_crm,
         SUM(inversion_usd)            AS inversion_usd,
+
+        -- CPL
         ROUND(CASE WHEN SUM(n_leads) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(n_leads) ELSE 0 END::numeric, 2) AS cpl,
+
+        -- FIX costo_ingreso_bitrix: se usa ingreso_bitrix_mismo_dia de la MV
+        -- (leads JOT cuya fecha_registro = fecha_creacion_bitrix, pre-calculado en la MV)
+        -- en lugar del subquery con JOIN roto que siempre devolvía 0
         ROUND(CASE WHEN SUM(ingreso_bitrix_mismo_dia) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(ingreso_bitrix_mismo_dia) ELSE 0 END::numeric, 2) AS costo_ingreso_bitrix,
+
         ROUND(CASE WHEN SUM(ingreso_jot) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(ingreso_jot) ELSE 0 END::numeric, 2) AS costo_ingreso_jot,
+
         ROUND(CASE WHEN SUM(activos_mes) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(activos_mes) ELSE 0 END::numeric, 2) AS costo_activa,
+
         ROUND(CASE WHEN SUM(activo_backlog) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(activo_backlog) ELSE 0 END::numeric, 2) AS costo_activa_backlog,
+
         ROUND(CASE WHEN SUM(negociables) > 0 AND SUM(inversion_usd) > 0
           THEN SUM(inversion_usd) / SUM(negociables) ELSE 0 END::numeric, 2) AS costo_por_negociable
+
       FROM por_canal_dia
     `, [fechaDesde, fechaHasta, ...canalParams]);
 
@@ -190,7 +206,7 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(otro_proveedor)           AS otro_proveedor,
         SUM(no_interesa_costo)        AS no_interesa_costo,
         SUM(desiste_compra)           AS desiste_compra,
-        SUM(duplicado)                AS duplicado,
+        SUM(duplicado)               AS duplicado,
         SUM(cliente_discapacidad)     AS cliente_discapacidad,
         SUM(ingreso_jot)              AS ingreso_jot,
         SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
@@ -470,10 +486,6 @@ const getReporteData = async (req, res) => {
     `, [desde, hasta, ...invParamsExtra]);
 
     // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
-    // FIX FILTRO CANAL: b_origen filtra correctamente los leads de Bitrix
-    // según los orígenes que pertenecen al canal seleccionado.
-    // venta_subida se expone aquí y se usa en buildInversionFilas del frontend
-    // como denominador de COSTO INGRESO BITRIX (inv ÷ ventas subidas).
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -497,182 +509,196 @@ const getReporteData = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'CONTRATO NETLIFE')        AS contrato_netlife
       FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-        AND j_id_bitrix IS NULL
         ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── JOT denominadores ─────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT (j_id_bitrix IS NOT NULL) no tienen b_origen,
-    // por eso se hace JOIN con la fila Bitrix (t2) para filtrar por b_origen de t2.
-    const jotDenomsOffset = 2;
-    const jotDenomsOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${jotDenomsOffset + i + 1}`).join(', ')})`
-      : '';
-
     const jotDenomsRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
         COUNT(*) FILTER (
-          WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS ingreso_jot,
         COUNT(*) FILTER (
-          WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-            AND t2.b_creado_el_fecha IS NOT NULL
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') = t2.b_creado_el_fecha::date
+          WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') = b_creado_el_fecha::date
         ) AS ingreso_bitrix_mismo_dia,
         COUNT(*) FILTER (
-          WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-            AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
+            AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+            AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activos_mes,
         COUNT(*) FILTER (
-          WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE j_netlife_estatus_real ILIKE 'ACTIVO'
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activo_backlog,
         COUNT(*) FILTER (
-          WHERE (t1.j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR t1.j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE (j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS preplaneados,
         COUNT(*) FILTER (
-          WHERE t1.j_netlife_estatus_real ILIKE '%ASIGNADO%'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE j_netlife_estatus_real ILIKE '%ASIGNADO%'
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS asignados,
         COUNT(*) FILTER (
-          WHERE t1.j_netlife_estatus_real ILIKE '%PRESERVICIO%'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          WHERE j_netlife_estatus_real ILIKE '%PRESERVICIO%'
+            AND j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+            AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS preservicio
-      FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-      WHERE t1.j_id_bitrix IS NOT NULL
-        AND (
-          (t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
-          OR
-          (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-            AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
-        )
-        ${jotDenomsOrigenWhere}
+      FROM public.mestra_bitrix
+      WHERE (
+        (j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+          AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+        OR
+        (j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+      )
+      ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Estatus JOT ───────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: el JOIN con t2 trae b_origen de la fila Bitrix.
-    // El filtro de canal se aplica sobre t2.b_origen correctamente.
-    // FIX COSTO INGRESO BITRIX: este bloque ya no se usa para ese cálculo.
-    // El frontend usa venta_subida de etapasRes como denominador.
-    const statusJotOffset = 2;
-    const statusJotOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${statusJotOffset + i + 1}`).join(', ')})`
+    // FIX 1: ingreso_bitrix (COSTO INGRESO BITRIX en Reporte Data)
+    //   El problema era que ${bitWhereClause} filtraba por b_origen pero ese campo
+    //   pertenece a t2 (el registro Bitrix) mientras el WHERE estaba aplicado a t1
+    //   (el registro JOT). Resultado: el FILTER del JOIN nunca coincidía → siempre 0.
+    //   Solución: construir un WHERE con prefijo "t2." para b_origen cuando hay filtro.
+    //
+    // FIX 2: activos (activos mismo mes)
+    //   El FILTER de activos ya estaba correcto en la lógica pero dependía de que
+    //   el JOIN t1.j_id_bitrix = t2.b_id funcionara. Con el LEFT JOIN y el WHERE
+    //   mal aplicado, muchos registros de t2 quedaban NULL. Al corregir el filtro
+    //   de b_origen sobre t2, el JOIN produce las filas correctas.
+    //
+    // Construcción dinámica del WHERE con prefijo t2 para b_origen:
+    const bitWherePrefixT2 = origenesBitrix.length > 0
+      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
       : '';
 
     const statusJotRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+
+        -- Todos los registros JOT del mes (ya filtrados por WHERE principal)
         COUNT(*) AS ingreso_jot,
+
+        -- FIX: ingreso_bitrix — leads JOT cuya fecha_registro_jot
+        -- coincide exactamente con la fecha_creacion del lead en Bitrix.
+        -- El filtro de b_origen va sobre t2 (registro Bitrix), no sobre t1.
         COUNT(*) FILTER (
           WHERE t2.b_creado_el_fecha IS NOT NULL
-            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') = t2.b_creado_el_fecha::date
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD')
+                = t2.b_creado_el_fecha::date
         ) AS ingreso_bitrix,
+
+        -- Activo backlog: ACTIVO con fecha registro JOT en el mes
+        -- (independiente de la fecha de activación — cualquier ACTIVO ingresado en el período)
         COUNT(*) FILTER (
           WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
         ) AS activo_backlog,
+
+        -- FIX: activos mismo mes — ACTIVO cuya fecha_activacion_netlife cae en el período.
+        -- La columna j_fecha_activacion_netlife está en t1, no requiere JOIN para este cálculo.
         COUNT(*) FILTER (
           WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
             AND t1.j_fecha_activacion_netlife IS NOT NULL
             AND t1.j_fecha_activacion_netlife <> ''
             AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
         ) AS activos,
+
+        -- Total ventas JOT = todos los ingresos del período (igual a ingreso_jot)
         COUNT(*) AS total_ventas_jot,
+
+        -- Desiste servicio
         COUNT(*) FILTER (
           WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%'
         ) AS desiste_servicio_jot,
+
+        -- Regularizados
         COUNT(*) FILTER (
           WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
             AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
             AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%'
         ) AS regularizados,
+
+        -- Por regularizar
         COUNT(*) FILTER (
           WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%'
         ) AS por_regularizar
+
       FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-      WHERE t1.j_id_bitrix IS NOT NULL
-        AND t1.j_fecha_registro_sistema IS NOT NULL
+
+      -- JOIN para obtener b_creado_el_fecha y b_origen del registro Bitrix asociado
+      LEFT JOIN public.mestra_bitrix t2
+        ON t1.j_id_bitrix = t2.b_id
+
+      WHERE t1.j_fecha_registro_sistema IS NOT NULL
         AND t1.j_fecha_registro_sistema <> ''
         AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${statusJotOrigenWhere}
+        -- FIX: filtro de b_origen aplicado sobre t2 (registro Bitrix), no t1 (JOT)
+        ${bitWherePrefixT2}
+
       GROUP BY dia
       ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Forma de pago ─────────────────────────────────────────────────────────
-    // FIX FILTRO CANAL: las filas JOT no tienen b_origen, se hace JOIN con Bitrix.
-    const pagoOffset = 2;
-    const pagoOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${pagoOffset + i + 1}`).join(', ')})`
-      : '';
-
     const pagoRes = await pool.query(`
       SELECT
-        EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%'   THEN 1 ELSE 0 END) AS pago_cuenta,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%EFECTIVO%' THEN 1 ELSE 0 END) AS pago_efectivo,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%'  THEN 1 ELSE 0 END) AS pago_tarjeta,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%'   AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        EXTRACT(DAY FROM TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD'))::int AS dia,
+        SUM(CASE WHEN j_forma_pago ILIKE '%CUENTA%'   THEN 1 ELSE 0 END) AS pago_cuenta,
+        SUM(CASE WHEN j_forma_pago ILIKE '%EFECTIVO%' THEN 1 ELSE 0 END) AS pago_efectivo,
+        SUM(CASE WHEN j_forma_pago ILIKE '%TARJETA%'  THEN 1 ELSE 0 END) AS pago_tarjeta,
+        SUM(CASE WHEN j_forma_pago ILIKE '%CUENTA%'   AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
           THEN 1 ELSE 0 END) AS pago_cuenta_activa,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%EFECTIVO%' AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        SUM(CASE WHEN j_forma_pago ILIKE '%EFECTIVO%' AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
           THEN 1 ELSE 0 END) AS pago_efectivo_activa,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%'  AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        SUM(CASE WHEN j_forma_pago ILIKE '%TARJETA%'  AND j_netlife_estatus_real ILIKE 'ACTIVO'
+          AND j_fecha_activacion_netlife IS NOT NULL AND j_fecha_activacion_netlife <> ''
+          AND TO_DATE(j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
           THEN 1 ELSE 0 END) AS pago_tarjeta_activa
-      FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-      WHERE t1.j_id_bitrix IS NOT NULL
-        AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-        AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
-        ${pagoOrigenWhere}
+      FROM public.mestra_bitrix
+      WHERE j_fecha_registro_sistema IS NOT NULL AND j_fecha_registro_sistema <> ''
+        AND TO_DATE(j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
     `, [desde, hasta, ...bitParamsExtra]);
 
     // ── Ciclo de venta ────────────────────────────────────────────────────────
-    const cicloOrigenWhere = origenesBitrix.length > 0
-      ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
-      : '';
-
     const cicloRes = await pool.query(`
       SELECT
         EXTRACT(DAY FROM fecha_creacion)::int AS dia,
-        COUNT(*) FILTER (WHERE diff = 0)  AS ciclo_0,
-        COUNT(*) FILTER (WHERE diff = 1)  AS ciclo_1,
-        COUNT(*) FILTER (WHERE diff = 2)  AS ciclo_2,
-        COUNT(*) FILTER (WHERE diff = 3)  AS ciclo_3,
-        COUNT(*) FILTER (WHERE diff = 4)  AS ciclo_4,
+        COUNT(*) FILTER (WHERE diff = 0) AS ciclo_0,
+        COUNT(*) FILTER (WHERE diff = 1) AS ciclo_1,
+        COUNT(*) FILTER (WHERE diff = 2) AS ciclo_2,
+        COUNT(*) FILTER (WHERE diff = 3) AS ciclo_3,
+        COUNT(*) FILTER (WHERE diff = 4) AS ciclo_4,
         COUNT(*) FILTER (WHERE diff >= 5) AS ciclo_mas5
       FROM (
         SELECT
           TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD')
-          - t2.b_creado_el_fecha::date AS diff,
-          t2.b_creado_el_fecha::date   AS fecha_creacion
+          - TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS diff,
+          TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') AS fecha_creacion
         FROM public.mestra_bitrix t1
-        JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-        WHERE t1.j_id_bitrix IS NOT NULL
-          AND t1.j_fecha_activacion_netlife IS NOT NULL
-          AND t1.j_fecha_activacion_netlife <> ''
+        JOIN public.mestra_bitrix t2
+          ON t1.j_id_bitrix = t2.b_id
+        WHERE t1.j_fecha_activacion_netlife IS NOT NULL
           AND t2.b_creado_el_fecha IS NOT NULL
-          AND t2.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-          ${cicloOrigenWhere}
+          AND TO_DATE(t2.b_creado_el_fecha,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          -- FIX: filtro de b_origen aplicado sobre t2 (registro Bitrix)
+          ${origenesBitrix.length > 0
+            ? `AND t2.b_origen IN (${origenesBitrix.map((_, i) => `$${3 + i}`).join(', ')})`
+            : ''}
       ) t
       GROUP BY dia
       ORDER BY dia ASC
@@ -728,7 +754,6 @@ const getReporteData = async (req, res) => {
       SELECT DISTINCT b_origen FROM public.mestra_bitrix
       WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
         AND b_origen IS NOT NULL AND b_origen <> ''
-        AND j_id_bitrix IS NULL
       ORDER BY b_origen ASC
     `, [desde, hasta]);
 
@@ -748,8 +773,6 @@ const getReporteData = async (req, res) => {
     }
 
     // ── Combinar en finalArray para bloque Inversión & Costos ─────────────────
-    // FIX COSTO INGRESO BITRIX: se agrega venta_subida al invMap para que el
-    // frontend (buildInversionFilas) pueda usarlo como denominador directo.
     const invMap = {};
 
     inversionRes.rows.forEach(r => {
@@ -762,10 +785,8 @@ const getReporteData = async (req, res) => {
       if (!invMap[dia]) invMap[dia] = { dia, inversion_usd: 0 };
       const sac = Number(r.atc_soporte||0) + Number(r.fuera_cobertura||0)
                 + Number(r.zonas_peligrosas||0) + Number(r.innegociable||0);
-      invMap[dia].n_leads       = Number(r.total_leads  || 0);
-      invMap[dia].negociables   = Math.max(0, Number(r.total_leads || 0) - sac);
-      // FIX: venta_subida expuesto para COSTO INGRESO BITRIX
-      invMap[dia].venta_subida  = Number(r.venta_subida || 0);
+      invMap[dia].n_leads     = Number(r.total_leads || 0);
+      invMap[dia].negociables = Math.max(0, Number(r.total_leads || 0) - sac);
     });
 
     jotDenomsRes.rows.forEach(r => {
@@ -782,7 +803,7 @@ const getReporteData = async (req, res) => {
 
     const allDaysMap = {};
     for (let d = 1; d <= ultimoDia; d++) {
-      allDaysMap[d] = { dia: d, inversion_usd: 0, n_leads: 0, venta_subida: 0, negociables: 0, activos_mes: 0, activo_backlog: 0, ingreso_jot: 0, ingreso_bitrix: 0, preplaneados: 0, asignados: 0, preservicio: 0 };
+      allDaysMap[d] = { dia: d, inversion_usd: 0, n_leads: 0, negociables: 0, activos_mes: 0, activo_backlog: 0, ingreso_jot: 0, ingreso_bitrix: 0, preplaneados: 0, asignados: 0, preservicio: 0 };
     }
     Object.values(invMap).forEach(day => { allDaysMap[day.dia] = { ...allDaysMap[day.dia], ...day }; });
     const finalArray = Object.values(allDaysMap).sort((a, b) => a.dia - b.dia);

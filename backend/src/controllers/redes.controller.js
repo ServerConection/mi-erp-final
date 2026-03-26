@@ -2,50 +2,65 @@ const pool = require('../config/db');
 
 const getFiltroFechas = (query) => {
   const hoy = new Date().toISOString().split('T')[0];
-  return { fechaDesde: query.fechaDesde || hoy, fechaHasta: query.fechaHasta || hoy };
+  return {
+    fechaDesde: query.fechaDesde || hoy,
+    fechaHasta: query.fechaHasta || hoy,
+  };
 };
 
 const ORIGEN_A_CANAL_INV = {
-  'BASE 593-979083368':'ARTS','BASE 593-995211968':'ARTS FACEBOOK',
-  'BASE 593-992827793':'ARTS GOOGLE','FORMULARIO LANDING 3':'ARTS GOOGLE','LLAMADA LANDING 3':'ARTS GOOGLE',
-  'POR RECOMENDACIÓN':'POR RECOMENDACIÓN','REFERIDO PERSONAL':'POR RECOMENDACIÓN','TIENDA ONLINE':'POR RECOMENDACIÓN',
-  'BASE 593-958993371':'REMARKETING','BASE 593-984414273':'REMARKETING',
-  'BASE 593-995967355':'REMARKETING','WHATSAPP 593958993371':'REMARKETING',
-  'BASE 593-962881280':'VIDIKA GOOGLE','BASE 593-987133635':'VIDIKA GOOGLE',
-  'BASE API 593963463480':'VIDIKA GOOGLE','FORMULARIO LANDING 4':'VIDIKA GOOGLE',
-  'LLAMADA':'VIDIKA GOOGLE','LLAMADA LANDING 4':'VIDIKA GOOGLE',
+  'BASE 593-979083368':    'ARTS',
+  'BASE 593-995211968':    'ARTS FACEBOOK',
+  'BASE 593-992827793':    'ARTS GOOGLE',
+  'FORMULARIO LANDING 3':  'ARTS GOOGLE',
+  'LLAMADA LANDING 3':     'ARTS GOOGLE',
+  'POR RECOMENDACIÓN':     'POR RECOMENDACIÓN',
+  'REFERIDO PERSONAL':     'POR RECOMENDACIÓN',
+  'TIENDA ONLINE':         'POR RECOMENDACIÓN',
+  'BASE 593-958993371':    'REMARKETING',
+  'BASE 593-984414273':    'REMARKETING',
+  'BASE 593-995967355':    'REMARKETING',
+  'WHATSAPP 593958993371': 'REMARKETING',
+  'BASE 593-962881280':    'VIDIKA GOOGLE',
+  'BASE 593-987133635':    'VIDIKA GOOGLE',
+  'BASE API 593963463480': 'VIDIKA GOOGLE',
+  'FORMULARIO LANDING 4':  'VIDIKA GOOGLE',
+  'LLAMADA':               'VIDIKA GOOGLE',
+  'LLAMADA LANDING 4':     'VIDIKA GOOGLE',
 };
 
 const GRUPO_A_CANAL_INV = {
-  'ARTS':['ARTS'],'ARTS FACEBOOK':['ARTS FACEBOOK'],'ARTS GOOGLE':['ARTS GOOGLE'],
-  'REMARKETING':['REMARKETING'],'VIDIKA GOOGLE':['VIDIKA GOOGLE'],'POR RECOMENDACIÓN':['POR RECOMENDACIÓN'],
+  'ARTS':              ['ARTS'],
+  'ARTS FACEBOOK':     ['ARTS FACEBOOK'],
+  'ARTS GOOGLE':       ['ARTS GOOGLE'],
+  'REMARKETING':       ['REMARKETING'],
+  'VIDIKA GOOGLE':     ['VIDIKA GOOGLE'],
+  'POR RECOMENDACIÓN': ['POR RECOMENDACIÓN'],
 };
 
 const GRUPO_A_ORIGENES = {
-  'ARTS':['BASE 593-979083368'],
-  'ARTS FACEBOOK':['BASE 593-995211968'],
-  'ARTS GOOGLE':['BASE 593-992827793','FORMULARIO LANDING 3','LLAMADA LANDING 3'],
-  'REMARKETING':['BASE 593-958993371','BASE 593-984414273','BASE 593-995967355','WHATSAPP 593958993371'],
-  'VIDIKA GOOGLE':['BASE 593-962881280','BASE 593-987133635','BASE API 593963463480','FORMULARIO LANDING 4','LLAMADA','LLAMADA LANDING 4'],
-  'POR RECOMENDACIÓN':['POR RECOMENDACIÓN','REFERIDO PERSONAL','TIENDA ONLINE'],
+  'ARTS':              ['BASE 593-979083368'],
+  'ARTS FACEBOOK':     ['BASE 593-995211968'],
+  'ARTS GOOGLE':       ['BASE 593-992827793', 'FORMULARIO LANDING 3', 'LLAMADA LANDING 3'],
+  'REMARKETING':       ['BASE 593-958993371', 'BASE 593-984414273', 'BASE 593-995967355', 'WHATSAPP 593958993371'],
+  'VIDIKA GOOGLE':     ['BASE 593-962881280', 'BASE 593-987133635', 'BASE API 593963463480', 'FORMULARIO LANDING 4', 'LLAMADA', 'LLAMADA LANDING 4'],
+  'POR RECOMENDACIÓN': ['POR RECOMENDACIÓN', 'REFERIDO PERSONAL', 'TIENDA ONLINE'],
 };
 
 const GRUPOS_DISPONIBLES = Object.keys(GRUPO_A_ORIGENES);
 
-// buildInWhere recibe el array de params ACTUALES para calcular offset dinámico
-const buildInWhere = (valores, paramsActuales, field) => {
+const buildInWhere = (valores, offsetInicial, field) => {
   if (!valores || valores.length === 0) return { where: '', params: [] };
-  const startIndex = paramsActuales.length;
-  const placeholders = valores.map((_, i) => `$${startIndex + i + 1}`).join(', ');
-  return { where: `AND ${field} IN (${placeholders})`, params: valores };
+  const ph = valores.map((_, i) => `$${offsetInicial + i + 1}`).join(', ');
+  return { where: `AND ${field} IN (${ph})`, params: valores };
 };
 
 const resolverGrupos = (gruposSel = []) => {
   if (gruposSel.length === 0) return { origenesBitrix: [], canalesInversion: [] };
-  const origenesBitrix = [];
+  const origenesBitrix   = [];
   const canalesInversion = new Set();
   gruposSel.forEach(g => {
-    (GRUPO_A_ORIGENES[g] || []).forEach(o => origenesBitrix.push(o));
+    (GRUPO_A_ORIGENES[g]  || []).forEach(o => origenesBitrix.push(o));
     (GRUPO_A_CANAL_INV[g] || []).forEach(c => canalesInversion.add(c));
   });
   return { origenesBitrix: [...new Set(origenesBitrix)], canalesInversion: [...canalesInversion] };
@@ -60,8 +75,7 @@ const getMonitoreoRedes = async (req, res) => {
     const gruposRaw = req.query.canales || '';
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { canalesInversion } = resolverGrupos(gruposSel);
-    const baseParams = [fechaDesde, fechaHasta];
-    const { where: canalWhere, params: canalParams } = buildInWhere([...canalesInversion], baseParams, 'canal_inversion');
+    const { where: canalWhere, params: canalParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
 
     const totalesResult = await pool.query(`
       WITH por_canal_dia AS (
@@ -69,25 +83,20 @@ const getMonitoreoRedes = async (req, res) => {
           SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
           SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
           SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-          SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-          SUM(seguimiento_negociacion) AS seguimiento_negociacion,
+          SUM(venta_subida_bitrix) AS venta_subida_bitrix, SUM(seguimiento_negociacion) AS seguimiento_negociacion,
           SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
           SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
           SUM(cliente_discapacidad) AS cliente_discapacidad,
           SUM(ingreso_jot) AS ingreso_jot, SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
           SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-          SUM(estado_activo_netlife) AS estado_activo_netlife,
-          SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-          SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-          SUM(pago_tarjeta) AS pago_tarjeta, SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-          SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-          SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-          SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-          SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
+          SUM(estado_activo_netlife) AS estado_activo_netlife, SUM(desiste_servicio_jot) AS desiste_servicio_jot,
+          SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo, SUM(pago_tarjeta) AS pago_tarjeta,
+          SUM(pago_cuenta_activa) AS pago_cuenta_activa, SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
+          SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia, SUM(ciclo_2_dias) AS ciclo_2_dias,
+          SUM(ciclo_3_dias) AS ciclo_3_dias, SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
           SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-          SUM(total_gestionables) AS total_gestionables,
-          SUM(total_ventas_jot) AS total_ventas_jot, SUM(total_ventas_crm) AS total_ventas_crm,
-          MAX(inversion_usd) AS inversion_usd
+          SUM(total_gestionables) AS total_gestionables, SUM(total_ventas_jot) AS total_ventas_jot,
+          SUM(total_ventas_crm) AS total_ventas_crm, MAX(inversion_usd) AS inversion_usd
         FROM public.mv_monitoreo_publicidad
         WHERE fecha BETWEEN $1 AND $2
           AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
@@ -98,25 +107,20 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
         SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
         SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-        SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-        SUM(seguimiento_negociacion) AS seguimiento_negociacion,
+        SUM(venta_subida_bitrix) AS venta_subida_bitrix, SUM(seguimiento_negociacion) AS seguimiento_negociacion,
         SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
         SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
         SUM(cliente_discapacidad) AS cliente_discapacidad,
         SUM(ingreso_jot) AS ingreso_jot, SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
         SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-        SUM(estado_activo_netlife) AS estado_activo_netlife,
-        SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-        SUM(pago_tarjeta) AS pago_tarjeta, SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-        SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-        SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-        SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
+        SUM(estado_activo_netlife) AS estado_activo_netlife, SUM(desiste_servicio_jot) AS desiste_servicio_jot,
+        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo, SUM(pago_tarjeta) AS pago_tarjeta,
+        SUM(pago_cuenta_activa) AS pago_cuenta_activa, SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
+        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia, SUM(ciclo_2_dias) AS ciclo_2_dias,
+        SUM(ciclo_3_dias) AS ciclo_3_dias, SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
         SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-        SUM(total_gestionables) AS total_gestionables,
-        SUM(total_ventas_jot) AS total_ventas_jot, SUM(total_ventas_crm) AS total_ventas_crm,
-        SUM(inversion_usd) AS inversion_usd,
+        SUM(total_gestionables) AS total_gestionables, SUM(total_ventas_jot) AS total_ventas_jot,
+        SUM(total_ventas_crm) AS total_ventas_crm, SUM(inversion_usd) AS inversion_usd,
         ROUND(CASE WHEN SUM(n_leads)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(n_leads) ELSE 0 END::numeric,2) AS cpl,
         ROUND(CASE WHEN SUM(ingreso_bitrix_mismo_dia)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(ingreso_bitrix_mismo_dia) ELSE 0 END::numeric,2) AS costo_ingreso_bitrix,
         ROUND(CASE WHEN SUM(ingreso_jot)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(ingreso_jot) ELSE 0 END::numeric,2) AS costo_ingreso_jot,
@@ -124,7 +128,7 @@ const getMonitoreoRedes = async (req, res) => {
         ROUND(CASE WHEN SUM(activo_backlog)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(activo_backlog) ELSE 0 END::numeric,2) AS costo_activa_backlog,
         ROUND(CASE WHEN SUM(negociables)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(negociables) ELSE 0 END::numeric,2) AS costo_por_negociable
       FROM por_canal_dia
-    `, [...baseParams, ...canalParams]);
+    `, [fechaDesde, fechaHasta, ...canalParams]);
 
     const detalleResult = await pool.query(`
       SELECT fecha, MIN(dia_semana) AS dia_semana,
@@ -132,32 +136,27 @@ const getMonitoreoRedes = async (req, res) => {
         SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
         SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
         SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-        SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-        SUM(seguimiento_negociacion) AS seguimiento_negociacion,
+        SUM(venta_subida_bitrix) AS venta_subida_bitrix, SUM(seguimiento_negociacion) AS seguimiento_negociacion,
         SUM(otro_proveedor) AS otro_proveedor, SUM(no_interesa_costo) AS no_interesa_costo,
         SUM(desiste_compra) AS desiste_compra, SUM(duplicado) AS duplicado,
         SUM(cliente_discapacidad) AS cliente_discapacidad,
         SUM(ingreso_jot) AS ingreso_jot, SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
         SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-        SUM(estado_activo_netlife) AS estado_activo_netlife,
-        SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo,
-        SUM(pago_tarjeta) AS pago_tarjeta, SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-        SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-        SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-        SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
+        SUM(estado_activo_netlife) AS estado_activo_netlife, SUM(desiste_servicio_jot) AS desiste_servicio_jot,
+        SUM(pago_cuenta) AS pago_cuenta, SUM(pago_efectivo) AS pago_efectivo, SUM(pago_tarjeta) AS pago_tarjeta,
+        SUM(pago_cuenta_activa) AS pago_cuenta_activa, SUM(pago_efectivo_activa) AS pago_efectivo_activa, SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
+        SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia, SUM(ciclo_2_dias) AS ciclo_2_dias,
+        SUM(ciclo_3_dias) AS ciclo_3_dias, SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
         SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-        SUM(total_gestionables) AS total_gestionables,
-        SUM(total_ventas_jot) AS total_ventas_jot, SUM(total_ventas_crm) AS total_ventas_crm,
-        MAX(inversion_usd) AS inversion_usd
+        SUM(total_gestionables) AS total_gestionables, SUM(total_ventas_jot) AS total_ventas_jot,
+        SUM(total_ventas_crm) AS total_ventas_crm, MAX(inversion_usd) AS inversion_usd
       FROM public.mv_monitoreo_publicidad
       WHERE fecha BETWEEN $1 AND $2
         AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
         ${canalWhere}
       GROUP BY fecha, canal_inversion
       ORDER BY fecha DESC, canal_inversion ASC
-    `, [...baseParams, ...canalParams]);
+    `, [fechaDesde, fechaHasta, ...canalParams]);
 
     res.json({
       success: true,
@@ -245,14 +244,13 @@ const getMonitoreoAtc = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. MONITOREO COSTO
+// 5. MONITOREO COSTO (placeholder)
 // ─────────────────────────────────────────────────────────────────────────────
 const getMonitoreoCosto = async (req, res) => {
   try {
     res.json({ success: true, data: [], message: 'En desarrollo' });
   } catch (error) {
-    console.error('Error en getMonitoreoCosto:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos de costos', error: error.message });
+    res.status(500).json({ success: false, message: 'Error', error: error.message });
   }
 };
 
@@ -275,11 +273,12 @@ const getMonitoreoMetas = async (req, res) => {
       fechaWhere  = `b_creado_el_fecha LIKE $1`;
       fechaParams = [`%${desde.slice(0, 7)}%`];
     } else {
-      fechaWhere  = `b_creado_el_fecha >= $1 AND b_creado_el_fecha <= $2`;
+      fechaWhere  = `b_creado_el_fecha::date BETWEEN $1::date AND $2::date`;
       fechaParams = [desde, hasta];
     }
 
-    const { where: bitrixWhere, params: bitrixParams } = buildInWhere(origenesBitrix, fechaParams, 'b_origen');
+    const offsetBit = fechaParams.length;
+    const { where: bitrixWhere, params: bitrixParams } = buildInWhere(origenesBitrix, offsetBit, 'b_origen');
     const allParamsBitrix = [...fechaParams, ...bitrixParams];
 
     const totalesRes = await pool.query(`
@@ -291,87 +290,79 @@ const getMonitoreoMetas = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'VENTA SUBIDA') AS venta_subida,
         COUNT(*) FILTER (WHERE j_id_bitrix IS NOT NULL) AS ingreso_jot
       FROM public.mestra_bitrix
-      WHERE ${fechaWhere} ${bitrixWhere}
+      WHERE ${fechaWhere}
+        AND j_id_bitrix IS NULL
+        ${bitrixWhere}
       GROUP BY b_origen ORDER BY total_leads DESC
     `, allParamsBitrix);
 
     let inversionPorGrupo = {};
     try {
-      const baseInv = [desde, hasta];
-      const { where: invWhere, params: invParams } = buildInWhere([...canalesInversion], baseInv, 'canal_inversion');
+      const { where: invWhere, params: invParams } = buildInWhere(canalesInversion, 2, 'canal_inversion');
       const invRes = await pool.query(`
         SELECT canal_inversion, SUM(max_inv) AS inversion_usd
         FROM (
           SELECT canal_inversion, fecha, MAX(inversion_usd) AS max_inv
           FROM public.mv_monitoreo_publicidad
-          WHERE fecha >= $1 AND fecha <= $2
+          WHERE fecha BETWEEN $1::date AND $2::date
             AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
             ${invWhere}
           GROUP BY canal_inversion, fecha
         ) sub
         GROUP BY canal_inversion
-      `, [...baseInv, ...invParams]);
-      invRes.rows.forEach(r => {
-        inversionPorGrupo[r.canal_inversion] = Number(r.inversion_usd || 0);
-      });
+      `, [desde, hasta, ...invParams]);
+      invRes.rows.forEach(r => { inversionPorGrupo[r.canal_inversion] = Number(r.inversion_usd || 0); });
     } catch (_) {}
 
     const grupoMap = {};
     totalesRes.rows.forEach(r => {
-      const origenUp = (r.b_origen || '').toUpperCase();
-      const grupo = ORIGEN_A_CANAL_INV[origenUp] || ORIGEN_A_CANAL_INV[r.b_origen] || 'SIN MAPEO';
-      if (grupo === 'SIN MAPEO') return;
+      const origenRaw = (r.b_origen || '').trim();
+      const grupo = ORIGEN_A_CANAL_INV[origenRaw] || ORIGEN_A_CANAL_INV[origenRaw.toUpperCase()] || 'SIN MAPEO';
       if (!grupoMap[grupo]) {
         grupoMap[grupo] = { canal: grupo, inversion_usd: inversionPorGrupo[grupo] || 0, lineas: [], total_leads: 0, leads_sac: 0, venta_subida: 0, ingreso_jot: 0 };
       }
-      const total = Number(r.total_leads || 0), sac = Number(r.leads_sac || 0);
-      const ventas = Number(r.venta_subida || 0), jot = Number(r.ingreso_jot || 0);
+      const total = Number(r.total_leads||0), sac = Number(r.leads_sac||0);
+      const ventas = Number(r.venta_subida||0), jot = Number(r.ingreso_jot||0);
       const calidad = Math.max(0, total - sac);
       grupoMap[grupo].total_leads  += total;
       grupoMap[grupo].leads_sac    += sac;
       grupoMap[grupo].venta_subida += ventas;
       grupoMap[grupo].ingreso_jot  += jot;
-      grupoMap[grupo].lineas.push({
-        origen: r.b_origen, total_leads: total, leads_sac: sac, leads_calidad: calidad,
-        venta_subida: ventas, ingreso_jot: jot,
-        pct_sac: total > 0 ? (sac/total)*100 : 0,
-        pct_calidad: total > 0 ? (calidad/total)*100 : 0,
-        pct_ventas: total > 0 ? (ventas/total)*100 : 0,
-        pct_ventas_jot: total > 0 ? (jot/total)*100 : 0,
-      });
+      grupoMap[grupo].lineas.push({ origen: r.b_origen, total_leads: total, leads_sac: sac, leads_calidad: calidad, venta_subida: ventas, ingreso_jot: jot,
+        pct_sac: total>0?(sac/total)*100:0, pct_calidad: total>0?(calidad/total)*100:0,
+        pct_ventas: total>0?(ventas/total)*100:0, pct_ventas_jot: total>0?(jot/total)*100:0 });
     });
 
-    const canales = Object.values(grupoMap).map(c => {
+    const canales = Object.values(grupoMap).filter(c => c.canal !== 'SIN MAPEO').map(c => {
       const { total_leads, leads_sac, venta_subida, ingreso_jot, inversion_usd } = c;
       const leads_calidad = Math.max(0, total_leads - leads_sac);
-      return {
-        canal: c.canal, inversion_usd, total_leads, leads_sac, leads_calidad, venta_subida, ingreso_jot, lineas: c.lineas,
-        pct_sac:        total_leads > 0 ? (leads_sac/total_leads)*100 : 0,
-        pct_calidad:    total_leads > 0 ? (leads_calidad/total_leads)*100 : 0,
-        pct_ventas:     total_leads > 0 ? (venta_subida/total_leads)*100 : 0,
-        pct_ventas_jot: total_leads > 0 ? (ingreso_jot/total_leads)*100 : 0,
-        cpl:      total_leads   > 0 && inversion_usd > 0 ? inversion_usd/total_leads   : null,
-        cpl_gest: leads_calidad > 0 && inversion_usd > 0 ? inversion_usd/leads_calidad : null,
-        cpa:      venta_subida  > 0 && inversion_usd > 0 ? inversion_usd/venta_subida  : null,
-        cpa_jot:  ingreso_jot   > 0 && inversion_usd > 0 ? inversion_usd/ingreso_jot   : null,
+      return { canal: c.canal, inversion_usd, total_leads, leads_sac, leads_calidad, venta_subida, ingreso_jot, lineas: c.lineas,
+        pct_sac: total_leads>0?(leads_sac/total_leads)*100:0,
+        pct_calidad: total_leads>0?(leads_calidad/total_leads)*100:0,
+        pct_ventas: total_leads>0?(venta_subida/total_leads)*100:0,
+        pct_ventas_jot: total_leads>0?(ingreso_jot/total_leads)*100:0,
+        cpl:      total_leads>0&&inversion_usd>0?inversion_usd/total_leads:null,
+        cpl_gest: leads_calidad>0&&inversion_usd>0?inversion_usd/leads_calidad:null,
+        cpa:      venta_subida>0&&inversion_usd>0?inversion_usd/venta_subida:null,
+        cpa_jot:  ingreso_jot>0&&inversion_usd>0?inversion_usd/ingreso_jot:null,
       };
     });
 
+    // Canales disponibles para el período
     let canalesDisponibles = [];
     try {
       const origenesDispRes = await pool.query(`
         SELECT DISTINCT b_origen FROM public.mestra_bitrix
-        WHERE b_creado_el_fecha >= $1 AND b_creado_el_fecha <= $2
-          AND b_origen IS NOT NULL AND b_origen <> '' AND j_id_bitrix IS NULL
+        WHERE ${fechaWhere} AND b_origen IS NOT NULL AND b_origen <> '' AND j_id_bitrix IS NULL
         ORDER BY b_origen ASC
-      `, [desde, hasta]);
-      const gruposEnc = new Set();
+      `, fechaParams);
+      const gruposEncontrados = new Set();
       origenesDispRes.rows.forEach(r => {
-        const up = (r.b_origen || '').toUpperCase();
-        const g = ORIGEN_A_CANAL_INV[up] || ORIGEN_A_CANAL_INV[r.b_origen];
-        if (g) gruposEnc.add(g);
+        const origenRaw = (r.b_origen || '').trim();
+        const g = ORIGEN_A_CANAL_INV[origenRaw] || ORIGEN_A_CANAL_INV[origenRaw.toUpperCase()];
+        if (g) gruposEncontrados.add(g);
       });
-      canalesDisponibles = [...gruposEnc].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
+      canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
     } catch (_) {
       canalesDisponibles = GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] }));
     }
@@ -401,25 +392,24 @@ const getReporteData = async (req, res) => {
     const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
     const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-    const baseParams = [desde, hasta];
+    const invWhereClause = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,'canal_inversion').where  : '';
+    const invParamsExtra = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,'canal_inversion').params : [];
+    const bitWhereClause = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').where        : '';
+    const bitParamsExtra = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').params       : [];
 
-    // Inversión
-    const { where: invWhereClause, params: invParamsExtra } = buildInWhere([...canalesInversion], baseParams, 'canal_inversion');
     const inversionRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
       FROM (
         SELECT fecha, canal_inversion, MAX(inversion_usd) AS max_inv
         FROM public.mv_monitoreo_publicidad
-        WHERE fecha >= $1 AND fecha <= $2
+        WHERE fecha BETWEEN $1::date AND $2::date
           AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
           ${invWhereClause}
         GROUP BY fecha, canal_inversion
       ) sub
       GROUP BY EXTRACT(DAY FROM fecha)::int ORDER BY dia ASC
-    `, [...baseParams, ...invParamsExtra]);
+    `, [desde, hasta, ...invParamsExtra]);
 
-    // Etapas Bitrix
-    const { where: etapasWhereClause, params: etapasParams } = buildInWhere(origenesBitrix, baseParams, 'b_origen');
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
         COUNT(*) AS total_leads,
@@ -442,243 +432,163 @@ const getReporteData = async (req, res) => {
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'DUPLICADO') AS duplicado,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'CONTRATO NETLIFE') AS contrato_netlife
       FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha >= $1 AND b_creado_el_fecha <= $2
-        AND j_id_bitrix IS NULL
-        ${etapasWhereClause}
+      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        AND j_id_bitrix IS NULL ${bitWhereClause}
       GROUP BY dia ORDER BY dia ASC
-    `, [...baseParams, ...etapasParams]);
+    `, [desde, hasta, ...bitParamsExtra]);
 
-    // JOT denominadores
-    const { where: jotWhereClause, params: jotParams } = buildInWhere(origenesBitrix, baseParams, 't2.b_origen');
+    const jotOrigenWhere = origenesBitrix.length>0 ? `AND t2.b_origen IN (${origenesBitrix.map((_,i)=>`$${3+i}`).join(', ')})` : '';
+
     const jotDenomsRes = await pool.query(`
       SELECT EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD'))::int AS dia,
-        COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date) AS ingreso_jot,
-        COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date
-          AND t2.b_creado_el_fecha IS NOT NULL
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') = t2.b_creado_el_fecha::date) AS ingreso_bitrix_mismo_dia,
-        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date) AS activos_mes,
-        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date) AS activo_backlog,
-        COUNT(*) FILTER (WHERE (t1.j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR t1.j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
-          AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date) AS preplaneados,
-        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%ASIGNADO%'
-          AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date) AS asignados,
-        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%PRESERVICIO%'
-          AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date) AS preservicio
+        COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS ingreso_jot,
+        COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date AND t2.b_creado_el_fecha IS NOT NULL AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD')=t2.b_creado_el_fecha::date) AS ingreso_bitrix_mismo_dia,
+        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS activos_mes,
+        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS activo_backlog,
+        COUNT(*) FILTER (WHERE (t1.j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR t1.j_netlife_estatus_real ILIKE '%REPLANIFICADO%') AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS preplaneados,
+        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%ASIGNADO%' AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS asignados,
+        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%PRESERVICIO%' AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS preservicio
       FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
+      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
       WHERE t1.j_id_bitrix IS NOT NULL
-        AND ((t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-              AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-              AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date)
-          OR (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-              AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-              AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date))
-        ${jotWhereClause}
+        AND ((t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>'' AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+          OR (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date))
+        ${jotOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [...baseParams, ...jotParams]);
+    `, [desde, hasta, ...bitParamsExtra]);
 
-    // Estatus JOT
     const statusJotRes = await pool.query(`
       SELECT EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD'))::int AS dia,
         COUNT(*) AS ingreso_jot,
-        COUNT(*) FILTER (WHERE t2.b_creado_el_fecha IS NOT NULL
-          AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') = t2.b_creado_el_fecha::date) AS ingreso_bitrix,
+        COUNT(*) FILTER (WHERE t2.b_creado_el_fecha IS NOT NULL AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD')=t2.b_creado_el_fecha::date) AS ingreso_bitrix,
         COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO') AS activo_backlog,
-        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date) AS activos,
+        COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS activos,
         COUNT(*) AS total_ventas_jot,
         COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%') AS desiste_servicio_jot,
-        COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
-          AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-          AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%') AS regularizados,
+        COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%' AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%' AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%') AS regularizados,
         COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%') AS por_regularizar
       FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-      WHERE t1.j_id_bitrix IS NOT NULL
-        AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date
-        ${jotWhereClause}
+      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
+      WHERE t1.j_id_bitrix IS NOT NULL AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
+        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ${jotOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [...baseParams, ...jotParams]);
+    `, [desde, hasta, ...bitParamsExtra]);
 
-    // Forma de pago
     const pagoRes = await pool.query(`
       SELECT EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD'))::int AS dia,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%' THEN 1 ELSE 0 END) AS pago_cuenta,
+        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%'   THEN 1 ELSE 0 END) AS pago_cuenta,
         SUM(CASE WHEN t1.j_forma_pago ILIKE '%EFECTIVO%' THEN 1 ELSE 0 END) AS pago_efectivo,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%' THEN 1 ELSE 0 END) AS pago_tarjeta,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%' AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date THEN 1 ELSE 0 END) AS pago_cuenta_activa,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%EFECTIVO%' AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date THEN 1 ELSE 0 END) AS pago_efectivo_activa,
-        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%' AND t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') >= $1::date
-          AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') <= $2::date THEN 1 ELSE 0 END) AS pago_tarjeta_activa
+        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%'  THEN 1 ELSE 0 END) AS pago_tarjeta,
+        SUM(CASE WHEN t1.j_forma_pago ILIKE '%CUENTA%'   AND t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date THEN 1 ELSE 0 END) AS pago_cuenta_activa,
+        SUM(CASE WHEN t1.j_forma_pago ILIKE '%EFECTIVO%' AND t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date THEN 1 ELSE 0 END) AS pago_efectivo_activa,
+        SUM(CASE WHEN t1.j_forma_pago ILIKE '%TARJETA%'  AND t1.j_netlife_estatus_real ILIKE 'ACTIVO' AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>'' AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date THEN 1 ELSE 0 END) AS pago_tarjeta_activa
       FROM public.mestra_bitrix t1
-      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-      WHERE t1.j_id_bitrix IS NOT NULL
-        AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
-        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') >= $1::date
-        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') <= $2::date
-        ${jotWhereClause}
+      JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
+      WHERE t1.j_id_bitrix IS NOT NULL AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
+        AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+        ${jotOrigenWhere}
       GROUP BY dia ORDER BY dia ASC
-    `, [...baseParams, ...jotParams]);
+    `, [desde, hasta, ...bitParamsExtra]);
 
-    // Ciclo de venta
     const cicloRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha_creacion)::int AS dia,
         COUNT(*) FILTER (WHERE diff=0) AS ciclo_0, COUNT(*) FILTER (WHERE diff=1) AS ciclo_1,
         COUNT(*) FILTER (WHERE diff=2) AS ciclo_2, COUNT(*) FILTER (WHERE diff=3) AS ciclo_3,
         COUNT(*) FILTER (WHERE diff=4) AS ciclo_4, COUNT(*) FILTER (WHERE diff>=5) AS ciclo_mas5
       FROM (
-        SELECT TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') - t2.b_creado_el_fecha::date AS diff,
-          t2.b_creado_el_fecha::date AS fecha_creacion
-        FROM public.mestra_bitrix t1
-        JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
-        WHERE t1.j_id_bitrix IS NOT NULL
-          AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
-          AND t2.b_creado_el_fecha IS NOT NULL
-          AND t2.b_creado_el_fecha::date >= $1::date AND t2.b_creado_el_fecha::date <= $2::date
-          ${jotWhereClause}
+        SELECT TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD')-t2.b_creado_el_fecha::date AS diff, t2.b_creado_el_fecha::date AS fecha_creacion
+        FROM public.mestra_bitrix t1 JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
+        WHERE t1.j_id_bitrix IS NOT NULL AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>''
+          AND t2.b_creado_el_fecha IS NOT NULL AND t2.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+          ${jotOrigenWhere}
       ) t GROUP BY dia ORDER BY dia ASC
-    `, [...baseParams, ...jotParams]);
+    `, [desde, hasta, ...bitParamsExtra]);
 
-    // Ciudad
     const ciudadRes = await pool.query(`
-      SELECT ciudad, provincia,
-        SUM(total_leads) AS total_leads, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot,
+      SELECT ciudad, provincia, SUM(total_leads) AS total_leads, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot,
         ROUND(SUM(activos)::numeric/NULLIF(SUM(total_leads),0)*100,1) AS pct_activos
-      FROM public.mv_monitoreo_ciudad
-      WHERE fecha >= $1::date AND fecha <= $2::date
+      FROM public.mv_monitoreo_ciudad WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY ciudad, provincia ORDER BY activos DESC NULLS LAST
-    `, baseParams);
+    `, [desde, hasta]);
 
     const ciudadDiaRes = await pool.query(`
-      SELECT ciudad, EXTRACT(DAY FROM fecha)::int AS dia,
-        SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot
-      FROM public.mv_monitoreo_ciudad
-      WHERE fecha >= $1::date AND fecha <= $2::date
+      SELECT ciudad, EXTRACT(DAY FROM fecha)::int AS dia, SUM(activos) AS activos, SUM(ingresos_jot) AS ingresos_jot
+      FROM public.mv_monitoreo_ciudad WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY ciudad, dia ORDER BY ciudad, dia
-    `, baseParams);
+    `, [desde, hasta]);
 
-    // Hora
     const horaRes = await pool.query(`
       SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
         ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
-      FROM public.mv_monitoreo_hora WHERE fecha >= $1::date AND fecha <= $2::date
+      FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY hora ORDER BY hora ASC
-    `, baseParams);
+    `, [desde, hasta]);
 
     const horaDiaRes = await pool.query(`
       SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc
-      FROM public.mv_monitoreo_hora WHERE fecha >= $1::date AND fecha <= $2::date
+      FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY dia, hora ORDER BY dia, hora
-    `, baseParams);
+    `, [desde, hasta]);
 
-    // ATC
     const atcRes = await pool.query(`
       SELECT motivo_atc, EXTRACT(DAY FROM fecha)::int AS dia, SUM(cantidad) AS cantidad
-      FROM public.mv_monitoreo_atc WHERE fecha >= $1::date AND fecha <= $2::date
+      FROM public.mv_monitoreo_atc WHERE fecha BETWEEN $1::date AND $2::date
       GROUP BY motivo_atc, dia ORDER BY motivo_atc, dia
-    `, baseParams);
+    `, [desde, hasta]);
 
     const atcTotRes = await pool.query(`
       SELECT motivo_atc, SUM(cantidad) AS cantidad FROM public.mv_monitoreo_atc
-      WHERE fecha >= $1::date AND fecha <= $2::date
-      GROUP BY motivo_atc ORDER BY cantidad DESC
-    `, baseParams);
+      WHERE fecha BETWEEN $1::date AND $2::date GROUP BY motivo_atc ORDER BY cantidad DESC
+    `, [desde, hasta]);
 
-    // Canales disponibles
     const origenesDispRes = await pool.query(`
       SELECT DISTINCT b_origen FROM public.mestra_bitrix
-      WHERE b_creado_el_fecha >= $1 AND b_creado_el_fecha <= $2
-        AND b_origen IS NOT NULL AND b_origen <> '' AND j_id_bitrix IS NULL
+      WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+        AND b_origen IS NOT NULL AND b_origen<>'' AND j_id_bitrix IS NULL
       ORDER BY b_origen ASC
-    `, baseParams);
+    `, [desde, hasta]);
 
     const gruposEncontrados = new Set();
     origenesDispRes.rows.forEach(r => {
-      const up = (r.b_origen || '').toUpperCase();
-      const g = ORIGEN_A_CANAL_INV[up] || ORIGEN_A_CANAL_INV[r.b_origen];
+      const origenRaw = (r.b_origen||'').trim();
+      const g = ORIGEN_A_CANAL_INV[origenRaw] || ORIGEN_A_CANAL_INV[origenRaw.toUpperCase()];
       if (g) gruposEncontrados.add(g);
     });
-    const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] || [] }));
+    const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g]||[] }));
 
-    // Días del mes
     const diasMes = [];
     const DIAS_NOMBRE = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
-    for (let d = 1; d <= ultimoDia; d++) {
-      diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y, m-1, d).getDay()] });
-    }
+    for (let d=1; d<=ultimoDia; d++) diasMes.push({ dia: d, nombre: DIAS_NOMBRE[new Date(y,m-1,d).getDay()] });
 
-    // Combinar finalArray
     const invMap = {};
-    inversionRes.rows.forEach(r => { const dia=Number(r.dia); invMap[dia]={dia,inversion_usd:Number(r.inversion_usd||0)}; });
+    inversionRes.rows.forEach(r => { const dia=Number(r.dia); invMap[dia]={ dia, inversion_usd: Number(r.inversion_usd||0) }; });
     etapasRes.rows.forEach(r => {
       const dia=Number(r.dia);
-      if (!invMap[dia]) invMap[dia]={dia,inversion_usd:0};
+      if (!invMap[dia]) invMap[dia]={ dia, inversion_usd:0 };
       const sac=Number(r.atc_soporte||0)+Number(r.fuera_cobertura||0)+Number(r.zonas_peligrosas||0)+Number(r.innegociable||0);
-      invMap[dia].n_leads=Number(r.total_leads||0);
-      invMap[dia].negociables=Math.max(0,Number(r.total_leads||0)-sac);
-      invMap[dia].venta_subida=Number(r.venta_subida||0);
+      invMap[dia].n_leads=Number(r.total_leads||0); invMap[dia].negociables=Math.max(0,Number(r.total_leads||0)-sac); invMap[dia].venta_subida=Number(r.venta_subida||0);
     });
     jotDenomsRes.rows.forEach(r => {
       const dia=Number(r.dia);
-      if (!invMap[dia]) invMap[dia]={dia,inversion_usd:0};
-      invMap[dia].activos_mes=Number(r.activos_mes||0);
-      invMap[dia].activo_backlog=Number(r.activo_backlog||0);
-      invMap[dia].ingreso_jot=Number(r.ingreso_jot||0);
-      invMap[dia].ingreso_bitrix=Number(r.ingreso_bitrix_mismo_dia||0);
-      invMap[dia].preplaneados=Number(r.preplaneados||0);
-      invMap[dia].asignados=Number(r.asignados||0);
-      invMap[dia].preservicio=Number(r.preservicio||0);
+      if (!invMap[dia]) invMap[dia]={ dia, inversion_usd:0 };
+      invMap[dia].activos_mes=Number(r.activos_mes||0); invMap[dia].activo_backlog=Number(r.activo_backlog||0);
+      invMap[dia].ingreso_jot=Number(r.ingreso_jot||0); invMap[dia].ingreso_bitrix=Number(r.ingreso_bitrix_mismo_dia||0);
+      invMap[dia].preplaneados=Number(r.preplaneados||0); invMap[dia].asignados=Number(r.asignados||0); invMap[dia].preservicio=Number(r.preservicio||0);
     });
-    const allDaysMap={};
-    for(let d=1;d<=ultimoDia;d++){
-      allDaysMap[d]={dia:d,inversion_usd:0,n_leads:0,venta_subida:0,negociables:0,activos_mes:0,activo_backlog:0,ingreso_jot:0,ingreso_bitrix:0,preplaneados:0,asignados:0,preservicio:0};
-    }
-    Object.values(invMap).forEach(day=>{allDaysMap[day.dia]={...allDaysMap[day.dia],...day};});
-    const finalArray=Object.values(allDaysMap).sort((a,b)=>a.dia-b.dia);
+    const allDaysMap = {};
+    for (let d=1; d<=ultimoDia; d++) allDaysMap[d]={ dia:d, inversion_usd:0, n_leads:0, venta_subida:0, negociables:0, activos_mes:0, activo_backlog:0, ingreso_jot:0, ingreso_bitrix:0, preplaneados:0, asignados:0, preservicio:0 };
+    Object.values(invMap).forEach(day => { allDaysMap[day.dia]={ ...allDaysMap[day.dia], ...day }; });
+    const finalArray = Object.values(allDaysMap).sort((a,b)=>a.dia-b.dia);
 
     res.json({
       success: true,
       meta: { anio: y, mes: m, dias: diasMes },
       canales_disponibles: canalesDisponibles,
-      inversion: finalArray,
-      etapas: etapasRes.rows,
-      status_jot: statusJotRes.rows,
-      pago: pagoRes.rows,
-      ciudad: ciudadRes.rows,
-      ciudad_dia: ciudadDiaRes.rows,
-      hora: horaRes.rows,
-      hora_dia: horaDiaRes.rows,
-      ciclo: cicloRes.rows,
-      atc_motivos: atcRes.rows,
-      atc_totales: atcTotRes.rows,
+      inversion: finalArray, etapas: etapasRes.rows, status_jot: statusJotRes.rows,
+      pago: pagoRes.rows, ciudad: ciudadRes.rows, ciudad_dia: ciudadDiaRes.rows,
+      hora: horaRes.rows, hora_dia: horaDiaRes.rows, ciclo: cicloRes.rows,
+      atc_motivos: atcRes.rows, atc_totales: atcTotRes.rows,
     });
   } catch (error) {
     console.error('Error en getReporteData:', error);

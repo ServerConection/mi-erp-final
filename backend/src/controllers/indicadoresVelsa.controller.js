@@ -14,6 +14,10 @@ const getPrimerDiaMesEcuador = () => {
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 const dedupVN = `public.velsa_netlife_maestra_cons vn`;
 
+// FIX: los valores reales de t2_estado_venta_netlife son texto directo (no catálogo codificado)
+// ACTIVO = 'ACTIVO', confirmado en BD
+const ESTADO_ACTIVO = `'ACTIVO'`;
+
 const getIndicadoresDashboardVelsa = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
@@ -25,33 +29,14 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         let values = [desde, hasta];
         let filters = "";
 
-        if (asesor) {
-            values.push(`%${asesor}%`);
-            filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`;
-        }
-        if (supervisor) {
-            values.push(`%${supervisor}%`);
-            filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`;
-        }
-        if (estadoNetlife) {
-            values.push(`%${estadoNetlife}%`);
-            filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`;
-        }
-        if (estadoRegularizacion) {
-            values.push(`%${estadoRegularizacion}%`);
-            filters += ` AND vn.t2_regularizado ILIKE $${values.length}`;
-        }
-        if (etapaCRM) {
-            values.push(`%${etapaCRM}%`);
-            filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`;
-        }
-        if (etapaJotform) {
-            values.push(`%${etapaJotform}%`);
-            filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`;
-        }
+        if (asesor) { values.push(`%${asesor}%`); filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`; }
+        if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
+        if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
+        if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND vn.t2_regularizado ILIKE $${values.length}`; }
+        if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
+        if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
 
-     const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-
+        const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
         const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
         const queryKPI = (columna) => `
@@ -81,17 +66,18 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS ingresos_reales,
+                -- FIX: usar valor real 'ACTIVO' confirmado en BD
                 COUNT(*) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS activas,
                 COUNT(*) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS real_mes,
                 COUNT(*) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = 'ACTIVO'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 COUNT(*) FILTER (
@@ -100,7 +86,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 ) AS tarjeta_credito,
                 COUNT(*) FILTER (
                     WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                    AND vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                     AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                 ) AS tercera_edad,
                 (COUNT(*) FILTER (
@@ -126,11 +112,11 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = 'ACTIVO')::numeric
+                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = 'ACTIVO')::numeric
+                    COUNT(*) FILTER (WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
                             OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
@@ -156,12 +142,14 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             ORDER BY gestionables DESC
         `;
 
+        // FIX BACKLOG: usa t2_estado_venta_netlife = 'ACTIVO' (valor real confirmado)
+        // Backlog = ACTIVO pero activación futura (aún no se activa en el período)
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM ${dedupVN}
-            WHERE vn.t2_estado_venta_netlife = 'ACTIVO'
+            WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
             AND vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
             AND vn.t2_jot_created_at_fecha::date < $1::date
@@ -189,7 +177,8 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 vn.t2_ciudad                     AS "CIUDAD",
                 vn.t2_estado_venta_netlife       AS "ESTADO_NETLIFE",
                 vn.t2_jot_created_at_fecha       AS "FECHA_JOT",
-                vn.t2_regularizado               AS "ESTADO_REGULARIZACION"
+                vn.t2_regularizado               AS "ESTADO_REGULARIZACION",
+                vn.t2_observacion_auditoria      AS "OBSERVACION_AUDITORIA"
             FROM ${dedupVN}
             WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
             ${filters}
@@ -204,9 +193,9 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 vn.t2_fecha_activacion_telcos    AS "FECHA_ACTIVACION",
                 vn.t2_clausulas                  AS "NOVEDADES_ATC",
                 vn.t2_regularizado               AS "ESTADO_REGULARIZACION",
-                vn.t2_detalle_regularazado       as "OBSERVACION_REGULARIZADO",
+                vn.t2_detalle_regularazado       AS "OBSERVACION_REGULARIZADO",
                 vn.t2_estado_regularizacion_novo AS "MOTIVO_REGULARIZAR",
-                vn.t2_observacion_auditoria      AS "OBSERVACION AUDITORIA",
+                vn.t2_observacion_auditoria      AS "OBSERVACION_AUDITORIA",
                 vn.t2_forma_pago                 AS "FORMA_PAGO",
                 vn.t1_assigned_to                AS "ASESOR",
                 vn.supervisor_asignado           AS "SUPERVISOR_ASIGNADO",
@@ -267,10 +256,10 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                    AND vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_tercera_edad,
                 COUNT(*) FILTER (
-                    WHERE vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                    WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_activos
             FROM ${dedupVN}
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
@@ -313,22 +302,17 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
         const asesoresConBacklog     = mergeBacklog(resAses.rows, resBacklogAses.rows);
 
-        const estadosNetlife = resEstados.rows.map(r => ({
-            estado: r.estado,
-            total:  Number(r.total || 0),
-        }));
+        const estadosNetlife = resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total || 0) }));
 
         const rowTercera          = resTerceraEdad.rows[0] || {};
         const totalTerceraEdad    = Number(rowTercera.total_tercera_edad || 0);
         const totalActivosTercera = Number(rowTercera.total_activos || 0);
-        const porcentajeTerceraEdad = totalActivosTercera > 0
-            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+        const porcentajeTerceraEdad = totalActivosTercera > 0 ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
 
         const rowTarjeta          = resTarjeta.rows[0] || {};
         const totalTarjeta        = Number(rowTarjeta.total_tarjeta || 0);
         const totalJotformTarjeta = Number(rowTarjeta.total_jotform || 0);
-        const porcentajeTarjeta   = totalJotformTarjeta > 0
-            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+        const porcentajeTarjeta   = totalJotformTarjeta > 0 ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
@@ -363,8 +347,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
 
         console.log(`[MONITOREO VELSA] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-    const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-
+        const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
         const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
         const queryMonitoreo = (columna) => `
@@ -440,11 +423,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
         const mergeJot = (filas, jotRows) => {
             return filas.map(row => {
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
-                return {
-                    ...row,
-                    v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0,
-                    real_efectividad: jot ? Number(jot.real_efectividad)  : 0,
-                };
+                return { ...row, v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0, real_efectividad: jot ? Number(jot.real_efectividad) : 0 };
             });
         };
 
@@ -453,11 +432,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
 
         console.log(`[MONITOREO VELSA] Supervisores: ${supervisoresFinal.length} | Asesores: ${asesoresFinal.length}`);
 
-        res.json({
-            success: true,
-            supervisores: supervisoresFinal,
-            asesores: asesoresFinal,
-        });
+        res.json({ success: true, supervisores: supervisoresFinal, asesores: asesoresFinal });
 
     } catch (error) {
         console.error("ERROR MONITOREO VELSA:", error);
@@ -479,33 +454,14 @@ const getReporte180Velsa = async (req, res) => {
         let values  = [desde, hasta];
         let filters = "";
 
-        if (asesor) {
-            values.push(`%${asesor}%`);
-            filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`;
-        }
-        if (supervisor) {
-            values.push(`%${supervisor}%`);
-            filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`;
-        }
-        if (estadoNetlife) {
-            values.push(`%${estadoNetlife}%`);
-            filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`;
-        }
-        if (estadoRegularizacion) {
-            values.push(`%${estadoRegularizacion}%`);
-            filters += ` AND vn.t2_regularizado ILIKE $${values.length}`;
-        }
-        if (etapaCRM) {
-            values.push(`%${etapaCRM}%`);
-            filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`;
-        }
-        if (etapaJotform) {
-            values.push(`%${etapaJotform}%`);
-            filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`;
-        }
+        if (asesor) { values.push(`%${asesor}%`); filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`; }
+        if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
+        if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
+        if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND vn.t2_regularizado ILIKE $${values.length}`; }
+        if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
+        if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-
         const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
         const queryKPIs = `
@@ -515,7 +471,7 @@ const getReporte180Velsa = async (req, res) => {
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
                     WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS ventas_activas,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
@@ -541,11 +497,11 @@ const getReporte180Velsa = async (req, res) => {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                        AND vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                        AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                         AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE vn.t2_estado_venta_netlife ILIKE '%ACTIVO%'
+                        WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
                         AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad

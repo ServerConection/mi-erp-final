@@ -204,8 +204,9 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 vn.t2_fecha_activacion_telcos    AS "FECHA_ACTIVACION",
                 vn.t2_clausulas                  AS "NOVEDADES_ATC",
                 vn.t2_regularizado               AS "ESTADO_REGULARIZACION",
-                vn-t2_detalle_regularazado       as "OBSERVACION_REGULARIZADO",
-              
+                vn.t2_detalle_regularazado       as "OBSERVACION_REGULARIZADO",
+                vn.t2_estado_regularizacion_novo AS "MOTIVO_REGULARIZAR",
+                vn.t2_observacion_auditoria      AS "OBSERVACION AUDITORIA"
                 vn.t2_forma_pago                 AS "FORMA_PAGO",
                 vn.t1_assigned_to                AS "ASESOR",
                 vn.supervisor_asignado           AS "SUPERVISOR_ASIGNADO",

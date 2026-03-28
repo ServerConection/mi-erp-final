@@ -1266,53 +1266,176 @@ function colorDiff(diff, invertir) {
 }
 
 function buildFilas(canal, metas) {
-  // Valores del backend — usar los pre-calculados si existen, calcular si no
-  const leads  = n(canal.total_leads);
-  const sac    = n(canal.leads_sac);
-  const calidad = n(canal.leads_calidad);
-  const ventas = n(canal.venta_subida);
-  const jot    = n(canal.ingreso_jot);
-  const inv    = n(canal.inversion_usd);
+  // Leer todos los valores con fallback a 0
+  const leads   = Math.max(0, n(canal.total_leads));
+  const sac     = Math.max(0, n(canal.leads_sac));
+  const calidad = Math.max(0, n(canal.leads_calidad));
+  const ventas  = Math.max(0, n(canal.venta_subida));
+  const jot     = Math.max(0, n(canal.ingreso_jot));
+  const inv     = Math.max(0, n(canal.inversion_usd));
 
+  // Porcentajes — siempre finitos
   const pS = leads > 0 ? (sac    / leads) * 100 : 0;
   const pC = leads > 0 ? (calidad / leads) * 100 : 0;
   const pV = leads > 0 ? (ventas  / leads) * 100 : 0;
   const pJ = leads > 0 ? (jot    / leads) * 100 : 0;
 
-  // Preferir valores pre-calculados del backend si son finitos
-  const _cplR  = canal.cpl    != null && isFinite(canal.cpl)    ? canal.cpl    : (leads > 0 && inv > 0 ? inv / leads   : null);
-  const _cplGR = canal.cpl_gest != null && isFinite(canal.cpl_gest) ? canal.cpl_gest : (calidad > 0 && inv > 0 ? inv / calidad : null);
-  const _cpaR  = canal.cpa    != null && isFinite(canal.cpa)    ? canal.cpa    : (ventas  > 0 && inv > 0 ? inv / ventas  : null);
-  const _cpaJR = canal.cpa_jot != null && isFinite(canal.cpa_jot) ? canal.cpa_jot : (jot > 0 && inv > 0 ? inv / jot    : null);
+  // CPL/CPA — usar pre-calculados del backend o calcular, nunca Infinity/NaN
+  const toSafe = (v) => (v !== null && v !== undefined && isFinite(Number(v)) && Number(v) > 0) ? Number(v) : null;
+  const cplR  = toSafe(canal.cpl)     ?? (leads > 0   && inv > 0 ? inv / leads   : null);
+  const cplGR = toSafe(canal.cpl_gest)?? (calidad > 0 && inv > 0 ? inv / calidad : null);
+  const cpaR  = toSafe(canal.cpa)     ?? (ventas > 0  && inv > 0 ? inv / ventas  : null);
+  const cpaJR = toSafe(canal.cpa_jot) ?? (jot > 0     && inv > 0 ? inv / jot     : null);
 
-  const cplR  = _cplR  !== null && isFinite(_cplR)  ? _cplR  : null;
-  const cplGR = _cplGR !== null && isFinite(_cplGR) ? _cplGR : null;
-  const cpaR  = _cpaR  !== null && isFinite(_cpaR)  ? _cpaR  : null;
-  const cpaJR = _cpaJR !== null && isFinite(_cpaJR) ? _cpaJR : null;
+  // Metas — siempre números
+  const mL   = n(metas.leads_totales);
+  const mS   = n(metas.pct_sac);
+  const mC   = n(metas.pct_calidad);
+  const mV   = n(metas.pct_ventas);
+  const mJ   = n(metas.pct_ventas_jot);
+  const mP   = n(metas.presupuesto);
+  const mCtr = n(metas.ctr);
+  const mCpl = n(metas.cpl);
+  const mCplG = n(metas.cpl_gest);
+  const mCpa  = n(metas.cpa);
+  const mCpaJ = n(metas.cpa_jot);
 
-  const mL = n(metas.leads_totales), mS = n(metas.pct_sac), mC = n(metas.pct_calidad);
-  const mV = n(metas.pct_ventas), mJ = n(metas.pct_ventas_jot), mP = n(metas.presupuesto);
-  const mCtr = n(metas.ctr), mCpl = n(metas.cpl), mCplG = n(metas.cpl_gest);
-  const mCpa = n(metas.cpa), mCpaJ = n(metas.cpa_jot);
-
-  // Helper seguro: diferencia con guarda
-  const d  = (l, m) => (m > 0 && l !== null && isFinite(l)) ? l - m : null;
-  const p  = (l, m) => (m > 0 && l !== null && isFinite(l)) ? (l / m) * 100 : null;
-  const fD = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—";
+  // Helpers seguros
+  const safe  = (v) => (v !== null && isFinite(v)) ? v : null;
+  const diff  = (logro, meta) => (meta > 0 && logro !== null && isFinite(logro)) ? logro - meta : null;
+  const prog  = (logro, meta) => (meta > 0 && logro !== null && isFinite(logro)) ? (logro / meta) * 100 : null;
+  const fmtPt = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—";
+  const fmtN  = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${Math.round(v)}` : "—";
+  const fmtU  = (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—";
 
   return [
-    { label: "LEADS TOTALES",    obj: mL > 0 ? mL : null, logro: leads,   diff: d(leads, mL),   pct: p(leads, mL),    sub: null, fmtO: (v) => String(Math.round(v)), fmtL: (v) => String(Math.round(v)), fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${Math.round(v)}` : "—", fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: false },
-    { label: "SAC / ATC",        obj: mS > 0 ? mS : null, logro: sac,    diff: d(pS, mS),      pct: mS > 0 ? pS - mS : null, sub: `${pS.toFixed(1)}%`, fmtO: (v) => `${n(v).toFixed(1)}%`, fmtL: (v) => String(Math.round(v)), fmtD, fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: true },
-    { label: "LEADS CALIDAD",    obj: mC > 0 ? mC : null, logro: calidad, diff: d(pC, mC),     pct: mC > 0 ? pC - mC : null, sub: `${pC.toFixed(1)}%`, fmtO: (v) => `${n(v).toFixed(1)}%`, fmtL: (v) => String(Math.round(v)), fmtD, fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: false },
-    { label: "VENTAS BITRIX",    obj: mV > 0 ? mV : null, logro: ventas,  diff: d(pV, mV),     pct: mV > 0 ? pV - mV : null, sub: `${pV.toFixed(1)}%`, fmtO: (v) => `${n(v).toFixed(1)}%`, fmtL: (v) => String(Math.round(v)), fmtD, fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: false },
-    { label: "VENTAS JOT",       obj: mJ > 0 ? mJ : null, logro: jot,    diff: d(pJ, mJ),      pct: mJ > 0 ? pJ - mJ : null, sub: `${pJ.toFixed(1)}%`, fmtO: (v) => `${n(v).toFixed(1)}%`, fmtL: (v) => String(Math.round(v)), fmtD, fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: false },
-    { label: "PRESUPUESTO",      obj: mP > 0 ? mP : null, logro: inv > 0 ? inv : null, diff: mP > 0 && inv > 0 ? inv - mP : null, pct: mP > 0 && inv > 0 ? (inv / mP) * 100 : null, sub: null, fmtO: fmtUsd2, fmtL: fmtUsd2, fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—", fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—", inv: true, bg: "bg-violet-50" },
-    { label: "PRESUPUESTO +10%", obj: mP > 0 ? mP * 1.1 : null, logro: inv > 0 ? inv : null, diff: null, pct: null, sub: null, fmtO: fmtUsd2, fmtL: fmtUsd2, fmtD: () => "—", fmtP: () => "—", inv: false, bg: "bg-violet-50" },
-    { label: "CTR",              obj: mCtr > 0 ? mCtr : null, logro: null, diff: null, pct: null, sub: null, fmtO: (v) => `${n(v).toFixed(1)}%`, fmtL: () => "—", fmtD: () => "—", fmtP: () => "—", inv: false, manual: true },
-    { label: "CPL",              obj: mCpl > 0 ? mCpl : null, logro: cplR,  diff: mCpl > 0 && cplR !== null ? cplR - mCpl : null,   pct: null, sub: null, fmtO: fmtUsd2, fmtL: (v) => v !== null ? fmtUsd2(v) : "—", fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—", fmtP: () => "—", inv: true },
-    { label: "CPL GESTIONABLE",  obj: mCplG > 0 ? mCplG : null, logro: cplGR, diff: mCplG > 0 && cplGR !== null ? cplGR - mCplG : null, pct: null, sub: null, fmtO: fmtUsd2, fmtL: (v) => v !== null ? fmtUsd2(v) : "—", fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—", fmtP: () => "—", inv: true },
-    { label: "CPA BITRIX",       obj: mCpa > 0 ? mCpa : null, logro: cpaR,  diff: mCpa > 0 && cpaR !== null ? cpaR - mCpa : null,   pct: null, sub: null, fmtO: fmtUsd2, fmtL: (v) => v !== null ? fmtUsd2(v) : "—", fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—", fmtP: () => "—", inv: true },
-    { label: "CPA JOT",          obj: mCpaJ > 0 ? mCpaJ : null, logro: cpaJR, diff: mCpaJ > 0 && cpaJR !== null ? cpaJR - mCpaJ : null, pct: null, sub: null, fmtO: fmtUsd2, fmtL: (v) => v !== null ? fmtUsd2(v) : "—", fmtD: (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—", fmtP: () => "—", inv: true },
+    {
+      label: "LEADS TOTALES", inv: false,
+      obj:   mL > 0 ? mL : null,
+      logro: leads,
+      diff:  diff(leads, mL),
+      pct:   prog(leads, mL),
+      sub:   null,
+      fmtO: (v) => String(Math.round(n(v))),
+      fmtL: (v) => String(Math.round(n(v))),
+      fmtD: fmtN,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "SAC / ATC", inv: true,
+      obj:   mS > 0 ? mS : null,
+      logro: sac,
+      diff:  diff(pS, mS),
+      pct:   mS > 0 ? pS - mS : null,
+      sub:   `${pS.toFixed(1)}%`,
+      fmtO: (v) => `${n(v).toFixed(1)}%`,
+      fmtL: (v) => String(Math.round(n(v))),
+      fmtD: fmtPt,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "LEADS CALIDAD", inv: false,
+      obj:   mC > 0 ? mC : null,
+      logro: calidad,
+      diff:  diff(pC, mC),
+      pct:   mC > 0 ? pC - mC : null,
+      sub:   `${pC.toFixed(1)}%`,
+      fmtO: (v) => `${n(v).toFixed(1)}%`,
+      fmtL: (v) => String(Math.round(n(v))),
+      fmtD: fmtPt,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "VENTAS BITRIX", inv: false,
+      obj:   mV > 0 ? mV : null,
+      logro: ventas,
+      diff:  diff(pV, mV),
+      pct:   mV > 0 ? pV - mV : null,
+      sub:   `${pV.toFixed(1)}%`,
+      fmtO: (v) => `${n(v).toFixed(1)}%`,
+      fmtL: (v) => String(Math.round(n(v))),
+      fmtD: fmtPt,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "VENTAS JOT", inv: false,
+      obj:   mJ > 0 ? mJ : null,
+      logro: jot,
+      diff:  diff(pJ, mJ),
+      pct:   mJ > 0 ? pJ - mJ : null,
+      sub:   `${pJ.toFixed(1)}%`,
+      fmtO: (v) => `${n(v).toFixed(1)}%`,
+      fmtL: (v) => String(Math.round(n(v))),
+      fmtD: fmtPt,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "PRESUPUESTO", inv: true, bg: "bg-violet-50",
+      obj:   mP > 0 ? mP : null,
+      logro: inv > 0 ? inv : null,
+      diff:  mP > 0 && inv > 0 ? inv - mP : null,
+      pct:   mP > 0 && inv > 0 ? (inv / mP) * 100 : null,
+      sub:   null,
+      fmtO: fmtUsd2,
+      fmtL: fmtUsd2,
+      fmtD: fmtU,
+      fmtP: (v) => isFinite(v) ? `${v.toFixed(1)}%` : "—",
+    },
+    {
+      label: "PRESUPUESTO +10%", inv: false, bg: "bg-violet-50",
+      obj:   mP > 0 ? mP * 1.1 : null,
+      logro: inv > 0 ? inv : null,
+      diff:  null, pct: null, sub: null,
+      fmtO: fmtUsd2, fmtL: fmtUsd2,
+      fmtD: () => "—", fmtP: () => "—",
+    },
+    {
+      label: "CTR", inv: false, manual: true,
+      obj:   mCtr > 0 ? mCtr : null,
+      logro: null, diff: null, pct: null, sub: null,
+      fmtO: (v) => `${n(v).toFixed(1)}%`,
+      fmtL: () => "—", fmtD: () => "—", fmtP: () => "—",
+    },
+    {
+      label: "CPL", inv: true,
+      obj:   mCpl > 0 ? mCpl : null,
+      logro: cplR,
+      diff:  mCpl > 0 && cplR !== null ? cplR - mCpl : null,
+      pct:   null, sub: null,
+      fmtO: fmtUsd2,
+      fmtL: (v) => v !== null ? fmtUsd2(v) : "—",
+      fmtD: fmtU, fmtP: () => "—",
+    },
+    {
+      label: "CPL GESTIONABLE", inv: true,
+      obj:   mCplG > 0 ? mCplG : null,
+      logro: cplGR,
+      diff:  mCplG > 0 && cplGR !== null ? cplGR - mCplG : null,
+      pct:   null, sub: null,
+      fmtO: fmtUsd2,
+      fmtL: (v) => v !== null ? fmtUsd2(v) : "—",
+      fmtD: fmtU, fmtP: () => "—",
+    },
+    {
+      label: "CPA BITRIX", inv: true,
+      obj:   mCpa > 0 ? mCpa : null,
+      logro: cpaR,
+      diff:  mCpa > 0 && cpaR !== null ? cpaR - mCpa : null,
+      pct:   null, sub: null,
+      fmtO: fmtUsd2,
+      fmtL: (v) => v !== null ? fmtUsd2(v) : "—",
+      fmtD: fmtU, fmtP: () => "—",
+    },
+    {
+      label: "CPA JOT", inv: true,
+      obj:   mCpaJ > 0 ? mCpaJ : null,
+      logro: cpaJR,
+      diff:  mCpaJ > 0 && cpaJR !== null ? cpaJR - mCpaJ : null,
+      pct:   null, sub: null,
+      fmtO: fmtUsd2,
+      fmtL: (v) => v !== null ? fmtUsd2(v) : "—",
+      fmtD: fmtU, fmtP: () => "—",
+    },
   ];
 }
 
@@ -1394,9 +1517,7 @@ function MetaFilaVisual({ f }) {
 function MetasCanalResumen({ canal, metas, cfg }) {
   // Guard: si canal no tiene datos válidos, no renderizar
   if (!canal || !canal.canal) return null;
-
-  let filas = [];
-  try { filas = buildFilas(canal, metas); } catch (e) { return null; }
+  const filas = buildFilas(canal, metas);
 
   const filasConMeta = filas.filter(f =>
     f.obj !== null && f.obj > 0 &&
@@ -1601,9 +1722,8 @@ function TabMetas({ filtro }) {
         const cNombre = canal.canal, cfg = getCfg(cNombre);
         const lineasCanal = (canalesDisp.find(c => c.canal === cNombre)?.lineas) || canal.lineas || [];
 
-        // Proteger buildFilas contra datos inesperados del backend
-        let filas = [];
-        try { filas = buildFilas(canal, metas); } catch (e) { filas = []; }
+        // buildFilas ahora es robusta — no necesita try/catch
+        const filas = buildFilas(canal, metas);
         return (
           <Card key={cNombre}>
             <CardHeader title={cfg.label || cNombre} subtitle={`${desde} → ${hasta}`} accent={cfg.color}

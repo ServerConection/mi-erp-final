@@ -34,6 +34,7 @@ const ORIGEN_CANAL = {
   "BASE 593-992827793":                   "ARTS GOOGLE",
   "FORMULARIO LANDING 3":                 "ARTS GOOGLE",
   "LLAMADA LANDING 3":                    "ARTS GOOGLE",
+  "FOMULARIO LANDING 3": "ARTS GOOGLE", 
   "POR RECOMENDACIÓN":                    "POR RECOMENDACIÓN",
   "REFERIDO PERSONAL":                    "POR RECOMENDACIÓN",
   "TIENDA ONLINE":                        "POR RECOMENDACIÓN",

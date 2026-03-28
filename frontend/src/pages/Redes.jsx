@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import TabReporteData    from "./TabReporteData";
 import TabAnalisisPautas from "./TabAnalisisPautas";
+import TabComparativo    from "./TabComparativo";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -1793,6 +1794,7 @@ const TABS = [
   { id: "general",      label: "Monitoreo General", icon: "📊" },
   { id: "graficos",     label: "Gráficos Gerencia",  icon: "📈" },
   { id: "metas",        label: "Metas vs Logros",    icon: "🎯" },
+  { id: "comparativo",  label: "Comparativo",        icon: "🔀" },
   { id: "pautas",       label: "Análisis Pautas",    icon: "🔬" },
   { id: "reporte",      label: "Reporte Data",        icon: "📑" },
   { id: "proximamente", label: "Próximamente",         icon: "🚀" },
@@ -1868,6 +1870,7 @@ export default function Redes() {
       {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
       {tab === "graficos"     && <TabGraficos         data={data} loading={loading} />}
       {tab === "metas"        && <TabMetas            filtro={filtro} />}
+      {tab === "comparativo"  && <TabComparativo      filtro={filtro} />}
       {tab === "pautas"       && <TabAnalisisPautas   filtro={filtro} />}
       {tab === "reporte"      && <TabReporteData      filtro={filtro} />}
       {tab === "proximamente" && (

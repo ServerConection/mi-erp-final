@@ -6,7 +6,7 @@ import {
   ComposedChart, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer,
+  ResponsiveContainer, LabelList,
 } from "recharts";
 import TabReporteData from "./TabReporteData";
 
@@ -34,7 +34,6 @@ const ORIGEN_CANAL = {
   "BASE 593-992827793":                   "ARTS GOOGLE",
   "FORMULARIO LANDING 3":                 "ARTS GOOGLE",
   "LLAMADA LANDING 3":                    "ARTS GOOGLE",
-  "FOMULARIO LANDING 3": "ARTS GOOGLE", 
   "POR RECOMENDACIÓN":                    "POR RECOMENDACIÓN",
   "REFERIDO PERSONAL":                    "POR RECOMENDACIÓN",
   "TIENDA ONLINE":                        "POR RECOMENDACIÓN",
@@ -679,8 +678,12 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
           label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 8, fill: C.muted, dy: -20 }} />
         <Tooltip content={<CustomTooltip />} />
         <Legend wrapperStyle={{ fontSize: 9 }} />
-        <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3, 3, 0, 0]} barSize={20} />
-        <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida total" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3, 3, 0, 0]} barSize={20} />
+        <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3, 3, 0, 0]} barSize={20}>
+          <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida total" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3, 3, 0, 0]} barSize={20}>
+          <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""} />
+        </Bar>
         {canalesPresentes.map((canal) => (
           <Line key={canal} yAxisId="jot" type="monotone" dataKey={`JOT·${getCfg(canal).label}`}
             stroke={getCfg(canal).color} strokeWidth={2.5}
@@ -705,16 +708,17 @@ function TabMonitoreoGeneral({ data, loading }) {
   const filasAgr = agregarPorCanalDia(rawFilas);
   const porCanal = agregarPorCanal(rawFilas);
 
-  const totalLeads = porCanal.reduce((s, c) => s + c.n_leads, 0);
-  const totalAct   = porCanal.reduce((s, c) => s + c.activos_mes, 0);
-  const totalJot   = porCanal.reduce((s, c) => s + c.ingreso_jot, 0);
-  const totalInv   = porCanal.reduce((s, c) => s + c.inversion_usd, 0);
-  const totalNeg   = porCanal.reduce((s, c) => s + c.negociables, 0);
-  const totalVta   = porCanal.reduce((s, c) => s + c.venta_subida_bitrix, 0);
-  const totalAtc   = porCanal.reduce((s, c) => s + c.atc_soporte, 0);
-  const efect      = totalLeads > 0 ? (totalAct / totalLeads) * 100 : 0;
-  const pctAtcGral = totalLeads > 0 ? (totalAtc / totalLeads) * 100 : 0;
-  const cplGral    = totalLeads > 0 && totalInv > 0 ? totalInv / totalLeads : null;
+  const totalLeads   = porCanal.reduce((s, c) => s + c.n_leads, 0);
+  const totalAct     = porCanal.reduce((s, c) => s + c.activos_mes, 0);
+  const totalJot     = porCanal.reduce((s, c) => s + c.ingreso_jot, 0);
+  const totalInv     = porCanal.reduce((s, c) => s + c.inversion_usd, 0);
+  const totalNeg     = porCanal.reduce((s, c) => s + c.negociables, 0);
+  const totalVta     = porCanal.reduce((s, c) => s + c.venta_subida_bitrix, 0);
+  const totalAtc     = porCanal.reduce((s, c) => s + c.atc_soporte, 0);
+  const totalBacklog = filasAgr.reduce((s, r) => s + n(r.activo_backlog), 0);
+  const efect        = totalLeads > 0 ? (totalAct / totalLeads) * 100 : 0;
+  const pctAtcGral   = totalLeads > 0 ? (totalAtc / totalLeads) * 100 : 0;
+  const cplGral      = totalLeads > 0 && totalInv > 0 ? totalInv / totalLeads : null;
 
   const filasConCalc = filasAgr.map((r) => ({
     ...r,
@@ -748,7 +752,7 @@ function TabMonitoreoGeneral({ data, loading }) {
   return (
     <div className="space-y-6">
       {/* KPIs mejorados con sub-info */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="👥" color={C.primary}
           sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
         <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="🤝" color={C.success}
@@ -757,6 +761,8 @@ function TabMonitoreoGeneral({ data, loading }) {
           sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
         <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="✅" color={C.success}
           sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
+        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="📦" color={C.sky}
+          sub={totalAct > 0 ? `${((totalBacklog/(totalAct||1))*100).toFixed(0)}% vs activos` : "pendientes activar"} />
         <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="💰" color={C.violet}
           sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
         <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="📞" color={pctAtcGral > 40 ? C.danger : pctAtcGral > 20 ? C.warning : C.success}
@@ -1060,15 +1066,24 @@ function TabGraficos({ data, loading }) {
         </div>
       )}
 
-      <ChartCard title="Gestionables & Venta Subida por Canal" accent={C.success} height={250}>
-        <BarChart data={gestionBarData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+      <ChartCard title="Gestionables & Venta Subida por Canal" accent={C.success} height={260}>
+        <BarChart data={gestionBarData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
           <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} />
           <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
-          <Bar dataKey="Leads" radius={[4, 4, 0, 0]} opacity={0.35}>{gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}</Bar>
-          <Bar dataKey="Negociables" radius={[4, 4, 0, 0]} opacity={0.65}>{gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}</Bar>
-          <Bar dataKey="V. Subida" radius={[4, 4, 0, 0]}>{gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}</Bar>
+          <Bar dataKey="Leads" radius={[4, 4, 0, 0]} opacity={0.35}>
+            {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+            <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700, opacity: 0.6 }} formatter={(v) => v > 0 ? v : ""} />
+          </Bar>
+          <Bar dataKey="Negociables" radius={[4, 4, 0, 0]} opacity={0.65}>
+            {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+            <LabelList dataKey="Negociables" position="top" style={{ fontSize: 7, fontWeight: 700, opacity: 0.7 }} formatter={(v) => v > 0 ? v : ""} />
+          </Bar>
+          <Bar dataKey="V. Subida" radius={[4, 4, 0, 0]}>
+            {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+            <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fontWeight: 800 }} formatter={(v) => v > 0 ? v : ""} />
+          </Bar>
         </BarChart>
       </ChartCard>
 
@@ -1082,46 +1097,70 @@ function TabGraficos({ data, loading }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="% Efectividad vs % ATC" accent={C.warning} height={220}>
-          <LineChart data={diasData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <ChartCard title="% Efectividad vs % ATC" accent={C.warning} height={230}>
+          <LineChart data={diasData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
             <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 100]} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
-            <Line type="monotone" dataKey="% Efect" stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="% ATC" stroke={C.danger} strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="5 3" />
+            <Line type="monotone" dataKey="% Efect" stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }}>
+              <LabelList dataKey="% Efect" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={(v) => v > 0 ? `${v}%` : ""} />
+            </Line>
+            <Line type="monotone" dataKey="% ATC" stroke={C.danger} strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="5 3">
+              <LabelList dataKey="% ATC" position="bottom" style={{ fontSize: 7, fill: C.danger, fontWeight: 700 }} formatter={(v) => v > 0 ? `${v}%` : ""} />
+            </Line>
           </LineChart>
         </ChartCard>
-        <ChartCard title="Inversión & CPL Diario" accent={C.violet} height={220}>
-          <BarChart data={diasData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <ChartCard title="Inversión & CPL Diario" accent={C.violet} height={230}>
+          <BarChart data={diasData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
             <YAxis yAxisId="l" tick={{ fontSize: 9, fill: C.muted }} width={50} />
             <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={35} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
-            <Bar yAxisId="l" dataKey="Inv.$" fill={C.violet} radius={[4, 4, 0, 0]} opacity={0.8} />
-            <Line yAxisId="r" type="monotone" dataKey="CPL" stroke={C.warning} strokeWidth={2.5} dot={{ r: 3 }} />
+            <Bar yAxisId="l" dataKey="Inv.$" fill={C.violet} radius={[4, 4, 0, 0]} opacity={0.8}>
+              <LabelList dataKey="Inv.$" position="top" style={{ fontSize: 7, fill: C.violet, fontWeight: 700 }} formatter={(v) => v > 0 ? `$${v}` : ""} />
+            </Bar>
+            <Line yAxisId="r" type="monotone" dataKey="CPL" stroke={C.warning} strokeWidth={2.5} dot={{ r: 3 }}>
+              <LabelList dataKey="CPL" position="top" style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={(v) => v > 0 ? `$${v}` : ""} />
+            </Line>
           </BarChart>
         </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="Leads por Hora del Día" accent={C.cyan} height={220}>
-          <BarChart data={horaData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <ChartCard title="Leads por Hora del Día" accent={C.cyan} height={230}>
+          <BarChart data={horaData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="hora" tick={{ fontSize: 8, fill: C.muted }} />
             <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="Leads" radius={[4, 4, 0, 0]}>{horaData.map((d, i) => <Cell key={i} fill={d["Leads"] === maxL ? C.primary : "#93c5fd"} />)}</Bar>
+            <Bar dataKey="Leads" radius={[4, 4, 0, 0]}>
+              {horaData.map((d, i) => <Cell key={i} fill={d["Leads"] === maxL ? C.primary : "#93c5fd"} />)}
+              <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""}
+                content={({ x, y, width, value, index }) => {
+                  if (!value) return null;
+                  const isMax = horaData[index]?.["Leads"] === maxL;
+                  return <text x={x + width / 2} y={y - 3} textAnchor="middle" fontSize={7} fontWeight={isMax ? 800 : 600} fill={isMax ? C.primary : "#93c5fd"}>{value}</text>;
+                }} />
+            </Bar>
           </BarChart>
         </ChartCard>
-        <ChartCard title="Soporte ATC por Hora" accent={C.danger} height={220}>
-          <BarChart data={horaData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <ChartCard title="Soporte ATC por Hora" accent={C.danger} height={230}>
+          <BarChart data={horaData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="hora" tick={{ fontSize: 8, fill: C.muted }} />
             <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="ATC" radius={[4, 4, 0, 0]}>{horaData.map((d, i) => <Cell key={i} fill={d["ATC"] === maxA ? C.danger : "#fca5a5"} />)}</Bar>
+            <Bar dataKey="ATC" radius={[4, 4, 0, 0]}>
+              {horaData.map((d, i) => <Cell key={i} fill={d["ATC"] === maxA ? C.danger : "#fca5a5"} />)}
+              <LabelList dataKey="ATC" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""}
+                content={({ x, y, width, value, index }) => {
+                  if (!value) return null;
+                  const isMax = horaData[index]?.["ATC"] === maxA;
+                  return <text x={x + width / 2} y={y - 3} textAnchor="middle" fontSize={7} fontWeight={isMax ? 800 : 600} fill={isMax ? C.danger : "#fca5a5"}>{value}</text>;
+                }} />
+            </Bar>
           </BarChart>
         </ChartCard>
       </div>
@@ -1157,21 +1196,35 @@ function TabGraficos({ data, loading }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ChartCard title="Embudo de Conversión" accent={C.success} height={220}>
-          <BarChart data={embudo} layout="vertical" margin={{ top: 5, right: 30, left: 5, bottom: 5 }}>
+          <BarChart data={embudo} layout="vertical" margin={{ top: 5, right: 50, left: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
             <XAxis type="number" tick={{ fontSize: 9, fill: C.muted }} />
             <YAxis type="category" dataKey="e" tick={{ fontSize: 9, fill: C.muted }} width={80} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="v" radius={[0, 4, 4, 0]}>{embudo.map((_, i) => <Cell key={i} fill={embudoColors[i]} opacity={0.9} />)}</Bar>
+            <Bar dataKey="v" radius={[0, 4, 4, 0]}>
+              {embudo.map((_, i) => <Cell key={i} fill={embudoColors[i]} opacity={0.9} />)}
+              <LabelList dataKey="v" position="right" style={{ fontSize: 8, fontWeight: 800 }} formatter={(v) => v > 0 ? v : ""}
+                content={({ x, y, width, height, value, index }) => {
+                  if (!value) return null;
+                  return <text x={x + width + 5} y={y + height / 2 + 4} fontSize={8} fontWeight={800} fill={embudoColors[index]}>{value}</text>;
+                }} />
+            </Bar>
           </BarChart>
         </ChartCard>
         <ChartCard title="Ciclo de Venta" accent={C.warning} height={220}>
-          <BarChart data={cicloData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <BarChart data={cicloData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="c" tick={{ fontSize: 10, fill: C.muted }} />
             <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="v" radius={[4, 4, 0, 0]}>{cicloData.map((_, i) => <Cell key={i} fill={cicloColors[i]} opacity={0.9} />)}</Bar>
+            <Bar dataKey="v" radius={[4, 4, 0, 0]}>
+              {cicloData.map((_, i) => <Cell key={i} fill={cicloColors[i]} opacity={0.9} />)}
+              <LabelList dataKey="v" position="top" style={{ fontSize: 8, fontWeight: 800 }} formatter={(v) => v > 0 ? v : ""}
+                content={({ x, y, width, value, index }) => {
+                  if (!value) return null;
+                  return <text x={x + width / 2} y={y - 4} textAnchor="middle" fontSize={8} fontWeight={800} fill={cicloColors[index]}>{value}</text>;
+                }} />
+            </Bar>
           </BarChart>
         </ChartCard>
         <ChartCard title="Ranking Motivos ATC" accent={C.danger} height={220}>
@@ -1245,6 +1298,7 @@ function buildFilas(canal, metas) {
 // NUEVO: Fila de meta con barra de progreso visual
 function MetaFilaVisual({ f }) {
   const cD = f.diff !== null ? colorDiff(f.diff, f.inv) : C.muted;
+  const [hovered, setHovered] = useState(false);
   // Calcular progreso para barra
   const progreso = f.obj !== null && f.logro !== null
     ? Math.min((n(f.logro) / n(f.obj)) * 100, 150)
@@ -1254,10 +1308,15 @@ function MetaFilaVisual({ f }) {
       ? (progreso <= 100 ? C.success : C.danger)
       : (progreso >= 100 ? C.success : progreso >= 75 ? C.warning : C.danger);
   const progresoAncho = progreso !== null ? Math.min(progreso, 100) : 0;
+  // bg del row: violet-50 si es presupuesto, blanco si no
+  const rowBg = f.bg === "bg-violet-50" ? "#f5f3ff" : "#ffffff";
+  const rowBgHover = f.bg === "bg-violet-50" ? "#ede9fe" : "#f8fafc";
 
   return (
-    <tr className={`border-b transition-all ${f.bg || "bg-white"} hover:brightness-95`} style={{ borderColor: C.border }}>
-      <td className={`px-5 py-2.5 border-r ${f.bg || "bg-white"}`} style={{ borderColor: C.border }}>
+    <tr className="border-b transition-all"
+      style={{ borderColor: C.border, background: hovered ? rowBgHover : rowBg }}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <td className="px-5 py-2.5 border-r" style={{ borderColor: C.border, background: "inherit" }}>
         <div className="font-black text-[10px]" style={{ color: C.slate }}>{f.label}</div>
         {progreso !== null && (
           <div className="mt-1">

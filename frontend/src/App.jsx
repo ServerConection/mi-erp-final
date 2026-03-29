@@ -13,6 +13,7 @@ import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICAC
 import BroadcastPanel from "./pages/BroadcastPanel";  // <--- BROADCAST TV
 import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";  // <--- Guiaplanesmarzo TV
 import TVMode from "./pages/TVMode";                  // <--- TV FULLSCREEN
+import AppSheetModule from "./modules/AppSheetModule";
 import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
           <Route path="notificaciones" element={<Notificaciones />} /> {/* CENTRO DE NOTIFICACIONES */}
           <Route path="broadcast" element={<BroadcastPanel />} />         {/* BROADCAST TV */}
+          <Route path="/appsheet" element={<AppSheetModule />} />  {/* FORMULARIO*/}
           <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />         {/* Guiaplanesmarzo */}
         </Route>
 

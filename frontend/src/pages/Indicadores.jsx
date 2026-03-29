@@ -36,6 +36,78 @@ const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
 };
 
 // ======================================================
+// TOOLTIP PERSONALIZADO — rico con % y valor absoluto
+// ======================================================
+const TooltipBarrasDia = ({ active, payload, label, metaDia = 65 }) => {
+  if (!active || !payload?.length) return null;
+  const real    = payload.find(p => p.dataKey === 'total')?.value || 0;
+  const activos = payload.find(p => p.dataKey === 'activos')?.value || 0;
+  const pctMeta = metaDia > 0 ? ((real / metaDia) * 100).toFixed(1) : 0;
+  const cumple  = real >= metaDia;
+  return (
+    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[160px]">
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">DÍA {label}</p>
+      <div className="flex justify-between gap-4 mb-1">
+        <span className="text-slate-400">INGRESOS JOT</span>
+        <span className="font-black text-emerald-400">{real}</span>
+      </div>
+      <div className="flex justify-between gap-4 mb-1">
+        <span className="text-slate-400">ACTIVOS</span>
+        <span className="font-black text-blue-400">{activos}</span>
+      </div>
+      <div className="flex justify-between gap-4 mb-2">
+        <span className="text-slate-400">META DÍA</span>
+        <span className="font-black text-yellow-400">{metaDia}</span>
+      </div>
+      <div className={`flex justify-between gap-4 pt-1 border-t border-slate-700`}>
+        <span className="text-slate-400">% CUMPLIMIENTO</span>
+        <span className={`font-black ${cumple ? 'text-emerald-400' : 'text-red-400'}`}>
+          {cumple ? '✓' : '✗'} {pctMeta}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const TooltipAsesores = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const gest = payload.find(p => p.dataKey === 'gestionables')?.value || 0;
+  const ing  = payload.find(p => p.dataKey === 'ingresos')?.value || 0;
+  const efect = gest > 0 ? ((ing / gest) * 100).toFixed(1) : 0;
+  return (
+    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[170px]">
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1 truncate">{label}</p>
+      <div className="flex justify-between gap-4 mb-1">
+        <span className="text-slate-400">GESTIONABLES</span>
+        <span className="font-black text-violet-400">{gest}</span>
+      </div>
+      <div className="flex justify-between gap-4 mb-2">
+        <span className="text-slate-400">INGRESOS HOY</span>
+        <span className="font-black text-emerald-400">{ing}</span>
+      </div>
+      <div className="flex justify-between gap-4 pt-1 border-t border-slate-700">
+        <span className="text-slate-400">EFECTIVIDAD</span>
+        <span className={`font-black ${Number(efect) >= 30 ? 'text-emerald-400' : 'text-amber-400'}`}>{efect}%</span>
+      </div>
+    </div>
+  );
+};
+
+const TooltipEmbudo = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[150px]">
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">{item.name}</p>
+      <div className="flex justify-between gap-4">
+        <span className="text-slate-400">TOTAL</span>
+        <span className="font-black" style={{ color: item.fill }}>{item.value}</span>
+      </div>
+    </div>
+  );
+};
+
+// ======================================================
 // MODAL FULLSCREEN PARA GRÁFICAS
 // ======================================================
 function ChartModal({ open, onClose, title, children }) {
@@ -87,17 +159,29 @@ function ExpandableChart({ title, className = "", modalHeight = 500, children })
   );
 }
 
-export default function ReporteComercialCore() {
-  const [tabActiva, setTabActiva] = useState("GENERAL");
-  const [loading, setLoading] = useState(false);
-  const [alertas, setAlertas] = useState([]);
-  const [data, setData] = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
-  const [monitoreoData, setMonitoreoData] = useState({ supervisores: [], asesores: [] });
-  const [reporte180Data, setReporte180Data] = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
-  const [filtros180, setFiltros180] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
+// ======================================================
+// BARRA SEMÁFORO — color dinámico según cumplimiento
+// ======================================================
+const BarraSemaforo = (props) => {
+  const { x, y, width, height, total, meta = 65 } = props;
+  const cumple = Number(total) >= meta;
+  const pct    = meta > 0 ? Math.min(Number(total) / meta, 1) : 0;
+  // Verde si cumple, amarillo si >80%, rojo si <80%
+  const color  = cumple ? '#10b981' : pct >= 0.8 ? '#f59e0b' : '#ef4444';
+  return <rect x={x} y={y} width={width} height={height} fill={color} rx={2} />;
+};
 
-  // ── Nombres de asesores para el dropdown ─────────────────────────────────
+export default function ReporteComercialCore() {
+  const [tabActiva, setTabActiva]       = useState("GENERAL");
+  const [loading, setLoading]           = useState(false);
+  const [alertas, setAlertas]           = useState([]);
+  const [diaFiltrado, setDiaFiltrado]   = useState(null); // ← NUEVO: click en barra → filtra tabla
+  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
+  const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
+  const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
+  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
+
   const nombresAsesores = useMemo(
     () => [...(data.asesores || [])].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
     [data.asesores]
@@ -117,7 +201,7 @@ export default function ReporteComercialCore() {
     try {
       const filtrosActivos = filtrosOverride || filtros;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
       if (result.success) { setData({ ...result, porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0), porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0) }); mostrarAlertas(result.supervisores); }
     } catch (e) { console.error("Error Dashboard:", e); } finally { setLoading(false); }
@@ -134,21 +218,26 @@ export default function ReporteComercialCore() {
     try {
       const filtrosActivos = filtrosOverride || filtros180;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`);
       const result = await res.json();
       if (result.success) setReporte180Data(result);
     } catch (e) { console.error("Error Reporte180:", e); } finally { setLoading(false); }
   };
 
-  // ── Helper: actualiza filtro y dispara fetch inmediatamente ───────────────
   const updateFiltro = (campo, valor) => {
     const nuevosFiltros = { ...filtros, [campo]: valor };
     setFiltros(nuevosFiltros);
     fetchDashboard(nuevosFiltros);
   };
 
-  // ─── handleClickTarjetaJotform filtra por estado dinámico ───
   const handleClickTarjetaJotform = (estado) => { const nuevosFiltros = { ...filtros, etapaJotform: estado }; setFiltros(nuevosFiltros); fetchDashboard(nuevosFiltros); };
+
+  // ── NUEVO: click en barra del gráfico → filtrar tabla por ese día ─────────
+  const handleClickBarra = (data) => {
+    if (!data?.activePayload) return;
+    const fecha = data?.activeLabel;
+    setDiaFiltrado(prev => prev === fecha ? null : fecha); // toggle
+  };
 
   useEffect(() => {
     if (tabActiva === "GENERAL") fetchDashboard();
@@ -164,29 +253,30 @@ export default function ReporteComercialCore() {
 
   const stats = useMemo(() => {
     const s = data.supervisores || []; const n = s.length || 1;
-    const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
-    const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
+    const totalJotform    = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
+    const totalActivos    = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
+    const totalBacklog    = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     return {
-      ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
-      gestionables: totalGestionables,
-      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
-      ingresosJotform: totalJotform,
-      descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
-      leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
-      tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
-      tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
-      terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas: totalActivos,
-      backlog: totalBacklog,
+      ingresosCRM:              s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
+      gestionables:             totalGestionables,
+      regularizar:              s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
+      ingresosJotform:          totalJotform,
+      descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
+      leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
+      efectividad:              totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
+      tasaInstalacion:          totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
+      tarjetaCredito:           Number(data.porcentajeTarjeta || 0).toFixed(1),
+      terceraEdad:              Number(data.porcentajeTerceraEdad || 0).toFixed(1),
+      efectividadActivasPauta:  (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
+      activas:                  totalActivos,
+      backlog:                  totalBacklog,
     };
   }, [data]);
 
-  const ETAPAS_JOTFORM = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
-  const COLORES_EMBUDO = ['#10b981','#34d399','#6ee7b7','#fbbf24','#f97316','#ef4444'];
+  const META_DIA = 65;
+  const ETAPAS_JOTFORM  = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
+  const COLORES_EMBUDO  = ['#10b981','#34d399','#6ee7b7','#fbbf24','#f97316','#ef4444'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
   const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 4} fill="#60a5fa" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
@@ -204,24 +294,77 @@ export default function ReporteComercialCore() {
     return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
   };
 
-  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({ nombre: a.nombre_grupo, gestionables: Number(a.real_dia_leads || 0), ingresos: Number(a.v_subida_jot_hoy || 0) }));
-  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
-  const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
+  const dataGraficoAsesores      = (monitoreoData.asesores || []).map(a => ({ nombre: a.nombre_grupo, gestionables: Number(a.real_dia_leads || 0), ingresos: Number(a.v_subida_jot_hoy || 0) }));
+  const dataGraficoSupervisores  = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
+  const totalBarrasDia           = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
-  const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
+  // ── Datos con semáforo para el gráfico de barras ──────────────────────────
+  const dataBarrasConSemaforo = useMemo(() =>
+    (data.graficoBarrasDia || []).map(d => ({
+      ...d,
+      faltante: Math.max(0, META_DIA - Number(d.total)),
+      activos:  Number(d.activos || 0),
+      _cumple:  Number(d.total) >= META_DIA,
+      _pct:     META_DIA > 0 ? Number(d.total) / META_DIA : 0,
+    })), [data.graficoBarrasDia]);
+
+  // ── Filtrar dataCRM por día clickeado ─────────────────────────────────────
+  const dataCRMFiltrada = useMemo(() => {
+    if (!diaFiltrado) return data.dataCRM || [];
+    return (data.dataCRM || []).filter(r => {
+      const fecha = (r.fecha || r.creado_el_fecha || '');
+      return String(fecha).includes(`-${String(diaFiltrado).padStart(2, '0')}`) || String(fecha).endsWith(`/${diaFiltrado}`) || formatFechaCorta(String(fecha)) === String(diaFiltrado);
+    });
+  }, [data.dataCRM, diaFiltrado]);
+
+  const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
+  // ── Gráfico barras con semáforo + click ───────────────────────────────────
   const GraficoBarrasDia = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={(data.graficoBarrasDia || []).map(d => ({ ...d, faltante: Math.max(0, 65 - Number(d.total)), activos: Number(d.activos || 0) }))} margin={{ top: 24, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}>
+      <BarChart
+        data={dataBarrasConSemaforo}
+        margin={{ top: 24, right: 10, left: 0, bottom: 50 }}
+        barCategoryGap="20%"
+        barGap={2}
+        onClick={handleClickBarra}
+        style={{ cursor: 'pointer' }}
+      >
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-        <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#475569', fontSize: 10 }} />
+        <XAxis
+          dataKey="fecha"
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={formatFechaCorta}
+          interval="preserveStartEnd"
+          tick={({ x, y, payload }) => {
+            const dia   = formatFechaCorta(payload.value);
+            const item  = dataBarrasConSemaforo.find(d => formatFechaCorta(String(d.fecha)) === dia);
+            const color = item?._cumple ? '#10b981' : item?._pct >= 0.8 ? '#f59e0b' : '#ef4444';
+            const sel   = diaFiltrado === dia;
+            return (
+              <g transform={`translate(${x},${y})`}>
+                <text x={0} y={0} dy={12} textAnchor="middle" fill={sel ? '#fff' : color} fontSize={sel ? 11 : 10} fontWeight={sel ? 900 : 700}>
+                  {dia}
+                </text>
+                {sel && <circle cx={0} cy={22} r={3} fill="#fff" />}
+              </g>
+            );
+          }}
+        />
         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} domain={[0, dataMax => Math.max(dataMax, 70)]} />
-        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(value, name) => { if (name === 'total') return [value, 'REAL']; if (name === 'activos') return [value, 'ACTIVOS']; if (name === 'faltante') return [value, 'FALTANTE']; return [value, name]; }} />
-        <ReferenceLine y={65} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
-        <Bar dataKey="total" stackId="a" fill="#10b981" radius={[0,0,0,0]} barSize={22}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
-        <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={22}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
-        <Bar dataKey="activos" fill="#60a5fa" radius={[4,4,0,0]} barSize={12}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
+        <Tooltip content={<TooltipBarrasDia metaDia={META_DIA} />} />
+        <ReferenceLine y={META_DIA} stroke="#facc15" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: `META ${META_DIA}`, fill: '#facc15', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
+        <Bar dataKey="total" stackId="a" shape={<BarraSemaforo meta={META_DIA} />} radius={[0,0,0,0]} barSize={22}>
+          <LabelList dataKey="total" content={CustomBarLabel} />
+        </Bar>
+        <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.25)" radius={[4,4,0,0]} barSize={22}>
+          <LabelList dataKey="faltante" content={CustomFaltanteLabel} />
+        </Bar>
+        <Bar dataKey="activos" fill="#60a5fa" radius={[4,4,0,0]} barSize={12}>
+          <LabelList dataKey="activos" content={CustomActivosLabel} />
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -234,7 +377,7 @@ export default function ReporteComercialCore() {
             <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
               {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
             </Funnel>
-            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+            <Tooltip content={<TooltipEmbudo />} />
           </FunnelChart>
         </ResponsiveContainer>
       </div>
@@ -254,15 +397,27 @@ export default function ReporteComercialCore() {
     </div>
   );
 
+  // ── Gráfico asesores con tooltip rico y colores semáforo ──────────────────
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-        <Bar dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }} />
-        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+        <Tooltip content={<TooltipAsesores />} />
+        <Bar dataKey="gestionables" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }}>
+          {dataGraficoAsesores.map((entry, index) => {
+            const efect = entry.gestionables > 0 ? entry.ingresos / entry.gestionables : 0;
+            const color = efect >= 0.3 ? '#8b5cf6' : efect >= 0.15 ? '#a78bfa' : '#c4b5fd';
+            return <Cell key={`gest-${index}`} fill={color} />;
+          })}
+        </Bar>
+        <Bar dataKey="ingresos" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
+          {dataGraficoAsesores.map((entry, index) => {
+            const color = entry.ingresos >= 3 ? '#10b981' : entry.ingresos >= 1 ? '#34d399' : '#6ee7b7';
+            return <Cell key={`ing-${index}`} fill={color} />;
+          })}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -273,9 +428,20 @@ export default function ReporteComercialCore() {
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-        <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '10px' }} formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-        <Bar dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }} />
-        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+        <Tooltip content={<TooltipAsesores />} />
+        <Bar dataKey="gestionables" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }}>
+          {dataGraficoSupervisores.map((entry, index) => {
+            const efect = entry.gestionables > 0 ? entry.ingresos / entry.gestionables : 0;
+            const color = efect >= 0.3 ? '#06b6d4' : efect >= 0.15 ? '#22d3ee' : '#67e8f9';
+            return <Cell key={`sgest-${index}`} fill={color} />;
+          })}
+        </Bar>
+        <Bar dataKey="ingresos" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
+          {dataGraficoSupervisores.map((entry, index) => {
+            const color = entry.ingresos >= 5 ? '#10b981' : entry.ingresos >= 2 ? '#34d399' : '#6ee7b7';
+            return <Cell key={`sing-${index}`} fill={color} />;
+          })}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -317,63 +483,50 @@ export default function ReporteComercialCore() {
                     value={filtros.fechaHasta} onChange={e => updateFiltro('fechaHasta', e.target.value)} />
                 </div>
               </div>
-
-              {/* ASESOR — dropdown con nombres reales del backend */}
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>
-                <select className={selectCls} value={filtros.asesor}
-                  onChange={e => updateFiltro('asesor', e.target.value)}>
+                <select className={selectCls} value={filtros.asesor} onChange={e => updateFiltro('asesor', e.target.value)}>
                   <option value="">TODOS</option>
                   {nombresAsesores.map((a) => (
                     <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
                   ))}
                 </select>
               </div>
-
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
                 <input type="text" placeholder="BUSCAR..." className={inputCls}
                   value={filtros.supervisor} onChange={e => updateFiltro('supervisor', e.target.value)} />
               </div>
-
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
-                <select className={selectCls} value={filtros.etapaCRM}
-                  onChange={e => updateFiltro('etapaCRM', e.target.value)}>
+                <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro('etapaCRM', e.target.value)}>
                   <option value="">TODAS</option>
                   {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
                 </select>
               </div>
-
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label>
-                <select className={selectCls} value={filtros.estadoNetlife}
-                  onChange={e => updateFiltro('estadoNetlife', e.target.value)}>
+                <select className={selectCls} value={filtros.estadoNetlife} onChange={e => updateFiltro('estadoNetlife', e.target.value)}>
                   <option value="">TODOS</option>
                   <option value="ACTIVO">ACTIVO</option>
                   <option value="RECHAZADO">RECHAZADO</option>
                 </select>
               </div>
-
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA JOTFORM</label>
-                <select className={selectCls} value={filtros.etapaJotform}
-                  onChange={e => updateFiltro('etapaJotform', e.target.value)}>
+                <select className={selectCls} value={filtros.etapaJotform} onChange={e => updateFiltro('etapaJotform', e.target.value)}>
                   <option value="">TODAS</option>
                   {ETAPAS_JOTFORM.map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
                 </select>
               </div>
-
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">REGULARIZACIÓN</label>
-                <select className={selectCls} value={filtros.estadoRegularizacion}
-                  onChange={e => updateFiltro('estadoRegularizacion', e.target.value)}>
+                <select className={selectCls} value={filtros.estadoRegularizacion} onChange={e => updateFiltro('estadoRegularizacion', e.target.value)}>
                   <option value="">TODOS</option>
                   <option value="POR REGULARIZAR">POR REGULARIZAR</option>
                   <option value="REGULARIZADO">REGULARIZADO</option>
                 </select>
               </div>
-
               <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
             </div>
           </div>
@@ -425,15 +578,11 @@ export default function ReporteComercialCore() {
                   <span className="text-[10px] font-bold text-slate-600 uppercase leading-tight pr-2">{e.estado}</span>
                   <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${
                     filtros.etapaJotform === e.estado ? 'text-white bg-blue-500' : 'text-blue-600 bg-blue-50'
-                  }`}>
-                    {e.total}
-                  </span>
+                  }`}>{e.total}</span>
                 </div>
               ))}
               {(data.estadosNetlife || []).length === 0 && (
-                <div className="col-span-full text-center text-slate-400 text-[10px] py-6 uppercase">
-                  SIN DATOS PARA EL PERÍODO SELECCIONADO
-                </div>
+                <div className="col-span-full text-center text-slate-400 text-[10px] py-6 uppercase">SIN DATOS PARA EL PERÍODO SELECCIONADO</div>
               )}
             </div>
           </div>
@@ -441,18 +590,30 @@ export default function ReporteComercialCore() {
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
-              <h3 className="text-[10px] font-black text-emerald-400 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+              <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
                 <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBarrasDia}</span>
-                <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
-                  <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> REAL
-                  <span className="w-3 h-2 bg-blue-400 rounded inline-block"></span> ACTIVOS
-                  <span className="w-3 h-2 bg-red-500/50 rounded inline-block"></span> FALTA
-                  <span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META 65
+                <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic flex-wrap">
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> OK</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-amber-500 rounded inline-block"></span> CERCA</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-red-500 rounded inline-block"></span> BAJO</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-400 rounded inline-block"></span> ACTIVOS</span>
+                  <span className="flex items-center gap-1"><span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META {META_DIA}</span>
                 </span>
               </h3>
-              <div className="h-[300px]"><GraficoBarrasDia /></div>
+              {/* Leyenda semáforo */}
+              <div className="flex gap-3 mb-3 text-[8px] font-black">
+                <div className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> {dataBarrasConSemaforo.filter(d => d._cumple).length} DÍAS OK</div>
+                <div className="flex items-center gap-1 text-amber-400"><span className="w-2 h-2 rounded-full bg-amber-500"></span> {dataBarrasConSemaforo.filter(d => !d._cumple && d._pct >= 0.8).length} CERCA</div>
+                <div className="flex items-center gap-1 text-red-400"><span className="w-2 h-2 rounded-full bg-red-500"></span> {dataBarrasConSemaforo.filter(d => d._pct < 0.8 && Number(d.total) > 0).length} BAJO META</div>
+                {diaFiltrado && (
+                  <button onClick={() => setDiaFiltrado(null)} className="ml-auto text-white bg-blue-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    DÍA {diaFiltrado} ✕
+                  </button>
+                )}
+              </div>
+              <div className="h-[260px]"><GraficoBarrasDia /></div>
             </ExpandableChart>
 
             <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
@@ -468,8 +629,16 @@ export default function ReporteComercialCore() {
           {/* Tablas */}
           <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
           <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} /></div>
+
+          {/* DataVisor con indicador de filtro activo */}
           <div className="grid grid-cols-1 gap-4">
-            <DataVisor title="DETALLE BASE CRM" data={data.dataCRM} onDownload={() => descargarExcel("CRM")} color="bg-slate-800" />
+            <DataVisor
+              title={diaFiltrado ? `DETALLE BASE CRM — DÍA ${diaFiltrado} FILTRADO (${dataCRMFiltrada.length} registros)` : "DETALLE BASE CRM"}
+              data={dataCRMFiltrada}
+              onDownload={() => descargarExcel("CRM")}
+              color="bg-slate-800"
+              filtroBadge={diaFiltrado ? <button onClick={() => setDiaFiltrado(null)} className="text-[8px] bg-white/20 px-2 py-0.5 rounded-full font-black ml-2">DÍA {diaFiltrado} ✕ LIMPIAR</button> : null}
+            />
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-900" />
           </div>
         </div>
@@ -489,21 +658,28 @@ export default function ReporteComercialCore() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
-              <h3 className="text-[10px] font-black text-violet-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+              <h3 className="text-[10px] font-black text-violet-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
-                <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
               </h3>
-              <div className="h-[320px]"><GraficoAsesores /></div>
+              {/* Leyenda semáforo asesores */}
+              <div className="flex gap-3 mb-3 text-[8px] font-black">
+                <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-sm bg-violet-500"></span> GESTIONABLES</span>
+                <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
+              </div>
+              <div className="h-[300px]"><GraficoAsesores /></div>
             </ExpandableChart>
 
             <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
-              <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+              <h3 className="text-[10px] font-black text-cyan-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
                 SUPERVISORES — GESTIONABLES VS INGRESOS HOY
-                <span className="ml-auto flex items-center gap-2 text-[9px] not-italic font-bold text-slate-400"><span className="w-3 h-2 bg-cyan-500 rounded inline-block"></span> GEST. <span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> ING.</span>
               </h3>
-              <div className="h-[320px]"><GraficoSupervisores /></div>
+              <div className="flex gap-3 mb-3 text-[8px] font-black">
+                <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-sm bg-cyan-500"></span> GESTIONABLES</span>
+                <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
+              </div>
+              <div className="h-[300px]"><GraficoSupervisores /></div>
             </ExpandableChart>
           </div>
 
@@ -555,14 +731,13 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoCRM || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
   const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoJotform || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
 
-  // ── Helper: actualiza filtro 180 y dispara fetch ──────────────────────────
   const updateFiltro180 = (campo, valor) => {
     const nuevos = { ...filtros, [campo]: valor };
     setFiltros(nuevos);
     onFetch(nuevos);
   };
 
-  const inputCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
+  const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
   const GraficoEmbudoCRM = () => (
@@ -573,7 +748,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <Funnel data={embudoCRM || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelCRM}>
               {(embudoCRM || []).map((_, index) => <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />)}
             </Funnel>
-            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+            <Tooltip content={<TooltipEmbudo />} />
           </FunnelChart>
         </ResponsiveContainer>
       </div>
@@ -594,7 +769,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <Funnel data={embudoJotform || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelJOT}>
               {(embudoJotform || []).map((_, index) => <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />)}
             </Funnel>
-            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
+            <Tooltip content={<TooltipEmbudo />} />
           </FunnelChart>
         </ResponsiveContainer>
       </div>
@@ -635,12 +810,10 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             </div>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>
-            <input type="text" placeholder="BUSCAR..." className={inputCls}
-              value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)} />
+            <input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)} />
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
-            <input type="text" placeholder="BUSCAR..." className={inputCls}
-              value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)} />
+            <input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)} />
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
             <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>
@@ -781,8 +954,8 @@ const KpiMini = ({ label, value, meta, real, color }) => {
   const realNum = real !== undefined ? parseFloat(String(real).replace('%', '')) : null;
   const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
   const cumple  = metaNum !== null && realNum !== null && pct >= 97;
-  const realColor   = cumple ? '#059669' : '#f59e0b';
-  const barColor    = cumple ? '#10b981' : '#fbbf24';
+  const realColor = cumple ? '#059669' : '#f59e0b';
+  const barColor  = cumple ? '#10b981' : '#fbbf24';
   return (
     <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
       <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
@@ -1035,15 +1208,18 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
 }
 
 // ======================================================
-// DATA VISOR
+// DATA VISOR — ahora acepta filtroBadge
 // ======================================================
-function DataVisor({ title, data, onDownload, color }) {
+function DataVisor({ title, data, onDownload, color, filtroBadge }) {
   if (!data || !data.length) return null;
   return (
     <div className="bg-white border border-slate-300 shadow-lg rounded-2xl overflow-hidden mb-4">
       <div className={`${color} text-white px-6 py-3 flex justify-between items-center`}>
         <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-[0.2em] uppercase">{title}</h3>
+          <h3 className="text-[10px] font-black tracking-[0.2em] uppercase flex items-center gap-1">
+            {title}
+            {filtroBadge}
+          </h3>
           <span className="text-[8px] font-bold opacity-60 italic uppercase">MOSTRANDO ÚLTIMOS {Math.min(data.length, 30)} DE {data.length} REGISTROS</span>
         </div>
         <button onClick={onDownload} className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 uppercase">⬇️ DESCARGAR EXCEL</button>

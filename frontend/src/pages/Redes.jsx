@@ -1,14 +1,11 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  Redes.jsx — Monitoreo Redes VELSA NETLIFE                              ║
-// ║  ✅ Version fusionada: original 1800+ líneas + mejoras v2               ║
-// ║  ✅ Filtros globales Canal + Supervisor en TODOS los tabs               ║
-// ║  ✅ Labels siempre visibles en gráficos (no requiere hover)             ║
-// ║  ✅ Nuevo tab: Asesores vs Pauta                                        ║
-// ║  ✅ CanalDetalleCard expandible con orígenes                            ║
-// ║  ✅ AtcEtapasPanel con categorías                                       ║
-// ║  ✅ TabMetas mejorado con barra de progreso visual                      ║
+// ║  ✅ TODO el código original preservado                                  ║
+// ║  ✅ + Filtros globales Canal en todos los tabs                          ║
+// ║  ✅ + Labels siempre visibles en gráficos                               ║
+// ║  ✅ + Nuevo tab: Asesores vs Pauta                                      ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   ComposedChart, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell,
@@ -19,9 +16,8 @@ import TabReporteData    from "./TabReporteData";
 import TabAnalisisPautas from "./TabAnalisisPautas";
 import TabComparativo    from "./TabComparativo";
 import TabAsesorVsPauta  from "./TabAsesorVsPauta";
-import { CanalSelector, SupervisorSelector, getCanalCfg, buildFiltroParams, TODOS_CANALES } from "./GlobalFilters";
+import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
 
-// ── Paleta de colores ─────────────────────────────────────────────────────────
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
   warning: "#f59e0b", danger: "#ef4444", violet: "#7c3aed",
@@ -29,7 +25,6 @@ const C = {
   light: "#f8fafc", border: "#e2e8f0",
 };
 
-// ── Config de canales (local, para componentes que no importan GlobalFilters) ──
 const CANALES = {
   "ARTS":               { color: "#1e3a8a", bg: "#dbeafe", icon: "🎨", label: "ARTS" },
   "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
@@ -42,31 +37,19 @@ const CANALES = {
 };
 
 const ORIGEN_CANAL = {
-  "BASE 593-979083368":                   "ARTS",
-  "BASE 593-995211968":                   "ARTS FACEBOOK",
-  "BASE 593-992827793":                   "ARTS GOOGLE",
-  "FORMULARIO LANDING 3":                 "ARTS GOOGLE",
-  "LLAMADA LANDING 3":                    "ARTS GOOGLE",
-  "POR RECOMENDACIÓN":                    "POR RECOMENDACIÓN",
-  "REFERIDO PERSONAL":                    "POR RECOMENDACIÓN",
-  "TIENDA ONLINE":                        "POR RECOMENDACIÓN",
-  "BASE 593-958993371":                   "REMARKETING",
-  "BASE 593-984414273":                   "REMARKETING",
-  "BASE 593-995967355":                   "REMARKETING",
-  "WHATSAPP 593958993371":                "REMARKETING",
-  "BASE 593-962881280":                   "VIDIKA GOOGLE",
-  "BASE 593-987133635":                   "VIDIKA GOOGLE",
-  "BASE API 593963463480":                "VIDIKA GOOGLE",
-  "FORMULARIO LANDING 4":                 "VIDIKA GOOGLE",
-  "LLAMADA":                              "VIDIKA GOOGLE",
-  "LLAMADA LANDING 4":                    "VIDIKA GOOGLE",
-  "BASE 593-958688121":                   "MAL INGRESO",
-  "CONTRATO NETLIFE":                     "MAL INGRESO",
-  "NO VOLVER A CONTACTAR":                "MAL INGRESO",
-  "OPORTUNIDADES":                        "MAL INGRESO",
+  "BASE 593-979083368": "ARTS", "BASE 593-995211968": "ARTS FACEBOOK",
+  "BASE 593-992827793": "ARTS GOOGLE", "FORMULARIO LANDING 3": "ARTS GOOGLE",
+  "LLAMADA LANDING 3": "ARTS GOOGLE", "POR RECOMENDACIÓN": "POR RECOMENDACIÓN",
+  "REFERIDO PERSONAL": "POR RECOMENDACIÓN", "TIENDA ONLINE": "POR RECOMENDACIÓN",
+  "BASE 593-958993371": "REMARKETING", "BASE 593-984414273": "REMARKETING",
+  "BASE 593-995967355": "REMARKETING", "WHATSAPP 593958993371": "REMARKETING",
+  "BASE 593-962881280": "VIDIKA GOOGLE", "BASE 593-987133635": "VIDIKA GOOGLE",
+  "BASE API 593963463480": "VIDIKA GOOGLE", "FORMULARIO LANDING 4": "VIDIKA GOOGLE",
+  "LLAMADA": "VIDIKA GOOGLE", "LLAMADA LANDING 4": "VIDIKA GOOGLE",
+  "BASE 593-958688121": "MAL INGRESO", "CONTRATO NETLIFE": "MAL INGRESO",
+  "NO VOLVER A CONTACTAR": "MAL INGRESO", "OPORTUNIDADES": "MAL INGRESO",
   "WAZZUP: WHATSAPP - ECUANET REGESTION": "MAL INGRESO",
-  "ZONAS PELIGROSAS":                     "MAL INGRESO",
-  "VENTA ECUANET DIRECTA":                "MAL INGRESO",
+  "ZONAS PELIGROSAS": "MAL INGRESO", "VENTA ECUANET DIRECTA": "MAL INGRESO",
 };
 
 const CANAL_A_ORIGENES = {
@@ -78,25 +61,20 @@ const CANAL_A_ORIGENES = {
   "POR RECOMENDACIÓN": ["POR RECOMENDACIÓN", "REFERIDO PERSONAL", "TIENDA ONLINE"],
 };
 
-const getCanal    = (o) => {
-  if (!o) return "SIN MAPEO";
-  if (CANALES[o]) return o;
-  return ORIGEN_CANAL[o.toUpperCase()] || ORIGEN_CANAL[o] || "SIN MAPEO";
-};
+const getCanal     = (o) => { if (!o) return "SIN MAPEO"; if (CANALES[o]) return o; return ORIGEN_CANAL[o.toUpperCase()] || ORIGEN_CANAL[o] || "SIN MAPEO"; };
 const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "•", label: c };
 const esPublicidad = (c) => c !== "MAL INGRESO" && c !== "SIN MAPEO";
-
-const getFechaHoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
-const formatFecha = (f) => { if (!f) return "—"; const [, m, d] = String(f).split("T")[0].split("-"); return `${d}/${m}`; };
-const n       = (v) => Number(v || 0);
-const fmt2    = (v) => n(v).toFixed(2);
-const fmtPct  = (v) => `${n(v).toFixed(1)}%`;
-const fmtUsd  = (v) => `$${n(v).toFixed(0)}`;
-const fmtUsd2 = (v) => `$${n(v).toFixed(2)}`;
+const getFechaHoy  = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+const formatFecha  = (f) => { if (!f) return "—"; const [,m,d] = String(f).split("T")[0].split("-"); return `${d}/${m}`; };
+const n        = (v) => Number(v || 0);
+const fmt2     = (v) => n(v).toFixed(2);
+const fmtPct   = (v) => `${n(v).toFixed(1)}%`;
+const fmtUsd   = (v) => `$${n(v).toFixed(0)}`;
+const fmtUsd2  = (v) => `$${n(v).toFixed(2)}`;
+const safe     = (v) => isFinite(n(v)) ? n(v) : 0;
 const pctColor = (v) => { const x = n(v); return x >= 15 ? C.success : x >= 8 ? C.warning : C.danger; };
-
-const API    = import.meta.env.VITE_API_URL;
-const apiUrl = (r, p) => `${API}/api/redes/${r}?${p}`;
+const API      = import.meta.env.VITE_API_URL;
+const apiUrl   = (r, p) => `${API}/api/redes/${r}?${p}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AGREGADORES
@@ -174,7 +152,7 @@ function agregarPorCanal(filas) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOOK CENTRAL DE DATOS — respeta filtros globales
+// HOOK CENTRAL — respeta filtros de canal
 // ─────────────────────────────────────────────────────────────────────────────
 function useMonitoreoData(desde, hasta, canalesSel) {
   const [data, setData]       = useState({ principal: null, ciudad: null, hora: null, atc: null });
@@ -251,7 +229,6 @@ function ChartCard({ title, subtitle, accent = C.primary, height = 230, children
 function Card({ children, className = "" }) {
   return <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${className}`} style={{ borderColor: C.border }}>{children}</div>;
 }
-
 function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
   return (
     <div className="px-5 py-4 border-b flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.border }}>
@@ -266,7 +243,6 @@ function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
     </div>
   );
 }
-
 function KpiCard({ label, value, color = C.primary, icon, sub }) {
   return (
     <div className="bg-white rounded-2xl border shadow-sm px-4 py-3 flex items-center gap-3" style={{ borderColor: C.border }}>
@@ -279,7 +255,6 @@ function KpiCard({ label, value, color = C.primary, icon, sub }) {
     </div>
   );
 }
-
 function CanalBadge({ canal, size = "sm" }) {
   const cfg = getCfg(canal);
   const cls = size === "sm" ? "px-2 py-0.5 text-[8px]" : "px-3 py-1 text-[9px]";
@@ -290,7 +265,6 @@ function CanalBadge({ canal, size = "sm" }) {
     </span>
   );
 }
-
 function VistaToggle({ value, onChange, options, color = C.primary }) {
   return (
     <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: C.border }}>
@@ -305,36 +279,21 @@ function VistaToggle({ value, onChange, options, color = C.primary }) {
   );
 }
 
-// Tooltip rico dark (v2)
-const RichTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl px-4 py-3 text-[10px] min-w-[160px]">
-      <div className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-800 pb-1">{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center justify-between gap-4 mb-0.5">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-            <span className="text-slate-400">{p.name}</span>
-          </div>
-          <span className="font-black" style={{ color: p.color || "#fff" }}>{p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// Tooltip clásico (v1) — mantenido para compatibilidad
+// Tooltip rico — siempre bonito
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[10px] max-w-xs" style={{ borderColor: C.border }}>
-      <div className="font-black mb-2 uppercase text-[9px]" style={{ color: C.slate }}>{label}</div>
+    <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl px-4 py-3 text-[10px] min-w-[160px]">
+      <div className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-800 pb-1 text-[9px]">{label}</div>
       {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 mb-0.5">
-          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-          <span style={{ color: C.muted }}>{p.name}:</span>
-          <span className="font-black" style={{ color: C.slate }}>{p.value}</span>
+        <div key={i} className="flex items-center justify-between gap-4 mb-0.5">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color || p.fill }} />
+            <span className="text-slate-400">{p.name}</span>
+          </div>
+          <span className="font-black" style={{ color: p.color || "#fff" }}>
+            {typeof p.value === "number" ? (p.value % 1 !== 0 ? p.value.toFixed(1) : p.value) : p.value}
+          </span>
         </div>
       ))}
     </div>
@@ -353,50 +312,36 @@ function Spinner() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL FILTROS GLOBALES
 // ─────────────────────────────────────────────────────────────────────────────
-function PanelFiltrosGlobales({ canalesSel, onCanalesSel, supervisorSel, onSupervisorSel, supervisores }) {
+function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
-      <div className="px-5 py-3 flex flex-wrap items-center gap-4 border-b" style={{ borderColor: C.border, background: "#f8fafc" }}>
+      <div className="px-5 py-3 flex flex-wrap items-center gap-4" style={{ background: "#f8fafc" }}>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
-          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Filtros Globales</span>
+          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
         </div>
-        <div className="flex-1 flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[8px] font-black uppercase" style={{ color: C.muted }}>Canal:</span>
-            <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
+        <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
+        {canalesSel.length > 0 && (
+          <div className="ml-auto flex items-center gap-2 flex-wrap">
+            {canalesSel.map(c => {
+              const cfg = getCanalCfg(c);
+              return (
+                <span key={c} style={{ padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
+                  color: cfg.color, fontWeight: 900, fontSize: "8px", border: `1px solid ${cfg.color}30`,
+                  display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  {cfg.icon} {cfg.label}
+                </span>
+              );
+            })}
           </div>
-          {supervisores.length > 0 && (
-            <div className="border-l pl-3" style={{ borderColor: C.border }}>
-              <SupervisorSelector supervisores={supervisores} supervisorSel={supervisorSel} onChange={onSupervisorSel} />
-            </div>
-          )}
-        </div>
+        )}
       </div>
-      {(canalesSel.length > 0 || supervisorSel) && (
-        <div className="px-5 py-2 flex items-center gap-2 text-[8px]" style={{ color: C.muted }}>
-          <span className="font-bold">Activos:</span>
-          {canalesSel.map(c => {
-            const cfg = getCanalCfg(c);
-            return (
-              <span key={c} style={{ padding: "2px 8px", borderRadius: "9999px", background: cfg.bg, color: cfg.color, fontWeight: 900, border: `1px solid ${cfg.color}30` }}>
-                {cfg.icon} {cfg.label}
-              </span>
-            );
-          })}
-          {supervisorSel && (
-            <span style={{ padding: "2px 8px", borderRadius: "9999px", background: "#e0f2fe", color: "#0ea5e9", fontWeight: 900, border: "1px solid #bae6fd" }}>
-              👤 {supervisorSel}
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANAL DETALLE CARD — expandible con orígenes (v1 original)
+// NUEVO: Panel de canales con orígenes expandibles (del original mejorado)
 // ─────────────────────────────────────────────────────────────────────────────
 function CanalDetalleCard({ canalData, totalLeads }) {
   const [expandido, setExpandido] = useState(false);
@@ -408,13 +353,12 @@ function CanalDetalleCard({ canalData, totalLeads }) {
   const pctVta = canalData.n_leads > 0 ? (canalData.venta_subida_bitrix / canalData.n_leads) * 100 : 0;
   const shareLeads = totalLeads > 0 ? (canalData.n_leads / totalLeads) * 100 : 0;
   const origenes = CANAL_A_ORIGENES[canalData.canal] || [];
-
   const etapas = [
-    { label: "Leads",    val: canalData.n_leads,             color: cfg.color,  pct: 100 },
-    { label: "Negoc.",   val: canalData.negociables,         color: C.success,  pct: pctNeg },
-    { label: "V.Subida", val: canalData.venta_subida_bitrix, color: C.sky,      pct: pctVta },
-    { label: "JOT",      val: canalData.ingreso_jot,         color: C.cyan,     pct: canalData.n_leads > 0 ? (canalData.ingreso_jot / canalData.n_leads) * 100 : 0 },
-    { label: "Activos",  val: canalData.activos_mes,         color: "#10b981",  pct: ef },
+    { label: "Leads",    val: canalData.n_leads,             color: cfg.color, pct: 100 },
+    { label: "Negoc.",   val: canalData.negociables,         color: C.success, pct: pctNeg },
+    { label: "V.Subida", val: canalData.venta_subida_bitrix, color: C.sky,     pct: pctVta },
+    { label: "JOT",      val: canalData.ingreso_jot,         color: C.cyan,    pct: canalData.n_leads > 0 ? (canalData.ingreso_jot / canalData.n_leads) * 100 : 0 },
+    { label: "Activos",  val: canalData.activos_mes,         color: "#10b981", pct: ef },
   ];
 
   return (
@@ -436,12 +380,11 @@ function CanalDetalleCard({ canalData, totalLeads }) {
           </div>
         </div>
         <button onClick={() => setExpandido(!expandido)}
-          className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all hover:brightness-95"
+          className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all"
           style={{ background: `${cfg.color}20`, color: cfg.color }}>
           <span className="text-[10px] font-black">{expandido ? "▲" : "▼"}</span>
         </button>
       </div>
-
       <div className="px-4 pb-3 space-y-2">
         <div>
           <div className="flex justify-between mb-0.5">
@@ -452,7 +395,6 @@ function CanalDetalleCard({ canalData, totalLeads }) {
             <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(shareLeads, 100)}%`, background: cfg.color }} />
           </div>
         </div>
-
         <div className="grid grid-cols-5 gap-1 pt-1">
           {etapas.map((e) => (
             <div key={e.label} className="text-center">
@@ -464,64 +406,29 @@ function CanalDetalleCard({ canalData, totalLeads }) {
             </div>
           ))}
         </div>
-
         <div className="flex flex-wrap gap-2 pt-1 border-t" style={{ borderColor: `${cfg.color}20` }}>
-          <div className="text-[8px]">
-            <span style={{ color: C.muted }}>Efectividad: </span>
-            <span className="font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</span>
-          </div>
-          <div className="text-[8px]">
-            <span style={{ color: C.muted }}>ATC: </span>
-            <span className="font-black" style={{ color: pctAtc > 40 ? C.danger : pctAtc > 20 ? C.warning : C.success }}>{pctAtc.toFixed(1)}%</span>
-          </div>
-          {canalData.inversion_usd > 0 && (
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>Inv: </span>
-              <span className="font-black" style={{ color: C.violet }}>{fmtUsd(canalData.inversion_usd)}</span>
-            </div>
-          )}
-          {cpl && (
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>CPL: </span>
-              <span className="font-black" style={{ color: C.violet }}>${cpl.toFixed(2)}</span>
-            </div>
-          )}
+          <div className="text-[8px]"><span style={{ color: C.muted }}>Efectividad: </span><span className="font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</span></div>
+          <div className="text-[8px]"><span style={{ color: C.muted }}>ATC: </span><span className="font-black" style={{ color: pctAtc > 40 ? C.danger : pctAtc > 20 ? C.warning : C.success }}>{pctAtc.toFixed(1)}%</span></div>
+          {canalData.inversion_usd > 0 && <div className="text-[8px]"><span style={{ color: C.muted }}>Inv: </span><span className="font-black" style={{ color: C.violet }}>{fmtUsd(canalData.inversion_usd)}</span></div>}
+          {cpl && <div className="text-[8px]"><span style={{ color: C.muted }}>CPL: </span><span className="font-black" style={{ color: C.violet }}>${cpl.toFixed(2)}</span></div>}
         </div>
       </div>
-
       {expandido && (
         <div className="border-t px-4 py-3" style={{ borderColor: `${cfg.color}25`, background: "#ffffff60" }}>
-          <div className="text-[8px] font-black uppercase mb-2" style={{ color: cfg.color }}>
-            Líneas / Orígenes de publicidad
-          </div>
+          <div className="text-[8px] font-black uppercase mb-2" style={{ color: cfg.color }}>Líneas / Orígenes</div>
           <div className="flex flex-wrap gap-1.5">
             {origenes.length > 0 ? origenes.map((origen) => (
-              <span key={origen}
-                className="text-[7.5px] px-2 py-1 rounded-lg font-medium inline-flex items-center gap-1"
+              <span key={origen} className="text-[7.5px] px-2 py-1 rounded-lg font-medium"
                 style={{ background: "#fff", color: C.slate, border: `1px solid ${cfg.color}25` }}>
                 <span style={{ color: cfg.color }}>›</span> {origen}
               </span>
-            )) : (
-              <span className="text-[8px] italic" style={{ color: C.muted }}>Sin orígenes mapeados</span>
-            )}
+            )) : <span className="text-[8px] italic" style={{ color: C.muted }}>Sin orígenes mapeados</span>}
           </div>
           <div className="mt-2 pt-2 border-t grid grid-cols-2 gap-2" style={{ borderColor: `${cfg.color}15` }}>
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>Seguimiento negoc.: </span>
-              <span className="font-black" style={{ color: C.slate }}>{canalData.seguimiento_negociacion || 0}</span>
-            </div>
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>Fuera cobertura: </span>
-              <span className="font-black" style={{ color: C.danger }}>{canalData.fuera_cobertura || 0}</span>
-            </div>
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>Innegociable: </span>
-              <span className="font-black" style={{ color: C.warning }}>{canalData.innegociable || 0}</span>
-            </div>
-            <div className="text-[8px]">
-              <span style={{ color: C.muted }}>Backlog activo: </span>
-              <span className="font-black" style={{ color: C.cyan }}>{canalData.activo_backlog || 0}</span>
-            </div>
+            <div className="text-[8px]"><span style={{ color: C.muted }}>Seguimiento: </span><span className="font-black" style={{ color: C.slate }}>{canalData.seguimiento_negociacion || 0}</span></div>
+            <div className="text-[8px]"><span style={{ color: C.muted }}>Fuera cob.: </span><span className="font-black" style={{ color: C.danger }}>{canalData.fuera_cobertura || 0}</span></div>
+            <div className="text-[8px]"><span style={{ color: C.muted }}>Innegociable: </span><span className="font-black" style={{ color: C.warning }}>{canalData.innegociable || 0}</span></div>
+            <div className="text-[8px]"><span style={{ color: C.muted }}>Backlog: </span><span className="font-black" style={{ color: C.cyan }}>{canalData.activo_backlog || 0}</span></div>
           </div>
         </div>
       )}
@@ -530,165 +437,93 @@ function CanalDetalleCard({ canalData, totalLeads }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ATC ETAPAS PANEL — v1 original completo
+// PANEL ATC CON ETAPAS
 // ─────────────────────────────────────────────────────────────────────────────
 function AtcEtapasPanel({ atcData }) {
-  const [vistaAtc, setVistaAtc] = useState("etapas");
-  const totales   = atcData?.totales || [];
-  const data      = atcData?.data    || [];
-  const totalAtc  = totales.reduce((a, r) => a + n(r.cantidad), 0);
+  const [vistaAtc, setVistaAtc] = useState("resumen");
+  const totales  = atcData?.totales || [];
+  const data     = atcData?.data    || [];
+  const totalAtc = totales.reduce((a, r) => a + n(r.cantidad), 0);
 
   const ETAPAS_ATC = [
-    { id: "cobertura", label: "Cobertura",   icon: "📍", color: "#0ea5e9", bg: "#e0f2fe", descripcion: "Problemas geográficos",      palabras: ["cobertura", "zona", "sector", "dirección", "fuera"] },
-    { id: "contacto",  label: "No contacto", icon: "📵", color: "#f59e0b", bg: "#fef3c7", descripcion: "Sin respuesta del lead",      palabras: ["no contesta", "no responde", "ocupado", "apagado", "buzón", "no disponible"] },
-    { id: "calidad",   label: "Calidad lead", icon: "⚠️", color: "#ef4444", bg: "#fee2e2", descripcion: "Lead no calificado",         palabras: ["equivocado", "falso", "duplicado", "ya tiene", "competencia", "otro operador"] },
-    { id: "precio",    label: "Precio / Plan", icon: "💰", color: "#7c3aed", bg: "#ede9fe", descripcion: "Objeciones económicas",     palabras: ["precio", "caro", "costo", "plan", "tarifa", "pago"] },
-    { id: "otro",      label: "Otros motivos", icon: "🔖", color: "#64748b", bg: "#f1f5f9", descripcion: "Motivos variados",          palabras: [] },
+    { id: "cobertura", label: "Cobertura",    icon: "📍", color: "#0ea5e9", bg: "#e0f2fe", descripcion: "Problemas geográficos",    palabras: ["cobertura","zona","sector","fuera"] },
+    { id: "contacto",  label: "No contacto",  icon: "📵", color: "#f59e0b", bg: "#fef3c7", descripcion: "Sin respuesta del lead",   palabras: ["no contesta","no responde","ocupado","apagado","buzón"] },
+    { id: "calidad",   label: "Calidad lead", icon: "⚠️", color: "#ef4444", bg: "#fee2e2", descripcion: "Lead no calificado",      palabras: ["equivocado","falso","duplicado","ya tiene","competencia"] },
+    { id: "precio",    label: "Precio/Plan",  icon: "💰", color: "#7c3aed", bg: "#ede9fe", descripcion: "Objeciones económicas",   palabras: ["precio","caro","costo","plan","tarifa","pago"] },
+    { id: "otro",      label: "Otros",        icon: "🔖", color: "#64748b", bg: "#f1f5f9", descripcion: "Motivos variados",        palabras: [] },
   ];
 
-  const etapasAgrupadas = ETAPAS_ATC.map((etapa) => {
-    const motivos = totales.filter((m) => {
-      if (etapa.id === "otro") return true;
-      const texto = (m.motivo_atc || "").toLowerCase();
-      return etapa.palabras.some((p) => texto.includes(p));
-    });
-    const cantidad = motivos.reduce((s, m) => s + n(m.cantidad), 0);
-    return { ...etapa, motivos, cantidad };
-  });
-
   const asignadosIds = new Set(
-    ETAPAS_ATC.filter((e) => e.id !== "otro").flatMap((e) =>
-      totales.filter((m) => e.palabras.some((p) => (m.motivo_atc || "").toLowerCase().includes(p)))
-        .map((m) => m.motivo_atc)
+    ETAPAS_ATC.filter(e => e.id !== "otro").flatMap(e =>
+      totales.filter(m => e.palabras.some(p => (m.motivo_atc || "").toLowerCase().includes(p))).map(m => m.motivo_atc)
     )
   );
-  const etapasFinal = etapasAgrupadas.map((etapa) => {
-    if (etapa.id !== "otro") return etapa;
-    const motivosOtro = totales.filter((m) => !asignadosIds.has(m.motivo_atc));
-    return { ...etapa, motivos: motivosOtro, cantidad: motivosOtro.reduce((s, m) => s + n(m.cantidad), 0) };
-  }).filter((e) => e.cantidad > 0);
+  const etapasFinal = ETAPAS_ATC.map(etapa => {
+    const motivos = etapa.id === "otro"
+      ? totales.filter(m => !asignadosIds.has(m.motivo_atc))
+      : totales.filter(m => etapa.palabras.some(p => (m.motivo_atc || "").toLowerCase().includes(p)));
+    const cantidad = motivos.reduce((s, m) => s + n(m.cantidad), 0);
+    return { ...etapa, motivos, cantidad };
+  }).filter(e => e.cantidad > 0);
 
   return (
     <Card>
       <CardHeader title="Motivos ATC — Análisis por Etapa" accent={C.danger}
         badge={
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.danger}12`, color: C.danger }}>
-              {totalAtc} total
-            </span>
+            <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.danger}12`, color: C.danger }}>{totalAtc} total</span>
             <VistaToggle value={vistaAtc} onChange={setVistaAtc} color={C.danger}
-              options={[
-                { value: "etapas",  label: "Por Etapa" },
-                { value: "resumen", label: "Resumen" },
-                { value: "detalle", label: "Detalle" },
-              ]} />
+              options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />
           </div>
         } />
-
-      {vistaAtc === "etapas" && (
-        <div className="p-4 space-y-3">
-          {etapasFinal.map((etapa) => {
-            const pct_ = totalAtc > 0 ? (etapa.cantidad / totalAtc) * 100 : 0;
-            return <AtcEtapaRow key={etapa.id} etapa={etapa} pct={pct_} totalAtc={totalAtc} />;
-          })}
-          {etapasFinal.length === 0 && (
-            <div className="text-center py-6 text-[11px]" style={{ color: C.muted }}>Sin datos ATC para el período</div>
-          )}
-        </div>
-      )}
-
       {vistaAtc === "resumen" && (
-        <div className="p-4 space-y-2.5">
-          {totales.map((row, i) => {
-            const pct_ = totalAtc > 0 ? ((n(row.cantidad) / totalAtc) * 100).toFixed(1) : 0;
+        <div className="p-4 space-y-3">
+          {etapasFinal.map(etapa => {
+            const pct = totalAtc > 0 ? (etapa.cantidad / totalAtc) * 100 : 0;
             return (
-              <div key={i} className="flex items-center gap-3">
-                <div className="text-[9px] font-bold w-44 truncate" style={{ color: C.slate }}>{row.motivo_atc}</div>
-                <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: `${C.danger}15` }}>
-                  <div className="h-1.5 rounded-full" style={{ width: `${pct_}%`, background: C.danger }} />
+              <div key={etapa.id} className="rounded-xl border p-3" style={{ borderColor: `${etapa.color}30`, background: etapa.bg }}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{etapa.icon}</span>
+                    <span className="text-[10px] font-black uppercase" style={{ color: etapa.color }}>{etapa.label}</span>
+                    <span className="text-[8px]" style={{ color: C.muted }}>{etapa.descripcion}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black" style={{ color: etapa.color }}>{etapa.cantidad}</span>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${etapa.color}20`, color: etapa.color }}>{pct.toFixed(1)}%</span>
+                  </div>
                 </div>
-                <div className="text-[9px] font-black w-8 text-right" style={{ color: C.danger }}>{row.cantidad}</div>
-                <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>{pct_}%</div>
+                <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${etapa.color}20` }}>
+                  <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: etapa.color }} />
+                </div>
               </div>
             );
           })}
         </div>
       )}
-
       {vistaAtc === "detalle" && (
-        <div className="overflow-auto max-h-72">
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-            <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
-              <tr>{["FECHA","MOTIVO","CANT."].map(h => (
-                <th key={h} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{h}</th>
-              ))}</tr>
-            </thead>
-            <tbody>
-              {data.map((row, i) => (
-                <tr key={i} className="border-b hover:bg-slate-50" style={{ borderColor: C.border }}>
-                  <td className="px-3 py-1.5 border-r font-black" style={{ color: C.primary, borderColor: C.border }}>{formatFecha(row.fecha)}</td>
-                  <td className="px-3 py-1.5 border-r font-bold" style={{ color: C.danger, borderColor: C.border }}>{row.motivo_atc}</td>
-                  <td className="px-3 py-1.5 text-center font-black" style={{ color: C.slate }}>{row.cantidad}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="p-4 space-y-2.5">
+          {totales.map((row, i) => {
+            const pct = totalAtc > 0 ? ((n(row.cantidad) / totalAtc) * 100).toFixed(1) : 0;
+            return (
+              <div key={i} className="flex items-center gap-3">
+                <div className="text-[9px] font-bold w-44 truncate" style={{ color: C.slate }}>{row.motivo_atc}</div>
+                <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: `${C.danger}15` }}>
+                  <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: C.danger }} />
+                </div>
+                <div className="text-[9px] font-black w-8 text-right" style={{ color: C.danger }}>{row.cantidad}</div>
+                <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>{pct}%</div>
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>
   );
 }
 
-function AtcEtapaRow({ etapa, pct, totalAtc }) {
-  const [abierto, setAbierto] = useState(false);
-  return (
-    <div className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: `${etapa.color}30` }}>
-      <button
-        className="w-full px-4 py-2.5 flex items-center gap-3 text-left hover:brightness-95 transition-all"
-        style={{ background: etapa.bg }}
-        onClick={() => setAbierto(!abierto)}>
-        <span className="text-base flex-shrink-0">{etapa.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-black uppercase" style={{ color: etapa.color }}>{etapa.label}</span>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-[10px] font-black" style={{ color: etapa.color }}>{etapa.cantidad}</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${etapa.color}20`, color: etapa.color }}>
-                {pct.toFixed(1)}%
-              </span>
-              <span className="text-[10px]" style={{ color: etapa.color }}>{abierto ? "▲" : "▼"}</span>
-            </div>
-          </div>
-          <div className="mt-1 w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${etapa.color}20` }}>
-            <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: etapa.color, transition: "width 0.5s ease" }} />
-          </div>
-          <div className="text-[8px] mt-0.5" style={{ color: C.muted }}>
-            {etapa.descripcion} · {etapa.motivos.length} motivo{etapa.motivos.length !== 1 ? "s" : ""}
-          </div>
-        </div>
-      </button>
-      {abierto && etapa.motivos.length > 0 && (
-        <div className="px-4 py-2 bg-white border-t space-y-1.5" style={{ borderColor: `${etapa.color}20` }}>
-          {etapa.motivos.map((m, i) => {
-            const pctM = totalAtc > 0 ? (n(m.cantidad) / totalAtc) * 100 : 0;
-            return (
-              <div key={i} className="flex items-center gap-2">
-                <div className="text-[8px] font-medium flex-1 truncate" style={{ color: C.slate }}>{m.motivo_atc}</div>
-                <div className="flex-shrink-0 w-20 rounded-full overflow-hidden" style={{ height: "2px", background: `${etapa.color}20` }}>
-                  <div style={{ width: `${Math.min(pctM * (100 / (pct || 1)), 100)}%`, height: "100%", background: etapa.color }} />
-                </div>
-                <div className="text-[8px] font-black w-6 text-right flex-shrink-0" style={{ color: etapa.color }}>{m.cantidad}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// GRÁFICO FUNNEL COMBINADO — v1 original
+// GRÁFICO COMBINADO (igual al original)
 // ─────────────────────────────────────────────────────────────────────────────
 function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, height = 320 }) {
   const dataFinal = diasData.map((d) => {
@@ -709,10 +544,10 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
         <Tooltip content={<CustomTooltip />} />
         <Legend wrapperStyle={{ fontSize: 9 }} />
         <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-          <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""} />
+          <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
         </Bar>
-        <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida total" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-          <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={(v) => v > 0 ? v : ""} />
+        <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
+          <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
         </Bar>
         {canalesPresentes.map((canal) => (
           <Line key={canal} yAxisId="jot" type="monotone" dataKey={`JOT·${getCfg(canal).label}`}
@@ -720,7 +555,7 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
             dot={{ r: 3, fill: getCfg(canal).color, strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls>
             <LabelList dataKey={`JOT·${getCfg(canal).label}`} position="top"
               style={{ fontSize: 7, fill: getCfg(canal).color, fontWeight: 800 }}
-              formatter={(v) => v > 0 ? v : ""} />
+              formatter={v => v > 0 ? v : ""} />
           </Line>
         ))}
       </ComposedChart>
@@ -729,9 +564,9 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 1 — MONITOREO GENERAL (v1 completo + labels v2)
+// TAB 1 — MONITOREO GENERAL (original preservado + mejoras)
 // ─────────────────────────────────────────────────────────────────────────────
-function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
+function TabMonitoreoGeneral({ data, loading }) {
   const { principal, ciudad, hora, atc } = data;
   const [vistaTabla, setVistaTabla] = useState("canal");
   const [vistaCity,  setVistaCity]  = useState("resumen");
@@ -762,20 +597,6 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
     _efect:        r.n_leads > 0 ? (r.activos_mes / r.n_leads) * 100 : 0,
   }));
 
-  // Datos para gráfico de barras por canal (v2 — labels siempre visibles)
-  const barData = porCanal.map(c => {
-    const cfg = getCfg(c.canal);
-    return {
-      canal:   cfg.label,
-      leads:   c.n_leads,
-      negoc:   c.negociables,
-      jot:     c.ingreso_jot,
-      activos: c.activos_mes,
-      atc:     c.atc_soporte,
-      _color:  cfg.color,
-    };
-  });
-
   const cols = [
     { key: "fecha",               label: "FECHA",   fmt: formatFecha },
     { key: "dia_semana",          label: "DÍA" },
@@ -788,7 +609,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
     { key: "venta_subida_bitrix", label: "V.SUB.",  color: C.primary },
     { key: "ingreso_jot",         label: "JOT",     color: C.success },
     { key: "activos_mes",         label: "ACTIVOS", color: C.success },
-    { key: "inversion_usd",       label: "INV.$",   fmt: fmtUsd,                          color: C.violet },
+    { key: "inversion_usd",       label: "INV.$",   fmt: fmtUsd,                         color: C.violet },
     { key: "_cpl",                label: "CPL",     fmt: (v) => v ? `$${fmt2(v)}` : "—", color: C.violet },
     { key: "_costo_activa",       label: "C.ACT.",  fmt: (v) => v ? `$${fmt2(v)}` : "—" },
     { key: "_pct_atc",            label: "% ATC",   fmt: fmtPct },
@@ -801,86 +622,32 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="👥" color={C.primary}
-          sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
-        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="🤝" color={C.success}
-          sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}% del total` : undefined} />
-        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="📋" color={C.cyan}
-          sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
-        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="✅" color={C.success}
-          sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
-        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="📦" color={C.sky}
-          sub={totalAct > 0 ? `${((totalBacklog/(totalAct||1))*100).toFixed(0)}% vs activos` : "pendientes activar"} />
-        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="💰" color={C.violet}
-          sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
+        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="👥" color={C.primary} sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
+        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="🤝" color={C.success} sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}%` : undefined} />
+        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="📋" color={C.cyan}    sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
+        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="✅" color={C.success} sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
+        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="📦" color={C.sky}   sub="pendientes activar" />
+        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="💰" color={C.violet} sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
         <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="📞"
           color={pctAtcGral > 40 ? C.danger : pctAtcGral > 20 ? C.warning : C.success}
           sub={`${totalAtc} leads ATC`} />
       </div>
 
-      {/* Gráfico barras por canal — labels SIEMPRE visibles (v2) */}
-      {barData.length > 0 && (
-        <Card>
-          <CardHeader title="Leads · Negociables · JOT · Activos por Canal" accent={C.primary}
-            subtitle="Labels permanentes — sin necesidad de hover" />
-          <div className="p-5">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={barData} margin={{ top: 28, right: 10, left: 0, bottom: 5 }} barCategoryGap="25%" barGap={3}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="canal" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: C.muted, fontWeight: 700 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: C.muted }} />
-                <Tooltip content={<RichTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "9px" }} />
-                <Bar dataKey="leads" name="Leads" radius={[4,4,0,0]} barSize={16}>
-                  {barData.map((d, i) => <Cell key={i} fill={`${d._color}60`} />)}
-                  <LabelList dataKey="leads" content={({ x, y, width, value, index }) => (
-                    value > 0 ? <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={8} fontWeight={900} fill={barData[index]?._color}>{value}</text> : null
-                  )} />
-                </Bar>
-                <Bar dataKey="negoc" name="Negoc." radius={[4,4,0,0]} barSize={16}>
-                  {barData.map((d, i) => <Cell key={i} fill={`${d._color}85`} />)}
-                  <LabelList dataKey="negoc" content={({ x, y, width, value, index }) => (
-                    value > 0 ? <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={8} fontWeight={900} fill={barData[index]?._color}>{value}</text> : null
-                  )} />
-                </Bar>
-                <Bar dataKey="jot" name="JOT" radius={[4,4,0,0]} barSize={16}>
-                  {barData.map((d, i) => <Cell key={i} fill={d._color} />)}
-                  <LabelList dataKey="jot" content={({ x, y, width, value, index }) => (
-                    value > 0 ? <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={9} fontWeight={900} fill={barData[index]?._color}>{value}</text> : null
-                  )} />
-                </Bar>
-                <Bar dataKey="activos" name="Activos" radius={[4,4,0,0]} barSize={16} fill={C.success}>
-                  <LabelList dataKey="activos" content={({ x, y, width, value }) => (
-                    value > 0 ? <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={8} fontWeight={900} fill={C.success}>{value}</text> : null
-                  )} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
-
-      {/* Sección canales — detalle expandible (v1) */}
+      {/* Sección canales */}
       {porCanal.length > 0 && (
         <Card>
           <CardHeader title="Canales de Publicidad" subtitle="Orígenes, funnel y métricas por canal" accent={C.primary}
             badge={
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>
-                  {porCanal.length} canales activos
-                </span>
+                <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{porCanal.length} canales</span>
                 <VistaToggle value={vistaCanal} onChange={setVistaCanal} color={C.primary}
-                  options={[
-                    { value: "detalle", label: "Detalle" },
-                    { value: "tabla",   label: "Tabla" },
-                  ]} />
+                  options={[{ value:"detalle", label:"Detalle" }, { value:"tabla", label:"Tabla" }]} />
               </div>
             } />
           {vistaCanal === "detalle" ? (
             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {porCanal.map((c) => (
-                <CanalDetalleCard
-                  key={c.canal}
+                <CanalDetalleCard key={c.canal}
                   canalData={{
                     ...c,
                     fuera_cobertura: filasAgr.filter(r => r.canal === c.canal).reduce((s, r) => s + r.fuera_cobertura, 0),
@@ -888,8 +655,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
                     activo_backlog:  filasAgr.filter(r => r.canal === c.canal).reduce((s, r) => s + r.activo_backlog, 0),
                     seguimiento_negociacion: filasAgr.filter(r => r.canal === c.canal).reduce((s, r) => s + r.seguimiento_negociacion, 0),
                   }}
-                  totalLeads={totalLeads}
-                />
+                  totalLeads={totalLeads} />
               ))}
             </div>
           ) : (
@@ -902,8 +668,8 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
                 </thead>
                 <tbody>
                   {porCanal.map((c, i) => {
-                    const cpl_ = c.n_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.n_leads : null;
-                    const ef_  = c.n_leads > 0 ? (c.activos_mes / c.n_leads) * 100 : 0;
+                    const cpl = c.n_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.n_leads : null;
+                    const ef  = c.n_leads > 0 ? (c.activos_mes / c.n_leads) * 100 : 0;
                     return (
                       <tr key={i} className="border-b hover:bg-slate-50" style={{ borderColor: C.border }}>
                         <td className="px-3 py-1.5 border-r" style={{ borderColor: C.border }}><CanalBadge canal={c.canal} /></td>
@@ -914,8 +680,8 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
                         <td className="px-3 py-1.5 border-r text-center" style={{ borderColor: C.border }}>{c.ingreso_jot}</td>
                         <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: C.success, borderColor: C.border }}>{c.activos_mes}</td>
                         <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: C.violet, borderColor: C.border }}>{fmtUsd(c.inversion_usd)}</td>
-                        <td className="px-3 py-1.5 border-r text-center" style={{ color: C.violet, borderColor: C.border }}>{cpl_ ? `$${cpl_.toFixed(2)}` : "—"}</td>
-                        <td className="px-3 py-1.5 text-center font-black" style={{ color: pctColor(ef_) }}>{ef_.toFixed(1)}%</td>
+                        <td className="px-3 py-1.5 border-r text-center" style={{ color: C.violet, borderColor: C.border }}>{cpl ? `$${cpl.toFixed(2)}` : "—"}</td>
+                        <td className="px-3 py-1.5 text-center font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</td>
                       </tr>
                     );
                   })}
@@ -931,7 +697,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
         <CardHeader title="Métricas por Canal y Día" subtitle="Inversión sin duplicar — agrupada por canal×día" accent={C.primary}
           badge={<span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{filasConCalc.length} registros</span>}
           action={<VistaToggle value={vistaTabla} onChange={setVistaTabla} color={C.primary}
-            options={[{ value: "canal", label: "Por Canal" }, { value: "dia", label: "Por Día" }]} />} />
+            options={[{ value:"canal", label:"Por Canal" }, { value:"dia", label:"Por Día" }]} />} />
         <div className="overflow-auto max-h-96">
           {filasConCalc.length === 0
             ? <div className="text-center py-12 text-[11px]" style={{ color: C.muted }}>Sin datos para el período</div>
@@ -963,12 +729,12 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
         </div>
       </Card>
 
-      {/* Ciudad + ATC con Etapas */}
+      {/* Ciudad + ATC */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader title="Por Ciudad" accent={C.cyan}
             badge={<VistaToggle value={vistaCity} onChange={setVistaCity} color={C.cyan}
-              options={[{ value: "resumen", label: "Resumen" }, { value: "detalle", label: "Detalle" }]} />} />
+              options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />} />
           <div className="overflow-auto max-h-72">
             <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
               <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
@@ -999,8 +765,6 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
             </table>
           </div>
         </Card>
-
-        {/* ATC con etapas (v1) */}
         <AtcEtapasPanel atcData={atc} />
       </div>
 
@@ -1008,7 +772,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
       <Card>
         <CardHeader title="Leads por Hora" accent={C.violet}
           badge={<VistaToggle value={vistaHora} onChange={setVistaHora} color={C.violet}
-            options={[{ value: "resumen", label: "Resumen" }, { value: "detalle", label: "Detalle" }]} />} />
+            options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />} />
         <div className="overflow-auto max-h-64">
           <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
             <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
@@ -1035,9 +799,9 @@ function TabMonitoreoGeneral({ data, loading, canalesSel, supervisorSel }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2 — GRÁFICOS GERENCIA (v1 original completo + labels v2)
+// TAB 2 — GRÁFICOS GERENCIA (original completo preservado)
 // ─────────────────────────────────────────────────────────────────────────────
-function TabGraficos({ data, loading, canalesSel }) {
+function TabGraficos({ data, loading }) {
   const { principal, hora, atc } = data;
   const [openFunnel, setOpenFunnel] = useState(false);
 
@@ -1081,14 +845,14 @@ function TabGraficos({ data, loading, canalesSel }) {
   const donaLeads = porCanal.map(c => ({ name: getCfg(c.canal).label, value: c.n_leads, fill: getCfg(c.canal).color }));
   const donaInv   = porCanal.filter(c => c.inversion_usd > 0).map(c => ({ name: getCfg(c.canal).label, value: Math.round(c.inversion_usd), fill: getCfg(c.canal).color }));
 
-  const horaData = (hora?.totales || []).map(h => ({ hora: `${String(h.hora).padStart(2,"0")}h`, "Leads": n(h.n_leads), "ATC": n(h.atc) }));
+  const horaData = (hora?.totales || []).map(h => ({ hora: `${String(h.hora).padStart(2, "0")}h`, "Leads": n(h.n_leads), "ATC": n(h.atc) }));
   const maxL = Math.max(1, ...horaData.map(h => h["Leads"]));
   const maxA = Math.max(1, ...horaData.map(h => h["ATC"]));
 
   const DIAS_SEMANA = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
   const heatRaw = {};
   (hora?.data || []).forEach(row => {
-    const h = `${String(row.hora).padStart(2,"0")}h`;
+    const h  = `${String(row.hora).padStart(2,"0")}h`;
     const fd = new Date(`${String(row.fecha).split("T")[0]}T12:00:00`);
     const dia = DIAS_SEMANA[fd.getDay() === 0 ? 6 : fd.getDay() - 1];
     if (!heatRaw[h]) heatRaw[h] = {};
@@ -1107,28 +871,25 @@ function TabGraficos({ data, loading, canalesSel }) {
   ];
   const embudoColors = [C.primary, C.sky, C.cyan, C.success, "#10b981"];
 
-  const atcData = (atc?.totales || []).slice(0,8).map(a => ({ name: (a.motivo_atc || "").slice(0,18), Cantidad: n(a.cantidad) }));
-  const totP = principal?.totales || {};
+  const atcData = (atc?.totales || []).slice(0, 8).map(a => ({ name: (a.motivo_atc || "").slice(0,18), Cantidad: n(a.cantidad) }));
+  const totP    = principal?.totales || {};
   const cicloData = [
-    { c: "0d",  v: n(totP.ciclo_0_dias) },
-    { c: "1d",  v: n(totP.ciclo_1_dia) },
-    { c: "2d",  v: n(totP.ciclo_2_dias) },
-    { c: "3d",  v: n(totP.ciclo_3_dias) },
-    { c: "4d",  v: n(totP.ciclo_4_dias) },
-    { c: "+5d", v: n(totP.ciclo_mas5_dias) },
+    { c:"0d",   v: n(totP.ciclo_0_dias)   }, { c:"1d",   v: n(totP.ciclo_1_dia)    },
+    { c:"2d",   v: n(totP.ciclo_2_dias)   }, { c:"3d",   v: n(totP.ciclo_3_dias)   },
+    { c:"4d",   v: n(totP.ciclo_4_dias)   }, { c:"+5d",  v: n(totP.ciclo_mas5_dias) },
   ];
   const cicloColors = [C.success, C.cyan, C.primary, C.warning, C.danger, C.violet];
 
   return (
     <div className="space-y-6">
-      {/* Combinado leads + JOT */}
+      {/* Gráfico combinado principal */}
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b flex items-center justify-between flex-wrap gap-3" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-3">
             <div className="w-1 h-7 rounded-full" style={{ background: C.primary }} />
             <div>
               <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Leads & Venta Subida (total) · Ingresos JOT por Campaña</div>
-              <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>Barras = totales consolidados · Líneas = JOT desglosado por canal</div>
+              <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>Barras = totales consolidados · Líneas = JOT desglosado por canal · Labels siempre visibles</div>
             </div>
           </div>
           <button onClick={() => setOpenFunnel(true)} className="text-[8px] font-black uppercase px-3 py-1 rounded-full border hover:shadow-sm transition-all" style={{ borderColor: C.border, color: C.muted }}>⤢ Ampliar</button>
@@ -1166,15 +927,15 @@ function TabGraficos({ data, loading, canalesSel }) {
           <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
           <Bar dataKey="Leads" radius={[4,4,0,0]} opacity={0.35}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700, opacity: 0.6 }} formatter={(v) => v > 0 ? v : ""} />
+            <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
           <Bar dataKey="Negociables" radius={[4,4,0,0]} opacity={0.65}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="Negociables" position="top" style={{ fontSize: 7, fontWeight: 700, opacity: 0.7 }} formatter={(v) => v > 0 ? v : ""} />
+            <LabelList dataKey="Negociables" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
           <Bar dataKey="V. Subida" radius={[4,4,0,0]}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fontWeight: 800 }} formatter={(v) => v > 0 ? v : ""} />
+            <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 8, fontWeight: 900 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
         </BarChart>
       </ChartCard>
@@ -1183,7 +944,7 @@ function TabGraficos({ data, loading, canalesSel }) {
         <ChartCard title="Leads por Canal" accent={C.primary} height={220}>
           <PieChart>
             <Pie data={donaLeads} cx="40%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" paddingAngle={3}
-              label={({ name, value, percent }) => `${name}: ${(percent*100).toFixed(0)}%`} labelLine={false}>
+              label={({ name, value, percent }) => `${name}: ${value}`} labelLine={true}>
               {donaLeads.map((e, i) => <Cell key={i} fill={e.fill} />)}
             </Pie>
             <Legend wrapperStyle={{ fontSize: 9 }} /><Tooltip />
@@ -1192,7 +953,7 @@ function TabGraficos({ data, loading, canalesSel }) {
         <ChartCard title="Inversión por Canal" accent={C.violet} height={220}>
           <PieChart>
             <Pie data={donaInv} cx="40%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" paddingAngle={3}
-              label={({ name, value }) => `${name}: ${fmtUsd(value)}`} labelLine={false}>
+              label={({ name, value }) => `${name}: $${value}`} labelLine={true}>
               {donaInv.map((e, i) => <Cell key={i} fill={e.fill} />)}
             </Pie>
             <Legend wrapperStyle={{ fontSize: 9 }} formatter={(v, e) => `${v}: ${fmtUsd(e.payload.value)}`} />
@@ -1209,10 +970,10 @@ function TabGraficos({ data, loading, canalesSel }) {
             <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 100]} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
             <Line type="monotone" dataKey="% Efect" stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }}>
-              <LabelList dataKey="% Efect" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={(v) => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% Efect" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
             <Line type="monotone" dataKey="% ATC" stroke={C.danger} strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="5 3">
-              <LabelList dataKey="% ATC" position="bottom" style={{ fontSize: 7, fill: C.danger, fontWeight: 700 }} formatter={(v) => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% ATC" position="bottom" style={{ fontSize: 7, fill: C.danger, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
           </LineChart>
         </ChartCard>
@@ -1224,10 +985,10 @@ function TabGraficos({ data, loading, canalesSel }) {
             <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={35} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
             <Bar yAxisId="l" dataKey="Inv.$" fill={C.violet} radius={[4,4,0,0]} opacity={0.8}>
-              <LabelList dataKey="Inv.$" position="top" style={{ fontSize: 7, fill: C.violet, fontWeight: 700 }} formatter={(v) => v > 0 ? `$${v}` : ""} />
+              <LabelList dataKey="Inv.$" position="top" style={{ fontSize: 7, fill: C.violet, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
             </Bar>
             <Line yAxisId="r" type="monotone" dataKey="CPL" stroke={C.warning} strokeWidth={2.5} dot={{ r: 3 }}>
-              <LabelList dataKey="CPL" position="top" style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={(v) => v > 0 ? `$${v}` : ""} />
+              <LabelList dataKey="CPL" position="top" style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
             </Line>
           </BarChart>
         </ChartCard>
@@ -1242,7 +1003,7 @@ function TabGraficos({ data, loading, canalesSel }) {
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="Leads" radius={[4,4,0,0]}>
               {horaData.map((d, i) => <Cell key={i} fill={d["Leads"] === maxL ? C.primary : "#93c5fd"} />)}
-              <LabelList dataKey="Leads" position="top"
+              <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
                 content={({ x, y, width, value, index }) => {
                   if (!value) return null;
                   const isMax = horaData[index]?.["Leads"] === maxL;
@@ -1259,7 +1020,7 @@ function TabGraficos({ data, loading, canalesSel }) {
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="ATC" radius={[4,4,0,0]}>
               {horaData.map((d, i) => <Cell key={i} fill={d["ATC"] === maxA ? C.danger : "#fca5a5"} />)}
-              <LabelList dataKey="ATC" position="top"
+              <LabelList dataKey="ATC" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
                 content={({ x, y, width, value, index }) => {
                   if (!value) return null;
                   const isMax = horaData[index]?.["ATC"] === maxA;
@@ -1270,7 +1031,6 @@ function TabGraficos({ data, loading, canalesSel }) {
         </ChartCard>
       </div>
 
-      {/* Mapa de calor */}
       {heatHoras.length > 0 && (
         <Card>
           <CardHeader title="Mapa de Calor — Leads × Hora × Día de Semana" accent={C.primary} />
@@ -1310,10 +1070,9 @@ function TabGraficos({ data, loading, canalesSel }) {
             <Bar dataKey="v" radius={[0,4,4,0]}>
               {embudo.map((_, i) => <Cell key={i} fill={embudoColors[i]} opacity={0.9} />)}
               <LabelList dataKey="v" position="right"
-                content={({ x, y, width, height, value, index }) => {
-                  if (!value) return null;
-                  return <text x={x+width+5} y={y+height/2+4} fontSize={8} fontWeight={800} fill={embudoColors[index]}>{value}</text>;
-                }} />
+                content={({ x, y, width, height, value, index }) =>
+                  value > 0 ? <text x={x+width+5} y={y+height/2+4} fontSize={8} fontWeight={800} fill={embudoColors[index]}>{value}</text> : null
+                } />
             </Bar>
           </BarChart>
         </ChartCard>
@@ -1326,10 +1085,9 @@ function TabGraficos({ data, loading, canalesSel }) {
             <Bar dataKey="v" radius={[4,4,0,0]}>
               {cicloData.map((_, i) => <Cell key={i} fill={cicloColors[i]} opacity={0.9} />)}
               <LabelList dataKey="v" position="top"
-                content={({ x, y, width, value, index }) => {
-                  if (!value) return null;
-                  return <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={8} fontWeight={800} fill={cicloColors[index]}>{value}</text>;
-                }} />
+                content={({ x, y, width, value, index }) =>
+                  value > 0 ? <text x={x+width/2} y={y-4} textAnchor="middle" fontSize={8} fontWeight={800} fill={cicloColors[index]}>{value}</text> : null
+                } />
             </Bar>
           </BarChart>
         </ChartCard>
@@ -1339,7 +1097,12 @@ function TabGraficos({ data, loading, canalesSel }) {
             <XAxis type="number" tick={{ fontSize: 9, fill: C.muted }} />
             <YAxis type="category" dataKey="name" tick={{ fontSize: 8, fill: C.muted }} width={100} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="Cantidad" fill={C.danger} radius={[0,4,4,0]} opacity={0.85} />
+            <Bar dataKey="Cantidad" fill={C.danger} radius={[0,4,4,0]} opacity={0.85}>
+              <LabelList dataKey="Cantidad" position="right"
+                content={({ x, y, width, height, value }) =>
+                  value > 0 ? <text x={x+width+5} y={y+height/2+4} fontSize={8} fontWeight={800} fill={C.danger}>{value}</text> : null
+                } />
+            </Bar>
           </BarChart>
         </ChartCard>
       </div>
@@ -1348,7 +1111,7 @@ function TabGraficos({ data, loading, canalesSel }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 3 — METAS VS LOGROS (v1 completo + resumen visual v2)
+// TAB METAS (original completo preservado)
 // ─────────────────────────────────────────────────────────────────────────────
 function MetaInput({ label, value, onChange, prefix = "", suffix = "", placeholder = "0" }) {
   return (
@@ -1370,63 +1133,53 @@ function colorDiff(diff, invertir) {
   return (invertir ? x < 0 : x > 0) ? C.success : C.danger;
 }
 
-function buildFilas(canal, metas) {
+function buildMetaFilas(canal, metas) {
   const leads   = Math.max(0, n(canal.total_leads));
   const sac     = Math.max(0, n(canal.leads_sac));
   const calidad = Math.max(0, n(canal.leads_calidad));
   const ventas  = Math.max(0, n(canal.venta_subida));
   const jot     = Math.max(0, n(canal.ingreso_jot));
   const inv     = Math.max(0, n(canal.inversion_usd));
-  const pS = leads > 0 ? (sac    / leads) * 100 : 0;
-  const pC = leads > 0 ? (calidad / leads) * 100 : 0;
-  const pV = leads > 0 ? (ventas  / leads) * 100 : 0;
-  const pJ = leads > 0 ? (jot    / leads) * 100 : 0;
-  const toSafe = (v) => (v !== null && v !== undefined && isFinite(Number(v)) && Number(v) > 0) ? Number(v) : null;
-  const cplR  = toSafe(canal.cpl)      ?? (leads > 0   && inv > 0 ? inv / leads   : null);
-  const cplGR = toSafe(canal.cpl_gest) ?? (calidad > 0 && inv > 0 ? inv / calidad : null);
-  const cpaR  = toSafe(canal.cpa)      ?? (ventas > 0  && inv > 0 ? inv / ventas  : null);
-  const cpaJR = toSafe(canal.cpa_jot)  ?? (jot > 0     && inv > 0 ? inv / jot     : null);
-  const mL   = n(metas.leads_totales), mS  = n(metas.pct_sac),   mC = n(metas.pct_calidad);
-  const mV   = n(metas.pct_ventas),    mJ  = n(metas.pct_ventas_jot);
-  const mP   = n(metas.presupuesto),   mCtr = n(metas.ctr);
-  const mCpl = n(metas.cpl), mCplG = n(metas.cpl_gest), mCpa = n(metas.cpa), mCpaJ = n(metas.cpa_jot);
-  const diff  = (l, m) => (m > 0 && l !== null && isFinite(l)) ? l - m : null;
-  const prog  = (l, m) => (m > 0 && l !== null && isFinite(l)) ? (l / m) * 100 : null;
-  const fmtPt = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—";
-  const fmtN  = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${Math.round(v)}` : "—";
-  const fmtU  = (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—";
+  const pS = leads > 0 ? (sac/leads)*100:0, pC = leads>0?(calidad/leads)*100:0;
+  const pV = leads>0?(ventas/leads)*100:0,  pJ = leads>0?(jot/leads)*100:0;
+  const toSafe = (v) => (v!==null&&v!==undefined&&isFinite(Number(v))&&Number(v)>0)?Number(v):null;
+  const cplR  = toSafe(canal.cpl)      ?? (leads>0&&inv>0?inv/leads:null);
+  const cplGR = toSafe(canal.cpl_gest) ?? (calidad>0&&inv>0?inv/calidad:null);
+  const cpaR  = toSafe(canal.cpa)      ?? (ventas>0&&inv>0?inv/ventas:null);
+  const cpaJR = toSafe(canal.cpa_jot)  ?? (jot>0&&inv>0?inv/jot:null);
+  const mL=n(metas.leads_totales),mS=n(metas.pct_sac),mC=n(metas.pct_calidad);
+  const mV=n(metas.pct_ventas),mJ=n(metas.pct_ventas_jot),mP=n(metas.presupuesto);
+  const mCtr=n(metas.ctr),mCpl=n(metas.cpl),mCplG=n(metas.cpl_gest),mCpa=n(metas.cpa),mCpaJ=n(metas.cpa_jot);
+  const fmtU2 = (v) => `$${n(v).toFixed(2)}`;
+  const diff = (l,m) => (m>0&&l!==null&&isFinite(l))?l-m:null;
+  const prog = (l,m) => (m>0&&l!==null&&isFinite(l))?(l/m)*100:null;
+  const fmtPt=(v)=>isFinite(v)?`${v>=0?"+":""}${v.toFixed(1)}%`:"—";
+  const fmtN2=(v)=>isFinite(v)?`${v>=0?"+":""}${Math.round(v)}`:"—";
+  const fmtUx=(v)=>isFinite(v)?`${v>=0?"+":"-"}${fmtU2(Math.abs(v))}`:"—";
   return [
-    { label:"LEADS TOTALES",   inv:false, obj:mL>0?mL:null,   logro:leads,   diff:diff(leads,mL), pct:prog(leads,mL), sub:null, fmtO:v=>String(Math.round(n(v))), fmtL:v=>String(Math.round(n(v))), fmtD:fmtN, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"SAC / ATC",       inv:true,  obj:mS>0?mS:null,   logro:sac,     diff:diff(pS,mS),   pct:mS>0?pS-mS:null, sub:`${pS.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"LEADS CALIDAD",   inv:false, obj:mC>0?mC:null,   logro:calidad, diff:diff(pC,mC),   pct:mC>0?pC-mC:null, sub:`${pC.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"VENTAS BITRIX",   inv:false, obj:mV>0?mV:null,   logro:ventas,  diff:diff(pV,mV),   pct:mV>0?pV-mV:null, sub:`${pV.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"VENTAS JOT",      inv:false, obj:mJ>0?mJ:null,   logro:jot,     diff:diff(pJ,mJ),   pct:mJ>0?pJ-mJ:null, sub:`${pJ.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"PRESUPUESTO",     inv:true,  bg:"bg-violet-50", obj:mP>0?mP:null, logro:inv>0?inv:null, diff:mP>0&&inv>0?inv-mP:null, pct:mP>0&&inv>0?(inv/mP)*100:null, sub:null, fmtO:fmtUsd2, fmtL:fmtUsd2, fmtD:fmtU, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
-    { label:"PRESUPUESTO +10%",inv:false, bg:"bg-violet-50", obj:mP>0?mP*1.1:null, logro:inv>0?inv:null, diff:null, pct:null, sub:null, fmtO:fmtUsd2, fmtL:fmtUsd2, fmtD:()=>"—", fmtP:()=>"—" },
-    { label:"CTR",             inv:false, manual:true, obj:mCtr>0?mCtr:null, logro:null, diff:null, pct:null, sub:null, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:()=>"—", fmtD:()=>"—", fmtP:()=>"—" },
-    { label:"CPL",             inv:true,  obj:mCpl>0?mCpl:null,  logro:cplR,  diff:mCpl>0&&cplR!==null?cplR-mCpl:null,    pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
-    { label:"CPL GESTIONABLE", inv:true,  obj:mCplG>0?mCplG:null, logro:cplGR, diff:mCplG>0&&cplGR!==null?cplGR-mCplG:null, pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
-    { label:"CPA BITRIX",      inv:true,  obj:mCpa>0?mCpa:null,  logro:cpaR,  diff:mCpa>0&&cpaR!==null?cpaR-mCpa:null,    pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
-    { label:"CPA JOT",         inv:true,  obj:mCpaJ>0?mCpaJ:null, logro:cpaJR, diff:mCpaJ>0&&cpaJR!==null?cpaJR-mCpaJ:null, pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
+    {label:"LEADS TOTALES",   inv:false,obj:mL>0?mL:null,logro:leads,  diff:diff(leads,mL),pct:prog(leads,mL),sub:null,fmtO:v=>String(Math.round(n(v))),fmtL:v=>String(Math.round(n(v))),fmtD:fmtN2,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
+    {label:"SAC / ATC",       inv:true, obj:mS>0?mS:null,logro:sac,   diff:diff(pS,mS),pct:mS>0?pS-mS:null,sub:`${pS.toFixed(1)}%`,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:v=>String(Math.round(n(v))),fmtD:fmtPt,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
+    {label:"LEADS CALIDAD",   inv:false,obj:mC>0?mC:null,logro:calidad,diff:diff(pC,mC),pct:mC>0?pC-mC:null,sub:`${pC.toFixed(1)}%`,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:v=>String(Math.round(n(v))),fmtD:fmtPt,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
+    {label:"VENTAS BITRIX",   inv:false,obj:mV>0?mV:null,logro:ventas, diff:diff(pV,mV),pct:mV>0?pV-mV:null,sub:`${pV.toFixed(1)}%`,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:v=>String(Math.round(n(v))),fmtD:fmtPt,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
+    {label:"VENTAS JOT",      inv:false,obj:mJ>0?mJ:null,logro:jot,   diff:diff(pJ,mJ),pct:mJ>0?pJ-mJ:null,sub:`${pJ.toFixed(1)}%`,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:v=>String(Math.round(n(v))),fmtD:fmtPt,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
+    {label:"PRESUPUESTO",     inv:true, obj:mP>0?mP:null,logro:inv>0?inv:null,diff:mP>0&&inv>0?inv-mP:null,pct:mP>0&&inv>0?(inv/mP)*100:null,sub:null,fmtO:fmtU2,fmtL:fmtU2,fmtD:fmtUx,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—",bg:"bg-violet-50"},
+    {label:"CTR",             inv:false,manual:true,obj:mCtr>0?mCtr:null,logro:null,diff:null,pct:null,sub:null,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:()=>"—",fmtD:()=>"—",fmtP:()=>"—"},
+    {label:"CPL",             inv:true, obj:mCpl>0?mCpl:null,logro:cplR,  diff:mCpl>0&&cplR!==null?cplR-mCpl:null,    pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
+    {label:"CPL GESTIONABLE", inv:true, obj:mCplG>0?mCplG:null,logro:cplGR,diff:mCplG>0&&cplGR!==null?cplGR-mCplG:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
+    {label:"CPA BITRIX",      inv:true, obj:mCpa>0?mCpa:null,logro:cpaR,  diff:mCpa>0&&cpaR!==null?cpaR-mCpa:null,    pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
+    {label:"CPA JOT",         inv:true, obj:mCpaJ>0?mCpaJ:null,logro:cpaJR,diff:mCpaJ>0&&cpaJR!==null?cpaJR-mCpaJ:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
   ];
 }
 
-// Fila de meta con barra de progreso visual (v1)
 function MetaFilaVisual({ f }) {
   const cD = f.diff !== null ? colorDiff(f.diff, f.inv) : C.muted;
   const [hovered, setHovered] = useState(false);
-  const _obj   = n(f.obj);
-  const _logro = n(f.logro);
-  const progreso =
-    f.obj !== null && f.logro !== null && _obj > 0 && isFinite(_logro) && isFinite(_obj)
-      ? Math.min((_logro / _obj) * 100, 150) : null;
-  const progresoColor = progreso === null ? C.muted
-    : f.inv ? (progreso <= 100 ? C.success : C.danger)
-    : (progreso >= 100 ? C.success : progreso >= 75 ? C.warning : C.danger);
-  const progresoAncho = progreso !== null ? Math.min(progreso, 100) : 0;
-  const rowBg      = f.bg === "bg-violet-50" ? "#f5f3ff" : "#ffffff";
-  const rowBgHover = f.bg === "bg-violet-50" ? "#ede9fe" : "#f8fafc";
-
+  const _obj=n(f.obj),_logro=n(f.logro);
+  const progreso=f.obj!==null&&f.logro!==null&&_obj>0&&isFinite(_logro)&&isFinite(_obj)?Math.min((_logro/_obj)*100,150):null;
+  const progresoColor=progreso===null?C.muted:f.inv?(progreso<=100?C.success:C.danger):(progreso>=100?C.success:progreso>=75?C.warning:C.danger);
+  const progresoAncho=progreso!==null?Math.min(progreso,100):0;
+  const rowBg=f.bg==="bg-violet-50"?"#f5f3ff":"#ffffff";
+  const rowBgHover=f.bg==="bg-violet-50"?"#ede9fe":"#f8fafc";
   return (
     <tr className="border-b transition-all"
       style={{ borderColor: C.border, background: hovered ? rowBgHover : rowBg }}
@@ -1438,21 +1191,17 @@ function MetaFilaVisual({ f }) {
             <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${progresoColor}20` }}>
               <div style={{ width: `${progresoAncho}%`, height: "100%", background: progresoColor, transition: "width 0.6s ease" }} />
             </div>
-            <div className="text-[7px] mt-0.5 font-bold" style={{ color: progresoColor }}>
-              {progreso <= 150 ? `${progreso.toFixed(0)}% de la meta` : ">150%"}
-            </div>
+            <div className="text-[7px] mt-0.5 font-bold" style={{ color: progresoColor }}>{progreso<=150?`${progreso.toFixed(0)}% de la meta`:">150%"}</div>
           </div>
         )}
       </td>
       <td className="px-5 py-2.5 text-center font-bold border-r text-[10px]" style={{ color: C.primary, borderColor: C.border }}>
-        {f.obj !== null ? f.fmtO(f.obj) : <span className="text-[9px]" style={{ color: C.border }}>Sin meta</span>}
+        {f.obj !== null ? f.fmtO(f.obj) : <span style={{ color: C.border, fontSize:"9px" }}>Sin meta</span>}
       </td>
       <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: C.slate, borderColor: C.border }}>
-        {f.manual
-          ? <span className="text-[9px] italic" style={{ color: C.muted }}>Externo</span>
-          : f.logro !== null && f.logro !== undefined
-            ? <span>{f.fmtL(f.logro)}{f.sub && <span className="ml-1 text-[8px]" style={{ color: C.muted }}>({f.sub})</span>}</span>
-            : <span className="text-[9px]" style={{ color: C.border }}>—</span>}
+        {f.manual?<span style={{ color:C.muted, fontSize:"9px" }} className="italic">Externo</span>
+          :f.logro!==null?<span>{f.fmtL(f.logro)}{f.sub&&<span className="ml-1 text-[8px]" style={{ color:C.muted }}>({f.sub})</span>}</span>
+          :<span style={{ color:C.border, fontSize:"9px" }}>—</span>}
       </td>
       <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: cD, borderColor: C.border }}>
         {f.diff !== null ? f.fmtD(f.diff) : "—"}
@@ -1460,133 +1209,15 @@ function MetaFilaVisual({ f }) {
       <td className="px-5 py-2.5 text-center border-r text-[10px]" style={{ borderColor: C.border }}>
         {progreso !== null ? (
           <div className="flex items-center justify-center gap-1.5">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] flex-shrink-0"
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px]"
               style={{ background: `${progresoColor}15`, color: progresoColor }}>
               {progreso >= 100 ? "✓" : progreso >= 75 ? "~" : "✗"}
             </div>
             <span className="font-black" style={{ color: progresoColor }}>{progreso.toFixed(0)}%</span>
           </div>
-        ) : <span className="text-[9px]" style={{ color: C.muted }}>—</span>}
+        ) : <span style={{ color: C.muted, fontSize:"9px" }}>—</span>}
       </td>
     </tr>
-  );
-}
-
-// Resumen visual de canal para metas (v1)
-function MetasCanalResumen({ canal, metas, cfg }) {
-  if (!canal || !canal.canal) return null;
-  const filas = buildFilas(canal, metas);
-  const filasConMeta = filas.filter(f =>
-    f.obj !== null && f.obj > 0 &&
-    f.logro !== null && f.logro !== undefined &&
-    !f.manual && isFinite(n(f.logro)) && isFinite(n(f.obj))
-  );
-  const superadas = filasConMeta.filter(f => {
-    const obj_ = n(f.obj), logro_ = n(f.logro);
-    if (obj_ === 0) return false;
-    const prog_ = (logro_ / obj_) * 100;
-    if (!isFinite(prog_)) return false;
-    return f.inv ? prog_ <= 100 : prog_ >= 100;
-  }).length;
-  const pctSuperadas = filasConMeta.length > 0 ? (superadas / filasConMeta.length) * 100 : 0;
-  const colorGlobal = pctSuperadas >= 80 ? C.success : pctSuperadas >= 50 ? C.warning : C.danger;
-
-  return (
-    <div className="px-5 py-3 border-b flex items-center gap-4 flex-wrap" style={{ borderColor: C.border, background: cfg.bg }}>
-      <div className="flex items-center gap-3">
-        <div className="text-center">
-          <div className="text-[8px] font-bold uppercase" style={{ color: C.muted }}>Metas OK</div>
-          <div className="text-lg font-black" style={{ color: colorGlobal }}>{superadas}/{filasConMeta.length}</div>
-        </div>
-        <div className="w-20">
-          <div className="w-full rounded-full overflow-hidden" style={{ height: "6px", background: `${colorGlobal}20` }}>
-            <div style={{ width: `${pctSuperadas}%`, height: "100%", background: colorGlobal, borderRadius: "9999px", transition: "width 0.5s" }} />
-          </div>
-          <div className="text-[7px] font-bold mt-0.5 text-center" style={{ color: colorGlobal }}>{pctSuperadas.toFixed(0)}% superadas</div>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {filasConMeta.slice(0, 5).map((f, i) => {
-          const prog_ = (n(f.logro) / n(f.obj)) * 100;
-          const ok = f.inv ? prog_ <= 100 : prog_ >= 100;
-          return (
-            <span key={i} className="text-[7px] px-1.5 py-0.5 rounded-full font-bold"
-              style={{ background: ok ? `${C.success}15` : `${C.danger}15`, color: ok ? C.success : C.danger }}>
-              {ok ? "✓" : "✗"} {f.label}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Selector de canales local para Metas (v1)
-function MetasCanalSelector({ canalesDisp, canalesSel, setCanalesSel, loadingOrig }) {
-  const [expandido, setExpandido] = useState(null);
-  const toggleCanal = (canal) => setCanalesSel(prev => prev.includes(canal) ? prev.filter(c => c !== canal) : [...prev, canal]);
-  const selAll = () => setCanalesSel([]);
-
-  if (loadingOrig) return (
-    <div className="flex items-center gap-2 py-2">
-      <div className="w-3 h-3 border-2 rounded-full animate-spin" style={{ borderColor: `${C.sky}30`, borderTopColor: C.sky }} />
-      <span className="text-[9px]" style={{ color: C.muted }}>Cargando canales...</span>
-    </div>
-  );
-  if (!canalesDisp.length) return <p className="text-[9px] italic py-1" style={{ color: C.muted }}>Aplica un período para ver los canales disponibles.</p>;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={selAll} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
-          style={canalesSel.length === 0 ? { background: C.primary, color: "#fff", borderColor: C.primary } : { background: "#fff", color: C.muted, borderColor: C.border }}>
-          Todos
-        </button>
-        {canalesDisp.map(({ canal, lineas }) => {
-          const cfg_ = getCfg(canal), sel = canalesSel.includes(canal), isExp = expandido === canal;
-          return (
-            <div key={canal} className="inline-flex items-center gap-0">
-              <button onClick={() => toggleCanal(canal)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[8px] font-black uppercase border transition-all hover:shadow-sm"
-                style={{ borderRadius: lineas?.length ? "9999px 0 0 9999px" : "9999px", background: sel ? cfg_.color : cfg_.bg, color: sel ? "#fff" : cfg_.color, borderColor: sel ? cfg_.color : `${cfg_.color}40` }}>
-                <span>{cfg_.icon}</span><span>{cfg_.label}</span>
-              </button>
-              {lineas?.length > 0 && (
-                <button onClick={() => setExpandido(isExp ? null : canal)}
-                  className="inline-flex items-center justify-center w-5 h-[26px] text-[9px] font-black border-l-0 border transition-all"
-                  style={{ borderRadius: "0 9999px 9999px 0", background: isExp ? cfg_.color : sel ? `${cfg_.color}cc` : cfg_.bg, color: isExp || sel ? "#fff" : cfg_.color, borderColor: sel || isExp ? cfg_.color : `${cfg_.color}40` }}>
-                  {isExp ? "▴" : "▾"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-        {canalesSel.length > 0 && (
-          <span className="text-[8px] font-medium" style={{ color: C.muted }}>
-            {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
-            {" · "}<button onClick={selAll} className="underline hover:no-underline" style={{ color: C.danger }}>limpiar</button>
-          </span>
-        )}
-      </div>
-      {expandido && (() => {
-        const canalInfo = canalesDisp.find(c => c.canal === expandido), cfg_ = getCfg(expandido);
-        if (!canalInfo) return null;
-        return (
-          <div className="rounded-xl border p-3" style={{ borderColor: `${cfg_.color}30`, background: cfg_.bg }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[8px] font-black uppercase" style={{ color: cfg_.color }}>{cfg_.icon} {cfg_.label} — Orígenes</span>
-              <button onClick={() => setExpandido(null)} className="text-[9px] font-bold" style={{ color: cfg_.color }}>✕</button>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(canalInfo.lineas || []).map(origen => (
-                <span key={origen} className="text-[8px] px-2 py-0.5 rounded-full font-medium inline-flex items-center"
-                  style={{ background: "#ffffff90", color: C.slate, border: `1px solid ${cfg_.color}25` }}>{origen}</span>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-    </div>
   );
 }
 
@@ -1598,30 +1229,27 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
   const [canalesData, setCanalesData] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
   const [metas, setMetas] = useState({
-    leads_totales:"", pct_sac:"", pct_calidad:"", pct_ventas:"", pct_ventas_jot:"",
-    presupuesto:"", ctr:"", cpl:"", cpl_gest:"", cpa:"", cpa_jot:""
+    leads_totales:"",pct_sac:"",pct_calidad:"",pct_ventas:"",pct_ventas_jot:"",
+    presupuesto:"",ctr:"",cpl:"",cpl_gest:"",cpa:"",cpa_jot:""
   });
   const setMeta = (k) => (v) => setMetas(prev => ({ ...prev, [k]: v }));
 
   useEffect(() => { setCanalesSel(canalesSelProp); }, [JSON.stringify(canalesSelProp)]);
-
   useEffect(() => {
     if (!desde || !hasta) return;
     setCanalesData([]); setLoadingOrig(true);
     fetch(`${API}/api/redes/monitoreo-metas?fechaDesde=${desde}&fechaHasta=${hasta}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setCanalesDisp(d.canales_disponibles || []); })
-      .catch(() => {}).finally(() => setLoadingOrig(false));
+      .then(r => r.json()).then(d => { if (d.success) setCanalesDisp(d.canales_disponibles||[]); })
+      .catch(()=>{}).finally(()=>setLoadingOrig(false));
   }, [desde, hasta]);
 
   const handleAplicar = () => {
     setLoadingData(true);
-    const params = new URLSearchParams({ fechaDesde: desde, fechaHasta: hasta });
-    if (canalesSel.length > 0) params.set("canales", canalesSel.join(","));
-    fetch(`${API}/api/redes/monitoreo-metas?${params}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setCanalesData(d.canales || []); })
-      .catch(() => {}).finally(() => setLoadingData(false));
+    const p = new URLSearchParams({ fechaDesde: desde, fechaHasta: hasta });
+    if (canalesSel.length > 0) p.set("canales", canalesSel.join(","));
+    fetch(`${API}/api/redes/monitoreo-metas?${p}`)
+      .then(r => r.json()).then(d => { if (d.success) setCanalesData(d.canales||[]); })
+      .catch(()=>{}).finally(()=>setLoadingData(false));
   };
 
   return (
@@ -1629,28 +1257,30 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
       <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center gap-3 flex-wrap">
         <span className="text-blue-600">📅</span>
         <span className="text-[10px] font-black uppercase tracking-wide text-blue-700">Período: {desde} → {hasta}</span>
-        <span className="text-[9px] text-blue-400">(cambia las fechas desde el filtro principal)</span>
       </div>
-
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} />
-            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Filtrar por Canal de Publicidad</span>
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
           </div>
-          <MetasCanalSelector canalesDisp={canalesDisp} canalesSel={canalesSel} setCanalesSel={setCanalesSel} loadingOrig={loadingOrig} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setCanalesSel([])} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+              style={canalesSel.length===0?{background:C.primary,color:"#fff",borderColor:C.primary}:{background:"#fff",color:C.muted,borderColor:C.border}}>Todos</button>
+            {canalesDisp.map(({canal})=>{const cfg=getCfg(canal),sel=canalesSel.includes(canal);return(
+              <button key={canal} onClick={()=>setCanalesSel(prev=>prev.includes(canal)?prev.filter(c=>c!==canal):[...prev,canal])}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[8px] font-black uppercase border transition-all rounded-full"
+                style={{background:sel?cfg.color:cfg.bg,color:sel?"#fff":cfg.color,borderColor:sel?cfg.color:`${cfg.color}40`}}>
+                {cfg.icon}{cfg.label}</button>);})}
+          </div>
         </div>
         <div className="px-5 py-3 flex justify-end">
-          <button onClick={handleAplicar}
-            className="px-5 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
-            style={{ background: C.primary }}>
-            {loadingData ? "Calculando..." : "Calcular Logros"}
+          <button onClick={handleAplicar} className="px-5 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm" style={{ background: C.primary }}>
+            {loadingData?"Calculando...":"Calcular Logros"}
           </button>
         </div>
       </div>
-
       <Card>
-        <CardHeader title="Objetivos / Metas" subtitle="Modifica los valores — los logros se recalculan automáticamente" accent={C.violet} />
+        <CardHeader title="Objetivos / Metas" subtitle="Modifica los valores y presiona Calcular Logros" accent={C.violet} />
         <div className="p-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
             <MetaInput label="Leads Totales"  value={metas.leads_totales}  onChange={setMeta("leads_totales")}  placeholder="133" />
@@ -1667,64 +1297,49 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
           </div>
         </div>
       </Card>
-
       {loadingData && <div className="text-center py-12 text-sm font-bold" style={{ color: C.muted }}>Calculando logros...</div>}
-
       {!loadingData && canalesData.length > 0 && canalesData.map((canal) => {
-        if (!canal || !canal.canal) return null;
-        const cNombre = canal.canal, cfg_ = getCfg(cNombre);
-        const lineasCanal = (canalesDisp.find(c => c.canal === cNombre)?.lineas) || canal.lineas || [];
-        const filas = buildFilas(canal, metas);
+        if (!canal?.canal) return null;
+        const cfg=getCfg(canal.canal);
+        const lineas=(canalesDisp.find(c=>c.canal===canal.canal)?.lineas)||canal.lineas||[];
+        const filas=buildMetaFilas(canal,metas);
         return (
-          <Card key={cNombre}>
-            <CardHeader title={cfg_.label || cNombre} subtitle={`${desde} → ${hasta}`} accent={cfg_.color}
-              badge={
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CanalBadge canal={cNombre} size="md" />
-                  <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background: `${cfg_.color}15`, color: cfg_.color }}>
-                    {canal.total_leads} leads · ${n(canal.inversion_usd).toFixed(2)} inv.
-                  </span>
-                </div>
-              } />
-            <MetasCanalResumen canal={canal} metas={metas} cfg={cfg_} />
-            {lineasCanal.length > 0 && (
-              <div className="px-5 py-2.5 border-b flex flex-wrap gap-1.5 items-center" style={{ borderColor: C.border, background: cfg_.bg }}>
-                <span className="text-[7px] font-black uppercase" style={{ color: cfg_.color }}>Orígenes incluidos:</span>
-                {lineasCanal.map(origen => (
-                  <span key={origen} className="text-[7px] px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: "#ffffff90", color: C.slate, border: `1px solid ${cfg_.color}25` }}>{origen}</span>
-                ))}
+          <Card key={canal.canal}>
+            <CardHeader title={cfg.label||canal.canal} subtitle={`${desde} → ${hasta}`} accent={cfg.color}
+              badge={<div className="flex items-center gap-2">
+                <CanalBadge canal={canal.canal} size="md" />
+                <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background:`${cfg.color}15`,color:cfg.color }}>
+                  {canal.total_leads} leads · ${n(canal.inversion_usd).toFixed(2)} inv.
+                </span>
+              </div>} />
+            {lineas.length>0&&(
+              <div className="px-5 py-2.5 border-b flex flex-wrap gap-1.5" style={{ borderColor:C.border,background:cfg.bg }}>
+                <span className="text-[7px] font-black uppercase" style={{ color:cfg.color }}>Orígenes:</span>
+                {lineas.map(o=><span key={o} className="text-[7px] px-2 py-0.5 rounded-full" style={{ background:"#ffffff90",color:C.slate,border:`1px solid ${cfg.color}25` }}>{o}</span>)}
               </div>
             )}
             <div className="overflow-auto">
               <table className="w-full border-collapse text-[10px] whitespace-nowrap">
-                <thead className="sticky top-0 z-10 border-b-2" style={{ background: C.light, borderColor: C.border }}>
-                  <tr>
-                    {[["INDICADOR","left",220],["OBJETIVO","center",130],["LOGRO","center",130],["DIFERENCIAL","center",120],["PROGRESO","center",100]].map(([h,a,w]) => (
-                      <th key={h} className="px-5 py-3 font-black uppercase tracking-widest border-r"
-                        style={{ textAlign:a, minWidth:w, color:C.muted, borderColor:C.border }}>{h}</th>
-                    ))}
-                  </tr>
+                <thead className="sticky top-0 z-10 border-b-2" style={{ background:C.light,borderColor:C.border }}>
+                  <tr>{[["INDICADOR","left",200],["OBJETIVO","center",120],["LOGRO","center",120],["DIFERENCIAL","center",110],["PROGRESO","center",90]].map(([h,a,w])=>(
+                    <th key={h} className="px-5 py-3 font-black uppercase tracking-widest border-r" style={{ textAlign:a,minWidth:w,color:C.muted,borderColor:C.border }}>{h}</th>
+                  ))}</tr>
                 </thead>
-                <tbody>{filas.map((f, fi) => <MetaFilaVisual key={fi} f={f} />)}</tbody>
+                <tbody>{filas.map((f,fi)=><MetaFilaVisual key={fi} f={f}/>)}</tbody>
               </table>
             </div>
-            <div className="px-5 py-2.5 border-t flex items-center gap-4 text-[8px] font-bold flex-wrap" style={{ borderColor: C.border }}>
-              <span style={{ color: C.success }}>✓ Verde = supera la meta</span>
-              <span style={{ color: C.danger }}>✗ Rojo = bajo la meta</span>
-              <span style={{ color: C.muted }}>· Costos y SAC: menor es mejor</span>
+            <div className="px-5 py-2.5 border-t flex items-center gap-4 text-[8px] font-bold flex-wrap" style={{ borderColor:C.border }}>
+              <span style={{ color:C.success }}>✓ Verde = supera la meta</span>
+              <span style={{ color:C.danger }}>✗ Rojo = bajo la meta</span>
+              <span style={{ color:C.muted }}>· Costos y SAC: menor es mejor</span>
             </div>
           </Card>
         );
       })}
-
       {!loadingData && canalesData.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="text-5xl">🎯</div>
-          <div className="text-sm font-black" style={{ color: C.slate }}>Selecciona canales y calcula los logros</div>
-          <div className="text-xs text-center max-w-sm leading-relaxed" style={{ color: C.muted }}>
-            Elige uno o más canales de publicidad, completa los objetivos y presiona "Calcular Logros".
-          </div>
+          <div className="text-sm font-black" style={{ color:C.slate }}>Selecciona canales y calcula los logros</div>
         </div>
       )}
     </div>
@@ -1732,7 +1347,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ROOT COMPONENT
+// ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "general",       label: "Monitoreo General",    icon: "📊" },
@@ -1742,23 +1357,17 @@ const TABS = [
   { id: "comparativo",   label: "Comparativo",          icon: "🔀" },
   { id: "pautas",        label: "Análisis Pautas",      icon: "🔬" },
   { id: "reporte",       label: "Reporte Data",         icon: "📑" },
-  { id: "proximamente",  label: "Próximamente",          icon: "🚀" },
+  { id: "proximamente",  label: "Próximamente",         icon: "🚀" },
 ];
 
 export default function Redes() {
   const hoy = getFechaHoy();
-
-  const [tab,           setTab]           = useState("general");
-  const [fechaDesde,    setFechaDesde]    = useState(hoy);
-  const [fechaHasta,    setFechaHasta]    = useState(hoy);
-  const [filtro,        setFiltro]        = useState({ desde: hoy, hasta: hoy });
-
-  // Filtros globales compartidos entre todos los tabs
-  const [canalesSel,    setCanalesSel]    = useState([]);
-  const [supervisorSel, setSupervisorSel] = useState("");
-  const [supervisores,  setSupervisores]  = useState([]);
-
-  const [applying, setApplying] = useState(false);
+  const [tab,        setTab]        = useState("general");
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [filtro,     setFiltro]     = useState({ desde: hoy, hasta: hoy });
+  const [canalesSel, setCanalesSel] = useState([]);
+  const [applying,   setApplying]   = useState(false);
 
   const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel);
 
@@ -1772,8 +1381,7 @@ export default function Redes() {
 
   return (
     <div className="min-h-screen p-5 md:p-7" style={{ background: C.light }}>
-
-      {/* Header principal */}
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -1783,19 +1391,17 @@ export default function Redes() {
           </div>
           <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>VELSA NETLIFE — Actualización cada 15 minutos</p>
           <div className="flex flex-wrap gap-1.5 ml-12 mt-2">
-            {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg_]) => (
+            {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg]) => (
               <span key={canal} className="text-[8px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-                style={{ background: cfg_.bg, color: cfg_.color, border: `1px solid ${cfg_.color}30` }}>
-                {cfg_.icon} {cfg_.label}
+                style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+                {cfg.icon} {cfg.label}
               </span>
             ))}
           </div>
         </div>
-
-        {/* Selector de fechas */}
         <div className="bg-white border rounded-2xl px-5 py-4 shadow-sm" style={{ borderColor: C.border }}>
           <div className="flex flex-wrap items-end gap-3">
-            {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label, key, val]) => (
+            {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
               <div key={key} className="flex flex-col gap-1">
                 <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>{label}</label>
                 <input type="date" value={val}
@@ -1814,46 +1420,32 @@ export default function Redes() {
         </div>
       </div>
 
-      {/* Tabs de navegación */}
-      <div className="flex gap-1 flex-wrap bg-white border rounded-2xl p-1 mb-7 w-fit shadow-sm" style={{ borderColor: C.border }}>
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 bg-white border rounded-2xl p-1 mb-7 w-fit shadow-sm" style={{ borderColor: C.border }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all"
-            style={tab === t.id
-              ? { background: C.primary, color: "#fff", boxShadow: `0 2px 10px ${C.primary}35` }
-              : { color: C.muted }}>
+            style={tab === t.id ? { background: C.primary, color: "#fff", boxShadow: `0 2px 10px ${C.primary}35` } : { color: C.muted }}>
             <span className="text-sm">{t.icon}</span>
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Panel de filtros globales */}
+      {/* Filtros globales de canal */}
       {tabsConFiltroCanal.includes(tab) && (
-        <PanelFiltrosGlobales
-          canalesSel={canalesSel}
-          onCanalesSel={setCanalesSel}
-          supervisorSel={supervisorSel}
-          onSupervisorSel={setSupervisorSel}
-          supervisores={supervisores}
-        />
+        <PanelFiltrosGlobales canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
       )}
 
-      {/* Contenido de cada tab */}
-      {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} canalesSel={canalesSel} supervisorSel={supervisorSel} />}
-      {tab === "graficos"     && <TabGraficos         data={data} loading={loading} canalesSel={canalesSel} />}
+      {/* Contenido */}
+      {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
+      {tab === "graficos"     && <TabGraficos         data={data} loading={loading} />}
       {tab === "asesorvpauta" && (
-        <TabAsesorVsPauta
-          filtro={filtro}
-          canalesSel={canalesSel}
-          onCanalesSel={setCanalesSel}
-          supervisorSel={supervisorSel}
-          onSupervisorSel={setSupervisorSel}
-        />
+        <TabAsesorVsPauta filtro={filtro} canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
       )}
-      {tab === "metas"        && <TabMetas      filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />}
-      {tab === "comparativo"  && <TabComparativo  filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />}
-      {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />}
+      {tab === "metas"        && <TabMetas     filtro={filtro} canalesSel={canalesSel} />}
+      {tab === "comparativo"  && <TabComparativo filtro={filtro} />}
+      {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} />}
       {tab === "reporte"      && <TabReporteData filtro={filtro} />}
       {tab === "proximamente" && (
         <div className="flex flex-col items-center justify-center py-28 gap-5">

@@ -710,18 +710,287 @@ function TabGraficos({ data, loading, canalesSel }) {
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// WRAPPPERS PARA TABS CON FILTROS — pasan filtros globales a cada sub-tab
+// TAB METAS VS LOGROS — integrado directamente del Redes.jsx original
 // ─────────────────────────────────────────────────────────────────────────────
-function TabMetasWrapped({ filtro, canalesSel, supervisorSel }) {
-  // Lazy import para evitar ciclos
-  const [TabMetas, setTabMetas] = useState(null);
-  useEffect(() => {
-    import("./TabMetas").then(m => setTabMetas(() => m.default)).catch(() => {});
-  }, []);
-  if (!TabMetas) return <div className="text-center py-20" style={{ color: C.muted }}>Cargando...</div>;
-  return <TabMetas filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />;
+function MetaInput({ label, value, onChange, prefix = "", suffix = "", placeholder = "0" }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: C.muted }}>{label}</label>
+      <div className="flex items-center border rounded-xl overflow-hidden bg-white" style={{ borderColor: C.border }}>
+        {prefix && <span className="px-2 text-[10px] font-black border-r flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{prefix}</span>}
+        <input type="number" step="any" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+          className="w-full px-2 py-1.5 text-[11px] font-bold outline-none bg-white min-w-0" style={{ color: C.slate }} />
+        {suffix && <span className="px-2 text-[10px] font-black border-l flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{suffix}</span>}
+      </div>
+    </div>
+  );
 }
+
+function colorDiff(diff, invertir) {
+  if (diff === null || isNaN(n(diff))) return C.muted;
+  const x = n(diff); if (x === 0) return C.muted;
+  return (invertir ? x < 0 : x > 0) ? C.success : C.danger;
+}
+
+function buildMetaFilas(canal, metas) {
+  const leads   = Math.max(0, n(canal.total_leads));
+  const sac     = Math.max(0, n(canal.leads_sac));
+  const calidad = Math.max(0, n(canal.leads_calidad));
+  const ventas  = Math.max(0, n(canal.venta_subida));
+  const jot     = Math.max(0, n(canal.ingreso_jot));
+  const inv     = Math.max(0, n(canal.inversion_usd));
+  const pS = leads > 0 ? (sac     / leads) * 100 : 0;
+  const pC = leads > 0 ? (calidad / leads) * 100 : 0;
+  const pV = leads > 0 ? (ventas  / leads) * 100 : 0;
+  const pJ = leads > 0 ? (jot     / leads) * 100 : 0;
+  const toSafe = (v) => (v !== null && v !== undefined && isFinite(Number(v)) && Number(v) > 0) ? Number(v) : null;
+  const cplR  = toSafe(canal.cpl)      ?? (leads > 0   && inv > 0 ? inv / leads   : null);
+  const cplGR = toSafe(canal.cpl_gest) ?? (calidad > 0 && inv > 0 ? inv / calidad : null);
+  const cpaR  = toSafe(canal.cpa)      ?? (ventas > 0  && inv > 0 ? inv / ventas  : null);
+  const cpaJR = toSafe(canal.cpa_jot)  ?? (jot > 0     && inv > 0 ? inv / jot     : null);
+  const mL = n(metas.leads_totales), mS = n(metas.pct_sac), mC = n(metas.pct_calidad);
+  const mV = n(metas.pct_ventas), mJ = n(metas.pct_ventas_jot), mP = n(metas.presupuesto);
+  const mCtr = n(metas.ctr), mCpl = n(metas.cpl), mCplG = n(metas.cpl_gest);
+  const mCpa = n(metas.cpa), mCpaJ = n(metas.cpa_jot);
+  const fmtUsd2 = (v) => `$${n(v).toFixed(2)}`;
+  const diff = (l, m) => (m > 0 && l !== null && isFinite(l)) ? l - m : null;
+  const prog = (l, m) => (m > 0 && l !== null && isFinite(l)) ? (l / m) * 100 : null;
+  const fmtPt = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—";
+  const fmtN2 = (v) => isFinite(v) ? `${v >= 0 ? "+" : ""}${Math.round(v)}` : "—";
+  const fmtU  = (v) => isFinite(v) ? `${v >= 0 ? "+" : "-"}${fmtUsd2(Math.abs(v))}` : "—";
+  return [
+    { label:"LEADS TOTALES",    inv:false, obj:mL>0?mL:null, logro:leads,     diff:diff(leads,mL), pct:prog(leads,mL), sub:null, fmtO:v=>String(Math.round(n(v))), fmtL:v=>String(Math.round(n(v))), fmtD:fmtN2, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
+    { label:"SAC / ATC",        inv:true,  obj:mS>0?mS:null, logro:sac,       diff:diff(pS,mS),   pct:mS>0?pS-mS:null, sub:`${pS.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
+    { label:"LEADS CALIDAD",    inv:false, obj:mC>0?mC:null, logro:calidad,   diff:diff(pC,mC),   pct:mC>0?pC-mC:null, sub:`${pC.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
+    { label:"VENTAS BITRIX",    inv:false, obj:mV>0?mV:null, logro:ventas,    diff:diff(pV,mV),   pct:mV>0?pV-mV:null, sub:`${pV.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
+    { label:"VENTAS JOT",       inv:false, obj:mJ>0?mJ:null, logro:jot,       diff:diff(pJ,mJ),   pct:mJ>0?pJ-mJ:null, sub:`${pJ.toFixed(1)}%`, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:v=>String(Math.round(n(v))), fmtD:fmtPt, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—" },
+    { label:"PRESUPUESTO",      inv:true,  obj:mP>0?mP:null, logro:inv>0?inv:null, diff:mP>0&&inv>0?inv-mP:null, pct:mP>0&&inv>0?(inv/mP)*100:null, sub:null, fmtO:fmtUsd2, fmtL:fmtUsd2, fmtD:fmtU, fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—", bg:"bg-violet-50" },
+    { label:"CTR",              inv:false, manual:true, obj:mCtr>0?mCtr:null, logro:null, diff:null, pct:null, sub:null, fmtO:v=>`${n(v).toFixed(1)}%`, fmtL:()=>"—", fmtD:()=>"—", fmtP:()=>"—" },
+    { label:"CPL",              inv:true,  obj:mCpl>0?mCpl:null,  logro:cplR,  diff:mCpl>0&&cplR!==null?cplR-mCpl:null,    pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
+    { label:"CPL GESTIONABLE",  inv:true,  obj:mCplG>0?mCplG:null, logro:cplGR, diff:mCplG>0&&cplGR!==null?cplGR-mCplG:null, pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
+    { label:"CPA BITRIX",       inv:true,  obj:mCpa>0?mCpa:null,  logro:cpaR,  diff:mCpa>0&&cpaR!==null?cpaR-mCpa:null,    pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
+    { label:"CPA JOT",          inv:true,  obj:mCpaJ>0?mCpaJ:null, logro:cpaJR, diff:mCpaJ>0&&cpaJR!==null?cpaJR-mCpaJ:null, pct:null, sub:null, fmtO:fmtUsd2, fmtL:v=>v!==null?fmtUsd2(v):"—", fmtD:fmtU, fmtP:()=>"—" },
+  ];
+}
+
+function MetaFilaVisual({ f }) {
+  const cD = f.diff !== null ? colorDiff(f.diff, f.inv) : C.muted;
+  const [hovered, setHovered] = useState(false);
+  const _obj = n(f.obj), _logro = n(f.logro);
+  const progreso = f.obj !== null && f.logro !== null && _obj > 0 && isFinite(_logro) && isFinite(_obj)
+    ? Math.min((_logro / _obj) * 100, 150) : null;
+  const progresoColor = progreso === null ? C.muted
+    : f.inv ? (progreso <= 100 ? C.success : C.danger)
+    : (progreso >= 100 ? C.success : progreso >= 75 ? C.warning : C.danger);
+  const progresoAncho = progreso !== null ? Math.min(progreso, 100) : 0;
+  const rowBg      = f.bg === "bg-violet-50" ? "#f5f3ff" : "#ffffff";
+  const rowBgHover = f.bg === "bg-violet-50" ? "#ede9fe" : "#f8fafc";
+  return (
+    <tr className="border-b transition-all"
+      style={{ borderColor: C.border, background: hovered ? rowBgHover : rowBg }}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <td className="px-5 py-2.5 border-r" style={{ borderColor: C.border, background: "inherit" }}>
+        <div className="font-black text-[10px]" style={{ color: C.slate }}>{f.label}</div>
+        {progreso !== null && (
+          <div className="mt-1">
+            <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${progresoColor}20` }}>
+              <div style={{ width: `${progresoAncho}%`, height: "100%", background: progresoColor, transition: "width 0.6s ease" }} />
+            </div>
+            <div className="text-[7px] mt-0.5 font-bold" style={{ color: progresoColor }}>
+              {progreso <= 150 ? `${progreso.toFixed(0)}% de la meta` : ">150%"}
+            </div>
+          </div>
+        )}
+      </td>
+      <td className="px-5 py-2.5 text-center font-bold border-r text-[10px]" style={{ color: C.primary, borderColor: C.border }}>
+        {f.obj !== null ? f.fmtO(f.obj) : <span style={{ color: C.border, fontSize:"9px" }}>Sin meta</span>}
+      </td>
+      <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: C.slate, borderColor: C.border }}>
+        {f.manual ? <span style={{ color:C.muted, fontSize:"9px" }} className="italic">Externo</span>
+          : f.logro !== null ? <span>{f.fmtL(f.logro)}{f.sub && <span className="ml-1 text-[8px]" style={{ color: C.muted }}>({f.sub})</span>}</span>
+          : <span style={{ color: C.border, fontSize:"9px" }}>—</span>}
+      </td>
+      <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: cD, borderColor: C.border }}>
+        {f.diff !== null ? f.fmtD(f.diff) : "—"}
+      </td>
+      <td className="px-5 py-2.5 text-center border-r text-[10px]" style={{ borderColor: C.border }}>
+        {progreso !== null ? (
+          <div className="flex items-center justify-center gap-1.5">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px]"
+              style={{ background: `${progresoColor}15`, color: progresoColor }}>
+              {progreso >= 100 ? "✓" : progreso >= 75 ? "~" : "✗"}
+            </div>
+            <span className="font-black" style={{ color: progresoColor }}>{progreso.toFixed(0)}%</span>
+          </div>
+        ) : <span style={{ color: C.muted, fontSize:"9px" }}>—</span>}
+      </td>
+    </tr>
+  );
+}
+
+function MetasCanalSelectorLocal({ canalesDisp, canalesSel, setCanalesSel, loadingOrig }) {
+  const toggle = (canal) => setCanalesSel(prev => prev.includes(canal) ? prev.filter(c => c !== canal) : [...prev, canal]);
+  const selAll = () => setCanalesSel([]);
+  if (loadingOrig) return <span className="text-[9px]" style={{ color: C.muted }}>Cargando canales...</span>;
+  if (!canalesDisp.length) return <p className="text-[9px] italic" style={{ color: C.muted }}>Aplica un período para ver los canales.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button onClick={selAll} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+        style={canalesSel.length === 0 ? { background: C.primary, color: "#fff", borderColor: C.primary } : { background: "#fff", color: C.muted, borderColor: C.border }}>
+        Todos
+      </button>
+      {canalesDisp.map(({ canal }) => {
+        const cfg = getCanalCfg(canal), sel = canalesSel.includes(canal);
+        return (
+          <button key={canal} onClick={() => toggle(canal)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[8px] font-black uppercase border transition-all rounded-full"
+            style={{ background: sel ? cfg.color : cfg.bg, color: sel ? "#fff" : cfg.color, borderColor: sel ? cfg.color : `${cfg.color}40` }}>
+            {cfg.icon} {cfg.label}
+          </button>
+        );
+      })}
+      {canalesSel.length > 0 && (
+        <span className="text-[8px]" style={{ color: C.muted }}>
+          {canalesSel.length} canal{canalesSel.length > 1 ? "es" : ""}
+          {" · "}<button onClick={selAll} style={{ color: C.danger, textDecoration: "underline" }}>limpiar</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
+  const { desde, hasta } = filtro;
+  const [canalesSel,  setCanalesSel]  = useState(canalesSelProp);
+  const [canalesDisp, setCanalesDisp] = useState([]);
+  const [loadingOrig, setLoadingOrig] = useState(false);
+  const [canalesData, setCanalesData] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [metas, setMetas] = useState({
+    leads_totales:"", pct_sac:"", pct_calidad:"", pct_ventas:"", pct_ventas_jot:"",
+    presupuesto:"", ctr:"", cpl:"", cpl_gest:"", cpa:"", cpa_jot:""
+  });
+  const setMeta = (k) => (v) => setMetas(prev => ({ ...prev, [k]: v }));
+
+  useEffect(() => { setCanalesSel(canalesSelProp); }, [JSON.stringify(canalesSelProp)]);
+
+  useEffect(() => {
+    if (!desde || !hasta) return;
+    setCanalesData([]); setLoadingOrig(true);
+    fetch(`${API}/api/redes/monitoreo-metas?fechaDesde=${desde}&fechaHasta=${hasta}`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setCanalesDisp(d.canales_disponibles || []); })
+      .catch(() => {}).finally(() => setLoadingOrig(false));
+  }, [desde, hasta]);
+
+  const handleAplicar = () => {
+    setLoadingData(true);
+    const p = new URLSearchParams({ fechaDesde: desde, fechaHasta: hasta });
+    if (canalesSel.length > 0) p.set("canales", canalesSel.join(","));
+    fetch(`${API}/api/redes/monitoreo-metas?${p}`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setCanalesData(d.canales || []); })
+      .catch(() => {}).finally(() => setLoadingData(false));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center gap-3 flex-wrap">
+        <span className="text-blue-600">📅</span>
+        <span className="text-[10px] font-black uppercase tracking-wide text-blue-700">Período: {desde} → {hasta}</span>
+      </div>
+      <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
+        <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} />
+            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Filtrar por Canal</span>
+          </div>
+          <MetasCanalSelectorLocal canalesDisp={canalesDisp} canalesSel={canalesSel} setCanalesSel={setCanalesSel} loadingOrig={loadingOrig} />
+        </div>
+        <div className="px-5 py-3 flex justify-end">
+          <button onClick={handleAplicar}
+            className="px-5 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm"
+            style={{ background: C.primary }}>
+            {loadingData ? "Calculando..." : "Calcular Logros"}
+          </button>
+        </div>
+      </div>
+      <Card>
+        <CardHeader title="Objetivos / Metas" subtitle="Modifica los valores y presiona Calcular Logros" accent={C.violet} />
+        <div className="p-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            <MetaInput label="Leads Totales"  value={metas.leads_totales}  onChange={setMeta("leads_totales")}  placeholder="133" />
+            <MetaInput label="% SAC / ATC"    value={metas.pct_sac}        onChange={setMeta("pct_sac")}        suffix="%" placeholder="45" />
+            <MetaInput label="% Calidad"      value={metas.pct_calidad}    onChange={setMeta("pct_calidad")}    suffix="%" placeholder="60" />
+            <MetaInput label="% Ventas"       value={metas.pct_ventas}     onChange={setMeta("pct_ventas")}     suffix="%" placeholder="45" />
+            <MetaInput label="% Ventas JOT"   value={metas.pct_ventas_jot} onChange={setMeta("pct_ventas_jot")} suffix="%" placeholder="45" />
+            <MetaInput label="Presupuesto $"  value={metas.presupuesto}    onChange={setMeta("presupuesto")}    prefix="$" placeholder="585" />
+            <MetaInput label="CTR %"          value={metas.ctr}            onChange={setMeta("ctr")}            suffix="%" placeholder="35" />
+            <MetaInput label="CPL $"          value={metas.cpl}            onChange={setMeta("cpl")}            prefix="$" placeholder="4.40" />
+            <MetaInput label="CPL Gest $"     value={metas.cpl_gest}       onChange={setMeta("cpl_gest")}       prefix="$" placeholder="8.00" />
+            <MetaInput label="CPA Bitrix $"   value={metas.cpa}            onChange={setMeta("cpa")}            prefix="$" placeholder="22.00" />
+            <MetaInput label="CPA JOT $"      value={metas.cpa_jot}        onChange={setMeta("cpa_jot")}        prefix="$" placeholder="22.00" />
+          </div>
+        </div>
+      </Card>
+      {loadingData && <div className="text-center py-12 text-sm font-bold" style={{ color: C.muted }}>Calculando logros...</div>}
+      {!loadingData && canalesData.length > 0 && canalesData.map((canal) => {
+        if (!canal?.canal) return null;
+        const cfg = getCanalCfg(canal.canal);
+        const lineas = (canalesDisp.find(c => c.canal === canal.canal)?.lineas) || canal.lineas || [];
+        const filas = buildMetaFilas(canal, metas);
+        return (
+          <Card key={canal.canal}>
+            <CardHeader title={cfg.label || canal.canal} subtitle={`${desde} → ${hasta}`} accent={cfg.color}
+              badge={
+                <div className="flex items-center gap-2">
+                  <span style={{ padding:"3px 10px", borderRadius:"9999px", background:cfg.bg, color:cfg.color, fontWeight:900, fontSize:"8px", border:`1px solid ${cfg.color}30`, display:"inline-flex", alignItems:"center", gap:"4px" }}>
+                    {cfg.icon} {cfg.label}
+                  </span>
+                  <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background:`${cfg.color}15`, color:cfg.color }}>
+                    {canal.total_leads} leads · ${n(canal.inversion_usd).toFixed(2)} inv.
+                  </span>
+                </div>
+              } />
+            {lineas.length > 0 && (
+              <div className="px-5 py-2.5 border-b flex flex-wrap gap-1.5" style={{ borderColor:C.border, background:cfg.bg }}>
+                <span className="text-[7px] font-black uppercase" style={{ color:cfg.color }}>Orígenes:</span>
+                {lineas.map(o => <span key={o} className="text-[7px] px-2 py-0.5 rounded-full" style={{ background:"#ffffff90", color:C.slate, border:`1px solid ${cfg.color}25` }}>{o}</span>)}
+              </div>
+            )}
+            <div className="overflow-auto">
+              <table className="w-full border-collapse text-[10px] whitespace-nowrap">
+                <thead className="sticky top-0 z-10 border-b-2" style={{ background:C.light, borderColor:C.border }}>
+                  <tr>
+                    {[["INDICADOR","left",200],["OBJETIVO","center",120],["LOGRO","center",120],["DIFERENCIAL","center",110],["PROGRESO","center",90]].map(([h,a,w]) => (
+                      <th key={h} className="px-5 py-3 font-black uppercase tracking-widest border-r"
+                        style={{ textAlign:a, minWidth:w, color:C.muted, borderColor:C.border }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>{filas.map((f, fi) => <MetaFilaVisual key={fi} f={f} />)}</tbody>
+              </table>
+            </div>
+            <div className="px-5 py-2.5 border-t flex items-center gap-4 text-[8px] font-bold flex-wrap" style={{ borderColor:C.border }}>
+              <span style={{ color:C.success }}>✓ Verde = supera la meta</span>
+              <span style={{ color:C.danger }}>✗ Rojo = bajo la meta</span>
+              <span style={{ color:C.muted }}>· Costos y SAC: menor es mejor</span>
+            </div>
+          </Card>
+        );
+      })}
+      {!loadingData && canalesData.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="text-5xl">🎯</div>
+          <div className="text-sm font-black" style={{ color:C.slate }}>Selecciona canales y calcula los logros</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT COMPONENT
@@ -865,7 +1134,7 @@ export default function Redes() {
         />
       )}
       {tab === "metas" && (
-        <TabMetasWrapped filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />
+        <TabMetas filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />
       )}
       {tab === "comparativo" && (
         <TabComparativo filtro={filtro} canalesSel={canalesSel} supervisorSel={supervisorSel} />

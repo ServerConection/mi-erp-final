@@ -1,16 +1,23 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  TabAnalisisPautas.jsx — Análisis Avanzado de Pautas VELSA NETLIFE      ║
-// ║  KPIs: Tasa contacto · Velocidad · CPActivado · ROAS · Índice calidad   ║
+// ║  ✅ Gauges ICP premium con gradientes                                    ║
+// ║  ✅ Scatter CPL vs Efectividad mejorado                                  ║
+// ║  ✅ AreaChart tendencia con gradientes                                   ║
+// ║  ✅ Barras horizontales ranking con animación                            ║
+// ║  ✅ Cuadrante visual con anotaciones                                     ║
+// ║  ✅ Insights automáticos con iconos semáforo                             ║
+// ║  ✅ Tabla comparativa con mini-barras ICP inline                         ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 import { useEffect, useState, useMemo } from "react";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
+  AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell, LabelList, ReferenceLine,
+  ComposedChart,
 } from "recharts";
 
-// ─── Colores y config (mismos que Redes.jsx) ────────────────────────────────
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
   warning: "#f59e0b", danger: "#ef4444", violet: "#7c3aed",
@@ -19,253 +26,270 @@ const C = {
 };
 
 const CANALES = {
-  "ARTS":              { color: "#1e3a8a", bg: "#dbeafe", icon: "🎨", label: "ARTS" },
-  "ARTS FACEBOOK":     { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
-  "ARTS GOOGLE":       { color: "#ea4335", bg: "#fee2e2", icon: "🔍", label: "ARTS GG" },
-  "REMARKETING":       { color: "#7c3aed", bg: "#ede9fe", icon: "🔁", label: "REMARKETING" },
-  "VIDIKA GOOGLE":     { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA GG" },
-  "POR RECOMENDACIÓN": { color: "#f59e0b", bg: "#fef3c7", icon: "🤝", label: "RECOMEND." },
+  "ARTS":              { color:"#1e3a8a", bg:"#dbeafe", icon:"🎨", label:"ARTS" },
+  "ARTS FACEBOOK":     { color:"#1877f2", bg:"#eff6ff", icon:"📘", label:"ARTS FB" },
+  "ARTS GOOGLE":       { color:"#ea4335", bg:"#fee2e2", icon:"🔍", label:"ARTS GG" },
+  "REMARKETING":       { color:"#7c3aed", bg:"#ede9fe", icon:"🔁", label:"REMARKETING" },
+  "VIDIKA GOOGLE":     { color:"#059669", bg:"#d1fae5", icon:"📺", label:"VIDIKA GG" },
+  "POR RECOMENDACIÓN": { color:"#f59e0b", bg:"#fef3c7", icon:"🤝", label:"RECOMEND." },
 };
 
-const getCfg = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "•", label: c };
+const getCfg = c => CANALES[c] || { color:C.muted, bg:"#f8fafc", icon:"•", label:c };
 
-const API = import.meta.env.VITE_API_URL;
-const n   = (v) => Number(v || 0);
-const pct = (a, b) => b > 0 ? ((a / b) * 100) : 0;
-const fmt2    = (v) => `$${n(v).toFixed(2)}`;
-const fmtPct  = (v) => `${n(v).toFixed(1)}%`;
-const fmtUsd  = (v) => `$${n(v).toFixed(0)}`;
-const formatFecha = (f) => { if (!f) return "—"; const [, m, d] = String(f).split("T")[0].split("-"); return `${d}/${m}`; };
+const API       = import.meta.env.VITE_API_URL;
+const n         = v => Number(v||0);
+const pct       = (a,b) => b>0 ? (a/b)*100 : 0;
+const fmt2      = v => `$${n(v).toFixed(2)}`;
+const fmtPct    = v => `${n(v).toFixed(1)}%`;
+const fmtUsd    = v => `$${n(v).toFixed(0)}`;
+const formatF   = f => { if(!f) return "—"; const [,m,d]=String(f).split("T")[0].split("-"); return `${d}/${m}`; };
+const semaforo  = (v,u,inv=false) => { const [b,med]=u; if(inv) return v<=b?C.success:v<=med?C.warning:C.danger; return v>=b?C.success:v>=med?C.warning:C.danger; };
+const TICKET    = 25;
 
-// ─── Helpers de color semáforo ───────────────────────────────────────────────
-const colorSemaforo = (val, umbrales, invertir = false) => {
-  const [bajo, medio] = umbrales;
-  if (invertir) return val <= bajo ? C.success : val <= medio ? C.warning : C.danger;
-  return val >= bajo ? C.success : val >= medio ? C.warning : C.danger;
-};
-
-// ─── Cálculo del Índice de Calidad de Pauta (ICP) ───────────────────────────
-// Fórmula ponderada 0-100:
-//   40% efectividad (activos/leads)
-//   25% tasa contacto (negociables/leads)  ← proxy si no hay campo directo
-//   20% inverso ATC  (leads - atc) / leads
-//   15% eficiencia inversión (si hay inversión: 100 - CPL normalizado)
 function calcICP(c, maxCPL) {
-  const ef   = pct(c.activos_mes,          c.n_leads);           // 0-100
-  const tNeg = pct(c.negociables,          c.n_leads);           // proxy contactabilidad
-  const tBue = pct(c.n_leads - c.atc_soporte, c.n_leads);       // inverso ATC
-  const cpl  = c.n_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.n_leads : null;
-  const eInv = cpl !== null && maxCPL > 0 ? Math.max(0, 100 - (cpl / maxCPL) * 100) : null;
-
-  const score =
-    ef   * 0.40 +
-    tNeg * 0.25 +
-    tBue * 0.20 +
-    (eInv !== null ? eInv * 0.15 : tBue * 0.15); // fallback si no hay inversión
-
-  return Math.min(100, Math.max(0, score));
+  const ef   = pct(c.activos_mes, c.n_leads);
+  const tNeg = pct(c.negociables, c.n_leads);
+  const tBue = pct(c.n_leads - c.atc_soporte, c.n_leads);
+  const cpl  = c.n_leads>0 && c.inversion_usd>0 ? c.inversion_usd/c.n_leads : null;
+  const eInv = cpl!==null && maxCPL>0 ? Math.max(0,100-(cpl/maxCPL)*100) : null;
+  return Math.min(100, Math.max(0,
+    ef*0.40 + tNeg*0.25 + tBue*0.20 + (eInv!==null ? eInv*0.15 : tBue*0.15)
+  ));
 }
 
-// ─── Spinner ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// UI ATOMS
+// ─────────────────────────────────────────────────────────────────────────────
 function Spinner() {
   return (
-    <div className="flex items-center justify-center py-32">
-      <div className="w-12 h-12 border-4 rounded-full animate-spin"
-        style={{ borderColor: `${C.primary}30`, borderTopColor: C.primary }} />
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"80px" }}>
+      <div style={{ width:"44px", height:"44px", border:`4px solid ${C.primary}25`,
+        borderTopColor:C.primary, borderRadius:"9999px", animation:"spin 0.8s linear infinite" }} />
     </div>
   );
 }
 
-// ─── Card base ───────────────────────────────────────────────────────────────
-function Card({ children, className = "" }) {
+function Card({ children, title, subtitle, accent=C.primary, badge, noPad=false, right }) {
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${className}`}
-      style={{ borderColor: C.border }}>{children}</div>
-  );
-}
-function CardHeader({ title, subtitle, accent = C.primary, badge, right }) {
-  return (
-    <div className="px-5 py-4 border-b flex items-center justify-between gap-3 flex-wrap"
-      style={{ borderColor: C.border }}>
-      <div className="flex items-center gap-3">
-        <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: accent }} />
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
-          {subtitle && <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
+    <div style={{ background:"#fff", borderRadius:"20px", border:`1px solid ${C.border}`,
+      overflow:"hidden", boxShadow:"0 4px 24px rgba(0,0,0,0.06)" }}>
+      {title && (
+        <div style={{ padding:"16px 22px", borderBottom:`1px solid ${C.border}`,
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          flexWrap:"wrap", gap:"10px",
+          background:`linear-gradient(135deg,${accent}08 0%,#fff 65%)` }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+            <div style={{ width:"4px", height:"30px", borderRadius:"9999px",
+              background:`linear-gradient(180deg,${accent},${accent}55)`, flexShrink:0 }} />
+            <div>
+              <div style={{ fontSize:"10px", fontWeight:900, textTransform:"uppercase",
+                letterSpacing:"0.15em", color:accent }}>{title}</div>
+              {subtitle && <div style={{ fontSize:"8px", color:C.muted, marginTop:"2px" }}>{subtitle}</div>}
+            </div>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>{badge}{right}</div>
         </div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">{badge}{right}</div>
+      )}
+      <div style={noPad ? {} : { padding:"20px" }}>{children}</div>
     </div>
   );
 }
 
-// ─── KPI card con tendencia ───────────────────────────────────────────────────
-function KpiAvanzado({ label, value, sub, color, icon, trend, trendLabel, info }) {
+function KpiCard({ label, value, sub, color, icon, info }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
-    <div className="bg-white rounded-2xl border shadow-sm p-4 relative" style={{ borderColor: C.border }}>
-      <div className="flex items-start justify-between mb-2">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
-          style={{ background: `${color}15` }}>{icon}</div>
-        <div className="flex items-center gap-1.5">
-          {trend !== undefined && (
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full"
-              style={{
-                background: trend >= 0 ? `${C.success}15` : `${C.danger}15`,
-                color: trend >= 0 ? C.success : C.danger
-              }}>
-              {trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%
-            </span>
-          )}
-          {info && (
-            <button onClick={() => setShowInfo(!showInfo)}
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black"
-              style={{ background: `${C.muted}15`, color: C.muted }}>?</button>
-          )}
-        </div>
+    <div style={{ background:`linear-gradient(135deg,${color}12,${color}04)`,
+      borderRadius:"16px", border:`1px solid ${color}25`, padding:"16px 18px",
+      boxShadow:`0 4px 20px ${color}10`, position:"relative", overflow:"hidden" }}>
+      <div style={{ position:"absolute", right:"-10px", top:"-10px", width:"60px", height:"60px",
+        borderRadius:"50%", background:`${color}07`, pointerEvents:"none" }} />
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"8px" }}>
+        <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:`${color}20`,
+          display:"flex", alignItems:"center", justifyContent:"center", fontSize:"18px" }}>{icon}</div>
+        {info && (
+          <button onClick={()=>setShowInfo(!showInfo)}
+            style={{ width:"18px", height:"18px", borderRadius:"50%", border:`1px solid ${C.border}`,
+              background:C.light, cursor:"pointer", fontSize:"9px", fontWeight:900, color:C.muted,
+              display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
+        )}
       </div>
-      <div className="text-[8px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{label}</div>
-      <div className="text-xl font-black leading-tight" style={{ color }}>{value}</div>
-      {sub && <div className="text-[8px] font-medium mt-1" style={{ color: C.muted }}>{sub}</div>}
-      {trend !== undefined && trendLabel && (
-        <div className="text-[7px] mt-0.5" style={{ color: C.muted }}>{trendLabel}</div>
-      )}
+      <div style={{ fontSize:"8px", fontWeight:900, color:`${color}90`, textTransform:"uppercase",
+        letterSpacing:"0.1em", marginBottom:"2px" }}>{label}</div>
+      <div style={{ fontSize:"22px", fontWeight:900, color, lineHeight:1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize:"8px", color:C.muted, marginTop:"4px" }}>{sub}</div>}
       {showInfo && info && (
-        <div className="absolute top-full left-0 right-0 z-20 mt-1 p-3 bg-white rounded-xl border shadow-xl text-[8px] leading-relaxed"
-          style={{ borderColor: C.border, color: C.slate }}>
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, marginTop:"4px",
+          padding:"10px 14px", background:"#fff", borderRadius:"12px", border:`1px solid ${C.border}`,
+          boxShadow:"0 8px 24px rgba(0,0,0,0.12)", fontSize:"8px", lineHeight:1.5, color:C.slate }}>
           {info}
-          <button onClick={() => setShowInfo(false)} className="ml-2 font-black" style={{ color: C.danger }}>✕</button>
+          <button onClick={()=>setShowInfo(false)} style={{ marginLeft:"6px", fontWeight:900, color:C.danger, background:"none", border:"none", cursor:"pointer" }}>✕</button>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Gauge circular SVG ───────────────────────────────────────────────────────
-function GaugeCircular({ valor, max = 100, label, color, size = 80 }) {
-  const radio = size / 2 - 8;
-  const circunf = 2 * Math.PI * radio;
-  const progreso = Math.min(valor / max, 1);
-  const dash = progreso * circunf * 0.75;  // 270° del círculo
-  const gap  = circunf - dash;
-  const rotacion = -225; // empieza abajo-izquierda
-
+// ── Gauge premium con gradiente ─────────────────────────────────────────────
+function GaugePremium({ valor, label, color, size=90, sublabel }) {
+  const r = size/2-9;
+  const circ = 2*Math.PI*r;
+  const p = Math.min(valor/100,1);
+  const dash = p*circ*0.75;
+  const id = `gp_${label.replace(/\W/g,"")}`;
   return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* Track */}
-        <circle cx={size/2} cy={size/2} r={radio}
-          fill="none" stroke={`${color}18`} strokeWidth={7}
-          strokeDasharray={`${circunf * 0.75} ${circunf * 0.25}`}
-          strokeLinecap="round"
-          transform={`rotate(${rotacion} ${size/2} ${size/2})`} />
-        {/* Progress */}
-        <circle cx={size/2} cy={size/2} r={radio}
-          fill="none" stroke={color} strokeWidth={7}
-          strokeDasharray={`${dash} ${gap + circunf * 0.25}`}
-          strokeLinecap="round"
-          transform={`rotate(${rotacion} ${size/2} ${size/2})`}
-          style={{ transition: "stroke-dasharray 0.6s ease" }} />
-        {/* Valor central */}
-        <text x={size/2} y={size/2 + 1} textAnchor="middle" dominantBaseline="central"
-          fontSize={size < 80 ? 10 : 13} fontWeight={800} fill={color}>
-          {valor.toFixed(0)}
-        </text>
-        <text x={size/2} y={size/2 + (size < 80 ? 11 : 14)} textAnchor="middle"
-          fontSize={size < 80 ? 6 : 7} fill={C.muted}>
-          /{max}
-        </text>
-      </svg>
-      <div className="text-[7.5px] font-black uppercase text-center leading-tight" style={{ color: C.muted, maxWidth: size }}>
-        {label}
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"4px" }}>
+      <div style={{ position:"relative" }}>
+        <svg width={size} height={size}>
+          <defs>
+            <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+              <stop offset="100%" stopColor={color} stopOpacity="1" />
+            </linearGradient>
+            <filter id={`glow${id}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          {/* Track */}
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`${color}18`} strokeWidth={8}
+            strokeDasharray={`${circ*0.75} ${circ*0.25}`} strokeLinecap="round"
+            transform={`rotate(-225 ${size/2} ${size/2})`} />
+          {/* Progress */}
+          <circle cx={size/2} cy={size/2} r={r} fill="none"
+            stroke={`url(#${id})`} strokeWidth={8}
+            strokeDasharray={`${dash} ${circ-dash+circ*0.25}`} strokeLinecap="round"
+            transform={`rotate(-225 ${size/2} ${size/2})`}
+            filter={`url(#glow${id})`}
+            style={{ transition:"stroke-dasharray 0.7s cubic-bezier(.4,0,.2,1)" }} />
+          {/* Valor */}
+          <text x={size/2} y={size/2-2} textAnchor="middle" dominantBaseline="central"
+            fontSize={14} fontWeight={900} fill={color}>{valor.toFixed(0)}</text>
+          <text x={size/2} y={size/2+13} textAnchor="middle" fontSize={8} fill={C.muted}>/100</text>
+        </svg>
+        {/* Punto indicador */}
+        <div style={{
+          position:"absolute", bottom:"4px", left:"50%", transform:"translateX(-50%)",
+          width:"8px", height:"3px", borderRadius:"9999px", background:color,
+          boxShadow:`0 0 6px ${color}`,
+        }} />
       </div>
+      <div style={{ fontSize:"7.5px", fontWeight:900, color:C.muted, textTransform:"uppercase",
+        textAlign:"center", maxWidth:size+14, lineHeight:1.3 }}>{label}</div>
+      {sublabel && <div style={{ fontSize:"7px", color:C.muted, textAlign:"center" }}>{sublabel}</div>}
     </div>
   );
 }
 
-// ─── Tooltip custom ──────────────────────────────────────────────────────────
-const CustomTooltip = ({ active, payload, label }) => {
+// ── Tooltip dark ────────────────────────────────────────────────────────────
+const DarkTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[10px] max-w-xs" style={{ borderColor: C.border }}>
-      <div className="font-black mb-2 uppercase text-[9px]" style={{ color: C.slate }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 mb-0.5">
-          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-          <span style={{ color: C.muted }}>{p.name}:</span>
-          <span className="font-black" style={{ color: C.slate }}>{p.value}</span>
+    <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
+      borderRadius:"14px", padding:"12px 16px", fontSize:"10px", minWidth:"170px",
+      boxShadow:"0 20px 50px rgba(0,0,0,0.55)" }}>
+      <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"7px",
+        borderBottom:"1px solid #334155", paddingBottom:"5px",
+        textTransform:"uppercase", letterSpacing:"0.08em", fontSize:"9px" }}>{label}</div>
+      {payload.map((p,i) => (
+        <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:"14px", marginBottom:"3px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"5px" }}>
+            <div style={{ width:"7px", height:"7px", borderRadius:"50%", background:p.color||p.fill, flexShrink:0 }} />
+            <span style={{ color:"#64748b" }}>{p.name}</span>
+          </div>
+          <span style={{ color:p.color||"#f1f5f9", fontWeight:900 }}>
+            {typeof p.value==="number" ? (p.value%1!==0 ? p.value.toFixed(2) : p.value) : p.value}
+          </span>
         </div>
       ))}
     </div>
   );
 };
 
-// ─── Tabla comparativa de pautas ──────────────────────────────────────────────
-function TablaComparativaPautas({ metricas, maxCPL }) {
-  const [orden, setOrden] = useState({ col: "icp", dir: "desc" });
+// ── Toggle de vistas ────────────────────────────────────────────────────────
+function Toggle({ value, onChange, options, color=C.primary }) {
+  return (
+    <div style={{ display:"flex", borderRadius:"10px", overflow:"hidden", border:`1px solid ${C.border}` }}>
+      {options.map(o => (
+        <button key={o.v} onClick={()=>onChange(o.v)} style={{
+          padding:"5px 14px", fontSize:"8px", fontWeight:900,
+          textTransform:"uppercase", border:"none", cursor:"pointer",
+          background:value===o.v?color:"#fff",
+          color:value===o.v?"#fff":C.muted,
+          transition:"all 0.15s",
+        }}>{o.l}</button>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA COMPARATIVA — con mini-barra ICP inline
+// ─────────────────────────────────────────────────────────────────────────────
+function TablaComparativa({ metricas }) {
+  const [ord, setOrd] = useState({ col:"icp", dir:"desc" });
+  const toggle = col => setOrd(p => p.col===col ? { col, dir:p.dir==="desc"?"asc":"desc" } : { col, dir:"desc" });
 
   const cols = [
-    { key: "canal",       label: "CANAL",          fmt: (v, row) => (
-      <span className="inline-flex items-center gap-1 text-[8px] font-black px-2 py-0.5 rounded-full"
-        style={{ background: getCfg(v).bg, color: getCfg(v).color, border: `1px solid ${getCfg(v).color}30` }}>
-        {getCfg(v).icon} {getCfg(v).label}
-      </span>
-    )},
-    { key: "n_leads",     label: "LEADS",          color: C.primary },
-    { key: "tContacto",   label: "T. CONTACTO",    fmt: (v) => fmtPct(v),  color: colorSemaforo(0, [50, 35]) },
-    { key: "negociables", label: "NEGOCIABLES",    color: C.success },
-    { key: "atc_soporte", label: "ATC",            color: C.danger },
-    { key: "pctAtc",      label: "% ATC",          fmt: (v) => fmtPct(v),  colorFn: (v) => colorSemaforo(v, [40, 25], true) },
-    { key: "venta_subida_bitrix", label: "V.SUBIDA", color: C.sky },
-    { key: "activos_mes", label: "ACTIVOS",        color: C.success },
-    { key: "efect",       label: "% EFECT.",       fmt: (v) => fmtPct(v),  colorFn: (v) => colorSemaforo(v, [15, 8]) },
-    { key: "cpl",         label: "CPL",            fmt: (v) => v !== null ? fmt2(v) : "—", colorFn: (v) => v !== null ? colorSemaforo(v, [4, 8], true) : C.muted },
-    { key: "cpActivado",  label: "CP ACTIVADO",   fmt: (v) => v !== null ? fmt2(v) : "—", colorFn: (v) => v !== null ? colorSemaforo(v, [20, 40], true) : C.muted },
-    { key: "roas",        label: "ROAS",           fmt: (v) => v !== null ? `${v.toFixed(1)}x` : "—", colorFn: (v) => v !== null ? colorSemaforo(v, [3, 1.5]) : C.muted },
-    { key: "inversion_usd", label: "INVERSIÓN",   fmt: (v) => fmtUsd(v),  color: C.violet },
-    { key: "icp",         label: "ICP ★",          fmt: (v) => v.toFixed(0), colorFn: (v) => colorSemaforo(v, [60, 35]) },
+    { k:"canal",   l:"CANAL",         fmt:(v)=>{const c=getCfg(v);return <span style={{ padding:"2px 8px", borderRadius:"9999px", background:c.bg, color:c.color, fontWeight:900, fontSize:"7.5px", border:`1px solid ${c.color}30`, display:"inline-flex", gap:"3px", alignItems:"center" }}>{c.icon}{c.label}</span>;} },
+    { k:"n_leads", l:"LEADS",         color:C.primary },
+    { k:"tContacto",l:"T.CONTACTO",  fmt:fmtPct, cf:v=>semaforo(v,[50,35]) },
+    { k:"negociables",l:"NEGOC.",     color:C.success },
+    { k:"atc_soporte",l:"ATC",        color:C.danger },
+    { k:"pctAtc",  l:"%ATC",          fmt:fmtPct, cf:v=>semaforo(v,[40,25],true) },
+    { k:"venta_subida_bitrix",l:"V.SUB.", color:C.sky },
+    { k:"activos_mes",l:"ACTIVOS",    color:C.success },
+    { k:"efect",   l:"%EFECT.",       fmt:fmtPct, cf:v=>semaforo(v,[15,8]) },
+    { k:"cpl",     l:"CPL",           fmt:v=>v!==null?fmt2(v):"—", cf:v=>v!==null?semaforo(v,[4,8],true):C.muted },
+    { k:"cpActivado",l:"CP ACTIV.",   fmt:v=>v!==null?fmt2(v):"—", cf:v=>v!==null?semaforo(v,[20,40],true):C.muted },
+    { k:"roas",    l:"ROAS",          fmt:v=>v!==null?`${v.toFixed(1)}x`:"—", cf:v=>v!==null?semaforo(v,[3,1.5]):C.muted },
+    { k:"inversion_usd",l:"INV.",     fmt:fmtUsd, color:C.violet },
+    { k:"icp",     l:"ICP ★",         fmt:v=>v.toFixed(0), cf:v=>semaforo(v,[60,35]) },
   ];
 
-  const sorted = [...metricas].sort((a, b) => {
-    const va = a[orden.col] ?? -1, vb = b[orden.col] ?? -1;
-    return orden.dir === "desc" ? vb - va : va - vb;
+  const sorted = [...metricas].sort((a,b) => {
+    const va=a[ord.col]??-1, vb=b[ord.col]??-1;
+    return ord.dir==="desc"?vb-va:va-vb;
   });
 
-  const toggleOrden = (col) => setOrden(prev =>
-    prev.col === col ? { col, dir: prev.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" }
-  );
-
   return (
-    <div className="overflow-auto">
-      <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
-        <thead className="sticky top-0 z-10" style={{ background: C.light, borderBottom: `2px solid ${C.border}` }}>
+    <div style={{ overflowX:"auto" }}>
+      <table style={{ fontSize:"9px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%", whiteSpace:"nowrap" }}>
+        <thead style={{ position:"sticky", top:0, background:C.light, borderBottom:`2px solid ${C.border}`, zIndex:10 }}>
           <tr>
-            {cols.map((c) => (
-              <th key={c.key}
-                onClick={() => c.key !== "canal" && toggleOrden(c.key)}
-                className="px-3 py-2.5 border-r text-center font-black uppercase cursor-pointer select-none hover:bg-slate-100 transition-colors"
-                style={{ color: orden.col === c.key ? C.primary : C.muted, borderColor: C.border }}>
-                {c.label}{orden.col === c.key ? (orden.dir === "desc" ? " ▼" : " ▲") : ""}
+            {cols.map(c => (
+              <th key={c.k} onClick={()=>c.k!=="canal"&&toggle(c.k)}
+                style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`,
+                  textAlign:"center", fontWeight:900, fontSize:"8px",
+                  textTransform:"uppercase", letterSpacing:"0.05em",
+                  color:ord.col===c.k?C.primary:C.muted,
+                  cursor:c.k!=="canal"?"pointer":"default",
+                  background:ord.col===c.k?`${C.primary}06`:"transparent" }}>
+                {c.l}{ord.col===c.k?(ord.dir==="desc"?" ▼":" ▲"):""}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, i) => (
-            <tr key={row.canal} className="border-b hover:bg-slate-50 transition-colors"
-              style={{ borderColor: C.border, background: i === 0 && orden.col === "icp" ? `${C.success}06` : undefined }}>
-              {cols.map((c) => {
-                const val = row[c.key];
-                const color = c.colorFn ? c.colorFn(val) : c.color;
+          {sorted.map((row,i) => (
+            <tr key={row.canal} style={{ borderBottom:`1px solid ${C.border}`,
+              background:i===0&&ord.col==="icp"?`${C.success}05`:"#fff" }}>
+              {cols.map(c => {
+                const val = row[c.k];
+                const color = c.cf ? c.cf(val) : c.color;
                 return (
-                  <td key={c.key} className="px-3 py-2 border-r text-center"
-                    style={{ color: color || C.slate, fontWeight: c.key === "icp" ? 900 : 500, borderColor: C.border }}>
-                    {c.fmt ? c.fmt(val, row) : (val ?? "—")}
-                    {c.key === "icp" && (
-                      <div className="w-full mt-0.5 rounded-full overflow-hidden" style={{ height: "2px", background: `${colorSemaforo(val, [60, 35])}20` }}>
-                        <div style={{ width: `${val}%`, height: "100%", background: colorSemaforo(val, [60, 35]) }} />
+                  <td key={c.k} style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`,
+                    textAlign:"center", color:color||C.slate,
+                    fontWeight:c.k==="icp"?900:500 }}>
+                    {c.k==="icp" ? (
+                      <div>
+                        <div style={{ fontWeight:900, color }}>{n(val).toFixed(0)}</div>
+                        <div style={{ height:"3px", borderRadius:"9999px", marginTop:"3px",
+                          background:`${color}20`, width:"60px", margin:"3px auto 0" }}>
+                          <div style={{ width:`${Math.min(n(val),100)}%`, height:"100%",
+                            background:color, borderRadius:"9999px" }} />
+                        </div>
                       </div>
-                    )}
+                    ) : c.fmt ? c.fmt(val,row) : (val??'—')}
                   </td>
                 );
               })}
@@ -277,237 +301,356 @@ function TablaComparativaPautas({ metricas, maxCPL }) {
   );
 }
 
-// ─── Gráfico Radar de canales ─────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// RADAR
+// ─────────────────────────────────────────────────────────────────────────────
 function RadarPautas({ metricas }) {
-  // Normalizar cada dimensión a 0-100 para radar
-  const maxVal = (key) => Math.max(1, ...metricas.map(m => n(m[key])));
-
   const radarData = [
-    { dim: "Efectividad",  key: "efect" },
-    { dim: "Contacto",     key: "tContacto" },
-    { dim: "Sin ATC",      key: "pctBuena" },
-    { dim: "V. Subida",    key: "pctVenta" },
-    { dim: "ICP",          key: "icp" },
-  ].map(({ dim, key }) => {
-    const entry = { dim };
+    { dim:"Efectividad" }, { dim:"Contacto" },
+    { dim:"Sin ATC" }, { dim:"V. Subida" }, { dim:"ICP" },
+  ].map(({ dim }) => {
+    const e = { dim };
     metricas.forEach(m => {
-      entry[m.canal] = key === "icp" ? n(m[key]) : Math.min(100, n(m[key]));
+      if (dim==="Efectividad")  e[m.canal] = m.efect;
+      else if (dim==="Contacto") e[m.canal] = m.tContacto;
+      else if (dim==="Sin ATC")  e[m.canal] = m.pctBuena;
+      else if (dim==="V. Subida") e[m.canal] = m.pctVenta;
+      else e[m.canal] = m.icp;
     });
-    return entry;
+    return e;
   });
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+      <RadarChart data={radarData} margin={{ top:10, right:30, bottom:10, left:30 }}>
         <PolarGrid stroke={C.border} />
-        <PolarAngleAxis dataKey="dim" tick={{ fontSize: 9, fill: C.muted, fontWeight: 700 }} />
-        <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 7, fill: C.muted }} tickCount={4} />
-        {metricas.map((m) => (
+        <PolarAngleAxis dataKey="dim" tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
+        <PolarRadiusAxis domain={[0,100]} tick={{ fontSize:7, fill:C.muted }} tickCount={4} />
+        {metricas.map(m => (
           <Radar key={m.canal} name={getCfg(m.canal).label} dataKey={m.canal}
-            stroke={getCfg(m.canal).color} fill={getCfg(m.canal).color} fillOpacity={0.12}
-            strokeWidth={2} dot={{ r: 3, fill: getCfg(m.canal).color }} />
+            stroke={getCfg(m.canal).color} fill={getCfg(m.canal).color}
+            fillOpacity={0.10} strokeWidth={2.5}
+            dot={{ r:4, fill:getCfg(m.canal).color }} />
         ))}
-        <Legend wrapperStyle={{ fontSize: 9 }} />
-        <Tooltip content={<CustomTooltip />} />
+        <Legend wrapperStyle={{ fontSize:9 }} />
+        <Tooltip content={<DarkTip />} />
       </RadarChart>
     </ResponsiveContainer>
   );
 }
 
-// ─── Scatter CPL vs Efectividad ───────────────────────────────────────────────
-function ScatterCPLEfect({ metricas }) {
-  const conInv = metricas.filter(m => m.cpl !== null);
-  if (conInv.length === 0) return (
-    <div className="flex items-center justify-center h-48 text-[10px]" style={{ color: C.muted }}>
+// ─────────────────────────────────────────────────────────────────────────────
+// SCATTER CPL vs Efectividad — premium
+// ─────────────────────────────────────────────────────────────────────────────
+function ScatterPremium({ metricas }) {
+  const conInv = metricas.filter(m => m.cpl!==null);
+  if (!conInv.length) return (
+    <div style={{ textAlign:"center", padding:"60px", color:C.muted, fontSize:"10px" }}>
       Sin datos de inversión para este período
     </div>
   );
-
-  const avgEfect = conInv.reduce((s, m) => s + m.efect, 0) / conInv.length;
-  const avgCpl   = conInv.reduce((s, m) => s + m.cpl,   0) / conInv.length;
+  const avgEf  = conInv.reduce((s,m)=>s+m.efect,0)/conInv.length;
+  const avgCpl = conInv.reduce((s,m)=>s+m.cpl,0)/conInv.length;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+    <ResponsiveContainer width="100%" height={300}>
+      <ScatterChart margin={{ top:20, right:30, bottom:40, left:10 }}>
+        <defs>
+          {conInv.map(m => (
+            <radialGradient key={m.canal} id={`sc${m.canal.replace(/\W/g,"")}`} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor={getCfg(m.canal).color} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={getCfg(m.canal).color} stopOpacity="0.4" />
+            </radialGradient>
+          ))}
+        </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis type="number" dataKey="cpl" name="CPL $" tick={{ fontSize: 9, fill: C.muted }}
-          label={{ value: "CPL ($) →", position: "insideBottom", offset: -10, fontSize: 8, fill: C.muted }} />
-        <YAxis type="number" dataKey="efect" name="Efectividad %" tick={{ fontSize: 9, fill: C.muted }}
-          label={{ value: "Efectividad %", angle: -90, position: "insideLeft", fontSize: 8, fill: C.muted, dy: 45 }} />
-        {/* Líneas de referencia (cuadrantes) */}
-        <ReferenceLine x={avgCpl} stroke={`${C.muted}60`} strokeDasharray="4 3"
-          label={{ value: `Avg $${avgCpl.toFixed(2)}`, fontSize: 7, fill: C.muted, position: "top" }} />
-        <ReferenceLine y={avgEfect} stroke={`${C.muted}60`} strokeDasharray="4 3"
-          label={{ value: `Avg ${avgEfect.toFixed(1)}%`, fontSize: 7, fill: C.muted, position: "right" }} />
+        <XAxis type="number" dataKey="cpl" name="CPL $" tick={{ fontSize:9, fill:C.muted }}
+          tickFormatter={v=>`$${v.toFixed(2)}`}
+          label={{ value:"← CPL más barato mejor →", position:"insideBottom", offset:-28, fontSize:8, fill:C.muted }} />
+        <YAxis type="number" dataKey="efect" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%"
+          label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
+        <ReferenceLine x={avgCpl} stroke={`${C.muted}50`} strokeDasharray="5 3"
+          label={{ value:`Avg $${avgCpl.toFixed(2)}`, fontSize:7, fill:C.muted, position:"top" }} />
+        <ReferenceLine y={avgEf} stroke={`${C.muted}50`} strokeDasharray="5 3"
+          label={{ value:`Avg ${avgEf.toFixed(1)}%`, fontSize:7, fill:C.muted, position:"right" }} />
         <Tooltip content={({ active, payload }) => {
-          if (!active || !payload?.length) return null;
-          const d = payload[0]?.payload;
-          if (!d) return null;
-          const cfg = getCfg(d.canal);
+          if(!active||!payload?.length) return null;
+          const d=payload[0]?.payload;
+          const cfg=getCfg(d?.canal);
           return (
-            <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[9px]" style={{ borderColor: C.border }}>
-              <div className="font-black mb-1" style={{ color: cfg.color }}>{cfg.icon} {cfg.label}</div>
-              <div style={{ color: C.muted }}>CPL: <span className="font-black" style={{ color: C.slate }}>${d.cpl?.toFixed(2)}</span></div>
-              <div style={{ color: C.muted }}>Efectividad: <span className="font-black" style={{ color: C.slate }}>{d.efect?.toFixed(1)}%</span></div>
-              <div style={{ color: C.muted }}>Leads: <span className="font-black" style={{ color: C.slate }}>{d.n_leads}</span></div>
-              <div style={{ color: C.muted }}>ICP: <span className="font-black" style={{ color: colorSemaforo(d.icp, [60, 35]) }}>{d.icp?.toFixed(0)}</span></div>
+            <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
+              borderRadius:"14px", padding:"14px 18px", fontSize:"9px" }}>
+              <div style={{ color:cfg.color, fontWeight:900, marginBottom:"6px", fontSize:"11px" }}>
+                {cfg.icon} {cfg.label}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                {[
+                  ["CPL",`$${d?.cpl?.toFixed(2)}`,C.violet],
+                  ["Efectividad",`${d?.efect?.toFixed(1)}%`,C.success],
+                  ["Leads",d?.n_leads,C.sky],["ICP",d?.icp?.toFixed(0),semaforo(d?.icp,[60,35])],
+                  ["Inversión",fmtUsd(d?.inversion_usd),C.violet],
+                  ["CP Activ.",d?.cpActivado?fmt2(d.cpActivado):"—",C.orange],
+                ].map(([l,v,c])=>(
+                  <div key={l}>
+                    <div style={{ fontSize:"7px", color:"#64748b" }}>{l}</div>
+                    <div style={{ fontSize:"10px", fontWeight:900, color:c }}>{v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           );
         }} />
-        <Scatter data={conInv.map(m => ({ ...m, x: m.cpl, y: m.efect }))}>
-          {conInv.map((m, i) => (
-            <Cell key={m.canal} fill={getCfg(m.canal).color} />
+        <Scatter data={conInv}>
+          {conInv.map((m,i) => (
+            <Cell key={m.canal}
+              fill={`url(#sc${m.canal.replace(/\W/g,"")})`}
+              stroke={getCfg(m.canal).color}
+              strokeWidth={2} />
           ))}
         </Scatter>
-        {/* Etiquetas de canal en scatter */}
-        {conInv.map((m) => (
-          <text key={m.canal + "-label"} />
-        ))}
       </ScatterChart>
     </ResponsiveContainer>
   );
 }
 
-// ─── Cuadrante visual (mejor/peor) con anotaciones ───────────────────────────
-function CuadrantePautas({ metricas }) {
-  const conInv = metricas.filter(m => m.cpl !== null && m.efect !== null);
-  if (conInv.length < 2) return null;
+// ─────────────────────────────────────────────────────────────────────────────
+// ÁREA: Tendencia diaria por canal
+// ─────────────────────────────────────────────────────────────────────────────
+function TendenciaArea({ rawFilas, canalesActivos }) {
+  const [metrica, setMetrica] = useState("efect");
 
-  const avgEfect = conInv.reduce((s, m) => s + m.efect, 0) / conInv.length;
-  const avgCpl   = conInv.reduce((s, m) => s + m.cpl,   0) / conInv.length;
-
-  const cuadrante = (m) => {
-    const buenEfect = m.efect >= avgEfect;
-    const buenCpl   = m.cpl   <= avgCpl;
-    if ( buenEfect &&  buenCpl) return { label: "⭐ Estrella",    color: C.success,  bg: "#d1fae5", desc: "Buen CPL + alta efectividad" };
-    if ( buenEfect && !buenCpl) return { label: "🔄 Optimizable", color: C.warning,  bg: "#fef3c7", desc: "Alta efectividad, CPL caro" };
-    if (!buenEfect &&  buenCpl) return { label: "🔍 Revisar",     color: C.sky,      bg: "#e0f2fe", desc: "CPL barato, baja efectividad" };
-    return                             { label: "⛔ Crítico",     color: C.danger,   bg: "#fee2e2", desc: "CPL caro + baja efectividad" };
-  };
-
-  const grupos = {};
-  conInv.forEach(m => {
-    const q = cuadrante(m);
-    if (!grupos[q.label]) grupos[q.label] = { ...q, canales: [] };
-    grupos[q.label].canales.push(m);
+  const mapaFC = {};
+  rawFilas.forEach(row => {
+    const canal = row.canal_inversion || row.canal;
+    if (!canalesActivos.includes(canal)) return;
+    const fecha = String(row.fecha).split("T")[0];
+    const k = `${fecha}|${canal}`;
+    if (!mapaFC[k]) mapaFC[k] = { fecha, canal, n_leads:0, negociables:0, atc_soporte:0,
+      activos_mes:0, venta_subida_bitrix:0, ingreso_jot:0, inversion_usd:0, _inv:false };
+    const a=mapaFC[k];
+    a.n_leads+=n(row.n_leads); a.negociables+=n(row.negociables); a.atc_soporte+=n(row.atc_soporte);
+    a.activos_mes+=n(row.activos_mes); a.venta_subida_bitrix+=n(row.venta_subida_bitrix); a.ingreso_jot+=n(row.ingreso_jot);
+    if(!a._inv&&n(row.inversion_usd)>0){a.inversion_usd=n(row.inversion_usd);a._inv=true;}
   });
 
+  const fechas=[...new Set(Object.values(mapaFC).map(r=>r.fecha))].sort();
+  const lineData=fechas.map(fecha=>{
+    const e={fecha:formatF(fecha)};
+    canalesActivos.forEach(canal=>{
+      const k=`${fecha}|${canal}`; const r=mapaFC[k];
+      if(!r||!r.n_leads) return;
+      const L=r.n_leads;
+      if(metrica==="efect")   e[canal]=+pct(r.activos_mes,L).toFixed(1);
+      else if(metrica==="cpl") e[canal]=r.inversion_usd>0?+(r.inversion_usd/L).toFixed(2):null;
+      else if(metrica==="pct_atc") e[canal]=+pct(r.atc_soporte,L).toFixed(1);
+      else { // icp
+        const ef=pct(r.activos_mes,L), tN=pct(r.negociables,L), tB=pct(L-r.atc_soporte,L);
+        e[canal]=+(ef*0.40+tN*0.25+tB*0.35).toFixed(1);
+      }
+    });
+    return e;
+  });
+
+  const METS=[
+    {v:"icp",l:"ICP"},{v:"efect",l:"Efectividad %"},
+    {v:"cpl",l:"CPL $"},{v:"pct_atc",l:"% ATC"},
+  ];
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {Object.values(grupos).map((g) => (
-        <div key={g.label} className="rounded-xl border p-3" style={{ borderColor: `${g.color}30`, background: g.bg }}>
-          <div className="text-[10px] font-black mb-0.5" style={{ color: g.color }}>{g.label}</div>
-          <div className="text-[8px] mb-2" style={{ color: C.muted }}>{g.desc}</div>
-          <div className="space-y-1.5">
-            {g.canales.map(m => {
-              const cfg = getCfg(m.canal);
-              return (
-                <div key={m.canal} className="flex items-center justify-between bg-white bg-opacity-70 rounded-lg px-2 py-1">
-                  <span className="text-[8px] font-black" style={{ color: cfg.color }}>{cfg.icon} {cfg.label}</span>
-                  <div className="flex items-center gap-2 text-[7.5px]">
-                    <span style={{ color: C.muted }}>CPL</span>
-                    <span className="font-black" style={{ color: g.color }}>${m.cpl.toFixed(2)}</span>
-                    <span style={{ color: C.muted }}>EF</span>
-                    <span className="font-black" style={{ color: g.color }}>{m.efect.toFixed(1)}%</span>
-                  </div>
+    <div>
+      <div style={{ display:"flex", gap:"6px", marginBottom:"14px", flexWrap:"wrap" }}>
+        {METS.map(m=>(
+          <button key={m.v} onClick={()=>setMetrica(m.v)} style={{
+            padding:"5px 14px", borderRadius:"9999px", border:"none",
+            fontSize:"8px", fontWeight:900, cursor:"pointer",
+            background:metrica===m.v?C.primary:C.light,
+            color:metrica===m.v?"#fff":C.muted, transition:"all 0.15s",
+          }}>{m.l}</button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={280}>
+        <ComposedChart data={lineData} margin={{ top:10, right:20, left:0, bottom:5 }}>
+          <defs>
+            {canalesActivos.map(c=>(
+              <linearGradient key={c} id={`ag_${c.replace(/\W/g,"")}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={getCfg(c).color} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={getCfg(c).color} stopOpacity={0} />
+              </linearGradient>
+            ))}
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="fecha" tick={{ fontSize:9, fill:C.muted }} />
+          <YAxis tick={{ fontSize:9, fill:C.muted }} width={38}
+            tickFormatter={v=>metrica==="cpl"?`$${v}`:`${v}${metrica!=="icp"?"%":""}`} />
+          <Tooltip content={<DarkTip />} />
+          <Legend wrapperStyle={{ fontSize:9 }} />
+          {canalesActivos.map(c=>(
+            <Area key={c} type="monotone" dataKey={c} name={getCfg(c).label}
+              stroke={getCfg(c).color} fill={`url(#ag_${c.replace(/\W/g,"")})`}
+              strokeWidth={2.5}
+              dot={{ r:3, fill:getCfg(c).color, strokeWidth:0 }}
+              activeDot={{ r:5 }} connectNulls />
+          ))}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUADRANTE visual
+// ─────────────────────────────────────────────────────────────────────────────
+function Cuadrante({ metricas }) {
+  const conInv=metricas.filter(m=>m.cpl!==null&&m.efect!==null);
+  if(conInv.length<2) return null;
+  const avgEf=conInv.reduce((s,m)=>s+m.efect,0)/conInv.length;
+  const avgCpl=conInv.reduce((s,m)=>s+m.cpl,0)/conInv.length;
+  const q = m => {
+    const be=m.efect>=avgEf, bc=m.cpl<=avgCpl;
+    if(be&&bc) return { l:"⭐ Estrella",    c:C.success, bg:"#d1fae5", d:"Bajo CPL + alta efect." };
+    if(be&&!bc) return { l:"🔄 Optimizable",c:C.warning, bg:"#fef3c7", d:"Alta efect., CPL caro" };
+    if(!be&&bc) return { l:"🔍 Revisar",    c:C.sky,     bg:"#e0f2fe", d:"CPL barato, baja efect." };
+    return               { l:"⛔ Crítico",   c:C.danger,  bg:"#fee2e2", d:"CPL caro + baja efect." };
+  };
+  const grupos={};
+  conInv.forEach(m=>{ const qd=q(m); if(!grupos[qd.l]) grupos[qd.l]={...qd,canales:[]}; grupos[qd.l].canales.push(m); });
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px" }}>
+      {Object.values(grupos).map(g=>(
+        <div key={g.l} style={{ padding:"12px 14px", borderRadius:"14px", background:g.bg, border:`1px solid ${g.c}25` }}>
+          <div style={{ fontSize:"10px", fontWeight:900, color:g.c, marginBottom:"4px" }}>{g.l}</div>
+          <div style={{ fontSize:"8px", color:C.muted, marginBottom:"8px" }}>{g.d}</div>
+          {g.canales.map(m=>{
+            const cfg=getCfg(m.canal);
+            return (
+              <div key={m.canal} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                background:"rgba(255,255,255,0.7)", borderRadius:"8px", padding:"5px 10px", marginBottom:"4px" }}>
+                <span style={{ fontSize:"8px", fontWeight:900, color:cfg.color }}>{cfg.icon} {cfg.label}</span>
+                <div style={{ display:"flex", gap:"10px", fontSize:"7.5px" }}>
+                  <span style={{ color:C.muted }}>CPL</span>
+                  <span style={{ fontWeight:900, color:g.c }}>${m.cpl.toFixed(2)}</span>
+                  <span style={{ color:C.muted }}>EF</span>
+                  <span style={{ fontWeight:900, color:g.c }}>{m.efect.toFixed(1)}%</span>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Panel de tendencia diaria por canal ──────────────────────────────────────
-function TendenciaDiaria({ rawFilas, canalesActivos }) {
-  const [metrica, setMetrica] = useState("icp_proxy");
+// ─────────────────────────────────────────────────────────────────────────────
+// RANKING BARRAS horizontal mejorado
+// ─────────────────────────────────────────────────────────────────────────────
+function RankingBars({ metricas }) {
+  const sorted=[...metricas].sort((a,b)=>b.icp-a.icp);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+      {sorted.map((m,i)=>{
+        const cfg=getCfg(m.canal);
+        const icpColor=semaforo(m.icp,[60,35]);
+        return (
+          <div key={m.canal} style={{ borderRadius:"14px", border:`1px solid ${cfg.color}20`,
+            background:`linear-gradient(135deg,${cfg.bg},${cfg.bg}50)`,
+            padding:"12px 16px", boxShadow:`0 2px 12px ${cfg.color}10` }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"8px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                <span style={{ width:"22px", height:"22px", borderRadius:"50%",
+                  background:`${cfg.color}20`, color:cfg.color, fontWeight:900, fontSize:"9px",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {i===0?"🏆":i+1}
+                </span>
+                <span style={{ fontSize:"14px" }}>{cfg.icon}</span>
+                <span style={{ fontSize:"10px", fontWeight:900, color:cfg.color, textTransform:"uppercase" }}>{cfg.label}</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                <span style={{ fontSize:"14px", fontWeight:900, color:icpColor }}>{m.icp.toFixed(0)}</span>
+                <span style={{ fontSize:"7px", fontWeight:900, padding:"2px 6px", borderRadius:"9999px",
+                  background:`${icpColor}15`, color:icpColor }}>ICP</span>
+              </div>
+            </div>
+            {/* Métricas mini grid */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"6px", marginBottom:"8px" }}>
+              {[
+                ["Contacto",`${m.tContacto.toFixed(0)}%`,semaforo(m.tContacto,[50,35])],
+                ["Efect.",  `${m.efect.toFixed(0)}%`,    semaforo(m.efect,[15,8])],
+                ["ATC",     `${m.pctAtc.toFixed(0)}%`,   semaforo(m.pctAtc,[40,25],true)],
+                m.cpl!==null
+                  ? ["CPL",`$${m.cpl.toFixed(2)}`,semaforo(m.cpl,[4,8],true)]
+                  : ["ROAS",m.roas!==null?`${m.roas.toFixed(1)}x`:"—",C.muted],
+              ].map(([l,v,c])=>(
+                <div key={l} style={{ background:"rgba(255,255,255,0.65)", borderRadius:"8px", padding:"5px 6px", textAlign:"center" }}>
+                  <div style={{ fontSize:"7px", fontWeight:700, color:C.muted }}>{l}</div>
+                  <div style={{ fontSize:"9px", fontWeight:900, color:c }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {/* Barra ICP */}
+            <div>
+              <div style={{ width:"100%", borderRadius:"9999px", overflow:"hidden",
+                height:"4px", background:`${icpColor}18` }}>
+                <div style={{ width:`${m.icp}%`, height:"100%", background:`linear-gradient(90deg,${icpColor}80,${icpColor})`,
+                  borderRadius:"9999px", transition:"width 0.7s cubic-bezier(.4,0,.2,1)" }} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-  // Agregar por fecha×canal
-  const mapaFechaCanal = {};
-  rawFilas.forEach(row => {
-    const canal = row.canal_inversion || row.canal;
-    if (!canalesActivos.includes(canal)) return;
-    const fecha = String(row.fecha).split("T")[0];
-    const k = `${fecha}|${canal}`;
-    if (!mapaFechaCanal[k]) mapaFechaCanal[k] = {
-      fecha, canal, n_leads: 0, negociables: 0, atc_soporte: 0,
-      activos_mes: 0, venta_subida_bitrix: 0, ingreso_jot: 0, inversion_usd: 0, _inv: false,
-    };
-    const a = mapaFechaCanal[k];
-    a.n_leads             += n(row.n_leads);
-    a.negociables         += n(row.negociables);
-    a.atc_soporte         += n(row.atc_soporte);
-    a.activos_mes         += n(row.activos_mes);
-    a.venta_subida_bitrix += n(row.venta_subida_bitrix);
-    a.ingreso_jot         += n(row.ingreso_jot);
-    if (!a._inv && n(row.inversion_usd) > 0) { a.inversion_usd = n(row.inversion_usd); a._inv = true; }
-  });
+// ─────────────────────────────────────────────────────────────────────────────
+// INSIGHTS automáticos
+// ─────────────────────────────────────────────────────────────────────────────
+function Insights({ metricas, resumen }) {
+  const items = useMemo(() => {
+    const ins = [];
+    const top   = metricas[0];
+    const peor  = metricas[metricas.length-1];
+    const altaA = metricas.filter(m=>m.pctAtc>40);
+    const sinInv= metricas.filter(m=>m.cpl===null);
+    const topCpl= [...metricas].filter(m=>m.cpl!==null).sort((a,b)=>a.cpl-b.cpl)[0];
+    const topEf = [...metricas].sort((a,b)=>b.efect-a.efect)[0];
+    const std   = metricas.length>1 ? Math.sqrt(metricas.reduce((s,m)=>s+Math.pow(m.icp-(resumen?.icpProm||0),2),0)/metricas.length) : 0;
 
-  // Construir líneas por fecha
-  const fechas = [...new Set(Object.values(mapaFechaCanal).map(r => r.fecha))].sort();
-  const lineData = fechas.map(fecha => {
-    const entry = { fecha: formatFecha(fecha) };
-    canalesActivos.forEach(canal => {
-      const k = `${fecha}|${canal}`;
-      const r = mapaFechaCanal[k];
-      if (!r) return;
-      const leads = n(r.n_leads);
-      if (leads === 0) return;
-      if (metrica === "icp_proxy") {
-        const ef   = pct(r.activos_mes, leads);
-        const tNeg = pct(r.negociables, leads);
-        const tBue = pct(leads - r.atc_soporte, leads);
-        entry[canal] = +(ef * 0.40 + tNeg * 0.25 + tBue * 0.35).toFixed(1);
-      } else if (metrica === "efect") {
-        entry[canal] = +pct(r.activos_mes, leads).toFixed(1);
-      } else if (metrica === "cpl") {
-        entry[canal] = r.inversion_usd > 0 ? +(r.inversion_usd / leads).toFixed(2) : null;
-      } else if (metrica === "pct_atc") {
-        entry[canal] = +pct(r.atc_soporte, leads).toFixed(1);
-      }
-    });
-    return entry;
-  });
+    if(top) ins.push({ t:"success", i:"⭐",
+      txt:`${getCfg(top.canal).label} lidera con ICP ${top.icp.toFixed(0)}/100 — concentrar presupuesto aquí.` });
+    if(peor&&metricas.length>1&&peor.icp<35) ins.push({ t:"danger", i:"⛔",
+      txt:`${getCfg(peor.canal).label} tiene ICP bajo (${peor.icp.toFixed(0)}) — revisar segmentación y creativos.` });
+    if(altaA.length) ins.push({ t:"warning", i:"⚠️",
+      txt:`${altaA.map(m=>getCfg(m.canal).label).join(", ")} supera 40% ATC — leads de baja calidad, ajustar audiencia.` });
+    if(topCpl&&topEf&&topCpl.canal!==topEf.canal) ins.push({ t:"info", i:"💡",
+      txt:`Canal más barato (${getCfg(topCpl.canal).label} $${topCpl.cpl.toFixed(2)}) ≠ más efectivo (${getCfg(topEf.canal).label} ${topEf.efect.toFixed(1)}%). Usar según objetivo.` });
+    if(sinInv.length) ins.push({ t:"neutral", i:"📌",
+      txt:`${sinInv.map(m=>getCfg(m.canal).label).join(", ")} sin inversión registrada. ROAS/CPL no calculable.` });
+    if(std>10) ins.push({ t:"violet", i:"📊",
+      txt:`Alta dispersión de ICP (σ=${std.toFixed(1)}) — canales muy desiguales. Analizar qué hace diferente al top.` });
+    if(resumen?.roas!==null&&resumen?.roas>0) ins.push({ t:"success", i:"💰",
+      txt:`ROAS estimado global: ${resumen.roas.toFixed(1)}x (asumiendo $${TICKET}/cliente activo). ${resumen.roas>=3?"🟢 Rentable":"⚠️ Revisar ticket promedio real."}` });
 
-  const METRICAS = [
-    { value: "icp_proxy", label: "ICP (índice calidad)" },
-    { value: "efect",     label: "% Efectividad" },
-    { value: "cpl",       label: "CPL $" },
-    { value: "pct_atc",   label: "% ATC" },
-  ];
+    return ins;
+  }, [metricas, resumen]);
+
+  const MAP = {
+    success:{c:C.success, bg:"#d1fae5"}, danger:{c:C.danger, bg:"#fee2e2"},
+    warning:{c:C.warning, bg:"#fef3c7"}, info:{c:C.primary, bg:"#dbeafe"},
+    neutral:{c:C.muted,   bg:"#f8fafc"}, violet:{c:C.violet, bg:"#ede9fe"},
+  };
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {METRICAS.map(m => (
-          <button key={m.value} onClick={() => setMetrica(m.value)}
-            className="px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
-            style={metrica === m.value
-              ? { background: C.primary, color: "#fff", borderColor: C.primary }
-              : { background: "#fff", color: C.muted, borderColor: C.border }}>
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={lineData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-          <YAxis tick={{ fontSize: 9, fill: C.muted }} width={38}
-            tickFormatter={v => metrica === "cpl" ? `$${v}` : `${v}${metrica !== "icp_proxy" ? "%" : ""}`} />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 9 }} />
-          {canalesActivos.map(canal => (
-            <Line key={canal} type="monotone" dataKey={canal}
-              name={getCfg(canal).label}
-              stroke={getCfg(canal).color} strokeWidth={2.5}
-              dot={{ r: 3, fill: getCfg(canal).color, strokeWidth: 0 }}
-              activeDot={{ r: 5 }} connectNulls />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
+    <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+      {items.map((ins,i) => (
+        <div key={i} style={{ display:"flex", gap:"10px", padding:"10px 14px",
+          borderRadius:"12px", background:MAP[ins.t].bg,
+          border:`1px solid ${MAP[ins.t].c}20`, alignItems:"flex-start" }}>
+          <span style={{ fontSize:"14px", flexShrink:0, marginTop:"1px" }}>{ins.i}</span>
+          <p style={{ fontSize:"8.5px", lineHeight:1.5, fontWeight:600,
+            color:MAP[ins.t].c, margin:0 }}>{ins.txt}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -521,149 +664,120 @@ export default function TabAnalisisPautas({ filtro }) {
   const [loading,   setLoading]   = useState(false);
   const [tabActivo, setTabActivo] = useState("resumen");
 
-  // Cargar datos del endpoint principal de redes
   useEffect(() => {
-    if (!desde || !hasta) return;
+    if (!desde||!hasta) return;
     setLoading(true);
     fetch(`${API}/api/redes/monitoreo-redes?fechaDesde=${desde}&fechaHasta=${hasta}`)
-      .then(r => r.json())
-      .then(d => setRawData(d?.success ? d : null))
-      .catch(() => setRawData(null))
-      .finally(() => setLoading(false));
+      .then(r=>r.json()).then(d=>setRawData(d?.success?d:null))
+      .catch(()=>setRawData(null)).finally(()=>setLoading(false));
   }, [desde, hasta]);
 
-  // ── Calcular métricas avanzadas por canal ──────────────────────────────────
   const { metricas, canalesActivos, resumenGlobal } = useMemo(() => {
-    if (!rawData?.data) return { metricas: [], canalesActivos: [], resumenGlobal: null };
-
-    const filas = rawData.data;
-
-    // Agrupar por canal
-    const map = {}, invC = {};
-    filas.forEach(row => {
-      const canal = row.canal_inversion || row.canal;
-      if (!canal || canal === "MAL INGRESO" || canal === "SIN MAPEO") return;
-      if (!map[canal]) map[canal] = {
-        canal, n_leads: 0, negociables: 0, atc_soporte: 0,
-        venta_subida_bitrix: 0, ingreso_jot: 0, activos_mes: 0, inversion_usd: 0,
-      };
-      const a = map[canal];
-      a.n_leads             += n(row.n_leads);
-      a.negociables         += n(row.negociables);
-      a.atc_soporte         += n(row.atc_soporte);
-      a.venta_subida_bitrix += n(row.venta_subida_bitrix);
-      a.ingreso_jot         += n(row.ingreso_jot);
-      a.activos_mes         += n(row.activos_mes);
-      const k = `${String(row.fecha).split("T")[0]}|${canal}`;
-      if (!invC[k] && n(row.inversion_usd) > 0) { a.inversion_usd += n(row.inversion_usd); invC[k] = true; }
+    if (!rawData?.data) return { metricas:[], canalesActivos:[], resumenGlobal:null };
+    const filas=rawData.data; const map={}, invC={};
+    filas.forEach(row=>{
+      const canal=row.canal_inversion||row.canal;
+      if(!canal||canal==="MAL INGRESO"||canal==="SIN MAPEO") return;
+      if(!map[canal]) map[canal]={ canal, n_leads:0, negociables:0, atc_soporte:0,
+        venta_subida_bitrix:0, ingreso_jot:0, activos_mes:0, inversion_usd:0 };
+      const a=map[canal];
+      a.n_leads+=n(row.n_leads); a.negociables+=n(row.negociables); a.atc_soporte+=n(row.atc_soporte);
+      a.venta_subida_bitrix+=n(row.venta_subida_bitrix); a.ingreso_jot+=n(row.ingreso_jot); a.activos_mes+=n(row.activos_mes);
+      const k=`${String(row.fecha).split("T")[0]}|${canal}`;
+      if(!invC[k]&&n(row.inversion_usd)>0){a.inversion_usd+=n(row.inversion_usd);invC[k]=true;}
     });
+    const base=Object.values(map).filter(m=>m.n_leads>0);
+    const maxCPL=Math.max(1,...base.filter(m=>m.inversion_usd>0).map(m=>m.inversion_usd/m.n_leads));
+    const metricas=base.map(m=>{
+      const tContacto=pct(m.negociables,m.n_leads), efect=pct(m.activos_mes,m.n_leads);
+      const pctAtc=pct(m.atc_soporte,m.n_leads), pctBuena=Math.max(0,100-pctAtc);
+      const pctVenta=pct(m.venta_subida_bitrix,m.n_leads);
+      const cpl=m.n_leads>0&&m.inversion_usd>0?m.inversion_usd/m.n_leads:null;
+      const cpActivado=m.activos_mes>0&&m.inversion_usd>0?m.inversion_usd/m.activos_mes:null;
+      const ingresoEst=m.activos_mes*TICKET;
+      const roas=m.inversion_usd>0?ingresoEst/m.inversion_usd:null;
+      const icp=calcICP(m,maxCPL);
+      return { ...m, tContacto, efect, pctAtc, pctBuena, pctVenta, cpl, cpActivado, roas, icp, ingresoEst };
+    }).sort((a,b)=>b.icp-a.icp);
 
-    const base = Object.values(map).filter(m => m.n_leads > 0);
-    const maxCPL = Math.max(1, ...base.filter(m => m.inversion_usd > 0).map(m => m.inversion_usd / m.n_leads));
-
-    // Ingreso estimado por activo (asumimos ticket promedio $25/mes como referencia — ajustable)
-    const TICKET_MENSUAL = 25;
-
-    const metricas = base.map(m => {
-      const leads = m.n_leads;
-      const tContacto  = pct(m.negociables, leads);               // proxy: negociables/leads
-      const efect      = pct(m.activos_mes, leads);
-      const pctAtc     = pct(m.atc_soporte, leads);
-      const pctBuena   = Math.max(0, 100 - pctAtc);               // leads sin ATC
-      const pctVenta   = pct(m.venta_subida_bitrix, leads);
-      const cpl        = leads > 0 && m.inversion_usd > 0 ? m.inversion_usd / leads : null;
-      const cpActivado = m.activos_mes > 0 && m.inversion_usd > 0 ? m.inversion_usd / m.activos_mes : null;
-      // ROAS: ingresos estimados / inversión
-      const ingresoEst = m.activos_mes * TICKET_MENSUAL;
-      const roas       = m.inversion_usd > 0 ? ingresoEst / m.inversion_usd : null;
-      const icp        = calcICP(m, maxCPL);
-
-      return {
-        ...m,
-        tContacto, efect, pctAtc, pctBuena, pctVenta,
-        cpl, cpActivado, roas, icp,
-        ingresoEst,
-      };
-    }).sort((a, b) => b.icp - a.icp);
-
-    // Resumen global
-    const totLeads = metricas.reduce((s, m) => s + m.n_leads, 0);
-    const totAct   = metricas.reduce((s, m) => s + m.activos_mes, 0);
-    const totInv   = metricas.reduce((s, m) => s + m.inversion_usd, 0);
-    const totAtc   = metricas.reduce((s, m) => s + m.atc_soporte, 0);
-    const totNeg   = metricas.reduce((s, m) => s + m.negociables, 0);
-    const totIng   = metricas.reduce((s, m) => s + m.ingresoEst, 0);
-    const icpProm  = metricas.length > 0 ? metricas.reduce((s, m) => s + m.icp, 0) / metricas.length : 0;
-
-    const resumenGlobal = {
-      totLeads, totAct, totInv, totAtc, totNeg, totIng,
-      efect:      pct(totAct, totLeads),
-      tContacto:  pct(totNeg, totLeads),
-      pctAtc:     pct(totAtc, totLeads),
-      cpl:        totLeads > 0 && totInv > 0 ? totInv / totLeads : null,
-      cpActivado: totAct   > 0 && totInv > 0 ? totInv / totAct   : null,
-      roas:       totInv > 0 ? totIng / totInv : null,
-      icpProm,
+    const totLeads=metricas.reduce((s,m)=>s+m.n_leads,0);
+    const totAct=metricas.reduce((s,m)=>s+m.activos_mes,0);
+    const totInv=metricas.reduce((s,m)=>s+m.inversion_usd,0);
+    const totAtc=metricas.reduce((s,m)=>s+m.atc_soporte,0);
+    const totNeg=metricas.reduce((s,m)=>s+m.negociables,0);
+    const totIng=metricas.reduce((s,m)=>s+m.ingresoEst,0);
+    const icpProm=metricas.length?metricas.reduce((s,m)=>s+m.icp,0)/metricas.length:0;
+    const resumenGlobal={
+      totLeads, totAct, totInv, totAtc, totNeg, totIng, icpProm,
+      efect:pct(totAct,totLeads), tContacto:pct(totNeg,totLeads), pctAtc:pct(totAtc,totLeads),
+      cpl:totLeads>0&&totInv>0?totInv/totLeads:null,
+      cpActivado:totAct>0&&totInv>0?totInv/totAct:null,
+      roas:totInv>0?totIng/totInv:null,
     };
-
-    return { metricas, canalesActivos: metricas.map(m => m.canal), resumenGlobal };
+    return { metricas, canalesActivos:metricas.map(m=>m.canal), resumenGlobal };
   }, [rawData]);
 
-  const maxCPL = useMemo(() =>
-    Math.max(1, ...metricas.filter(m => m.cpl !== null).map(m => m.cpl)),
-    [metricas]
-  );
+  const maxCPL=useMemo(()=>Math.max(1,...metricas.filter(m=>m.cpl!==null).map(m=>m.cpl)),[metricas]);
+  const mejorCanal=metricas[0]||null;
 
-  // ─── Mejor canal (ICP más alto) ─────────────────────────────────────────
-  const mejorCanal = metricas[0] || null;
+  const SUBTABS=[
+    {id:"resumen",   l:"Resumen",    i:"📋"},
+    {id:"tabla",     l:"Comparativa",i:"📊"},
+    {id:"radar",     l:"Radar",      i:"🕸️"},
+    {id:"cuadrante", l:"Cuadrante",  i:"🗺️"},
+    {id:"tendencia", l:"Tendencia",  i:"📈"},
+  ];
 
   if (loading) return <Spinner />;
 
   if (!rawData) return (
-    <div className="flex flex-col items-center justify-center py-28 gap-4">
-      <div className="text-5xl">📡</div>
-      <div className="text-sm font-black" style={{ color: C.slate }}>Sin datos — aplica un rango de fechas</div>
-      <div className="text-xs text-center max-w-sm leading-relaxed" style={{ color: C.muted }}>
-        Selecciona un período desde el filtro principal y espera a que carguen los datos.
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      padding:"80px", gap:"16px" }}>
+      <div style={{ fontSize:"56px" }}>📡</div>
+      <div style={{ fontSize:"14px", fontWeight:900, color:C.slate }}>Sin datos — aplica un rango de fechas</div>
+      <div style={{ fontSize:"10px", color:C.muted, textAlign:"center", maxWidth:"360px", lineHeight:1.6 }}>
+        Selecciona un período desde el filtro principal para cargar el análisis de pautas.
       </div>
     </div>
   );
 
-  const SUBTABS = [
-    { id: "resumen",    label: "Resumen Ejecutivo", icon: "📋" },
-    { id: "tabla",      label: "Comparativa",        icon: "📊" },
-    { id: "radar",      label: "Radar Canales",      icon: "🕸️" },
-    { id: "cuadrante",  label: "Cuadrante CPL",      icon: "🗺️" },
-    { id: "tendencia",  label: "Tendencia",           icon: "📈" },
-  ];
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="rounded-2xl border px-5 py-4 flex items-start justify-between gap-4 flex-wrap"
-        style={{ borderColor: `${C.primary}30`, background: "#eff6ff" }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:"22px" }}>
+
+      {/* HEADER */}
+      <div style={{
+        background:"linear-gradient(135deg,#eff6ff 0%,#dbeafe 50%,#ede9fe 100%)",
+        borderRadius:"22px", border:`1px solid ${C.primary}25`,
+        padding:"20px 26px",
+        display:"flex", alignItems:"flex-start", justifyContent:"space-between",
+        flexWrap:"wrap", gap:"16px",
+        boxShadow:"0 8px 32px rgba(30,58,138,0.10)",
+        position:"relative", overflow:"hidden",
+      }}>
+        <div style={{ position:"absolute", right:"40px", top:"-20px", width:"120px", height:"120px",
+          borderRadius:"50%", background:"rgba(99,102,241,0.08)", pointerEvents:"none" }} />
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg">🔬</span>
-            <span className="text-[13px] font-black uppercase tracking-wide" style={{ color: C.primary }}>
-              Análisis de Pautas
-            </span>
-            <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase"
-              style={{ background: `${C.primary}15`, color: C.primary }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"6px" }}>
+            <div style={{ background:`${C.primary}15`, borderRadius:"10px", padding:"7px 9px", fontSize:"20px" }}>🔬</div>
+            <span style={{ fontSize:"15px", fontWeight:900, color:C.primary,
+              textTransform:"uppercase", letterSpacing:"0.1em" }}>Análisis de Pautas</span>
+            <span style={{ fontSize:"8px", fontWeight:900, padding:"3px 10px", borderRadius:"9999px",
+              background:`${C.primary}12`, color:C.primary, textTransform:"uppercase" }}>
               {metricas.length} canales · {desde} → {hasta}
             </span>
           </div>
-          <p className="text-[9px] leading-relaxed" style={{ color: C.muted }}>
-            Tasa de contacto · CPL · CP Activado · ROAS · Índice de Calidad de Pauta (ICP)
+          <p style={{ fontSize:"9px", color:C.muted, marginLeft:"44px", letterSpacing:"0.04em" }}>
+            Tasa contacto · CPL · CP Activado · ROAS · Índice de Calidad de Pauta (ICP 0-100)
           </p>
         </div>
         {mejorCanal && (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl border"
-            style={{ borderColor: `${C.success}30`, background: "#d1fae5" }}>
-            <span className="text-xl">{getCfg(mejorCanal.canal).icon}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:"10px", padding:"10px 18px",
+            background:"rgba(255,255,255,0.85)", border:`1px solid ${C.success}30`,
+            borderRadius:"14px", boxShadow:`0 4px 16px ${C.success}15` }}>
+            <span style={{ fontSize:"20px" }}>{getCfg(mejorCanal.canal).icon}</span>
             <div>
-              <div className="text-[7px] font-black uppercase" style={{ color: C.muted }}>Mejor pauta (ICP)</div>
-              <div className="text-[10px] font-black" style={{ color: C.success }}>
+              <div style={{ fontSize:"7px", color:C.muted, textTransform:"uppercase", fontWeight:900 }}>Mejor pauta (ICP)</div>
+              <div style={{ fontSize:"11px", fontWeight:900, color:C.success }}>
                 {getCfg(mejorCanal.canal).label} — {mejorCanal.icp.toFixed(0)} pts
               </div>
             </div>
@@ -671,304 +785,183 @@ export default function TabAnalisisPautas({ filtro }) {
         )}
       </div>
 
-      {/* KPIs globales */}
+      {/* KPIs */}
       {resumenGlobal && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          <KpiAvanzado label="Leads totales"   value={resumenGlobal.totLeads || "—"} icon="👥"
-            color={C.primary} sub={`${metricas.length} canales`} />
-          <KpiAvanzado label="T. Contacto"     value={fmtPct(resumenGlobal.tContacto)} icon="📞"
-            color={colorSemaforo(resumenGlobal.tContacto, [50, 35])}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:"12px" }}>
+          <KpiCard label="Leads totales"  value={resumenGlobal.totLeads||"—"} icon="👥" color={C.primary}
+            sub={`${metricas.length} canales activos`} />
+          <KpiCard label="T. Contacto"    value={fmtPct(resumenGlobal.tContacto)} icon="📞"
+            color={semaforo(resumenGlobal.tContacto,[50,35])}
             sub="negociables / leads"
-            info="Proxy de contactabilidad: leads que pasaron a negociación vs total. Incluye los efectivamente contactados y cualificados." />
-          <KpiAvanzado label="% ATC Global"    value={fmtPct(resumenGlobal.pctAtc)} icon="⚠️"
-            color={colorSemaforo(resumenGlobal.pctAtc, [40, 25], true)}
+            info="Proxy de contactabilidad: leads negociados vs total." />
+          <KpiCard label="% ATC Global"   value={fmtPct(resumenGlobal.pctAtc)} icon="⚠️"
+            color={semaforo(resumenGlobal.pctAtc,[40,25],true)}
             sub={`${resumenGlobal.totAtc} leads ATC`}
-            info="Porcentaje de leads derivados a soporte ATC. Menor = mejor calidad de pauta." />
-          <KpiAvanzado label="Efectividad"     value={fmtPct(resumenGlobal.efect)} icon="✅"
-            color={colorSemaforo(resumenGlobal.efect, [15, 8])}
+            info="Menor % = mejor calidad de pauta." />
+          <KpiCard label="Efectividad"    value={fmtPct(resumenGlobal.efect)} icon="✅"
+            color={semaforo(resumenGlobal.efect,[15,8])}
             sub={`${resumenGlobal.totAct} activos`}
-            info="Activos del mes sobre total de leads. Indicador clave de conversión final." />
-          <KpiAvanzado label="CPL Promedio"    value={resumenGlobal.cpl !== null ? fmt2(resumenGlobal.cpl) : "—"} icon="💸"
-            color={colorSemaforo(resumenGlobal.cpl || 999, [4, 8], true)}
+            info="Activos del mes / total leads." />
+          <KpiCard label="CPL Promedio"   value={resumenGlobal.cpl!==null?fmt2(resumenGlobal.cpl):"—"} icon="💸"
+            color={semaforo(resumenGlobal.cpl||999,[4,8],true)}
             sub="inversión / leads"
-            info="Costo por lead promedio entre todos los canales con inversión registrada." />
-          <KpiAvanzado label="CP Activado"     value={resumenGlobal.cpActivado !== null ? fmt2(resumenGlobal.cpActivado) : "—"} icon="🎯"
-            color={colorSemaforo(resumenGlobal.cpActivado || 999, [20, 40], true)}
+            info="Costo por lead promedio de todos los canales." />
+          <KpiCard label="CP Activado"    value={resumenGlobal.cpActivado!==null?fmt2(resumenGlobal.cpActivado):"—"} icon="🎯"
+            color={semaforo(resumenGlobal.cpActivado||999,[20,40],true)}
             sub="inversión / activo"
-            info="Costo real por cliente activado. Más relevante que el CPL para medir rentabilidad real de la pauta." />
-          <KpiAvanzado label="ROAS Estimado"   value={resumenGlobal.roas !== null ? `${resumenGlobal.roas.toFixed(1)}x` : "—"} icon="📈"
-            color={colorSemaforo(resumenGlobal.roas || 0, [3, 1.5])}
-            sub="ingreso est. / inversión"
-            info="Return on Ad Spend estimado. Asume $25/mes por cliente activo. Ajustar según ticket real." />
+            info="Costo real por cliente activado. Más relevante que CPL." />
+          <KpiCard label="ROAS Estimado"  value={resumenGlobal.roas!==null?`${resumenGlobal.roas.toFixed(1)}x`:"—"} icon="📈"
+            color={semaforo(resumenGlobal.roas||0,[3,1.5])}
+            sub={`$${TICKET}/cliente activo`}
+            info="Return on Ad Spend estimado. Ajustar ticket real según contrato." />
         </div>
       )}
 
-      {/* Gauges por canal — ICP */}
-      {metricas.length > 0 && (
-        <Card>
-          <CardHeader title="Índice de Calidad de Pauta (ICP)" accent={C.primary}
-            subtitle="Score 0-100 · ponderado: 40% efectividad + 25% contacto + 20% calidad lead + 15% eficiencia inversión"
-            badge={
-              <span className="text-[8px] font-medium px-2 py-1 rounded-full" style={{ background: `${C.primary}10`, color: C.primary }}>
-                Mayor = mejor pauta
-              </span>
-            } />
-          <div className="p-5">
-            <div className="flex flex-wrap gap-6 justify-center mb-5">
-              {metricas.map((m) => (
-                <div key={m.canal} className="flex flex-col items-center gap-2">
-                  <GaugeCircular
-                    valor={m.icp} max={100}
-                    label={getCfg(m.canal).label}
-                    color={colorSemaforo(m.icp, [60, 35])}
-                    size={88} />
-                  <div className="text-center space-y-0.5">
-                    <div className="text-[7.5px] font-bold" style={{ color: C.muted }}>
-                      EF {m.efect.toFixed(0)}% · ATC {m.pctAtc.toFixed(0)}%
-                    </div>
-                    {m.cpl !== null && (
-                      <div className="text-[7.5px] font-bold" style={{ color: C.violet }}>
-                        CPL ${m.cpl.toFixed(2)}
-                      </div>
-                    )}
+      {/* GAUGES ICP por canal */}
+      {metricas.length>0 && (
+        <Card title="Índice de Calidad de Pauta (ICP)" accent={C.primary}
+          subtitle="Score 0-100 · 40% efectividad + 25% contacto + 20% calidad lead + 15% eficiencia inversión"
+          badge={
+            <span style={{ fontSize:"8px", fontWeight:600, padding:"3px 10px", borderRadius:"9999px",
+              background:`${C.primary}10`, color:C.primary }}>Mayor = mejor pauta</span>
+          }>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:"24px", justifyContent:"center", marginBottom:"20px" }}>
+            {metricas.map(m=>(
+              <div key={m.canal} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"6px" }}>
+                <GaugePremium valor={m.icp} label={getCfg(m.canal).label}
+                  color={semaforo(m.icp,[60,35])} size={90}
+                  sublabel={`${getCfg(m.canal).icon}`} />
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:"7.5px", fontWeight:700, color:C.muted }}>
+                    EF {m.efect.toFixed(0)}% · ATC {m.pctAtc.toFixed(0)}%
                   </div>
+                  {m.cpl!==null && (
+                    <div style={{ fontSize:"7.5px", fontWeight:700, color:C.violet }}>CPL ${m.cpl.toFixed(2)}</div>
+                  )}
                 </div>
-              ))}
-            </div>
-            {/* Leyenda ICP */}
-            <div className="flex flex-wrap justify-center gap-3 pt-3 border-t" style={{ borderColor: C.border }}>
-              {[
-                { label: "ICP ≥ 60 · Pauta excelente", color: C.success },
-                { label: "ICP 35-59 · Pauta aceptable",  color: C.warning },
-                { label: "ICP < 35 · Requiere atención", color: C.danger },
-              ].map(l => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
-                  <span className="text-[8px] font-medium" style={{ color: C.muted }}>{l.label}</span>
-                </div>
-              ))}
-            </div>
+              </div>
+            ))}
+          </div>
+          {/* Leyenda */}
+          <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"14px",
+            paddingTop:"14px", borderTop:`1px solid ${C.border}` }}>
+            {[
+              {l:"ICP ≥ 60 · Excelente",   c:C.success},
+              {l:"ICP 35-59 · Aceptable",   c:C.warning},
+              {l:"ICP < 35 · Atención",     c:C.danger},
+            ].map(l=>(
+              <div key={l.l} style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                <div style={{ width:"10px", height:"10px", borderRadius:"50%", background:l.c }} />
+                <span style={{ fontSize:"8px", fontWeight:600, color:C.muted }}>{l.l}</span>
+              </div>
+            ))}
           </div>
         </Card>
       )}
 
-      {/* Sub-tabs */}
-      <div className="flex gap-1 bg-white border rounded-xl p-1 w-fit" style={{ borderColor: C.border }}>
-        {SUBTABS.map(t => (
-          <button key={t.id} onClick={() => setTabActivo(t.id)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-wide transition-all"
-            style={tabActivo === t.id
-              ? { background: C.primary, color: "#fff" }
-              : { color: C.muted }}>
-            <span>{t.icon}</span>
-            <span className="hidden sm:inline">{t.label}</span>
+      {/* SUB-TABS */}
+      <div style={{ display:"flex", gap:"4px", background:"#fff",
+        border:`1px solid ${C.border}`, borderRadius:"14px", padding:"5px",
+        width:"fit-content", boxShadow:"0 2px 12px rgba(0,0,0,0.05)" }}>
+        {SUBTABS.map(t=>(
+          <button key={t.id} onClick={()=>setTabActivo(t.id)} style={{
+            display:"flex", alignItems:"center", gap:"6px",
+            padding:"8px 16px", borderRadius:"10px", border:"none",
+            fontSize:"9px", fontWeight:900, textTransform:"uppercase",
+            letterSpacing:"0.07em", cursor:"pointer",
+            background:tabActivo===t.id?`linear-gradient(135deg,${C.primary},#1e40af)`:"transparent",
+            color:tabActivo===t.id?"#fff":C.muted, transition:"all 0.15s",
+            boxShadow:tabActivo===t.id?"0 4px 12px rgba(30,58,138,0.3)":"none",
+          }}>
+            <span>{t.i}</span><span className="hidden sm:inline">{t.l}</span>
           </button>
         ))}
       </div>
 
-      {/* Contenido de sub-tabs */}
-      {tabActivo === "resumen" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Ranking por ICP */}
-          <Card>
-            <CardHeader title="Ranking de Pautas" subtitle="Ordenado por ICP — de mejor a peor" accent={C.success} />
-            <div className="p-4 space-y-3">
-              {metricas.map((m, i) => {
-                const cfg = getCfg(m.canal);
-                const icpColor = colorSemaforo(m.icp, [60, 35]);
-                return (
-                  <div key={m.canal} className="rounded-xl border p-3" style={{ borderColor: `${cfg.color}20`, background: cfg.bg }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center"
-                          style={{ background: `${cfg.color}20`, color: cfg.color }}>
-                          {i + 1}
-                        </span>
-                        <span className="text-base">{cfg.icon}</span>
-                        <span className="text-[10px] font-black uppercase" style={{ color: cfg.color }}>{cfg.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-black" style={{ color: icpColor }}>{m.icp.toFixed(0)}</span>
-                        <span className="text-[7px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: `${icpColor}15`, color: icpColor }}>ICP</span>
-                      </div>
-                    </div>
-                    {/* Mini métricas */}
-                    <div className="grid grid-cols-4 gap-1">
-                      {[
-                        ["Contacto", `${m.tContacto.toFixed(0)}%`, colorSemaforo(m.tContacto, [50, 35])],
-                        ["Efect.",   `${m.efect.toFixed(0)}%`,     colorSemaforo(m.efect, [15, 8])],
-                        ["ATC",      `${m.pctAtc.toFixed(0)}%`,    colorSemaforo(m.pctAtc, [40, 25], true)],
-                        m.cpl !== null
-                          ? ["CPL", `$${m.cpl.toFixed(2)}`, colorSemaforo(m.cpl, [4, 8], true)]
-                          : ["ROAS", m.roas !== null ? `${m.roas.toFixed(1)}x` : "—", C.muted],
-                      ].map(([lbl, val, col]) => (
-                        <div key={lbl} className="text-center bg-white bg-opacity-60 rounded-lg py-1.5">
-                          <div className="text-[7px] font-bold" style={{ color: C.muted }}>{lbl}</div>
-                          <div className="text-[9px] font-black" style={{ color: col }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Barra ICP */}
-                    <div className="mt-2">
-                      <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${icpColor}20` }}>
-                        <div style={{ width: `${m.icp}%`, height: "100%", background: icpColor, transition: "width 0.6s" }} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {/* ══ RESUMEN ══ */}
+      {tabActivo==="resumen" && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
+          <Card title="Ranking de Pautas" subtitle="Por ICP — de mejor a peor" accent={C.success}>
+            <RankingBars metricas={metricas} />
           </Card>
-
-          {/* Cuadrante CPL vs Efectividad */}
-          <div className="space-y-4">
-            <Card>
-              <CardHeader title="Cuadrante de Pautas" subtitle="CPL vs Efectividad — referencia: promedios del período" accent={C.violet} />
-              <div className="p-4">
-                <CuadrantePautas metricas={metricas} />
-              </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:"20px" }}>
+            <Card title="Cuadrante de Pautas" subtitle="CPL vs Efectividad · promedios del período" accent={C.violet}>
+              <Cuadrante metricas={metricas} />
             </Card>
-
-            {/* Insights automáticos */}
-            <Card>
-              <CardHeader title="Insights Automáticos" accent={C.orange} subtitle="Detectados del período" />
-              <div className="p-4 space-y-2.5">
-                {(() => {
-                  const insights = [];
-                  const mejorIcp = metricas[0];
-                  const peorIcp  = metricas[metricas.length - 1];
-                  const altaAtc  = metricas.filter(m => m.pctAtc > 40);
-                  const sinInv   = metricas.filter(m => m.cpl === null);
-                  const mejorCpl = [...metricas].filter(m => m.cpl !== null).sort((a, b) => a.cpl - b.cpl)[0];
-                  const mejorEf  = [...metricas].sort((a, b) => b.efect - a.efect)[0];
-
-                  if (mejorIcp) insights.push({
-                    tipo: "success", icon: "⭐",
-                    texto: `${getCfg(mejorIcp.canal).label} es la mejor pauta del período con ICP ${mejorIcp.icp.toFixed(0)}/100 — priorizar presupuesto aquí.`,
-                  });
-                  if (peorIcp && metricas.length > 1 && peorIcp.icp < 35) insights.push({
-                    tipo: "danger", icon: "⛔",
-                    texto: `${getCfg(peorIcp.canal).label} tiene ICP bajo (${peorIcp.icp.toFixed(0)}) — revisar segmentación y creativos.`,
-                  });
-                  if (altaAtc.length > 0) insights.push({
-                    tipo: "warning", icon: "⚠️",
-                    texto: `${altaAtc.map(m => getCfg(m.canal).label).join(", ")} supera 40% de ATC — leads de baja calidad, ajustar audiencia.`,
-                  });
-                  if (mejorCpl && mejorEf && mejorCpl.canal !== mejorEf.canal) insights.push({
-                    tipo: "info", icon: "💡",
-                    texto: `El canal más barato (${getCfg(mejorCpl.canal).label}, CPL $${mejorCpl.cpl.toFixed(2)}) ≠ el más efectivo (${getCfg(mejorEf.canal).label}, ${mejorEf.efect.toFixed(1)}%). Usar ambos según objetivo.`,
-                  });
-                  if (sinInv.length > 0) insights.push({
-                    tipo: "neutral", icon: "📌",
-                    texto: `${sinInv.map(m => getCfg(m.canal).label).join(", ")} sin inversión registrada — ROAS/CPL no calculable. Verificar integración de datos de pauta.`,
-                  });
-
-                  const colores = { success: C.success, danger: C.danger, warning: C.warning, info: C.primary, neutral: C.muted };
-                  const bgs     = { success: "#d1fae5", danger: "#fee2e2", warning: "#fef3c7", info: "#dbeafe", neutral: "#f8fafc" };
-
-                  return insights.map((ins, i) => (
-                    <div key={i} className="flex gap-2 p-2.5 rounded-xl" style={{ background: bgs[ins.tipo] }}>
-                      <span className="text-sm flex-shrink-0 mt-0.5">{ins.icon}</span>
-                      <p className="text-[8.5px] leading-relaxed font-medium" style={{ color: colores[ins.tipo] }}>
-                        {ins.texto}
-                      </p>
-                    </div>
-                  ));
-                })()}
-              </div>
+            <Card title="Insights Automáticos" subtitle="Detectados del período" accent={C.orange}>
+              <Insights metricas={metricas} resumen={resumenGlobal} />
             </Card>
           </div>
         </div>
       )}
 
-      {tabActivo === "tabla" && (
-        <Card>
-          <CardHeader title="Tabla Comparativa de Pautas" accent={C.primary}
-            subtitle="Haz clic en los encabezados para ordenar · ICP = Índice de Calidad de Pauta"
-            badge={<span className="text-[8px] px-2 py-1 rounded-full font-bold"
-              style={{ background: `${C.primary}12`, color: C.primary }}>
-              {metricas.length} canales · click columna para ordenar
-            </span>} />
-          <TablaComparativaPautas metricas={metricas} maxCPL={maxCPL} />
-          {/* Nota ROAS */}
-          <div className="px-5 py-2.5 border-t text-[7.5px] flex flex-wrap gap-3" style={{ borderColor: C.border, color: C.muted }}>
-            <span>★ ICP: 0-100 — mayor es mejor</span>
-            <span>· ROAS estimado asume $25/mes por cliente activo</span>
-            <span>· CP Activado = inversión / activos del mes</span>
-            <span>· T. Contacto = negociables / leads (proxy)</span>
+      {/* ══ TABLA ══ */}
+      {tabActivo==="tabla" && (
+        <Card title="Tabla Comparativa" accent={C.primary}
+          subtitle="Click en columnas para ordenar · ICP = Índice de Calidad de Pauta"
+          badge={<span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px", fontWeight:700,
+            background:`${C.primary}12`, color:C.primary }}>{metricas.length} canales</span>}>
+          <TablaComparativa metricas={metricas} />
+          <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.border}`, marginTop:"4px",
+            fontSize:"7.5px", color:C.muted, display:"flex", flexWrap:"wrap", gap:"10px" }}>
+            <span>★ ICP: 0-100 — mayor mejor</span>
+            <span>· ROAS asume ${TICKET}/mes por activo</span>
+            <span>· CP Activado = inversión / activos mes</span>
           </div>
         </Card>
       )}
 
-      {tabActivo === "radar" && (
-        <Card>
-          <CardHeader title="Radar Multidimensional por Canal" accent={C.violet}
-            subtitle="Comparación en 5 dimensiones normalizadas (0-100 cada eje)" />
-          <div className="p-5">
-            {metricas.length < 2 ? (
-              <div className="text-center py-12 text-[10px]" style={{ color: C.muted }}>
-                Se necesitan al menos 2 canales para el radar
-              </div>
-            ) : (
-              <RadarPautas metricas={metricas} />
-            )}
-            <div className="mt-4 pt-3 border-t grid grid-cols-5 gap-2" style={{ borderColor: C.border }}>
-              {[
-                ["Efectividad", "activos/leads"],
-                ["Contacto",    "negociables/leads"],
-                ["Sin ATC",     "leads buenos/total"],
-                ["V. Subida",   "ventas/leads"],
-                ["ICP",         "índice ponderado"],
-              ].map(([dim, desc]) => (
-                <div key={dim} className="text-center">
-                  <div className="text-[8px] font-black" style={{ color: C.slate }}>{dim}</div>
-                  <div className="text-[7px]" style={{ color: C.muted }}>{desc}</div>
-                </div>
-              ))}
+      {/* ══ RADAR ══ */}
+      {tabActivo==="radar" && (
+        <Card title="Radar Multidimensional" accent={C.violet}
+          subtitle="5 dimensiones normalizadas (0-100 cada eje)">
+          {metricas.length<2 ? (
+            <div style={{ textAlign:"center", padding:"40px", color:C.muted, fontSize:"9px" }}>
+              Se necesitan al menos 2 canales para el radar
             </div>
+          ) : <RadarPautas metricas={metricas} />}
+          <div style={{ marginTop:"14px", paddingTop:"12px", borderTop:`1px solid ${C.border}`,
+            display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:"8px" }}>
+            {[["Efectividad","activos/leads"],["Contacto","negociables/leads"],
+              ["Sin ATC","leads sin ATC/total"],["V. Subida","ventas/leads"],["ICP","índice pond."]
+            ].map(([dim,desc])=>(
+              <div key={dim} style={{ textAlign:"center" }}>
+                <div style={{ fontSize:"8px", fontWeight:900, color:C.slate }}>{dim}</div>
+                <div style={{ fontSize:"7px", color:C.muted }}>{desc}</div>
+              </div>
+            ))}
           </div>
         </Card>
       )}
 
-      {tabActivo === "cuadrante" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader title="Scatter: CPL vs Efectividad" accent={C.violet}
-              subtitle="Ideal: arriba-izquierda (CPL bajo + alta efectividad)" />
-            <div className="p-5">
-              <ScatterCPLEfect metricas={metricas} />
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[7.5px]" style={{ color: C.muted }}>
-                <div className="p-2 rounded-lg" style={{ background: "#d1fae580" }}>
-                  <span style={{ color: C.success }}>▲ Arriba-Izquierda</span><br />
-                  Bajo CPL + alta efectividad = pauta ideal
-                </div>
-                <div className="p-2 rounded-lg" style={{ background: "#fee2e280" }}>
-                  <span style={{ color: C.danger }}>▼ Abajo-Derecha</span><br />
-                  Alto CPL + baja efectividad = revisar urgente
-                </div>
+      {/* ══ CUADRANTE ══ */}
+      {tabActivo==="cuadrante" && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
+          <Card title="Scatter: CPL vs Efectividad" accent={C.violet}
+            subtitle="Ideal: arriba-izquierda (CPL bajo + alta efectividad)">
+            <ScatterPremium metricas={metricas} />
+            <div style={{ marginTop:"12px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", fontSize:"7.5px", color:C.muted }}>
+              <div style={{ padding:"8px 10px", borderRadius:"8px", background:"#d1fae580" }}>
+                <span style={{ color:C.success }}>▲ Arriba-Izq.</span> Bajo CPL + alta efect.
+              </div>
+              <div style={{ padding:"8px 10px", borderRadius:"8px", background:"#fee2e280" }}>
+                <span style={{ color:C.danger }}>▼ Abajo-Der.</span> Alto CPL + baja efect.
               </div>
             </div>
           </Card>
-          <Card>
-            <CardHeader title="Clasificación por Cuadrante" accent={C.orange}
-              subtitle="Basado en promedios del período" />
-            <div className="p-4">
-              <CuadrantePautas metricas={metricas} />
-            </div>
+          <Card title="Clasificación por Cuadrante" accent={C.orange}>
+            <Cuadrante metricas={metricas} />
           </Card>
         </div>
       )}
 
-      {tabActivo === "tendencia" && (
-        <Card>
-          <CardHeader title="Evolución Diaria por Canal" accent={C.cyan}
-            subtitle="Selecciona la métrica para comparar tendencias" />
-          <div className="p-5">
-            {rawData?.data && (
-              <TendenciaDiaria rawFilas={rawData.data} canalesActivos={canalesActivos} />
-            )}
-          </div>
+      {/* ══ TENDENCIA ══ */}
+      {tabActivo==="tendencia" && (
+        <Card title="Evolución Diaria por Canal" accent={C.cyan}
+          subtitle="Área con gradiente — selecciona métrica para comparar tendencias">
+          {rawData?.data && (
+            <TendenciaArea rawFilas={rawData.data} canalesActivos={canalesActivos} />
+          )}
         </Card>
       )}
     </div>

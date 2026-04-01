@@ -4,8 +4,10 @@
 // ║  ✅ + Filtros globales Canal en todos los tabs                          ║
 // ║  ✅ + Labels siempre visibles en gráficos                               ║
 // ║  ✅ + Nuevo tab: Asesores vs Pauta                                      ║
+// ║  ✅ + Desglose de líneas/orígenes al filtrar 1 canal                   ║
+// ║  ✅ + Mejoras visuales premium                                          ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   ComposedChart, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell,
@@ -60,6 +62,11 @@ const CANAL_A_ORIGENES = {
   "VIDIKA GOOGLE":     ["BASE 593-962881280", "BASE 593-987133635", "BASE API 593963463480", "FORMULARIO LANDING 4", "LLAMADA", "LLAMADA LANDING 4"],
   "POR RECOMENDACIÓN": ["POR RECOMENDACIÓN", "REFERIDO PERSONAL", "TIENDA ONLINE"],
 };
+
+// Colores para orígenes en desglose
+const ORIGEN_COLORS = [
+  "#1e3a8a","#0ea5e9","#06b6d4","#059669","#f59e0b","#ef4444","#7c3aed","#f97316",
+];
 
 const getCanal     = (o) => { if (!o) return "SIN MAPEO"; if (CANALES[o]) return o; return ORIGEN_CANAL[o.toUpperCase()] || ORIGEN_CANAL[o] || "SIN MAPEO"; };
 const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "•", label: c };
@@ -151,8 +158,31 @@ function agregarPorCanal(filas) {
   return Object.values(map).sort((a, b) => b.n_leads - a.n_leads);
 }
 
+// NUEVO: agrega por origen/línea dentro de un canal para desglose
+function agregarPorOrigenDia(filas) {
+  const map = {};
+  filas.forEach((row) => {
+    const origen = (row.canal_publicidad || row.b_origen || "Desconocido").trim();
+    const fecha  = String(row.fecha).split("T")[0];
+    const key    = `${fecha}|${origen}`;
+    if (!map[key]) map[key] = {
+      fecha: row.fecha, origen, n_leads: 0, negociables: 0, atc_soporte: 0,
+      venta_subida_bitrix: 0, ingreso_jot: 0, activos_mes: 0, inversion_usd: 0, _inv: false,
+    };
+    const a = map[key];
+    a.n_leads             += n(row.n_leads);
+    a.negociables         += n(row.negociables);
+    a.atc_soporte         += n(row.atc_soporte);
+    a.venta_subida_bitrix += n(row.venta_subida_bitrix);
+    a.ingreso_jot         += n(row.ingreso_jot);
+    a.activos_mes         += n(row.activos_mes);
+    if (!a._inv && n(row.inversion_usd) > 0) { a.inversion_usd = n(row.inversion_usd); a._inv = true; }
+  });
+  return Object.values(map).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)) || a.origen.localeCompare(b.origen));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// HOOK CENTRAL — respeta filtros de canal
+// HOOK CENTRAL
 // ─────────────────────────────────────────────────────────────────────────────
 function useMonitoreoData(desde, hasta, canalesSel) {
   const [data, setData]       = useState({ principal: null, ciudad: null, hora: null, atc: null });
@@ -245,10 +275,11 @@ function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
 }
 function KpiCard({ label, value, color = C.primary, icon, sub }) {
   return (
-    <div className="bg-white rounded-2xl border shadow-sm px-4 py-3 flex items-center gap-3" style={{ borderColor: C.border }}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: `${color}15` }}>{icon}</div>
+    <div className="rounded-2xl border shadow-sm px-4 py-3 flex items-center gap-3"
+      style={{ borderColor: `${color}25`, background: `linear-gradient(135deg,${color}10,${color}04)`, boxShadow: `0 4px 16px ${color}10` }}>
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: `${color}18` }}>{icon}</div>
       <div className="min-w-0">
-        <div className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: C.muted }}>{label}</div>
+        <div className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: `${color}80` }}>{label}</div>
         <div className="text-xl font-black leading-tight truncate" style={{ color }}>{value}</div>
         {sub && <div className="text-[8px] font-medium mt-0.5" style={{ color: C.muted }}>{sub}</div>}
       </div>
@@ -279,7 +310,6 @@ function VistaToggle({ value, onChange, options, color = C.primary }) {
   );
 }
 
-// Tooltip rico — siempre bonito
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -310,11 +340,12 @@ function Spinner() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PANEL FILTROS GLOBALES
+// PANEL FILTROS GLOBALES — con desglose de líneas
 // ─────────────────────────────────────────────────────────────────────────────
 function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
+      {/* Fila principal de selección */}
       <div className="px-5 py-3 flex flex-wrap items-center gap-4" style={{ background: "#f8fafc" }}>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
@@ -326,9 +357,12 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
             {canalesSel.map(c => {
               const cfg = getCanalCfg(c);
               return (
-                <span key={c} style={{ padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
-                  color: cfg.color, fontWeight: 900, fontSize: "8px", border: `1px solid ${cfg.color}30`,
-                  display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span key={c} style={{
+                  padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
+                  color: cfg.color, fontWeight: 900, fontSize: "8px",
+                  border: `1px solid ${cfg.color}30`,
+                  display: "inline-flex", alignItems: "center", gap: "4px",
+                }}>
                   {cfg.icon} {cfg.label}
                 </span>
               );
@@ -336,12 +370,69 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
           </div>
         )}
       </div>
+
+      {/* Desglose de líneas para 1 canal seleccionado */}
+      {canalesSel.length === 1 && (CANAL_A_ORIGENES[canalesSel[0]] || []).length > 0 && (
+        <div className="px-5 py-3 border-t" style={{ borderColor: C.border }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
+              📡 Líneas del canal {getCfg(canalesSel[0]).label}:
+            </span>
+            {(CANAL_A_ORIGENES[canalesSel[0]] || []).map((origen) => {
+              const cfg = getCfg(canalesSel[0]);
+              return (
+                <span key={origen} style={{
+                  padding: "3px 10px", borderRadius: "8px",
+                  background: `${cfg.color}10`, color: cfg.color,
+                  fontWeight: 700, fontSize: "8px",
+                  border: `1px solid ${cfg.color}22`,
+                  display: "inline-flex", alignItems: "center", gap: "4px",
+                }}>
+                  <span style={{ opacity: 0.5 }}>›</span> {origen}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Desglose expandido para múltiples canales */}
+      {canalesSel.length > 1 && (
+        <div className="px-5 py-3 border-t" style={{ borderColor: C.border }}>
+          <div className="flex flex-col gap-2">
+            {canalesSel.map(c => {
+              const cfg = getCfg(c);
+              const origenes = CANAL_A_ORIGENES[c] || [];
+              if (!origenes.length) return null;
+              return (
+                <div key={c} className="flex flex-wrap items-center gap-2">
+                  <span style={{
+                    padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
+                    color: cfg.color, fontWeight: 900, fontSize: "8px",
+                    border: `1px solid ${cfg.color}30`, flexShrink: 0,
+                    display: "inline-flex", alignItems: "center", gap: "4px",
+                  }}>{cfg.icon} {cfg.label}</span>
+                  <span style={{ fontSize: "8px", color: C.muted }}>→</span>
+                  {origenes.map(o => (
+                    <span key={o} style={{
+                      padding: "2px 8px", borderRadius: "6px",
+                      background: `${cfg.color}08`, color: cfg.color,
+                      fontWeight: 600, fontSize: "7.5px",
+                      border: `1px solid ${cfg.color}18`,
+                    }}>{o}</span>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NUEVO: Panel de canales con orígenes expandibles (del original mejorado)
+// CanalDetalleCard
 // ─────────────────────────────────────────────────────────────────────────────
 function CanalDetalleCard({ canalData, totalLeads }) {
   const [expandido, setExpandido] = useState(false);
@@ -437,16 +528,15 @@ function CanalDetalleCard({ canalData, totalLeads }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PANEL ATC CON ETAPAS
+// ATC ETAPAS PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 function AtcEtapasPanel({ atcData }) {
   const [vistaAtc, setVistaAtc] = useState("resumen");
   const totales  = atcData?.totales || [];
-  const data     = atcData?.data    || [];
   const totalAtc = totales.reduce((a, r) => a + n(r.cantidad), 0);
 
   const ETAPAS_ATC = [
-    { id: "cobertura", label: "Cobertura",    icon: "📍", color: "#0ea5e9", bg: "#e0f2fe", descripcion: "Problemas geográficos",    palabras: ["cobertura","zona","sector","fuera"] },
+    { id: "cobertura", label: "Cobertura",    icon: "📍", color: "#0ea5e9", bg: "#e0f2fe", descripcion: "Problemas geográficos",   palabras: ["cobertura","zona","sector","fuera"] },
     { id: "contacto",  label: "No contacto",  icon: "📵", color: "#f59e0b", bg: "#fef3c7", descripcion: "Sin respuesta del lead",   palabras: ["no contesta","no responde","ocupado","apagado","buzón"] },
     { id: "calidad",   label: "Calidad lead", icon: "⚠️", color: "#ef4444", bg: "#fee2e2", descripcion: "Lead no calificado",      palabras: ["equivocado","falso","duplicado","ya tiene","competencia"] },
     { id: "precio",    label: "Precio/Plan",  icon: "💰", color: "#7c3aed", bg: "#ede9fe", descripcion: "Objeciones económicas",   palabras: ["precio","caro","costo","plan","tarifa","pago"] },
@@ -523,9 +613,80 @@ function AtcEtapasPanel({ atcData }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GRÁFICO COMBINADO (igual al original)
+// GRÁFICO FUNNEL COMBINADO — con desglose por origen cuando hay 1 canal
 // ─────────────────────────────────────────────────────────────────────────────
-function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, height = 320 }) {
+function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, origenData, canalesFiltrados, height = 320 }) {
+  const modoDesglose = canalesFiltrados?.length === 1 && origenData?.length > 0;
+
+  if (modoDesglose) {
+    // Construir datos agrupados por fecha con una línea por origen
+    const origenesUnicos = [...new Set(origenData.map(r => r.origen))];
+    const fechas = [...new Set(origenData.map(r => formatFecha(r.fecha)))];
+
+    const dataFinal = fechas.map(fecha => {
+      const entry = { fecha, "Leads": 0, "V. Subida": 0 };
+      origenesUnicos.forEach(orig => {
+        const fila = origenData.find(r => formatFecha(r.fecha) === fecha && r.origen === orig);
+        const key  = `JOT·${orig.slice(0, 18)}`;
+        entry[key]         = fila ? fila.ingreso_jot         : 0;
+        entry["Leads"]    += fila ? fila.n_leads             : 0;
+        entry["V. Subida"] += fila ? fila.venta_subida_bitrix : 0;
+      });
+      return entry;
+    });
+
+    return (
+      <div>
+        {/* Badge modo desglose */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "8px", fontWeight: 900, padding: "3px 10px", borderRadius: "9999px",
+            background: "#dbeafe", color: "#1e3a8a", border: "1px solid #1e3a8a30" }}>
+            🔍 Desglose por línea — {origenesUnicos.length} orígenes en {getCfg(canalesFiltrados[0]).label}
+          </span>
+          {origenesUnicos.map((o, i) => (
+            <span key={o} style={{ fontSize: "7px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px",
+              background: `${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}14`,
+              color: ORIGEN_COLORS[i % ORIGEN_COLORS.length],
+              border: `1px solid ${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}25` }}>
+              {o.length > 24 ? o.slice(0, 24) + "…" : o}
+            </span>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={height}>
+          <ComposedChart data={dataFinal} margin={{ top: 8, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
+            <YAxis yAxisId="vol" tick={{ fontSize: 9, fill: C.muted }} width={38}
+              label={{ value: "Leads", angle: -90, position: "insideLeft", fontSize: 8, fill: C.muted, dy: 25 }} />
+            <YAxis yAxisId="jot" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={32}
+              label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 8, fill: C.muted, dy: -20 }} />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend wrapperStyle={{ fontSize: 9 }} />
+            <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
+              <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+            </Bar>
+            <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
+              <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+            </Bar>
+            {origenesUnicos.map((orig, i) => (
+              <Line key={orig} yAxisId="jot" type="monotone"
+                dataKey={`JOT·${orig.slice(0, 18)}`}
+                name={`JOT ${orig.slice(0, 20)}`}
+                stroke={ORIGEN_COLORS[i % ORIGEN_COLORS.length]} strokeWidth={2.5}
+                dot={{ r: 3, fill: ORIGEN_COLORS[i % ORIGEN_COLORS.length], strokeWidth: 0 }}
+                activeDot={{ r: 6 }} connectNulls>
+                <LabelList dataKey={`JOT·${orig.slice(0, 18)}`} position="top"
+                  style={{ fontSize: 7, fill: ORIGEN_COLORS[i % ORIGEN_COLORS.length], fontWeight: 800 }}
+                  formatter={v => v > 0 ? v : ""} />
+              </Line>
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  // Modo normal (sin filtro de canal único)
   const dataFinal = diasData.map((d) => {
     const tend = tendCanalData.find((t) => t.fecha === d.fecha) || {};
     const jotPorCanal = {};
@@ -564,7 +725,7 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, hei
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 1 — MONITOREO GENERAL (original preservado + mejoras)
+// TAB 1 — MONITOREO GENERAL
 // ─────────────────────────────────────────────────────────────────────────────
 function TabMonitoreoGeneral({ data, loading }) {
   const { principal, ciudad, hora, atc } = data;
@@ -633,7 +794,7 @@ function TabMonitoreoGeneral({ data, loading }) {
           sub={`${totalAtc} leads ATC`} />
       </div>
 
-      {/* Sección canales */}
+      {/* Canales */}
       {porCanal.length > 0 && (
         <Card>
           <CardHeader title="Canales de Publicidad" subtitle="Orígenes, funnel y métricas por canal" accent={C.primary}
@@ -799,9 +960,9 @@ function TabMonitoreoGeneral({ data, loading }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2 — GRÁFICOS GERENCIA (original completo preservado)
+// TAB 2 — GRÁFICOS GERENCIA — con soporte de desglose por origen
 // ─────────────────────────────────────────────────────────────────────────────
-function TabGraficos({ data, loading }) {
+function TabGraficos({ data, loading, canalesSel = [] }) {
   const { principal, hora, atc } = data;
   const [openFunnel, setOpenFunnel] = useState(false);
 
@@ -811,6 +972,15 @@ function TabGraficos({ data, loading }) {
   const rawFilas     = principal?.data || [];
   const porFecha     = agregarPorFecha(rawFilas);
   const porCanal     = agregarPorCanal(rawFilas);
+
+  // Datos por origen cuando hay 1 canal seleccionado
+  const origenData = useMemo(() => {
+    if (canalesSel.length !== 1) return [];
+    return agregarPorOrigenDia(rawFilas);
+  }, [rawFilas, canalesSel]);
+
+  const modoDesglose   = canalesSel.length === 1 && origenData.length > 0;
+  const canalFiltradoCfg = canalesSel.length === 1 ? getCfg(canalesSel[0]) : null;
 
   const tendMap = {};
   rawFilas.forEach((row) => {
@@ -874,36 +1044,63 @@ function TabGraficos({ data, loading }) {
   const atcData = (atc?.totales || []).slice(0, 8).map(a => ({ name: (a.motivo_atc || "").slice(0,18), Cantidad: n(a.cantidad) }));
   const totP    = principal?.totales || {};
   const cicloData = [
-    { c:"0d",   v: n(totP.ciclo_0_dias)   }, { c:"1d",   v: n(totP.ciclo_1_dia)    },
-    { c:"2d",   v: n(totP.ciclo_2_dias)   }, { c:"3d",   v: n(totP.ciclo_3_dias)   },
-    { c:"4d",   v: n(totP.ciclo_4_dias)   }, { c:"+5d",  v: n(totP.ciclo_mas5_dias) },
+    { c:"0d",  v: n(totP.ciclo_0_dias)    }, { c:"1d",  v: n(totP.ciclo_1_dia)     },
+    { c:"2d",  v: n(totP.ciclo_2_dias)    }, { c:"3d",  v: n(totP.ciclo_3_dias)    },
+    { c:"4d",  v: n(totP.ciclo_4_dias)    }, { c:"+5d", v: n(totP.ciclo_mas5_dias) },
   ];
   const cicloColors = [C.success, C.cyan, C.primary, C.warning, C.danger, C.violet];
 
   return (
     <div className="space-y-6">
+
       {/* Gráfico combinado principal */}
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b flex items-center justify-between flex-wrap gap-3" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-3">
             <div className="w-1 h-7 rounded-full" style={{ background: C.primary }} />
             <div>
-              <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Leads & Venta Subida (total) · Ingresos JOT por Campaña</div>
-              <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>Barras = totales consolidados · Líneas = JOT desglosado por canal · Labels siempre visibles</div>
+              <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
+                {modoDesglose
+                  ? `Desglose por Línea — ${canalFiltradoCfg?.label} · Leads & JOT por Origen`
+                  : "Leads & Venta Subida (total) · Ingresos JOT por Campaña"}
+              </div>
+              <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>
+                {modoDesglose
+                  ? `Barras = totales del canal · Líneas = JOT por cada línea/origen`
+                  : "Barras = totales consolidados · Líneas = JOT desglosado por canal · Labels siempre visibles"}
+              </div>
             </div>
           </div>
           <button onClick={() => setOpenFunnel(true)} className="text-[8px] font-black uppercase px-3 py-1 rounded-full border hover:shadow-sm transition-all" style={{ borderColor: C.border, color: C.muted }}>⤢ Ampliar</button>
         </div>
         <div className="p-5">
-          <GraficoFunnelCombinado diasData={diasData} tendCanalData={tendCanalData} canalesPresentes={canalesPresentes} height={320} />
+          <GraficoFunnelCombinado
+            diasData={diasData}
+            tendCanalData={tendCanalData}
+            canalesPresentes={canalesPresentes}
+            origenData={origenData}
+            canalesFiltrados={canalesSel}
+            height={320} />
         </div>
+        {/* Leyenda */}
         <div className="px-5 pb-4 flex flex-wrap gap-1.5">
-          {canalesPresentes.map(canal => (
-            <span key={canal} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-              style={{ background: getCfg(canal).bg, color: getCfg(canal).color, border: `1px solid ${getCfg(canal).color}30` }}>
-              {getCfg(canal).icon} JOT {getCfg(canal).label}
-            </span>
-          ))}
+          {modoDesglose ? (
+            [...new Set(origenData.map(r => r.origen))].map((orig, i) => (
+              <span key={orig} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                style={{ background: `${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}15`,
+                  color: ORIGEN_COLORS[i % ORIGEN_COLORS.length],
+                  border: `1px solid ${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}25` }}>
+                📡 JOT {orig.length > 22 ? orig.slice(0, 22) + "…" : orig}
+              </span>
+            ))
+          ) : (
+            canalesPresentes.map(canal => (
+              <span key={canal} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                style={{ background: getCfg(canal).bg, color: getCfg(canal).color, border: `1px solid ${getCfg(canal).color}30` }}>
+                {getCfg(canal).icon} JOT {getCfg(canal).label}
+              </span>
+            ))
+          )}
         </div>
       </div>
 
@@ -911,10 +1108,16 @@ function TabGraficos({ data, loading }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={() => setOpenFunnel(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: C.border }}>
-              <span className="text-sm font-black uppercase tracking-wide" style={{ color: C.primary }}>Leads & Venta Subida · JOT por Campaña</span>
+              <span className="text-sm font-black uppercase tracking-wide" style={{ color: C.primary }}>
+                {modoDesglose ? `Desglose por Línea — ${canalFiltradoCfg?.label}` : "Leads & Venta Subida · JOT por Campaña"}
+              </span>
               <button onClick={() => setOpenFunnel(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 font-black text-sm" style={{ color: C.muted }}>✕</button>
             </div>
-            <div className="p-6"><GraficoFunnelCombinado diasData={diasData} tendCanalData={tendCanalData} canalesPresentes={canalesPresentes} height={520} /></div>
+            <div className="p-6">
+              <GraficoFunnelCombinado
+                diasData={diasData} tendCanalData={tendCanalData} canalesPresentes={canalesPresentes}
+                origenData={origenData} canalesFiltrados={canalesSel} height={520} />
+            </div>
           </div>
         </div>
       )}
@@ -944,7 +1147,7 @@ function TabGraficos({ data, loading }) {
         <ChartCard title="Leads por Canal" accent={C.primary} height={220}>
           <PieChart>
             <Pie data={donaLeads} cx="40%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" paddingAngle={3}
-              label={({ name, value, percent }) => `${name}: ${value}`} labelLine={true}>
+              label={({ name, value }) => `${name}: ${value}`} labelLine={true}>
               {donaLeads.map((e, i) => <Cell key={i} fill={e.fill} />)}
             </Pie>
             <Legend wrapperStyle={{ fontSize: 9 }} /><Tooltip />
@@ -1111,7 +1314,7 @@ function TabGraficos({ data, loading }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB METAS (original completo preservado)
+// TAB METAS
 // ─────────────────────────────────────────────────────────────────────────────
 function MetaInput({ label, value, onChange, prefix = "", suffix = "", placeholder = "0" }) {
   return (
@@ -1141,7 +1344,7 @@ function buildMetaFilas(canal, metas) {
   const jot     = Math.max(0, n(canal.ingreso_jot));
   const inv     = Math.max(0, n(canal.inversion_usd));
   const pS = leads > 0 ? (sac/leads)*100:0, pC = leads>0?(calidad/leads)*100:0;
-  const pV = leads>0?(ventas/leads)*100:0,  pJ = leads>0?(jot/leads)*100:0;
+  const pV = leads>0?(ventas/leads)*100:0, pJ = leads>0?(jot/leads)*100:0;
   const toSafe = (v) => (v!==null&&v!==undefined&&isFinite(Number(v))&&Number(v)>0)?Number(v):null;
   const cplR  = toSafe(canal.cpl)      ?? (leads>0&&inv>0?inv/leads:null);
   const cplGR = toSafe(canal.cpl_gest) ?? (calidad>0&&inv>0?inv/calidad:null);
@@ -1164,9 +1367,9 @@ function buildMetaFilas(canal, metas) {
     {label:"VENTAS JOT",      inv:false,obj:mJ>0?mJ:null,logro:jot,   diff:diff(pJ,mJ),pct:mJ>0?pJ-mJ:null,sub:`${pJ.toFixed(1)}%`,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:v=>String(Math.round(n(v))),fmtD:fmtPt,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—"},
     {label:"PRESUPUESTO",     inv:true, obj:mP>0?mP:null,logro:inv>0?inv:null,diff:mP>0&&inv>0?inv-mP:null,pct:mP>0&&inv>0?(inv/mP)*100:null,sub:null,fmtO:fmtU2,fmtL:fmtU2,fmtD:fmtUx,fmtP:v=>isFinite(v)?`${v.toFixed(1)}%`:"—",bg:"bg-violet-50"},
     {label:"CTR",             inv:false,manual:true,obj:mCtr>0?mCtr:null,logro:null,diff:null,pct:null,sub:null,fmtO:v=>`${n(v).toFixed(1)}%`,fmtL:()=>"—",fmtD:()=>"—",fmtP:()=>"—"},
-    {label:"CPL",             inv:true, obj:mCpl>0?mCpl:null,logro:cplR,  diff:mCpl>0&&cplR!==null?cplR-mCpl:null,    pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
+    {label:"CPL",             inv:true, obj:mCpl>0?mCpl:null,logro:cplR,  diff:mCpl>0&&cplR!==null?cplR-mCpl:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
     {label:"CPL GESTIONABLE", inv:true, obj:mCplG>0?mCplG:null,logro:cplGR,diff:mCplG>0&&cplGR!==null?cplGR-mCplG:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
-    {label:"CPA BITRIX",      inv:true, obj:mCpa>0?mCpa:null,logro:cpaR,  diff:mCpa>0&&cpaR!==null?cpaR-mCpa:null,    pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
+    {label:"CPA BITRIX",      inv:true, obj:mCpa>0?mCpa:null,logro:cpaR,  diff:mCpa>0&&cpaR!==null?cpaR-mCpa:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
     {label:"CPA JOT",         inv:true, obj:mCpaJ>0?mCpaJ:null,logro:cpaJR,diff:mCpaJ>0&&cpaJR!==null?cpaJR-mCpaJ:null,pct:null,sub:null,fmtO:fmtU2,fmtL:v=>v!==null?fmtU2(v):"—",fmtD:fmtUx,fmtP:()=>"—"},
   ];
 }
@@ -1385,7 +1588,8 @@ export default function Redes() {
       <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm" style={{ background: C.primary }}>V</div>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
+              style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>V</div>
             <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
             <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase" style={{ background: `${C.success}15`, color: C.success }}>● Live</span>
           </div>
@@ -1412,7 +1616,7 @@ export default function Redes() {
             ))}
             <button onClick={handleAplicar}
               className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all"
-              style={{ background: applying || loading ? C.muted : C.primary }}>
+              style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
               {applying || loading ? "Cargando..." : "Aplicar"}
             </button>
           </div>
@@ -1425,25 +1629,27 @@ export default function Redes() {
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all"
-            style={tab === t.id ? { background: C.primary, color: "#fff", boxShadow: `0 2px 10px ${C.primary}35` } : { color: C.muted }}>
+            style={tab === t.id
+              ? { background: `linear-gradient(135deg,${C.primary},#1e40af)`, color: "#fff", boxShadow: `0 4px 14px ${C.primary}40` }
+              : { color: C.muted }}>
             <span className="text-sm">{t.icon}</span>
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Filtros globales de canal */}
+      {/* Panel filtros globales */}
       {tabsConFiltroCanal.includes(tab) && (
         <PanelFiltrosGlobales canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
       )}
 
       {/* Contenido */}
       {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
-      {tab === "graficos"     && <TabGraficos         data={data} loading={loading} />}
+      {tab === "graficos"     && <TabGraficos data={data} loading={loading} canalesSel={canalesSel} />}
       {tab === "asesorvpauta" && (
         <TabAsesorVsPauta filtro={filtro} canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
       )}
-      {tab === "metas"        && <TabMetas     filtro={filtro} canalesSel={canalesSel} />}
+      {tab === "metas"        && <TabMetas filtro={filtro} canalesSel={canalesSel} />}
       {tab === "comparativo"  && <TabComparativo filtro={filtro} />}
       {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} />}
       {tab === "reporte"      && <TabReporteData filtro={filtro} />}

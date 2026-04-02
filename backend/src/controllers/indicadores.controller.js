@@ -15,26 +15,30 @@ const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = ''
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER: filtro de supervisor como subquery EXISTS para evitar duplicados
-// ✅ CAMBIO: ahora filtra por codigo (mes) usando b_cerrado para consistencia
+// Usa COALESCE para manejar b_cerrado NULL → fallback a b_creado_el_fecha
 // ─────────────────────────────────────────────────────────────────────────────
 const supervisorExistsFilter = (paramIndex) =>
     `AND EXISTS (
         SELECT 1 FROM public.empleados _e
         WHERE _e.nombre_completo = mb.b_persona_responsable
-        AND _e.codigo = EXTRACT(MONTH FROM ${parseFecha('mb.b_cerrado')})::text
+        AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
+            ${parseFecha('mb.b_cerrado')},
+            ${parseFecha('mb.b_creado_el_fecha')}
+        ))::text
         AND _e.supervisor ILIKE $${paramIndex}
     )`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPER: JOIN dinámico con empleados por mes (codigo = número de mes)
-// ✅ CAMBIO: usa b_cerrado para determinar el mes → asignación histórica correcta
-// Garantiza que si un asesor cambió de supervisor entre meses, cada registro
-// queda asignado al supervisor que correspondía en ese mes específico.
-// Si no hay coincidencia de mes → supervisor queda NULL → COALESCE → 'SIN ASIGNAR'
+// HELPER: JOIN dinámico con empleados por mes
+// FIX: usa COALESCE(b_cerrado, b_creado_el_fecha) para no perder registros
+// donde b_cerrado es NULL (registros sin cerrar todavía)
 // ─────────────────────────────────────────────────────────────────────────────
 const joinEmpleadosDedup = `LEFT JOIN public.empleados e
     ON mb.b_persona_responsable = e.nombre_completo
-    AND e.codigo = EXTRACT(MONTH FROM ${parseFecha('mb.b_cerrado')})::text`;
+    AND e.codigo = EXTRACT(MONTH FROM COALESCE(
+        ${parseFecha('mb.b_cerrado')},
+        ${parseFecha('mb.b_creado_el_fecha')}
+    ))::text`;
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
@@ -45,10 +49,7 @@ const getIndicadoresDashboard = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-
-        // filters para queries CON JOIN (queryKPI, queryBacklog)
         let filtersJoin = "";
-        // filters para queries SIN JOIN (queryPorDia, queryEmbudo, etc.)
         let filtersNoJoin = "";
 
         if (asesor) {
@@ -101,7 +102,6 @@ const getIndicadoresDashboard = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        // queryKPI — usa joinEmpleadosDedup dinámico (por mes via b_cerrado)
         const queryKPI = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -177,7 +177,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY gestionables DESC
         `;
 
-        // queryBacklog — usa joinEmpleadosDedup dinámico
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -232,7 +231,6 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 6000
         `;
 
-        // SIN JOIN — usa filtersNoJoin para evitar duplicados
         const queryEstados = `
             SELECT
                 COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
@@ -244,7 +242,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // SIN JOIN — usa filtersNoJoin
         const queryEmbudo = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
@@ -255,11 +252,14 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // SIN JOIN — usa filtersNoJoin
+        // FIX: agregado campo "activos" para que el front pueda graficar barras azules
         const queryPorDia = `
             SELECT
                 mb.j_fecha_registro_sistema::date AS fecha,
-                COUNT(*)::int AS total
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (
+                    WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                )::int AS activos
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -282,7 +282,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY etapa ASC
         `;
 
-        // SIN JOIN — usa filtersNoJoin
         const queryTerceraEdad = `
             SELECT
                 COUNT(*) FILTER (
@@ -297,7 +296,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ${filtersNoJoin}
         `;
 
-        // SIN JOIN — usa filtersNoJoin
         const queryTarjeta = `
             SELECT
                 COUNT(*) FILTER (
@@ -340,6 +338,14 @@ const getIndicadoresDashboard = async (req, res) => {
             total: Number(r.total || 0),
         }));
 
+        // FIX: graficoEmbudo → mapear a {name, value, etapa} para que FunnelChart funcione
+        const graficoEmbudo = resEmbudo.rows.map(r => ({
+            name:  r.etapa,   // FunnelChart usa "name"
+            value: Number(r.total || 0), // FunnelChart usa "value"
+            etapa: r.etapa,   // para el label personalizado del front
+            total: Number(r.total || 0), // mantener total para compatibilidad
+        }));
+
         const rowTercera = resTerceraEdad.rows[0] || {};
         const totalTerceraEdad = Number(rowTercera.total_tercera_edad || 0);
         const totalActivosTercera = Number(rowTercera.total_activos || 0);
@@ -362,8 +368,8 @@ const getIndicadoresDashboard = async (req, res) => {
             dataCRM: resCRM.rows,
             dataNetlife: resNet.rows,
             estadosNetlife,
-            graficoEmbudo: resEmbudo.rows,
-            graficoBarrasDia: resDia.rows,
+            graficoEmbudo,
+            graficoBarrasDia: resDia.rows, // ahora incluye "activos"
             etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
             etapasJotform: resEtapasJotform.rows.map(r => r.etapa),
             porcentajeTerceraEdad,
@@ -378,19 +384,49 @@ const getIndicadoresDashboard = async (req, res) => {
 
 const getMonitoreoDiario = async (req, res) => {
     try {
+        // FIX: ahora lee filtros dinámicos del request igual que el dashboard
+        const { asesor, supervisor } = req.query;
+
         const hoy = getFechaEcuador();
         const iniciomes = getPrimerDiaMesEcuador();
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
         const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
-
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
-        // ✅ JOIN dinámico por mes usando b_cerrado (mismo criterio que dashboard)
+        // FIX: también usa COALESCE para no perder registros con b_cerrado NULL
         const joinMonitoreo = `LEFT JOIN public.empleados e
             ON mb.b_persona_responsable = e.nombre_completo
-            AND e.codigo = EXTRACT(MONTH FROM ${parseFecha('mb.b_cerrado')})::text`;
+            AND e.codigo = EXTRACT(MONTH FROM COALESCE(
+                ${parseFecha('mb.b_cerrado')},
+                ${parseFecha('mb.b_creado_el_fecha')}
+            ))::text`;
+
+        // FIX: construir filtros dinámicos para monitoreo
+        let values = [iniciomes, hoy];
+        let filtersJoin = "";
+        let filtersNoJoin = "";
+
+        if (asesor) {
+            values.push(`%${asesor}%`);
+            filtersJoin   += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            filtersNoJoin += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+        }
+        if (supervisor) {
+            values.push(`%${supervisor}%`);
+            filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
+            // Para queries sin JOIN usamos subquery EXISTS con COALESCE
+            filtersNoJoin += ` AND EXISTS (
+                SELECT 1 FROM public.empleados _e
+                WHERE _e.nombre_completo = mb.b_persona_responsable
+                AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
+                    ${parseFecha('mb.b_cerrado')},
+                    ${parseFecha('mb.b_creado_el_fecha')}
+                ))::text
+                AND _e.supervisor ILIKE $${values.length}
+            )`;
+        }
 
         const queryMonitoreo = (columna) => `
             SELECT
@@ -436,10 +472,22 @@ const getMonitoreoDiario = async (req, res) => {
             WHERE (
                 mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 OR ${parseFecha('mb.b_cerrado')} BETWEEN $1::date AND $2::date
-            )
+            ) ${filtersJoin}
             GROUP BY 1
             ORDER BY real_mes_leads DESC
         `;
+
+        // FIX: queryJotHoy ahora usa $1 para hoy (tercer valor en values)
+        // Necesita sus propios values separados ya que usa fecha diferente
+        const valuesJotHoy = [hoy, ...values.slice(2)]; // hoy + filtros de asesor/supervisor
+
+        let filtersJotHoy = "";
+        if (asesor) {
+            filtersJotHoy += ` AND mb.b_persona_responsable ILIKE $${valuesJotHoy.indexOf(`%${asesor}%`) + 1}`;
+        }
+        if (supervisor) {
+            filtersJotHoy += ` AND e.supervisor ILIKE $${valuesJotHoy.indexOf(`%${supervisor}%`) + 1}`;
+        }
 
         const queryJotHoy = (columna) => `
             SELECT
@@ -454,14 +502,15 @@ const getMonitoreoDiario = async (req, res) => {
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
             AND TRIM(mb.j_fecha_registro_sistema) = $1
+            ${filtersJotHoy}
             GROUP BY 1
         `;
 
         const [resSup, resAses, resJotSupHoy, resJotAsesHoy] = await Promise.all([
-            pool.query(queryMonitoreo('e.supervisor'), [iniciomes, hoy]),
-            pool.query(queryMonitoreo('mb.b_persona_responsable'), [iniciomes, hoy]),
-            pool.query(queryJotHoy('e.supervisor'), [hoy]),
-            pool.query(queryJotHoy('mb.b_persona_responsable'), [hoy]),
+            pool.query(queryMonitoreo('e.supervisor'), values),
+            pool.query(queryMonitoreo('mb.b_persona_responsable'), values),
+            pool.query(queryJotHoy('e.supervisor'), valuesJotHoy),
+            pool.query(queryJotHoy('mb.b_persona_responsable'), valuesJotHoy),
         ]);
 
         const mergeJot = (filas, jotRows) => {
@@ -516,7 +565,15 @@ const getReporte180 = async (req, res) => {
         if (supervisor) {
             values.push(`%${supervisor}%`);
             filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
-            filtersNoJoin += ` ${supervisorExistsFilter(values.length)}`;
+            filtersNoJoin += ` AND EXISTS (
+                SELECT 1 FROM public.empleados _e
+                WHERE _e.nombre_completo = mb.b_persona_responsable
+                AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
+                    ${parseFecha('mb.b_cerrado')},
+                    ${parseFecha('mb.b_creado_el_fecha')}
+                ))::text
+                AND _e.supervisor ILIKE $${values.length}
+            )`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
@@ -557,8 +614,6 @@ const getReporte180 = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
         )`;
 
-        // Reporte180 no agrupa por supervisor en sus KPIs principales → usa filtersNoJoin
-        // pero si el filtro supervisor está activo, supervisorExistsFilter ya aplica el mes
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (
@@ -649,19 +704,35 @@ const getReporte180 = async (req, res) => {
         ]);
 
         const kpis = resKPIs.rows[0] || {};
+
+        // FIX: mapear embudos a {name, value, etapa, total} igual que el dashboard
+        const embudoCRM = resEmbCRM.rows.map(r => ({
+            name:  r.etapa,
+            value: Number(r.total || 0),
+            etapa: r.etapa,
+            total: Number(r.total || 0),
+        }));
+
+        const embudoJotform = resEmbJot.rows.map(r => ({
+            name:  r.etapa,
+            value: Number(r.total || 0),
+            etapa: r.etapa,
+            total: Number(r.total || 0),
+        }));
+
         console.log(`[REPORTE180] Ejecutado desde ${desde} hasta ${hasta}`);
 
         res.json({
             success: true,
             kpis: {
-                ingresos_jot: Number(kpis.ingresos_jot || 0),
-                ventas_activas: Number(kpis.ventas_activas || 0),
-                pct_descarte: Number(kpis.pct_descarte || 0),
-                pct_efectividad: Number(kpis.pct_efectividad || 0),
+                ingresos_jot:     Number(kpis.ingresos_jot || 0),
+                ventas_activas:   Number(kpis.ventas_activas || 0),
+                pct_descarte:     Number(kpis.pct_descarte || 0),
+                pct_efectividad:  Number(kpis.pct_efectividad || 0),
                 pct_tercera_edad: Number(kpis.pct_tercera_edad || 0),
             },
-            embudoCRM: resEmbCRM.rows,
-            embudoJotform: resEmbJot.rows,
+            embudoCRM,
+            embudoJotform,
             mapaCalor: resMapaCalor.rows,
         });
 

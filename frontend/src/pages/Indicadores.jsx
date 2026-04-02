@@ -6,9 +6,11 @@ import {
 } from 'recharts';
 
 const formatFechaCorta = (fechaStr) => {
-  if (!fechaStr || typeof fechaStr !== 'string') return fechaStr;
-  const partes = fechaStr.split('T')[0].split('-');
-  return `${partes[2]}`; 
+  if (!fechaStr) return fechaStr;
+  // FIX: maneja tanto "2026-04-01T00:00:00.000Z" como "2026-04-01"
+  const str = typeof fechaStr === 'string' ? fechaStr : String(fechaStr);
+  const partes = str.split('T')[0].split('-');
+  return partes[2] ? String(parseInt(partes[2], 10)) : str;
 };
 
 const getFechaHoyEcuador = () => {
@@ -96,12 +98,15 @@ const TooltipAsesores = ({ active, payload, label }) => {
 const TooltipEmbudo = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const item = payload[0];
+  // FIX: el payload de FunnelChart trae los datos del item directamente
+  const nombre = item.payload?.etapa || item.payload?.name || item.name || '';
+  const valor  = item.payload?.total ?? item.value ?? 0;
   return (
     <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[150px]">
-      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">{item.name}</p>
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">{nombre}</p>
       <div className="flex justify-between gap-4">
         <span className="text-slate-400">TOTAL</span>
-        <span className="font-black" style={{ color: item.fill }}>{item.value}</span>
+        <span className="font-black" style={{ color: item.fill }}>{valor}</span>
       </div>
     </div>
   );
@@ -166,7 +171,6 @@ const BarraSemaforo = (props) => {
   const { x, y, width, height, total, meta = 65 } = props;
   const cumple = Number(total) >= meta;
   const pct    = meta > 0 ? Math.min(Number(total) / meta, 1) : 0;
-  // Verde si cumple, amarillo si >80%, rojo si <80%
   const color  = cumple ? '#10b981' : pct >= 0.8 ? '#f59e0b' : '#ef4444';
   return <rect x={x} y={y} width={width} height={height} fill={color} rx={2} />;
 };
@@ -175,8 +179,8 @@ export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);
   const [alertas, setAlertas]           = useState([]);
-  const [diaFiltrado, setDiaFiltrado]   = useState(null); // ← NUEVO: click en barra → filtra tabla
-  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
+  const [diaFiltrado, setDiaFiltrado]   = useState(null);
+  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
   const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
@@ -203,14 +207,33 @@ export default function ReporteComercialCore() {
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
       const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
       const result = await res.json();
-      if (result.success) { setData({ ...result, porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0), porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0) }); mostrarAlertas(result.supervisores); }
+      if (result.success) {
+        setData({
+          ...result,
+          porcentajeTarjeta:     Number(result.porcentajeTarjeta ?? 0),
+          porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
+        });
+        mostrarAlertas(result.supervisores);
+      }
     } catch (e) { console.error("Error Dashboard:", e); } finally { setLoading(false); }
   };
 
-  const fetchMonitoreo = async () => {
+  const fetchMonitoreo = async (filtrosOverride) => {
     setLoading(true);
-    try { const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario`); const result = await res.json(); if (result.success) setMonitoreoData(result); }
-    catch (e) { console.error("Error Monitoreo:", e); } finally { setLoading(false); }
+    try {
+      // FIX: ahora pasa filtros al endpoint de monitoreo
+      const filtrosActivos = filtrosOverride || filtros;
+      const p = new URLSearchParams(
+        Object.fromEntries(
+          // monitoreo solo acepta asesor y supervisor
+          Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
+            .filter(([_, v]) => v !== "")
+        )
+      );
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${p}`);
+      const result = await res.json();
+      if (result.success) setMonitoreoData(result);
+    } catch (e) { console.error("Error Monitoreo:", e); } finally { setLoading(false); }
   };
 
   const fetchReporte180 = async (filtrosOverride) => {
@@ -230,13 +253,16 @@ export default function ReporteComercialCore() {
     fetchDashboard(nuevosFiltros);
   };
 
-  const handleClickTarjetaJotform = (estado) => { const nuevosFiltros = { ...filtros, etapaJotform: estado }; setFiltros(nuevosFiltros); fetchDashboard(nuevosFiltros); };
+  const handleClickTarjetaJotform = (estado) => {
+    const nuevosFiltros = { ...filtros, etapaJotform: estado };
+    setFiltros(nuevosFiltros);
+    fetchDashboard(nuevosFiltros);
+  };
 
-  // ── NUEVO: click en barra del gráfico → filtrar tabla por ese día ─────────
   const handleClickBarra = (data) => {
     if (!data?.activePayload) return;
     const fecha = data?.activeLabel;
-    setDiaFiltrado(prev => prev === fecha ? null : fecha); // toggle
+    setDiaFiltrado(prev => prev === fecha ? null : fecha);
   };
 
   useEffect(() => {
@@ -248,14 +274,18 @@ export default function ReporteComercialCore() {
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
     if (!list || !list.length) return;
-    const ws = XLSX.utils.json_to_sheet(list); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, tipo); XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const ws = XLSX.utils.json_to_sheet(list);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, tipo);
+    XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const stats = useMemo(() => {
-    const s = data.supervisores || []; const n = s.length || 1;
-    const totalJotform    = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    const totalActivos    = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
-    const totalBacklog    = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
+    const s = data.supervisores || [];
+    const n = s.length || 1;
+    const totalJotform      = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
+    const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
+    const totalBacklog      = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     return {
       ingresosCRM:              s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
@@ -287,33 +317,55 @@ export default function ReporteComercialCore() {
   };
 
   const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+
+  // FIX: label del funnel usa los campos correctos (etapa y total del payload)
   const CustomFunnelLabel = ({ x, y, width, height, index }) => {
     if (height < 22) return null;
-    const item = (data.graficoEmbudo || [])[index]; if (!item) return null;
+    const item = (data.graficoEmbudo || [])[index];
+    if (!item) return null;
     const pct = ((Number(item.total) / totalBaseEmbudo) * 100).toFixed(1);
-    return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
+    return (
+      <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">
+        {`${item.etapa} = ${item.total} (${pct}%)`}
+      </text>
+    );
   };
 
-  const dataGraficoAsesores      = (monitoreoData.asesores || []).map(a => ({ nombre: a.nombre_grupo, gestionables: Number(a.real_dia_leads || 0), ingresos: Number(a.v_subida_jot_hoy || 0) }));
-  const dataGraficoSupervisores  = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
-  const totalBarrasDia           = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
+  // FIX: mapeo de datos para gráficas de monitoreo — campos correctos del backend
+  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
+    nombre:       a.nombre_grupo,
+    gestionables: Number(a.real_dia_leads  || 0),
+    ingresos:     Number(a.v_subida_jot_hoy || 0),
+  }));
+  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
+    nombre:       s.nombre_grupo,
+    gestionables: Number(s.real_dia_leads  || 0),
+    ingresos:     Number(s.v_subida_jot_hoy || 0),
+  }));
 
-  // ── Datos con semáforo para el gráfico de barras ──────────────────────────
+  const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
+
+  // FIX: formatFechaCorta normaliza tanto Date objects como strings ISO
   const dataBarrasConSemaforo = useMemo(() =>
-    (data.graficoBarrasDia || []).map(d => ({
-      ...d,
-      faltante: Math.max(0, META_DIA - Number(d.total)),
-      activos:  Number(d.activos || 0),
-      _cumple:  Number(d.total) >= META_DIA,
-      _pct:     META_DIA > 0 ? Number(d.total) / META_DIA : 0,
-    })), [data.graficoBarrasDia]);
+    (data.graficoBarrasDia || []).map(d => {
+      const fechaStr = d.fecha instanceof Date ? d.fecha.toISOString() : String(d.fecha || '');
+      return {
+        ...d,
+        fecha:    fechaStr,            // conservar el string para el XAxis
+        fechaDia: formatFechaCorta(fechaStr),  // solo el número del día
+        faltante: Math.max(0, META_DIA - Number(d.total)),
+        activos:  Number(d.activos || 0),  // FIX: ahora el backend envía este campo
+        _cumple:  Number(d.total) >= META_DIA,
+        _pct:     META_DIA > 0 ? Number(d.total) / META_DIA : 0,
+      };
+    }), [data.graficoBarrasDia]);
 
-  // ── Filtrar dataCRM por día clickeado ─────────────────────────────────────
   const dataCRMFiltrada = useMemo(() => {
     if (!diaFiltrado) return data.dataCRM || [];
     return (data.dataCRM || []).filter(r => {
-      const fecha = (r.fecha || r.creado_el_fecha || '');
-      return String(fecha).includes(`-${String(diaFiltrado).padStart(2, '0')}`) || String(fecha).endsWith(`/${diaFiltrado}`) || formatFechaCorta(String(fecha)) === String(diaFiltrado);
+      const fecha = String(r.FECHA_CREACION_CRM || r.fecha || r.creado_el_fecha || '');
+      const dia   = formatFechaCorta(fecha);
+      return dia === String(diaFiltrado);
     });
   }, [data.dataCRM, diaFiltrado]);
 
@@ -369,13 +421,22 @@ export default function ReporteComercialCore() {
     </ResponsiveContainer>
   );
 
+  // FIX: FunnelChart usa dataKey="value" y nameKey="name" (campos que ahora envía el backend)
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <FunnelChart>
-            <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
-              {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
+            <Funnel
+              data={data.graficoEmbudo || []}
+              dataKey="value"
+              nameKey="name"
+              isAnimationActive={false}
+              label={CustomFunnelLabel}
+            >
+              {(data.graficoEmbudo || []).map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />
+              ))}
             </Funnel>
             <Tooltip content={<TooltipEmbudo />} />
           </FunnelChart>
@@ -397,7 +458,6 @@ export default function ReporteComercialCore() {
     </div>
   );
 
-  // ── Gráfico asesores con tooltip rico y colores semáforo ──────────────────
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
@@ -602,7 +662,6 @@ export default function ReporteComercialCore() {
                   <span className="flex items-center gap-1"><span className="w-4 border-t-2 border-dashed border-yellow-400 inline-block"></span> META {META_DIA}</span>
                 </span>
               </h3>
-              {/* Leyenda semáforo */}
               <div className="flex gap-3 mb-3 text-[8px] font-black">
                 <div className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> {dataBarrasConSemaforo.filter(d => d._cumple).length} DÍAS OK</div>
                 <div className="flex items-center gap-1 text-amber-400"><span className="w-2 h-2 rounded-full bg-amber-500"></span> {dataBarrasConSemaforo.filter(d => !d._cumple && d._pct >= 0.8).length} CERCA</div>
@@ -630,7 +689,6 @@ export default function ReporteComercialCore() {
           <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
           <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} /></div>
 
-          {/* DataVisor con indicador de filtro activo */}
           <div className="grid grid-cols-1 gap-4">
             <DataVisor
               title={diaFiltrado ? `DETALLE BASE CRM — DÍA ${diaFiltrado} FILTRADO (${dataCRMFiltrada.length} registros)` : "DETALLE BASE CRM"}
@@ -653,7 +711,7 @@ export default function ReporteComercialCore() {
               </h2>
               <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em] uppercase">DATOS ACUMULADOS DEL MES Y DÍA ACTUAL</p>
             </div>
-            <button onClick={fetchMonitoreo} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
+            <button onClick={() => fetchMonitoreo()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -662,7 +720,6 @@ export default function ReporteComercialCore() {
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
               </h3>
-              {/* Leyenda semáforo asesores */}
               <div className="flex gap-3 mb-3 text-[8px] font-black">
                 <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-sm bg-violet-500"></span> GESTIONABLES</span>
                 <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
@@ -728,8 +785,21 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const totalBaseEmbudoCRM = (embudoCRM || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
   const totalBaseEmbudoJOT = (embudoJotform || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
-  const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoCRM || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
-  const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoJotform || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
+  // FIX: labels del funnel 180° también usan el payload correcto
+  const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => {
+    if (height < 22) return null;
+    const item = (embudoCRM || [])[index];
+    if (!item) return null;
+    const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
+    return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
+  };
+  const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => {
+    if (height < 22) return null;
+    const item = (embudoJotform || [])[index];
+    if (!item) return null;
+    const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
+    return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
+  };
 
   const updateFiltro180 = (campo, valor) => {
     const nuevos = { ...filtros, [campo]: valor };
@@ -740,12 +810,13 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
   const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
 
+  // FIX: FunnelChart 180° también usa dataKey="value" y nameKey="name"
   const GraficoEmbudoCRM = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <FunnelChart>
-            <Funnel data={embudoCRM || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelCRM}>
+            <Funnel data={embudoCRM || []} dataKey="value" nameKey="name" isAnimationActive={false} label={CustomFunnelLabelCRM}>
               {(embudoCRM || []).map((_, index) => <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />)}
             </Funnel>
             <Tooltip content={<TooltipEmbudo />} />
@@ -766,7 +837,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <FunnelChart>
-            <Funnel data={embudoJotform || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabelJOT}>
+            <Funnel data={embudoJotform || []} dataKey="value" nameKey="name" isAnimationActive={false} label={CustomFunnelLabelJOT}>
               {(embudoJotform || []).map((_, index) => <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />)}
             </Funnel>
             <Tooltip content={<TooltipEmbudo />} />
@@ -1208,7 +1279,7 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
 }
 
 // ======================================================
-// DATA VISOR — ahora acepta filtroBadge
+// DATA VISOR
 // ======================================================
 function DataVisor({ title, data, onDownload, color, filtroBadge }) {
   if (!data || !data.length) return null;

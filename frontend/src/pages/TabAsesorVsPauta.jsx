@@ -348,7 +348,7 @@ function BarrasCostoApilado({ asesores, canalMap }) {
       <BarChart data={data} layout="vertical" margin={{ top:5, right:110, left:10, bottom:5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
         <XAxis type="number" tick={{ fontSize:9, fill:C.muted }} tickFormatter={v=>`$${v}`} />
-        <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted, fontWeight:700 }} width:={130} />
+        <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted, fontWeight:700 }} width={130} />
         <Tooltip content={({ active, payload, label }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
@@ -417,7 +417,7 @@ function AreaScoreCPL({ asesores, canalList }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
         <XAxis dataKey="canal" tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
         <YAxis yAxisId="l" tick={{ fontSize:9, fill:C.muted }} width={38} />
-        <YAxis yAxisId="r" orientation="right" tick={{ fontSize:9, fill:C.muted }} width:={35} tickFormatter={v=>`$${v}`} />
+        <YAxis yAxisId="r" orientation="right" tick={{ fontSize:9, fill:C.muted }} width={35} tickFormatter={v=>`$${v}`} />
         <Tooltip content={<DarkTip />} />
         <Legend wrapperStyle={{ fontSize:9 }} />
         <Area yAxisId="l" type="monotone" dataKey="Score Asesores" fill="url(#areaScoreG)"

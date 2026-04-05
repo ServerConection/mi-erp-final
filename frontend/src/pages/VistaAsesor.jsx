@@ -52,7 +52,6 @@ const pillStyle = (e) => PILL_CONFIG[e] || PILL_CONFIG["SIN ESTADO"];
 function ClienteModal({ cliente, onClose }) {
   if (!cliente) return null;
 
-  // Campos con etiquetas legibles
   const LABELS = {
     FECHACREACION_JOT:    "Fecha registro",
     ID_CRM:               "ID CRM",
@@ -70,7 +69,6 @@ function ClienteModal({ cliente, onClose }) {
   const estadoStyle = pillStyle(cliente.ESTADO_NETLIFE || "SIN ESTADO");
 
   return (
-    // Overlay — faux viewport para evitar fixed
     <div
       onClick={onClose}
       style={{
@@ -119,7 +117,6 @@ function ClienteModal({ cliente, onClose }) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Badge estado */}
             <span style={{
               fontSize: 10, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
               textTransform: "uppercase", letterSpacing: ".05em",
@@ -145,11 +142,9 @@ function ClienteModal({ cliente, onClose }) {
           </div>
         </div>
 
-        {/* Cuerpo — grid de campos */}
+        {/* Cuerpo */}
         <div style={{ padding: "16px 20px 20px" }}>
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {Object.entries(LABELS).map(([key, label]) => {
               const val = cliente[key];
               if (!val && val !== 0) return null;
@@ -159,7 +154,6 @@ function ClienteModal({ cliente, onClose }) {
                   style={{
                     background: "#f8fafc", borderRadius: 10,
                     border: "1px solid #f1f5f9", padding: "10px 12px",
-                    // campos largos ocupan las 2 columnas
                     gridColumn: ["NOVEDADES_ATC","MOTIVO_REGULARIZAR"].includes(key) ? "1 / -1" : "auto",
                   }}
                 >
@@ -180,7 +174,6 @@ function ClienteModal({ cliente, onClose }) {
             })}
           </div>
 
-          {/* Campos extra no mapeados */}
           {Object.entries(cliente)
             .filter(([k]) => !Object.keys(LABELS).includes(k))
             .filter(([, v]) => v !== null && v !== undefined && v !== "")
@@ -300,7 +293,7 @@ function BarProgress({ label, value, meta, color }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TARJETA ASESOR — ancho fijo para scroll horizontal (1 por fila)
+// TARJETA ASESOR
 // ─────────────────────────────────────────────────────────────────────────────
 function AsesorCard({ row, rank }) {
   const etapas = row.etapasJot || [];
@@ -353,7 +346,7 @@ function AsesorCard({ row, rank }) {
         <RankBadge pos={rank} />
       </div>
 
-      {/* MÉTRICAS: Leads · CRM · Jot · Regularización */}
+      {/* MÉTRICAS */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: "#f1f5f9" }}>
         {[
           { label: "Leads Gest.", val: row.gestionables,    color: "#0ea5e9" },
@@ -373,9 +366,8 @@ function AsesorCard({ row, rank }) {
         ))}
       </div>
 
-      {/* BARRAS + ETAPAS en fila horizontal para aprovechar el ancho */}
+      {/* BARRAS + ETAPAS */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, padding: "12px 16px 14px" }}>
-        {/* Barras */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <BarProgress label="Leads"   value={Number(row.gestionables || 0)}   meta={METAS.gestionables} color="#0ea5e9" />
           <BarProgress label="CRM"     value={Number(row.ventas_crm || 0)}      meta={METAS.ingresos_crm} color="#8b5cf6" />
@@ -389,7 +381,6 @@ function AsesorCard({ row, rank }) {
           </div>
         </div>
 
-        {/* Etapas Jotform a la derecha */}
         {etapas.length > 0 && (
           <div style={{
             display: "flex", flexDirection: "column", gap: 4,
@@ -460,6 +451,8 @@ export default function VistaAsesor() {
   const [dataJotform, setDataJotform]       = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
+  // ── El campo supervisor se incluye en el fetch para que
+  //    el backend filtre con el JOIN corregido (fallback de mes)
   const [filtros, setFiltros] = useState({
     fechaDesde:           getPrimerDiaMes(),
     fechaHasta:           getFechaHoyEcuador(),
@@ -471,7 +464,7 @@ export default function VistaAsesor() {
     etapaJotform:         "",
   });
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  // ── Fetch — todos los filtros van al backend, incluyendo supervisor
   const fetchData = async (overrideFiltros) => {
     setLoading(true);
     try {
@@ -495,13 +488,11 @@ export default function VistaAsesor() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ── Enriquecer asesores ───────────────────────────────────────────────────
+  // ── Enriquecer asesores con etapas jotform
+  // FIX: el filtro de asesor ya viene del backend, no se filtra localmente
+  // para no perder asesores que el backend devuelve correctamente
   const asesoresEnriquecidos = useMemo(() => {
-    const lista = filtros.asesor
-      ? asesores.filter(
-          (a) => a.nombre_grupo?.toUpperCase() === filtros.asesor.toUpperCase()
-        )
-      : asesores;
+    const lista = asesores;
 
     return [...lista]
       .sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0))
@@ -519,9 +510,9 @@ export default function VistaAsesor() {
           .sort((a, b) => b.total - a.total);
         return { ...a, etapasJot };
       });
-  }, [asesores, dataJotform, filtros.asesor]);
+  }, [asesores, dataJotform]);
 
-  // ── Totales ───────────────────────────────────────────────────────────────
+  // ── Totales
   const totales = useMemo(() => {
     const base = asesoresEnriquecidos;
     return {
@@ -534,19 +525,39 @@ export default function VistaAsesor() {
     };
   }, [asesoresEnriquecidos]);
 
-  // ── Dropdown ──────────────────────────────────────────────────────────────
+  // ── Dropdown de asesores — se puebla con lo que devuelve el backend
   const nombresAsesores = useMemo(
     () => [...asesores].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
     [asesores]
   );
 
-  // ── Exportar Excel ────────────────────────────────────────────────────────
+  // ── Exportar Excel
   const exportarExcel = () => {
     if (!dataJotform.length) return;
     const ws = XLSX.utils.json_to_sheet(dataJotform);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Jotform");
     XLSX.writeFile(wb, `Jotform_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
+  };
+
+  // ── Manejador genérico de cambio de filtro
+  // Cada cambio dispara fetchData con los filtros actualizados
+  // para que el backend (con el JOIN corregido) devuelva los datos correctos
+  const handleFiltroChange = (campo, valor) => {
+    const nuevosFiltros = { ...filtros, [campo]: valor };
+    setFiltros(nuevosFiltros);
+  };
+
+  const handleAplicar = () => {
+    fetchData(filtros);
+  };
+
+  // Filtro etapaJotform desde las pills — aplica inmediatamente
+  const handleEtapaJotform = (estado) => {
+    const nuevo = filtros.etapaJotform === estado ? "" : estado;
+    const nuevosFiltros = { ...filtros, etapaJotform: nuevo };
+    setFiltros(nuevosFiltros);
+    fetchData(nuevosFiltros);
   };
 
   const inputCls =
@@ -585,55 +596,130 @@ export default function VistaAsesor() {
       {/* ── FILTROS ── */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6 shadow-sm">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 items-end">
+
+          {/* Período */}
           <div className="lg:col-span-2 flex flex-col gap-2">
             <label className={labelCls}>Período</label>
             <div className="flex bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus-within:border-sky-400 transition-colors">
-              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
-                value={filtros.fechaDesde} onChange={(e) => setFiltros({ ...filtros, fechaDesde: e.target.value })} />
+              <input
+                type="date"
+                className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaDesde}
+                onChange={(e) => handleFiltroChange("fechaDesde", e.target.value)}
+              />
               <span className="text-slate-300 px-1 self-center font-black">–</span>
-              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
-                value={filtros.fechaHasta} onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })} />
+              <input
+                type="date"
+                className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaHasta}
+                onChange={(e) => handleFiltroChange("fechaHasta", e.target.value)}
+              />
             </div>
           </div>
+
+          {/* Asesor — se puebla desde el backend, no filtra localmente */}
           <div className="flex flex-col gap-2">
             <label className={labelCls}>Asesor</label>
-            <select className={inputCls} value={filtros.asesor}
-              onChange={(e) => setFiltros({ ...filtros, asesor: e.target.value })}>
+            <select
+              className={inputCls}
+              value={filtros.asesor}
+              onChange={(e) => handleFiltroChange("asesor", e.target.value)}
+            >
               <option value="">Todos los asesores</option>
               {nombresAsesores.map((a) => (
-                <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
+                <option key={a.nombre_grupo} value={a.nombre_grupo}>
+                  {a.nombre_grupo}
+                </option>
               ))}
             </select>
           </div>
+
+          {/* Supervisor — ahora va al backend con el JOIN corregido */}
           <div className="flex flex-col gap-2">
             <label className={labelCls}>Supervisor</label>
-            <input type="text" placeholder="Buscar..." className={inputCls}
-              value={filtros.supervisor} onChange={(e) => setFiltros({ ...filtros, supervisor: e.target.value })} />
+            <input
+              type="text"
+              placeholder="Buscar..."
+              className={inputCls}
+              value={filtros.supervisor}
+              onChange={(e) => handleFiltroChange("supervisor", e.target.value)}
+            />
           </div>
+
+          {/* Estado Netlife */}
           <div className="flex flex-col gap-2">
             <label className={labelCls}>Estado Netlife</label>
-            <select className={inputCls} value={filtros.estadoNetlife}
-              onChange={(e) => setFiltros({ ...filtros, estadoNetlife: e.target.value })}>
+            <select
+              className={inputCls}
+              value={filtros.estadoNetlife}
+              onChange={(e) => handleFiltroChange("estadoNetlife", e.target.value)}
+            >
               <option value="">Todos</option>
               <option value="ACTIVO">ACTIVO</option>
               <option value="RECHAZADO">RECHAZADO</option>
               <option value="PRESERVICIO">PRESERVICIO</option>
             </select>
           </div>
+
+          {/* Regularización */}
           <div className="flex flex-col gap-2">
             <label className={labelCls}>Regularización</label>
-            <select className={inputCls} value={filtros.estadoRegularizacion}
-              onChange={(e) => setFiltros({ ...filtros, estadoRegularizacion: e.target.value })}>
+            <select
+              className={inputCls}
+              value={filtros.estadoRegularizacion}
+              onChange={(e) => handleFiltroChange("estadoRegularizacion", e.target.value)}
+            >
               <option value="">Todos</option>
               <option value="POR REGULARIZAR">POR REGULARIZAR</option>
               <option value="REGULARIZADO">REGULARIZADO</option>
             </select>
           </div>
-          <button onClick={() => fetchData()}
-            className="bg-sky-500 hover:bg-sky-400 text-white h-[42px] rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-sky-200 transition-all active:scale-95">
+
+          {/* Botón aplicar */}
+          <button
+            onClick={handleAplicar}
+            className="bg-sky-500 hover:bg-sky-400 text-white h-[42px] rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-sky-200 transition-all active:scale-95"
+          >
             {loading ? "CARGANDO..." : "APLICAR"}
           </button>
         </div>
+
+        {/* Badge supervisor activo */}
+        {filtros.supervisor && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Filtros activos:
+            </span>
+            <span className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-1 rounded-full text-[9px] font-black flex items-center gap-2">
+              Supervisor: {filtros.supervisor}
+              <button
+                onClick={() => {
+                  const f = { ...filtros, supervisor: "" };
+                  setFiltros(f);
+                  fetchData(f);
+                }}
+                className="text-sky-400 hover:text-red-500 font-black transition-colors"
+              >
+                ✕
+              </button>
+            </span>
+            {filtros.asesor && (
+              <span className="bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1 rounded-full text-[9px] font-black flex items-center gap-2">
+                Asesor: {filtros.asesor}
+                <button
+                  onClick={() => {
+                    const f = { ...filtros, asesor: "" };
+                    setFiltros(f);
+                    fetchData(f);
+                  }}
+                  className="text-violet-400 hover:text-red-500 font-black transition-colors"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── STRIP TOTALES ── */}
@@ -654,7 +740,7 @@ export default function VistaAsesor() {
             Etapas Jotform — click para filtrar
             {filtros.etapaJotform && (
               <button
-                onClick={() => { const f = { ...filtros, etapaJotform: "" }; setFiltros(f); fetchData(f); }}
+                onClick={() => handleEtapaJotform(filtros.etapaJotform)}
                 className="ml-2 bg-sky-50 text-sky-600 hover:bg-red-50 hover:text-red-500 border border-sky-200 px-2 py-0.5 rounded-full font-black transition-colors text-[8px]"
               >
                 ✕ {filtros.etapaJotform}
@@ -666,11 +752,17 @@ export default function VistaAsesor() {
               const s      = pillStyle(estado);
               const activo = filtros.etapaJotform === estado;
               return (
-                <button key={estado}
-                  onClick={() => { const nuevo = activo ? "" : estado; const f = { ...filtros, etapaJotform: nuevo }; setFiltros(f); fetchData(f); }}
-                  style={{ background: activo ? s.color + "22" : s.bg, color: s.color,
-                    border: `1px solid ${activo ? s.color : s.border}`, outline: activo ? `2px solid ${s.color}33` : "none" }}
-                  className="px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                <button
+                  key={estado}
+                  onClick={() => handleEtapaJotform(estado)}
+                  style={{
+                    background: activo ? s.color + "22" : s.bg,
+                    color: s.color,
+                    border: `1px solid ${activo ? s.color : s.border}`,
+                    outline: activo ? `2px solid ${s.color}33` : "none",
+                  }}
+                  className="px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                >
                   <span>{estado}</span>
                   <span className="font-black text-sm">{total}</span>
                 </button>
@@ -680,7 +772,7 @@ export default function VistaAsesor() {
         </div>
       )}
 
-      {/* ── RANKING ASESORES — SCROLL HORIZONTAL, 1 POR FILA ── */}
+      {/* ── RANKING ASESORES ── */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -689,9 +781,16 @@ export default function VistaAsesor() {
             <span className="text-slate-300 font-normal text-[10px] normal-case tracking-normal">
               ({asesoresEnriquecidos.length} {asesoresEnriquecidos.length === 1 ? "asesor" : "asesores"})
             </span>
+            {filtros.supervisor && (
+              <span className="text-sky-400 font-bold normal-case text-[9px] tracking-normal">
+                — supervisor: {filtros.supervisor}
+              </span>
+            )}
           </p>
           {loading && (
-            <span className="text-[9px] font-black text-sky-400 uppercase tracking-widest animate-pulse">ACTUALIZANDO...</span>
+            <span className="text-[9px] font-black text-sky-400 uppercase tracking-widest animate-pulse">
+              ACTUALIZANDO...
+            </span>
           )}
         </div>
 
@@ -708,7 +807,7 @@ export default function VistaAsesor() {
         )}
       </div>
 
-      {/* ── TABLA JOTFORM — click en fila abre modal cliente ── */}
+      {/* ── TABLA JOTFORM ── */}
       {dataJotform.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="px-5 py-3 flex justify-between items-center border-b border-slate-100">
@@ -724,8 +823,10 @@ export default function VistaAsesor() {
                 Mostrando {Math.min(dataJotform.length, 50)} de {dataJotform.length} registros
               </p>
             </div>
-            <button onClick={exportarExcel}
-              className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all">
+            <button
+              onClick={exportarExcel}
+              className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
+            >
               ⬇ Excel
             </button>
           </div>
@@ -734,7 +835,9 @@ export default function VistaAsesor() {
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 text-slate-400 font-black text-[8px] uppercase border-b border-slate-100">
                   {Object.keys(dataJotform[0] || {}).map((h) => (
-                    <th key={h} className="px-3 py-2 text-left border-r border-slate-100 whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left border-r border-slate-100 whitespace-nowrap">
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -747,7 +850,10 @@ export default function VistaAsesor() {
                     title="Click para ver detalle del cliente"
                   >
                     {Object.values(row).map((v, j) => (
-                      <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
+                      <td
+                        key={j}
+                        className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900"
+                      >
                         {v ?? "—"}
                       </td>
                     ))}

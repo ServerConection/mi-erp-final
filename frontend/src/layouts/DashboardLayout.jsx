@@ -78,7 +78,7 @@ function Particulas({ efecto }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATOS VIVOS — versión compacta para overlay
+// DATOS VIVOS
 // ─────────────────────────────────────────────────────────────────────────────
 function DatosVivos({ tipo, datos, colorTexto }) {
   if (!datos) return null;
@@ -175,17 +175,14 @@ function BroadcastOverlay({ mensaje, onClose }) {
         @keyframes pulseIcon { 0%,100% { transform:scale(1); } 50% { transform:scale(1.15); } }
       `}</style>
 
-      {/* Partículas */}
       <Particulas efecto={mensaje.efecto} />
 
-      {/* Imagen de fondo */}
       {mensaje.imagen_url && (
         <img src={`${API}${mensaje.imagen_url}`} alt=""
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
             objectFit: "cover", opacity: .2, zIndex: 0 }} />
       )}
 
-      {/* Contenido */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center",
         maxWidth: "75vw", padding: "0 20px" }}>
         <div style={{ fontSize: "min(8vw,72px)", marginBottom: "2vh",
@@ -211,14 +208,12 @@ function BroadcastOverlay({ mensaje, onClose }) {
         <DatosVivos tipo={mensaje.datos_vivos} datos={mensaje.datosVivos} colorTexto={colorTexto} />
       </div>
 
-      {/* Barra de progreso */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,
         height: 5, background: "rgba(255,255,255,.15)", zIndex: 3 }}>
         <div style={{ height: "100%", width: `${progreso}%`,
           background: colorTexto, transition: "width .1s linear" }} />
       </div>
 
-      {/* Tiempo restante + cerrar */}
       <div style={{ position: "absolute", top: 16, right: 16, zIndex: 4,
         display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 11, color: colorTexto, opacity: .5, fontWeight: 700 }}>
@@ -238,26 +233,26 @@ function BroadcastOverlay({ mensaje, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TODOS LOS MÓDULOS DISPONIBLES (COMPLETO)
+// TODOS LOS ITEMS DEL MENÚ
 // ─────────────────────────────────────────────────────────────────────────────
 const ALL_MENU_ITEMS = [
-  { name: "Inicio",             path: "/",                 icon: "🏠", permiso: null }, // Sin restricción
-  { name: "Indicadores NOVONET",path: "/indicadores",      icon: "📊", permiso: "Indicadores" },
-  { name: "Indicadores VELSA",  path: "/indicadores-velsa",icon: "📊", permiso: "IndicadoresVelsa" },
-  { name: "Vista Asesor",       path: "/vista-asesor",     icon: "👤", permiso: "VistaAsesor" },
-  { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",icon: "👤", permiso: "VistaAsesorVelsa" },
-  { name: "Seguimiento Venta",  path: "/Seguimiento_Venta",icon: "✔️", permiso: "SeguimientoVentas" },
-  { name: "Seguimiento VELSA",  path: "/seguimiento-velsa", icon: "✔️", permiso: "SeguimientoVelsa" },
-  { name: "Redes",              path: "/redes",            icon: "🚩", permiso: "Redes" },
-  { name: "Ventas",             path: "/ventas",           icon: "📈", permiso: null },
-  { name: "RRHH",               path: "/rrhh",             icon: "👥", permiso: null },
-  { name: "Horarios",           path: "/horarios",         icon: "⏰", permiso: null },
-  { name: "Billetera",          path: "/billetera",        icon: "💳", permiso: null },
-  { name: "Comisiones",         path: "/comisiones",       icon: "💰", permiso: null },
+  { name: "Inicio",               path: "/",                  icon: "🏠", permiso: null },
+  { name: "Indicadores",          path: "/indicadores",       icon: "📊", permiso: "Indicadores" },
+  { name: "Indicadores VELSA",    path: "/indicadores-velsa", icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "Vista Asesor",         path: "/vista-asesor",      icon: "👤", permiso: "VistaAsesor" },
+  { name: "Vista Asesor VELSA",   path: "/vista-asesor-velsa",icon: "👤", permiso: "VistaAsesorVelsa" },
+  { name: "Seguimiento Venta",    path: "/Seguimiento_Venta", icon: "✔️", permiso: "SeguimientoVentas" },
+  { name: "Seguimiento VELSA",    path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa" },
+  { name: "Redes",                path: "/redes",             icon: "🚩", permiso: "Redes" },
+  { name: "Ventas",               path: "/ventas",            icon: "📈", permiso: null },
+  { name: "RRHH",                 path: "/rrhh",              icon: "👥", permiso: null },
+  { name: "Horarios",             path: "/horarios",          icon: "⏰", permiso: null },
+  { name: "Billetera",            path: "/billetera",         icon: "💳", permiso: null },
+  { name: "Comisiones",           path: "/comisiones",        icon: "💰", permiso: null },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD LAYOUT PRINCIPAL
+// DASHBOARD LAYOUT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -272,28 +267,29 @@ export default function DashboardLayout() {
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    const permisosData = localStorage.getItem("permisos");
-    
+    // ✅ Usa "userProfile" como lo hace tu login actual
+    const userData = localStorage.getItem("userProfile");
     if (!userData) { 
       navigate("/login"); 
       return; 
     }
     
-    setUser(JSON.parse(userData));
-    
-    // Cargar permisos desde localStorage (los guarda el login/OTP)
-    if (permisosData) {
-      try {
+    try {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+      
+      // Intenta obtener permisos desde localStorage (si tu login los guarda)
+      const permisosData = localStorage.getItem("permisos");
+      if (permisosData) {
         setPermisos(JSON.parse(permisosData));
-      } catch (err) {
-        console.error('Error parseando permisos:', err);
-        setPermisos([]);
       }
+    } catch (err) {
+      console.error('Error parseando usuario:', err);
+      navigate("/login");
     }
   }, [navigate]);
 
-  // ── Socket.io — escucha broadcasts ────────────────────────────────────────
+  // Socket.io para broadcasts
   useEffect(() => {
     socketRef.current = io(API, { transports: ["websocket"] });
     socketRef.current.on("broadcast_mensaje", (data) => {
@@ -305,24 +301,21 @@ export default function DashboardLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    localStorage.removeItem("userProfile");
     localStorage.removeItem("permisos");
     navigate("/login");
   };
 
   if (!user) return null;
 
-  // ✅ FILTRAR MENÚ: Solo mostrar módulos que el usuario tiene permiso
+  // ✅ FILTRAR MENÚ por permisos
   const menuItems = ALL_MENU_ITEMS.filter(item => {
-    // Si no requiere permiso específico, mostrar siempre
-    if (!item.permiso) return true;
-    // Si requiere permiso, verificar que esté en la lista
-    return permisos.includes(item.permiso);
+    if (!item.permiso) return true; // Sin restricción
+    return permisos.includes(item.permiso); // Con permiso
   });
 
   return (
     <>
-      {/* ── BROADCAST OVERLAY — aparece encima de TODO ── */}
       {broadcast && (
         <BroadcastOverlay mensaje={broadcast} onClose={() => setBroadcast(null)} />
       )}
@@ -396,14 +389,12 @@ export default function DashboardLayout() {
           <div className={`p-6 border-t border-white/5 bg-black/20 ${isDesktopCollapsed ? "text-center px-2" : ""}`}>
             <div className={`flex items-center mb-6 ${isDesktopCollapsed ? "justify-center" : "space-x-4"}`}>
               <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center font-black text-white shadow-xl border border-white/10">
-                {user.usuario.charAt(0).toUpperCase()}
+                {user.usuario?.charAt(0).toUpperCase() || "U"}
               </div>
               {!isDesktopCollapsed && (
                 <div className="overflow-hidden text-left">
                   <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
-                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">
-                    {user.empresa} • {user.perfil}
-                  </p>
+                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Online</p>
                 </div>
               )}
             </div>
@@ -415,7 +406,7 @@ export default function DashboardLayout() {
           </div>
         </aside>
 
-        {/* ÁREA DE CONTENIDO */}
+        {/* MAIN CONTENT */}
         <main className="flex-1 flex flex-col relative z-10 overflow-hidden w-full transition-all duration-500">
           <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-black/20 shrink-0 backdrop-blur-md">
             <div className="flex items-center gap-6">
@@ -428,7 +419,7 @@ export default function DashboardLayout() {
                 </svg>
               </button>
               <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic bg-clip-text">
-                {menuItems.find(m => m.path === location.pathname)?.name}
+                {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
               </h2>
             </div>
           </header>

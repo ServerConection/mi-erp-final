@@ -238,12 +238,32 @@ function BroadcastOverlay({ mensaje, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TODOS LOS MÓDULOS DISPONIBLES (COMPLETO)
+// ─────────────────────────────────────────────────────────────────────────────
+const ALL_MENU_ITEMS = [
+  { name: "Inicio",             path: "/",                 icon: "🏠", permiso: null }, // Sin restricción
+  { name: "Indicadores NOVONET",path: "/indicadores",      icon: "📊", permiso: "Indicadores" },
+  { name: "Indicadores VELSA",  path: "/indicadores-velsa",icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "Vista Asesor",       path: "/vista-asesor",     icon: "👤", permiso: "VistaAsesor" },
+  { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",icon: "👤", permiso: "VistaAsesorVelsa" },
+  { name: "Seguimiento Venta",  path: "/Seguimiento_Venta",icon: "✔️", permiso: "SeguimientoVentas" },
+  { name: "Seguimiento VELSA",  path: "/seguimiento-velsa", icon: "✔️", permiso: "SeguimientoVelsa" },
+  { name: "Redes",              path: "/redes",            icon: "🚩", permiso: "Redes" },
+  { name: "Ventas",             path: "/ventas",           icon: "📈", permiso: null },
+  { name: "RRHH",               path: "/rrhh",             icon: "👥", permiso: null },
+  { name: "Horarios",           path: "/horarios",         icon: "⏰", permiso: null },
+  { name: "Billetera",          path: "/billetera",        icon: "💳", permiso: null },
+  { name: "Comisiones",         path: "/comisiones",       icon: "💰", permiso: null },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD LAYOUT PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser]                       = useState(null);
+  const [permisos, setPermisos]               = useState([]);
   const [sidebarOpen, setSidebarOpen]         = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [broadcast, setBroadcast]             = useState(null);
@@ -252,9 +272,25 @@ export default function DashboardLayout() {
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
   useEffect(() => {
-    const userData = localStorage.getItem("userProfile");
-    if (!userData) { navigate("/login"); return; }
+    const userData = localStorage.getItem("user");
+    const permisosData = localStorage.getItem("permisos");
+    
+    if (!userData) { 
+      navigate("/login"); 
+      return; 
+    }
+    
     setUser(JSON.parse(userData));
+    
+    // Cargar permisos desde localStorage (los guarda el login/OTP)
+    if (permisosData) {
+      try {
+        setPermisos(JSON.parse(permisosData));
+      } catch (err) {
+        console.error('Error parseando permisos:', err);
+        setPermisos([]);
+      }
+    }
   }, [navigate]);
 
   // ── Socket.io — escucha broadcasts ────────────────────────────────────────
@@ -269,23 +305,20 @@ export default function DashboardLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("userProfile");
+    localStorage.removeItem("user");
+    localStorage.removeItem("permisos");
     navigate("/login");
   };
 
   if (!user) return null;
 
-  const menuItems = [
-    { name: "Inicio",             path: "/",                 icon: "🏠" },
-    { name: "Indicadores",        path: "/indicadores",      icon: "📊" },
-    { name: "Ventas",             path: "/ventas",           icon: "📈" },
-    { name: "RRHH",               path: "/rrhh",             icon: "👥" },
-    { name: "Horarios",           path: "/horarios",         icon: "⏰" },
-    { name: "Billetera",          path: "/billetera",        icon: "💳" },
-    { name: "Comisiones",         path: "/comisiones",       icon: "💰" },
-    { name: "Seguimient Venta",   path: "/Seguimiento_Venta",icon: "✔️" },
-    { name: "Redes",              path: "/redes",            icon: "🚩" },
-  ];
+  // ✅ FILTRAR MENÚ: Solo mostrar módulos que el usuario tiene permiso
+  const menuItems = ALL_MENU_ITEMS.filter(item => {
+    // Si no requiere permiso específico, mostrar siempre
+    if (!item.permiso) return true;
+    // Si requiere permiso, verificar que esté en la lista
+    return permisos.includes(item.permiso);
+  });
 
   return (
     <>
@@ -368,7 +401,9 @@ export default function DashboardLayout() {
               {!isDesktopCollapsed && (
                 <div className="overflow-hidden text-left">
                   <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
-                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Online</p>
+                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">
+                    {user.empresa} • {user.perfil}
+                  </p>
                 </div>
               )}
             </div>

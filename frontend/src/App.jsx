@@ -32,26 +32,28 @@ export default function App() {
         <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
           <Route index element={<HomeModules />} />
 
-          <Route path="indicadores" element={<Indicadores />} />
-          <Route path="indicadores-velsa" element={<IndicadoresVelsa />} />
-          <Route path="ventas" element={<Ventas />} />
-          <Route path="rrhh" element={<RRHH />} />
-          <Route path="horarios" element={<Horarios />} />
-          <Route path="billetera" element={<Billetera />} />
-          <Route path="comisiones" element={<Comisiones />} />
-          <Route path="seguimiento-ventas" element={<Seguimientoventas />} />
-          <Route path="redes" element={<Redes />} />
-          <Route path="vista-asesor" element={<VistaAsesor />} />
+          <Route path="indicadores"        element={<Indicadores />} />
+          <Route path="indicadores-velsa"  element={<IndicadoresVelsa />} />
+          <Route path="vista-asesor"       element={<VistaAsesor />} />
           <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} />
-          <Route path="seguimiento-velsa" element={<Seguimientovelsa />} />
-          <Route path="notificaciones" element={<Notificaciones />} />
-          <Route path="broadcast" element={<BroadcastPanel />} />
-          <Route path="appsheet" element={<AppSheetModule />} />
-          <Route path="guia-planes-marzo" element={<Guiaplanesmarzo />} />
+          <Route path="seguimiento-ventas" element={<Seguimientoventas />} /> {/* ← corregido: era Seguimiento_Venta */}
+          <Route path="seguimiento-velsa"  element={<Seguimientovelsa />} />
+          <Route path="redes"              element={<Redes />} />
+          <Route path="ventas"             element={<Ventas />} />
+          <Route path="rrhh"               element={<RRHH />} />
+          <Route path="horarios"           element={<Horarios />} />
+          <Route path="billetera"          element={<Billetera />} />
+          <Route path="comisiones"         element={<Comisiones />} />
+
+          {/* Rutas sin ítem en el menú lateral — sin restricción de permiso */}
+          <Route path="notificaciones"     element={<Notificaciones />} />
+          <Route path="broadcast"          element={<BroadcastPanel />} />
+          <Route path="appsheet"           element={<AppSheetModule />} />
+          <Route path="guia-planes-marzo"  element={<Guiaplanesmarzo />} />
         </Route>
 
-        <Route path="tv" element={<TVMode />} />
-        <Route path="*" element={<Navigate to="/login" />} />
+        <Route path="tv"  element={<TVMode />} />
+        <Route path="*"   element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );

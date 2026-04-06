@@ -39,7 +39,7 @@ export default function App() {
           <Route path="horarios" element={<Horarios />} />
           <Route path="billetera" element={<Billetera />} />
           <Route path="comisiones" element={<Comisiones />} />
-          <Route path="Seguimiento_Venta" element={<Seguimientoventas />} />
+          <Route path="seguimiento-ventas" element={<Seguimientoventas />} />
           <Route path="redes" element={<Redes />} />
           <Route path="vista-asesor" element={<VistaAsesor />} />
           <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} />
@@ -47,8 +47,7 @@ export default function App() {
           <Route path="notificaciones" element={<Notificaciones />} />
           <Route path="broadcast" element={<BroadcastPanel />} />
           <Route path="appsheet" element={<AppSheetModule />} />
-          <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />
-<Route path="VentasFormulario" element={<VentasFormula />} />
+          <Route path="guia-planes-marzo" element={<Guiaplanesmarzo />} />
         </Route>
 
         <Route path="tv" element={<TVMode />} />

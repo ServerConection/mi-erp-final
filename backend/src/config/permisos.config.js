@@ -1,25 +1,20 @@
 const MODULOS = {
-  // NOVONET
   VISTA_ASESOR: 'VistaAsesor',
   SEGUIMIENTO_VENTAS: 'SeguimientoVentas',
   INDICADORES: 'Indicadores',
   REDES: 'Redes',
 
-  // VELSA
   VISTA_ASESOR_VELSA: 'VistaAsesorVelsa',
   SEGUIMIENTO_VELSA: 'SeguimientoVelsa',
   INDICADORES_VELSA: 'IndicadoresVelsa',
   REDES_VELSA: 'RedesVelsa',
 
-  // COMPARTIDOS
   VENTAS: 'Ventas',
   VENTAS_FORMULARIO: 'VentasFormulario',
   RRHH: 'RRHH',
   HORARIOS: 'Horarios',
   BILLETERA: 'Billetera',
   COMISIONES: 'Comisiones',
-
-
 };
 
 const MODULOS_GERENCIALES = [
@@ -64,7 +59,6 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       ...MODULOS_GERENCIALES,
     ],
   },
-
   VELSA: {
     USUARIO: [
       MODULOS.VISTA_ASESOR_VELSA,

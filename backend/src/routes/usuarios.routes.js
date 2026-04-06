@@ -1,14 +1,16 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../config/db');
-const auth = require('../middleware/auth');
-const isAdmin = require('../middleware/isAdmin');
+const { verificarToken } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ─── LISTAR USUARIOS ──────────────────────────────────────────────────────────
-router.get('/', auth, isAdmin, async (req, res) => {
+router.get('/', verificarToken, async (req, res) => {
   try {
+    if (req.user.perfil !== 'ADMINISTRADOR') {
+      return res.status(403).json({ success: false, error: 'Solo administrador' });
+    }
     const result = await pool.query(
       `SELECT id, nombres, apellidos, correo, cargo, perfil, empresa, activo, usuario 
        FROM usuarios ORDER BY id ASC`
@@ -21,8 +23,11 @@ router.get('/', auth, isAdmin, async (req, res) => {
 });
 
 // ─── CREAR USUARIO ────────────────────────────────────────────────────────────
-router.post('/', auth, isAdmin, async (req, res) => {
+router.post('/', verificarToken, async (req, res) => {
   try {
+    if (req.user.perfil !== 'ADMINISTRADOR') {
+      return res.status(403).json({ success: false, error: 'Solo administrador' });
+    }
     const { nombres, apellidos, correo, cargo, perfil, empresa, usuario, password } = req.body;
 
     if (!nombres || !apellidos || !correo || !cargo || !perfil || !empresa || !usuario || !password) {
@@ -63,8 +68,11 @@ router.post('/', auth, isAdmin, async (req, res) => {
 });
 
 // ─── ACTUALIZAR USUARIO ───────────────────────────────────────────────────────
-router.put('/:id', auth, isAdmin, async (req, res) => {
+router.put('/:id', verificarToken, async (req, res) => {
   try {
+    if (req.user.perfil !== 'ADMINISTRADOR') {
+      return res.status(403).json({ success: false, error: 'Solo administrador' });
+    }
     const { id } = req.params;
     const { nombres, apellidos, correo, cargo, perfil, empresa, activo } = req.body;
 
@@ -88,8 +96,11 @@ router.put('/:id', auth, isAdmin, async (req, res) => {
 });
 
 // ─── ELIMINAR USUARIO ─────────────────────────────────────────────────────────
-router.delete('/:id', auth, isAdmin, async (req, res) => {
+router.delete('/:id', verificarToken, async (req, res) => {
   try {
+    if (req.user.perfil !== 'ADMINISTRADOR') {
+      return res.status(403).json({ success: false, error: 'Solo administrador' });
+    }
     const { id } = req.params;
 
     const result = await pool.query(

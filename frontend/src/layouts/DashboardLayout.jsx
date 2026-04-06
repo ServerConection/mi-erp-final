@@ -112,8 +112,8 @@ function DatosVivos({ tipo, datos, colorTexto }) {
   if (tipo === "resumen_dia" && datos && !Array.isArray(datos)) return (
     <div style={{ display: "flex", gap: 24, justifyContent: "center", marginTop: 16 }}>
       {[
-        { label: "Ingresos Jot", val: datos.ingresos_hoy, color: "#34d399" },
-        { label: "Activas",      val: datos.activas_hoy,  color: "#60a5fa" },
+        { label: "Ingresos Jot", val: datos.ingresos_hoy,   color: "#34d399" },
+        { label: "Activas",      val: datos.activas_hoy,    color: "#60a5fa" },
         { label: "Gest. Diaria", val: datos.gestion_diaria, color: "#fbbf24" },
       ].map(({ label, val, color }) => (
         <div key={label} style={{ textAlign: "center",
@@ -130,7 +130,7 @@ function DatosVivos({ tipo, datos, colorTexto }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BROADCAST OVERLAY FULLSCREEN
+// BROADCAST OVERLAY
 // ─────────────────────────────────────────────────────────────────────────────
 const TIPO_ICONOS = {
   urgente: "🚨", prevencion: "⚠️", logro: "🏆", info: "📢", personalizado: "✨",
@@ -156,8 +156,8 @@ function BroadcastOverlay({ mensaje, onClose }) {
 
   if (!mensaje) return null;
 
-  const colorFondo  = mensaje.color_fondo  || "#0f172a";
-  const colorTexto  = mensaje.color_texto  || "#ffffff";
+  const colorFondo = mensaje.color_fondo || "#0f172a";
+  const colorTexto = mensaje.color_texto || "#ffffff";
 
   return (
     <div style={{
@@ -233,22 +233,22 @@ function BroadcastOverlay({ mensaje, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TODOS LOS ITEMS DEL MENÚ
+// MENÚ — todos los ítems con permiso definido
 // ─────────────────────────────────────────────────────────────────────────────
 const ALL_MENU_ITEMS = [
-  { name: "Inicio",               path: "/",                  icon: "🏠", permiso: null },
-  { name: "Indicadores",          path: "/indicadores",       icon: "📊", permiso: "Indicadores" },
-  { name: "Indicadores VELSA",    path: "/indicadores-velsa", icon: "📊", permiso: "IndicadoresVelsa" },
-  { name: "Vista Asesor",         path: "/vista-asesor",      icon: "👤", permiso: "VistaAsesor" },
-  { name: "Vista Asesor VELSA",   path: "/vista-asesor-velsa",icon: "👤", permiso: "VistaAsesorVelsa" },
-  { name: "Seguimiento Venta",    path: "/Seguimiento_Venta", icon: "✔️", permiso: "SeguimientoVentas" },
-  { name: "Seguimiento VELSA",    path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa" },
-  { name: "Redes",                path: "/redes",             icon: "🚩", permiso: "Redes" },
-  { name: "Ventas",               path: "/ventas",            icon: "📈", permiso: null },
-  { name: "RRHH",                 path: "/rrhh",              icon: "👥", permiso: null },
-  { name: "Horarios",             path: "/horarios",          icon: "⏰", permiso: null },
-  { name: "Billetera",            path: "/billetera",         icon: "💳", permiso: null },
-  { name: "Comisiones",           path: "/comisiones",        icon: "💰", permiso: null },
+  { name: "Inicio",             path: "/",                   icon: "🏠", permiso: null },
+  { name: "Indicadores",        path: "/indicadores",        icon: "📊", permiso: "Indicadores" },
+  { name: "Indicadores VELSA",  path: "/indicadores-velsa",  icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "Vista Asesor",       path: "/vista-asesor",       icon: "👤", permiso: "VistaAsesor" },
+  { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa", icon: "👤", permiso: "VistaAsesorVelsa" },
+  { name: "Seguimiento Venta",  path: "/Seguimiento_Venta",  icon: "✔️", permiso: "SeguimientoVentas" },
+  { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa" },
+  { name: "Redes",              path: "/redes",              icon: "🚩", permiso: "Redes" },
+  { name: "Ventas",             path: "/ventas",             icon: "📈", permiso: "Ventas" },
+  { name: "RRHH",               path: "/rrhh",               icon: "👥", permiso: "RRHH" },
+  { name: "Horarios",           path: "/horarios",           icon: "⏰", permiso: "Horarios" },
+  { name: "Billetera",          path: "/billetera",          icon: "💳", permiso: "Billetera" },
+  { name: "Comisiones",         path: "/comisiones",         icon: "💰", permiso: "Comisiones" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,39 +257,40 @@ const ALL_MENU_ITEMS = [
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser]                       = useState(null);
-  const [permisos, setPermisos]               = useState([]);
-  const [sidebarOpen, setSidebarOpen]         = useState(false);
+  const [user, setUser]                             = useState(null);
+  const [permisos, setPermisos]                     = useState([]);
+  const [sidebarOpen, setSidebarOpen]               = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
-  const [broadcast, setBroadcast]             = useState(null);
-  const socketRef                             = useRef(null);
+  const [broadcast, setBroadcast]                   = useState(null);
+  const socketRef                                   = useRef(null);
 
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
+  // ── Cargar usuario y permisos ───────────────────────────────────────────────
   useEffect(() => {
-    // ✅ Usa "userProfile" como lo hace tu login actual
     const userData = localStorage.getItem("userProfile");
-    if (!userData) { 
-      navigate("/login"); 
-      return; 
+    if (!userData) {
+      navigate("/login");
+      return;
     }
-    
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-      
-      // Intenta obtener permisos desde localStorage (si tu login los guarda)
-      const permisosData = localStorage.getItem("permisos");
-      if (permisosData) {
-        setPermisos(JSON.parse(permisosData));
+
+      // 🔥 FIX: permisos vienen dentro de userProfile
+      if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
+        setPermisos(parsedUser.permisos);
+      } else {
+        console.warn("Sin permisos definidos → cerrando sesión");
+        navigate("/login");
       }
     } catch (err) {
-      console.error('Error parseando usuario:', err);
+      console.error("Error parseando usuario:", err);
       navigate("/login");
     }
   }, [navigate]);
 
-  // Socket.io para broadcasts
+  // ── Socket.io para broadcasts ───────────────────────────────────────────────
   useEffect(() => {
     socketRef.current = io(API, { transports: ["websocket"] });
     socketRef.current.on("broadcast_mensaje", (data) => {
@@ -299,20 +300,27 @@ export default function DashboardLayout() {
     return () => socketRef.current?.disconnect();
   }, []);
 
+  // ── Proteger rutas: si el usuario navega directo a una URL sin permiso ──────
+  useEffect(() => {
+    if (!user || permisos.length === 0) return;
+    const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
+    if (itemActual?.permiso && !permisos.includes(itemActual.permiso)) {
+      navigate("/"); // redirigir a inicio si no tiene acceso
+    }
+  }, [location.pathname, permisos, user, navigate]);
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("userProfile");
-    localStorage.removeItem("permisos");
     navigate("/login");
   };
 
   if (!user) return null;
 
-  // ✅ FILTRAR MENÚ por permisos
-  const menuItems = ALL_MENU_ITEMS.filter(item => {
-    if (!item.permiso) return true; // Sin restricción
-    return permisos.includes(item.permiso); // Con permiso
-  });
+  // ── Filtrar menú según permisos del usuario ─────────────────────────────────
+  const menuItems = ALL_MENU_ITEMS.filter(item =>
+    !item.permiso || permisos.includes(item.permiso)
+  );
 
   return (
     <>
@@ -330,19 +338,17 @@ export default function DashboardLayout() {
           <div
             onClick={() => setSidebarOpen(false)}
             className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
-          ></div>
+          />
         )}
 
         {/* SIDEBAR */}
-        <aside
-          className={`
-            fixed md:static inset-y-0 left-0 z-30
-            bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-            md:translate-x-0
-            ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
-          `}
-        >
+        <aside className={`
+          fixed md:static inset-y-0 left-0 z-30
+          bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0
+          ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
+        `}>
           <button
             onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
             className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-20 bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md rounded-r-2xl items-center justify-center text-white border-y border-r border-white/20 z-50 shadow-[5px_0_15px_rgba(0,0,0,0.3)] transition-all group"
@@ -380,7 +386,9 @@ export default function DashboardLayout() {
                   <span className={`${isDesktopCollapsed ? "text-3xl" : "text-2xl"} transition-all group-hover:scale-110 drop-shadow-md`}>
                     {item.icon}
                   </span>
-                  {!isDesktopCollapsed && <span className="font-bold tracking-wide truncate">{item.name}</span>}
+                  {!isDesktopCollapsed && (
+                    <span className="font-bold tracking-wide truncate">{item.name}</span>
+                  )}
                 </button>
               );
             })}
@@ -394,7 +402,9 @@ export default function DashboardLayout() {
               {!isDesktopCollapsed && (
                 <div className="overflow-hidden text-left">
                   <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
-                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Online</p>
+                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">
+                    {user.perfil} · {user.empresa}
+                  </p>
                 </div>
               )}
             </div>
@@ -418,13 +428,13 @@ export default function DashboardLayout() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic bg-clip-text">
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">
                 {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
               </h2>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-4 md:p-10 w-full transition-all">
+          <div className="flex-1 overflow-auto p-4 md:p-10 w-full">
             <Outlet />
           </div>
         </main>

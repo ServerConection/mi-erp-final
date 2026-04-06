@@ -1,145 +1,128 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════════
- * CONFIGURACIÓN DE PERMISOS POR EMPRESA + PERFIL
- * Mapea: [EMPRESA][PERFIL] → [MÓDULOS_PERMITIDOS]
- * ═══════════════════════════════════════════════════════════════════════════════
- */
-
 const MODULOS = {
   // NOVONET
   VISTA_ASESOR: 'VistaAsesor',
   SEGUIMIENTO_VENTAS: 'SeguimientoVentas',
   INDICADORES: 'Indicadores',
   REDES: 'Redes',
-  
+
   // VELSA
-  VISTA_ASESOR_VELSA: 'VistaAsesorVelsa.jsx',
+  VISTA_ASESOR_VELSA: 'VistaAsesorVelsa',
   SEGUIMIENTO_VELSA: 'SeguimientoVelsa',
   INDICADORES_VELSA: 'IndicadoresVelsa',
-  REDES_VELSA: 'RedesVelsa'
+  REDES_VELSA: 'RedesVelsa',
+
+  // COMPARTIDOS
+  VENTAS: 'Ventas',
+  RRHH: 'RRHH',
+  HORARIOS: 'Horarios',
+  BILLETERA: 'Billetera',
+  COMISIONES: 'Comisiones',
 };
 
-/**
- * MATRIZ DE PERMISOS
- * Estructura: [EMPRESA_MAYUS][PERFIL_MAYUS] = [módulos permitidos]
- * 
- * IMPORTANTE: 
- * - ADMINISTRADOR tiene acceso a TODO (se valida en el middleware)
- * - GERENCIA tiene acceso a TODO de su empresa
- * - Otros perfiles: acceso limitado según definición abajo
- */
+const MODULOS_GERENCIALES = [
+  MODULOS.VENTAS,
+  MODULOS.RRHH,
+  MODULOS.HORARIOS,
+  MODULOS.BILLETERA,
+  MODULOS.COMISIONES,
+];
+
 const PERMISOS_POR_EMPRESA_PERFIL = {
   NOVONET: {
     USUARIO: [
       MODULOS.VISTA_ASESOR,
-      MODULOS.SEGUIMIENTO_VENTAS
+      MODULOS.SEGUIMIENTO_VENTAS,
     ],
     SUPERVISOR: [
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
-      MODULOS.INDICADORES
+      MODULOS.INDICADORES,
     ],
     ANALISTA: [
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES
+      MODULOS.REDES,
+      ...MODULOS_GERENCIALES,
     ],
     GERENCIA: [
-      // GERENCIA tiene acceso a TODO de NOVONET
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES
+      MODULOS.REDES,
+      ...MODULOS_GERENCIALES,
     ],
     ADMINISTRADOR: [
-      // ADMINISTRADOR tiene acceso a TODO
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES
-    ]
+      MODULOS.REDES,
+      ...MODULOS_GERENCIALES,
+    ],
   },
-  
+
   VELSA: {
     USUARIO: [
       MODULOS.VISTA_ASESOR_VELSA,
-      MODULOS.SEGUIMIENTO_VELSA
+      MODULOS.SEGUIMIENTO_VELSA,
     ],
     SUPERVISOR: [
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
-      MODULOS.INDICADORES_VELSA
+      MODULOS.INDICADORES_VELSA,
     ],
     ANALISTA: [
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA
+      MODULOS.REDES_VELSA,
+      ...MODULOS_GERENCIALES,
     ],
     GERENCIA: [
-      // GERENCIA tiene acceso a TODO de VELSA
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA
+      MODULOS.REDES_VELSA,
+      ...MODULOS_GERENCIALES,
     ],
     ADMINISTRADOR: [
-      // ADMINISTRADOR tiene acceso a TODO
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA
-    ]
-  }
+      MODULOS.REDES_VELSA,
+      ...MODULOS_GERENCIALES,
+    ],
+  },
 };
 
-/**
- * Función: Obtener módulos permitidos para un usuario
- * @param {string} empresa - Empresa del usuario (ej: 'NOVONET')
- * @param {string} perfil - Perfil del usuario (ej: 'ASESOR')
- * @returns {Array} Array de módulos permitidos
- */
 function obtenerPermisosUsuario(empresa, perfil) {
   const empresaNorm = empresa?.toUpperCase();
   const perfilNorm = perfil?.toUpperCase();
-  
-  // ADMINISTRADOR tiene acceso TOTAL a todo
+
   if (perfilNorm === 'ADMINISTRADOR') {
     return Object.values(MODULOS);
   }
-  
-  // Buscar permisos en la matriz
+
   if (!PERMISOS_POR_EMPRESA_PERFIL[empresaNorm]) {
     console.warn(`⚠️ Empresa no configurada: ${empresaNorm}`);
     return [];
   }
-  
-  // 🔥 FIX: fallback a USUARIO si perfil no existe
+
   if (!PERMISOS_POR_EMPRESA_PERFIL[empresaNorm][perfilNorm]) {
-    console.warn(`⚠️ Perfil no configurado para ${empresaNorm}: ${perfilNorm}`);
-    console.warn(`👉 Usando permisos de USUARIO como fallback`);
+    console.warn(`⚠️ Perfil no configurado para ${empresaNorm}: ${perfilNorm} → fallback USUARIO`);
     return PERMISOS_POR_EMPRESA_PERFIL[empresaNorm]['USUARIO'] || [];
   }
-  
+
   return PERMISOS_POR_EMPRESA_PERFIL[empresaNorm][perfilNorm];
 }
 
-/**
- * Función: Verificar si usuario puede acceder a un módulo específico
- * @param {string} empresa 
- * @param {string} perfil 
- * @param {string} modulo 
- * @returns {boolean}
- */
 function puedeAccederAlModulo(empresa, perfil, modulo) {
-  const modulos = obtenerPermisosUsuario(empresa, perfil);
-  return modulos.includes(modulo);
+  return obtenerPermisosUsuario(empresa, perfil).includes(modulo);
 }
 
 module.exports = {
   MODULOS,
   PERMISOS_POR_EMPRESA_PERFIL,
   obtenerPermisosUsuario,
-  puedeAccederAlModulo
+  puedeAccederAlModulo,
 };

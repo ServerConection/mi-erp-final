@@ -4,7 +4,7 @@ const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { obtenerPermisosUsuario } = require('../config/permisos.config');
-const auth = require('../middleware/auth');
+const { verificarToken } = require('../middleware/auth');
 
 // Rate limiting simple en memoria
 const intentos = new Map();
@@ -144,7 +144,7 @@ router.post('/login', async (req, res) => {
  * 
  * Útil para el frontend para validar qué componentes mostrar
  */
-router.get('/permisos', auth, async (req, res) => {
+router.get('/permisos', verificarToken, async (req, res) => {
   try {
     const { empresa, perfil } = req.user;
     const permisos = obtenerPermisosUsuario(empresa, perfil);
@@ -164,14 +164,5 @@ router.get('/permisos', auth, async (req, res) => {
     });
   }
 });
-
-/**
- * POST /auth/verificar-otp
- * Verificar OTP si ya tienes tabla de OTPs
- * (Mantener tu implementación actual)
- */
-// router.post('/verificar-otp', async (req, res) => {
-//   // Tu código de OTP aquí
-// });
 
 module.exports = router;

@@ -34,15 +34,9 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════════
- * POST /api/otp/login
- * Genera OTP y lo envía al correo
- * ═══════════════════════════════════════════════════════════════════════════════
- */
+// LOGIN
 router.post('/login', async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
-  const userAgent = req.headers['user-agent'] || '';
 
   if (!checkRateLimit(ip)) {
     return res.status(429).json({ 
@@ -61,9 +55,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Buscar usuario
+    // 🔥 FIX: usuario case insensitive
     const result = await pool.query(
-      "SELECT id, usuario, correo, contraseña, activo FROM usuarios WHERE usuario = $1",
+      "SELECT id, usuario, correo, contraseña, activo FROM usuarios WHERE LOWER(usuario) = LOWER($1)",
       [usuario]
     );
 
@@ -76,7 +70,6 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Validar contraseña
     const hashFalso = '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
     const match = await bcrypt.compare(password, user.contraseña || hashFalso);
 
@@ -87,7 +80,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Validar que usuario esté activo
     if (user.activo !== 'SI') {
       return res.status(403).json({ 
         success: false, 
@@ -95,33 +87,18 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Generar OTP
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpHash = await bcrypt.hash(otp, 10);
 
-    // Eliminar OTPs anteriores
-    await pool.query(
-      'DELETE FROM otp_login WHERE usuario_id = $1',
-      [user.id]
-    );
+    await pool.query('DELETE FROM otp_login WHERE usuario_id = $1', [user.id]);
 
-    // Guardar OTP
     await pool.query(
       `INSERT INTO otp_login (usuario_id, otp_code, expira_en)
        VALUES ($1, $2, NOW() + interval '10 minutes')`,
       [user.id, otpHash]
     );
 
-    // Enviar OTP por email
-    try {
-      await enviarOTP(user.correo, otp);
-    } catch (emailErr) {
-      console.error('Error enviando email:', emailErr);
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Error enviando OTP al correo' 
-      });
-    }
+    await enviarOTP(user.correo, otp);
 
     return res.json({
       success: true,
@@ -139,13 +116,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════════
- * POST /api/otp/verify-otp
- * Verifica el OTP y devuelve token + permisos
- * ⭐ ESTO ES LO IMPORTANTE ⭐
- * ═══════════════════════════════════════════════════════════════════════════════
- */
+// VERIFY OTP
 router.post('/verify-otp', async (req, res) => {
   try {
     const { usuario, otp } = req.body;
@@ -157,14 +128,14 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // Obtener usuario con OTP pendiente
+    // 🔥 FIX: case insensitive
     const result = await pool.query(
       `SELECT u.id, u.usuario, u.correo, u.nombres, u.apellidos, 
               u.perfil, u.empresa, u.activo,
               o.otp_code, o.expira_en
        FROM usuarios u
        LEFT JOIN otp_login o ON u.id = o.usuario_id
-       WHERE u.usuario = $1 AND u.activo = 'SI'`,
+       WHERE LOWER(u.usuario) = LOWER($1) AND u.activo = 'SI'`,
       [usuario]
     );
 
@@ -177,15 +148,13 @@ router.post('/verify-otp', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Validar que existe OTP
     if (!user.otp_code) {
       return res.status(401).json({ 
         success: false, 
-        error: 'No hay OTP generado. Inicia sesión primero.' 
+        error: 'No hay OTP generado.' 
       });
     }
 
-    // Validar que OTP no haya expirado
     if (new Date() > new Date(user.expira_en)) {
       return res.status(401).json({ 
         success: false, 
@@ -193,8 +162,8 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // Validar OTP
     const otpMatch = await bcrypt.compare(otp, user.otp_code);
+
     if (!otpMatch) {
       return res.status(401).json({ 
         success: false, 
@@ -202,35 +171,26 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // ✅ OTP VÁLIDO - Obtener permisos
     const perfil = user.perfil?.toUpperCase() || '';
     const empresa = user.empresa?.toUpperCase() || '';
     const permisos = obtenerPermisosUsuario(empresa, perfil);
 
-    // Crear token JWT
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        usuario: user.usuario,
-        empresa: empresa, 
-        perfil: perfil 
-      },
+      { id: user.id, usuario: user.usuario, empresa, perfil },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
 
-    // URL de reporte
     const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)
       ? URL_REPORTES.especiales
       : (URL_REPORTES[perfil] || '');
 
-    // Limpiar OTP usado
+    // 🔥 FIX CRÍTICO: borrar SOLO después de validar
     await pool.query(
       'DELETE FROM otp_login WHERE usuario_id = $1',
       [user.id]
     );
 
-    // ✅ RESPUESTA CON PERMISOS
     return res.json({
       success: true,
       token,
@@ -238,11 +198,11 @@ router.post('/verify-otp', async (req, res) => {
         id: user.id,
         usuario: user.usuario,
         nombre: `${user.nombres} ${user.apellidos}`,
-        perfil: perfil,
-        empresa: empresa,
+        perfil,
+        empresa,
         correo: user.correo,
         url_reporte: urlReporte,
-        permisos: permisos  // ← AQUÍ VAN LOS PERMISOS
+        permisos
       }
     });
 

@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import useAuth from "./hooks/useAuth";
 import Login from "./pages/Login";
 import Indicadores from "./pages/Indicadores";
 import IndicadoresVelsa from "./pages/IndicadoresVelsa";
@@ -18,91 +17,75 @@ import AppSheetModule from "./pages/AppSheetModule";
 import { Ventas, RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
  * COMPONENTE: ProtectedRoute
- * Valida autenticación + permisos para acceder a una ruta
- * ═══════════════════════════════════════════════════════════════════════════════
+ * Valida permisos para módulos específicos
  */
 const ProtectedRoute = ({ children, requierePermiso }) => {
-  const { user, permisos, cargando, tienePermiso } = useAuth();
-
-  if (cargando) {
-    return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        backgroundColor: '#f5f5f5'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <h2>Cargando...</h2>
-          <p>Validando permisos de acceso</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Si no hay token, redirigir a login
   const token = localStorage.getItem("token");
+  
   if (!token) return <Navigate to="/login" replace />;
 
-  // Si no hay usuario, redirigir a login
-  if (!user) return <Navigate to="/login" replace />;
-
   // Si se requiere un permiso específico, validar
-  if (requierePermiso && !tienePermiso(requierePermiso)) {
-    return (
-      <div style={{
-        padding: '40px',
-        textAlign: 'center',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-        margin: '20px'
-      }}>
-        <h2>❌ Acceso Denegado</h2>
-        <p>No tienes permisos para acceder a esta página.</p>
-        <p>
-          <strong>Tu empresa:</strong> {user?.empresa} | 
-          <strong> Tu perfil:</strong> {user?.perfil}
-        </p>
-        {requierePermiso && (
-          <p><strong>Módulo requerido:</strong> {requierePermiso}</p>
-        )}
-        <button 
-          onClick={() => window.location.href = '/'}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            marginTop: '10px'
-          }}
-        >
-          Volver al inicio
-        </button>
-      </div>
-    );
+  if (requierePermiso) {
+    try {
+      const permisosStr = localStorage.getItem("permisos");
+      const permisos = permisosStr ? JSON.parse(permisosStr) : [];
+      
+      if (!permisos.includes(requierePermiso)) {
+        const userData = localStorage.getItem("user");
+        const user = userData ? JSON.parse(userData) : {};
+        
+        return (
+          <div style={{
+            padding: '40px',
+            textAlign: 'center',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            margin: '20px'
+          }}>
+            <h2>❌ Acceso Denegado</h2>
+            <p>No tienes permisos para acceder a esta página.</p>
+            <p>
+              <strong>Tu empresa:</strong> {user?.empresa} | 
+              <strong> Tu perfil:</strong> {user?.perfil}
+            </p>
+            <p><strong>Módulo requerido:</strong> {requierePermiso}</p>
+            <button 
+              onClick={() => window.location.href = '/'}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginTop: '10px'
+              }}
+            >
+              Volver al inicio
+            </button>
+          </div>
+        );
+      }
+    } catch (err) {
+      console.error('Error validando permisos:', err);
+    }
   }
 
   return children;
 };
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
  * COMPONENTE PRINCIPAL: App
- * ═══════════════════════════════════════════════════════════════════════════════
  */
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 🔓 Ruta sin protección: LOGIN */}
+        {/* Login sin protección */}
         <Route path="/login" element={<Login />} />
 
-        {/* 🔒 Dashboard protegido - Requiere autenticación */}
+        {/* Dashboard protegido */}
         <Route 
           path="/" 
           element={
@@ -111,14 +94,10 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* 📋 Home - Hub de módulos (accesible para todos los autenticados) */}
+          {/* Home */}
           <Route index element={<HomeModules />} />
 
-          {/* ═══════════════════════════════════════════════════════════════════
-              MÓDULOS NOVONET
-              ═══════════════════════════════════════════════════════════════════ */}
-          
-          {/* Vista Asesor NOVONET */}
+          {/* MÓDULOS NOVONET - CON PROTECCIÓN */}
           <Route 
             path="vista-asesor" 
             element={
@@ -128,7 +107,6 @@ export default function App() {
             } 
           />
 
-          {/* Seguimiento de Ventas NOVONET */}
           <Route 
             path="Seguimiento_Venta" 
             element={
@@ -138,7 +116,6 @@ export default function App() {
             } 
           />
 
-          {/* Indicadores NOVONET */}
           <Route 
             path="indicadores" 
             element={
@@ -148,7 +125,6 @@ export default function App() {
             } 
           />
 
-          {/* Redes NOVONET */}
           <Route 
             path="redes" 
             element={
@@ -158,11 +134,7 @@ export default function App() {
             } 
           />
 
-          {/* ═══════════════════════════════════════════════════════════════════
-              MÓDULOS VELSA
-              ═══════════════════════════════════════════════════════════════════ */}
-          
-          {/* Vista Asesor VELSA */}
+          {/* MÓDULOS VELSA - CON PROTECCIÓN */}
           <Route 
             path="vista-asesor-velsa" 
             element={
@@ -172,7 +144,6 @@ export default function App() {
             } 
           />
 
-          {/* Seguimiento de Ventas VELSA */}
           <Route 
             path="seguimiento-velsa" 
             element={
@@ -182,7 +153,6 @@ export default function App() {
             } 
           />
 
-          {/* Indicadores VELSA */}
           <Route 
             path="indicadores-velsa" 
             element={
@@ -192,10 +162,7 @@ export default function App() {
             } 
           />
 
-          {/* ═══════════════════════════════════════════════════════════════════
-              MÓDULOS COMUNES (Sin restricción de empresa)
-              ═══════════════════════════════════════════════════════════════════ */}
-          
+          {/* MÓDULOS COMUNES - SIN RESTRICCIÓN */}
           <Route path="ventas" element={<Ventas />} />
           <Route path="rrhh" element={<RRHH />} />
           <Route path="horarios" element={<Horarios />} />
@@ -207,57 +174,12 @@ export default function App() {
           <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />
         </Route>
 
-        {/* 🔓 TV Mode - Sin login requerido */}
+        {/* TV Mode sin login */}
         <Route path="tv" element={<TVMode />} />
 
-        {/* 🔄 Redirigir rutas no encontradas a login */}
+        {/* Redirigir desconocidas a login */}
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );
 }
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════════
- * NOTAS IMPORTANTES:
- * ═══════════════════════════════════════════════════════════════════════════════
- * 
- * 1. RUTAS CON PROTECCIÓN DE PERMISOS:
- *    - vista-asesor → requiere permiso "VistaAsesor" (NOVONET)
- *    - Seguimiento_Venta → requiere "SeguimientoVentas" (NOVONET)
- *    - indicadores → requiere "Indicadores" (NOVONET)
- *    - redes → requiere "Redes" (NOVONET)
- *    - vista-asesor-velsa → requiere "VistaAsesorVelsa" (VELSA)
- *    - seguimiento-velsa → requiere "SeguimientoVelsa" (VELSA)
- *    - indicadores-velsa → requiere "IndicadoresVelsa" (VELSA)
- * 
- * 2. RUTAS SIN PROTECCIÓN (accesibles para todos los autenticados):
- *    - ventas, rrhh, horarios, billetera, comisiones
- *    - notificaciones, broadcast, appsheet, Guiaplanesmarzo
- * 
- * 3. SI NECESITAS AGREGAR MÁS MÓDULOS:
- *    a) Primero defínelos en /src/config/permisos.config.js
- *    b) Agrega la ruta aquí con: <ProtectedRoute requierePermiso="TuModulo">
- *    c) Importa el componente al inicio del archivo
- * 
- * 4. ESTRUCTURA MANTENIDA:
- *    ✅ Tu layout de dashboard se mantiene igual
- *    ✅ Tus componentes se importan normalmente
- *    ✅ Solo agregamos validación de permisos
- *    ✅ Mensajes de error amigables si no tiene permiso
- * 
- * 5. USO EN COMPONENTES:
- *    import useAuth from './hooks/useAuth';
- *    
- *    function MiComponente() {
- *      const { user, tienePermiso } = useAuth();
- *      
- *      return (
- *        <>
- *          {tienePermiso('VistaAsesor') && (
- *            <a href="/vista-asesor">Ver Vista Asesor</a>
- *          )}
- *        </>
- *      );
- *    }
- */

@@ -17,6 +17,7 @@ const MODULOS = {
   HORARIOS: 'Horarios',
   BILLETERA: 'Billetera',
   COMISIONES: 'Comisiones',
+  
 };
 
 const MODULOS_GERENCIALES = [

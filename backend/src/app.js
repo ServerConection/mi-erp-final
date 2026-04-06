@@ -15,6 +15,7 @@ const indicadoresRoutes      = require('./routes/indicadores.routes');
 const indicadoresVelsaRoutes = require('./routes/indicadoresVelsa.routes');
 const alertasRoutes          = require('./routes/alertas.routes');  // ← NUEVO
 const broadcastRoutes        = require('./routes/broadcast.routes'); // ← NUEVO
+const ventasRoutes = require("./routes/ventas.routes");
 
 const app = express();
 
@@ -47,6 +48,8 @@ app.use('/api/redes',             redesRoutes);
 
 // Alertas y notificaciones                                         ← NUEVO
 app.use('/api/alertas',           alertasRoutes);
+
+app.use("/api/ventas", ventasRoutes);
 
 // Broadcast TV                                                      ← NUEVO
 app.use('/uploads', express.static(require('path').join(process.cwd(), 'uploads')));

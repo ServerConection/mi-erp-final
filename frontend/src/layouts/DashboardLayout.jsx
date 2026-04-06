@@ -249,6 +249,7 @@ const ALL_MENU_ITEMS = [
   { name: "Horarios",           path: "/horarios",           icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",          icon: "💳", permiso: "Billetera" },
   { name: "Comisiones",         path: "/comisiones",         icon: "💰", permiso: "Comisiones" },
+   { name: "VentasFormulario",         path: "/VentaFormulario",         icon: "💰", permiso: "VentasFormulario" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

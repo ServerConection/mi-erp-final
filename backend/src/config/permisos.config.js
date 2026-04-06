@@ -30,7 +30,7 @@ const MODULOS = {
  */
 const PERMISOS_POR_EMPRESA_PERFIL = {
   NOVONET: {
-    ASESOR: [
+    USUARIO: [
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS
     ],
@@ -62,7 +62,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
   },
   
   VELSA: {
-    ASESOR: [
+    USUARIO: [
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA
     ],
@@ -115,9 +115,11 @@ function obtenerPermisosUsuario(empresa, perfil) {
     return [];
   }
   
+  // 🔥 FIX: fallback a USUARIO si perfil no existe
   if (!PERMISOS_POR_EMPRESA_PERFIL[empresaNorm][perfilNorm]) {
     console.warn(`⚠️ Perfil no configurado para ${empresaNorm}: ${perfilNorm}`);
-    return [];
+    console.warn(`👉 Usando permisos de USUARIO como fallback`);
+    return PERMISOS_POR_EMPRESA_PERFIL[empresaNorm]['USUARIO'] || [];
   }
   
   return PERMISOS_POR_EMPRESA_PERFIL[empresaNorm][perfilNorm];

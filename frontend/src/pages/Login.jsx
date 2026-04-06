@@ -7,9 +7,10 @@ const API = "https://erp-backend-v1-qhk2.onrender.com";
 export default function Login() {
   const navigate = useNavigate();
 
-  const [paso, setPaso] = useState(1); // 1 = login, 2 = otp
+  const [paso, setPaso] = useState(1);
   const [formData, setFormData] = useState({ usuario: "", contraseña: "" });
   const [otp, setOtp] = useState("");
+  const [usuarioId, setUsuarioId] = useState(null);   // 🔥 FIX: guardar ID
   const [usuarioLogin, setUsuarioLogin] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -18,20 +19,16 @@ export default function Login() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // ─── PASO 1: Login → solicitar OTP ───────────────────────────────────────
+  // ─── PASO 1: Login → solicitar OTP ─────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      // Intentar con dispositivo confiable primero
-      const deviceToken = localStorage.getItem("device_token");
-
       const body = {
         usuario: formData.usuario,
         password: formData.contraseña,
-        ...(deviceToken && { device_token: deviceToken })
       };
 
       const res = await fetch(`${API}/api/otp/login`, {
@@ -47,16 +44,9 @@ export default function Login() {
         return;
       }
 
-      // Dispositivo confiable → token directo
-      if (data.trusted) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("userProfile", JSON.stringify(data.user));
-        navigate("/");
-        return;
-      }
-
-      // Sin dispositivo confiable → ir a paso OTP
-      setUsuarioLogin(formData.usuario);
+      // 🔥 FIX: guardar usuario_id que devuelve el backend
+      setUsuarioId(data.usuario_id);
+      setUsuarioLogin(data.usuario || formData.usuario);
       setPaso(2);
 
     } catch {
@@ -66,7 +56,7 @@ export default function Login() {
     }
   };
 
-  // ─── PASO 2: Verificar OTP ────────────────────────────────────────────────
+  // ─── PASO 2: Verificar OTP ──────────────────────────────────────────────────
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -76,20 +66,23 @@ export default function Login() {
       const res = await fetch(`${API}/api/otp/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario: usuarioLogin, otp })
+        // 🔥 FIX: enviar usuario_id en lugar de solo el string usuario
+        body: JSON.stringify({
+          usuario_id: usuarioId,
+          usuario: usuarioLogin,
+          otp: otp.trim()
+        })
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        setError("Código incorrecto o expirado.");
+        setError(data.error || "Código incorrecto o expirado.");
         return;
       }
 
-      // Guardar token y device_token
       localStorage.setItem("token", data.token);
       localStorage.setItem("userProfile", JSON.stringify(data.user));
-      localStorage.setItem("device_token", data.device_token);
 
       navigate("/");
 
@@ -122,7 +115,7 @@ export default function Login() {
           </div>
         )}
 
-        {/* ── PASO 1: Usuario y contraseña ── */}
+        {/* ── PASO 1 ── */}
         {paso === 1 && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
@@ -157,7 +150,7 @@ export default function Login() {
           </form>
         )}
 
-        {/* ── PASO 2: Código OTP ── */}
+        {/* ── PASO 2 ── */}
         {paso === 2 && (
           <form onSubmit={handleVerifyOtp} className="space-y-6">
             <div className="text-center text-white/70 text-sm mb-2">
@@ -168,9 +161,10 @@ export default function Login() {
               <label className="text-xs font-semibold text-blue-200 uppercase tracking-wide ml-1">Código OTP</label>
               <input
                 type="text"
+                inputMode="numeric"
                 maxLength={6}
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-widest placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all backdrop-blur-sm"
                 placeholder="000000"
               />
@@ -178,7 +172,7 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || otp.length < 6}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg transform transition hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-4 border border-white/10"
             >
               {loading ? "Verificando..." : "Confirmar Código"}
@@ -186,7 +180,7 @@ export default function Login() {
 
             <button
               type="button"
-              onClick={() => { setPaso(1); setError(""); }}
+              onClick={() => { setPaso(1); setError(""); setOtp(""); setUsuarioId(null); }}
               className="w-full text-white/50 hover:text-white text-sm transition mt-2"
             >
               ← Volver

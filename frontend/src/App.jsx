@@ -14,7 +14,8 @@ import BroadcastPanel from "./pages/BroadcastPanel";
 import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";
 import TVMode from "./pages/TVMode";
 import AppSheetModule from "./pages/AppSheetModule";
-import { Ventas, RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
+import Ventas from "./pages/Ventas";
+import { RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="broadcast" element={<BroadcastPanel />} />
           <Route path="appsheet" element={<AppSheetModule />} />
           <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />
+<Route path="Ventas" element={<Ventas />} />
         </Route>
 
         <Route path="tv" element={<TVMode />} />

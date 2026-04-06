@@ -244,7 +244,7 @@ const ALL_MENU_ITEMS = [
   { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" }, // ← ruta corregida
   { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",   icon: "✔️", permiso: "SeguimientoVelsa" },
   { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
-  { name: "Ventas",             path: "/ventas",              icon: "📈", permiso: "Ventas" },
+  { name: "Ventas Formulario", path: "/ventas", icon: "📝", permiso: "VentasFormulario" },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
   { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },

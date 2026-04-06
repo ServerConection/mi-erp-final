@@ -10,7 +10,7 @@ export default function Login() {
   const [paso, setPaso] = useState(1); // 1 = login, 2 = otp
   const [formData, setFormData] = useState({ usuario: "", contraseña: "" });
   const [otp, setOtp] = useState("");
-  const [usuarioId, setUsuarioId] = useState(null);
+  const [usuarioLogin, setUsuarioLogin] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,7 +56,7 @@ export default function Login() {
       }
 
       // Sin dispositivo confiable → ir a paso OTP
-      setUsuarioId(data.usuario_id);
+      setUsuarioLogin(formData.usuario);
       setPaso(2);
 
     } catch {
@@ -76,7 +76,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/otp/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario_id: usuarioId, otp })
+        body: JSON.stringify({ usuario: usuarioLogin, otp })
       });
 
       const data = await res.json();

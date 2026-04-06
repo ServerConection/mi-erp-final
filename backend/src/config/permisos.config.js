@@ -13,7 +13,7 @@ const MODULOS = {
   REDES: 'Redes',
   
   // VELSA
-  VISTA_ASESOR_VELSA: 'VistaAsesorVelsa',
+  VISTA_ASESOR_VELSA: 'VistaAsesorVelsa.jsx',
   SEGUIMIENTO_VELSA: 'SeguimientoVelsa',
   INDICADORES_VELSA: 'IndicadoresVelsa',
   REDES_VELSA: 'RedesVelsa'

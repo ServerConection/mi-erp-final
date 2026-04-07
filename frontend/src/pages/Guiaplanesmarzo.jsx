@@ -154,7 +154,7 @@ const USOS_INTERNET = {
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
-export default function GuiaPlanesAbril() {
+export default function GuiaPlanesMarzo() {
   const [panel, setPanel] = useState("smart"); // smart | filtros
   const [expandZonas, setExpandZonas] = useState(false);
 

@@ -237,19 +237,19 @@ function BroadcastOverlay({ mensaje, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const ALL_MENU_ITEMS = [
   { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
+  { name: "Guía Comercial",     path: "/guia-comercial",      icon: "📖", permiso: null },
   { name: "Indicadores",        path: "/indicadores",         icon: "📊", permiso: "Indicadores" },
   { name: "Indicadores VELSA",  path: "/indicadores-velsa",   icon: "📊", permiso: "IndicadoresVelsa" },
   { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
   { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
-  { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" }, // ← ruta corregida
+  { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },
   { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",   icon: "✔️", permiso: "SeguimientoVelsa" },
   { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
-  { name: "Ventas Formulario", path: "/ventas", icon: "📝", permiso: "VentasFormulario" },
+  { name: "Ventas Formulario",  path: "/ventas",              icon: "📝", permiso: "VentasFormulario" },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
   { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },
   { name: "Comisiones",         path: "/comisiones",          icon: "💰", permiso: "Comisiones" },
-  { name: "Guía Comercial", path: "/guia-comercial", icon: "📖", permiso: "GuiaComercial" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,16 +302,21 @@ export default function DashboardLayout() {
   }, []);
 
   // ── Proteger rutas: si el usuario navega directo a una URL sin permiso ──────
- useEffect(() => {
-  if (!user || permisos.length === 0) return;
-  const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
-  // Si la ruta no está en el menú (ej: /broadcast, /notificaciones) → dejarla pasar
-  if (!itemActual) return;
-  // Si la ruta tiene permiso requerido y el usuario no lo tiene → redirigir a inicio
-  if (itemActual.permiso && !permisos.includes(itemActual.permiso)) {
-    navigate("/");
-  }
-}, [location.pathname, permisos, user, navigate]);
+  useEffect(() => {
+    if (!user || permisos.length === 0) return;
+    
+    // ✅ RUTAS QUE NO REQUIEREN VALIDACIÓN DE PERMISOS
+    const rutasPublicas = ['/guia-comercial', '/broadcast'];
+    if (rutasPublicas.includes(location.pathname)) return;
+    
+    const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
+    // Si la ruta no está en el menú (ej: /notificaciones) → dejarla pasar
+    if (!itemActual) return;
+    // Si la ruta tiene permiso requerido y el usuario no lo tiene → redirigir a inicio
+    if (itemActual.permiso && !permisos.includes(itemActual.permiso)) {
+      navigate("/");
+    }
+  }, [location.pathname, permisos, user, navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");

@@ -7,24 +7,10 @@ const API = import.meta.env.VITE_API_URL;
 // ─────────────────────────────────────────────────────────────────────────────
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
-const RUTAS_PUBLICAS = ['/guia-comercial', '/broadcast'];
+const RUTAS_PUBLICAS = ['/guia-planes-marzo', '/broadcast']; // ✅ FIX: era '/guia-comercial'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SOCKET SINGLETON — se crea UNA sola vez fuera del componente
-// ─────────────────────────────────────────────────────────────────────────────
-// PROBLEMA ORIGINAL:
-//   useEffect(() => {
-//     socketRef.current = io(API, ...);
-//     return () => socketRef.current?.disconnect(); // ← Esto destruía el socket
-//   }, []);                                         //   al navegar entre rutas
-//
-// React StrictMode (Vite dev) hace: mount → cleanup → remount.
-// El cleanup llamaba disconnect(), matando la sesión WebSocket.
-// Cada navegación re-montaba DashboardLayout y volvía a destruirlo.
-//
-// SOLUCIÓN: socket como singleton a nivel de módulo.
-// El cleanup solo remueve listeners, nunca desconecta.
-// Solo se desconecta explícitamente en handleLogout.
+// SOCKET SINGLETON
 // ─────────────────────────────────────────────────────────────────────────────
 let socketSingleton = null;
 
@@ -270,11 +256,11 @@ function BroadcastOverlay({ mensaje, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MENÚ — todos los ítems con permiso definido
+// MENÚ
 // ─────────────────────────────────────────────────────────────────────────────
 const ALL_MENU_ITEMS = [
   { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
-  { name: "Guía Comercial",     path: "/guia-comercial",      icon: "📖", permiso: null },
+  { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null }, // ✅ FIX: era '/guia-comercial'
   { name: "Indicadores",        path: "/indicadores",         icon: "📊", permiso: "Indicadores" },
   { name: "Indicadores VELSA",  path: "/indicadores-velsa",   icon: "📊", permiso: "IndicadoresVelsa" },
   { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
@@ -317,7 +303,6 @@ export default function DashboardLayout() {
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
         setPermisos(parsedUser.permisos);
       } else {
-        // Solo redirige al login si NO es ruta pública
         if (!RUTAS_PUBLICAS.includes(location.pathname)) {
           console.warn("Sin permisos definidos → cerrando sesión");
           navigate("/login");
@@ -330,21 +315,14 @@ export default function DashboardLayout() {
   }, [navigate]);
 
   // ── Socket.io para broadcasts ───────────────────────────────────────────────
-  // Usa singleton: el socket NUNCA se desconecta al navegar entre rutas.
-  // El cleanup solo remueve el listener de este render.
   useEffect(() => {
     const socket = getSocket();
-
     const handleBroadcast = (data) => {
       setBroadcast(data);
       if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);
     };
-
-    // Limpiar listener anterior antes de suscribir (evita duplicados en StrictMode)
     socket.off("broadcast_mensaje", handleBroadcast);
     socket.on("broadcast_mensaje", handleBroadcast);
-
-    // ✅ Solo remueve el listener — NO llama disconnect()
     return () => {
       socket.off("broadcast_mensaje", handleBroadcast);
     };
@@ -363,7 +341,6 @@ export default function DashboardLayout() {
   }, [location.pathname, permisos, user, navigate]);
 
   const handleLogout = () => {
-    // Logout explícito: sí desconectamos y destruimos el singleton
     if (socketSingleton) {
       socketSingleton.disconnect();
       socketSingleton = null;

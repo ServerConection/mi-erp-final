@@ -1,9 +1,8 @@
 // pages/Ventas.jsx
 // ============================================================
-// Módulo: Seguimiento de Ventas
-// - Asesor: ve/edita/agrega solo sus registros
-// - Supervisor/Analista/Gerencia: ven todos (read-only)
-// - Administrador: ve/edita/agrega/elimina todos
+// CORRECCIONES:
+// 1. payload limpia strings vacíos → null antes de enviar
+// 2. Resto de lógica igual
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -61,101 +60,54 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
 
         {/* Body */}
         <div className="p-6 space-y-4">
-          {/* ID Bitrix */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-              ID Bitrix
-            </label>
-            <input
-              type="text"
-              value={form.id_bitrix}
-              onChange={e => set("id_bitrix", e.target.value)}
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">ID Bitrix</label>
+            <input type="text" value={form.id_bitrix} onChange={e => set("id_bitrix", e.target.value)}
               placeholder="Ej: 12345"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm"
-            />
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
           </div>
 
-          {/* Plan */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-              Plan
-            </label>
-            <input
-              type="text"
-              value={form.plan}
-              onChange={e => set("plan", e.target.value)}
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Plan</label>
+            <input type="text" value={form.plan} onChange={e => set("plan", e.target.value)}
               placeholder="Ej: 850 MBPS"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm"
-            />
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
           </div>
 
-          {/* Ciudad */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-              Ciudad
-            </label>
-            <input
-              type="text"
-              value={form.ciudad}
-              onChange={e => set("ciudad", e.target.value)}
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Ciudad</label>
+            <input type="text" value={form.ciudad} onChange={e => set("ciudad", e.target.value)}
               placeholder="Ej: Quito"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm"
-            />
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
           </div>
 
-          {/* Fecha Ingreso */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-              Fecha de Ingreso
-            </label>
-            <input
-              type="date"
-              value={form.fecha_ingreso}
-              onChange={e => set("fecha_ingreso", e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm [color-scheme:dark]"
-            />
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Fecha de Ingreso</label>
+            <input type="date" value={form.fecha_ingreso} onChange={e => set("fecha_ingreso", e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm [color-scheme:dark]" />
           </div>
 
-          {/* Estado + Pago en fila */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-                Estado
-              </label>
-              <select
-                value={form.estado}
-                onChange={e => set("estado", e.target.value)}
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm"
-              >
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Estado</label>
+              <select value={form.estado} onChange={e => set("estado", e.target.value)}
+                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm">
                 {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-                Pago
-              </label>
-              <select
-                value={form.pago}
-                onChange={e => set("pago", e.target.value)}
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm"
-              >
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Pago</label>
+              <select value={form.pago} onChange={e => set("pago", e.target.value)}
+                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm">
                 {PAGOS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
           </div>
 
-          {/* Tercerdad */}
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-            <button
-              type="button"
-              onClick={() => set("tercerdad", !form.tercerdad)}
-              className={`w-10 h-6 rounded-full transition-all duration-300 relative flex-shrink-0 ${
-                form.tercerdad ? "bg-blue-500" : "bg-slate-600"
-              }`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${
-                form.tercerdad ? "translate-x-4" : "translate-x-0"
-              }`} />
+            <button type="button" onClick={() => set("tercerdad", !form.tercerdad)}
+              className={`w-10 h-6 rounded-full transition-all duration-300 relative flex-shrink-0 ${form.tercerdad ? "bg-blue-500" : "bg-slate-600"}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${form.tercerdad ? "translate-x-4" : "translate-x-0"}`} />
             </button>
             <span className="text-sm font-bold text-slate-300">
               Tercerdad: <span className={form.tercerdad ? "text-emerald-400" : "text-red-400"}>
@@ -171,11 +123,8 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
             className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 font-bold text-sm transition-all">
             Cancelar
           </button>
-          <button
-            onClick={() => onGuardar(form)}
-            disabled={cargando}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/40"
-          >
+          <button onClick={() => onGuardar(form)} disabled={cargando}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/40">
             {cargando ? "Guardando…" : modo === "crear" ? "Crear Registro" : "Guardar Cambios"}
           </button>
         </div>
@@ -218,7 +167,7 @@ export default function Ventas() {
   const [cargando, setCargando]           = useState(true);
   const [cargandoAccion, setCargandoAccion] = useState(false);
   const [error, setError]                 = useState(null);
-  const [modal, setModal]                 = useState(null); // null | { modo: 'crear'|'editar'|'eliminar', registro?: {} }
+  const [modal, setModal]                 = useState(null);
   const [filtroEstado, setFiltroEstado]   = useState("TODOS");
   const [toast, setToast]                 = useState(null);
 
@@ -229,7 +178,7 @@ export default function Ventas() {
 
   const esAdmin     = perfil === "administrador";
   const esSoloVer   = ["supervisor", "analista", "gerencia"].includes(perfil);
-  const puedeEditar = esAdmin || (!esSoloVer); // asesor puede editar los suyos
+  const puedeEditar = esAdmin || (!esSoloVer);
   const puedeEliminar = esAdmin;
 
   const mostrarToast = (msg, tipo = "ok") => {
@@ -237,7 +186,7 @@ export default function Ventas() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── Cargar ventas ────────────────────────────────────────────────────────────
+  // ── Cargar ventas ─────────────────────────────────────────
   const cargarVentas = useCallback(async () => {
     setCargando(true);
     setError(null);
@@ -257,17 +206,27 @@ export default function Ventas() {
 
   useEffect(() => { cargarVentas(); }, [cargarVentas]);
 
-  // ── Crear / Editar ────────────────────────────────────────────────────────────
+  // ── Crear / Editar ────────────────────────────────────────
   const guardarVenta = async (form) => {
     setCargandoAccion(true);
     try {
       const esEditar = modal.modo === "editar";
+
+      // ✅ FIX: Limpiar strings vacíos → null para no pisar datos existentes en BD
+      const payload = {
+        ...form,
+        id_bitrix:     form.id_bitrix?.trim()     || null,
+        plan:          form.plan?.trim()           || null,
+        ciudad:        form.ciudad?.trim()         || null,
+        fecha_ingreso: form.fecha_ingreso          || null,
+      };
+
       const url    = esEditar ? `${API}/api/ventas/${modal.registro.id}` : `${API}/api/ventas`;
       const method = esEditar ? "PUT" : "POST";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload), // ✅ payload en lugar de form
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error al guardar");
@@ -281,7 +240,7 @@ export default function Ventas() {
     }
   };
 
-  // ── Eliminar ─────────────────────────────────────────────────────────────────
+  // ── Eliminar ──────────────────────────────────────────────
   const eliminarVenta = async (id) => {
     setCargandoAccion(true);
     try {
@@ -301,7 +260,7 @@ export default function Ventas() {
     }
   };
 
-  // ── Exportar CSV ─────────────────────────────────────────────────────────────
+  // ── Exportar CSV ──────────────────────────────────────────
   const exportarCSV = async () => {
     try {
       const res = await fetch(`${API}/api/ventas/exportar`, {
@@ -321,18 +280,15 @@ export default function Ventas() {
     }
   };
 
-  // ── Resumen contadores ───────────────────────────────────────────────────────
   const contadores = ESTADOS.reduce((acc, e) => {
     acc[e] = ventas.filter(v => v.estado === e).length;
     return acc;
   }, {});
 
-  // ── Filtro ────────────────────────────────────────────────────────────────────
   const ventasFiltradas = filtroEstado === "TODOS"
     ? ventas
     : ventas.filter(v => v.estado === filtroEstado);
 
-  // ── RENDER ────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 relative">
 
@@ -363,7 +319,7 @@ export default function Ventas() {
         />
       )}
 
-      {/* HEADER MÓDULO */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-white uppercase tracking-tight">📈 Ventas</h2>
@@ -381,8 +337,7 @@ export default function Ventas() {
             📥 Exportar CSV
           </button>
           {!esSoloVer && (
-            <button
-              onClick={() => setModal({ modo: "crear" })}
+            <button onClick={() => setModal({ modo: "crear" })}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm transition-all shadow-lg shadow-blue-900/40">
               ➕ Agregar
             </button>
@@ -390,7 +345,7 @@ export default function Ventas() {
         </div>
       </div>
 
-      {/* CONTADORES POR ESTADO */}
+      {/* CONTADORES */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[{ label: "TODOS", val: ventas.length, icon: "📋" },
           ...ESTADOS.map(e => ({
@@ -399,15 +354,12 @@ export default function Ventas() {
                     FACTIBLE:"🔵", PLANIFICADO:"📘", ASIGNADO:"📌" }[e]
           }))
         ].map(({ label, val, icon }) => (
-          <button
-            key={label}
-            onClick={() => setFiltroEstado(label)}
+          <button key={label} onClick={() => setFiltroEstado(label)}
             className={`text-center p-3 rounded-2xl border transition-all ${
               filtroEstado === label
                 ? "bg-blue-600/20 border-blue-500/50 text-white"
                 : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
-            }`}
-          >
+            }`}>
             <div className="text-xl">{icon}</div>
             <div className="text-lg font-black text-white">{val}</div>
             <div className="text-[10px] font-bold uppercase tracking-wider opacity-70 truncate">{label}</div>
@@ -459,9 +411,7 @@ export default function Ventas() {
               <tbody>
                 {ventasFiltradas.map((v, idx) => (
                   <tr key={v.id}
-                    className={`border-b border-white/5 transition-colors hover:bg-white/5 ${
-                      idx % 2 === 0 ? "" : "bg-white/[0.02]"
-                    }`}>
+                    className={`border-b border-white/5 transition-colors hover:bg-white/5 ${idx % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
                     <td className="px-4 py-3 text-slate-400 font-bold">{v.numero_venta}</td>
                     <td className="px-4 py-3 text-white font-mono text-xs">{v.id_bitrix || <span className="text-slate-600">—</span>}</td>
                     <td className="px-4 py-3 text-slate-200 whitespace-nowrap">{v.plan || <span className="text-slate-600">—</span>}</td>
@@ -482,9 +432,7 @@ export default function Ventas() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
-                        v.tercerdad ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"
-                      }`}>
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${v.tercerdad ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
                         {v.tercerdad ? "SÍ" : "NO"}
                       </span>
                     </td>
@@ -495,25 +443,18 @@ export default function Ventas() {
                     )}
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        {/* Editar: asesor edita los suyos, admin edita todos */}
                         {puedeEditar && !esSoloVer && (
-                          <button
-                            onClick={() => setModal({ modo: "editar", registro: v })}
-                            title="Editar"
+                          <button onClick={() => setModal({ modo: "editar", registro: v })} title="Editar"
                             className="w-8 h-8 rounded-lg bg-blue-600/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 flex items-center justify-center text-sm transition-all">
                             ✏️
                           </button>
                         )}
-                        {/* Eliminar: solo administrador */}
                         {puedeEliminar && (
-                          <button
-                            onClick={() => setModal({ modo: "eliminar", registro: v })}
-                            title="Eliminar"
+                          <button onClick={() => setModal({ modo: "eliminar", registro: v })} title="Eliminar"
                             className="w-8 h-8 rounded-lg bg-red-600/20 hover:bg-red-500/30 border border-red-500/30 text-red-300 flex items-center justify-center text-sm transition-all">
                             🗑️
                           </button>
                         )}
-                        {/* Sin acciones para supervisor/analista/gerencia */}
                         {esSoloVer && (
                           <span className="text-[10px] text-slate-600 font-bold px-2">Solo lectura</span>
                         )}
@@ -527,7 +468,6 @@ export default function Ventas() {
         )}
       </div>
 
-      {/* Pie con total */}
       {!cargando && !error && (
         <p className="text-center text-xs text-slate-600 font-bold">
           {ventasFiltradas.length} registro{ventasFiltradas.length !== 1 ? "s" : ""} mostrado{ventasFiltradas.length !== 1 ? "s" : ""}

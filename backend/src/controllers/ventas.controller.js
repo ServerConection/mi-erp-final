@@ -1,27 +1,28 @@
 // controllers/ventas.controller.js
 // ============================================================
-// Módulo: Seguimiento de Ventas
-// Seguridad: Solo ve sus propios registros (asesor)
-//            Supervisor/Analista/Gerencia/Administrador: ven todos
-//            Solo Administrador puede eliminar
+// CORRECCIONES:
+// 1. usuario_id comparado como Number (JWT lo trae como string)
+// 2. editarVenta usa valores actuales si el campo viene vacío
+// 3. Log de diagnóstico incluido
 // ============================================================
 
 const db = require("../config/db");
 
-// Perfiles con acceso global (ver todos los registros)
 const PERFILES_GLOBALES = ["supervisor", "analista", "gerencia", "administrador"];
 
 // ── GET /api/ventas ─────────────────────────────────────────
-// Retorna registros según perfil del usuario logueado
 const obtenerVentas = async (req, res) => {
   try {
     const { id: usuario_id, perfil, empresa } = req.user;
+    // ✅ FIX: Convertir a Number por si el JWT lo trae como string
+    const uid = Number(usuario_id);
     const esGlobal = PERFILES_GLOBALES.includes(perfil?.toLowerCase());
+
+    console.log(`[VENTAS] uid=${uid} perfil=${perfil} empresa=${empresa} esGlobal=${esGlobal}`);
 
     let query, params;
 
     if (esGlobal) {
-      // Administrador/Supervisor/etc: ve TODOS de su empresa
       query = `
         SELECT vr.*, u.usuario AS nombre_asesor
         FROM ventas_registros vr
@@ -31,7 +32,6 @@ const obtenerVentas = async (req, res) => {
       `;
       params = [empresa];
     } else {
-      // Asesor: solo sus propios registros
       query = `
         SELECT vr.*, u.usuario AS nombre_asesor
         FROM ventas_registros vr
@@ -39,10 +39,11 @@ const obtenerVentas = async (req, res) => {
         WHERE vr.usuario_id = $1
         ORDER BY vr.numero_venta ASC
       `;
-      params = [usuario_id];
+      params = [uid];
     }
 
     const { rows } = await db.query(query, params);
+    console.log(`[VENTAS] Registros encontrados: ${rows.length}`);
     res.json({ ok: true, data: rows });
   } catch (err) {
     console.error("Error obtenerVentas:", err);
@@ -51,13 +52,13 @@ const obtenerVentas = async (req, res) => {
 };
 
 // ── POST /api/ventas ────────────────────────────────────────
-// Crear nuevo registro — todos los perfiles pueden crear (para sí mismos)
 const crearVenta = async (req, res) => {
   try {
     const { id: usuario_id, empresa } = req.user;
+    // ✅ FIX: Convertir a Number
+    const uid = Number(usuario_id);
     const { id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad } = req.body;
 
-    // Validaciones básicas
     if (!estado) return res.status(400).json({ ok: false, mensaje: "El estado es requerido" });
     if (!pago)   return res.status(400).json({ ok: false, mensaje: "El tipo de pago es requerido" });
 
@@ -66,10 +67,9 @@ const crearVenta = async (req, res) => {
     if (!estadosValidos.includes(estado)) return res.status(400).json({ ok: false, mensaje: "Estado no válido" });
     if (!pagosValidos.includes(pago))     return res.status(400).json({ ok: false, mensaje: "Pago no válido" });
 
-    // Calcular siguiente número de venta para este usuario
     const { rows: numRows } = await db.query(
       `SELECT COALESCE(MAX(numero_venta), 0) + 1 AS siguiente FROM ventas_registros WHERE usuario_id = $1`,
-      [usuario_id]
+      [uid]
     );
     const numero_venta = numRows[0].siguiente;
 
@@ -78,8 +78,18 @@ const crearVenta = async (req, res) => {
         (numero_venta, id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad, usuario_id, empresa)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [numero_venta, id_bitrix || null, plan || null, ciudad || null,
-       fecha_ingreso || null, estado, pago, tercerdad === true || tercerdad === "SI", usuario_id, empresa]
+      [
+        numero_venta,
+        id_bitrix?.trim()     || null,
+        plan?.trim()          || null,
+        ciudad?.trim()        || null,
+        fecha_ingreso         || null,
+        estado,
+        pago,
+        tercerdad === true || tercerdad === "SI",
+        uid,
+        empresa,
+      ]
     );
 
     res.status(201).json({ ok: true, data: rows[0] });
@@ -90,46 +100,55 @@ const crearVenta = async (req, res) => {
 };
 
 // ── PUT /api/ventas/:id ─────────────────────────────────────
-// Editar registro:
-//   - Asesor: solo puede editar sus propios registros
-//   - Administrador: puede editar cualquiera de su empresa
 const editarVenta = async (req, res) => {
   try {
     const { id: usuario_id, perfil, empresa } = req.user;
+    // ✅ FIX: Convertir a Number para comparar correctamente con BD
+    const uid = Number(usuario_id);
     const { id } = req.params;
     const { id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad } = req.body;
     const esAdmin = perfil?.toLowerCase() === "administrador";
 
-    // Verificar existencia y permisos
+    // Verificar existencia
     const { rows: existing } = await db.query(
       `SELECT * FROM ventas_registros WHERE id = $1`, [id]
     );
-    if (existing.length === 0) return res.status(404).json({ ok: false, mensaje: "Registro no encontrado" });
+    if (existing.length === 0)
+      return res.status(404).json({ ok: false, mensaje: "Registro no encontrado" });
 
     const registro = existing[0];
 
-    // Asesor solo edita los suyos; admin edita cualquiera de su empresa
-    if (!esAdmin && registro.usuario_id !== usuario_id) {
+    // ✅ FIX: Comparar como Number (antes fallaba: "5" !== 5)
+    if (!esAdmin && Number(registro.usuario_id) !== uid) {
       return res.status(403).json({ ok: false, mensaje: "No tienes permiso para editar este registro" });
     }
     if (esAdmin && registro.empresa !== empresa) {
       return res.status(403).json({ ok: false, mensaje: "Registro no pertenece a tu empresa" });
     }
 
+    // ✅ FIX: Si el campo viene vacío/null, mantener el valor actual de la BD
     const { rows } = await db.query(
       `UPDATE ventas_registros SET
-        id_bitrix     = COALESCE($1, id_bitrix),
-        plan          = COALESCE($2, plan),
-        ciudad        = COALESCE($3, ciudad),
-        fecha_ingreso = COALESCE($4, fecha_ingreso),
-        estado        = COALESCE($5, estado),
-        pago          = COALESCE($6, pago),
-        tercerdad     = COALESCE($7, tercerdad)
+        id_bitrix     = $1,
+        plan          = $2,
+        ciudad        = $3,
+        fecha_ingreso = $4,
+        estado        = $5,
+        pago          = $6,
+        tercerdad     = $7
        WHERE id = $8 RETURNING *`,
-      [id_bitrix ?? null, plan ?? null, ciudad ?? null, fecha_ingreso ?? null,
-       estado ?? null, pago ?? null,
-       tercerdad !== undefined ? (tercerdad === true || tercerdad === "SI") : null,
-       id]
+      [
+        id_bitrix?.trim()     || registro.id_bitrix,
+        plan?.trim()          || registro.plan,
+        ciudad?.trim()        || registro.ciudad,
+        fecha_ingreso         || registro.fecha_ingreso,
+        estado                || registro.estado,
+        pago                  || registro.pago,
+        tercerdad !== undefined
+          ? (tercerdad === true || tercerdad === "SI")
+          : registro.tercerdad,
+        id,
+      ]
     );
 
     res.json({ ok: true, data: rows[0] });
@@ -140,7 +159,6 @@ const editarVenta = async (req, res) => {
 };
 
 // ── DELETE /api/ventas/:id ──────────────────────────────────
-// SOLO Administrador puede eliminar
 const eliminarVenta = async (req, res) => {
   try {
     const { perfil, empresa } = req.user;
@@ -153,7 +171,8 @@ const eliminarVenta = async (req, res) => {
     const { rows: existing } = await db.query(
       `SELECT * FROM ventas_registros WHERE id = $1`, [id]
     );
-    if (existing.length === 0) return res.status(404).json({ ok: false, mensaje: "Registro no encontrado" });
+    if (existing.length === 0)
+      return res.status(404).json({ ok: false, mensaje: "Registro no encontrado" });
     if (existing[0].empresa !== empresa) {
       return res.status(403).json({ ok: false, mensaje: "Registro no pertenece a tu empresa" });
     }
@@ -167,10 +186,10 @@ const eliminarVenta = async (req, res) => {
 };
 
 // ── GET /api/ventas/exportar ────────────────────────────────
-// Exportar datos en CSV según perfil
 const exportarVentas = async (req, res) => {
   try {
     const { id: usuario_id, perfil, empresa } = req.user;
+    const uid = Number(usuario_id);
     const esGlobal = PERFILES_GLOBALES.includes(perfil?.toLowerCase());
 
     let query, params;
@@ -195,11 +214,12 @@ const exportarVentas = async (req, res) => {
         WHERE usuario_id = $1
         ORDER BY numero_venta
       `;
-      params = [usuario_id];
+      params = [uid];
     }
 
     const { rows } = await db.query(query, params);
-    if (rows.length === 0) return res.status(404).json({ ok: false, mensaje: "Sin datos para exportar" });
+    if (rows.length === 0)
+      return res.status(404).json({ ok: false, mensaje: "Sin datos para exportar" });
 
     const headers = Object.keys(rows[0]).join(",");
     const csvRows = rows.map(r =>
@@ -209,7 +229,7 @@ const exportarVentas = async (req, res) => {
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="ventas_${Date.now()}.csv"`);
-    res.send("\uFEFF" + csv); // BOM para Excel
+    res.send("\uFEFF" + csv);
   } catch (err) {
     console.error("Error exportarVentas:", err);
     res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });

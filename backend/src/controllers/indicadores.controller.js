@@ -1,5 +1,33 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Caché de nivel módulo para consultas estáticas (etapas CRM / Jotform)
+// Se refresca cada 5 minutos para no saturar el pool con queries repetitivas
+// ─────────────────────────────────────────────────────────────────────────────
+let _cacheEtapas    = null;
+let _cacheEtapasTTL = 0;
+const CACHE_TTL_MS  = 5 * 60 * 1000; // 5 minutos
+
+const getEtapasCache = async () => {
+  const ahora = Date.now();
+  if (_cacheEtapas && ahora < _cacheEtapasTTL) return _cacheEtapas;
+
+  const [resCRM, resJot] = await Promise.all([
+    pool.query(`SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
+                FROM public.mestra_bitrix mb
+                WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
+                  AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
+                ORDER BY etapa ASC`),
+    pool.query(`SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
+                FROM public.mestra_bitrix mb
+                ORDER BY etapa ASC`),
+  ]);
+
+  _cacheEtapas    = { etapasCRM: resCRM.rows.map(r => r.etapa), etapasJotform: resJot.rows.map(r => r.etapa) };
+  _cacheEtapasTTL = ahora + CACHE_TTL_MS;
+  return _cacheEtapas;
+};
+
 const getFechaEcuador = () => {
     const ahora = new Date();
     return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -282,20 +310,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
-        const queryEtapasCRM = `
-            SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
-            FROM public.mestra_bitrix mb
-            WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
-            AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
-            ORDER BY etapa ASC
-        `;
-
-        const queryEtapasJotform = `
-            SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
-            FROM public.mestra_bitrix mb
-            ORDER BY etapa ASC
-        `;
-
         const queryTerceraEdad = `
             SELECT
                 COUNT(*) FILTER (
@@ -321,18 +335,25 @@ const getIndicadoresDashboard = async (req, res) => {
             ${filtersNoJoin}
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resEtapasJotform, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
-            pool.query(queryKPI('e.supervisor'), values),
-            pool.query(queryKPI('mb.b_persona_responsable'), values),
+        // ── Lote 1: KPIs + agregaciones (7 queries) ─ Lote 2: tablas + etapas caché ──
+        // Dividir en 2 lotes para no agotar el pool (max 15 conexiones)
+        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resDia, resTerceraEdad, resTarjeta]] = await Promise.all([
+            getEtapasCache(),
+            Promise.all([
+                pool.query(queryKPI('e.supervisor'), values),
+                pool.query(queryKPI('mb.b_persona_responsable'), values),
+                pool.query(queryEstados, values),
+                pool.query(queryEmbudo, values),
+                pool.query(queryPorDia, values),
+                pool.query(queryTerceraEdad, values),
+                pool.query(queryTarjeta, values),
+            ]),
+        ]);
+
+        // Lote 2: tablas detalle + backlogs (espera al lote 1 para no saturar el pool)
+        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
-            pool.query(queryEstados, values),
-            pool.query(queryEmbudo, values),
-            pool.query(queryPorDia, values),
-            pool.query(queryEtapasCRM),
-            pool.query(queryEtapasJotform),
-            pool.query(queryTerceraEdad, values),
-            pool.query(queryTarjeta, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('mb.b_persona_responsable'), values),
         ]);
@@ -383,8 +404,8 @@ const getIndicadoresDashboard = async (req, res) => {
             estadosNetlife,
             graficoEmbudo,
             graficoBarrasDia: resDia.rows,
-            etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
-            etapasJotform: resEtapasJotform.rows.map(r => r.etapa),
+            etapasCRM: etapasCache.etapasCRM,
+            etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
             porcentajeTarjeta,
         });

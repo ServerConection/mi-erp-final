@@ -186,9 +186,13 @@ export default function ReporteComercialCore() {
   const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
+  // Listas estables para los dropdowns — nunca se borran al filtrar
+  const [allSupervisores, setAllSupervisores] = useState([]);
+  const [allAsesores,     setAllAsesores]     = useState([]);
+
   const nombresAsesores = useMemo(
-    () => [...(data.asesores || [])].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
-    [data.asesores]
+    () => [...allAsesores].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
+    [allAsesores]
   );
 
   const mostrarAlertas = (supervisores) => {
@@ -213,6 +217,11 @@ export default function ReporteComercialCore() {
           porcentajeTarjeta:     Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
         });
+        // Guardar listas completas solo cuando no hay filtro activo (para que el dropdown no pierda opciones)
+        if (!filtrosActivos.supervisor && !filtrosActivos.asesor) {
+          if (result.supervisores?.length) setAllSupervisores(result.supervisores);
+          if (result.asesores?.length)     setAllAsesores(result.asesores);
+        }
         mostrarAlertas(result.supervisores);
       }
     } catch (e) { console.error("Error Dashboard:", e); } finally { setLoading(false); }
@@ -556,7 +565,7 @@ export default function ReporteComercialCore() {
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
                 <select className={selectCls} value={filtros.supervisor} onChange={e => updateFiltro('supervisor', e.target.value)}>
                   <option value="">TODOS</option>
-                  {[...new Set((data.supervisores || []).map(s => s.nombre_grupo).filter(n => n && n !== 'SIN ASIGNAR'))].sort().map((nombre, i) => (
+                  {[...new Set((allSupervisores || []).map(s => s.nombre_grupo).filter(n => n && n !== 'SIN ASIGNAR'))].sort().map((nombre, i) => (
                     <option key={i} value={nombre}>{nombre}</option>
                   ))}
                 </select>

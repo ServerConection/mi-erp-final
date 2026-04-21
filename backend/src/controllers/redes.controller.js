@@ -184,6 +184,8 @@ const pool = require('../config/db');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. MONITOREO POR CIUDAD
+  // mv_monitoreo_ciudad no tiene columna canal → siempre datos globales.
+  // Aceptamos el param para consistencia pero no filtramos (la vista no lo permite).
   // ─────────────────────────────────────────────────────────────────────────────
   const getMonitoreoCiudad = async (req, res) => {
     try {
@@ -210,21 +212,75 @@ const pool = require('../config/db');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 3. MONITOREO POR HORA
+  // Cuando llega ?canales=..., filtramos desde mv_monitoreo_publicidad agrupando
+  // por EXTRACT(HOUR FROM fecha) — proxy del comportamiento horario.
+  // Sin canal: usamos mv_monitoreo_hora (más rápida y precisa).
   // ─────────────────────────────────────────────────────────────────────────────
   const getMonitoreoHora = async (req, res) => {
     try {
       const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+      const gruposRaw = req.query.canales || '';
+      const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+
+      if (gruposSel.length === 0) {
+        // Sin filtro: usar vista materializada (rápida)
+        const totalesResult = await pool.query(`
+          SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
+            ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc_hora
+          FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1 AND $2
+          GROUP BY hora ORDER BY hora ASC
+        `, [fechaDesde, fechaHasta]);
+        const detalleResult = await pool.query(`
+          SELECT fecha, hora, n_leads, atc, ROUND(pct_atc_hora::numeric*100,1) AS pct_atc_hora
+          FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1 AND $2
+          ORDER BY fecha DESC, hora ASC
+        `, [fechaDesde, fechaHasta]);
+        return res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
+      }
+
+      // Con filtro de canal → query desde mv_monitoreo_publicidad agrupando por hora del día
+      // (la vista materializada tiene granularidad fecha×canal, derivamos la hora como día/hora approximado)
+      // Usamos mestra_bitrix para obtener datos horarios reales con filtro de origen
+      const { origenesBitrix } = resolverGrupos(gruposSel);
+      const { where: origWhere, params: origParams } = buildInWhere(origenesBitrix, 2, 'mb.b_origen');
+
       const totalesResult = await pool.query(`
-        SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
-          ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc_hora
-        FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1 AND $2
-        GROUP BY hora ORDER BY hora ASC
-      `, [fechaDesde, fechaHasta]);
+        SELECT
+          EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
+          COUNT(*) AS n_leads,
+          COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '') AS atc,
+          ROUND(
+            COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '')::numeric
+            / NULLIF(COUNT(*), 0) * 100, 1
+          ) AS pct_atc_hora
+        FROM public.mestra_bitrix mb
+        WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
+          AND mb.b_creado_el_hora IS NOT NULL
+          AND mb.b_creado_el_hora ~ '^[0-2]?[0-9]:[0-5][0-9]'
+          ${origWhere}
+        GROUP BY hora
+        ORDER BY hora ASC
+      `, [fechaDesde, fechaHasta, ...origParams]);
+
       const detalleResult = await pool.query(`
-        SELECT fecha, hora, n_leads, atc, ROUND(pct_atc_hora::numeric*100,1) AS pct_atc_hora
-        FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1 AND $2
-        ORDER BY fecha DESC, hora ASC
-      `, [fechaDesde, fechaHasta]);
+        SELECT
+          mb.b_creado_el_fecha AS fecha,
+          EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
+          COUNT(*) AS n_leads,
+          COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '') AS atc,
+          ROUND(
+            COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '')::numeric
+            / NULLIF(COUNT(*), 0) * 100, 1
+          ) AS pct_atc_hora
+        FROM public.mestra_bitrix mb
+        WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
+          AND mb.b_creado_el_hora IS NOT NULL
+          AND mb.b_creado_el_hora ~ '^[0-2]?[0-9]:[0-5][0-9]'
+          ${origWhere}
+        GROUP BY mb.b_creado_el_fecha, hora
+        ORDER BY mb.b_creado_el_fecha DESC, hora ASC
+      `, [fechaDesde, fechaHasta, ...origParams]);
+
       res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
     } catch (error) {
       console.error('Error en getMonitoreoHora:', error);
@@ -234,18 +290,58 @@ const pool = require('../config/db');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 4. MONITOREO MOTIVOS ATC
+  // Con canal: filtramos desde mestra_bitrix. Sin canal: vista materializada.
   // ─────────────────────────────────────────────────────────────────────────────
   const getMonitoreoAtc = async (req, res) => {
     try {
       const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+      const gruposRaw = req.query.canales || '';
+      const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+
+      if (gruposSel.length === 0) {
+        // Sin filtro: usar vista materializada
+        const totalesResult = await pool.query(`
+          SELECT motivo_atc, SUM(cantidad) AS cantidad FROM public.mv_monitoreo_atc
+          WHERE fecha BETWEEN $1 AND $2 GROUP BY motivo_atc ORDER BY cantidad DESC
+        `, [fechaDesde, fechaHasta]);
+        const detalleResult = await pool.query(`
+          SELECT fecha, motivo_atc, cantidad FROM public.mv_monitoreo_atc
+          WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha DESC, cantidad DESC
+        `, [fechaDesde, fechaHasta]);
+        return res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
+      }
+
+      // Con filtro de canal → query desde mestra_bitrix con filtro de origen
+      const { origenesBitrix } = resolverGrupos(gruposSel);
+      const { where: origWhere, params: origParams } = buildInWhere(origenesBitrix, 2, 'mb.b_origen');
+
       const totalesResult = await pool.query(`
-        SELECT motivo_atc, SUM(cantidad) AS cantidad FROM public.mv_monitoreo_atc
-        WHERE fecha BETWEEN $1 AND $2 GROUP BY motivo_atc ORDER BY cantidad DESC
-      `, [fechaDesde, fechaHasta]);
+        SELECT
+          COALESCE(NULLIF(TRIM(mb.j_novedades_atc), ''), 'Sin motivo especificado') AS motivo_atc,
+          COUNT(*) AS cantidad
+        FROM public.mestra_bitrix mb
+        WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
+          AND mb.j_novedades_atc IS NOT NULL
+          AND TRIM(mb.j_novedades_atc) <> ''
+          ${origWhere}
+        GROUP BY motivo_atc
+        ORDER BY cantidad DESC
+      `, [fechaDesde, fechaHasta, ...origParams]);
+
       const detalleResult = await pool.query(`
-        SELECT fecha, motivo_atc, cantidad FROM public.mv_monitoreo_atc
-        WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha DESC, cantidad DESC
-      `, [fechaDesde, fechaHasta]);
+        SELECT
+          mb.b_creado_el_fecha AS fecha,
+          COALESCE(NULLIF(TRIM(mb.j_novedades_atc), ''), 'Sin motivo especificado') AS motivo_atc,
+          COUNT(*) AS cantidad
+        FROM public.mestra_bitrix mb
+        WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
+          AND mb.j_novedades_atc IS NOT NULL
+          AND TRIM(mb.j_novedades_atc) <> ''
+          ${origWhere}
+        GROUP BY mb.b_creado_el_fecha, motivo_atc
+        ORDER BY mb.b_creado_el_fecha DESC, cantidad DESC
+      `, [fechaDesde, fechaHasta, ...origParams]);
+
       res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
     } catch (error) {
       console.error('Error en getMonitoreoAtc:', error);

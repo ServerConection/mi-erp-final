@@ -193,9 +193,9 @@ function useMonitoreoData(desde, hasta, canalesSel) {
     const p = buildFiltroParams({ desde, hasta, canalesSel });
     Promise.all([
       fetch(apiUrl("monitoreo-redes",  p)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-ciudad", `fechaDesde=${desde}&fechaHasta=${hasta}`)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-hora",   `fechaDesde=${desde}&fechaHasta=${hasta}`)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-atc",    `fechaDesde=${desde}&fechaHasta=${hasta}`)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-ciudad", p)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-hora",   p)).then(r => r.json()).catch(() => null),
+      fetch(apiUrl("monitoreo-atc",    p)).then(r => r.json()).catch(() => null),
     ]).then(([p_, c, h, a]) => setData({
       principal: p_?.success ? p_ : null,
       ciudad:    c?.success  ? c  : null,

@@ -5,7 +5,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { registrarIntento } = require('../services/audit.service');
 const { obtenerPermisosUsuario } = require('../config/permisos.config');
-const { verificarToken } = require('../middlewares/auth');
+const { verificarToken } = require('../middleware/auth');
 
 // Rate limiting simple en memoria
 const intentos = new Map();

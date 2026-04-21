@@ -3,27 +3,20 @@ const express = require('express');
 const path    = require('path');
 const cors = require('cors');
 
-const authRoutes             = require('./routes/auth.routes');
-const redesRoutes            = require('./routes/redes.routes');
-const usuariosRoutes         = require('./routes/usuarios.routes');
-const loginOtpRoutes         = require('./routes/login.otp.routes');
-const passwordRoutes         = require('./routes/password.routes');
-const forgotRoutes           = require('./routes/forgotPassword.routes');
-const testEmailRoutes        = require('./routes/test.email.routes');
-const verifyOtpRoutes        = require('./routes/verify.otp.routes');
-<<<<<<< HEAD
-const indicadoresRoutes          = require('./routes/indicadores.routes');
-const indicadoresVelsaRoutes     = require('./routes/indicadoresVelsa.routes');
+const authRoutes                   = require('./routes/auth.routes');
+const redesRoutes                  = require('./routes/redes.routes');
+const usuariosRoutes               = require('./routes/usuarios.routes');
+const loginOtpRoutes               = require('./routes/login.otp.routes');
+const passwordRoutes               = require('./routes/password.routes');
+const forgotRoutes                 = require('./routes/forgotPassword.routes');
+const testEmailRoutes              = require('./routes/test.email.routes');
+const verifyOtpRoutes              = require('./routes/verify.otp.routes');
+const indicadoresRoutes            = require('./routes/indicadores.routes');
+const indicadoresVelsaRoutes       = require('./routes/indicadoresVelsa.routes');
 const comparativaIndicadoresRoutes = require('./routes/comparativaIndicadores.routes');
-const alertasRoutes              = require('./routes/alertas.routes');  // ← NUEVO
-const broadcastRoutes            = require('./routes/broadcast.routes'); // ← NUEVO
-=======
-const indicadoresRoutes      = require('./routes/indicadores.routes');
-const indicadoresVelsaRoutes = require('./routes/indicadoresVelsa.routes');
-const alertasRoutes          = require('./routes/alertas.routes');
-const broadcastRoutes        = require('./routes/broadcast.routes');
-const ventasRoutes           = require('./routes/ventas.routes');
->>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
+const alertasRoutes                = require('./routes/alertas.routes');
+const broadcastRoutes              = require('./routes/broadcast.routes');
+const ventasRoutes                 = require('./routes/ventas.routes');
 
 const app = express();
 
@@ -40,11 +33,11 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : ['http://localhost:5173', 'http://localhost:3000'];
 
 app.use(cors({
-  origin: allowedOrigins,           // Solo estos orígenes
-  credentials: true,                 // Permite cookies y auth headers
+  origin: allowedOrigins,
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400                      // Cache pre-flight 24 horas
+  maxAge: 86400
 }));
 app.use(express.json());
 
@@ -66,8 +59,8 @@ app.use('/api/auth',         forgotRoutes);
 app.use('/api',              testEmailRoutes);
 
 // Indicadores
-app.use('/api/indicadores',           indicadoresRoutes);
-app.use('/api/indicadores-velsa',     indicadoresVelsaRoutes);
+app.use('/api/indicadores',             indicadoresRoutes);
+app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 
 // Redes

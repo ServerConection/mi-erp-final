@@ -966,18 +966,18 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
   const { principal, hora, atc } = data;
   const [openFunnel, setOpenFunnel] = useState(false);
 
+  // ⚠️ useMemo DEBE ir antes de cualquier return condicional (regla de hooks)
+  const rawFilas = principal?.data || [];
+  const origenData = useMemo(() => {
+    if (canalesSel.length !== 1 || !principal) return [];
+    return agregarPorOrigenDia(rawFilas);
+  }, [rawFilas, canalesSel, principal]);
+
   if (loading) return <Spinner />;
   if (!principal) return <div className="text-center py-32 text-sm font-bold" style={{ color: C.muted }}>Sin datos — aplica un filtro de fechas.</div>;
 
-  const rawFilas     = principal?.data || [];
   const porFecha     = agregarPorFecha(rawFilas);
   const porCanal     = agregarPorCanal(rawFilas);
-
-  // Datos por origen cuando hay 1 canal seleccionado
-  const origenData = useMemo(() => {
-    if (canalesSel.length !== 1) return [];
-    return agregarPorOrigenDia(rawFilas);
-  }, [rawFilas, canalesSel]);
 
   const modoDesglose   = canalesSel.length === 1 && origenData.length > 0;
   const canalFiltradoCfg = canalesSel.length === 1 ? getCfg(canalesSel[0]) : null;

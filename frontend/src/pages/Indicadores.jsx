@@ -296,14 +296,16 @@ export default function ReporteComercialCore() {
     const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalBacklog      = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
+    const totalIngresosCRM  = s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0);
     return {
-      ingresosCRM:              s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
+      ingresosCRM:              totalIngresosCRM,
       gestionables:             totalGestionables,
       regularizar:              s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform:          totalJotform,
       descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      efectividad:              totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
+      // Efectividad = Ingresos CRM (Venta Subida) / Gestionables
+      efectividad:              totalGestionables > 0 ? ((totalIngresosCRM / totalGestionables) * 100).toFixed(1) : "0.0",
       tasaInstalacion:          totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
       tarjetaCredito:           Number(data.porcentajeTarjeta || 0).toFixed(1),
       terceraEdad:              Number(data.porcentajeTerceraEdad || 0).toFixed(1),

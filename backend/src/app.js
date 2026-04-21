@@ -47,7 +47,7 @@ const corsOptions = {
 };
 
 // Manejo explícito de preflight (OPTIONS) para todas las rutas
-app.options('*', cors(corsOptions));
+app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
 app.use(express.json());
 

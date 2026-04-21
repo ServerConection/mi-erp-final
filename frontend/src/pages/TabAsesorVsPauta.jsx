@@ -444,17 +444,19 @@ function AreaScoreCPL({ asesores, canalList }) {
 /** HEATMAP multimétrica con toggle */
 function Heatmap({ asesoresXCanal, canales }) {
   const [modo,setModo]=useState("efect");
-  const modos=[{v:"efect",l:"Efect%"},{v:"score",l:"Score"},{v:"pct_atc",l:"%ATC"},{v:"leads",l:"Leads"}];
+  const modos=[{v:"efect",l:"Efect%"},{v:"score",l:"Score"},{v:"jot",l:"JOT"},{v:"leads",l:"Leads"}];
   const asesores=[...new Set(Object.values(asesoresXCanal).flat().map(a=>a.nombre))].slice(0,15);
 
   const getVal=(nm,c)=>{
     const a=(asesoresXCanal[c]||[]).find(x=>x.nombre===nm);
-    return a ? (modo==="pct_atc"?pct(a.atc,a.leads):a[modo]) : null;
+    if(!a) return null;
+    if(modo==="jot") return a.jot;
+    return a[modo] ?? null;
   };
   const hc=(v)=>{
     if(v===null) return "#f1f5f9";
-    if(modo==="pct_atc") return v<=20?"#059669":v<=40?"#f59e0b":"#ef4444";
     if(modo==="leads"){const t=Math.min(v/30,1);return t>0.7?"#1e3a8a":t>0.4?"#3b82f6":t>0.2?"#93c5fd":"#dbeafe";}
+    if(modo==="jot"){const t=Math.min(v/10,1);return t>0.7?"#059669":t>0.4?"#10b981":t>0.1?"#34d399":"#d1fae5";}
     return v>=20?"#059669":v>=15?"#10b981":v>=10?"#34d399":v>=5?"#f59e0b":"#ef4444";
   };
 
@@ -501,7 +503,7 @@ function Heatmap({ asesoresXCanal, canales }) {
                         background:bg, display:"flex", alignItems:"center", justifyContent:"center",
                         color:lightText?"#fff":(v!==null?C.slate:C.muted), fontSize:"9px", fontWeight:900,
                         boxShadow:v!==null?`0 2px 8px ${bg}50`:"none" }}>
-                        {v!==null ? (modo==="leads"?v:(v.toFixed(0)+"%")) : "—"}
+                        {v!==null ? (modo==="leads"||modo==="jot" ? v : (v.toFixed(0)+"%")) : "—"}
                       </div>
                     </td>
                   );
@@ -818,9 +820,17 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
   }, [asesores, pauta]);
 
   const canalPpal = pauta.canales.length>0 ? pauta.canales.sort((a,b)=>b.leads-a.leads)[0] : null;
-  const asesConCanal = asesores.map(a=>({ ...a, canal:canalPpal?.canal||"GENERAL" }));
 
-  const asesFilt = asel ? asesores.filter(a=>a.nombre===asel) : asesores;
+  // Cuando hay 1 canal filtrado, usar los datos proporcionales de asesXCanal
+  // así las burbujas y scatter reflejan exactamente ese canal
+  const asesConCanal = useMemo(() => {
+    if (canalesSel.length === 1 && asesXCanal[canalesSel[0]]?.length) {
+      return asesXCanal[canalesSel[0]];
+    }
+    return asesores.map(a=>({ ...a, canal:canalPpal?.canal||"GENERAL" }));
+  }, [canalesSel, asesXCanal, asesores, canalPpal]);
+
+  const asesFilt = asel ? asesConCanal.filter(a=>a.nombre===asel) : asesConCanal;
 
   const glob = useMemo(()=>{
     const totL=asesores.reduce((s,a)=>s+a.leads,0);
@@ -891,23 +901,16 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
         )}
       </div>
 
-      {/* FILTROS */}
-      <div style={{ background:"#fff", borderRadius:"16px", border:`1px solid ${C.border}`, padding:"16px 22px" }}>
-        <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
-            <span style={{ fontSize:"8px", fontWeight:900, color:C.muted, textTransform:"uppercase" }}>📡 Canal:</span>
-            <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
-          </div>
-          <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:"12px",
-            display:"flex", alignItems:"center", gap:"12px", flexWrap:"wrap" }}>
-            <span style={{ fontSize:"8px", fontWeight:900, color:C.muted, textTransform:"uppercase" }}>👤 Asesor:</span>
-            <AsesorDropdown asesores={asesores} value={asel} onChange={setAsel} />
-            {asel && (
-              <button onClick={()=>setAsel("")} style={{ fontSize:"8px", color:C.danger, fontWeight:900,
-                background:`${C.danger}10`, border:`1px solid ${C.danger}30`,
-                borderRadius:"9999px", padding:"4px 12px", cursor:"pointer" }}>✕ Limpiar</button>
-            )}
-          </div>
+      {/* FILTROS — solo asesor (canal ya está en el panel global superior) */}
+      <div style={{ background:"#fff", borderRadius:"16px", border:`1px solid ${C.border}`, padding:"14px 22px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"12px", flexWrap:"wrap" }}>
+          <span style={{ fontSize:"8px", fontWeight:900, color:C.muted, textTransform:"uppercase" }}>👤 Asesor:</span>
+          <AsesorDropdown asesores={asesores} value={asel} onChange={setAsel} />
+          {asel && (
+            <button onClick={()=>setAsel("")} style={{ fontSize:"8px", color:C.danger, fontWeight:900,
+              background:`${C.danger}10`, border:`1px solid ${C.danger}30`,
+              borderRadius:"9999px", padding:"4px 12px", cursor:"pointer" }}>✕ Limpiar</button>
+          )}
         </div>
       </div>
 
@@ -1002,7 +1005,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
         <Card title="Burbujas: Costo Total/Lead vs Efectividad"
           subtitle="Tamaño = leads · X = CPL canal + costo asesor · Y = efectividad % · Ideal: arriba-izquierda"
           accent={C.violet}>
-          <BubbleCostoEfect asesores={asesConCanal} canalMap={pauta.map} />
+          <BubbleCostoEfect asesores={asel ? asesFilt : asesConCanal} canalMap={pauta.map} />
           <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"10px", marginTop:"16px" }}>
             {[
               {l:"⭐ Arriba-Izq.",c:C.success,bg:"#d1fae5",d:"Bajo costo + alta efect. = óptimo"},
@@ -1025,7 +1028,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
           <Card title="Scatter: Inversión de Pauta Asignada vs JOT Logrado"
             subtitle="Cada punto = asesor · ROI en tooltip · Ideal: parte superior"
             accent={C.success}>
-            <ScatterInvJOT asesores={asesConCanal} canalMap={pauta.map} />
+            <ScatterInvJOT asesores={asel ? asesFilt : asesConCanal} canalMap={pauta.map} />
           </Card>
           {/* JOT vs Leads apilado */}
           <Card title="JOT Logrado vs Gap de Conversión — Todos los Asesores"
@@ -1069,7 +1072,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
                 background:`${C.orange}15`, color:C.orange, fontWeight:900 }}>■ Costo Asesor</span>
             </div>
           }>
-          <BarrasCostoApilado asesores={asel?asesFilt:asesores} canalMap={pauta.map} />
+          <BarrasCostoApilado asesores={asel?asesFilt:asesConCanal} canalMap={pauta.map} />
           <div style={{ marginTop:"16px", padding:"12px 16px", borderRadius:"12px",
             background:"#f8fafc", border:`1px solid ${C.border}`, fontSize:"8px", color:C.muted }}>
             💡 <b style={{ color:C.slate }}>Cómo leer:</b> Morado = pauta digital (CPL).
@@ -1104,7 +1107,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
               return <Gauge key={i} valor={a.score} label={a.nombre.split(" ")[0]} color={col} size={68} />;
             })}
           </div>
-          <TablaRanking data={asel?asesFilt:asesores} canalMap={pauta.map} />
+          <TablaRanking data={asel?asesFilt:asesConCanal} canalMap={pauta.map} />
         </Card>
       )}
 

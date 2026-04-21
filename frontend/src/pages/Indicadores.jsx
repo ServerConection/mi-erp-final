@@ -183,7 +183,7 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
   // Listas estables para los dropdowns — nunca se borran al filtrar
@@ -600,6 +600,15 @@ export default function ReporteComercialCore() {
                   <option value="">TODOS</option>
                   <option value="POR REGULARIZAR">POR REGULARIZAR</option>
                   <option value="REGULARIZADO">REGULARIZADO</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-emerald-400 italic uppercase">📡 CAMPAÑA/ORIGEN</label>
+                <select className={selectCls} value={filtros.canal} onChange={e => updateFiltro('canal', e.target.value)}>
+                  <option value="">TODAS LAS CAMPAÑAS</option>
+                  {(data.canales || ["ARTS","ARTS FACEBOOK","ARTS GOOGLE","REMARKETING","VIDIKA GOOGLE","POR RECOMENDACIÓN"]).map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
               <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>

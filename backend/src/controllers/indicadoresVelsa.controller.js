@@ -20,7 +20,7 @@ const ESTADO_ACTIVO = `'ACTIVO'`;
 
 const getIndicadoresDashboardVelsa = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -35,6 +35,8 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND vn.t2_regularizado ILIKE $${values.length}`; }
         if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
         if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
+        // Filtro por campaña/origen (campo t1_relation_tags en velsa_netlife_maestra_cons)
+        if (canal) { values.push(`%${canal}%`); filters += ` AND vn.t1_relation_tags ILIKE $${values.length}`; }
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
         const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
@@ -277,7 +279,16 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             ${filters}
         `;
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses] = await Promise.all([
+        const queryCanales = `
+            SELECT DISTINCT vn.t1_relation_tags AS canal
+            FROM ${dedupVN}
+            WHERE vn.t1_relation_tags IS NOT NULL
+              AND TRIM(vn.t1_relation_tags) <> ''
+            ORDER BY canal ASC
+            LIMIT 50
+        `;
+
+        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses, resCanales] = await Promise.all([
             pool.query(queryKPI('vn.supervisor_asignado'), values),
             pool.query(queryKPI('vn.t1_assigned_to'), values),
             pool.query(queryCRM, values),
@@ -290,6 +301,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             pool.query(queryTarjeta, values),
             pool.query(queryBacklog('vn.supervisor_asignado'), values),
             pool.query(queryBacklog('vn.t1_assigned_to'), values),
+            pool.query(queryCanales),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -329,6 +341,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
             porcentajeTerceraEdad,
             porcentajeTarjeta,
+            canales: resCanales.rows.map(r => r.canal),
         });
 
     } catch (error) {

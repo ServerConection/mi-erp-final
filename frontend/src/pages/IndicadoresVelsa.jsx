@@ -142,6 +142,7 @@ export default function ReporteVelsa() {
     estadoRegularizacion: "",
     etapaCRM: "",
     etapaJotform: "",
+    canal: "",
   });
 
   const [filtros180, setFiltros180] = useState({
@@ -477,6 +478,18 @@ export default function ReporteVelsa() {
                   <option value="">TODOS</option>
                   <option value="POR REGULARIZAR">POR REGULARIZAR</option>
                   <option value="REGULARIZADO">REGULARIZADO</option>
+                </select>
+              </div>
+
+              {/* CAMPAÑA / ORIGEN */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-orange-400 italic uppercase">📡 CAMPAÑA/ORIGEN</label>
+                <select className={selectCls} value={filtros.canal}
+                  onChange={e => updateFiltro('canal', e.target.value)}>
+                  <option value="">TODAS LAS CAMPAÑAS</option>
+                  {(data.canales || []).map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
 

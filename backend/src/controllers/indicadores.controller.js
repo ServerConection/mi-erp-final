@@ -83,9 +83,20 @@ const supervisorExistsFilter = (paramIndex) =>
         WHERE _sup.supervisor ILIKE $${paramIndex}
     )`;
 
+// Mapa canal → valores reales de mb.b_origen
+const CANAL_ORIGENES_MAP = {
+    "ARTS":              ["BASE 593-979083368"],
+    "ARTS FACEBOOK":     ["BASE 593-995211968"],
+    "ARTS GOOGLE":       ["BASE 593-992827793", "FORMULARIO LANDING 3", "LLAMADA LANDING 3"],
+    "REMARKETING":       ["BASE 593-958993371", "BASE 593-984414273", "BASE 593-995967355", "WHATSAPP 593958993371"],
+    "VIDIKA GOOGLE":     ["BASE 593-962881280", "BASE 593-987133635", "BASE API 593963463480", "FORMULARIO LANDING 4", "LLAMADA", "LLAMADA LANDING 4"],
+    "POR RECOMENDACIÓN": ["POR RECOMENDACIÓN", "REFERIDO PERSONAL", "TIENDA ONLINE"],
+};
+const CANALES_DISPONIBLES = Object.keys(CANAL_ORIGENES_MAP);
+
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -124,6 +135,15 @@ const getIndicadoresDashboard = async (req, res) => {
             values.push(`%${etapaJotform}%`);
             filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+        // Filtro por canal de pauta → convierte a lista de b_origen
+        if (canal && CANAL_ORIGENES_MAP[canal]) {
+            const origenesCanal = CANAL_ORIGENES_MAP[canal];
+            const startIdx = values.length + 1;
+            const placeholders = origenesCanal.map((_, i) => `$${startIdx + i}`).join(', ');
+            values.push(...origenesCanal);
+            filtersJoin   += ` AND mb.b_origen IN (${placeholders})`;
+            filtersNoJoin += ` AND mb.b_origen IN (${placeholders})`;
         }
 
         const ETAPAS_GESTIONABLES = `(
@@ -408,6 +428,7 @@ const getIndicadoresDashboard = async (req, res) => {
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
             porcentajeTarjeta,
+            canales: CANALES_DISPONIBLES,
         });
 
     } catch (error) {

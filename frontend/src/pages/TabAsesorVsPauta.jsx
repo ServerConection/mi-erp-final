@@ -444,12 +444,16 @@ function AreaScoreCPL({ asesores, canalList }) {
 /** HEATMAP multimétrica con toggle */
 function Heatmap({ asesoresXCanal, canales }) {
   const [modo,setModo]=useState("efect");
-  const modos=[{v:"efect",l:"Efect%"},{v:"score",l:"Score"},{v:"jot",l:"JOT"},{v:"leads",l:"Leads"}];
+  const modos=[
+    {v:"efect",l:"Efect%"},{v:"score",l:"Score"},
+    {v:"pct_atc",l:"%ATC"},{v:"jot",l:"JOT"},{v:"leads",l:"Leads"},
+  ];
   const asesores=[...new Set(Object.values(asesoresXCanal).flat().map(a=>a.nombre))].slice(0,15);
 
   const getVal=(nm,c)=>{
     const a=(asesoresXCanal[c]||[]).find(x=>x.nombre===nm);
     if(!a) return null;
+    if(modo==="pct_atc") return a.pct_atc!=null ? parseFloat(n(a.pct_atc).toFixed(1)) : null;
     if(modo==="jot") return a.jot;
     return a[modo] ?? null;
   };
@@ -457,6 +461,8 @@ function Heatmap({ asesoresXCanal, canales }) {
     if(v===null) return "#f1f5f9";
     if(modo==="leads"){const t=Math.min(v/30,1);return t>0.7?"#1e3a8a":t>0.4?"#3b82f6":t>0.2?"#93c5fd":"#dbeafe";}
     if(modo==="jot"){const t=Math.min(v/10,1);return t>0.7?"#059669":t>0.4?"#10b981":t>0.1?"#34d399":"#d1fae5";}
+    // %ATC: menor es mejor (rojo = alto ATC)
+    if(modo==="pct_atc") return v>40?"#ef4444":v>20?"#f59e0b":v>5?"#10b981":"#d1fae5";
     return v>=20?"#059669":v>=15?"#10b981":v>=10?"#34d399":v>=5?"#f59e0b":"#ef4444";
   };
 
@@ -784,8 +790,12 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
     filas.forEach(row=>{
       const c=row.canal_inversion||row.canal_publicidad||"SIN MAPEO";
       if(c==="MAL INGRESO"||c==="SIN MAPEO") return;
-      if(!map[c]) map[c]={ canal:c, leads:0, activos:0, jot:0, inversion:0 };
-      map[c].leads+=n(row.n_leads); map[c].activos+=n(row.activos_mes); map[c].jot+=n(row.ingreso_jot);
+      if(!map[c]) map[c]={ canal:c, leads:0, activos:0, jot:0, inversion:0, atc:0 };
+      map[c].leads  += n(row.n_leads);
+      map[c].activos+= n(row.activos_mes);
+      map[c].jot    += n(row.ingreso_jot);
+      // ATC del canal desde redes (atc_soporte en mv_monitoreo_publicidad)
+      map[c].atc    += n(row.atc_soporte||0);
       const k=`${String(row.fecha).split("T")[0]}|${c}`;
       if(!inv[k]&&n(row.inversion_usd)>0){ map[c].inversion+=n(row.inversion_usd); inv[k]=true; }
     });
@@ -805,13 +815,21 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
   const asesXCanal = useMemo(()=>{
     if(!asesores.length||!pauta.canales.length) return {};
     const r={};
+    const totLeadsAses = asesores.reduce((s,a)=>s+a.leads,0);
     pauta.canales.forEach(c=>{
       const prop=totLeads>0?c.leads/totLeads:0;
+      // ATC del canal distribuido proporcionalmente al share de leads de cada asesor
+      const canalAtc = c.atc||0;
       r[c.canal]=asesores
-        .map(a=>({ ...a, canal:c.canal,
-          leads:Math.round(a.leads*prop), jot:Math.round(a.jot*prop),
-          ventas:Math.round(a.ventas*prop), atc:Math.round(a.atc*prop),
-          negoc:Math.round(a.negoc*prop) }))
+        .map(a=>{
+          const aLeads  = Math.round(a.leads*prop);
+          // Distribuir ATC del canal en función del % de leads del asesor sobre el total de asesores
+          const aAtc = totLeadsAses>0 ? Math.round(canalAtc*(a.leads/totLeadsAses)) : 0;
+          return { ...a, canal:c.canal,
+            leads:aLeads, jot:Math.round(a.jot*prop),
+            ventas:Math.round(a.ventas*prop), atc:aAtc,
+            negoc:Math.round(a.negoc*prop) };
+        })
         .map(a=>({ ...a, efect:pct(a.jot,a.leads), pct_atc:pct(a.atc,a.leads), score:calcScore(a) }))
         .filter(a=>a.leads>0)
         .sort((a,b)=>b.efect-a.efect);
@@ -1185,7 +1203,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
       {sub==="heatmap" && (
         canales.length>0 ? (
           <Card title="Mapa de Calor — Asesor × Canal" accent={C.primary}
-            subtitle="Toggle de métrica: efectividad, score, % ATC, leads — gradiente automático">
+            subtitle="Toggle: Efect% · Score · %ATC (rojo = alto, verde = bajo) · JOT · Leads — ATC distribuido desde datos de pauta">
             <Heatmap asesoresXCanal={asesXCanal} canales={canales} />
           </Card>
         ) : (

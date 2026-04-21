@@ -262,8 +262,9 @@ function BroadcastOverlay({ mensaje, onClose }) {
 const ALL_MENU_ITEMS = [
   { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
   { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null }, // ✅ FIX: era '/guia-comercial'
-  { name: "Indicadores",        path: "/indicadores",         icon: "📊", permiso: "Indicadores" },
-  { name: "Indicadores VELSA",  path: "/indicadores-velsa",   icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "Indicadores",        path: "/indicadores",              icon: "📊", permiso: "Indicadores" },
+  { name: "Comparativa Sup.",   path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores" },
+  { name: "Indicadores VELSA",  path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa" },
   { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
   { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
   { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },

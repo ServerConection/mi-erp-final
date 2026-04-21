@@ -554,8 +554,12 @@ export default function ReporteComercialCore() {
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
-                <input type="text" placeholder="BUSCAR..." className={inputCls}
-                  value={filtros.supervisor} onChange={e => updateFiltro('supervisor', e.target.value)} />
+                <select className={selectCls} value={filtros.supervisor} onChange={e => updateFiltro('supervisor', e.target.value)}>
+                  <option value="">TODOS</option>
+                  {[...new Set((data.supervisores || []).map(s => s.nombre_grupo).filter(n => n && n !== 'SIN ASIGNAR'))].sort().map((nombre, i) => (
+                    <option key={i} value={nombre}>{nombre}</option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>

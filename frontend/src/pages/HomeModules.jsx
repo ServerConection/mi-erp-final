@@ -1,9 +1,25 @@
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from 'jwt-decode';
+
+// Función para obtener el rol del usuario desde el token
+const getUserRol = () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const decoded = jwtDecode(token);
+    return decoded.rol || null;
+  } catch (error) {
+    console.error('Error decodificando token:', error);
+    return null;
+  }
+};
 
 export default function HomeModules() {
   const navigate = useNavigate();
+  const userRol = getUserRol();
 
   // Configuración de las tarjetas (Iconos, Colores, Rutas)
+  // Cada módulo puede tener un array "rolesPermitidos" para restringir acceso
   const modules = [
     {
       title: "Indicadores",
@@ -24,7 +40,8 @@ export default function HomeModules() {
       path: "/comparativa-supervisores",
       icon: "📈",
       color: "text-teal-400",
-      desc: "Análisis detallado: casos asignados vs gestionables, ingresos JOT, activas y eficiencia por supervisor."
+      desc: "Análisis detallado: casos asignados vs gestionables, ingresos JOT, activas y eficiencia por supervisor.",
+      rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR']
     },
     {
       title: "Ventas CRM",
@@ -129,7 +146,9 @@ export default function HomeModules() {
 
       {/* GRILLA RESPONSIVE (Aquí está la magia para Celular/Tablet/PC) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {modules.map((mod, index) => (
+        {modules
+          .filter(mod => !mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol))
+          .map((mod, index) => (
           <div
             key={index}
             onClick={() => navigate(mod.path)}

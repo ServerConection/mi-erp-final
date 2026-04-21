@@ -258,8 +258,12 @@ export default function DashboardLayout() {
   }, [navigate]);
 
   // ── Socket.io — escucha broadcasts ────────────────────────────────────────
+  // 🔐 ACTUALIZACIÓN: Agregar autenticación JWT en Socket.io
   useEffect(() => {
-    socketRef.current = io(API, { transports: ["websocket"] });
+    socketRef.current = io(API, {
+      auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
+      transports: ["websocket"]
+    });
     socketRef.current.on("broadcast_mensaje", (data) => {
       setBroadcast(data);
       if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);

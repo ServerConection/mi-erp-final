@@ -20,6 +20,13 @@ export default function HomeModules() {
       desc: "Dashboard principal, KPIs y métricas clave en tiempo real."
     },
     {
+      title: "Comparativa Supervisores",
+      path: "/comparativa-supervisores",
+      icon: "📈",
+      color: "text-teal-400",
+      desc: "Análisis detallado: casos asignados vs gestionables, ingresos JOT, activas y eficiencia por supervisor."
+    },
+    {
       title: "Ventas CRM",
       path: "/ventas",
       icon: "📈",

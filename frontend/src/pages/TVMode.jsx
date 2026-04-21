@@ -238,8 +238,11 @@ export default function TVMode() {
   const socketRef               = useRef(null);
 
   useEffect(() => {
-    // Conectar Socket.io
-    socketRef.current = io(API, { transports: ["websocket"] });
+    // 🔐 Conectar Socket.io con autenticación JWT
+    socketRef.current = io(API, {
+      auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
+      transports: ["websocket"]
+    });
     socketRef.current.on("broadcast_mensaje", (data) => {
       mostrarMensaje(data);
     });

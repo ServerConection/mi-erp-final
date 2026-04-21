@@ -17,7 +17,11 @@ let _socketGlobal = null;
 export const useAlertasSocket = (onAlerta) => {
   useEffect(() => {
     if (!_socketGlobal) {
-      _socketGlobal = io(import.meta.env.VITE_API_URL, { transports: ["websocket"] });
+      // 🔐 Conectar Socket.io con autenticación JWT
+      _socketGlobal = io(import.meta.env.VITE_API_URL, {
+        auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
+        transports: ["websocket"]
+      });
     }
     _socketGlobal.on("alerta_supervisor", onAlerta);
     return () => _socketGlobal.off("alerta_supervisor", onAlerta);

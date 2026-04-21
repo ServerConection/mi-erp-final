@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Indicadores from "./pages/Indicadores";
 import IndicadoresVelsa from "./pages/IndicadoresVelsa";
+import ComparativaSupervisores from "./pages/ComparativaSupervisores"; // <--- NUEVO MÓDULO
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules from "./pages/HomeModules"; // <--- 1. IMPORTAMOS EL NUEVO HOME
 import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS EL NUEVO HOME
@@ -35,6 +36,7 @@ export default function App() {
           {/* 3. SUB-MÓDULOS */}
           <Route path="indicadores" element={<Indicadores />} /> {/* Ahora tiene su propia ruta */}
           <Route path="indicadores-velsa" element={<IndicadoresVelsa />} />
+          <Route path="comparativa-supervisores" element={<ComparativaSupervisores />} /> {/* NUEVO: Comparativa de Supervisores */}
           <Route path="ventas" element={<Ventas />} />
           <Route path="rrhh" element={<RRHH />} />
           <Route path="horarios" element={<Horarios />} />

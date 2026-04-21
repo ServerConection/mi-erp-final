@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { registrarIntento } = require('../services/audit.service'); // 🔍 Auditoría
 
 // Rate limiting simple en memoria
 const intentos = new Map();
@@ -61,6 +62,10 @@ router.post('/login', async (req, res) => {
     const match = await bcrypt.compare(passLogin, hashReal || hashFalso);
 
     if (result.rows.length === 0 || !match) {
+      // 🔍 Registrar intento FALLIDO en auditoría (para detectar ataques)
+      const razon = result.rows.length === 0 ? 'Usuario no existe' : 'Contraseña incorrecta';
+      await registrarIntento(userLogin, ip, false, razon);
+
       return res.status(401).json({ success: false, error: 'Credenciales inválidas' });
     }
 
@@ -76,6 +81,9 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
+
+    // 🔍 Registrar intento EXITOSO en auditoría
+    await registrarIntento(user.username, ip, true, null);
 
     return res.json({
       success: true,

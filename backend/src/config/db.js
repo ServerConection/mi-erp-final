@@ -1,52 +1,30 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-/**
- * 🔐 CONFIGURACIÓN DE CONEXIÓN A PostgreSQL
- *
- * ¿Qué es SSL?
- * - SSL = Encrypted connection (segura)
- * - Sin SSL = Plain text (insegura en producción)
- *
- * rejectUnauthorized: true  = Valida certificado (🔒 Seguro)
- * rejectUnauthorized: false = NO valida certificado (⚠️ Inseguro)
- *
- * En DESARROLLO: No necesitamos certificado
- * En PRODUCCIÓN: SIEMPRE validar certificados (rejectUnauthorized: true)
- */
-
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
+  host:     process.env.DB_HOST,
+  user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
+  port:     process.env.DB_PORT,
 
-  /**
-   * 🔐 SSL según ambiente (DEVELOPMENT o PRODUCTION)
-   *
-   * Desarrollo (local): sin SSL = false
-   * Producción (en nube): con SSL validado = { rejectUnauthorized: true }
-   */
   ssl: process.env.NODE_ENV === 'production'
-    ? {
-        rejectUnauthorized: true,  // ✅ Validar certificado
-        // Opcional si tienes certificado custom:
-        // ca: fs.readFileSync('./certs/ca.crt', 'utf8')
-      }
-    : false, // Desarrollo sin SSL
+    ? { rejectUnauthorized: true }
+    : false,
 
-  // Configuración de pooling para mejor rendimiento
-  idleTimeoutMillis: 30000,          // Cerrar conexiones inactivas después 30s
-  connectionTimeoutMillis: 2000,     // Timeout para establecer conexión
+  max:                    15,      // máx conexiones simultáneas
+  idleTimeoutMillis:      10000,   // cerrar inactivas antes de que Render las mate (30s)
+  connectionTimeoutMillis: 10000,  // esperar hasta 10s por una conexión libre
+  allowExitOnIdle:        false,
 });
 
-/**
- * 🚨 Manejo de errores de conexión
- * Si algo falla en la BD, log para debugging
- */
+// Keepalive: evita que Render cierre conexiones idle abruptamente
+setInterval(() => {
+  pool.query('SELECT 1').catch(() => {}); // silencioso — solo mantiene el pool activo
+}, 8000);
+
 pool.on('error', (err) => {
-  console.error('[DB] Error inesperado en pool de conexiones:', err);
+  console.error('[DB] Error en pool de conexiones:', err.message);
 });
 
 module.exports = pool;

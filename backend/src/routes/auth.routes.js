@@ -3,7 +3,12 @@ const router = express.Router();
 const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+<<<<<<< HEAD
 const { registrarIntento } = require('../services/audit.service'); // 🔍 Auditoría
+=======
+const { obtenerPermisosUsuario } = require('../config/permisos.config');
+const { verificarToken } = require('../middleware/auth');
+>>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
 
 // Rate limiting simple en memoria
 const intentos = new Map();
@@ -32,11 +37,19 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
+/**
+ * POST /auth/login
+ * Login con usuario y contraseña
+ * Devuelve token JWT y permisos del usuario
+ */
 router.post('/login', async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
 
   if (!checkRateLimit(ip)) {
-    return res.status(429).json({ success: false, error: 'Demasiados intentos. Espera 15 minutos.' });
+    return res.status(429).json({ 
+      success: false, 
+      error: 'Demasiados intentos. Espera 15 minutos.' 
+    });
   }
 
   try {
@@ -45,39 +58,70 @@ router.post('/login', async (req, res) => {
     const passLogin = contraseña || password;
 
     if (!userLogin || !passLogin) {
-      return res.status(400).json({ success: false, error: 'Faltan datos de acceso' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Faltan datos de acceso' 
+      });
     }
 
+    // ⚠️ CAMBIO: Buscar en tabla 'usuarios' (no 'users')
     const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1',
+      `SELECT id, usuario, empresa, perfil, nombres, apellidos, activo, contraseña 
+       FROM usuarios 
+       WHERE usuario = $1`,
       [userLogin]
     );
 
     // Siempre ejecutar bcrypt (evita timing attack)
     const hashFalso = '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
     const hashReal = result.rows.length > 0
-      ? (result.rows[0].password || result.rows[0].password_hash)
+      ? result.rows[0].contraseña
       : hashFalso;
 
     const match = await bcrypt.compare(passLogin, hashReal || hashFalso);
 
     if (result.rows.length === 0 || !match) {
+<<<<<<< HEAD
       // 🔍 Registrar intento FALLIDO en auditoría (para detectar ataques)
       const razon = result.rows.length === 0 ? 'Usuario no existe' : 'Contraseña incorrecta';
       await registrarIntento(userLogin, ip, false, razon);
 
       return res.status(401).json({ success: false, error: 'Credenciales inválidas' });
+=======
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Credenciales inválidas' 
+      });
+>>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
     }
 
     const user = result.rows[0];
 
-    const rol = user.rol ? user.rol.toUpperCase() : '';
-    const urlReporte = USUARIOS_ESPECIALES.has(user.username)
-      ? URL_REPORTES.especiales
-      : (URL_REPORTES[rol] || '');
+    // ⚠️ VALIDACIÓN: Usuario debe estar activo
+    if (user.activo !== 'SI') {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Usuario desactivado. Contacta al administrador.' 
+      });
+    }
 
+    const perfil = user.perfil?.toUpperCase() || '';
+    const empresa = user.empresa?.toUpperCase() || '';
+
+    // ✅ NUEVO: Obtener permisos basado en empresa + perfil
+    const permisos = obtenerPermisosUsuario(empresa, perfil);
+
+    const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)
+      ? URL_REPORTES.especiales
+      : (URL_REPORTES[perfil] || '');
+
+    // Crear JWT con empresa + perfil (útil para validaciones posteriores)
     const token = jwt.sign(
-      { id: user.id, rol: user.rol },
+      { 
+        id: user.id, 
+        empresa: empresa, 
+        perfil: perfil 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -90,16 +134,49 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id: user.id,
-        usuario: user.username,
-        perfil: user.rol,
-        nombre: user.nombres_completos,
-        url_reporte: urlReporte
+        usuario: user.usuario,
+        perfil: perfil,
+        empresa: empresa,
+        nombre: `${user.nombres} ${user.apellidos}`,
+        url_reporte: urlReporte,
+        permisos: permisos  // ✅ NUEVO: Devolver permisos para el frontend
       }
     });
 
   } catch (error) {
     console.error('[auth.routes] login:', error);
-    return res.status(500).json({ success: false, error: 'Error interno del servidor' });
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Error interno del servidor' 
+    });
+  }
+});
+
+/**
+ * GET /auth/permisos
+ * Obtener permisos del usuario autenticado
+ * Headers: Authorization: Bearer <token>
+ * 
+ * Útil para el frontend para validar qué componentes mostrar
+ */
+router.get('/permisos', verificarToken, async (req, res) => {
+  try {
+    const { empresa, perfil } = req.user;
+    const permisos = obtenerPermisosUsuario(empresa, perfil);
+
+    return res.json({
+      success: true,
+      empresa: empresa,
+      perfil: perfil,
+      permisos: permisos
+    });
+
+  } catch (error) {
+    console.error('[auth.routes] permisos:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Error obteniendo permisos' 
+    });
   }
 });
 

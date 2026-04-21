@@ -4,18 +4,19 @@ import Indicadores from "./pages/Indicadores";
 import IndicadoresVelsa from "./pages/IndicadoresVelsa";
 import ComparativaSupervisores from "./pages/ComparativaSupervisores"; // <--- NUEVO MÓDULO
 import DashboardLayout from "./layouts/DashboardLayout";
-import HomeModules from "./pages/HomeModules"; // <--- 1. IMPORTAMOS EL NUEVO HOME
-import Seguimientoventas from "./pages/Seguimientoventas"; // <--- 1. IMPORTAMOS EL NUEVO HOME
-import Redes from "./pages/Redes"; // <--- 1. IMPORTAMOS EL NUEVO HOME
-import VistaAsesor from "./pages/VistaAsesor"; // <--- VISTA MÓDULO ASESOR
+import HomeModules from "./pages/HomeModules";
+import Seguimientoventas from "./pages/Seguimientoventas";
+import Redes from "./pages/Redes";
+import VistaAsesor from "./pages/VistaAsesor";
 import Seguimientovelsa from "./pages/Seguimientovelsa";
 import VistaAsesorVelsa from "./pages/VistaAsesorVelsa";
-import Notificaciones from "./pages/Notificaciones"; // <--- CENTRO DE NOTIFICACIONES
-import BroadcastPanel from "./pages/BroadcastPanel";  // <--- BROADCAST TV
-import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";  // <--- Guiaplanesmarzo TV
-import TVMode from "./pages/TVMode";                  // <--- TV FULLSCREEN
+import Notificaciones from "./pages/Notificaciones";
+import BroadcastPanel from "./pages/BroadcastPanel";
+import Guiaplanesmarzo from "./pages/Guiaplanesmarzo";
+import TVMode from "./pages/TVMode";
 import AppSheetModule from "./pages/AppSheetModule";
-import { Ventas, RRHH, Horarios, Billetera, Comisiones} from "./pages/Modules";
+import Ventas from "./pages/VentasFormulario";
+import { RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -30,9 +31,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
 
         <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-          {/* 2. PANTALLA PRINCIPAL (El Hub de Tarjetas) */}
           <Route index element={<HomeModules />} />
 
+<<<<<<< HEAD
           {/* 3. SUB-MÓDULOS */}
           <Route path="indicadores" element={<Indicadores />} /> {/* Ahora tiene su propia ruta */}
           <Route path="indicadores-velsa" element={<IndicadoresVelsa />} />
@@ -51,10 +52,30 @@ export default function App() {
           <Route path="broadcast" element={<BroadcastPanel />} />         {/* BROADCAST TV */}
           <Route path="appsheet" element={<AppSheetModule />} />  {/* FORMULARIO*/}
           <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />         {/* Guiaplanesmarzo */}
+=======
+          <Route path="indicadores"        element={<Indicadores />} />
+          <Route path="indicadores-velsa"  element={<IndicadoresVelsa />} />
+          <Route path="vista-asesor"       element={<VistaAsesor />} />
+          <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} />
+          <Route path="seguimiento-ventas" element={<Seguimientoventas />} /> {/* ← corregido: era Seguimiento_Venta */}
+          <Route path="seguimiento-velsa"  element={<Seguimientovelsa />} />
+          <Route path="redes"              element={<Redes />} />
+          <Route path="ventas"             element={<Ventas />} />
+          <Route path="rrhh"               element={<RRHH />} />
+          <Route path="horarios"           element={<Horarios />} />
+          <Route path="billetera"          element={<Billetera />} />
+          <Route path="comisiones"         element={<Comisiones />} />
+
+          {/* Rutas sin ítem en el menú lateral — sin restricción de permiso */}
+          <Route path="notificaciones"     element={<Notificaciones />} />
+          <Route path="broadcast"          element={<BroadcastPanel />} />
+          <Route path="appsheet"           element={<AppSheetModule />} />
+          <Route path="guia-planes-marzo"  element={<Guiaplanesmarzo />} />
+>>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
         </Route>
 
-        <Route path="tv" element={<TVMode />} />                        {/* TV FULLSCREEN — sin login */}
-        <Route path="*" element={<Navigate to="/login" />} />
+        <Route path="tv"  element={<TVMode />} />
+        <Route path="*"   element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );

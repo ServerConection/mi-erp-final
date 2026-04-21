@@ -323,7 +323,6 @@ const pool = require('../config/db');
           ) sub
           GROUP BY canal_normalizado
         `, [desde, hasta, ...invParams]);
-        // FIX: ahora canal_normalizado coincide exactamente con grupo (ej: "ARTS")
         invRes.rows.forEach(r => { inversionPorGrupo[r.canal_normalizado] = Number(r.inversion_usd || 0); });
       } catch (_) {}
 
@@ -398,6 +397,8 @@ const pool = require('../config/db');
   // ─────────────────────────────────────────────────────────────────────────────
   // 7. REPORTE DATA
   // FIX: SPLIT_PART para normalizar canal_inversion en query de inversión diaria
+  // FIX: activos_mes = activados DENTRO del rango (j_fecha_activacion_netlife)
+  // FIX: activo_backlog = registrados ANTES del rango y activados DENTRO del rango
   // ─────────────────────────────────────────────────────────────────────────────
   const getReporteData = async (req, res) => {
     try {
@@ -462,42 +463,86 @@ const pool = require('../config/db');
         GROUP BY dia ORDER BY dia ASC
       `, [desde, hasta, ...bitParamsExtra]);
 
-      // ── JOT denominadores para bloque Inversión & Costos ─────────────────────
+      // ── JOT denominadores — CORREGIDO ────────────────────────────────────────
+      // activos_mes  = ACTIVO + fecha_activacion DENTRO del rango (igual que dashboards.js)
+      // activo_backlog = ACTIVO + registrado ANTES del rango + activado DENTRO del rango
       const jotOrigenWhere = origenesBitrix.length>0
         ? `AND t2.b_origen IN (${origenesBitrix.map((_,i)=>`$${3+i}`).join(', ')})`
         : '';
 
       const jotDenomsRes = await pool.query(`
         SELECT
-          EXTRACT(DAY FROM TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD'))::int AS dia,
-          COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS ingreso_jot,
-          COUNT(*) FILTER (WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          EXTRACT(DAY FROM COALESCE(
+            CASE WHEN t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+              AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+              THEN TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD')
+            END,
+            CASE WHEN t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
+              AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+              THEN TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD')
+            END
+          ))::int AS dia,
+
+          COUNT(*) FILTER (
+            WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS ingreso_jot,
+
+          COUNT(*) FILTER (
+            WHERE t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
             AND t2.b_creado_el_fecha IS NOT NULL
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD')=t2.b_creado_el_fecha::date) AS ingreso_bitrix_mismo_dia,
-          COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>''
-            AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS activos_mes,
-          COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS activo_backlog,
-          COUNT(*) FILTER (WHERE (t1.j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR t1.j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS preplaneados,
-          COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%ASIGNADO%'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS asignados,
-          COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%PRESERVICIO%'
-            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-            AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date) AS preservicio
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') = t2.b_creado_el_fecha::date
+          ) AS ingreso_bitrix_mismo_dia,
+
+          -- ✅ ACTIVOS MES: estado ACTIVO + activación dentro del rango
+          COUNT(*) FILTER (
+            WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+            AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
+            AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS activos_mes,
+
+          -- ✅ BACKLOG: estado ACTIVO + registrado ANTES del rango + activado DENTRO del rango
+          COUNT(*) FILTER (
+            WHERE t1.j_netlife_estatus_real ILIKE 'ACTIVO'
+            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') < $1::date
+            AND t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
+            AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS activo_backlog,
+
+          COUNT(*) FILTER (
+            WHERE (t1.j_netlife_estatus_real ILIKE '%PREPLANIFICADO%' OR t1.j_netlife_estatus_real ILIKE '%REPLANIFICADO%')
+            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS preplaneados,
+
+          COUNT(*) FILTER (
+            WHERE t1.j_netlife_estatus_real ILIKE '%ASIGNADO%'
+            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS asignados,
+
+          COUNT(*) FILTER (
+            WHERE t1.j_netlife_estatus_real ILIKE '%PRESERVICIO%'
+            AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+            AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+          ) AS preservicio
+
         FROM public.mestra_bitrix t1
-        JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
+        JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
         WHERE t1.j_id_bitrix IS NOT NULL
-          AND ((t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema<>''
-              AND TO_DATE(t1.j_fecha_registro_sistema,'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
-            OR (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife<>''
-              AND TO_DATE(t1.j_fecha_activacion_netlife,'YYYY-MM-DD') BETWEEN $1::date AND $2::date))
+          AND (
+            -- registrado dentro del rango
+            (t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+              AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date)
+            OR
+            -- registrado ANTES pero activado DENTRO (backlog)
+            (t1.j_fecha_activacion_netlife IS NOT NULL AND t1.j_fecha_activacion_netlife <> ''
+              AND TO_DATE(t1.j_fecha_activacion_netlife, 'YYYY-MM-DD') BETWEEN $1::date AND $2::date
+              AND t1.j_fecha_registro_sistema IS NOT NULL AND t1.j_fecha_registro_sistema <> ''
+              AND TO_DATE(t1.j_fecha_registro_sistema, 'YYYY-MM-DD') < $1::date)
+          )
           ${jotOrigenWhere}
         GROUP BY dia ORDER BY dia ASC
       `, [desde, hasta, ...bitParamsExtra]);

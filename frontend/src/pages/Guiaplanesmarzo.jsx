@@ -1,40 +1,49 @@
 import { useState, useMemo } from "react";
 
 // ============================================================
-// DATA — EXTRAÍDA 100% DEL EXCEL PRECIOS_MARZO_2026_NETLIFE
+// DATA — EXTRAÍDA 100% DEL EXCEL PRECIOS_ABRIL_2026_NETLIFE
 // ============================================================
 const ZONAS_CERO = [
-  "Machala","Balsas","Marcabeli","Piñas","Portovelo","Zaruma",
-  "Quinsaloma","Vinces","Salinas","Santa Elena","Cuenca","Nabon","Oña","San Fernando",
-  "Chimbo","Guaranda","San Miguel","Azogues","Biblian","El Tambo","La Troncal","Suscal",
-  "Logroño","Daule","Duran","Milagro","Samborondon","Coronel Marcelino Maridueña",
-  "24 de Mayo","Manta","Portoviejo","Rocafuerte","Santa Ana","Chone","Jipijapa",
-  "Latacunga","Salcedo","Calvas","Celica","Chaguarpamba","Loja","Puyango","Saraguro",
-  "Antonio Ante","Cotacachi","Ibarra","Otavalo","San Miguel de Urcuchi",
-  "Bolivar","Montufar","Tulcán","Alausí","Chambo","Chunchi","Colta","Guamote","Guano","Riobamba",
-  "Tena","Mera","Ambato","Baños de Agua Santa","Cevallos","Mocha","Patate","Quero","San Pedro de Pelileo",
-  "Rumiñahui","Iñaquito","Cumbaya","Calderon","San Juan","Carapungo","Kennedy","Conocoto","Jipijapa",
-  "Carcelen","Puengasi","Ponceano","Belisario Quevedo","Cochapamba","Cotocollao","La Concepcion","Tumbaco",
-  "La Magdalena","Mariscal Sucre","Pomasqui","San Isidro del Inca","Nayon","Puembo","Alangasi","Zambiza",
-  "Gungopolo","La Merced","Itchimbia","Amaguaña","San Antonio","Sangolqui","Rumipamba","La Floresta"
+  "El Oro", "Machala", "Balsas", "Marcabeli", "Piñas", "Portovelo", "Zaruma",
+  "Guayas", "Daule", "Duran", "Milagro", "Samborondon", "Coronel Marcelino Maridueña",
+  "Manabi", "24 de Mayo", "Manta", "Portoviejo", "Rocafuerte", "Santa Ana", "Chone", "Jipijapa",
+  "Los Rios", "Quinsaloma", "Vinces", "Salinas",
+  "Santa Elena",
+  "Cotopaxi", "Latacunga", "Salcedo",
+  "Loja", "Calvas", "Celica", "Chaguarpamba",
+  "Imbabura", "Antonio Ante", "Cotacachi", "Ibarra", "Otavalo", "San Miguel de Urcuchi",
+  "Azuay", "Cuenca", "Nabon", "Oña", "San Fernando",
+  "Carchi", "Bolivar", "Montufar", "Tulcán",
+  "Bolivar", "Montufar",
+  "Chimborazo", "Alausí", "Chambo", "Chunchi", "Colta", "Guamote", "Guano", "Riobamba",
+  "Tungurahua", "Ambato", "Baños de Agua Santa", "Cevallos", "Mocha", "Patate", "Quero", "San Pedro de Pelileo",
+  "Cañar",
+  "Napo", "Tena", "Mera",
+  "Pichincha",
+  "Quito", "Rumiñahui", "Iñaquito", "Cumbaya", "Calderon", "San Juan", "Carapungo", "Kennedy",
+  "Conocoto", "Carcelen", "Puengasi", "Ponceano", "Belisario Quevedo", "Cochapamba", "Cotocollao",
+  "La Concepcion", "Tumbaco", "La Magdalena", "Mariscal Sucre", "Pomasqui", "San Isidro del Inca",
+  "Nayon", "Puembo", "Alangasi", "Zambiza", "Gungopolo", "La Merced", "Itchimbia", "Amaguaña",
+  "San Antonio", "Sangolqui", "Rumipamba", "La Floresta",
+  "Morona Santiago", "Pastaza"
 ];
 
 const PLANES_HOME_TC = [
-  { nombre: "GI Trainee-Defense", velocidad: 400, tipo: "Simétrica", precioSinIva: 22.9, precioConIva: 26.34, precioPromo: 23.70, descuento: 10, facturas: 6, router: "WiFi 5 + Defense", addons: [], color: "#10b981", badge: "BÁSICO" },
-  { nombre: "GI Initial-Defense", velocidad: 575, tipo: "Simétrica", precioSinIva: 25.5, precioConIva: 29.33, precioPromo: 26.39, descuento: 10, facturas: 6, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#3b82f6", badge: "POPULAR" },
-  { nombre: "GI Learner-Defense", velocidad: 750, tipo: "Simétrica", precioSinIva: 25.75, precioConIva: 29.61, precioPromo: 26.65, descuento: 10, facturas: 6, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#8b5cf6", badge: "RECOMENDADO" },
-  { nombre: "GI Vader-Defense", velocidad: 850, tipo: "Simétrica", precioSinIva: 27.5, precioConIva: 31.63, precioPromo: 25.30, descuento: 20, facturas: 9, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#f59e0b", badge: "OFERTA" },
-  { nombre: "GI Vader-Defense+", velocidad: 850, tipo: "Simétrica", precioSinIva: 29.5, precioConIva: 33.93, precioPromo: 20.36, descuento: 40, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#f59e0b", badge: "DOBLE ADDON" },
-  { nombre: "GI Sith-Defense", velocidad: 950, tipo: "Simétrica", precioSinIva: 31.5, precioConIva: 36.23, precioPromo: 25.36, descuento: 30, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#ef4444", badge: "ALTA VELOCIDAD" },
-  { nombre: "GI Spirit-Defense", velocidad: 1000, tipo: "Simétrica", precioSinIva: 33, precioConIva: 37.95, precioPromo: 22.77, descuento: 40, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#ec4899", badge: "PREMIUM" },
-  { nombre: "1075 Mbps Asimétrico", velocidad: 1075, tipo: "Asimétrica", precioSinIva: 34.99, precioConIva: 40.24, precioPromo: 28.17, descuento: 30, facturas: 9, router: "WiFi 6", addons: ["Ass Pro + 2 Extenders DB","Ass Pro + 1 Ext + Paramount","Ass Pro + Paramount + Netlife Play"], color: "#06b6d4", badge: "FIBRA+" },
-  { nombre: "1075 Mbps", velocidad: 1075, tipo: "Simétrica", precioSinIva: 37.15, precioConIva: 42.72, precioPromo: 25.63, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#06b6d4", badge: "FIBRA+" },
-  { nombre: "1150 Mbps", velocidad: 1150, tipo: "Simétrica", precioSinIva: 41.5, precioConIva: 47.73, precioPromo: 28.64, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#0ea5e9", badge: "ULTRA" },
-  { nombre: "1300 Mbps", velocidad: 1300, tipo: "Simétrica", precioSinIva: 46.15, precioConIva: 53.07, precioPromo: 31.84, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#6366f1", badge: "ULTRA" },
-  { nombre: "1500 Mbps", velocidad: 1500, tipo: "Simétrica", precioSinIva: 54.99, precioConIva: 63.24, precioPromo: 37.94, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#7c3aed", badge: "ULTRA+" },
-  { nombre: "1700 Mbps", velocidad: 1700, tipo: "Simétrica", precioSinIva: 65, precioConIva: 74.75, precioPromo: 44.85, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#9333ea", badge: "GIGABIT" },
-  { nombre: "1850 Mbps", velocidad: 1850, tipo: "Simétrica", precioSinIva: 75, precioConIva: 86.25, precioPromo: 51.75, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#a855f7", badge: "GIGABIT" },
-  { nombre: "2000 Mbps", velocidad: 2000, tipo: "Simétrica", precioSinIva: 99.99, precioConIva: 114.99, precioPromo: 57.49, descuento: 50, facturas: 12, router: "WiFi 6", addons: [], color: "#d946ef", badge: "MÁXIMO" },
+  { nombre: "GI Net-Defense 400Mbps", velocidad: 400, tipo: "Simétrica", precioSinIva: 22.9, precioConIva: 26.34, precioPromo: 20.61, descuento: 10, facturas: 6, router: "WiFi 5 + Defense", addons: [], color: "#10b981", badge: "BÁSICO" },
+  { nombre: "GI Initial-Defense 575Mbps", velocidad: 575, tipo: "Simétrica", precioSinIva: 25.5, precioConIva: 29.33, precioPromo: 22.95, descuento: 10, facturas: 6, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#3b82f6", badge: "POPULAR" },
+  { nombre: "GI Learner-Defense 750Mbps", velocidad: 750, tipo: "Simétrica", precioSinIva: 25.75, precioConIva: 29.61, precioPromo: 23.18, descuento: 10, facturas: 6, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#8b5cf6", badge: "RECOMENDADO" },
+  { nombre: "GI Vader-Defense 850Mbps", velocidad: 850, tipo: "Simétrica", precioSinIva: 27.5, precioConIva: 31.63, precioPromo: 22, descuento: 20, facturas: 9, router: "WiFi 6 + Defense", addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#f59e0b", badge: "OFERTA" },
+  { nombre: "GI Vader-Defense+ 850Mbps", velocidad: 850, tipo: "Simétrica", precioSinIva: 29.5, precioConIva: 33.93, precioPromo: 17.7, descuento: 40, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#f59e0b", badge: "DOBLE ADDON" },
+  { nombre: "GI Sith-Defense 950Mbps", velocidad: 950, tipo: "Simétrica", precioSinIva: 31.5, precioConIva: 36.23, precioPromo: 22.05, descuento: 30, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#ef4444", badge: "ALTA VELOCIDAD" },
+  { nombre: "GI Spirit-Defense 1000Mbps", velocidad: 1000, tipo: "Simétrica", precioSinIva: 33, precioConIva: 37.95, precioPromo: 19.8, descuento: 40, facturas: 9, router: "WiFi 6 + Defense", addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount","1 Ext DB + Paramount"], color: "#ec4899", badge: "PREMIUM" },
+  { nombre: "1075 Mbps Asimétrico", velocidad: 1075, tipo: "Asimétrica", precioSinIva: 34.99, precioConIva: 40.24, precioPromo: 24.49, descuento: 30, facturas: 9, router: "WiFi 6", addons: ["Ass Pro + 2 Extenders DB","Ass Pro + 1 Ext + Paramount","Ass Pro + Paramount + Netlife Play"], color: "#06b6d4", badge: "FIBRA+" },
+  { nombre: "1075 Mbps", velocidad: 1075, tipo: "Simétrica", precioSinIva: 37.15, precioConIva: 42.72, precioPromo: 22.29, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#06b6d4", badge: "FIBRA+" },
+  { nombre: "1150 Mbps", velocidad: 1150, tipo: "Simétrica", precioSinIva: 41.5, precioConIva: 47.73, precioPromo: 24.9, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#0ea5e9", badge: "ULTRA" },
+  { nombre: "1300 Mbps", velocidad: 1300, tipo: "Simétrica", precioSinIva: 46.15, precioConIva: 53.07, precioPromo: 27.69, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#6366f1", badge: "ULTRA" },
+  { nombre: "1500 Mbps", velocidad: 1500, tipo: "Simétrica", precioSinIva: 54.99, precioConIva: 63.24, precioPromo: 32.99, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#7c3aed", badge: "ULTRA+" },
+  { nombre: "1700 Mbps", velocidad: 1700, tipo: "Simétrica", precioSinIva: 65, precioConIva: 74.75, precioPromo: 39, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#9333ea", badge: "GIGABIT" },
+  { nombre: "1850 Mbps", velocidad: 1850, tipo: "Simétrica", precioSinIva: 75, precioConIva: 86.25, precioPromo: 45, descuento: 40, facturas: 9, router: "WiFi 6", addons: [], color: "#a855f7", badge: "GIGABIT" },
+  { nombre: "2000 Mbps", velocidad: 2000, tipo: "Simétrica", precioSinIva: 99.99, precioConIva: 114.99, precioPromo: 49.99, descuento: 50, facturas: 12, router: "WiFi 6", addons: [], color: "#d946ef", badge: "MÁXIMO" },
 ];
 
 const PLANES_HOME_CCAH = PLANES_HOME_TC.map((p, i) => ({
@@ -50,14 +59,14 @@ const PLANES_HOME_EF = PLANES_HOME_TC.map(p => ({
 // Provincias con oferta especial efectivo
 const PLANES_HOME_PROV = [
   { nombre: "GI Net-Defense 400Mbps", velocidad: 400, tipo: "Normal", precioConIva: 26.34, precioPromo: 16.33, descuento: 38, facturas: "3ra factura", formaPago: "EF", plaza: "Sucumbíos, Orellana, Napo, Carchi y Santo Domingo", color: "#10b981", badge: "PROVINCIAL" },
-  { nombre: "GI Entry-Defense 750Mbps + Ass PRO", velocidad: 750, tipo: "Normal", precioConIva: 29.61, precioPromo: 19.60, descuento: 33.8, facturas: "3ra factura", formaPago: "EF", plaza: "Sucumbíos, Orellana, Napo, Carchi y Santo Domingo", color: "#8b5cf6", badge: "PROVINCIAL" },
-  { nombre: "GI Learner-Defense 850Mbps + Ass PRO", velocidad: 850, tipo: "Normal", precioConIva: 31.63, precioPromo: 28.46, descuento: 10, facturas: "12 facturas", formaPago: "CCAH/EF", plaza: "Machala", color: "#f59e0b", badge: "MACHALA" },
+  { nombre: "GI Initial-Defense 575Mbps + Ass PRO", velocidad: 575, tipo: "Normal", precioConIva: 29.33, precioPromo: 19.60, descuento: 33.8, facturas: "3ra factura", formaPago: "EF", plaza: "Sucumbíos, Orellana, Napo, Carchi y Santo Domingo", color: "#8b5cf6", badge: "PROVINCIAL" },
+  { nombre: "GI Learner-Defense 750Mbps + Ass PRO", velocidad: 750, tipo: "Normal", precioConIva: 29.61, precioPromo: 28.46, descuento: 10, facturas: "12 facturas", formaPago: "CCAH/EF", plaza: "Machala", color: "#f59e0b", badge: "MACHALA" },
 ];
 
 const PLANES_GAMER = [
-  { nombre: "GAMER LITE", velocidad: 550, tipo: "Simétrica", precioSinIva: 26.5, precioConIva: 30.48, router: "WiFi 7 Certificado", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#22c55e", badge: "ENTRY GAMER" },
-  { nombre: "GAMER CORE", velocidad: 750, tipo: "Simétrica", precioSinIva: 29.5, precioConIva: 33.93, router: "WiFi 7 Certificado Puerto 2.5Gbps", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#f59e0b", badge: "MID GAMER" },
-  { nombre: "GAMER HEAVY", velocidad: 1000, tipo: "Simétrica", precioSinIva: 36, precioConIva: 41.4, router: "WiFi 7 Certificado Puerto 2.5Gbps", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#ef4444", badge: "PRO GAMER" },
+  { nombre: "GAMER LITE 550Mbps", velocidad: 550, tipo: "Simétrica", precioSinIva: 26.5, precioConIva: 30.48, router: "WiFi 7 Certificado", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#22c55e", badge: "ENTRY GAMER" },
+  { nombre: "GAMER CORE 750Mbps", velocidad: 750, tipo: "Simétrica", precioSinIva: 29.5, precioConIva: 33.93, router: "WiFi 7 Certificado Puerto 2.5Gbps", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#f59e0b", badge: "MID GAMER" },
+  { nombre: "GAMER HEAVY 1000Mbps", velocidad: 1000, tipo: "Simétrica", precioSinIva: 36, precioConIva: 41.4, router: "WiFi 7 Certificado Puerto 2.5Gbps", servicios: "NAT Abierto Pro / Router WiFi 7 / Cable UTP CAT 6", color: "#ef4444", badge: "PRO GAMER" },
 ];
 
 const PLANES_PRO = [
@@ -83,36 +92,35 @@ const PLANES_PRO = [
 ];
 
 const PLANES_PYME = [
-  { nombre: "Pyme GI Beginner 200 + Defense", velocidad: 200, precioConIva: 30.81, precioSinIva: 26.79, servicios: "WiFi 5, Defense", color: "#10b981", badge: "INICIO" },
-  { nombre: "Pyme GI Tech 600 + Ass PRO", velocidad: 600, precioConIva: 37.38, precioSinIva: 32.5, servicios: "WiFi 6+, Defense, Assistance Pro", color: "#3b82f6", badge: "TECH" },
-  { nombre: "Pyme GI Tech 600 + Extender", velocidad: 600, precioConIva: 37.38, precioSinIva: 32.5, servicios: "WiFi 6+, Defense, Extender Dual Band", color: "#3b82f6", badge: "TECH" },
-  { nombre: "Pyme GI Digital 700 + Ass PRO", velocidad: 700, precioConIva: 40.83, precioSinIva: 35.5, servicios: "WiFi 6+, Defense, Assistance Pro", color: "#8b5cf6", badge: "DIGITAL" },
-  { nombre: "Pyme GI Digital 700 + Extender", velocidad: 700, precioConIva: 40.83, precioSinIva: 35.5, servicios: "WiFi 6+, Defense, Extender Dual Band", color: "#8b5cf6", badge: "DIGITAL" },
-  { nombre: "Pyme GI Productivo 800 + Ass PRO", velocidad: 800, precioConIva: 45.43, precioSinIva: 39.5, servicios: "WiFi 6+, Defense, Assistance Pro", color: "#f59e0b", badge: "PRODUCTIVO" },
-  { nombre: "Pyme GI Productivo 800 + Extender", velocidad: 800, precioConIva: 45.43, precioSinIva: 39.5, servicios: "WiFi 6+, Defense, Extender Dual Band", color: "#f59e0b", badge: "PRODUCTIVO" },
-  { nombre: "Pyme GI Evolution 1000 + Ass PRO", velocidad: 1000, precioConIva: 51.75, precioSinIva: 45, servicios: "WiFi 6+, Defense, Assistance Pro", color: "#ef4444", badge: "EVOLUCIÓN" },
-  { nombre: "Pyme GI Evolution 1000 + Extender", velocidad: 1000, precioConIva: 51.75, precioSinIva: 45, servicios: "WiFi 6+, Defense, Extender Dual Band", color: "#ef4444", badge: "EVOLUCIÓN" },
-  { nombre: "Pyme GI Spirit 1100 + Ass PRO", velocidad: 1100, precioConIva: 59.79, precioSinIva: 51.99, servicios: "WiFi 6+, Defense, Assistance Pro", color: "#ec4899", badge: "SPIRIT" },
-  { nombre: "Pyme GI Spirit 1100 + Extender", velocidad: 1100, precioConIva: 59.79, precioSinIva: 51.99, servicios: "WiFi 6+, Defense, Extender Dual Band", color: "#ec4899", badge: "SPIRIT" },
-  { nombre: "Pyme GI Digital 1300 + Ass PRO", velocidad: 1300, precioConIva: 71.29, precioSinIva: 61.99, servicios: "WiFi 6+, Defense, Assistance Pro, Constructor Web", color: "#7c3aed", badge: "DIGITAL+" },
-  { nombre: "Pyme GI Digital 1300 + Extender", velocidad: 1300, precioConIva: 71.29, precioSinIva: 61.99, servicios: "WiFi 6+, Defense, Extender Dual Band, Constructor Web", color: "#7c3aed", badge: "DIGITAL+" },
-  { nombre: "Pyme GI Exponencial 1500 + Ass PRO", velocidad: 1500, precioConIva: 81.65, precioSinIva: 71, servicios: "WiFi 6+, Defense, Assistance Pro, Constructor Web", color: "#9333ea", badge: "EXPONENCIAL" },
-  { nombre: "Pyme GI Exponencial 1500 + Extender", velocidad: 1500, precioConIva: 81.65, precioSinIva: 71, servicios: "WiFi 6+, Defense, Extender Dual Band, Constructor Web", color: "#9333ea", badge: "EXPONENCIAL" },
-  { nombre: "Pyme GI Tech 1750 + Ass PRO", velocidad: 1750, precioConIva: 100.05, precioSinIva: 87, servicios: "WiFi 6+, Defense, Assistance Pro, Constructor Web", color: "#a855f7", badge: "ULTRA" },
-  { nombre: "Pyme GI Tech 1750 + Extender", velocidad: 1750, precioConIva: 100.05, precioSinIva: 87, servicios: "WiFi 6+, Defense, Extender Dual Band, Constructor Web", color: "#a855f7", badge: "ULTRA" },
-  { nombre: "Pyme GI Xtreme 1850 + Ass PRO", velocidad: 1850, precioConIva: 117.3, precioSinIva: 102, servicios: "WiFi 6+, Defense, Assistance Pro, Constructor Web", color: "#d946ef", badge: "XTREME" },
-  { nombre: "Pyme GI Xtreme 1850 + Extender", velocidad: 1850, precioConIva: 117.3, precioSinIva: 102, servicios: "WiFi 6+, Defense, Extender Dual Band, Constructor Web", color: "#d946ef", badge: "XTREME" },
-  { nombre: "Pyme GI Infinity 2000 + Ass PRO", velocidad: 2000, precioConIva: 134.55, precioSinIva: 117, servicios: "WiFi 6+, Defense, Assistance Pro, Constructor Web", color: "#e11d48", badge: "INFINITY" },
-  { nombre: "Pyme GI Infinity 2000 + Extender", velocidad: 2000, precioConIva: 134.55, precioSinIva: 117, servicios: "WiFi 6+, Defense, Extender Dual Band, Constructor Web", color: "#e11d48", badge: "INFINITY" },
+  { nombre: "Pyme GI Tech 600 + Defense / Ass PRO", velocidad: 600, precioConIva: 37.38, precioSinIva: 32.5, servicios: "WiFi 6, Defense, Assistance Pro", color: "#3b82f6", badge: "TECH" },
+  { nombre: "Pyme GI Tech 600 + Extender", velocidad: 600, precioConIva: 37.38, precioSinIva: 32.5, servicios: "WiFi 6, Defense, Extender Dual Band", color: "#3b82f6", badge: "TECH" },
+  { nombre: "Pyme GI Digital 700 + Ass PRO", velocidad: 700, precioConIva: 40.83, precioSinIva: 35.5, servicios: "WiFi 6, Defense, Assistance Pro", color: "#8b5cf6", badge: "DIGITAL" },
+  { nombre: "Pyme GI Digital 700 + Extender", velocidad: 700, precioConIva: 40.83, precioSinIva: 35.5, servicios: "WiFi 6, Defense, Extender Dual Band", color: "#8b5cf6", badge: "DIGITAL" },
+  { nombre: "Pyme GI Productivo 800 + Ass PRO", velocidad: 800, precioConIva: 45.43, precioSinIva: 39.5, servicios: "WiFi 6, Defense, Assistance Pro", color: "#f59e0b", badge: "PRODUCTIVO" },
+  { nombre: "Pyme GI Productivo 800 + Extender", velocidad: 800, precioConIva: 45.43, precioSinIva: 39.5, servicios: "WiFi 6, Defense, Extender Dual Band", color: "#f59e0b", badge: "PRODUCTIVO" },
+  { nombre: "Pyme GI Evolution 1000 + Ass PRO", velocidad: 1000, precioConIva: 51.75, precioSinIva: 45, servicios: "WiFi 6, Defense, Assistance Pro", color: "#ef4444", badge: "EVOLUCIÓN" },
+  { nombre: "Pyme GI Evolution 1000 + Extender", velocidad: 1000, precioConIva: 51.75, precioSinIva: 45, servicios: "WiFi 6, Defense, Extender Dual Band", color: "#ef4444", badge: "EVOLUCIÓN" },
+  { nombre: "Pyme GI Spirit 1100 + Ass PRO", velocidad: 1100, precioConIva: 59.79, precioSinIva: 51.99, servicios: "WiFi 6, Defense, Assistance Pro", color: "#ec4899", badge: "SPIRIT" },
+  { nombre: "Pyme GI Spirit 1100 + Extender", velocidad: 1100, precioConIva: 59.79, precioSinIva: 51.99, servicios: "WiFi 6, Defense, Extender Dual Band", color: "#ec4899", badge: "SPIRIT" },
+  { nombre: "Pyme GI Digital 1300 + Ass PRO", velocidad: 1300, precioConIva: 71.29, precioSinIva: 61.99, servicios: "WiFi 6, Defense, Assistance Pro, Constructor Web", color: "#7c3aed", badge: "DIGITAL+" },
+  { nombre: "Pyme GI Digital 1300 + Extender", velocidad: 1300, precioConIva: 71.29, precioSinIva: 61.99, servicios: "WiFi 6, Defense, Extender Dual Band, Constructor Web", color: "#7c3aed", badge: "DIGITAL+" },
+  { nombre: "Pyme GI Exponencial 1500 + Ass PRO", velocidad: 1500, precioConIva: 81.65, precioSinIva: 71, servicios: "WiFi 6, Defense, Assistance Pro, Constructor Web", color: "#9333ea", badge: "EXPONENCIAL" },
+  { nombre: "Pyme GI Exponencial 1500 + Extender", velocidad: 1500, precioConIva: 81.65, precioSinIva: 71, servicios: "WiFi 6, Defense, Extender Dual Band, Constructor Web", color: "#9333ea", badge: "EXPONENCIAL" },
+  { nombre: "Pyme GI Tech 1750 + Ass PRO", velocidad: 1750, precioConIva: 100.05, precioSinIva: 87, servicios: "WiFi 6, Defense, Assistance Pro, Constructor Web", color: "#a855f7", badge: "ULTRA" },
+  { nombre: "Pyme GI Tech 1750 + Extender", velocidad: 1750, precioConIva: 100.05, precioSinIva: 87, servicios: "WiFi 6, Defense, Extender Dual Band, Constructor Web", color: "#a855f7", badge: "ULTRA" },
+  { nombre: "Pyme GI Xtreme 1850 + Ass PRO", velocidad: 1850, precioConIva: 117.3, precioSinIva: 102, servicios: "WiFi 6, Defense, Assistance Pro, Constructor Web", color: "#d946ef", badge: "XTREME" },
+  { nombre: "Pyme GI Xtreme 1850 + Extender", velocidad: 1850, precioConIva: 117.3, precioSinIva: 102, servicios: "WiFi 6, Defense, Extender Dual Band, Constructor Web", color: "#d946ef", badge: "XTREME" },
+  { nombre: "Pyme GI Infinity 2000 + Ass PRO", velocidad: 2000, precioConIva: 134.55, precioSinIva: 117, servicios: "WiFi 6, Defense, Assistance Pro, Constructor Web", color: "#e11d48", badge: "INFINITY" },
+  { nombre: "Pyme GI Infinity 2000 + Extender", velocidad: 2000, precioConIva: 134.55, precioSinIva: 117, servicios: "WiFi 6, Defense, Extender Dual Band, Constructor Web", color: "#e11d48", badge: "INFINITY" },
 ];
 
 const PLANES_TERCERA_EDAD = [
-  { nombre: "GI Trainee-Defense 400", velocidad: 400, precioSinIva: 12.9, precioConIva: 14.84, addons: [], color: "#10b981" },
+  { nombre: "GI Trainee-Defense 400", velocidad: 400, precioSinIva: 12.9, precioConIva: 14.83, addons: [], color: "#10b981" },
   { nombre: "GI Initial-Defense 575", velocidad: 575, precioSinIva: 15.5, precioConIva: 17.83, addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#3b82f6" },
   { nombre: "GI Learner-Defense 750", velocidad: 750, precioSinIva: 15.75, precioConIva: 18.11, addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#8b5cf6" },
   { nombre: "GI Vader-Defense 850", velocidad: 850, precioSinIva: 17.5, precioConIva: 20.13, addons: ["1 Extender Dual Band","Netlife Play Básico","Assistance Pro","Paramount+"], color: "#f59e0b" },
-  { nombre: "GI Vader-Defense 850+", velocidad: 850, precioSinIva: 19.5, precioConIva: 22.43, addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount"], color: "#f59e0b" },
-  { nombre: "GI Sith-Defense 950", velocidad: 950, precioSinIva: 21.5, precioConIva: 24.73, addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount"], color: "#ef4444" },
+  { nombre: "GI Vader-Defense 850+", velocidad: 850, precioSinIva: 19.5, precioConIva: 22.42, addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount"], color: "#f59e0b" },
+  { nombre: "GI Sith-Defense 950", velocidad: 950, precioSinIva: 21.5, precioConIva: 24.72, addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount"], color: "#ef4444" },
   { nombre: "GI Spirit-Defense 1000", velocidad: 1000, precioSinIva: 23, precioConIva: 26.45, addons: ["2 Extenders Dual Band","Ass Pro + 1 Ext DB","Ass Pro + Paramount"], color: "#ec4899" },
   { nombre: "1075 Mbps Asimétrico", velocidad: 1075, precioSinIva: 24.99, precioConIva: 28.74, addons: ["Ass Pro + 2 Extenders DB"], color: "#06b6d4" },
   { nombre: "1075 Mbps", velocidad: 1075, precioSinIva: 27.15, precioConIva: 31.22, addons: [], color: "#06b6d4" },
@@ -127,7 +135,7 @@ const PLANES_TERCERA_EDAD = [
 // ============================================================
 // HELPERS
 // ============================================================
-const velLabel = (v) => v >= 1000 ? `${v/1000} Gbps` : `${v} Mbps`;
+const velLabel = (v) => v >= 1000 ? `${(v/1000).toFixed(1)} Gbps` : `${v} Mbps`;
 
 const speedBar = (v, max = 2000) => {
   const pct = Math.min((v / max) * 100, 100);
@@ -148,6 +156,7 @@ const USOS_INTERNET = {
 // ============================================================
 export default function GuiaPlanesMarzo() {
   const [panel, setPanel] = useState("smart"); // smart | filtros
+  const [expandZonas, setExpandZonas] = useState(false);
 
   return (
     <div style={{ fontFamily: "'Syne', 'DM Sans', system-ui, sans-serif", minHeight: "100vh", background: "#070b14", color: "#fff" }}>
@@ -162,7 +171,7 @@ export default function GuiaPlanesMarzo() {
             <div style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: 12, padding: "10px 14px", fontSize: 22 }}>⚡</div>
             <div>
               <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.5px", lineHeight: 1 }}>
-                GUÍA PLANES <span style={{ color: "#818cf8" }}>MARZO 2026</span>
+                GUÍA PLANES <span style={{ color: "#818cf8" }}>ABRIL 2026</span>
               </div>
               <div style={{ fontSize: 10, color: "#6366f1", fontWeight: 700, letterSpacing: "0.15em", marginTop: 2 }}>NETLIFE · HERRAMIENTA DE VENTAS</div>
             </div>
@@ -179,6 +188,65 @@ export default function GuiaPlanesMarzo() {
       {/* BODY */}
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px 24px 60px" }}>
         {panel === "smart" ? <PanelSmart /> : <PanelFiltros />}
+      </div>
+
+      {/* ZONAS CERO EXPANDIBLE - SIEMPRE VISIBLE AL PIE */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(5,150,105,0.04))",
+        border: "1px solid rgba(16,185,129,0.2)",
+        borderRadius: 16,
+        padding: "20px 24px",
+        margin: "0 24px 24px",
+        maxWidth: "1400px",
+        marginLeft: "auto",
+        marginRight: "auto"
+      }}>
+        <button onClick={() => setExpandZonas(!expandZonas)} style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          color: "#10b981",
+          fontSize: 14,
+          fontWeight: 800,
+          letterSpacing: "0.05em",
+          marginBottom: expandZonas ? 16 : 0
+        }}>
+          <span style={{ fontSize: 28 }}>📍</span>
+          <div style={{ textAlign: "left" }}>
+            <div>ZONAS CON INSTALACIÓN GRATIS (TODAS LAS FORMAS DE PAGO)</div>
+            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 2 }}>
+              {expandZonas ? "Mostrar menos ▲" : `${ZONAS_CERO.length} ciudades · Click para expandir ▼`}
+            </div>
+          </div>
+        </button>
+
+        {expandZonas && (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+            gap: 10,
+            marginTop: 12
+          }}>
+            {ZONAS_CERO.map((zona, idx) => (
+              <div key={idx} style={{
+                background: "rgba(16,185,129,0.1)",
+                border: "1px solid rgba(16,185,129,0.3)",
+                borderRadius: 8,
+                padding: "10px 12px",
+                fontSize: 12,
+                color: "#e2e8f0",
+                fontWeight: 600,
+                textAlign: "center"
+              }}>
+                {zona}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -510,23 +578,6 @@ function Resultado({ planes, answers, onReset }) {
       {selected !== null && (
         <PlanDetalle plan={planes[selected]} tipo={answers.tipo} pago={answers.pago} />
       )}
-
-      {/* ALERTA ZONA CERO COSTO */}
-      <div style={{
-        background: "linear-gradient(135deg, rgba(16,185,129,0.1), rgba(5,150,105,0.05))",
-        border: "1px solid rgba(16,185,129,0.3)", borderRadius: 16, padding: "16px 20px",
-        display: "flex", alignItems: "center", gap: 16, marginTop: 16
-      }}>
-        <div style={{ fontSize: 28 }}>📍</div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#10b981", marginBottom: 2 }}>
-            ZONAS CON INSTALACIÓN GRATIS
-          </div>
-          <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6 }}>
-            {ZONAS_CERO.slice(0, 15).join(" · ")} y más ciudades...
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

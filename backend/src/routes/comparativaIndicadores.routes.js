@@ -1,6 +1,6 @@
 const express = require('express');
 const { getComparativaSupervisores } = require('../controllers/comparativaIndicadores.controller');
-const { verificarToken } = require('../middlewares/auth.middleware');
+const { verificarToken } = require('../middlewares/auth');
 
 const router = express.Router();
 

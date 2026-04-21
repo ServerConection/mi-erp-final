@@ -14,31 +14,46 @@ const getPrimerDiaMesEcuador = () => {
 const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPER: filtro de supervisor como subquery EXISTS para evitar duplicados
-// Usa COALESCE para manejar b_cerrado NULL → fallback a b_creado_el_fecha
+// JOIN LATERAL con fallback de mes:
+// 1. Busca el mes exacto de la fecha del registro en empleados
+// 2. Si no existe ese mes, usa el código de mes más alto disponible para ese asesor
+// 3. Si el asesor no existe en empleados, el LEFT JOIN devuelve NULL (asesor igual aparece)
+// Esto garantiza que TODOS los asesores aparecen aunque no tengan registro
+// para el mes exacto (ej: solo existen codigo='3' y codigo='4')
+// ─────────────────────────────────────────────────────────────────────────────
+const joinEmpleadosDedup = `
+LEFT JOIN LATERAL (
+    SELECT e2.supervisor, e2.codigo, e2.nombre_completo
+    FROM public.empleados e2
+    WHERE e2.nombre_completo = mb.b_persona_responsable
+    ORDER BY
+        CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+            ${parseFecha('mb.b_cerrado')},
+            ${parseFecha('mb.b_creado_el_fecha')}
+        ))::text THEN 0 ELSE 1 END,
+        e2.codigo::int DESC
+    LIMIT 1
+) e ON true`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTRO supervisor con el mismo fallback para queries sin JOIN
 // ─────────────────────────────────────────────────────────────────────────────
 const supervisorExistsFilter = (paramIndex) =>
     `AND EXISTS (
-        SELECT 1 FROM public.empleados _e
-        WHERE _e.nombre_completo = mb.b_persona_responsable
-        AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
-            ${parseFecha('mb.b_cerrado')},
-            ${parseFecha('mb.b_creado_el_fecha')}
-        ))::text
-        AND _e.supervisor ILIKE $${paramIndex}
+        SELECT 1 FROM (
+            SELECT e2.supervisor
+            FROM public.empleados e2
+            WHERE e2.nombre_completo = mb.b_persona_responsable
+            ORDER BY
+                CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+                    ${parseFecha('mb.b_cerrado')},
+                    ${parseFecha('mb.b_creado_el_fecha')}
+                ))::text THEN 0 ELSE 1 END,
+                e2.codigo::int DESC
+            LIMIT 1
+        ) _sup
+        WHERE _sup.supervisor ILIKE $${paramIndex}
     )`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPER: JOIN dinámico con empleados por mes
-// FIX: usa COALESCE(b_cerrado, b_creado_el_fecha) para no perder registros
-// donde b_cerrado es NULL (registros sin cerrar todavía)
-// ─────────────────────────────────────────────────────────────────────────────
-const joinEmpleadosDedup = `LEFT JOIN public.empleados e
-    ON mb.b_persona_responsable = e.nombre_completo
-    AND e.codigo = EXTRACT(MONTH FROM COALESCE(
-        ${parseFecha('mb.b_cerrado')},
-        ${parseFecha('mb.b_creado_el_fecha')}
-    ))::text`;
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
@@ -252,7 +267,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
-        // FIX: agregado campo "activos" para que el front pueda graficar barras azules
         const queryPorDia = `
             SELECT
                 mb.j_fecha_registro_sistema::date AS fecha,
@@ -338,12 +352,11 @@ const getIndicadoresDashboard = async (req, res) => {
             total: Number(r.total || 0),
         }));
 
-        // FIX: graficoEmbudo → mapear a {name, value, etapa} para que FunnelChart funcione
         const graficoEmbudo = resEmbudo.rows.map(r => ({
-            name:  r.etapa,   // FunnelChart usa "name"
-            value: Number(r.total || 0), // FunnelChart usa "value"
-            etapa: r.etapa,   // para el label personalizado del front
-            total: Number(r.total || 0), // mantener total para compatibilidad
+            name:  r.etapa,
+            value: Number(r.total || 0),
+            etapa: r.etapa,
+            total: Number(r.total || 0),
         }));
 
         const rowTercera = resTerceraEdad.rows[0] || {};
@@ -359,7 +372,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
-        console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup} | Etapas Jotform: ${estadosNetlife.length}`);
+        console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Asesores: ${asesoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
         res.json({
             success: true,
@@ -369,7 +382,7 @@ const getIndicadoresDashboard = async (req, res) => {
             dataNetlife: resNet.rows,
             estadosNetlife,
             graficoEmbudo,
-            graficoBarrasDia: resDia.rows, // ahora incluye "activos"
+            graficoBarrasDia: resDia.rows,
             etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
             etapasJotform: resEtapasJotform.rows.map(r => r.etapa),
             porcentajeTerceraEdad,
@@ -384,7 +397,6 @@ const getIndicadoresDashboard = async (req, res) => {
 
 const getMonitoreoDiario = async (req, res) => {
     try {
-        // FIX: ahora lee filtros dinámicos del request igual que el dashboard
         const { asesor, supervisor } = req.query;
 
         const hoy = getFechaEcuador();
@@ -395,15 +407,21 @@ const getMonitoreoDiario = async (req, res) => {
         const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
         const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
 
-        // FIX: también usa COALESCE para no perder registros con b_cerrado NULL
-        const joinMonitoreo = `LEFT JOIN public.empleados e
-            ON mb.b_persona_responsable = e.nombre_completo
-            AND e.codigo = EXTRACT(MONTH FROM COALESCE(
-                ${parseFecha('mb.b_cerrado')},
-                ${parseFecha('mb.b_creado_el_fecha')}
-            ))::text`;
+        // JOIN con fallback igual que en dashboard
+        const joinMonitoreo = `
+LEFT JOIN LATERAL (
+    SELECT e2.supervisor, e2.codigo, e2.nombre_completo
+    FROM public.empleados e2
+    WHERE e2.nombre_completo = mb.b_persona_responsable
+    ORDER BY
+        CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+            ${parseFecha('mb.b_cerrado')},
+            ${parseFecha('mb.b_creado_el_fecha')}
+        ))::text THEN 0 ELSE 1 END,
+        e2.codigo::int DESC
+    LIMIT 1
+) e ON true`;
 
-        // FIX: construir filtros dinámicos para monitoreo
         let values = [iniciomes, hoy];
         let filtersJoin = "";
         let filtersNoJoin = "";
@@ -416,15 +434,20 @@ const getMonitoreoDiario = async (req, res) => {
         if (supervisor) {
             values.push(`%${supervisor}%`);
             filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
-            // Para queries sin JOIN usamos subquery EXISTS con COALESCE
             filtersNoJoin += ` AND EXISTS (
-                SELECT 1 FROM public.empleados _e
-                WHERE _e.nombre_completo = mb.b_persona_responsable
-                AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
-                    ${parseFecha('mb.b_cerrado')},
-                    ${parseFecha('mb.b_creado_el_fecha')}
-                ))::text
-                AND _e.supervisor ILIKE $${values.length}
+                SELECT 1 FROM (
+                    SELECT e2.supervisor
+                    FROM public.empleados e2
+                    WHERE e2.nombre_completo = mb.b_persona_responsable
+                    ORDER BY
+                        CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+                            ${parseFecha('mb.b_cerrado')},
+                            ${parseFecha('mb.b_creado_el_fecha')}
+                        ))::text THEN 0 ELSE 1 END,
+                        e2.codigo::int DESC
+                    LIMIT 1
+                ) _sup
+                WHERE _sup.supervisor ILIKE $${values.length}
             )`;
         }
 
@@ -477,16 +500,19 @@ const getMonitoreoDiario = async (req, res) => {
             ORDER BY real_mes_leads DESC
         `;
 
-        // FIX: queryJotHoy ahora usa $1 para hoy (tercer valor en values)
-        // Necesita sus propios values separados ya que usa fecha diferente
-        const valuesJotHoy = [hoy, ...values.slice(2)]; // hoy + filtros de asesor/supervisor
-
+        const valuesJotHoy = [hoy];
         let filtersJotHoy = "";
+        let jotHoyParamOffset = 1;
+
         if (asesor) {
-            filtersJotHoy += ` AND mb.b_persona_responsable ILIKE $${valuesJotHoy.indexOf(`%${asesor}%`) + 1}`;
+            valuesJotHoy.push(`%${asesor}%`);
+            jotHoyParamOffset++;
+            filtersJotHoy += ` AND mb.b_persona_responsable ILIKE $${jotHoyParamOffset}`;
         }
         if (supervisor) {
-            filtersJotHoy += ` AND e.supervisor ILIKE $${valuesJotHoy.indexOf(`%${supervisor}%`) + 1}`;
+            valuesJotHoy.push(`%${supervisor}%`);
+            jotHoyParamOffset++;
+            filtersJotHoy += ` AND e.supervisor ILIKE $${jotHoyParamOffset}`;
         }
 
         const queryJotHoy = (columna) => `
@@ -554,45 +580,44 @@ const getReporte180 = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-        let filtersJoin = "";
         let filtersNoJoin = "";
 
         if (asesor) {
             values.push(`%${asesor}%`);
-            filtersJoin   += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
-            filtersJoin   += ` AND e.supervisor ILIKE $${values.length}`;
             filtersNoJoin += ` AND EXISTS (
-                SELECT 1 FROM public.empleados _e
-                WHERE _e.nombre_completo = mb.b_persona_responsable
-                AND _e.codigo = EXTRACT(MONTH FROM COALESCE(
-                    ${parseFecha('mb.b_cerrado')},
-                    ${parseFecha('mb.b_creado_el_fecha')}
-                ))::text
-                AND _e.supervisor ILIKE $${values.length}
+                SELECT 1 FROM (
+                    SELECT e2.supervisor
+                    FROM public.empleados e2
+                    WHERE e2.nombre_completo = mb.b_persona_responsable
+                    ORDER BY
+                        CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+                            ${parseFecha('mb.b_cerrado')},
+                            ${parseFecha('mb.b_creado_el_fecha')}
+                        ))::text THEN 0 ELSE 1 END,
+                        e2.codigo::int DESC
+                    LIMIT 1
+                ) _sup
+                WHERE _sup.supervisor ILIKE $${values.length}
             )`;
         }
         if (estadoNetlife) {
             values.push(`%${estadoNetlife}%`);
-            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
         if (estadoRegularizacion) {
             values.push(`%${estadoRegularizacion}%`);
-            filtersJoin   += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
         if (etapaCRM) {
             values.push(`%${etapaCRM}%`);
-            filtersJoin   += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
         }
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
-            filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
@@ -705,7 +730,6 @@ const getReporte180 = async (req, res) => {
 
         const kpis = resKPIs.rows[0] || {};
 
-        // FIX: mapear embudos a {name, value, etapa, total} igual que el dashboard
         const embudoCRM = resEmbCRM.rows.map(r => ({
             name:  r.etapa,
             value: Number(r.total || 0),

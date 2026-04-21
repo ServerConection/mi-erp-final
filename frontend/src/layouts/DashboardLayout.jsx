@@ -5,6 +5,29 @@ import { io } from "socket.io-client";
 const API = import.meta.env.VITE_API_URL;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
+// ─────────────────────────────────────────────────────────────────────────────
+const RUTAS_PUBLICAS = ['/guia-planes-marzo', '/broadcast']; // ✅ FIX: era '/guia-comercial'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCKET SINGLETON
+// ─────────────────────────────────────────────────────────────────────────────
+let socketSingleton = null;
+
+const getSocket = () => {
+  if (!socketSingleton) {
+    socketSingleton = io(API, {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+    });
+  }
+  return socketSingleton;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SONIDOS
 // ─────────────────────────────────────────────────────────────────────────────
 const playSound = (tipo) => {
@@ -78,7 +101,7 @@ function Particulas({ efecto }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATOS VIVOS — versión compacta para overlay
+// DATOS VIVOS
 // ─────────────────────────────────────────────────────────────────────────────
 function DatosVivos({ tipo, datos, colorTexto }) {
   if (!datos) return null;
@@ -112,8 +135,8 @@ function DatosVivos({ tipo, datos, colorTexto }) {
   if (tipo === "resumen_dia" && datos && !Array.isArray(datos)) return (
     <div style={{ display: "flex", gap: 24, justifyContent: "center", marginTop: 16 }}>
       {[
-        { label: "Ingresos Jot", val: datos.ingresos_hoy, color: "#34d399" },
-        { label: "Activas",      val: datos.activas_hoy,  color: "#60a5fa" },
+        { label: "Ingresos Jot", val: datos.ingresos_hoy,   color: "#34d399" },
+        { label: "Activas",      val: datos.activas_hoy,    color: "#60a5fa" },
         { label: "Gest. Diaria", val: datos.gestion_diaria, color: "#fbbf24" },
       ].map(({ label, val, color }) => (
         <div key={label} style={{ textAlign: "center",
@@ -130,7 +153,7 @@ function DatosVivos({ tipo, datos, colorTexto }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BROADCAST OVERLAY FULLSCREEN
+// BROADCAST OVERLAY
 // ─────────────────────────────────────────────────────────────────────────────
 const TIPO_ICONOS = {
   urgente: "🚨", prevencion: "⚠️", logro: "🏆", info: "📢", personalizado: "✨",
@@ -156,8 +179,8 @@ function BroadcastOverlay({ mensaje, onClose }) {
 
   if (!mensaje) return null;
 
-  const colorFondo  = mensaje.color_fondo  || "#0f172a";
-  const colorTexto  = mensaje.color_texto  || "#ffffff";
+  const colorFondo = mensaje.color_fondo || "#0f172a";
+  const colorTexto = mensaje.color_texto || "#ffffff";
 
   return (
     <div style={{
@@ -175,17 +198,14 @@ function BroadcastOverlay({ mensaje, onClose }) {
         @keyframes pulseIcon { 0%,100% { transform:scale(1); } 50% { transform:scale(1.15); } }
       `}</style>
 
-      {/* Partículas */}
       <Particulas efecto={mensaje.efecto} />
 
-      {/* Imagen de fondo */}
       {mensaje.imagen_url && (
         <img src={`${API}${mensaje.imagen_url}`} alt=""
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
             objectFit: "cover", opacity: .2, zIndex: 0 }} />
       )}
 
-      {/* Contenido */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center",
         maxWidth: "75vw", padding: "0 20px" }}>
         <div style={{ fontSize: "min(8vw,72px)", marginBottom: "2vh",
@@ -211,14 +231,12 @@ function BroadcastOverlay({ mensaje, onClose }) {
         <DatosVivos tipo={mensaje.datos_vivos} datos={mensaje.datosVivos} colorTexto={colorTexto} />
       </div>
 
-      {/* Barra de progreso */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,
         height: 5, background: "rgba(255,255,255,.15)", zIndex: 3 }}>
         <div style={{ height: "100%", width: `${progreso}%`,
           background: colorTexto, transition: "width .1s linear" }} />
       </div>
 
-      {/* Tiempo restante + cerrar */}
       <div style={{ position: "absolute", top: 16, right: 16, zIndex: 4,
         display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 11, color: colorTexto, opacity: .5, fontWeight: 700 }}>
@@ -238,25 +256,65 @@ function BroadcastOverlay({ mensaje, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD LAYOUT PRINCIPAL
+// MENÚ
+// ─────────────────────────────────────────────────────────────────────────────
+const ALL_MENU_ITEMS = [
+  { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
+  { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null }, // ✅ FIX: era '/guia-comercial'
+  { name: "Indicadores",        path: "/indicadores",         icon: "📊", permiso: "Indicadores" },
+  { name: "Indicadores VELSA",  path: "/indicadores-velsa",   icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
+  { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
+  { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },
+  { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",   icon: "✔️", permiso: "SeguimientoVelsa" },
+  { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
+  { name: "Ventas Formulario",  path: "/ventas",              icon: "📝", permiso: "VentasFormulario" },
+  { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
+  { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
+  { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },
+  { name: "Comisiones",         path: "/comisiones",          icon: "💰", permiso: "Comisiones" },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD LAYOUT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser]                       = useState(null);
-  const [sidebarOpen, setSidebarOpen]         = useState(false);
+  const [user, setUser]                             = useState(null);
+  const [permisos, setPermisos]                     = useState([]);
+  const [sidebarOpen, setSidebarOpen]               = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
-  const [broadcast, setBroadcast]             = useState(null);
-  const socketRef                             = useRef(null);
+  const [broadcast, setBroadcast]                   = useState(null);
 
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
+  // ── Cargar usuario y permisos ───────────────────────────────────────────────
   useEffect(() => {
     const userData = localStorage.getItem("userProfile");
-    if (!userData) { navigate("/login"); return; }
-    setUser(JSON.parse(userData));
+    if (!userData) {
+      navigate("/login");
+      return;
+    }
+    try {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+
+      if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
+        setPermisos(parsedUser.permisos);
+      } else {
+        if (!RUTAS_PUBLICAS.includes(location.pathname)) {
+          console.warn("Sin permisos definidos → cerrando sesión");
+          navigate("/login");
+        }
+      }
+    } catch (err) {
+      console.error("Error parseando usuario:", err);
+      navigate("/login");
+    }
   }, [navigate]);
 
+<<<<<<< HEAD
   // ── Socket.io — escucha broadcasts ────────────────────────────────────────
   // 🔐 ACTUALIZACIÓN: Agregar autenticación JWT en Socket.io
   useEffect(() => {
@@ -265,13 +323,39 @@ export default function DashboardLayout() {
       transports: ["websocket"]
     });
     socketRef.current.on("broadcast_mensaje", (data) => {
+=======
+  // ── Socket.io para broadcasts ───────────────────────────────────────────────
+  useEffect(() => {
+    const socket = getSocket();
+    const handleBroadcast = (data) => {
+>>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
       setBroadcast(data);
       if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);
-    });
-    return () => socketRef.current?.disconnect();
+    };
+    socket.off("broadcast_mensaje", handleBroadcast);
+    socket.on("broadcast_mensaje", handleBroadcast);
+    return () => {
+      socket.off("broadcast_mensaje", handleBroadcast);
+    };
   }, []);
 
+  // ── Proteger rutas ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user || permisos.length === 0) return;
+    if (RUTAS_PUBLICAS.includes(location.pathname)) return;
+
+    const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
+    if (!itemActual) return;
+    if (itemActual.permiso && !permisos.includes(itemActual.permiso)) {
+      navigate("/");
+    }
+  }, [location.pathname, permisos, user, navigate]);
+
   const handleLogout = () => {
+    if (socketSingleton) {
+      socketSingleton.disconnect();
+      socketSingleton = null;
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("userProfile");
     navigate("/login");
@@ -279,21 +363,12 @@ export default function DashboardLayout() {
 
   if (!user) return null;
 
-  const menuItems = [
-    { name: "Inicio",             path: "/",                 icon: "🏠" },
-    { name: "Indicadores",        path: "/indicadores",      icon: "📊" },
-    { name: "Ventas",             path: "/ventas",           icon: "📈" },
-    { name: "RRHH",               path: "/rrhh",             icon: "👥" },
-    { name: "Horarios",           path: "/horarios",         icon: "⏰" },
-    { name: "Billetera",          path: "/billetera",        icon: "💳" },
-    { name: "Comisiones",         path: "/comisiones",       icon: "💰" },
-    { name: "Seguimient Venta",   path: "/Seguimiento_Venta",icon: "✔️" },
-    { name: "Redes",              path: "/redes",            icon: "🚩" },
-  ];
+  const menuItems = ALL_MENU_ITEMS.filter(item =>
+    !item.permiso || permisos.includes(item.permiso)
+  );
 
   return (
     <>
-      {/* ── BROADCAST OVERLAY — aparece encima de TODO ── */}
       {broadcast && (
         <BroadcastOverlay mensaje={broadcast} onClose={() => setBroadcast(null)} />
       )}
@@ -308,19 +383,17 @@ export default function DashboardLayout() {
           <div
             onClick={() => setSidebarOpen(false)}
             className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
-          ></div>
+          />
         )}
 
         {/* SIDEBAR */}
-        <aside
-          className={`
-            fixed md:static inset-y-0 left-0 z-30
-            bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-            md:translate-x-0
-            ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
-          `}
-        >
+        <aside className={`
+          fixed md:static inset-y-0 left-0 z-30
+          bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0
+          ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
+        `}>
           <button
             onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
             className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-20 bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md rounded-r-2xl items-center justify-center text-white border-y border-r border-white/20 z-50 shadow-[5px_0_15px_rgba(0,0,0,0.3)] transition-all group"
@@ -358,7 +431,9 @@ export default function DashboardLayout() {
                   <span className={`${isDesktopCollapsed ? "text-3xl" : "text-2xl"} transition-all group-hover:scale-110 drop-shadow-md`}>
                     {item.icon}
                   </span>
-                  {!isDesktopCollapsed && <span className="font-bold tracking-wide truncate">{item.name}</span>}
+                  {!isDesktopCollapsed && (
+                    <span className="font-bold tracking-wide truncate">{item.name}</span>
+                  )}
                 </button>
               );
             })}
@@ -367,12 +442,14 @@ export default function DashboardLayout() {
           <div className={`p-6 border-t border-white/5 bg-black/20 ${isDesktopCollapsed ? "text-center px-2" : ""}`}>
             <div className={`flex items-center mb-6 ${isDesktopCollapsed ? "justify-center" : "space-x-4"}`}>
               <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center font-black text-white shadow-xl border border-white/10">
-                {user.usuario.charAt(0).toUpperCase()}
+                {user.usuario?.charAt(0).toUpperCase() || "U"}
               </div>
               {!isDesktopCollapsed && (
                 <div className="overflow-hidden text-left">
                   <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
-                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Online</p>
+                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">
+                    {user.perfil} · {user.empresa}
+                  </p>
                 </div>
               )}
             </div>
@@ -384,7 +461,7 @@ export default function DashboardLayout() {
           </div>
         </aside>
 
-        {/* ÁREA DE CONTENIDO */}
+        {/* MAIN CONTENT */}
         <main className="flex-1 flex flex-col relative z-10 overflow-hidden w-full transition-all duration-500">
           <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-black/20 shrink-0 backdrop-blur-md">
             <div className="flex items-center gap-6">
@@ -396,13 +473,13 @@ export default function DashboardLayout() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic bg-clip-text">
-                {menuItems.find(m => m.path === location.pathname)?.name}
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">
+                {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
               </h2>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-4 md:p-10 w-full transition-all">
+          <div className="flex-1 overflow-auto p-4 md:p-10 w-full">
             <Outlet />
           </div>
         </main>

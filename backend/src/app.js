@@ -11,11 +11,19 @@ const passwordRoutes         = require('./routes/password.routes');
 const forgotRoutes           = require('./routes/forgotPassword.routes');
 const testEmailRoutes        = require('./routes/test.email.routes');
 const verifyOtpRoutes        = require('./routes/verify.otp.routes');
+<<<<<<< HEAD
 const indicadoresRoutes          = require('./routes/indicadores.routes');
 const indicadoresVelsaRoutes     = require('./routes/indicadoresVelsa.routes');
 const comparativaIndicadoresRoutes = require('./routes/comparativaIndicadores.routes');
 const alertasRoutes              = require('./routes/alertas.routes');  // ← NUEVO
 const broadcastRoutes            = require('./routes/broadcast.routes'); // ← NUEVO
+=======
+const indicadoresRoutes      = require('./routes/indicadores.routes');
+const indicadoresVelsaRoutes = require('./routes/indicadoresVelsa.routes');
+const alertasRoutes          = require('./routes/alertas.routes');
+const broadcastRoutes        = require('./routes/broadcast.routes');
+const ventasRoutes           = require('./routes/ventas.routes');
+>>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
 
 const app = express();
 
@@ -65,11 +73,14 @@ app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 // Redes
 app.use('/api/redes',             redesRoutes);
 
-// Alertas y notificaciones                                         ← NUEVO
+// Alertas y notificaciones
 app.use('/api/alertas',           alertasRoutes);
 
-// Broadcast TV                                                      ← NUEVO
-app.use('/uploads', express.static(require('path').join(process.cwd(), 'uploads')));
+// Ventas
+app.use('/api/ventas',            ventasRoutes);
+
+// Broadcast TV
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/broadcast',         broadcastRoutes);
 
 module.exports = app;

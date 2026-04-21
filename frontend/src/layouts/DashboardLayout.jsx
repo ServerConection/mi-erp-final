@@ -17,6 +17,7 @@ let socketSingleton = null;
 const getSocket = () => {
   if (!socketSingleton) {
     socketSingleton = io(API, {
+      auth: { token: localStorage.getItem('token') },
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 10,
@@ -314,21 +315,10 @@ export default function DashboardLayout() {
     }
   }, [navigate]);
 
-<<<<<<< HEAD
-  // ── Socket.io — escucha broadcasts ────────────────────────────────────────
-  // 🔐 ACTUALIZACIÓN: Agregar autenticación JWT en Socket.io
-  useEffect(() => {
-    socketRef.current = io(API, {
-      auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
-      transports: ["websocket"]
-    });
-    socketRef.current.on("broadcast_mensaje", (data) => {
-=======
   // ── Socket.io para broadcasts ───────────────────────────────────────────────
   useEffect(() => {
     const socket = getSocket();
     const handleBroadcast = (data) => {
->>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
       setBroadcast(data);
       if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);
     };

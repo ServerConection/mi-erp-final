@@ -18,11 +18,8 @@ export default function HomeModules() {
   const navigate = useNavigate();
   const userRol = getUserRol();
 
-<<<<<<< HEAD
   // Configuración de las tarjetas (Iconos, Colores, Rutas)
   // Cada módulo puede tener un array "rolesPermitidos" para restringir acceso
-=======
->>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
   const modules = [
     {
       title: "Indicadores",

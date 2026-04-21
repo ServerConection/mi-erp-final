@@ -727,14 +727,23 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, ori
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — MONITOREO GENERAL
 // ─────────────────────────────────────────────────────────────────────────────
-function TabMonitoreoGeneral({ data, loading }) {
+function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
   const { principal, ciudad, hora, atc } = data;
   const [vistaTabla, setVistaTabla] = useState("canal");
   const [vistaCity,  setVistaCity]  = useState("resumen");
   const [vistaHora,  setVistaHora]  = useState("resumen");
   const [vistaCanal, setVistaCanal] = useState("detalle");
 
-  const rawFilas = principal?.data || [];
+  // Filtro frontend por canal — red de seguridad sobre el filtro del backend
+  const rawFilas = useMemo(() => {
+    const filas = principal?.data || [];
+    if (!canalesSel.length) return filas;
+    return filas.filter(row => {
+      const canal = row.canal_inversion || getCanal(row.canal_publicidad);
+      return canalesSel.includes(canal);
+    });
+  }, [principal, canalesSel]);
+
   const filasAgr = agregarPorCanalDia(rawFilas);
   const porCanal = agregarPorCanal(rawFilas);
 
@@ -967,7 +976,16 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
   const [openFunnel, setOpenFunnel] = useState(false);
 
   // ⚠️ useMemo DEBE ir antes de cualquier return condicional (regla de hooks)
-  const rawFilas = principal?.data || [];
+  // Filtro frontend por canal sobre datos del backend (red de seguridad)
+  const rawFilas = useMemo(() => {
+    const filas = principal?.data || [];
+    if (!canalesSel.length) return filas;
+    return filas.filter(row => {
+      const canal = row.canal_inversion || getCanal(row.canal_publicidad);
+      return canalesSel.includes(canal);
+    });
+  }, [principal, canalesSel]);
+
   const origenData = useMemo(() => {
     if (canalesSel.length !== 1 || !principal) return [];
     return agregarPorOrigenDia(rawFilas);
@@ -1644,7 +1662,7 @@ export default function Redes() {
       )}
 
       {/* Contenido */}
-      {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} />}
+      {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} canalesSel={canalesSel} />}
       {tab === "graficos"     && <TabGraficos data={data} loading={loading} canalesSel={canalesSel} />}
       {tab === "asesorvpauta" && (
         <TabAsesorVsPauta filtro={filtro} canalesSel={canalesSel} onCanalesSel={setCanalesSel} />

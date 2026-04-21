@@ -20,9 +20,15 @@ const initSocket = (httpServer) => {
   const { Server } = require('socket.io');
 
   // Obtener orígenes permitidos (mismo CORS que Express)
+  const defaultOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://erp-frontend-v1.onrender.com'
+  ];
+
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : ['http://localhost:5173', 'http://localhost:3000'];
+    : defaultOrigins;
 
   _io = new Server(httpServer, {
     cors: {

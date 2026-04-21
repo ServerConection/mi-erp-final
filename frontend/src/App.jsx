@@ -33,45 +33,26 @@ export default function App() {
         <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
           <Route index element={<HomeModules />} />
 
-<<<<<<< HEAD
-          {/* 3. SUB-MÓDULOS */}
-          <Route path="indicadores" element={<Indicadores />} /> {/* Ahora tiene su propia ruta */}
-          <Route path="indicadores-velsa" element={<IndicadoresVelsa />} />
-          <Route path="comparativa-supervisores" element={<ComparativaSupervisores />} /> {/* NUEVO: Comparativa de Supervisores */}
-          <Route path="ventas" element={<Ventas />} />
-          <Route path="rrhh" element={<RRHH />} />
-          <Route path="horarios" element={<Horarios />} />
-          <Route path="billetera" element={<Billetera />} />
-          <Route path="comisiones" element={<Comisiones />} />
-          <Route path="Seguimiento_Venta" element={<Seguimientoventas />} />
-          <Route path="redes" element={<Redes />} />
-          <Route path="vista-asesor" element={<VistaAsesor />} /> {/* MÓDULO ASESOR */}
-          <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} /> {/* MÓDULO ASESOR VELSA*/}
-          <Route path="seguimiento-velsa" element={<Seguimientovelsa />} /> {/* SEGUIMIENTO VENTAS VELSA*/}
-          <Route path="notificaciones" element={<Notificaciones />} /> {/* CENTRO DE NOTIFICACIONES */}
-          <Route path="broadcast" element={<BroadcastPanel />} />         {/* BROADCAST TV */}
-          <Route path="appsheet" element={<AppSheetModule />} />  {/* FORMULARIO*/}
-          <Route path="Guiaplanesmarzo" element={<Guiaplanesmarzo />} />         {/* Guiaplanesmarzo */}
-=======
-          <Route path="indicadores"        element={<Indicadores />} />
-          <Route path="indicadores-velsa"  element={<IndicadoresVelsa />} />
-          <Route path="vista-asesor"       element={<VistaAsesor />} />
-          <Route path="vista-asesor-velsa" element={<VistaAsesorVelsa />} />
-          <Route path="seguimiento-ventas" element={<Seguimientoventas />} /> {/* ← corregido: era Seguimiento_Venta */}
-          <Route path="seguimiento-velsa"  element={<Seguimientovelsa />} />
-          <Route path="redes"              element={<Redes />} />
-          <Route path="ventas"             element={<Ventas />} />
-          <Route path="rrhh"               element={<RRHH />} />
-          <Route path="horarios"           element={<Horarios />} />
-          <Route path="billetera"          element={<Billetera />} />
-          <Route path="comisiones"         element={<Comisiones />} />
+          {/* SUB-MÓDULOS */}
+          <Route path="indicadores"               element={<Indicadores />} />
+          <Route path="indicadores-velsa"         element={<IndicadoresVelsa />} />
+          <Route path="comparativa-supervisores"  element={<ComparativaSupervisores />} />
+          <Route path="ventas"                    element={<Ventas />} />
+          <Route path="rrhh"                      element={<RRHH />} />
+          <Route path="horarios"                  element={<Horarios />} />
+          <Route path="billetera"                 element={<Billetera />} />
+          <Route path="comisiones"                element={<Comisiones />} />
+          <Route path="Seguimiento_Venta"         element={<Seguimientoventas />} />
+          <Route path="redes"                     element={<Redes />} />
+          <Route path="vista-asesor"              element={<VistaAsesor />} />
+          <Route path="vista-asesor-velsa"        element={<VistaAsesorVelsa />} />
+          <Route path="seguimiento-velsa"         element={<Seguimientovelsa />} />
 
-          {/* Rutas sin ítem en el menú lateral — sin restricción de permiso */}
-          <Route path="notificaciones"     element={<Notificaciones />} />
-          <Route path="broadcast"          element={<BroadcastPanel />} />
-          <Route path="appsheet"           element={<AppSheetModule />} />
-          <Route path="guia-planes-marzo"  element={<Guiaplanesmarzo />} />
->>>>>>> 2777c2ded8f55c3515d08540d6479568768fb611
+          {/* Rutas sin ítem en el menú lateral */}
+          <Route path="notificaciones"            element={<Notificaciones />} />
+          <Route path="broadcast"                 element={<BroadcastPanel />} />
+          <Route path="appsheet"                  element={<AppSheetModule />} />
+          <Route path="Guiaplanesmarzo"           element={<Guiaplanesmarzo />} />
         </Route>
 
         <Route path="tv"  element={<TVMode />} />

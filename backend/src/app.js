@@ -26,19 +26,29 @@ const app = express();
  * Solo orígenes en ALLOWED_ORIGINS pueden hacer requests
  *
  * Variables usadas: process.env.ALLOWED_ORIGINS (en .env)
- * Si no está configurado, usa localhost (desarrollo)
+ * Si no está configurado, usa localhost + producción
  */
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://erp-frontend-v1.onrender.com'
+];
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:3000'];
+  : defaultOrigins;
 
-app.use(cors({
+const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400
-}));
+};
+
+// Manejo explícito de preflight (OPTIONS) para todas las rutas
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Auth sin OTP (token directo)

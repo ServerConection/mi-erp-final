@@ -448,7 +448,7 @@ function Heatmap({ asesoresXCanal, canales }) {
     {v:"efect",l:"Efect%"},{v:"score",l:"Score"},
     {v:"pct_atc",l:"%ATC"},{v:"jot",l:"JOT"},{v:"leads",l:"Leads"},
   ];
-  const asesores=[...new Set(Object.values(asesoresXCanal).flat().map(a=>a.nombre))].slice(0,15);
+  const asesores=[...new Set(Object.values(asesoresXCanal).flat().map(a=>a.nombre))];
 
   const getVal=(nm,c)=>{
     const a=(asesoresXCanal[c]||[]).find(x=>x.nombre===nm);
@@ -775,7 +775,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
       const leads=n(a.leads_totales||a.real_mes_leads||0);
       const ventas=n(a.ventas_crm||a.v_subida_crm_hoy||0);
       const jot=n(a.ingresos_reales||a.v_subida_jot_hoy||0);
-      const atc=n(a.sac||0);
+      const atc=n(a.atc_soporte||a.sac||0);
       const negoc=Math.max(0,leads-atc);
       const efect=pct(jot,leads);
       const score=calcScore({leads,ventas,jot,atc,negoc});

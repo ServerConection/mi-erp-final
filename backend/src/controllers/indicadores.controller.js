@@ -170,6 +170,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*) FILTER (WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date) AS leads_totales,
                 COUNT(*) FILTER (
+                    WHERE (mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')
+                    AND ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+                ) AS atc_soporte,
+                COUNT(*) FILTER (
                     WHERE mb.b_cerrado::date BETWEEN $1::date AND $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,

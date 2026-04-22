@@ -248,9 +248,9 @@ const pool = require('../config/db');
         SELECT
           EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
           COUNT(*) AS n_leads,
-          COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '') AS atc,
+          COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%') AS atc,
           ROUND(
-            COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '')::numeric
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')::numeric
             / NULLIF(COUNT(*), 0) * 100, 1
           ) AS pct_atc_hora
         FROM public.mestra_bitrix mb
@@ -267,9 +267,9 @@ const pool = require('../config/db');
           mb.b_creado_el_fecha AS fecha,
           EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
           COUNT(*) AS n_leads,
-          COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '') AS atc,
+          COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%') AS atc,
           ROUND(
-            COUNT(*) FILTER (WHERE mb.j_novedades_atc IS NOT NULL AND TRIM(mb.j_novedades_atc) <> '')::numeric
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')::numeric
             / NULLIF(COUNT(*), 0) * 100, 1
           ) AS pct_atc_hora
         FROM public.mestra_bitrix mb

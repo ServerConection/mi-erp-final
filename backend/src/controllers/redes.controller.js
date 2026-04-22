@@ -298,20 +298,8 @@ const pool = require('../config/db');
       const gruposRaw = req.query.canales || '';
       const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
 
-      if (gruposSel.length === 0) {
-        // Sin filtro: usar vista materializada
-        const totalesResult = await pool.query(`
-          SELECT motivo_atc, SUM(cantidad) AS cantidad FROM public.mv_monitoreo_atc
-          WHERE fecha BETWEEN $1 AND $2 GROUP BY motivo_atc ORDER BY cantidad DESC
-        `, [fechaDesde, fechaHasta]);
-        const detalleResult = await pool.query(`
-          SELECT fecha, motivo_atc, cantidad FROM public.mv_monitoreo_atc
-          WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha DESC, cantidad DESC
-        `, [fechaDesde, fechaHasta]);
-        return res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
-      }
-
-      // Con filtro de canal → query desde mestra_bitrix con filtro de origen
+      // Siempre consulta mestra_bitrix directamente para garantizar datos frescos
+      // (la MV puede estar desactualizada)
       const { origenesBitrix } = resolverGrupos(gruposSel);
       const { where: origWhere, params: origParams } = buildInWhere(origenesBitrix, 2, 'mb.b_origen');
 

@@ -761,29 +761,33 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
 
   const filasConCalc = filasAgr.map((r) => ({
     ...r,
-    _cpl:          r.n_leads > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.n_leads : null,
-    _costo_activa: r.activos_mes > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.activos_mes : null,
-    _pct_atc:      r.n_leads > 0 ? (r.atc_soporte / r.n_leads) * 100 : 0,
-    _efect:        r.negociables > 0 ? (r.ingreso_jot / r.negociables) * 100 : 0,
+    _cpl:           r.n_leads > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.n_leads : null,
+    _costo_activa:  r.activos_mes > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.activos_mes : null,
+    _pct_atc:       r.n_leads     > 0 ? (r.atc_soporte          / r.n_leads)     * 100 : 0,
+    _efect_jot:     r.negociables > 0 ? (r.ingreso_jot          / r.negociables) * 100 : 0,
+    _efect_crm:     r.negociables > 0 ? (r.venta_subida_bitrix  / r.negociables) * 100 : 0,
+    _efect_pauta:   r.negociables > 0 ? (r.activos_mes          / r.negociables) * 100 : 0,
   }));
 
   const cols = [
-    { key: "fecha",               label: "FECHA",   fmt: formatFecha },
+    { key: "fecha",               label: "FECHA",    fmt: formatFecha },
     { key: "dia_semana",          label: "DÍA" },
-    { key: "canal",               label: "CANAL",   fmt: (v) => <CanalBadge canal={v} /> },
-    { key: "n_leads",             label: "LEADS",   color: C.primary },
-    { key: "negociables",         label: "NEGOC.",  color: C.success },
-    { key: "atc_soporte",         label: "ATC",     color: C.danger },
+    { key: "canal",               label: "CANAL",    fmt: (v) => <CanalBadge canal={v} /> },
+    { key: "n_leads",             label: "LEADS",    color: C.primary },
+    { key: "negociables",         label: "NEGOC.",   color: C.success },
+    { key: "atc_soporte",         label: "ATC",      color: C.danger },
     { key: "fuera_cobertura",     label: "F.COB." },
-    { key: "innegociable",        label: "INNEG.",  color: C.warning },
-    { key: "venta_subida_bitrix", label: "V.SUB.",  color: C.primary },
-    { key: "ingreso_jot",         label: "JOT",     color: C.success },
-    { key: "activos_mes",         label: "ACTIVOS", color: C.success },
-    { key: "inversion_usd",       label: "INV.$",   fmt: fmtUsd,                         color: C.violet },
-    { key: "_cpl",                label: "CPL",     fmt: (v) => v ? `$${fmt2(v)}` : "—", color: C.violet },
-    { key: "_costo_activa",       label: "C.ACT.",  fmt: (v) => v ? `$${fmt2(v)}` : "—" },
-    { key: "_pct_atc",            label: "% ATC",   fmt: fmtPct },
-    { key: "_efect",              label: "% EF.",   fmt: fmtPct },
+    { key: "innegociable",        label: "INNEG.",   color: C.warning },
+    { key: "venta_subida_bitrix", label: "V.SUB.",   color: C.primary },
+    { key: "ingreso_jot",         label: "JOT",      color: C.success },
+    { key: "activos_mes",         label: "ACTIVOS",  color: C.success },
+    { key: "inversion_usd",       label: "INV.$",    fmt: fmtUsd,                         color: C.violet },
+    { key: "_cpl",                label: "CPL",      fmt: (v) => v ? `$${fmt2(v)}` : "—", color: C.violet },
+    { key: "_costo_activa",       label: "C.ACT.",   fmt: (v) => v ? `$${fmt2(v)}` : "—" },
+    { key: "_pct_atc",            label: "% ATC",    fmt: fmtPct },
+    { key: "_efect_jot",          label: "% EF.JOT",   fmt: fmtPct, color: C.success },
+    { key: "_efect_crm",          label: "% EF.CRM",   fmt: fmtPct, color: C.primary },
+    { key: "_efect_pauta",        label: "% EF.PAU.",  fmt: fmtPct, color: C.warning },
   ];
 
   if (loading) return <Spinner />;
@@ -832,14 +836,16 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
             <div className="overflow-auto max-h-72">
               <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
                 <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
-                  <tr>{["CANAL","LEADS","NEGOC.","ATC","V.SUB.","JOT","ACTIVOS","INV.$","CPL","% EFECT."].map(h => (
+                  <tr>{["CANAL","LEADS","NEGOC.","ATC","V.SUB.","JOT","ACTIVOS","INV.$","CPL","% EF.JOT","% EF.CRM","% EF.PAU."].map(h => (
                     <th key={h} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{h}</th>
                   ))}</tr>
                 </thead>
                 <tbody>
                   {porCanal.map((c, i) => {
-                    const cpl = c.n_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.n_leads : null;
-                    const ef  = c.n_leads > 0 ? (c.activos_mes / c.n_leads) * 100 : 0;
+                    const cpl      = c.n_leads > 0 && c.inversion_usd > 0 ? c.inversion_usd / c.n_leads : null;
+                    const efJot    = c.negociables > 0 ? (c.ingreso_jot         / c.negociables) * 100 : 0;
+                    const efCrm    = c.negociables > 0 ? (c.venta_subida_bitrix / c.negociables) * 100 : 0;
+                    const efPauta  = c.negociables > 0 ? (c.activos_mes         / c.negociables) * 100 : 0;
                     return (
                       <tr key={i} className="border-b hover:bg-slate-50" style={{ borderColor: C.border }}>
                         <td className="px-3 py-1.5 border-r" style={{ borderColor: C.border }}><CanalBadge canal={c.canal} /></td>
@@ -851,7 +857,9 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
                         <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: C.success, borderColor: C.border }}>{c.activos_mes}</td>
                         <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: C.violet, borderColor: C.border }}>{fmtUsd(c.inversion_usd)}</td>
                         <td className="px-3 py-1.5 border-r text-center" style={{ color: C.violet, borderColor: C.border }}>{cpl ? `$${cpl.toFixed(2)}` : "—"}</td>
-                        <td className="px-3 py-1.5 text-center font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</td>
+                        <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: pctColor(efJot),   borderColor: C.border }}>{efJot.toFixed(1)}%</td>
+                        <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: pctColor(efCrm),   borderColor: C.border }}>{efCrm.toFixed(1)}%</td>
+                        <td className="px-3 py-1.5 text-center font-black"          style={{ color: pctColor(efPauta)                        }}>{efPauta.toFixed(1)}%</td>
                       </tr>
                     );
                   })}
@@ -1020,8 +1028,10 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
     "V. Subida": d.venta_subida_bitrix,
     "Inv.$":     Math.round(d.inversion_usd),
     "CPL":       d.n_leads > 0 && d.inversion_usd > 0 ? +(d.inversion_usd / d.n_leads).toFixed(2) : 0,
-    "% Efect":   d.negociables > 0 ? +((d.ingreso_jot / d.negociables) * 100).toFixed(1) : 0,
-    "% ATC":     d.n_leads > 0 ? +((d.atc_soporte / d.n_leads) * 100).toFixed(1) : 0,
+    "% Ef.JOT":   d.negociables > 0 ? +((d.ingreso_jot          / d.negociables) * 100).toFixed(1) : 0,
+    "% Ef.CRM":   d.negociables > 0 ? +((d.venta_subida_bitrix  / d.negociables) * 100).toFixed(1) : 0,
+    "% Ef.Pauta": d.negociables > 0 ? +((d.activos_mes          / d.negociables) * 100).toFixed(1) : 0,
+    "% ATC":      d.n_leads     > 0 ? +((d.atc_soporte          / d.n_leads)     * 100).toFixed(1) : 0,
   }));
 
   const gestionBarData = porCanal.map(c => ({
@@ -1184,17 +1194,23 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="% Efectividad vs % ATC" accent={C.warning} height={230}>
+        <ChartCard title="% Efectividad (JOT / CRM / Pauta) vs % ATC" accent={C.warning} height={260}>
           <LineChart data={diasData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 100]} />
-            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
-            <Line type="monotone" dataKey="% Efect" stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }}>
-              <LabelList dataKey="% Efect" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 'auto']} />
+            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 9 }} />
+            <Line type="monotone" dataKey="% Ef.JOT"   stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }}>
+              <LabelList dataKey="% Ef.JOT"   position="top"    style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
-            <Line type="monotone" dataKey="% ATC" stroke={C.danger} strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="5 3">
-              <LabelList dataKey="% ATC" position="bottom" style={{ fontSize: 7, fill: C.danger, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+            <Line type="monotone" dataKey="% Ef.CRM"   stroke={C.primary} strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="5 3">
+              <LabelList dataKey="% Ef.CRM"   position="top"    style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+            </Line>
+            <Line type="monotone" dataKey="% Ef.Pauta" stroke={C.warning} strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="2 2">
+              <LabelList dataKey="% Ef.Pauta" position="top"    style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+            </Line>
+            <Line type="monotone" dataKey="% ATC"      stroke={C.danger}  strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="4 2">
+              <LabelList dataKey="% ATC"      position="bottom" style={{ fontSize: 7, fill: C.danger,  fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
           </LineChart>
         </ChartCard>

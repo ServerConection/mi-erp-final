@@ -415,6 +415,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
+                COUNT(*) FILTER (WHERE vn.t2_estado_venta_netlife = 'ACTIVO')::int AS activos_jot_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE vn.t2_forma_pago ILIKE '%TARJETA DE CREDITO%')::numeric
                     / NULLIF(COUNT(*), 0)
@@ -436,7 +437,7 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
         const mergeJot = (filas, jotRows) => {
             return filas.map(row => {
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
-                return { ...row, v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0, real_efectividad: jot ? Number(jot.real_efectividad) : 0 };
+                return { ...row, v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0, activos_jot_hoy: jot ? Number(jot.activos_jot_hoy) : 0, real_efectividad: jot ? Number(jot.real_efectividad) : 0 };
             });
         };
 

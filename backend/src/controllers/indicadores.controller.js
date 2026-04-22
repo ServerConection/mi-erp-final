@@ -561,6 +561,7 @@ LEFT JOIN LATERAL (
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
+                COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')::int AS activos_jot_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.')::numeric
                     / NULLIF(COUNT(*), 0)
@@ -586,8 +587,9 @@ LEFT JOIN LATERAL (
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
                 return {
                     ...row,
-                    v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0,
-                    real_efectividad: jot ? Number(jot.real_efectividad) : 0,
+                    v_subida_jot_hoy:  jot ? Number(jot.v_subida_jot_hoy)  : 0,
+                    activos_jot_hoy:   jot ? Number(jot.activos_jot_hoy)   : 0,
+                    real_efectividad:  jot ? Number(jot.real_efectividad)   : 0,
                 };
             });
         };

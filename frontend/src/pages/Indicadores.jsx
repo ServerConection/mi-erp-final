@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -186,6 +186,9 @@ export default function ReporteComercialCore() {
   const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
+  // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
+  const abortRef = useRef(null);
+
   // Listas estables para los dropdowns — nunca se borran al filtrar
   const [allSupervisores, setAllSupervisores] = useState([]);
   const [allAsesores,     setAllAsesores]     = useState([]);
@@ -205,11 +208,15 @@ export default function ReporteComercialCore() {
   };
 
   const fetchDashboard = async (filtrosOverride) => {
+    // Cancela fetch anterior para evitar race conditions / loading stuck
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtros;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) {
         setData({
@@ -217,43 +224,52 @@ export default function ReporteComercialCore() {
           porcentajeTarjeta:     Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
         });
-        // Guardar listas completas solo cuando no hay filtro activo (para que el dropdown no pierda opciones)
         if (!filtrosActivos.supervisor && !filtrosActivos.asesor) {
           if (result.supervisores?.length) setAllSupervisores(result.supervisores);
           if (result.asesores?.length)     setAllAsesores(result.asesores);
         }
         mostrarAlertas(result.supervisores);
       }
-    } catch (e) { console.error("Error Dashboard:", e); } finally { setLoading(false); }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error("Error Dashboard:", e);
+    } finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
   const fetchMonitoreo = async (filtrosOverride) => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
     try {
-      // FIX: ahora pasa filtros al endpoint de monitoreo
       const filtrosActivos = filtrosOverride || filtros;
       const p = new URLSearchParams(
         Object.fromEntries(
-          // monitoreo solo acepta asesor y supervisor
           Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
             .filter(([_, v]) => v !== "")
         )
       );
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${p}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) setMonitoreoData(result);
-    } catch (e) { console.error("Error Monitoreo:", e); } finally { setLoading(false); }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error("Error Monitoreo:", e);
+    } finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
   const fetchReporte180 = async (filtrosOverride) => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtros180;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) setReporte180Data(result);
-    } catch (e) { console.error("Error Reporte180:", e); } finally { setLoading(false); }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error("Error Reporte180:", e);
+    } finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
   const updateFiltro = (campo, valor) => {
@@ -344,14 +360,28 @@ export default function ReporteComercialCore() {
 
   // FIX: mapeo de datos para gráficas de monitoreo — campos correctos del backend
   const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => {
-    const g = Number(a.real_dia_leads  || 0);
-    const j = Number(a.v_subida_jot_hoy || 0);
-    return { nombre: a.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+    const g   = Number(a.real_dia_leads   || 0);
+    const j   = Number(a.v_subida_jot_hoy || 0);
+    const crm = Number(a.v_subida_crm_hoy || 0);
+    const act = Number(a.activos_jot_hoy  || 0);
+    const pct = (num, den) => den > 0 ? parseFloat(((num / den) * 100).toFixed(1)) : 0;
+    return { nombre: a.nombre_grupo, gestionables: g, jot: j, crm, activos: act,
+      efect_jot:   pct(j,   g),
+      efect_crm:   pct(crm, g),
+      efect_pauta: pct(act, g),
+    };
   });
   const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => {
-    const g = Number(s.real_dia_leads  || 0);
-    const j = Number(s.v_subida_jot_hoy || 0);
-    return { nombre: s.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+    const g   = Number(s.real_dia_leads   || 0);
+    const j   = Number(s.v_subida_jot_hoy || 0);
+    const crm = Number(s.v_subida_crm_hoy || 0);
+    const act = Number(s.activos_jot_hoy  || 0);
+    const pct = (num, den) => den > 0 ? parseFloat(((num / den) * 100).toFixed(1)) : 0;
+    return { nombre: s.nombre_grupo, gestionables: g, jot: j, crm, activos: act,
+      efect_jot:   pct(j,   g),
+      efect_crm:   pct(crm, g),
+      efect_pauta: pct(act, g),
+    };
   });
 
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
@@ -469,30 +499,39 @@ export default function ReporteComercialCore() {
     </div>
   );
 
+  const TooltipEfect = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px', fontSize: 9 }}>
+        <div style={{ color: '#94a3b8', fontWeight: 700, marginBottom: 4 }}>{label}</div>
+        {payload.map((p, i) => <div key={i} style={{ color: p.color, fontWeight: 800 }}>{p.name}: {p.value}{typeof p.value === 'number' && p.name.startsWith('%') ? '%' : ''}</div>)}
+      </div>
+    );
+  };
+
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={dataGraficoAsesores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoAsesores} margin={{ top: 20, right: 45, left: 0, bottom: 80 }} barCategoryGap="20%" barGap={2}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
         <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
-        <Tooltip content={<TooltipAsesores />} />
-        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
-        <Bar yAxisId="vol" dataKey="gestionables" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }}>
-          {dataGraficoAsesores.map((entry, index) => {
-            const color = entry.efectividad >= 30 ? '#8b5cf6' : entry.efectividad >= 15 ? '#a78bfa' : '#c4b5fd';
-            return <Cell key={`gest-${index}`} fill={color} />;
-          })}
-        </Bar>
-        <Bar yAxisId="vol" dataKey="ingresos" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
-          {dataGraficoAsesores.map((entry, index) => {
-            const color = entry.ingresos >= 3 ? '#10b981' : entry.ingresos >= 1 ? '#34d399' : '#6ee7b7';
-            return <Cell key={`ing-${index}`} fill={color} />;
-          })}
-        </Bar>
-        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
-          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
-          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 9 }} unit="%" domain={[0, 'auto']} width={38} />
+        <Tooltip content={<TooltipEfect />} />
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }}
+          formatter={v => ({ gestionables:'Gestionables', jot:'JOT', crm:'CRM V.Sub.', activos:'Activos',
+            efect_jot:'% Ef.JOT', efect_crm:'% Ef.CRM', efect_pauta:'% Ef.Pauta' }[v] || v)} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#c4b5fd', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} />
+        <Line yAxisId="pct" type="monotone" dataKey="efect_jot"   stroke="#10b981" strokeWidth={2} dot={{ r:3, fill:'#10b981', strokeWidth:0 }}>
+          <LabelList dataKey="efect_jot"   position="top" style={{ fontSize:7, fill:'#10b981', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
+        </Line>
+        <Line yAxisId="pct" type="monotone" dataKey="efect_crm"   stroke="#3b82f6" strokeWidth={2} dot={{ r:3, fill:'#3b82f6', strokeWidth:0 }} strokeDasharray="5 3">
+          <LabelList dataKey="efect_crm"   position="top" style={{ fontSize:7, fill:'#3b82f6', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
+        </Line>
+        <Line yAxisId="pct" type="monotone" dataKey="efect_pauta" stroke="#f59e0b" strokeWidth={2} dot={{ r:3, fill:'#f59e0b', strokeWidth:0 }} strokeDasharray="2 2">
+          <LabelList dataKey="efect_pauta" position="top" style={{ fontSize:7, fill:'#f59e0b', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
         </Line>
       </ComposedChart>
     </ResponsiveContainer>
@@ -500,28 +539,27 @@ export default function ReporteComercialCore() {
 
   const GraficoSupervisores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={dataGraficoSupervisores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoSupervisores} margin={{ top: 20, right: 45, left: 0, bottom: 80 }} barCategoryGap="20%" barGap={2}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
         <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
-        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
-        <Tooltip content={<TooltipAsesores />} />
-        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
-        <Bar yAxisId="vol" dataKey="gestionables" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }}>
-          {dataGraficoSupervisores.map((entry, index) => {
-            const color = entry.efectividad >= 30 ? '#06b6d4' : entry.efectividad >= 15 ? '#22d3ee' : '#67e8f9';
-            return <Cell key={`sgest-${index}`} fill={color} />;
-          })}
-        </Bar>
-        <Bar yAxisId="vol" dataKey="ingresos" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
-          {dataGraficoSupervisores.map((entry, index) => {
-            const color = entry.ingresos >= 5 ? '#10b981' : entry.ingresos >= 2 ? '#34d399' : '#6ee7b7';
-            return <Cell key={`sing-${index}`} fill={color} />;
-          })}
-        </Bar>
-        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
-          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
-          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 9 }} unit="%" domain={[0, 'auto']} width={38} />
+        <Tooltip content={<TooltipEfect />} />
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }}
+          formatter={v => ({ gestionables:'Gestionables', jot:'JOT', crm:'CRM V.Sub.', activos:'Activos',
+            efect_jot:'% Ef.JOT', efect_crm:'% Ef.CRM', efect_pauta:'% Ef.Pauta' }[v] || v)} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#67e8f9', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} />
+        <Line yAxisId="pct" type="monotone" dataKey="efect_jot"   stroke="#10b981" strokeWidth={2.5} dot={{ r:4, fill:'#10b981', strokeWidth:0 }}>
+          <LabelList dataKey="efect_jot"   position="top" style={{ fontSize:8, fill:'#10b981', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
+        </Line>
+        <Line yAxisId="pct" type="monotone" dataKey="efect_crm"   stroke="#3b82f6" strokeWidth={2.5} dot={{ r:4, fill:'#3b82f6', strokeWidth:0 }} strokeDasharray="5 3">
+          <LabelList dataKey="efect_crm"   position="top" style={{ fontSize:8, fill:'#3b82f6', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
+        </Line>
+        <Line yAxisId="pct" type="monotone" dataKey="efect_pauta" stroke="#f59e0b" strokeWidth={2.5} dot={{ r:4, fill:'#f59e0b', strokeWidth:0 }} strokeDasharray="2 2">
+          <LabelList dataKey="efect_pauta" position="top" style={{ fontSize:8, fill:'#f59e0b', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
         </Line>
       </ComposedChart>
     </ResponsiveContainer>

@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import * as XLSX from 'xlsx';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList
+  BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
 
 const formatFechaCorta = (fechaStr) => {
@@ -304,8 +304,8 @@ export default function ReporteComercialCore() {
       ingresosJotform:          totalJotform,
       descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      // Efectividad = Ingresos CRM (Venta Subida) / Gestionables
-      efectividad:              totalGestionables > 0 ? ((totalIngresosCRM / totalGestionables) * 100).toFixed(1) : "0.0",
+      // Efectividad = Ingresos JOT / Gestionables
+      efectividad:              totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
       tasaInstalacion:          totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
       tarjetaCredito:           Number(data.porcentajeTarjeta || 0).toFixed(1),
       terceraEdad:              Number(data.porcentajeTerceraEdad || 0).toFixed(1),
@@ -343,16 +343,16 @@ export default function ReporteComercialCore() {
   };
 
   // FIX: mapeo de datos para gráficas de monitoreo — campos correctos del backend
-  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({
-    nombre:       a.nombre_grupo,
-    gestionables: Number(a.real_dia_leads  || 0),
-    ingresos:     Number(a.v_subida_jot_hoy || 0),
-  }));
-  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({
-    nombre:       s.nombre_grupo,
-    gestionables: Number(s.real_dia_leads  || 0),
-    ingresos:     Number(s.v_subida_jot_hoy || 0),
-  }));
+  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => {
+    const g = Number(a.real_dia_leads  || 0);
+    const j = Number(a.v_subida_jot_hoy || 0);
+    return { nombre: a.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+  });
+  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => {
+    const g = Number(s.real_dia_leads  || 0);
+    const j = Number(s.v_subida_jot_hoy || 0);
+    return { nombre: s.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+  });
 
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
@@ -471,49 +471,59 @@ export default function ReporteComercialCore() {
 
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoAsesores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
         <Tooltip content={<TooltipAsesores />} />
-        <Bar dataKey="gestionables" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }}>
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
+        <Bar yAxisId="vol" dataKey="gestionables" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#c4b5fd', fontSize: 9, fontWeight: 900 }}>
           {dataGraficoAsesores.map((entry, index) => {
-            const efect = entry.gestionables > 0 ? entry.ingresos / entry.gestionables : 0;
-            const color = efect >= 0.3 ? '#8b5cf6' : efect >= 0.15 ? '#a78bfa' : '#c4b5fd';
+            const color = entry.efectividad >= 30 ? '#8b5cf6' : entry.efectividad >= 15 ? '#a78bfa' : '#c4b5fd';
             return <Cell key={`gest-${index}`} fill={color} />;
           })}
         </Bar>
-        <Bar dataKey="ingresos" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
+        <Bar yAxisId="vol" dataKey="ingresos" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
           {dataGraficoAsesores.map((entry, index) => {
             const color = entry.ingresos >= 3 ? '#10b981' : entry.ingresos >= 1 ? '#34d399' : '#6ee7b7';
             return <Cell key={`ing-${index}`} fill={color} />;
           })}
         </Bar>
-      </BarChart>
+        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
+          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
+          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        </Line>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 
   const GraficoSupervisores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dataGraficoSupervisores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoSupervisores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
         <Tooltip content={<TooltipAsesores />} />
-        <Bar dataKey="gestionables" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }}>
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
+        <Bar yAxisId="vol" dataKey="gestionables" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#67e8f9', fontSize: 9, fontWeight: 900 }}>
           {dataGraficoSupervisores.map((entry, index) => {
-            const efect = entry.gestionables > 0 ? entry.ingresos / entry.gestionables : 0;
-            const color = efect >= 0.3 ? '#06b6d4' : efect >= 0.15 ? '#22d3ee' : '#67e8f9';
+            const color = entry.efectividad >= 30 ? '#06b6d4' : entry.efectividad >= 15 ? '#22d3ee' : '#67e8f9';
             return <Cell key={`sgest-${index}`} fill={color} />;
           })}
         </Bar>
-        <Bar dataKey="ingresos" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
+        <Bar yAxisId="vol" dataKey="ingresos" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }}>
           {dataGraficoSupervisores.map((entry, index) => {
             const color = entry.ingresos >= 5 ? '#10b981' : entry.ingresos >= 2 ? '#34d399' : '#6ee7b7';
             return <Cell key={`sing-${index}`} fill={color} />;
           })}
         </Bar>
-      </BarChart>
+        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
+          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
+          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        </Line>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 

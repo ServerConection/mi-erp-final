@@ -755,7 +755,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
   const totalVta     = porCanal.reduce((s, c) => s + c.venta_subida_bitrix, 0);
   const totalAtc     = porCanal.reduce((s, c) => s + c.atc_soporte, 0);
   const totalBacklog = filasAgr.reduce((s, r) => s + n(r.activo_backlog), 0);
-  const efect        = totalLeads > 0 ? (totalAct / totalLeads) * 100 : 0;
+  const efect        = totalNeg > 0 ? (totalJot / totalNeg) * 100 : 0;
   const pctAtcGral   = totalLeads > 0 ? (totalAtc / totalLeads) * 100 : 0;
   const cplGral      = totalLeads > 0 && totalInv > 0 ? totalInv / totalLeads : null;
 
@@ -764,7 +764,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
     _cpl:          r.n_leads > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.n_leads : null,
     _costo_activa: r.activos_mes > 0 && r.inversion_usd > 0 ? r.inversion_usd / r.activos_mes : null,
     _pct_atc:      r.n_leads > 0 ? (r.atc_soporte / r.n_leads) * 100 : 0,
-    _efect:        r.n_leads > 0 ? (r.activos_mes / r.n_leads) * 100 : 0,
+    _efect:        r.negociables > 0 ? (r.ingreso_jot / r.negociables) * 100 : 0,
   }));
 
   const cols = [
@@ -1020,7 +1020,7 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
     "V. Subida": d.venta_subida_bitrix,
     "Inv.$":     Math.round(d.inversion_usd),
     "CPL":       d.n_leads > 0 && d.inversion_usd > 0 ? +(d.inversion_usd / d.n_leads).toFixed(2) : 0,
-    "% Efect":   d.n_leads > 0 ? +((d.activos_mes / d.n_leads) * 100).toFixed(1) : 0,
+    "% Efect":   d.negociables > 0 ? +((d.ingreso_jot / d.negociables) * 100).toFixed(1) : 0,
     "% ATC":     d.n_leads > 0 ? +((d.atc_soporte / d.n_leads) * 100).toFixed(1) : 0,
   }));
 

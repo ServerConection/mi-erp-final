@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import * as XLSX from 'xlsx';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList
+  BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
 
 const formatFechaCorta = (fechaStr) => {
@@ -288,8 +288,14 @@ export default function ReporteVelsa() {
     return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
   };
 
-  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => ({ nombre: a.nombre_grupo, gestionables: Number(a.real_dia_leads || 0), ingresos: Number(a.v_subida_jot_hoy || 0) }));
-  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => ({ nombre: s.nombre_grupo, gestionables: Number(s.real_dia_leads || 0), ingresos: Number(s.v_subida_jot_hoy || 0) }));
+  const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => {
+    const g = Number(a.real_dia_leads || 0); const j = Number(a.v_subida_jot_hoy || 0);
+    return { nombre: a.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+  });
+  const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => {
+    const g = Number(s.real_dia_leads || 0); const j = Number(s.v_subida_jot_hoy || 0);
+    return { nombre: s.nombre_grupo, gestionables: g, ingresos: j, efectividad: g > 0 ? parseFloat(((j / g) * 100).toFixed(1)) : 0 };
+  });
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
   const inputCls = "bg-stone-950 border border-stone-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-orange-500 transition-colors uppercase";
@@ -344,29 +350,41 @@ export default function ReporteVelsa() {
 
   const GraficoAsesores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dataGraficoAsesores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoAsesores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+        <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
         <Tooltip cursor={{ fill: '#1c1917' }} contentStyle={{ backgroundColor: '#0c0a09', border: '1px solid #44403c', borderRadius: '8px', fontSize: '10px' }}
-          formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-        <Bar dataKey="gestionables" fill="#f97316" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#fdba74', fontSize: 9, fontWeight: 900 }} />
-        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
-      </BarChart>
+          formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : n === 'efectividad' ? [`${v}%`, '% EFECT. (JOT/GEST)'] : [v, n]} />
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#f97316" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#fdba74', fontSize: 9, fontWeight: 900 }} />
+        <Bar yAxisId="vol" dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={16} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
+          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
+          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        </Line>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 
   const GraficoSupervisores = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dataGraficoSupervisores} margin={{ top: 20, right: 10, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
+      <ComposedChart data={dataGraficoSupervisores} margin={{ top: 20, right: 40, left: 0, bottom: 80 }} barCategoryGap="25%" barGap={3}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
         <XAxis dataKey="nombre" axisLine={false} tickLine={false} tick={<CustomXAxisTickVertical />} interval={0} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+        <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+        <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#fbbf24', fontSize: 9 }} unit="%" domain={[0, 100]} width={36} />
         <Tooltip cursor={{ fill: '#1c1917' }} contentStyle={{ backgroundColor: '#0c0a09', border: '1px solid #44403c', borderRadius: '8px', fontSize: '10px' }}
-          formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : [v, n]} />
-        <Bar dataKey="gestionables" fill="#ea580c" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#fb923c', fontSize: 9, fontWeight: 900 }} />
-        <Bar dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
-      </BarChart>
+          formatter={(v, n) => n === 'gestionables' ? [v, 'GESTIONABLES HOY'] : n === 'ingresos' ? [v, 'INGRESOS JOT HOY'] : n === 'efectividad' ? [`${v}%`, '% EFECT. (JOT/GEST)'] : [v, n]} />
+        <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }} formatter={v => v === 'efectividad' ? '% Efect. (JOT/Gest)' : v} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#ea580c" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#fb923c', fontSize: 9, fontWeight: 900 }} />
+        <Bar yAxisId="vol" dataKey="ingresos" fill="#10b981" radius={[4,4,0,0]} barSize={28} label={{ position: 'top', fill: '#6ee7b7', fontSize: 9, fontWeight: 900 }} />
+        <Line yAxisId="pct" type="monotone" dataKey="efectividad" stroke="#fbbf24" strokeWidth={2.5}
+          dot={{ fill: '#fbbf24', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }}>
+          <LabelList dataKey="efectividad" position="top" style={{ fontSize: 8, fill: '#fbbf24', fontWeight: 800 }} formatter={v => v > 0 ? `${v}%` : ''} />
+        </Line>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 

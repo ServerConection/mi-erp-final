@@ -1,9 +1,4 @@
-// pages/Ventas.jsx
-// ============================================================
-// CORRECCIONES:
-// 1. payload limpia strings vacíos → null antes de enviar
-// 2. Resto de lógica igual
-// ============================================================
+// pages/VentasFormulario.jsx
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -27,20 +22,31 @@ const PAGO_ESTILOS = {
   CA:   "bg-sky-500/20 text-sky-300",
 };
 
+const inputCls = "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm";
+const selectCls = "w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm";
+const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1";
+
 // ── Modal Formulario ───────────────────────────────────────────────────────────
 function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
   const inicial = {
-    id_bitrix: "", plan: "", ciudad: "", fecha_ingreso: "",
-    estado: "ACTIVO", pago: "EFEC", tercerdad: false,
+    id_bitrix: "", plan: "", valor_plan: "", login: "", ingreso_telcos: "",
+    fecha_ingreso: "", estado: "ACTIVO", pago: "EFEC", tercerdad: false,
+    observacion: "", check_cedula: false, check_foto_cartel: false, check_resumen: false,
   };
   const [form, setForm] = useState(registro ? {
-    id_bitrix:    registro.id_bitrix    || "",
-    plan:         registro.plan         || "",
-    ciudad:       registro.ciudad       || "",
-    fecha_ingreso:registro.fecha_ingreso ? registro.fecha_ingreso.split("T")[0] : "",
-    estado:       registro.estado       || "ACTIVO",
-    pago:         registro.pago         || "EFEC",
-    tercerdad:    registro.tercerdad    || false,
+    id_bitrix:        registro.id_bitrix        || "",
+    plan:             registro.plan             || "",
+    valor_plan:       registro.valor_plan       || "",
+    login:            registro.login            || "",
+    ingreso_telcos:   registro.ingreso_telcos != null ? String(registro.ingreso_telcos) : "",
+    fecha_ingreso:    registro.fecha_ingreso ? registro.fecha_ingreso.split("T")[0] : "",
+    estado:           registro.estado           || "ACTIVO",
+    pago:             registro.pago             || "EFEC",
+    tercerdad:        registro.tercerdad        || false,
+    observacion:      registro.observacion      || "",
+    check_cedula:     registro.check_cedula     || false,
+    check_foto_cartel:registro.check_foto_cartel|| false,
+    check_resumen:    registro.check_resumen    || false,
   } : inicial);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -59,61 +65,113 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+
+          {/* ID Bitrix */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">ID Bitrix</label>
+            <label className={labelCls}>ID Bitrix</label>
             <input type="text" value={form.id_bitrix} onChange={e => set("id_bitrix", e.target.value)}
-              placeholder="Ej: 12345"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
+              placeholder="Ej: 12345" className={inputCls} />
           </div>
 
+          {/* Login */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Plan</label>
+            <label className={labelCls}>Login</label>
+            <input type="text" value={form.login} onChange={e => set("login", e.target.value)}
+              placeholder="Ej: usuario.cliente" className={inputCls} />
+          </div>
+
+          {/* Plan */}
+          <div>
+            <label className={labelCls}>Plan</label>
             <input type="text" value={form.plan} onChange={e => set("plan", e.target.value)}
-              placeholder="Ej: 850 MBPS"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
+              placeholder="Ej: 850 MBPS" className={inputCls} />
           </div>
 
+          {/* Valor del Plan (antes Ciudad) */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Ciudad</label>
-            <input type="text" value={form.ciudad} onChange={e => set("ciudad", e.target.value)}
-              placeholder="Ej: Quito"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm" />
+            <label className={labelCls}>Valor del Plan</label>
+            <input type="text" value={form.valor_plan} onChange={e => set("valor_plan", e.target.value)}
+              placeholder="Ej: $35.00" className={inputCls} />
           </div>
 
+          {/* Ingreso Telcos */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Fecha de Ingreso</label>
+            <label className={labelCls}>Ingreso Telcos</label>
+            <input type="number" step="0.01" min="0" value={form.ingreso_telcos}
+              onChange={e => set("ingreso_telcos", e.target.value)}
+              placeholder="Ej: 120.50" className={inputCls} />
+          </div>
+
+          {/* Fecha Ingreso */}
+          <div>
+            <label className={labelCls}>Fecha de Ingreso</label>
             <input type="date" value={form.fecha_ingreso} onChange={e => set("fecha_ingreso", e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm [color-scheme:dark]" />
+              className={inputCls + " [color-scheme:dark]"} />
           </div>
 
+          {/* Estado + Pago */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Estado</label>
-              <select value={form.estado} onChange={e => set("estado", e.target.value)}
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm">
+              <label className={labelCls}>Estado</label>
+              <select value={form.estado} onChange={e => set("estado", e.target.value)} className={selectCls}>
                 {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Pago</label>
-              <select value={form.pago} onChange={e => set("pago", e.target.value)}
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm">
+              <label className={labelCls}>Pago</label>
+              <select value={form.pago} onChange={e => set("pago", e.target.value)} className={selectCls}>
                 {PAGOS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
           </div>
 
+          {/* Tercera Edad */}
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
             <button type="button" onClick={() => set("tercerdad", !form.tercerdad)}
               className={`w-10 h-6 rounded-full transition-all duration-300 relative flex-shrink-0 ${form.tercerdad ? "bg-blue-500" : "bg-slate-600"}`}>
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${form.tercerdad ? "translate-x-4" : "translate-x-0"}`} />
             </button>
             <span className="text-sm font-bold text-slate-300">
-              Tercerdad: <span className={form.tercerdad ? "text-emerald-400" : "text-red-400"}>
+              Tercera Edad: <span className={form.tercerdad ? "text-emerald-400" : "text-red-400"}>
                 {form.tercerdad ? "SÍ" : "NO"}
               </span>
             </span>
+          </div>
+
+          {/* Checklist documentos */}
+          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-2">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">✅ Checklist</p>
+            {[
+              { key: "check_cedula",      label: "Cédula ambos lados" },
+              { key: "check_foto_cartel", label: "Foto Cartel" },
+              { key: "check_resumen",     label: "Resumen" },
+            ].map(({ key, label }) => (
+              <button key={key} type="button"
+                onClick={() => set(key, !form[key])}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-sm font-bold text-left
+                  ${form[key]
+                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                    : "bg-white/5 border-white/10 text-slate-400 hover:border-white/20"}`}>
+                <span className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all
+                  ${form[key] ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}>
+                  {form[key] && <span className="text-white text-xs font-black">✓</span>}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Observación */}
+          <div>
+            <label className={labelCls}>Observación</label>
+            <textarea
+              value={form.observacion}
+              onChange={e => set("observacion", e.target.value)}
+              rows={3}
+              placeholder="Notas adicionales sobre esta venta…"
+              className={inputCls + " resize-none"}
+            />
           </div>
         </div>
 
@@ -211,14 +269,18 @@ export default function Ventas() {
     setCargandoAccion(true);
     try {
       const esEditar = modal.modo === "editar";
-
-      // ✅ FIX: Limpiar strings vacíos → null para no pisar datos existentes en BD
       const payload = {
         ...form,
-        id_bitrix:     form.id_bitrix?.trim()     || null,
-        plan:          form.plan?.trim()           || null,
-        ciudad:        form.ciudad?.trim()         || null,
-        fecha_ingreso: form.fecha_ingreso          || null,
+        id_bitrix:        form.id_bitrix?.trim()        || null,
+        plan:             form.plan?.trim()              || null,
+        valor_plan:       form.valor_plan?.trim()        || null,
+        login:            form.login?.trim()             || null,
+        ingreso_telcos:   form.ingreso_telcos !== "" ? Number(form.ingreso_telcos) : null,
+        fecha_ingreso:    form.fecha_ingreso             || null,
+        observacion:      form.observacion?.trim()       || null,
+        check_cedula:     form.check_cedula,
+        check_foto_cartel:form.check_foto_cartel,
+        check_resumen:    form.check_resumen,
       };
 
       const url    = esEditar ? `${API}/api/ventas/${modal.registro.id}` : `${API}/api/ventas`;
@@ -226,7 +288,7 @@ export default function Ventas() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload), // ✅ payload en lugar de form
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error al guardar");
@@ -288,6 +350,13 @@ export default function Ventas() {
   const ventasFiltradas = filtroEstado === "TODOS"
     ? ventas
     : ventas.filter(v => v.estado === filtroEstado);
+
+  // Columnas de la tabla (header dinámico)
+  const colsHeader = ["#", "ID BITRIX", "LOGIN", "PLAN", "VALOR PLAN", "ING. TELCOS",
+    "FECHA", "ESTADO", "PAGO", "3RA EDAD",
+    ...(esAdmin || esSoloVer ? ["ASESOR"] : []),
+    "ACCIONES"
+  ];
 
   return (
     <div className="space-y-6 relative">
@@ -398,10 +467,7 @@ export default function Ventas() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10 bg-white/5">
-                  {["#", "ID BITRIX", "PLAN", "CIUDAD", "FECHA INGRESO", "ESTADO", "PAGO", "TERCERDAD",
-                    ...(esAdmin || esSoloVer ? ["ASESOR"] : []),
-                    "ACCIONES"
-                  ].map(h => (
+                  {colsHeader.map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
                     </th>
@@ -414,8 +480,14 @@ export default function Ventas() {
                     className={`border-b border-white/5 transition-colors hover:bg-white/5 ${idx % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
                     <td className="px-4 py-3 text-slate-400 font-bold">{v.numero_venta}</td>
                     <td className="px-4 py-3 text-white font-mono text-xs">{v.id_bitrix || <span className="text-slate-600">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-300 text-xs">{v.login || <span className="text-slate-600">—</span>}</td>
                     <td className="px-4 py-3 text-slate-200 whitespace-nowrap">{v.plan || <span className="text-slate-600">—</span>}</td>
-                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{v.ciudad || <span className="text-slate-600">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{v.valor_plan || <span className="text-slate-600">—</span>}</td>
+                    <td className="px-4 py-3 text-emerald-300 font-bold whitespace-nowrap">
+                      {v.ingreso_telcos != null
+                        ? `$${Number(v.ingreso_telcos).toFixed(2)}`
+                        : <span className="text-slate-600">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
                       {v.fecha_ingreso
                         ? new Date(v.fecha_ingreso).toLocaleDateString("es-EC", { day: "2-digit", month: "2-digit" })

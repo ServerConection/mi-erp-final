@@ -57,7 +57,8 @@ const crearVenta = async (req, res) => {
     const { id: usuario_id, empresa } = req.user;
     // ✅ FIX: Convertir a Number
     const uid = Number(usuario_id);
-    const { id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad } = req.body;
+    const { id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
+            observacion, check_cedula, check_foto_cartel, check_resumen } = req.body;
 
     if (!estado) return res.status(400).json({ ok: false, mensaje: "El estado es requerido" });
     if (!pago)   return res.status(400).json({ ok: false, mensaje: "El tipo de pago es requerido" });
@@ -75,18 +76,25 @@ const crearVenta = async (req, res) => {
 
     const { rows } = await db.query(
       `INSERT INTO ventas_registros
-        (numero_venta, id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad, usuario_id, empresa)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        (numero_venta, id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
+         observacion, check_cedula, check_foto_cartel, check_resumen, usuario_id, empresa)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         numero_venta,
-        id_bitrix?.trim()     || null,
-        plan?.trim()          || null,
-        ciudad?.trim()        || null,
-        fecha_ingreso         || null,
+        id_bitrix?.trim()              || null,
+        plan?.trim()                   || null,
+        valor_plan?.trim()             || null,
+        login?.trim()                  || null,
+        ingreso_telcos != null && ingreso_telcos !== "" ? Number(ingreso_telcos) : null,
+        fecha_ingreso                  || null,
         estado,
         pago,
         tercerdad === true || tercerdad === "SI",
+        observacion?.trim()            || null,
+        check_cedula === true          || check_cedula === "SI",
+        check_foto_cartel === true     || check_foto_cartel === "SI",
+        check_resumen === true         || check_resumen === "SI",
         uid,
         empresa,
       ]
@@ -106,7 +114,8 @@ const editarVenta = async (req, res) => {
     // ✅ FIX: Convertir a Number para comparar correctamente con BD
     const uid = Number(usuario_id);
     const { id } = req.params;
-    const { id_bitrix, plan, ciudad, fecha_ingreso, estado, pago, tercerdad } = req.body;
+    const { id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
+            observacion, check_cedula, check_foto_cartel, check_resumen } = req.body;
     const esAdmin = perfil?.toLowerCase() === "administrador";
 
     // Verificar existencia
@@ -118,7 +127,6 @@ const editarVenta = async (req, res) => {
 
     const registro = existing[0];
 
-    // ✅ FIX: Comparar como Number (antes fallaba: "5" !== 5)
     if (!esAdmin && Number(registro.usuario_id) !== uid) {
       return res.status(403).json({ ok: false, mensaje: "No tienes permiso para editar este registro" });
     }
@@ -126,27 +134,44 @@ const editarVenta = async (req, res) => {
       return res.status(403).json({ ok: false, mensaje: "Registro no pertenece a tu empresa" });
     }
 
-    // ✅ FIX: Si el campo viene vacío/null, mantener el valor actual de la BD
     const { rows } = await db.query(
       `UPDATE ventas_registros SET
-        id_bitrix     = $1,
-        plan          = $2,
-        ciudad        = $3,
-        fecha_ingreso = $4,
-        estado        = $5,
-        pago          = $6,
-        tercerdad     = $7
-       WHERE id = $8 RETURNING *`,
+        id_bitrix         = $1,
+        plan              = $2,
+        valor_plan        = $3,
+        login             = $4,
+        ingreso_telcos    = $5,
+        fecha_ingreso     = $6,
+        estado            = $7,
+        pago              = $8,
+        tercerdad         = $9,
+        observacion       = $10,
+        check_cedula      = $11,
+        check_foto_cartel = $12,
+        check_resumen     = $13
+       WHERE id = $14 RETURNING *`,
       [
         id_bitrix?.trim()     || registro.id_bitrix,
         plan?.trim()          || registro.plan,
-        ciudad?.trim()        || registro.ciudad,
+        valor_plan?.trim()    || registro.valor_plan,
+        login?.trim()         || registro.login,
+        ingreso_telcos != null && ingreso_telcos !== "" ? Number(ingreso_telcos) : registro.ingreso_telcos,
         fecha_ingreso         || registro.fecha_ingreso,
         estado                || registro.estado,
         pago                  || registro.pago,
         tercerdad !== undefined
           ? (tercerdad === true || tercerdad === "SI")
           : registro.tercerdad,
+        observacion !== undefined ? (observacion?.trim() || null) : registro.observacion,
+        check_cedula !== undefined
+          ? (check_cedula === true || check_cedula === "SI")
+          : registro.check_cedula,
+        check_foto_cartel !== undefined
+          ? (check_foto_cartel === true || check_foto_cartel === "SI")
+          : registro.check_foto_cartel,
+        check_resumen !== undefined
+          ? (check_resumen === true || check_resumen === "SI")
+          : registro.check_resumen,
         id,
       ]
     );
@@ -195,9 +220,14 @@ const exportarVentas = async (req, res) => {
     let query, params;
     if (esGlobal) {
       query = `
-        SELECT vr.numero_venta, vr.id_bitrix, vr.plan, vr.ciudad,
+        SELECT vr.numero_venta, vr.id_bitrix, vr.plan, vr.valor_plan,
+               vr.login, vr.ingreso_telcos,
                vr.fecha_ingreso, vr.estado, vr.pago,
                CASE WHEN vr.tercerdad THEN 'SI' ELSE 'NO' END AS tercerdad,
+               CASE WHEN vr.check_cedula      THEN 'SI' ELSE 'NO' END AS cedula_ambos_lados,
+               CASE WHEN vr.check_foto_cartel THEN 'SI' ELSE 'NO' END AS foto_cartel,
+               CASE WHEN vr.check_resumen     THEN 'SI' ELSE 'NO' END AS resumen,
+               vr.observacion,
                u.usuario AS asesor
         FROM ventas_registros vr
         LEFT JOIN usuarios u ON vr.usuario_id = u.id
@@ -207,9 +237,14 @@ const exportarVentas = async (req, res) => {
       params = [empresa];
     } else {
       query = `
-        SELECT numero_venta, id_bitrix, plan, ciudad,
+        SELECT numero_venta, id_bitrix, plan, valor_plan,
+               login, ingreso_telcos,
                fecha_ingreso, estado, pago,
-               CASE WHEN tercerdad THEN 'SI' ELSE 'NO' END AS tercerdad
+               CASE WHEN tercerdad      THEN 'SI' ELSE 'NO' END AS tercerdad,
+               CASE WHEN check_cedula      THEN 'SI' ELSE 'NO' END AS cedula_ambos_lados,
+               CASE WHEN check_foto_cartel THEN 'SI' ELSE 'NO' END AS foto_cartel,
+               CASE WHEN check_resumen     THEN 'SI' ELSE 'NO' END AS resumen,
+               observacion
         FROM ventas_registros
         WHERE usuario_id = $1
         ORDER BY numero_venta

@@ -23,7 +23,6 @@ const API = import.meta.env.VITE_API_URL;
 const n   = (v) => Number(v || 0);
 const pct = (a, b) => b > 0 ? (a / b) * 100 : 0;
 
-const SALARIO_MENSUAL_EST = 500;  // USD/mes por asesor — ajustar
 const TICKET_MENSUAL_EST  = 25;   // USD ingreso por cliente activo
 
 const C = {
@@ -213,21 +212,21 @@ const atcCol  = v => n(v)>40?C.danger:n(v)>20?C.warning:C.success;
 // GRÁFICOS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** BUBBLE: Costo total/lead (x) vs Efectividad (y), tamaño = leads */
+/** BUBBLE: CPA real (x) vs Efectividad (y), tamaño = leads */
 function BubbleCostoEfect({ asesores, canalMap }) {
   const data = asesores.map((a,i) => {
-    const inf = canalMap[a.canal];
-    const cplCanal = inf?.cpl || 0;
-    const costoAs  = a.leads>0 ? SALARIO_MENSUAL_EST/a.leads : 0;
+    const invAs = n(a.inv_asignada);
+    const cpa   = a.jot>0 && invAs>0 ? parseFloat((invAs/a.jot).toFixed(2)) : 0;
+    const cpl   = a.leads>0 && invAs>0 ? parseFloat((invAs/a.leads).toFixed(2)) : 0;
+    const roi   = invAs>0 ? parseFloat(((a.jot*TICKET_MENSUAL_EST)/invAs).toFixed(2)) : 0;
     return {
-      x: parseFloat((cplCanal+costoAs).toFixed(2)),
+      x: cpa,
       y: parseFloat(a.efect.toFixed(1)),
       z: Math.max(30, a.leads*4),
-      ...a, cplCanal, costoAs,
-      roi: a.jot>0&&(cplCanal+costoAs)>0 ? ((a.jot*TICKET_MENSUAL_EST)/((cplCanal+costoAs)*a.leads)) : 0,
+      ...a, cpa, cpl, invAs, roi,
       col: PAL[i%PAL.length],
     };
-  }).filter(d=>d.leads>0);
+  }).filter(d=>d.leads>0 && d.x>0);
 
   const avgX = data.length ? data.reduce((s,d)=>s+d.x,0)/data.length : 0;
   const avgY = data.length ? data.reduce((s,d)=>s+d.y,0)/data.length : 0;
@@ -236,14 +235,14 @@ function BubbleCostoEfect({ asesores, canalMap }) {
     <ResponsiveContainer width="100%" height={400}>
       <ScatterChart margin={{ top:30, right:40, bottom:50, left:20 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis type="number" dataKey="x" name="Costo/Lead $" tick={{ fontSize:9, fill:C.muted }}
-          tickFormatter={v=>`$${v.toFixed(1)}`}
-          label={{ value:"← Menor costo/lead mejor →", position:"insideBottom", offset:-35, fontSize:8, fill:C.muted }} />
+        <XAxis type="number" dataKey="x" name="CPA Real $" tick={{ fontSize:9, fill:C.muted }}
+          tickFormatter={v=>`$${v.toFixed(0)}`}
+          label={{ value:"← CPA (Inversión / JOT) — menor es mejor →", position:"insideBottom", offset:-35, fontSize:8, fill:C.muted }} />
         <YAxis type="number" dataKey="y" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%"
           label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
         <ZAxis type="number" dataKey="z" range={[50,500]} />
         <ReferenceLine x={avgX} stroke={`${C.muted}55`} strokeDasharray="5 3"
-          label={{ value:`Avg $${avgX.toFixed(1)}`, fontSize:7, fill:C.muted, position:"top" }} />
+          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:C.muted, position:"top" }} />
         <ReferenceLine y={avgY} stroke={`${C.muted}55`} strokeDasharray="5 3"
           label={{ value:`Avg ${avgY.toFixed(1)}%`, fontSize:7, fill:C.muted, position:"right" }} />
         <Tooltip content={({ active, payload }) => {
@@ -256,9 +255,9 @@ function BubbleCostoEfect({ asesores, canalMap }) {
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"7px" }}>
                 {[
                   ["Leads",d?.leads,C.accent],["JOT",d?.jot,C.success],
-                  ["CPL Canal",`$${d?.cplCanal?.toFixed(2)}`,C.violet],["Costo Asesor/Lead",`$${d?.costoAs?.toFixed(2)}`,C.orange],
-                  ["Costo Total/Lead",`$${d?.x?.toFixed(2)}`,C.danger],["Efectividad",`${d?.y}%`,C.success],
-                  ["Score",d?.score?.toFixed(0),scCol(d?.score)],["ROI est.",`${d?.roi?.toFixed(2)}x`,d?.roi>=1?C.success:C.danger],
+                  ["Inv. Asignada",`$${n(d?.invAs).toFixed(0)}`,C.violet],["CPL Real",`$${n(d?.cpl).toFixed(2)}`,C.cyan],
+                  ["CPA Real",`$${n(d?.cpa).toFixed(2)}`,C.danger],["Efectividad",`${d?.y}%`,C.success],
+                  ["Score",d?.score?.toFixed(0),scCol(d?.score)],["ROI est.",`${n(d?.roi).toFixed(2)}x`,n(d?.roi)>=1?C.success:C.danger],
                 ].map(([l,v,c])=>(
                   <div key={l}>
                     <div style={{ fontSize:"7px", color:"#64748b" }}>{l}</div>
@@ -322,59 +321,53 @@ function ScatterInvJOT({ asesores, canalMap }) {
   );
 }
 
-/** BARRAS APILADAS: CPL canal + costo asesor */
+/** BARRAS: Inversión asignada por asesor + CPA real */
 function BarrasCostoApilado({ asesores, canalMap }) {
   const data = [...asesores]
-    .filter(a=>a.leads>0)
+    .filter(a=>a.leads>0 && n(a.inv_asignada)>0)
     .map((a,i)=>{
-      const inf=canalMap[a.canal];
-      const cplC = inf?.cpl||0;
-      const cosA = SALARIO_MENSUAL_EST/a.leads;
-      const tot  = cplC+cosA;
-      const cpa  = a.jot>0 ? tot*a.leads/a.jot : null;
+      const invAs = n(a.inv_asignada);
+      const cpl   = a.leads>0 ? parseFloat((invAs/a.leads).toFixed(2)) : 0;
+      const cpa   = a.jot>0  ? parseFloat((invAs/a.jot).toFixed(2))   : null;
       return {
         nombre: a.nombre.length>16 ? a.nombre.slice(0,16)+"…" : a.nombre,
-        full: a.nombre, cplC: parseFloat(cplC.toFixed(2)),
-        cosA: parseFloat(cosA.toFixed(2)),
-        tot:  parseFloat(tot.toFixed(2)),
-        cpa:  cpa ? parseFloat(cpa.toFixed(2)) : null,
-        jot: a.jot, efect: a.efect,
+        full: a.nombre,
+        inv: parseFloat(invAs.toFixed(0)),
+        cpl, cpa, jot: a.jot, leads: a.leads, efect: a.efect,
       };
     })
-    .sort((a,b)=>a.tot-b.tot);
+    .sort((a,b)=>b.inv-a.inv);
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(220, data.length*36)}>
-      <BarChart data={data} layout="vertical" margin={{ top:5, right:110, left:10, bottom:5 }}>
+      <BarChart data={data} layout="vertical" margin={{ top:5, right:130, left:10, bottom:5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
         <XAxis type="number" tick={{ fontSize:9, fill:C.muted }} tickFormatter={v=>`$${v}`} />
         <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted, fontWeight:700 }} width={130} />
-        <Tooltip content={({ active, payload, label }) => {
+        <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
           return (
             <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"9px" }}>
               <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"7px" }}>{d?.full}</div>
-              <div style={{ color:"#64748b" }}>CPL Canal: <b style={{ color:C.violet }}>${d?.cplC?.toFixed(2)}</b></div>
-              <div style={{ color:"#64748b" }}>Costo Asesor/Lead: <b style={{ color:C.orange }}>${d?.cosA?.toFixed(2)}</b></div>
-              <div style={{ color:"#64748b" }}>Total/Lead: <b style={{ color:C.danger }}>${d?.tot?.toFixed(2)}</b></div>
-              {d?.cpa && <div style={{ color:"#64748b" }}>CPA (por JOT): <b style={{ color:C.warning }}>${d?.cpa}</b></div>}
+              <div style={{ color:"#64748b" }}>Inversión asignada: <b style={{ color:C.violet }}>${d?.inv}</b></div>
+              <div style={{ color:"#64748b" }}>CPL real: <b style={{ color:C.cyan }}>${d?.cpl?.toFixed(2)}</b></div>
+              {d?.cpa && <div style={{ color:"#64748b" }}>CPA real: <b style={{ color:C.danger }}>${d?.cpa}</b></div>}
+              <div style={{ color:"#64748b" }}>Leads: <b style={{ color:C.accent }}>{d?.leads}</b></div>
               <div style={{ color:"#64748b" }}>JOT: <b style={{ color:C.success }}>{d?.jot}</b></div>
               <div style={{ color:"#64748b" }}>Efect.: <b style={{ color:efCol(d?.efect) }}>{d?.efect?.toFixed(1)}%</b></div>
             </div>
           );
         }} />
-        <Legend wrapperStyle={{ fontSize:9 }} />
-        <Bar dataKey="cplC" name="CPL Canal" stackId="a" fill={C.violet} opacity={0.88} />
-        <Bar dataKey="cosA" name="Costo Asesor/Lead" stackId="a" fill={C.orange} opacity={0.88} radius={[0,4,4,0]}>
-          <LabelList dataKey="tot" position="right"
+        <Bar dataKey="inv" name="Inversión asignada $" fill={C.violet} opacity={0.88} radius={[0,4,4,0]}>
+          <LabelList dataKey="inv" position="right"
             content={({ x, y, width, height, value, index }) => {
               if(!value) return null;
               const cpa=data[index]?.cpa;
               return (
                 <g>
-                  <text x={x+width+6} y={y+height/2-3} fontSize={8} fontWeight={900} fill={C.slate}>${value}</text>
-                  {cpa && <text x={x+width+6} y={y+height/2+9} fontSize={7} fill={C.muted}>CPA ${cpa}</text>}
+                  <text x={x+width+6} y={y+height/2-3} fontSize={8} fontWeight={900} fill={C.violet}>${value}</text>
+                  {cpa && <text x={x+width+6} y={y+height/2+9} fontSize={7} fill={C.danger}>CPA ${cpa}</text>}
                 </g>
               );
             }} />
@@ -583,7 +576,7 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
               leads:a.leads, jot:a.jot, ventas:a.ventas,
               score:parseFloat(a.score.toFixed(0)),
               pct_atc:parseFloat(pct(a.atc,a.leads).toFixed(1)),
-              costoLead: parseFloat(((pautaInfo?.cpl||0)+(a.leads>0?SALARIO_MENSUAL_EST/a.leads:0)).toFixed(2)),
+              costoLead: n(a.inv_asignada)>0&&a.leads>0 ? parseFloat((n(a.inv_asignada)/a.leads).toFixed(2)) : (pautaInfo?.cpl||0),
             }))}
             layout="vertical"
             margin={{ top:5, right:80, left:130, bottom:5 }}>
@@ -634,7 +627,7 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
             </thead>
             <tbody>
               {sorted.map((a,i)=>{
-                const cL=parseFloat(((pautaInfo?.cpl||0)+(a.leads>0?SALARIO_MENSUAL_EST/a.leads:0)).toFixed(2));
+                const cL = n(a.inv_asignada)>0&&a.leads>0 ? parseFloat((n(a.inv_asignada)/a.leads).toFixed(2)) : (pautaInfo?.cpl||0);
                 return (
                   <tr key={i} style={{ borderBottom:`1px solid ${C.border}`, background:i===0?`${C.success}05`:"#fff" }}>
                     <td style={{ padding:"7px 10px", borderRight:`1px solid ${C.border}`, textAlign:"center",
@@ -658,18 +651,16 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
   );
 }
 
-/** Tabla ranking global con costos */
+/** Tabla ranking global con inversión real */
 function TablaRanking({ data, canalMap }) {
   const [ord,setOrd]=useState({ col:"score", dir:"desc" });
   const toggle=col=>setOrd(p=>p.col===col?{col,dir:p.dir==="desc"?"asc":"desc"}:{col,dir:"desc"});
 
   const rows=data.map(a=>{
-    const inf=canalMap[a.canal];
-    const cplC=inf?.cpl||0;
-    const cosA=a.leads>0?SALARIO_MENSUAL_EST/a.leads:0;
-    const tot=cplC+cosA;
-    const cpa=a.jot>0?tot*a.leads/a.jot:null;
-    return { ...a, cplC, cosA, tot, cpa };
+    const invAs = n(a.inv_asignada);
+    const cpl   = a.leads>0 && invAs>0 ? parseFloat((invAs/a.leads).toFixed(2)) : 0;
+    const cpa   = a.jot>0  && invAs>0  ? parseFloat((invAs/a.jot).toFixed(2))   : null;
+    return { ...a, inv_asignada: invAs, cpl_real: cpl, cpa_real: cpa };
   });
 
   const sorted=[...rows].sort((a,b)=>{
@@ -683,10 +674,9 @@ function TablaRanking({ data, canalMap }) {
     {k:"pct_atc",l:"%ATC",fmt:v=>`${n(v).toFixed(1)}%`,cf:atcCol},
     {k:"ventas",l:"VENTAS"},{k:"jot",l:"JOT"},
     {k:"efect",l:"EFECT%",fmt:v=>`${n(v).toFixed(1)}%`,cf:efCol},
-    {k:"cplC",l:"CPL CANAL",fmt:v=>v>0?`$${n(v).toFixed(2)}`:"—"},
-    {k:"cosA",l:"COSTO AS./LEAD",fmt:v=>`$${n(v).toFixed(2)}`},
-    {k:"tot",l:"TOTAL/LEAD",fmt:v=>`$${n(v).toFixed(2)}`},
-    {k:"cpa",l:"CPA",fmt:v=>v?`$${n(v).toFixed(2)}`:"—"},
+    {k:"inv_asignada",l:"INV. ASIGNADA",fmt:v=>v>0?`$${n(v).toFixed(0)}`:"—"},
+    {k:"cpl_real",l:"CPL REAL",fmt:v=>v>0?`$${n(v).toFixed(2)}`:"—"},
+    {k:"cpa_real",l:"CPA REAL",fmt:v=>v?`$${n(v).toFixed(2)}`:"—",cf:v=>v?n(v)<50?C.success:n(v)<150?C.warning:C.danger:C.muted},
     {k:"score",l:"SCORE ★",cf:scCol},
   ];
 
@@ -817,20 +807,28 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
     const r={};
     const totLeadsAses = asesores.reduce((s,a)=>s+a.leads,0);
     pauta.canales.forEach(c=>{
-      const prop=totLeads>0?c.leads/totLeads:0;
-      // ATC del canal distribuido proporcionalmente al share de leads de cada asesor
-      const canalAtc = c.atc||0;
+      const prop       = totLeads>0 ? c.leads/totLeads : 0;
+      const canalAtc   = c.atc||0;
+      const canalInv   = c.inversion||0;
+      const canalLeads = Math.max(1, c.leads||1);
       r[c.canal]=asesores
         .map(a=>{
-          const aLeads  = Math.round(a.leads*prop);
-          // Distribuir ATC del canal en función del % de leads del asesor sobre el total de asesores
-          const aAtc = totLeadsAses>0 ? Math.round(canalAtc*(a.leads/totLeadsAses)) : 0;
+          const aLeads = Math.round(a.leads*prop);
+          const aAtc   = totLeadsAses>0 ? Math.round(canalAtc*(a.leads/totLeadsAses)) : 0;
+          // Inversión proporcional: cuánto del presupuesto del canal le "corresponde" a este asesor
+          const aInv   = parseFloat((canalInv * (aLeads / canalLeads)).toFixed(2));
           return { ...a, canal:c.canal,
             leads:aLeads, jot:Math.round(a.jot*prop),
             ventas:Math.round(a.ventas*prop), atc:aAtc,
-            negoc:Math.round(a.negoc*prop) };
+            negoc:Math.round(a.negoc*prop), inv_asignada:aInv };
         })
-        .map(a=>({ ...a, efect:pct(a.jot,a.leads), pct_atc:pct(a.atc,a.leads), score:calcScore(a) }))
+        .map(a=>({
+          ...a,
+          efect:   pct(a.jot,a.leads),
+          pct_atc: pct(a.atc,a.leads),
+          score:   calcScore(a),
+          cpa_real: a.inv_asignada>0 && a.jot>0 ? parseFloat((a.inv_asignada/a.jot).toFixed(2)) : null,
+        }))
         .filter(a=>a.leads>0)
         .sort((a,b)=>b.efect-a.efect);
     });
@@ -845,8 +843,19 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
     if (canalesSel.length === 1 && asesXCanal[canalesSel[0]]?.length) {
       return asesXCanal[canalesSel[0]];
     }
-    return asesores.map(a=>({ ...a, canal:canalPpal?.canal||"GENERAL" }));
-  }, [canalesSel, asesXCanal, asesores, canalPpal]);
+    // Vista global: distribución proporcional de inversión total entre asesores
+    return asesores.map(a=>{
+      const aInv = pauta.totalInv>0 && glob.totL>0
+        ? parseFloat((pauta.totalInv * (a.leads / Math.max(1, glob.totL))).toFixed(2))
+        : 0;
+      return {
+        ...a,
+        canal: canalPpal?.canal||"GENERAL",
+        inv_asignada: aInv,
+        cpa_real: aInv>0 && a.jot>0 ? parseFloat((aInv/a.jot).toFixed(2)) : null,
+      };
+    });
+  }, [canalesSel, asesXCanal, asesores, canalPpal, pauta.totalInv, glob.totL]);
 
   const asesFilt = asel ? asesConCanal.filter(a=>a.nombre===asel) : asesConCanal;
 
@@ -899,10 +908,10 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
             </span>
           </div>
           <p style={{ fontSize:"9px", color:"#64748b", marginLeft:"44px" }}>
-            Burbujas · Scatter · Costo desglosado (CPL + salario) · Score vs CPL · Heatmap multi-métrica
+            CPA real · Inversión asignada por asesor · Score vs CPL · Heatmap multi-métrica
           </p>
           <p style={{ fontSize:"8px", color:"#475569", marginLeft:"44px", marginTop:"3px" }}>
-            💡 Salario est. ${SALARIO_MENSUAL_EST}/mes · Ticket est. ${TICKET_MENSUAL_EST}/cliente activo — ajustar en código
+            💡 Inversión proporcional según leads por canal · Ticket est. ${TICKET_MENSUAL_EST}/cliente activo
           </p>
         </div>
         {glob.top && (
@@ -943,14 +952,14 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
           color={glob.scoreAvg>=60?C.success:glob.scoreAvg>=35?C.warning:C.danger} sub="0-100" />
         <Kpi label="Inversión Pauta" value={pauta.totalInv>0?`$${pauta.totalInv.toFixed(0)}`:"—"} icon="💰"
           color={C.violet} sub={`${pauta.canales.length} canales`} />
-        <Kpi label="Costo Total/Lead" icon="🧮" color={C.orange}
+        <Kpi label="CPA Promedio" icon="🧮" color={C.orange}
           value={(() => {
-            const acp=pauta.canales.filter(c=>c.cpl).length;
-            const avgCpl=acp>0?pauta.canales.filter(c=>c.cpl).reduce((s,c)=>s+(c.cpl||0),0)/acp:0;
-            const cA=glob.totL>0?SALARIO_MENSUAL_EST*asesores.length/glob.totL:0;
-            return glob.totL>0?`$${(avgCpl+cA).toFixed(2)}`:"—";
+            const conJot = asesConCanal.filter(a=>a.jot>0&&n(a.inv_asignada)>0);
+            if(!conJot.length) return "—";
+            const avg = conJot.reduce((s,a)=>s+n(a.inv_asignada)/a.jot,0)/conJot.length;
+            return `$${avg.toFixed(0)}`;
           })()}
-          sub="CPL canal + costo asesor" />
+          sub="Inversión real / JOT por asesor" />
       </div>
 
       {/* SUB-TABS */}
@@ -1079,15 +1088,15 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
 
       {/* ══ COSTO TOTAL ══ */}
       {sub==="costo" && (
-        <Card title="Desglose Costo Total por Lead y CPA"
-          subtitle={`CPL Canal + Costo Asesor ($${SALARIO_MENSUAL_EST}/leads) · CPA = costo por JOT · Menor = más eficiente`}
+        <Card title="Inversión Asignada por Asesor y CPA Real"
+          subtitle="Inversión proporcional por leads del canal · CPA = Inversión / JOT logrado · Menor CPA = más eficiente"
           accent={C.orange}
           badge={
             <div style={{ display:"flex", gap:"8px" }}>
               <span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px",
-                background:`${C.violet}15`, color:C.violet, fontWeight:900 }}>■ CPL Canal</span>
+                background:`${C.violet}15`, color:C.violet, fontWeight:900 }}>■ Inv. Asignada</span>
               <span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px",
-                background:`${C.orange}15`, color:C.orange, fontWeight:900 }}>■ Costo Asesor</span>
+                background:`${C.danger}15`, color:C.danger, fontWeight:900 }}>● CPA Real</span>
             </div>
           }>
           <BarrasCostoApilado asesores={asel?asesFilt:asesConCanal} canalMap={pauta.map} />
@@ -1118,7 +1127,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
       {/* ══ RANKING ══ */}
       {sub==="ranking" && (
         <Card title="Ranking Global con Costo Completo" accent={C.violet}
-          subtitle={`Salario est. $${SALARIO_MENSUAL_EST}/mes · Click en columnas para ordenar`}>
+          subtitle="Inversión real por canal · CPA = Inversión / JOT · Click en columnas para ordenar">
           <div style={{ display:"flex", flexWrap:"wrap", gap:"16px", marginBottom:"18px", justifyContent:"center" }}>
             {[...asesores].sort((a,b)=>b.score-a.score).slice(0,12).map((a,i)=>{
               const col=scCol(a.score);

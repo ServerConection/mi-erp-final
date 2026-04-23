@@ -325,9 +325,6 @@ const getIndicadoresDashboard = async (req, res) => {
             FROM public.mestra_bitrix mb
             ${joinEmpleadosDedup}
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
-            AND mb.j_fecha_registro_sistema IS NOT NULL
-            AND TRIM(mb.j_fecha_registro_sistema::text) != ''
-            AND mb.j_fecha_registro_sistema::date < $1::date
             AND mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
             AND mb.j_fecha_activacion_netlife::date >= $1::date

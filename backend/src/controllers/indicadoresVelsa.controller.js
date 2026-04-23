@@ -219,10 +219,10 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             `;
         };
 
-        // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado
-        // FIX: se eliminó el filtro por t2_jot_created_at_fecha < $1 porque causaba
-        // acumulación no aditiva al cambiar fecha_desde (ej: 6-12 abril traía registros del 1-5).
-        // Ahora filtra únicamente por fecha de activación en el rango [fecha_desde, fecha_hasta].
+        // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
+        // PERO cuya orden fue creada ANTES del inicio del período (fecha_desde).
+        // Esto garantiza que solo se cuentan órdenes pendientes pre-período que se activaron
+        // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -233,6 +233,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
             AND vn.t2_fecha_activacion_telcos::date >= $1::date
             AND vn.t2_fecha_activacion_telcos::date <= $2::date
+            AND vn.t2_jot_created_at_fecha::date < $1::date
             ${filters}
             GROUP BY 1
         `;

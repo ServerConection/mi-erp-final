@@ -4,233 +4,104 @@ import { useNavigate } from "react-router-dom";
 const API = "https://erp-backend-v1-qhk2.onrender.com";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Personaje cartoon telecomunicaciones — tema claro azul
+   Panel izquierdo — Ilustración animada telecomunicaciones
 ───────────────────────────────────────────────────────────────────────────── */
-function TelecomCharacter() {
+function TelecomIllustration() {
   return (
-    <>
-      <style>{`
-        @keyframes charFloat {
-          0%, 100% { transform: translateY(0px); }
-          50%       { transform: translateY(-12px); }
-        }
-        @keyframes streakMove {
-          0%   { stroke-dashoffset: 600; opacity: 0; }
-          30%  { opacity: 0.75; }
-          100% { stroke-dashoffset: 0; opacity: 0; }
-        }
-        @keyframes badgePulse {
-          0%, 100% { transform: scale(1); }
-          50%       { transform: scale(1.04); }
-        }
-        @keyframes eyeBlink {
-          0%, 88%, 100% { transform: scaleY(1); }
-          93%            { transform: scaleY(0.08); }
-        }
-        @keyframes wifiDot {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.2; }
-        }
-        .char-float  { animation: charFloat 4s ease-in-out infinite; transform-origin: 200px 330px; }
-        .streak      { stroke-dasharray: 600; animation: streakMove 3.5s ease-in-out infinite; }
-        .streak-b    { animation-delay: 1.2s; }
-        .streak-c    { animation-delay: 2.4s; }
-        .badge-pulse { animation: badgePulse 2.5s ease-in-out infinite; transform-origin: 108px 482px; }
-        .eye-l       { animation: eyeBlink 5s ease-in-out infinite; transform-origin: 168px 184px; }
-        .eye-r       { animation: eyeBlink 5s ease-in-out infinite 0.15s; transform-origin: 232px 184px; }
-        .wifi-dot    { animation: wifiDot 1.8s ease-in-out infinite; }
-      `}</style>
+    <div style={{
+      width: "100%",
+      height: "100%",
+      position: "relative",
+      borderRadius: "20px",
+      overflow: "hidden",
+      boxShadow: "0 20px 60px rgba(15,23,42,0.40)",
+      background: "linear-gradient(145deg, #0c1a3a 0%, #0f2a5c 40%, #1a4080 70%, #0c1a3a 100%)",
+    }}>
 
-      <svg
-        viewBox="0 0 420 560"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ width: "100%", height: "100%", userSelect: "none" }}
-        aria-label="Personaje cartoon telecomunicaciones"
-      >
-        {/* ── Torre al fondo ── */}
-        <g opacity="0.10" transform="translate(318,30)">
-          <rect x="16" y="0" width="10" height="320" fill="#1e3a8a"/>
-          <line x1="-2"  y1="20"  x2="44"  y2="90"  stroke="#1e3a8a" strokeWidth="2.5"/>
-          <line x1="44"  y1="20"  x2="-2"  y2="90"  stroke="#1e3a8a" strokeWidth="2.5"/>
-          <line x1="-8"  y1="90"  x2="50"  y2="170" stroke="#1e3a8a" strokeWidth="2.5"/>
-          <line x1="50"  y1="90"  x2="-8"  y2="170" stroke="#1e3a8a" strokeWidth="2.5"/>
-          <line x1="-14" y1="170" x2="56"  y2="260" stroke="#1e3a8a" strokeWidth="2.5"/>
-          <line x1="56"  y1="170" x2="-14" y2="260" stroke="#1e3a8a" strokeWidth="2.5"/>
-        </g>
+      {/* ── Fondo: antena/torre difuminada ── */}
+      <img
+        src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=70"
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: "absolute", inset: 0,
+          width: "100%", height: "100%",
+          objectFit: "cover", objectPosition: "center",
+          opacity: 0.13, display: "block",
+        }}
+      />
 
-        {/* ── Antena parabólica ── */}
-        <g opacity="0.10" transform="translate(10,310)">
-          <line x1="40" y1="0" x2="40" y2="75" stroke="#1e3a8a" strokeWidth="5"/>
-          <ellipse cx="40" cy="80" rx="52" ry="28" fill="#1e3a8a"/>
-          <line x1="6"  y1="62" x2="74" y2="98" stroke="#3b82f6" strokeWidth="2"/>
-        </g>
+      {/* ── Overlay degradado azul ── */}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: "linear-gradient(160deg, rgba(29,78,216,0.30) 0%, rgba(15,23,42,0.15) 55%, rgba(37,99,235,0.35) 100%)",
+        pointerEvents: "none",
+      }} />
 
-        {/* ── Rayos de luz animados ── */}
-        <path className="streak"     d="M20 520 Q180 370 410 160" fill="none" stroke="#93c5fd" strokeWidth="2.5"/>
-        <path className="streak streak-b" d="M10 470 Q160 330 390 110" fill="none" stroke="#60a5fa" strokeWidth="1.5"/>
-        <path className="streak streak-c" d="M40 540 Q210 390 420 200" fill="none" stroke="#bfdbfe" strokeWidth="1"/>
+      {/* ── Orbes de luz animados ── */}
+      <div className="go go-1" />
+      <div className="go go-2" />
+      <div className="go go-3" />
+      <div className="go go-4" />
 
-        {/* ════ PERSONAJE FLOTANTE ════ */}
-        <g className="char-float">
+      {/* ── Barrido de luz sutil ── */}
+      <div className="light-sweep" />
 
-          {/* Sombra suelo */}
-          <ellipse cx="198" cy="548" rx="92" ry="11" fill="#94a3b8" opacity="0.22"/>
+      {/* ── Imagen principal: persona telecomunicaciones ── */}
+      <img
+        src="https://images.unsplash.com/photo-1607799279861-4dd421887fb3?w=480&q=80"
+        alt="Profesional NOVONET"
+        style={{
+          position: "absolute",
+          bottom: "72px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "78%",
+          maxWidth: "310px",
+          objectFit: "cover",
+          objectPosition: "center top",
+          aspectRatio: "3/4",
+          borderRadius: "140px 140px 0 0",
+          filter: "drop-shadow(0 8px 32px rgba(37,99,235,0.55)) brightness(1.05) saturate(1.1)",
+        }}
+      />
 
-          {/* ── Piernas (jeans oscuros) ── */}
-          <rect x="148" y="395" width="50" height="130" rx="14" fill="#1e293b"/>
-          <rect x="210" y="395" width="50" height="130" rx="14" fill="#1e293b"/>
-          {/* Detalle jean */}
-          <rect x="154" y="402" width="14" height="118" rx="7" fill="#334155" opacity="0.45"/>
-          <rect x="216" y="402" width="14" height="118" rx="7" fill="#334155" opacity="0.45"/>
+      {/* ── Halo debajo de la persona ── */}
+      <div style={{
+        position: "absolute",
+        bottom: "68px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "240px",
+        height: "40px",
+        background: "radial-gradient(ellipse, rgba(59,130,246,0.45) 0%, transparent 70%)",
+        filter: "blur(12px)",
+        pointerEvents: "none",
+      }} />
 
-          {/* Cinturón */}
-          <rect x="138" y="372" width="126" height="16" rx="6" fill="#0f172a"/>
-          <rect x="186" y="373" width="22" height="13" rx="3" fill="#475569"/>
-          <rect x="190" y="376" width="14" height="7"  rx="2" fill="#94a3b8"/>
-
-          {/* Zapatos */}
-          <ellipse cx="172" cy="535" rx="36" ry="13" fill="#111827"/>
-          <ellipse cx="236" cy="535" rx="36" ry="13" fill="#111827"/>
-          <ellipse cx="155" cy="530" rx="14" ry="8"  fill="#1e293b"/>
-          <ellipse cx="219" cy="530" rx="14" ry="8"  fill="#1e293b"/>
-
-          {/* ── Camisa polo azul ── */}
-          <path d="M126 248 Q122 385 136 398 L264 398 Q278 385 274 248 Q258 236 238 232 L218 248 L198 265 L178 248 L158 232 Q138 236 126 248Z" fill="#1d4ed8"/>
-          {/* Sombra lateral camisa */}
-          <path d="M126 248 Q122 385 136 398 L162 398 L162 232 Q138 236 126 248Z" fill="#1e40af" opacity="0.4"/>
-          <path d="M274 248 Q278 385 264 398 L238 398 L238 232 Q258 236 274 248Z" fill="#1e3a8a" opacity="0.25"/>
-
-          {/* Cuello / solapa */}
-          <path d="M178 248 L196 278 L204 278 L222 248 L206 240 L200 258 L194 240Z" fill="#1e3a8a"/>
-
-          {/* Botones */}
-          <circle cx="200" cy="284" r="3.5" fill="#1e3a8a"/>
-          <circle cx="200" cy="300" r="3.5" fill="#1e3a8a"/>
-
-          {/* Logo NOVO ERP en camisa */}
-          <text x="200" y="340" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold" opacity="0.88" fontFamily="sans-serif">NOVO ERP</text>
-
-          {/* WiFi en camisa */}
-          <path d="M192 318 Q200 313 208 318" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" opacity="0.85"/>
-          <path d="M188 323 Q200 315 212 323" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" opacity="0.55"/>
-          <circle className="wifi-dot" cx="200" cy="327" r="2.8" fill="white" opacity="0.85"/>
-
-          {/* ── Brazo izquierdo (relajado hacia abajo) ── */}
-          <path d="M129 262 Q98  302 94  365" stroke="#f5c5a3" strokeWidth="36" strokeLinecap="round" fill="none"/>
-          <path d="M129 262 Q100 298 96  360" stroke="#1d4ed8" strokeWidth="32" strokeLinecap="round" fill="none"/>
-          {/* Mano izquierda */}
-          <ellipse cx="94" cy="370" rx="24" ry="19" fill="#f5c5a3"/>
-          <path d="M75 362 Q70 372 75 380" fill="none" stroke="#e8b89a" strokeWidth="4.5" strokeLinecap="round"/>
-          <path d="M113 362 Q118 372 113 380" fill="none" stroke="#e8b89a" strokeWidth="4.5" strokeLinecap="round"/>
-
-          {/* ── Brazo derecho (pulgar arriba) ── */}
-          <path d="M267 262 Q300 282 304 325" stroke="#f5c5a3" strokeWidth="36" strokeLinecap="round" fill="none"/>
-          <path d="M267 262 Q298 280 302 322" stroke="#1d4ed8" strokeWidth="32" strokeLinecap="round" fill="none"/>
-          {/* Antebrazo hacia arriba */}
-          <path d="M302 322 Q310 298 306 266" stroke="#f5c5a3" strokeWidth="30" strokeLinecap="round" fill="none"/>
-          {/* Puño */}
-          <rect x="286" y="250" width="44" height="38" rx="13" fill="#f5c5a3"/>
-          {/* Líneas nudillos */}
-          <line x1="297" y1="253" x2="297" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
-          <line x1="308" y1="253" x2="308" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
-          <line x1="319" y1="253" x2="319" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
-          {/* Pulgar */}
-          <path d="M288 258 Q272 244 270 228 Q268 212 282 210 Q298 208 302 226 L302 258Z" fill="#f5c5a3"/>
-          <ellipse cx="274" cy="222" rx="6" ry="10" fill="#e8b89a" opacity="0.55" transform="rotate(-12,274,222)"/>
-
-          {/* ── Cuello ── */}
-          <rect x="182" y="228" width="36" height="28" rx="8" fill="#f5c5a3"/>
-
-          {/* ── Cabeza ── */}
-          <path d="M130 178 Q130 258 158 264 Q178 270 200 270 Q222 270 242 264 Q270 258 270 178 Q270 112 200 110 Q130 112 130 178Z" fill="#f5c5a3"/>
-
-          {/* Frente más clara */}
-          <ellipse cx="200" cy="152" rx="58" ry="28" fill="#fbd5b8" opacity="0.4"/>
-
-          {/* ── Pelo castaño ── */}
-          <path d="M132 168 Q138 100 200 96 Q262 100 268 168 Q260 126 238 114 Q220 104 200 102 Q180 104 162 114 Q140 126 132 168Z" fill="#6b3a1f"/>
-          <path d="M132 168 Q128 145 138 118 Q148 104 160 108 L148 120 Q136 138 134 162Z" fill="#5c3214"/>
-          <path d="M268 168 Q272 145 262 118 Q252 104 240 108 L252 120 Q264 138 266 162Z" fill="#5c3214"/>
-          <path d="M158 100 Q170 88 185 91 Q175 95 168 103Z" fill="#7a4422"/>
-          <path d="M215 91 Q230 88 242 98 Q234 96 228 103Z" fill="#7a4422"/>
-
-          {/* ── Orejas ── */}
-          <ellipse cx="130" cy="188" rx="14" ry="18" fill="#f5c5a3"/>
-          <ellipse cx="270" cy="188" rx="14" ry="18" fill="#f5c5a3"/>
-          <path d="M133 180 Q138 188 133 196" fill="none" stroke="#e8b89a" strokeWidth="2" strokeLinecap="round"/>
-          <path d="M267 180 Q262 188 267 196" fill="none" stroke="#e8b89a" strokeWidth="2" strokeLinecap="round"/>
-
-          {/* ── Audífonos (headphones) ── */}
-          {/* Banda */}
-          <path d="M122 172 Q200 88 278 172" fill="none" stroke="#1e293b" strokeWidth="15" strokeLinecap="round"/>
-          <path d="M122 172 Q200 92 278 172" fill="none" stroke="#334155" strokeWidth="9" strokeLinecap="round"/>
-          <path d="M122 172 Q200 96 278 172" fill="none" stroke="#475569" strokeWidth="3.5" strokeLinecap="round"/>
-          {/* Copa izquierda */}
-          <ellipse cx="116" cy="192" rx="24" ry="28" fill="#1e293b"/>
-          <ellipse cx="116" cy="192" rx="17" ry="20" fill="#334155"/>
-          <ellipse cx="116" cy="192" rx="11" ry="13" fill="#2563eb"/>
-          {/* WiFi en copa */}
-          <path d="M111 190 Q116 185 121 190" fill="none" stroke="#93c5fd" strokeWidth="1.8" strokeLinecap="round"/>
-          <path d="M108 194 Q116 186 124 194" fill="none" stroke="#93c5fd" strokeWidth="1.2" strokeLinecap="round" opacity="0.55"/>
-          <circle cx="116" cy="198" r="2.2" fill="#93c5fd"/>
-          {/* Copa derecha */}
-          <ellipse cx="284" cy="192" rx="24" ry="28" fill="#1e293b"/>
-          <ellipse cx="284" cy="192" rx="17" ry="20" fill="#334155"/>
-          <ellipse cx="284" cy="192" rx="11" ry="13" fill="#2563eb"/>
-          {/* Brazo micrófono */}
-          <path d="M138 204 Q146 222 153 236 Q158 244 172 244" fill="none" stroke="#1e293b" strokeWidth="5.5" strokeLinecap="round"/>
-          <path d="M138 204 Q146 222 153 236 Q158 244 172 244" fill="none" stroke="#475569" strokeWidth="3" strokeLinecap="round"/>
-          <ellipse cx="176" cy="243" rx="9" ry="7" fill="#1e293b"/>
-          <ellipse cx="176" cy="243" rx="6" ry="4.5" fill="#334155"/>
-
-          {/* ── Ojos ── */}
-          <ellipse cx="168" cy="184" rx="17" ry="18" fill="white"/>
-          <ellipse cx="232" cy="184" rx="17" ry="18" fill="white"/>
-          {/* Iris */}
-          <circle cx="168" cy="186" r="12" fill="#6b3a1f"/>
-          <circle cx="232" cy="186" r="12" fill="#6b3a1f"/>
-          {/* Pupila */}
-          <circle cx="169" cy="187" r="7"   fill="#0f172a"/>
-          <circle cx="233" cy="187" r="7"   fill="#0f172a"/>
-          {/* Brillo */}
-          <circle cx="173" cy="182" r="4"   fill="white"/>
-          <circle cx="237" cy="182" r="4"   fill="white"/>
-          <circle cx="174" cy="183" r="1.8" fill="white" opacity="0.55"/>
-          {/* Párpado animado izq */}
-          <ellipse className="eye-l" cx="168" cy="180" rx="17" ry="4" fill="#f5c5a3"/>
-          <ellipse className="eye-r" cx="232" cy="180" rx="17" ry="4" fill="#f5c5a3"/>
-
-          {/* Cejas */}
-          <path d="M153 164 Q168 156 184 162" fill="none" stroke="#4a2810" strokeWidth="4"   strokeLinecap="round"/>
-          <path d="M216 162 Q232 156 248 164" fill="none" stroke="#4a2810" strokeWidth="4"   strokeLinecap="round"/>
-
-          {/* Rubor mejillas */}
-          <ellipse cx="146" cy="204" rx="19" ry="13" fill="#fda4af" opacity="0.22"/>
-          <ellipse cx="254" cy="204" rx="19" ry="13" fill="#fda4af" opacity="0.22"/>
-
-          {/* Nariz */}
-          <path d="M194 196 Q200 208 206 196" fill="none" stroke="#d4956a" strokeWidth="2.2" strokeLinecap="round"/>
-          <circle cx="196" cy="200" r="3.5" fill="#e8a87c" opacity="0.35"/>
-          <circle cx="204" cy="200" r="3.5" fill="#e8a87c" opacity="0.35"/>
-
-          {/* Sonrisa */}
-          <path d="M166 218 Q200 240 234 218" fill="none" stroke="#c47a52" strokeWidth="4" strokeLinecap="round"/>
-          {/* Dientes */}
-          <path d="M170 223 Q200 238 230 223 Q200 232 170 223Z" fill="white" opacity="0.82"/>
-        </g>
-
-        {/* ── Badge WiFi inferior ── */}
-        <g className="badge-pulse">
-          <rect x="22" y="462" width="178" height="52" rx="26" fill="#1d4ed8"/>
-          <rect x="22" y="462" width="178" height="52" rx="26" fill="none" stroke="#93c5fd" strokeWidth="1" opacity="0.45"/>
-          <path d="M44 480 Q54 472 64 480" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
-          <path d="M39 486 Q54 475 69 486" fill="none" stroke="white" strokeWidth="2"   strokeLinecap="round" opacity="0.6"/>
-          <circle cx="54" cy="491" r="3.5" fill="white"/>
-          <text x="82" y="480" fill="white"   fontSize="11" fontWeight="bold" fontFamily="sans-serif">Conectamos</text>
-          <text x="82" y="496" fill="#93c5fd" fontSize="10" fontFamily="sans-serif">lo que te mueve</text>
-        </g>
-      </svg>
-    </>
+      {/* ── Tagline inferior ── */}
+      <div style={{
+        position: "absolute",
+        bottom: 0, left: 0, right: 0,
+        padding: "1.5rem 1.75rem 1.5rem",
+        background: "linear-gradient(to top, rgba(10,20,50,0.92) 0%, transparent 100%)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "0.35rem" }}>
+          <svg width="26" height="20" viewBox="0 0 38 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 8 Q19 0 36 8"    fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M6 14 Q19 6 32 14"  fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M11 20 Q19 13 27 20" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            <circle cx="19" cy="26" r="4" fill="white"/>
+          </svg>
+          <span style={{ color: "white", fontSize: "1.35rem", fontWeight: 800, letterSpacing: "0.05em" }}>
+            NOVONET
+          </span>
+        </div>
+        <p style={{ color: "rgba(186,220,255,0.88)", fontSize: "0.88rem", margin: 0, fontStyle: "italic" }}>
+          Conectamos lo que te mueve
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -457,6 +328,95 @@ export default function Login() {
         /* ── Spinner ── */
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* ════════════════════════════════════════════════
+           LUCES ANIMADAS — panel izquierdo
+        ════════════════════════════════════════════════ */
+
+        /* Orbe 1: arriba izquierda, movimiento suave */
+        @keyframes goFloat1 {
+          0%,100% { transform: translate(0px, 0px) scale(1);    opacity: 0.60; }
+          25%      { transform: translate(20px,-25px) scale(1.07); opacity: 0.80; }
+          55%      { transform: translate(28px, 10px) scale(0.97); opacity: 0.50; }
+          80%      { transform: translate(-8px, 18px) scale(1.03); opacity: 0.65; }
+        }
+        /* Orbe 2: abajo derecha, periodo diferente */
+        @keyframes goFloat2 {
+          0%,100% { transform: translate(0px, 0px) scale(1);     opacity: 0.45; }
+          35%      { transform: translate(-24px,-18px) scale(1.12); opacity: 0.70; }
+          70%      { transform: translate(12px, 22px) scale(0.93); opacity: 0.38; }
+        }
+        /* Orbe 3: centro derecho */
+        @keyframes goFloat3 {
+          0%,100% { transform: translate(0px,0px) scale(1);     opacity: 0.30; }
+          50%      { transform: translate(14px,-30px) scale(1.18); opacity: 0.55; }
+        }
+        /* Orbe 4: pequeño, muy lento */
+        @keyframes goFloat4 {
+          0%,100% { transform: translate(0px,0px) scale(1);     opacity: 0.25; }
+          40%      { transform: translate(-18px, 12px) scale(1.20); opacity: 0.50; }
+          75%      { transform: translate(10px,-10px) scale(0.90); opacity: 0.20; }
+        }
+
+        /* Barrido de luz diagonal — pasa cada ~8 s */
+        @keyframes sweep {
+          0%   { opacity: 0; transform: translateX(-320px) skewX(-18deg); }
+          12%  { opacity: 1; }
+          88%  { opacity: 0.6; }
+          100% { opacity: 0; transform: translateX(700px) skewX(-18deg); }
+        }
+
+        /* Clases base de los orbes */
+        .go {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          filter: blur(45px);
+        }
+        .go-1 {
+          width: 210px; height: 210px;
+          background: radial-gradient(circle, rgba(59,130,246,0.70) 0%, transparent 68%);
+          top: 8%; left: 4%;
+          animation: goFloat1 7.5s ease-in-out infinite;
+        }
+        .go-2 {
+          width: 170px; height: 170px;
+          background: radial-gradient(circle, rgba(37,99,235,0.60) 0%, transparent 68%);
+          bottom: 18%; right: 5%;
+          animation: goFloat2 10s ease-in-out infinite;
+        }
+        .go-3 {
+          width: 130px; height: 130px;
+          background: radial-gradient(circle, rgba(96,165,250,0.50) 0%, transparent 70%);
+          top: 42%; right: 14%;
+          animation: goFloat3 12s ease-in-out infinite;
+        }
+        .go-4 {
+          width: 90px; height: 90px;
+          background: radial-gradient(circle, rgba(147,197,253,0.55) 0%, transparent 70%);
+          top: 25%; left: 38%;
+          animation: goFloat4 15s ease-in-out infinite;
+        }
+
+        /* Barrido de brillo */
+        .light-sweep {
+          position: absolute;
+          top: 0; bottom: 0;
+          left: 0;
+          width: 120px;
+          pointer-events: none;
+          background: linear-gradient(
+            105deg,
+            transparent 0%,
+            rgba(255,255,255,0.00) 38%,
+            rgba(255,255,255,0.09) 48%,
+            rgba(255,255,255,0.14) 50%,
+            rgba(255,255,255,0.09) 52%,
+            rgba(255,255,255,0.00) 62%,
+            transparent 100%
+          );
+          animation: sweep 8s ease-in-out infinite;
+        }
+
         @media (max-width: 768px) {
           .lp { flex-direction: column; }
           .lp-left { display: none; }
@@ -467,10 +427,10 @@ export default function Login() {
 
       <div className="lp">
 
-        {/* ════ IZQUIERDA — Personaje ════ */}
+        {/* ════ IZQUIERDA — Ilustración ════ */}
         <div className="lp-left">
-          <div style={{ width: "100%", maxWidth: 420, height: 530 }}>
-            <TelecomCharacter />
+          <div style={{ width: "100%", maxWidth: 480, height: 580 }}>
+            <TelecomIllustration />
           </div>
         </div>
 
@@ -478,25 +438,23 @@ export default function Login() {
         <div className="lp-right">
           <div className="login-card">
 
-            {/* ── Marca NOVO ERP ── */}
+            {/* ── Marca NOVONET ── */}
             <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
-              {/* Ícono WiFi + nombre */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: "0.4rem" }}>
                 <svg width="38" height="30" viewBox="0 0 38 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 8 Q19 0 36 8"    fill="none" stroke="#1d4ed8" strokeWidth="3"   strokeLinecap="round"/>
-                  <path d="M6 14 Q19 6 32 14"   fill="none" stroke="#2563eb" strokeWidth="3"   strokeLinecap="round"/>
-                  <path d="M11 20 Q19 13 27 20" fill="none" stroke="#3b82f6" strokeWidth="3"   strokeLinecap="round"/>
+                  <path d="M2 8 Q19 0 36 8"    fill="none" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M6 14 Q19 6 32 14"   fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M11 20 Q19 13 27 20" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round"/>
                   <circle cx="19" cy="26" r="4"  fill="#2563eb"/>
                 </svg>
                 <span style={{ fontSize: "1.7rem", fontWeight: 800, color: "#1e3a8a", letterSpacing: "0.04em" }}>
-                  NOVO <span style={{ color: "#2563eb" }}>ERP</span>
+                  NOVO<span style={{ color: "#2563eb" }}>NET</span>
                 </span>
               </div>
               <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>
                 Soluciones en Telecomunicaciones
               </p>
 
-              {/* Título de paso */}
               <div style={{ marginTop: "1.4rem" }}>
                 <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#0f172a", margin: "0 0 0.25rem" }}>
                   {paso === 1 ? "Bienvenido" : "Verificación OTP"}
@@ -506,7 +464,6 @@ export default function Login() {
                 </p>
               </div>
 
-              {/* Barra de pasos */}
               <div className="step-bar">
                 <div className="step-dot" style={{
                   width: paso === 1 ? 36 : 28,
@@ -677,7 +634,7 @@ export default function Login() {
               color: "#94a3b8",
               fontSize: "0.72rem",
             }}>
-              NOVO ERP © {new Date().getFullYear()} · Acceso restringido
+              NOVONET © {new Date().getFullYear()} · Acceso restringido
             </div>
           </div>
         </div>

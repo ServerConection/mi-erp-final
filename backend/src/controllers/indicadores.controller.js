@@ -318,6 +318,10 @@ const getIndicadoresDashboard = async (req, res) => {
             `;
         };
 
+        // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
+        // PERO cuya orden fue registrada en JotForm ANTES del inicio del período (fecha_desde).
+        // Esto garantiza que solo se cuentan órdenes pendientes pre-período que se activaron
+        // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -329,6 +333,7 @@ const getIndicadoresDashboard = async (req, res) => {
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
             AND mb.j_fecha_activacion_netlife::date >= $1::date
             AND mb.j_fecha_activacion_netlife::date <= $2::date
+            AND mb.j_fecha_registro_sistema::date < $1::date
             ${filtersJoin}
             GROUP BY 1
         `;

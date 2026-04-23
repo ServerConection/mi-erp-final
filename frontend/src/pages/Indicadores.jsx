@@ -126,10 +126,10 @@ function ChartModal({ open, onClose, title, children }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
-      <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700">
-          <span className="text-[11px] font-black text-white uppercase tracking-widest italic">{title}</span>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl font-black transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700">✕</button>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200">
+          <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic">{title}</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-black transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100">✕</button>
         </div>
         <div className="flex-1 p-6 overflow-auto" style={{ minHeight: 400 }}>
           {children}
@@ -190,6 +190,8 @@ export default function ReporteComercialCore() {
 
   // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
   const abortRef = useRef(null);
+  // Ref para el pre-fetch en background (no bloquea UI)
+  const prefetchRef = useRef(null);
 
   // Listas estables para los dropdowns — nunca se borran al filtrar
   const [allSupervisores, setAllSupervisores] = useState([]);
@@ -208,6 +210,29 @@ export default function ReporteComercialCore() {
     if (supVentasBajas.length > 0) nuevasAlertas.push({ id: 2, mensaje: `📉 ${supVentasBajas.length} SUPERVISOR(ES) CON MENOS DE 2 VENTAS JOT: ${supVentasBajas.map(s => s.nombre_grupo).join(", ")}`, color: "bg-amber-600 border-amber-400", duracion: 7000 });
     if (nuevasAlertas.length > 0) { setAlertas(nuevasAlertas); nuevasAlertas.forEach(a => setTimeout(() => setAlertas(prev => prev.filter(x => x.id !== a.id)), a.duracion)); }
   };
+
+  // ── Pre-fetch silencioso ─────────────────────────────────────────────────
+  // Dispara las otras 2 tabs en background una vez que el dashboard cargó.
+  // No actualiza estado de loading — el usuario no lo nota. Sólo "calienta"
+  // el caché del servidor (2 min TTL). Si el usuario cambia de tab mientras
+  // sigue corriendo, el fetch activo se cancela y la tab carga desde caché.
+  const prefetchBackground = useCallback((filtrosActivos) => {
+    if (prefetchRef.current) prefetchRef.current.abort();
+    const ctrl = new AbortController();
+    prefetchRef.current = ctrl;
+    const pMon = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
+          .filter(([_, v]) => v !== "")
+      )
+    );
+    const p180 = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
+    // Fire-and-forget: no await, no setLoading
+    Promise.allSettled([
+      fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${pMon}`, { signal: ctrl.signal }),
+      fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p180}`, { signal: ctrl.signal }),
+    ]).catch(() => {});
+  }, []);
 
   const fetchDashboard = async (filtrosOverride) => {
     // Cancela fetch anterior para evitar race conditions / loading stuck
@@ -231,6 +256,8 @@ export default function ReporteComercialCore() {
           if (result.asesores?.length)     setAllAsesores(result.asesores);
         }
         mostrarAlertas(result.supervisores);
+        // Pre-calentar las otras tabs en background (sin bloquear UI)
+        prefetchBackground(filtrosActivos);
       }
     } catch (e) {
       if (e.name !== 'AbortError') console.error("Error Dashboard:", e);
@@ -413,8 +440,8 @@ export default function ReporteComercialCore() {
     });
   }, [data.dataCRM, diaFiltrado]);
 
-  const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-blue-500 transition-colors uppercase";
-  const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
+  const inputCls  = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors uppercase";
+  const selectCls = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none appearance-none uppercase";
 
   // ── Gráfico barras con semáforo + click ───────────────────────────────────
   const GraficoBarrasDia = () => (
@@ -493,7 +520,7 @@ export default function ReporteComercialCore() {
             <div key={index} className="flex items-center gap-2 min-w-0">
               <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
               <span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
-              <span className="text-[8px] font-black text-white shrink-0">{entry.total}</span>
+              <span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span>
               <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>
             </div>
           );
@@ -593,15 +620,15 @@ export default function ReporteComercialCore() {
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
           {/* Panel de filtros */}
-          <div className="bg-[#0F172A] rounded-2xl shadow-2xl mb-8 overflow-hidden border border-slate-800">
+          <div className="bg-slate-50 rounded-2xl shadow-sm mb-8 overflow-hidden border border-slate-200">
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               <div className="lg:col-span-2 flex flex-col gap-2">
                 <label className="text-[9px] font-black text-blue-400 italic tracking-widest uppercase">PERÍODO DE CONSULTA</label>
-                <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
-                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                <div className="flex bg-white border border-slate-300 rounded-2xl p-1.5 shadow-inner">
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                     value={filtros.fechaDesde} onChange={e => updateFiltro('fechaDesde', e.target.value)} />
-                  <div className="text-slate-600 px-2 font-black self-center">-</div>
-                  <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+                  <div className="text-slate-400 px-2 font-black self-center">-</div>
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                     value={filtros.fechaHasta} onChange={e => updateFiltro('fechaHasta', e.target.value)} />
                 </div>
               </div>
@@ -724,11 +751,11 @@ export default function ReporteComercialCore() {
 
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
-              <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+              <h3 className="text-[10px] font-black text-emerald-600 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
-                <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBarrasDia}</span>
+                <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBarrasDia}</span>
                 <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic flex-wrap">
                   <span className="flex items-center gap-1"><span className="w-3 h-2 bg-emerald-500 rounded inline-block"></span> OK</span>
                   <span className="flex items-center gap-1"><span className="w-3 h-2 bg-amber-500 rounded inline-block"></span> CERCA</span>
@@ -750,11 +777,11 @@ export default function ReporteComercialCore() {
               <div className="h-[260px]"><GraficoBarrasDia /></div>
             </ExpandableChart>
 
-            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
-              <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+              <h3 className="text-[10px] font-black text-emerald-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
-                <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
+                <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
               </h3>
               <div className="h-[300px]"><GraficoEmbudo /></div>
             </ExpandableChart>
@@ -769,16 +796,16 @@ export default function ReporteComercialCore() {
               title={diaFiltrado ? `DETALLE BASE CRM — DÍA ${diaFiltrado} FILTRADO (${dataCRMFiltrada.length} registros)` : "DETALLE BASE CRM"}
               data={dataCRMFiltrada}
               onDownload={() => descargarExcel("CRM")}
-              color="bg-slate-800"
+              color="bg-slate-600"
               filtroBadge={diaFiltrado ? <button onClick={() => setDiaFiltrado(null)} className="text-[8px] bg-white/20 px-2 py-0.5 rounded-full font-black ml-2">DÍA {diaFiltrado} ✕ LIMPIAR</button> : null}
             />
-            <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-900" />
+            <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-600" />
           </div>
         </div>
 
       ) : tabActiva === "MONITOREO" ? (
         <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
-          <div className="bg-emerald-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-emerald-700">
+          <div className="bg-emerald-600 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-emerald-700">
             <div>
               <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">
                 <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
@@ -790,7 +817,7 @@ export default function ReporteComercialCore() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
+            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
               <h3 className="text-[10px] font-black text-violet-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
@@ -802,7 +829,7 @@ export default function ReporteComercialCore() {
               <div className="h-[300px]"><GraficoAsesores /></div>
             </ExpandableChart>
 
-            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={500}>
+            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
               <h3 className="text-[10px] font-black text-cyan-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
                 SUPERVISORES — GESTIONABLES VS INGRESOS HOY
@@ -881,8 +908,8 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
-  const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";
-  const selectCls = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none appearance-none uppercase";
+  const inputCls  = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none focus:border-violet-500 transition-colors uppercase";
+  const selectCls = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none appearance-none uppercase";
 
   // FIX: FunnelChart 180° también usa dataKey="value" y nameKey="name"
   const GraficoEmbudoCRM = () => (
@@ -900,7 +927,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
         {(embudoCRM || []).slice(0, 15).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
-          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
         })}
       </div>
     </div>
@@ -921,7 +948,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
         {(embudoJotform || []).slice(0, 15).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
-          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-white shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
+          return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
         })}
       </div>
     </div>
@@ -929,7 +956,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 
   return (
     <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
-      <div className="bg-violet-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-violet-700">
+      <div className="bg-violet-600 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-violet-700">
         <div>
           <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">🔭 REPORTE 180° — VISIÓN ANALÍTICA</h2>
           <p className="text-[9px] font-bold text-violet-300 tracking-[0.2em] uppercase">
@@ -942,15 +969,15 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         <button onClick={() => onFetch(filtros)} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "CARGANDO..." : "APLICAR"}</button>
       </div>
 
-      <div className="bg-[#0F172A] rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
+      <div className="bg-slate-50 rounded-2xl shadow-sm overflow-hidden border border-slate-200">
         <div className="p-5 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 items-end">
           <div className="lg:col-span-2 flex flex-col gap-2">
             <label className="text-[9px] font-black text-violet-400 italic tracking-widest uppercase">PERÍODO</label>
-            <div className="flex bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-inner">
-              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+            <div className="flex bg-white border border-slate-300 rounded-2xl p-1.5 shadow-inner">
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                 value={filtros.fechaDesde} onChange={e => updateFiltro180('fechaDesde', e.target.value)} />
-              <div className="text-slate-600 px-2 font-black self-center">-</div>
-              <input type="date" className="bg-transparent text-white text-center text-[11px] font-bold outline-none w-full [color-scheme:dark]"
+              <div className="text-slate-400 px-2 font-black self-center">-</div>
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                 value={filtros.fechaHasta} onChange={e => updateFiltro180('fechaHasta', e.target.value)} />
             </div>
           </div>
@@ -990,27 +1017,27 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={550}>
-          <h3 className="text-[10px] font-black text-blue-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+        <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={550}>
+          <h3 className="text-[10px] font-black text-blue-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
-            <span className="ml-2 bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoCRM}</span>
+            <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoCRM}</span>
           </h3>
           <div className="h-[340px]"><GraficoEmbudoCRM /></div>
         </ExpandableChart>
 
-        <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl" modalHeight={550}>
-          <h3 className="text-[10px] font-black text-emerald-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+        <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={550}>
+          <h3 className="text-[10px] font-black text-emerald-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             EMBUDO JOTFORM — ESTADOS NETLIFE
-            <span className="ml-2 bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
+            <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
           </h3>
           <div className="h-[340px]"><GraficoEmbudoJOT /></div>
         </ExpandableChart>
       </div>
 
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-        <h3 className="text-[10px] font-black text-cyan-400 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md">
+        <h3 className="text-[10px] font-black text-cyan-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
           <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></span>
           MAPA DE CALOR — INGRESOS JOT POR CIUDAD Y FECHA
           <span className="ml-auto flex items-center gap-3 text-[8px] not-italic font-bold text-slate-500">
@@ -1026,14 +1053,14 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <table className="text-[8px] font-mono border-collapse w-full">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  <th className="bg-slate-800 text-slate-400 p-2 text-left font-black sticky left-0 z-20 border-r border-slate-700 min-w-[120px] uppercase">CIUDAD</th>
-                  {fechas.map(f => <th key={f} className="bg-slate-800 text-slate-400 p-1 font-black min-w-[36px] text-center border-l border-slate-700">{f ? f.split('-').slice(1).join('/') : f}</th>)}
+                  <th className="bg-slate-100 text-slate-600 p-2 text-left font-black sticky left-0 z-20 border-r border-slate-200 min-w-[120px] uppercase">CIUDAD</th>
+                  {fechas.map(f => <th key={f} className="bg-slate-100 text-slate-600 p-1 font-black min-w-[36px] text-center border-l border-slate-200">{f ? f.split('-').slice(1).join('/') : f}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {ciudades.map((ciudad, ci) => (
-                  <tr key={ci} className="hover:bg-slate-800/50 transition-colors">
-                    <td className="sticky left-0 bg-slate-900 border-r border-slate-700 p-2 font-black text-slate-300 uppercase truncate max-w-[120px]">{ciudad}</td>
+                  <tr key={ci} className="hover:bg-slate-50 transition-colors">
+                    <td className="sticky left-0 bg-white border-r border-slate-200 p-2 font-black text-slate-700 uppercase truncate max-w-[120px]">{ciudad}</td>
                     {fechas.map(f => { const val = mapaIndex[`${ciudad}__${f}`] || 0; return <td key={f} className="p-0.5 text-center border-l border-slate-800"><div className="rounded flex items-center justify-center font-black transition-all hover:scale-110 cursor-default" style={{ backgroundColor: heatColor(val), width: 32, height: 24, margin: '0 auto', color: val ? '#fff' : 'transparent', fontSize: 8 }} title={`${ciudad} | ${f} | ${val}`}>{val || ''}</div></td>; })}
                   </tr>
                 ))}
@@ -1168,12 +1195,12 @@ function HorizontalTable({ title, data, hasScroll }) {
 
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
-        <h2 className="text-[10px] font-black uppercase italic tracking-[0.2em] text-white flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
-          {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
+      <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+        <h2 className="text-[10px] font-black uppercase italic tracking-[0.2em] text-slate-800 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
+          {title} <span className="text-slate-500 font-mono normal-case">({safeData.length} registros)</span>
         </h2>
-        <button onClick={descargarExcel} className="text-[9px] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
+        <button onClick={descargarExcel} className="text-[9px] bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-full font-black transition-all flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
         <table className="text-[9px] border-collapse uppercase" style={{ minWidth: '100%', tableLayout: 'auto' }}>
@@ -1201,8 +1228,8 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className={thDB}>REAL</th><th className={thDB}>REAL</th>
               <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
             </tr>
-            <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
-              <td className="px-2 py-1.5 border-r border-slate-600 sticky left-0 bg-slate-800 z-10 whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>▶ TOTAL</td>
+            <tr className="bg-slate-200 text-slate-800 text-[8px] font-black border-b-2 border-slate-400">
+              <td className="px-2 py-1.5 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>▶ TOTAL</td>
               <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
               <td className="text-center border-r border-slate-700 px-3">{totals.backlog}</td>
               <td className="text-center border-r border-slate-700 px-3 bg-slate-700">{totals.total_activas_calculada}</td>
@@ -1275,12 +1302,12 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
 
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden uppercase">
-      <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-700 flex justify-between items-center text-white">
+      <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex justify-between items-center text-slate-800">
         <span className="text-[10px] font-black italic tracking-[0.2em] flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-          {title} <span className="text-slate-400 font-mono normal-case">({safeData.length} registros)</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+          {title} <span className="text-slate-500 font-mono normal-case">({safeData.length} registros)</span>
         </span>
-        <button onClick={descargarExcel} className="text-[9px] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 uppercase">⬇️ EXCEL</button>
+        <button onClick={descargarExcel} className="text-[9px] bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-full font-black transition-all flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
       </div>
       <div className={`overflow-auto ${hasScroll ? 'max-h-[500px]' : ''}`}>
         <table className="w-full text-[10px] border-collapse whitespace-nowrap">
@@ -1309,8 +1336,8 @@ function DailyMonitoringTable({ title, data, hasScroll }) {
               <th className="p-2 border-r border-slate-100 w-14 italic text-rose-600">DESC %</th>
               <th className="p-2 w-14 italic text-amber-600">TJC %</th>
             </tr>
-            <tr className="bg-slate-800 text-white text-[8px] font-black border-b-2 border-slate-600">
-              <td className="p-2 border-r border-slate-600 sticky left-0 bg-slate-800 z-10">▶ TOTAL</td>
+            <tr className="bg-slate-200 text-slate-800 text-[8px] font-black border-b-2 border-slate-400">
+              <td className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10">▶ TOTAL</td>
               <td className="p-2 text-center text-slate-400">—</td>
               <td className="p-2 text-center">{totals.real_mes_leads}</td>
               <td className="p-2 text-center text-red-300">{(2000 * safeData.length - totals.real_mes_leads).toLocaleString()}</td>

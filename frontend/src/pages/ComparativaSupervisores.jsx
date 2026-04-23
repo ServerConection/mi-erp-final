@@ -39,13 +39,13 @@ const DarkTip = ({ active, payload, label }) => {
 
 // ── KPI Card ─────────────────────────────────────────────────────────────────
 const KPI = ({ icon, label, value, sub, accent }) => (
-  <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-2">
+  <div className="relative overflow-hidden bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-2">
     <div className="absolute top-0 left-0 w-full h-0.5 rounded-t-2xl" style={{ background: accent }} />
     <div className="flex items-center gap-2">
       <span className="text-lg">{icon}</span>
       <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
     </div>
-    <span className="text-3xl font-black text-white leading-none">{value}</span>
+    <span className="text-3xl font-black text-slate-800 leading-none">{value}</span>
     {sub && <span className="text-[9px] font-semibold" style={{ color: accent }}>{sub}</span>}
   </div>
 );
@@ -61,7 +61,7 @@ const RankBar = ({ data, metrica, label, color }) => {
         return (
           <div key={i} className="flex items-center gap-3">
             <span className="text-[9px] font-black text-slate-400 w-28 truncate uppercase">{r.supervisor}</span>
-            <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="flex-1 h-5 bg-slate-200 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full flex items-center pl-2 transition-all duration-700"
                 style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }}
@@ -72,7 +72,7 @@ const RankBar = ({ data, metrica, label, color }) => {
               </div>
             </div>
             {pct <= 25 && (
-              <span className="text-[9px] font-black text-white w-8 text-right">{fmt(val)}</span>
+              <span className="text-[9px] font-black text-slate-700 w-8 text-right">{fmt(val)}</span>
             )}
           </div>
         );
@@ -171,7 +171,7 @@ export default function ComparativaSupervisores() {
   const mesNombre = MESES_ES[(mes || 1) - 1];
 
   return (
-    <div className="min-h-screen bg-slate-950 p-5 md:p-7">
+    <div className="min-h-screen bg-slate-50 p-5 md:p-7">
 
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -179,7 +179,7 @@ export default function ComparativaSupervisores() {
           <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1">
             Gerencia · Análisis de Rendimiento
           </p>
-          <h1 className="text-2xl font-black text-white uppercase tracking-tight">
+          <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight">
             Comparativa de Supervisores
           </h1>
           <p className="text-[10px] text-slate-500 mt-1">
@@ -195,7 +195,7 @@ export default function ComparativaSupervisores() {
               type="month"
               value={mesVal}
               onChange={handleMesChange}
-              className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-[11px] font-bold text-white outline-none focus:border-indigo-500 transition-colors"
+              className="bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold text-slate-800 outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
           {loading && (
@@ -248,7 +248,7 @@ export default function ComparativaSupervisores() {
               { metrica: "ingresos_jot",   label: "Ingresos JOT",   color: "#34d399" },
               { metrica: "activas",        label: "Activas",        color: "#38bdf8" },
             ].map(({ metrica, label, color }) => (
-              <div key={metrica} className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <div key={metrica} className="bg-white border border-slate-200 rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-2 h-2 rounded-full" style={{ background: color }} />
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
@@ -261,8 +261,8 @@ export default function ComparativaSupervisores() {
           </div>
 
           {/* ── SECCIÓN 2: Gráfico agrupado comparativo ───────────────────── */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">
               Comparativa General — {mesNombre} {anio}
             </p>
             <p className="text-[8px] text-slate-600 mb-5">
@@ -295,7 +295,7 @@ export default function ComparativaSupervisores() {
 
           {/* ── SECCIÓN 3: Evolución semanal ──────────────────────────────── */}
           {semanas.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
                 <div>
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
@@ -306,15 +306,15 @@ export default function ComparativaSupervisores() {
                   </p>
                 </div>
                 {/* Selector de métrica inline */}
-                <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
+                <div className="flex gap-1 bg-slate-100 rounded-xl p-1 border border-slate-200">
                   {TABS_SEM.map(t => (
                     <button
                       key={t.key}
                       onClick={() => setTabSem(t.key)}
                       className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${
                         tabSem === t.key
-                          ? "bg-slate-950 text-white shadow"
-                          : "text-slate-500 hover:text-white"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-slate-500 hover:text-slate-700"
                       }`}
                     >
                       {t.label}
@@ -359,8 +359,8 @@ export default function ComparativaSupervisores() {
 
           {/* ── SECCIÓN 4: Tabla pivot semanal ────────────────────────────── */}
           {semanas.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-5">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-5">
                 Detalle Semanal — {TABS_SEM.find(t => t.key === tabSem)?.label}
               </p>
               <div className="overflow-x-auto">
@@ -375,7 +375,7 @@ export default function ComparativaSupervisores() {
                           {s.label}
                         </th>
                       ))}
-                      <th className="pb-3 text-right text-[9px] font-black text-white uppercase tracking-widest pl-6">
+                      <th className="pb-3 text-right text-[9px] font-black text-slate-700 uppercase tracking-widest pl-6">
                         Total
                       </th>
                     </tr>
@@ -394,11 +394,11 @@ export default function ComparativaSupervisores() {
                       ), 1);
 
                       return (
-                        <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                        <tr key={i} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                           <td className="py-3 pr-6">
                             <div className="flex items-center gap-2">
                               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colorMap[sup.supervisor] }} />
-                              <span className="font-black text-white text-[10px] uppercase">{sup.supervisor}</span>
+                              <span className="font-black text-slate-800 text-[10px] uppercase">{sup.supervisor}</span>
                             </div>
                           </td>
                           {semanas.map(s => {
@@ -413,7 +413,7 @@ export default function ComparativaSupervisores() {
                             const isMax = val === maxSem && val > 0;
                             return (
                               <td key={s.numSemana} className="py-3 px-3 text-center">
-                                <span className={`font-black text-[11px] ${isMax ? "text-white" : "text-slate-400"}`}>
+                                <span className={`font-black text-[11px] ${isMax ? "text-indigo-600" : "text-slate-500"}`}>
                                   {fmt(val)}
                                 </span>
                                 {isMax && val > 0 && (
@@ -424,8 +424,8 @@ export default function ComparativaSupervisores() {
                           })}
                           <td className="py-3 pl-6 text-right">
                             <div className="flex flex-col items-end gap-1">
-                              <span className="font-black text-[12px] text-white">{fmt(total)}</span>
-                              <div className="w-16 h-1 bg-slate-800 rounded-full overflow-hidden">
+                              <span className="font-black text-[12px] text-slate-800">{fmt(total)}</span>
+                              <div className="w-16 h-1 bg-slate-200 rounded-full overflow-hidden">
                                 <div
                                   className="h-full rounded-full"
                                   style={{
@@ -446,8 +446,8 @@ export default function ComparativaSupervisores() {
           )}
 
           {/* ── SECCIÓN 5: Tabla de tasa de instalación ───────────────────── */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-5">
               Indicadores de Calidad — {mesNombre} {anio}
             </p>
             <div className="overflow-x-auto">
@@ -463,11 +463,11 @@ export default function ComparativaSupervisores() {
                 </thead>
                 <tbody>
                   {sups.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                    <tr key={i} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                       <td className="py-3 pr-4">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full" style={{ background: colorMap[r.supervisor] }} />
-                          <span className="font-black text-white uppercase">{r.supervisor}</span>
+                          <span className="font-black text-slate-800 uppercase">{r.supervisor}</span>
                         </div>
                       </td>
                       <td className="py-3 pr-4 text-slate-400 font-bold">{fmt(r.leads_totales)}</td>
@@ -476,9 +476,9 @@ export default function ComparativaSupervisores() {
                       <td className="py-3 pr-4 font-bold" style={{ color: "#38bdf8" }}>{fmt(r.activas)}</td>
                       <td className="py-3 pr-4">
                         <span className={`font-black px-2 py-0.5 rounded-lg text-[9px] ${
-                          r.tasa_instalacion >= 80 ? "bg-emerald-900/50 text-emerald-400"
-                          : r.tasa_instalacion >= 60 ? "bg-amber-900/50 text-amber-400"
-                          : "bg-red-900/50 text-red-400"
+                          r.tasa_instalacion >= 80 ? "bg-emerald-100 text-emerald-700"
+                          : r.tasa_instalacion >= 60 ? "bg-amber-100 text-amber-700"
+                          : "bg-red-100 text-red-600"
                         }`}>
                           {pctFn(r.tasa_instalacion)}
                         </span>

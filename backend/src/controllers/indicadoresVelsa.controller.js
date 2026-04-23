@@ -18,6 +18,60 @@ const dedupVN = `public.velsa_netlife_maestra_cons vn`;
 // ACTIVO = 'ACTIVO', confirmado en BD
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Caché de etapas CRM + canales de Velsa (5 minutos)
+// Equivalente al getEtapasCache() de Novonet — evita 2 full-scans por request
+// ─────────────────────────────────────────────────────────────────────────────
+let _cacheEtapasVelsa    = null;
+let _cacheEtapasVelsaTTL = 0;
+const CACHE_TTL_MS       = 5 * 60 * 1000; // 5 minutos
+
+const getEtapasVelsaCache = async () => {
+    const ahora = Date.now();
+    if (_cacheEtapasVelsa && ahora < _cacheEtapasVelsaTTL) return _cacheEtapasVelsa;
+
+    const [resEtapas, resCanales] = await Promise.all([
+        pool.query(`SELECT DISTINCT vn.t1_pipeline_stage_id AS etapa
+                    FROM public.velsa_netlife_maestra_cons vn
+                    WHERE vn.t1_pipeline_stage_id IS NOT NULL
+                      AND TRIM(vn.t1_pipeline_stage_id) <> ''
+                    ORDER BY etapa ASC`),
+        pool.query(`SELECT DISTINCT vn.t1_relation_tags AS canal
+                    FROM public.velsa_netlife_maestra_cons vn
+                    WHERE vn.t1_relation_tags IS NOT NULL
+                      AND TRIM(vn.t1_relation_tags) <> ''
+                    ORDER BY canal ASC
+                    LIMIT 50`),
+    ]);
+
+    _cacheEtapasVelsa    = {
+        etapasCRM: resEtapas.rows.map(r => r.etapa),
+        canales:   resCanales.rows.map(r => r.canal),
+    };
+    _cacheEtapasVelsaTTL = ahora + CACHE_TTL_MS;
+    return _cacheEtapasVelsa;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caché de resultados del dashboard Velsa (2 minutos por combinación de params)
+// ─────────────────────────────────────────────────────────────────────────────
+const _cacheDashboardVelsa = new Map();
+const CACHE_DASH_TTL_MS    = 2 * 60 * 1000; // 2 minutos
+
+const getDashboardVelsaCache = (key) => {
+    const entry = _cacheDashboardVelsa.get(key);
+    if (entry && Date.now() < entry.ttl) return entry.data;
+    _cacheDashboardVelsa.delete(key);
+    return null;
+};
+const setDashboardVelsaCache = (key, data) => {
+    _cacheDashboardVelsa.set(key, { data, ttl: Date.now() + CACHE_DASH_TTL_MS });
+    if (_cacheDashboardVelsa.size > 100) {
+        const ahora = Date.now();
+        for (const [k, v] of _cacheDashboardVelsa) if (ahora > v.ttl) _cacheDashboardVelsa.delete(k);
+    }
+};
+
 const getIndicadoresDashboardVelsa = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
@@ -25,6 +79,14 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
+
+        // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
+        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal });
+        const cached = getDashboardVelsaCache(cacheKey);
+        if (cached) {
+            console.log(`[DASHBOARD VELSA] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
+            return res.json(cached);
+        }
 
         let values = [desde, hasta];
         let filters = "";
@@ -246,15 +308,9 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
-        const queryEtapasCRM = `
-            SELECT DISTINCT vn.t1_pipeline_stage_id AS etapa
-            FROM ${dedupVN}
-            WHERE vn.t1_pipeline_stage_id IS NOT NULL
-            AND TRIM(vn.t1_pipeline_stage_id) <> ''
-            ORDER BY etapa ASC
-        `;
-
-        const queryTerceraEdad = `
+        // ── Optimización: TerceraEdad + Tarjeta en un solo scan de tabla ──────────────
+        // Antes eran 2 queries separadas con el mismo WHERE → ahora 1 sola query
+        const queryMetasGlobales = `
             SELECT
                 COUNT(*) FILTER (
                     WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
@@ -262,14 +318,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 ) AS total_tercera_edad,
                 COUNT(*) FILTER (
                     WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-                ) AS total_activos
-            FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-            ${filters}
-        `;
-
-        const queryTarjeta = `
-            SELECT
+                ) AS total_activos,
                 COUNT(*) FILTER (
                     WHERE vn.t2_forma_pago ILIKE '%TARJETA DE CREDITO%'
                 ) AS total_tarjeta,
@@ -278,30 +327,29 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
             ${filters}
         `;
+        // Nota: queryEtapasCRM y queryCanales ahora vienen del caché (getEtapasVelsaCache)
 
-        const queryCanales = `
-            SELECT DISTINCT vn.t1_relation_tags AS canal
-            FROM ${dedupVN}
-            WHERE vn.t1_relation_tags IS NOT NULL
-              AND TRIM(vn.t1_relation_tags) <> ''
-            ORDER BY canal ASC
-            LIMIT 50
-        `;
+        // ── Lote 1: KPIs + agregaciones ligeras (6 queries) + caché de etapas ──────
+        // Equivalente al patrón de Novonet: 2 lotes para no saturar el pool (max 15).
+        // etapasCRM y canales vienen del caché → 0 queries adicionales si está en TTL.
+        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales]] = await Promise.all([
+            getEtapasVelsaCache(),
+            Promise.all([
+                pool.query(queryKPI('vn.supervisor_asignado'), values),
+                pool.query(queryKPI('vn.t1_assigned_to'), values),
+                pool.query(queryEstados, values),
+                pool.query(queryEmbudo, values),
+                pool.query(queryPorDia, values),
+                pool.query(queryMetasGlobales, values),
+            ]),
+        ]);
 
-        const [resSup, resAses, resCRM, resNet, resEstados, resEmbudo, resDia, resEtapasCRM, resTerceraEdad, resTarjeta, resBacklogSup, resBacklogAses, resCanales] = await Promise.all([
-            pool.query(queryKPI('vn.supervisor_asignado'), values),
-            pool.query(queryKPI('vn.t1_assigned_to'), values),
+        // ── Lote 2: tablas de detalle + backlogs (4 queries) ──────────────────────
+        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
-            pool.query(queryEstados, values),
-            pool.query(queryEmbudo, values),
-            pool.query(queryPorDia, values),
-            pool.query(queryEtapasCRM),
-            pool.query(queryTerceraEdad, values),
-            pool.query(queryTarjeta, values),
             pool.query(queryBacklog('vn.supervisor_asignado'), values),
             pool.query(queryBacklog('vn.t1_assigned_to'), values),
-            pool.query(queryCanales),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -316,20 +364,22 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         const estadosNetlife = resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total || 0) }));
 
-        const rowTercera          = resTerceraEdad.rows[0] || {};
-        const totalTerceraEdad    = Number(rowTercera.total_tercera_edad || 0);
-        const totalActivosTercera = Number(rowTercera.total_activos || 0);
-        const porcentajeTerceraEdad = totalActivosTercera > 0 ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+        // ── Desempaquetar la query consolidada de metas globales ────────────────
+        const rowMetas            = resMetasGlobales.rows[0] || {};
+        const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
+        const totalActivosTercera = Number(rowMetas.total_activos       || 0);
+        const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
+        const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
 
-        const rowTarjeta          = resTarjeta.rows[0] || {};
-        const totalTarjeta        = Number(rowTarjeta.total_tarjeta || 0);
-        const totalJotformTarjeta = Number(rowTarjeta.total_jotform || 0);
-        const porcentajeTarjeta   = totalJotformTarjeta > 0 ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+        const porcentajeTerceraEdad = totalActivosTercera > 0
+            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+        const porcentajeTarjeta = totalJotformTarjeta > 0
+            ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
-        res.json({
+        const resultado = {
             success: true,
             supervisores: supervisoresConBacklog,
             asesores: asesoresConBacklog,
@@ -338,11 +388,15 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             estadosNetlife,
             graficoEmbudo: resEmbudo.rows,
             graficoBarrasDia: resDia.rows,
-            etapasCRM: resEtapasCRM.rows.map(r => r.etapa),
+            etapasCRM: etapasCache.etapasCRM,   // viene del caché (sin query adicional)
             porcentajeTerceraEdad,
             porcentajeTarjeta,
-            canales: resCanales.rows.map(r => r.canal),
-        });
+            canales: etapasCache.canales,        // viene del caché (sin query adicional)
+        };
+
+        // Guardar en caché para solicitudes idénticas en los próximos 2 minutos
+        setDashboardVelsaCache(cacheKey, resultado);
+        res.json(resultado);
 
     } catch (error) {
         console.error("ERROR DASHBOARD VELSA:", error);

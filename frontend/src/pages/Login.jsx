@@ -4,243 +4,231 @@ import { useNavigate } from "react-router-dom";
 const API = "https://erp-backend-v1-qhk2.onrender.com";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Robot / Satélite SVG animado — tema telecomunicaciones
-   Animaciones puras con CSS keyframes (sin dependencias externas)
+   Personaje cartoon telecomunicaciones — tema claro azul
 ───────────────────────────────────────────────────────────────────────────── */
-function TelecomRobot() {
+function TelecomCharacter() {
   return (
     <>
       <style>{`
-        /* ── Flotación principal ── */
-        @keyframes float {
-          0%, 100% { transform: translateY(0px) rotate(-1deg); }
-          50%       { transform: translateY(-18px) rotate(1deg); }
+        @keyframes charFloat {
+          0%, 100% { transform: translateY(0px); }
+          50%       { transform: translateY(-12px); }
         }
-        /* ── Pulso de señal / ondas WiFi ── */
-        @keyframes signalPulse {
-          0%   { opacity: 0.9; transform: scale(1); }
-          50%  { opacity: 0.4; transform: scale(1.15); }
-          100% { opacity: 0.9; transform: scale(1); }
+        @keyframes streakMove {
+          0%   { stroke-dashoffset: 600; opacity: 0; }
+          30%  { opacity: 0.75; }
+          100% { stroke-dashoffset: 0; opacity: 0; }
         }
-        /* ── Ondas de radio expansivas ── */
-        @keyframes waveExpand {
-          0%   { r: 4;  opacity: 0.9; }
-          100% { r: 48; opacity: 0; }
+        @keyframes badgePulse {
+          0%, 100% { transform: scale(1); }
+          50%       { transform: scale(1.04); }
         }
-        /* ── Órbita de partículas ── */
-        @keyframes orbit {
-          from { transform: rotate(0deg)   translateX(56px) rotate(0deg); }
-          to   { transform: rotate(360deg) translateX(56px) rotate(-360deg); }
+        @keyframes eyeBlink {
+          0%, 88%, 100% { transform: scaleY(1); }
+          93%            { transform: scaleY(0.08); }
         }
-        @keyframes orbit2 {
-          from { transform: rotate(120deg)  translateX(72px) rotate(-120deg); }
-          to   { transform: rotate(480deg)  translateX(72px) rotate(-480deg); }
+        @keyframes wifiDot {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.2; }
         }
-        @keyframes orbit3 {
-          from { transform: rotate(240deg)  translateX(64px) rotate(-240deg); }
-          to   { transform: rotate(600deg)  translateX(64px) rotate(-600deg); }
-        }
-        /* ── Parpadeo de ojos ── */
-        @keyframes blink {
-          0%, 90%, 100% { ry: 6; }
-          95%            { ry: 1; }
-        }
-        /* ── Rotación antena ── */
-        @keyframes antennaGlow {
-          0%, 100% { filter: drop-shadow(0 0 4px #22d3ee); }
-          50%       { filter: drop-shadow(0 0 12px #06b6d4) drop-shadow(0 0 24px #0891b2); }
-        }
-        /* ── Glow del robot ── */
-        @keyframes robotGlow {
-          0%, 100% { filter: drop-shadow(0 0 8px #0891b2) drop-shadow(0 0 16px #0e7490); }
-          50%       { filter: drop-shadow(0 0 20px #22d3ee) drop-shadow(0 0 40px #0891b2); }
-        }
-        /* ── Rotación plato satélite ── */
-        @keyframes dishSpin {
-          0%   { transform: rotate(-15deg); }
-          50%  { transform: rotate(15deg); }
-          100% { transform: rotate(-15deg); }
-        }
-        /* ── Señal desde plato ── */
-        @keyframes dishSignal {
-          0%   { opacity: 0; transform: scale(0.5); }
-          40%  { opacity: 1; }
-          100% { opacity: 0; transform: scale(1.6); }
-        }
-        /* ── Bounce suave del tagline ── */
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        /* ── Scanline en el cuerpo ── */
-        @keyframes scanline {
-          0%   { transform: translateY(-60px); opacity: 0.6; }
-          100% { transform: translateY(60px);  opacity: 0; }
-        }
-        /* ── Pulso del dot de estado ── */
-        @keyframes statusDot {
-          0%, 100% { opacity: 1; r: 4; }
-          50%       { opacity: 0.3; r: 2; }
-        }
-
-        .robot-group  { animation: float 4s ease-in-out infinite, robotGlow 3s ease-in-out infinite; }
-        .robot-eye    { animation: blink 5s ease-in-out infinite; }
-        .antenna-tip  { animation: antennaGlow 2s ease-in-out infinite; }
-        .wave1        { animation: waveExpand 2s ease-out infinite; }
-        .wave2        { animation: waveExpand 2s ease-out infinite 0.65s; }
-        .wave3        { animation: waveExpand 2s ease-out infinite 1.3s; }
-        .orbit-dot1   { animation: orbit  6s linear infinite; }
-        .orbit-dot2   { animation: orbit2 9s linear infinite; }
-        .orbit-dot3   { animation: orbit3 7.5s linear infinite; }
-        .dish-group   { animation: dishSpin 4s ease-in-out infinite; transform-origin: 8px 0px; }
-        .dish-signal  { animation: dishSignal 2s ease-out infinite; }
-        .scanline     { animation: scanline 2.4s linear infinite; }
-        .status-dot   { animation: statusDot 1.5s ease-in-out infinite; }
+        .char-float  { animation: charFloat 4s ease-in-out infinite; transform-origin: 200px 330px; }
+        .streak      { stroke-dasharray: 600; animation: streakMove 3.5s ease-in-out infinite; }
+        .streak-b    { animation-delay: 1.2s; }
+        .streak-c    { animation-delay: 2.4s; }
+        .badge-pulse { animation: badgePulse 2.5s ease-in-out infinite; transform-origin: 108px 482px; }
+        .eye-l       { animation: eyeBlink 5s ease-in-out infinite; transform-origin: 168px 184px; }
+        .eye-r       { animation: eyeBlink 5s ease-in-out infinite 0.15s; transform-origin: 232px 184px; }
+        .wifi-dot    { animation: wifiDot 1.8s ease-in-out infinite; }
       `}</style>
 
       <svg
-        viewBox="0 0 260 320"
+        viewBox="0 0 420 560"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-full max-w-[320px] mx-auto select-none"
-        aria-label="Robot telecomunicaciones animado"
+        style={{ width: "100%", height: "100%", userSelect: "none" }}
+        aria-label="Personaje cartoon telecomunicaciones"
       >
-        {/* ── Definiciones: gradientes y filtros ── */}
-        <defs>
-          <radialGradient id="bodyGrad" cx="50%" cy="40%" r="60%">
-            <stop offset="0%"   stopColor="#164e63" />
-            <stop offset="100%" stopColor="#0c2340" />
-          </radialGradient>
-          <radialGradient id="headGrad" cx="50%" cy="35%" r="60%">
-            <stop offset="0%"   stopColor="#1e3a5f" />
-            <stop offset="100%" stopColor="#0a1f3a" />
-          </radialGradient>
-          <radialGradient id="eyeGrad" cx="40%" cy="35%" r="60%">
-            <stop offset="0%"   stopColor="#67e8f9" />
-            <stop offset="100%" stopColor="#0891b2" />
-          </radialGradient>
-          <radialGradient id="glowOrb" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor="#22d3ee" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="dishGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor="#94a3b8" />
-            <stop offset="100%" stopColor="#475569" />
-          </linearGradient>
-          <filter id="softGlow">
-            <feGaussianBlur stdDeviation="2" result="blur" />
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          <clipPath id="bodyClip">
-            <rect x="80" y="155" width="100" height="90" rx="14" />
-          </clipPath>
-        </defs>
-
-        {/* ── Halo de fondo ── */}
-        <ellipse cx="130" cy="285" rx="70" ry="12" fill="#0891b2" opacity="0.18" />
-        <circle cx="130" cy="195" r="95" fill="url(#glowOrb)" />
-
-        {/* ── Grupo principal flotante ── */}
-        <g className="robot-group" style={{ transformOrigin: "130px 210px" }}>
-
-          {/* ── Partículas en órbita ── */}
-          <g style={{ transformOrigin: "130px 200px" }}>
-            <circle className="orbit-dot1" cx="130" cy="200" r="4" fill="#22d3ee" opacity="0.8" />
-          </g>
-          <g style={{ transformOrigin: "130px 200px" }}>
-            <circle className="orbit-dot2" cx="130" cy="200" r="3" fill="#818cf8" opacity="0.7" />
-          </g>
-          <g style={{ transformOrigin: "130px 200px" }}>
-            <circle className="orbit-dot3" cx="130" cy="200" r="3.5" fill="#34d399" opacity="0.6" />
-          </g>
-
-          {/* ── Antena principal ── */}
-          <line x1="130" y1="100" x2="130" y2="75" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
-          <circle className="antenna-tip" cx="130" cy="70" r="7" fill="#22d3ee" filter="url(#softGlow)" />
-          {/* Ondas de radio desde antena */}
-          <g transform="translate(130, 70)">
-            <circle className="wave1" cx="0" cy="0" r="4" fill="none" stroke="#22d3ee" strokeWidth="1.5" opacity="0.9" />
-            <circle className="wave2" cx="0" cy="0" r="4" fill="none" stroke="#22d3ee" strokeWidth="1.5" opacity="0.9" />
-            <circle className="wave3" cx="0" cy="0" r="4" fill="none" stroke="#22d3ee" strokeWidth="1.5" opacity="0.9" />
-          </g>
-
-          {/* ── Antenas laterales pequeñas ── */}
-          <line x1="97"  y1="100" x2="88"  y2="84" stroke="#64748b" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="86" cy="81" r="4" fill="#818cf8" opacity="0.85" />
-          <line x1="163" y1="100" x2="172" y2="84" stroke="#64748b" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="174" cy="81" r="4" fill="#34d399" opacity="0.85" />
-
-          {/* ── Cabeza ── */}
-          <rect x="88" y="100" width="84" height="70" rx="16" fill="url(#headGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          {/* Visera / visor */}
-          <rect x="96" y="112" width="68" height="38" rx="10" fill="#020c1b" stroke="#0e4d6e" strokeWidth="1" opacity="0.9" />
-          {/* Ojos */}
-          <ellipse className="robot-eye" cx="116" cy="131" rx="10" ry="6" fill="url(#eyeGrad)" filter="url(#softGlow)" />
-          <ellipse className="robot-eye" cx="144" cy="131" rx="10" ry="6" fill="url(#eyeGrad)" filter="url(#softGlow)" style={{ animationDelay: "0.3s" }} />
-          {/* Pupila */}
-          <circle cx="116" cy="131" r="3" fill="#0a0a1a" />
-          <circle cx="144" cy="131" r="3" fill="#0a0a1a" />
-          {/* Reflejo en ojos */}
-          <circle cx="119" cy="128" r="1.5" fill="white" opacity="0.7" />
-          <circle cx="147" cy="128" r="1.5" fill="white" opacity="0.7" />
-          {/* Boca / indicador LED */}
-          <rect x="108" y="144" width="44" height="5" rx="2.5" fill="#0e7490" opacity="0.5" />
-          <rect x="108" y="144" width="22" height="5" rx="2.5" fill="#22d3ee" opacity="0.85" style={{ animation: "signalPulse 1.8s ease-in-out infinite" }} />
-
-          {/* ── Cuello ── */}
-          <rect x="118" y="170" width="24" height="10" rx="4" fill="#1e3a5f" stroke="#1e4a6e" strokeWidth="1" />
-
-          {/* ── Cuerpo ── */}
-          <rect x="80" y="180" width="100" height="90" rx="16" fill="url(#bodyGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          {/* Línea de escaneo sobre el cuerpo */}
-          <rect x="80" y="180" width="100" height="3" rx="1.5" fill="#22d3ee" opacity="0.5" className="scanline" clipPath="url(#bodyClip)" />
-          {/* Panel de control */}
-          <rect x="96" y="195" width="68" height="50" rx="8" fill="#020c1b" stroke="#0e4d6e" strokeWidth="1" opacity="0.8" />
-          {/* Indicadores del panel */}
-          <circle className="status-dot" cx="108" cy="207" r="4" fill="#22d3ee" />
-          <circle cx="122" cy="207" r="4" fill="#34d399" opacity="0.6" style={{ animation: "statusDot 2s ease-in-out infinite 0.5s" }} />
-          <circle cx="136" cy="207" r="4" fill="#818cf8" opacity="0.6" style={{ animation: "statusDot 2.4s ease-in-out infinite 1s" }} />
-          {/* Barras de señal WiFi en panel */}
-          <rect x="104" y="220" width="6"  height="14" rx="2" fill="#22d3ee" opacity="0.3" />
-          <rect x="114" y="216" width="6"  height="18" rx="2" fill="#22d3ee" opacity="0.5" />
-          <rect x="124" y="213" width="6"  height="21" rx="2" fill="#22d3ee" opacity="0.7" />
-          <rect x="134" y="210" width="6"  height="24" rx="2" fill="#22d3ee" opacity="0.9" />
-          {/* Etiqueta WiFi */}
-          <text x="130" y="254" textAnchor="middle" fill="#67e8f9" fontSize="7" fontFamily="monospace" opacity="0.7">4G • 5G • FIBER</text>
-
-          {/* ── Brazo izquierdo ── */}
-          <rect x="56" y="185" width="22" height="50" rx="10" fill="url(#bodyGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          {/* Mano izq */}
-          <rect x="52" y="232" width="28" height="18" rx="8" fill="#1e3a5f" stroke="#1e4a6e" strokeWidth="1" />
-
-          {/* ── Brazo derecho con plato satelital ── */}
-          <rect x="182" y="185" width="22" height="50" rx="10" fill="url(#bodyGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          {/* Plato satélite en mano derecha */}
-          <g transform="translate(203, 228)" className="dish-group">
-            {/* Soporte del plato */}
-            <line x1="8" y1="0" x2="8" y2="12" stroke="#64748b" strokeWidth="2" strokeLinecap="round" />
-            {/* Plato elíptico */}
-            <ellipse cx="8" cy="8" rx="18" ry="10" fill="url(#dishGrad)" stroke="#94a3b8" strokeWidth="1" transform="rotate(-30, 8, 8)" />
-            <ellipse cx="8" cy="8" rx="12" ry="6.5" fill="none" stroke="#cbd5e1" strokeWidth="0.5" opacity="0.5" transform="rotate(-30, 8, 8)" />
-            {/* Centro del plato */}
-            <circle cx="8" cy="8" r="2.5" fill="#e2e8f0" />
-            {/* Señal emitida por plato */}
-            <ellipse className="dish-signal" cx="8" cy="-4" rx="8" ry="4" fill="none" stroke="#22d3ee" strokeWidth="1.5" style={{ animationDelay: "0s" }} />
-            <ellipse className="dish-signal" cx="8" cy="-4" rx="8" ry="4" fill="none" stroke="#22d3ee" strokeWidth="1.5" style={{ animationDelay: "0.7s" }} />
-          </g>
-
-          {/* ── Piernas ── */}
-          <rect x="97"  y="268" width="28" height="36" rx="10" fill="url(#bodyGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          <rect x="135" y="268" width="28" height="36" rx="10" fill="url(#bodyGrad)" stroke="#1e4a6e" strokeWidth="1.5" />
-          {/* Pies */}
-          <rect x="92"  y="298" width="36" height="14" rx="7" fill="#1e3a5f" stroke="#1e4a6e" strokeWidth="1" />
-          <rect x="132" y="298" width="36" height="14" rx="7" fill="#1e3a5f" stroke="#1e4a6e" strokeWidth="1" />
-          {/* Luz en pies */}
-          <circle cx="100" cy="305" r="3" fill="#22d3ee" opacity="0.5" style={{ animation: "statusDot 2s ease-in-out infinite" }} />
-          <circle cx="160" cy="305" r="3" fill="#22d3ee" opacity="0.5" style={{ animation: "statusDot 2s ease-in-out infinite 1s" }} />
+        {/* ── Torre al fondo ── */}
+        <g opacity="0.10" transform="translate(318,30)">
+          <rect x="16" y="0" width="10" height="320" fill="#1e3a8a"/>
+          <line x1="-2"  y1="20"  x2="44"  y2="90"  stroke="#1e3a8a" strokeWidth="2.5"/>
+          <line x1="44"  y1="20"  x2="-2"  y2="90"  stroke="#1e3a8a" strokeWidth="2.5"/>
+          <line x1="-8"  y1="90"  x2="50"  y2="170" stroke="#1e3a8a" strokeWidth="2.5"/>
+          <line x1="50"  y1="90"  x2="-8"  y2="170" stroke="#1e3a8a" strokeWidth="2.5"/>
+          <line x1="-14" y1="170" x2="56"  y2="260" stroke="#1e3a8a" strokeWidth="2.5"/>
+          <line x1="56"  y1="170" x2="-14" y2="260" stroke="#1e3a8a" strokeWidth="2.5"/>
         </g>
 
-        {/* ── Sombra proyectada en el suelo ── */}
-        <ellipse cx="130" cy="316" rx="55" ry="7" fill="#0891b2" opacity="0.12" style={{ animation: "signalPulse 4s ease-in-out infinite" }} />
+        {/* ── Antena parabólica ── */}
+        <g opacity="0.10" transform="translate(10,310)">
+          <line x1="40" y1="0" x2="40" y2="75" stroke="#1e3a8a" strokeWidth="5"/>
+          <ellipse cx="40" cy="80" rx="52" ry="28" fill="#1e3a8a"/>
+          <line x1="6"  y1="62" x2="74" y2="98" stroke="#3b82f6" strokeWidth="2"/>
+        </g>
+
+        {/* ── Rayos de luz animados ── */}
+        <path className="streak"     d="M20 520 Q180 370 410 160" fill="none" stroke="#93c5fd" strokeWidth="2.5"/>
+        <path className="streak streak-b" d="M10 470 Q160 330 390 110" fill="none" stroke="#60a5fa" strokeWidth="1.5"/>
+        <path className="streak streak-c" d="M40 540 Q210 390 420 200" fill="none" stroke="#bfdbfe" strokeWidth="1"/>
+
+        {/* ════ PERSONAJE FLOTANTE ════ */}
+        <g className="char-float">
+
+          {/* Sombra suelo */}
+          <ellipse cx="198" cy="548" rx="92" ry="11" fill="#94a3b8" opacity="0.22"/>
+
+          {/* ── Piernas (jeans oscuros) ── */}
+          <rect x="148" y="395" width="50" height="130" rx="14" fill="#1e293b"/>
+          <rect x="210" y="395" width="50" height="130" rx="14" fill="#1e293b"/>
+          {/* Detalle jean */}
+          <rect x="154" y="402" width="14" height="118" rx="7" fill="#334155" opacity="0.45"/>
+          <rect x="216" y="402" width="14" height="118" rx="7" fill="#334155" opacity="0.45"/>
+
+          {/* Cinturón */}
+          <rect x="138" y="372" width="126" height="16" rx="6" fill="#0f172a"/>
+          <rect x="186" y="373" width="22" height="13" rx="3" fill="#475569"/>
+          <rect x="190" y="376" width="14" height="7"  rx="2" fill="#94a3b8"/>
+
+          {/* Zapatos */}
+          <ellipse cx="172" cy="535" rx="36" ry="13" fill="#111827"/>
+          <ellipse cx="236" cy="535" rx="36" ry="13" fill="#111827"/>
+          <ellipse cx="155" cy="530" rx="14" ry="8"  fill="#1e293b"/>
+          <ellipse cx="219" cy="530" rx="14" ry="8"  fill="#1e293b"/>
+
+          {/* ── Camisa polo azul ── */}
+          <path d="M126 248 Q122 385 136 398 L264 398 Q278 385 274 248 Q258 236 238 232 L218 248 L198 265 L178 248 L158 232 Q138 236 126 248Z" fill="#1d4ed8"/>
+          {/* Sombra lateral camisa */}
+          <path d="M126 248 Q122 385 136 398 L162 398 L162 232 Q138 236 126 248Z" fill="#1e40af" opacity="0.4"/>
+          <path d="M274 248 Q278 385 264 398 L238 398 L238 232 Q258 236 274 248Z" fill="#1e3a8a" opacity="0.25"/>
+
+          {/* Cuello / solapa */}
+          <path d="M178 248 L196 278 L204 278 L222 248 L206 240 L200 258 L194 240Z" fill="#1e3a8a"/>
+
+          {/* Botones */}
+          <circle cx="200" cy="284" r="3.5" fill="#1e3a8a"/>
+          <circle cx="200" cy="300" r="3.5" fill="#1e3a8a"/>
+
+          {/* Logo NOVO ERP en camisa */}
+          <text x="200" y="340" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold" opacity="0.88" fontFamily="sans-serif">NOVO ERP</text>
+
+          {/* WiFi en camisa */}
+          <path d="M192 318 Q200 313 208 318" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" opacity="0.85"/>
+          <path d="M188 323 Q200 315 212 323" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" opacity="0.55"/>
+          <circle className="wifi-dot" cx="200" cy="327" r="2.8" fill="white" opacity="0.85"/>
+
+          {/* ── Brazo izquierdo (relajado hacia abajo) ── */}
+          <path d="M129 262 Q98  302 94  365" stroke="#f5c5a3" strokeWidth="36" strokeLinecap="round" fill="none"/>
+          <path d="M129 262 Q100 298 96  360" stroke="#1d4ed8" strokeWidth="32" strokeLinecap="round" fill="none"/>
+          {/* Mano izquierda */}
+          <ellipse cx="94" cy="370" rx="24" ry="19" fill="#f5c5a3"/>
+          <path d="M75 362 Q70 372 75 380" fill="none" stroke="#e8b89a" strokeWidth="4.5" strokeLinecap="round"/>
+          <path d="M113 362 Q118 372 113 380" fill="none" stroke="#e8b89a" strokeWidth="4.5" strokeLinecap="round"/>
+
+          {/* ── Brazo derecho (pulgar arriba) ── */}
+          <path d="M267 262 Q300 282 304 325" stroke="#f5c5a3" strokeWidth="36" strokeLinecap="round" fill="none"/>
+          <path d="M267 262 Q298 280 302 322" stroke="#1d4ed8" strokeWidth="32" strokeLinecap="round" fill="none"/>
+          {/* Antebrazo hacia arriba */}
+          <path d="M302 322 Q310 298 306 266" stroke="#f5c5a3" strokeWidth="30" strokeLinecap="round" fill="none"/>
+          {/* Puño */}
+          <rect x="286" y="250" width="44" height="38" rx="13" fill="#f5c5a3"/>
+          {/* Líneas nudillos */}
+          <line x1="297" y1="253" x2="297" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
+          <line x1="308" y1="253" x2="308" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
+          <line x1="319" y1="253" x2="319" y2="285" stroke="#e8b89a" strokeWidth="1.5" opacity="0.5"/>
+          {/* Pulgar */}
+          <path d="M288 258 Q272 244 270 228 Q268 212 282 210 Q298 208 302 226 L302 258Z" fill="#f5c5a3"/>
+          <ellipse cx="274" cy="222" rx="6" ry="10" fill="#e8b89a" opacity="0.55" transform="rotate(-12,274,222)"/>
+
+          {/* ── Cuello ── */}
+          <rect x="182" y="228" width="36" height="28" rx="8" fill="#f5c5a3"/>
+
+          {/* ── Cabeza ── */}
+          <path d="M130 178 Q130 258 158 264 Q178 270 200 270 Q222 270 242 264 Q270 258 270 178 Q270 112 200 110 Q130 112 130 178Z" fill="#f5c5a3"/>
+
+          {/* Frente más clara */}
+          <ellipse cx="200" cy="152" rx="58" ry="28" fill="#fbd5b8" opacity="0.4"/>
+
+          {/* ── Pelo castaño ── */}
+          <path d="M132 168 Q138 100 200 96 Q262 100 268 168 Q260 126 238 114 Q220 104 200 102 Q180 104 162 114 Q140 126 132 168Z" fill="#6b3a1f"/>
+          <path d="M132 168 Q128 145 138 118 Q148 104 160 108 L148 120 Q136 138 134 162Z" fill="#5c3214"/>
+          <path d="M268 168 Q272 145 262 118 Q252 104 240 108 L252 120 Q264 138 266 162Z" fill="#5c3214"/>
+          <path d="M158 100 Q170 88 185 91 Q175 95 168 103Z" fill="#7a4422"/>
+          <path d="M215 91 Q230 88 242 98 Q234 96 228 103Z" fill="#7a4422"/>
+
+          {/* ── Orejas ── */}
+          <ellipse cx="130" cy="188" rx="14" ry="18" fill="#f5c5a3"/>
+          <ellipse cx="270" cy="188" rx="14" ry="18" fill="#f5c5a3"/>
+          <path d="M133 180 Q138 188 133 196" fill="none" stroke="#e8b89a" strokeWidth="2" strokeLinecap="round"/>
+          <path d="M267 180 Q262 188 267 196" fill="none" stroke="#e8b89a" strokeWidth="2" strokeLinecap="round"/>
+
+          {/* ── Audífonos (headphones) ── */}
+          {/* Banda */}
+          <path d="M122 172 Q200 88 278 172" fill="none" stroke="#1e293b" strokeWidth="15" strokeLinecap="round"/>
+          <path d="M122 172 Q200 92 278 172" fill="none" stroke="#334155" strokeWidth="9" strokeLinecap="round"/>
+          <path d="M122 172 Q200 96 278 172" fill="none" stroke="#475569" strokeWidth="3.5" strokeLinecap="round"/>
+          {/* Copa izquierda */}
+          <ellipse cx="116" cy="192" rx="24" ry="28" fill="#1e293b"/>
+          <ellipse cx="116" cy="192" rx="17" ry="20" fill="#334155"/>
+          <ellipse cx="116" cy="192" rx="11" ry="13" fill="#2563eb"/>
+          {/* WiFi en copa */}
+          <path d="M111 190 Q116 185 121 190" fill="none" stroke="#93c5fd" strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M108 194 Q116 186 124 194" fill="none" stroke="#93c5fd" strokeWidth="1.2" strokeLinecap="round" opacity="0.55"/>
+          <circle cx="116" cy="198" r="2.2" fill="#93c5fd"/>
+          {/* Copa derecha */}
+          <ellipse cx="284" cy="192" rx="24" ry="28" fill="#1e293b"/>
+          <ellipse cx="284" cy="192" rx="17" ry="20" fill="#334155"/>
+          <ellipse cx="284" cy="192" rx="11" ry="13" fill="#2563eb"/>
+          {/* Brazo micrófono */}
+          <path d="M138 204 Q146 222 153 236 Q158 244 172 244" fill="none" stroke="#1e293b" strokeWidth="5.5" strokeLinecap="round"/>
+          <path d="M138 204 Q146 222 153 236 Q158 244 172 244" fill="none" stroke="#475569" strokeWidth="3" strokeLinecap="round"/>
+          <ellipse cx="176" cy="243" rx="9" ry="7" fill="#1e293b"/>
+          <ellipse cx="176" cy="243" rx="6" ry="4.5" fill="#334155"/>
+
+          {/* ── Ojos ── */}
+          <ellipse cx="168" cy="184" rx="17" ry="18" fill="white"/>
+          <ellipse cx="232" cy="184" rx="17" ry="18" fill="white"/>
+          {/* Iris */}
+          <circle cx="168" cy="186" r="12" fill="#6b3a1f"/>
+          <circle cx="232" cy="186" r="12" fill="#6b3a1f"/>
+          {/* Pupila */}
+          <circle cx="169" cy="187" r="7"   fill="#0f172a"/>
+          <circle cx="233" cy="187" r="7"   fill="#0f172a"/>
+          {/* Brillo */}
+          <circle cx="173" cy="182" r="4"   fill="white"/>
+          <circle cx="237" cy="182" r="4"   fill="white"/>
+          <circle cx="174" cy="183" r="1.8" fill="white" opacity="0.55"/>
+          {/* Párpado animado izq */}
+          <ellipse className="eye-l" cx="168" cy="180" rx="17" ry="4" fill="#f5c5a3"/>
+          <ellipse className="eye-r" cx="232" cy="180" rx="17" ry="4" fill="#f5c5a3"/>
+
+          {/* Cejas */}
+          <path d="M153 164 Q168 156 184 162" fill="none" stroke="#4a2810" strokeWidth="4"   strokeLinecap="round"/>
+          <path d="M216 162 Q232 156 248 164" fill="none" stroke="#4a2810" strokeWidth="4"   strokeLinecap="round"/>
+
+          {/* Rubor mejillas */}
+          <ellipse cx="146" cy="204" rx="19" ry="13" fill="#fda4af" opacity="0.22"/>
+          <ellipse cx="254" cy="204" rx="19" ry="13" fill="#fda4af" opacity="0.22"/>
+
+          {/* Nariz */}
+          <path d="M194 196 Q200 208 206 196" fill="none" stroke="#d4956a" strokeWidth="2.2" strokeLinecap="round"/>
+          <circle cx="196" cy="200" r="3.5" fill="#e8a87c" opacity="0.35"/>
+          <circle cx="204" cy="200" r="3.5" fill="#e8a87c" opacity="0.35"/>
+
+          {/* Sonrisa */}
+          <path d="M166 218 Q200 240 234 218" fill="none" stroke="#c47a52" strokeWidth="4" strokeLinecap="round"/>
+          {/* Dientes */}
+          <path d="M170 223 Q200 238 230 223 Q200 232 170 223Z" fill="white" opacity="0.82"/>
+        </g>
+
+        {/* ── Badge WiFi inferior ── */}
+        <g className="badge-pulse">
+          <rect x="22" y="462" width="178" height="52" rx="26" fill="#1d4ed8"/>
+          <rect x="22" y="462" width="178" height="52" rx="26" fill="none" stroke="#93c5fd" strokeWidth="1" opacity="0.45"/>
+          <path d="M44 480 Q54 472 64 480" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
+          <path d="M39 486 Q54 475 69 486" fill="none" stroke="white" strokeWidth="2"   strokeLinecap="round" opacity="0.6"/>
+          <circle cx="54" cy="491" r="3.5" fill="white"/>
+          <text x="82" y="480" fill="white"   fontSize="11" fontWeight="bold" fontFamily="sans-serif">Conectamos</text>
+          <text x="82" y="496" fill="#93c5fd" fontSize="10" fontFamily="sans-serif">lo que te mueve</text>
+        </g>
       </svg>
     </>
   );
@@ -252,13 +240,14 @@ function TelecomRobot() {
 export default function Login() {
   const navigate = useNavigate();
 
-  const [paso, setPaso] = useState(1);
-  const [formData, setFormData] = useState({ usuario: "", contraseña: "" });
-  const [otp, setOtp] = useState("");
-  const [usuarioId, setUsuarioId] = useState(null);
+  const [paso, setPaso]               = useState(1);
+  const [formData, setFormData]       = useState({ usuario: "", contraseña: "" });
+  const [otp, setOtp]                 = useState("");
+  const [usuarioId, setUsuarioId]     = useState(null);
   const [usuarioLogin, setUsuarioLogin] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+  const [showPass, setShowPass]       = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -269,26 +258,14 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
-      const body = {
-        usuario: formData.usuario,
-        password: formData.contraseña,
-      };
-
       const res = await fetch(`${API}/api/otp/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ usuario: formData.usuario, password: formData.contraseña }),
       });
-
       const data = await res.json();
-
-      if (!data.success) {
-        setError("Credenciales inválidas.");
-        return;
-      }
-
+      if (!data.success) { setError("Credenciales inválidas."); return; }
       setUsuarioId(data.usuario_id);
       setUsuarioLogin(data.usuario || formData.usuario);
       setPaso(2);
@@ -304,25 +281,14 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       const res = await fetch(`${API}/api/otp/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          usuario_id: usuarioId,
-          usuario: usuarioLogin,
-          otp: otp.trim(),
-        }),
+        body: JSON.stringify({ usuario_id: usuarioId, usuario: usuarioLogin, otp: otp.trim() }),
       });
-
       const data = await res.json();
-
-      if (!data.success) {
-        setError(data.error || "Código incorrecto o expirado.");
-        return;
-      }
-
+      if (!data.success) { setError(data.error || "Código incorrecto o expirado."); return; }
       localStorage.setItem("token", data.token);
       localStorage.setItem("userProfile", JSON.stringify(data.user));
       navigate("/");
@@ -335,390 +301,365 @@ export default function Login() {
 
   return (
     <>
-      {/* ── Estilos globales de la página ── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-        .login-page {
+        /* ── Página ── */
+        .lp {
           font-family: 'Inter', system-ui, sans-serif;
           min-height: 100vh;
           display: flex;
-          background: linear-gradient(135deg, #020c1b 0%, #0a1628 40%, #0c2340 70%, #071524 100%);
+          background: linear-gradient(140deg, #dbeafe 0%, #eff6ff 35%, #e0f2fe 65%, #dbeafe 100%);
+          position: relative;
           overflow: hidden;
-          position: relative;
         }
-
-        /* Estrellas / partículas de fondo */
-        .login-page::before {
+        .lp::before {
           content: '';
           position: absolute;
           inset: 0;
           background-image:
-            radial-gradient(1px 1px at 15%  20%, rgba(34,211,238,0.5) 0%, transparent 100%),
-            radial-gradient(1px 1px at 75%  10%, rgba(129,140,248,0.5) 0%, transparent 100%),
-            radial-gradient(1px 1px at 45%  80%, rgba(52,211,153,0.4) 0%, transparent 100%),
-            radial-gradient(1.5px 1.5px at 85% 55%, rgba(34,211,238,0.4) 0%, transparent 100%),
-            radial-gradient(1px 1px at 30%  45%, rgba(255,255,255,0.25) 0%, transparent 100%),
-            radial-gradient(1px 1px at 62%  30%, rgba(255,255,255,0.2) 0%, transparent 100%),
-            radial-gradient(1px 1px at 8%   65%, rgba(34,211,238,0.3) 0%, transparent 100%),
-            radial-gradient(1px 1px at 90%  85%, rgba(129,140,248,0.3) 0%, transparent 100%);
+            radial-gradient(circle at 18% 55%, rgba(59,130,246,0.10) 0%, transparent 55%),
+            radial-gradient(circle at 82% 18%, rgba(37,99,235,0.07) 0%, transparent 50%),
+            radial-gradient(circle at 50% 90%, rgba(96,165,250,0.06) 0%, transparent 45%);
           pointer-events: none;
-          z-index: 0;
         }
 
-        /* Rejilla sutil de fondo */
-        .login-page::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image:
-            linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        /* ── Panel derecho ── */
-        .right-panel {
-          position: relative;
-          z-index: 1;
+        /* ── Paneles ── */
+        .lp-left {
+          flex: 0 0 52%;
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 2rem;
-          padding: 3rem 2rem;
-          background: linear-gradient(135deg, rgba(8,145,178,0.06) 0%, rgba(15,23,42,0.3) 100%);
-          border-left: 1px solid rgba(34,211,238,0.08);
-        }
-
-        /* ── Panel izquierdo ── */
-        .left-panel {
           position: relative;
+          padding: 2rem 1rem;
           z-index: 1;
+        }
+        .lp-right {
+          flex: 0 0 48%;
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 3rem 2rem;
+          padding: 2rem;
+          z-index: 1;
         }
 
-        /* ── Glassmorphism card ── */
-        .glass-card {
-          background: rgba(2, 15, 35, 0.65);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(34, 211, 238, 0.15);
+        /* ── Tarjeta blanca ── */
+        .login-card {
+          background: white;
           border-radius: 24px;
           box-shadow:
-            0 0 0 1px rgba(34,211,238,0.05),
-            0 20px 60px rgba(0,0,0,0.5),
-            inset 0 1px 0 rgba(255,255,255,0.05);
+            0 24px 64px rgba(30,58,138,0.12),
+            0 4px 20px rgba(30,58,138,0.07),
+            0 0 0 1px rgba(219,234,254,0.7);
           width: 100%;
-          max-width: 420px;
+          max-width: 440px;
           padding: 2.5rem;
         }
 
-        /* ── Input ── */
-        .erp-input {
+        /* ── Inputs ── */
+        .lc-wrap  { position: relative; }
+        .lc-icon  { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; }
+        .lc-eye   { position: absolute; right: 0.85rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; }
+        .lc-eye:hover { color: #64748b; }
+
+        .lc-input {
           width: 100%;
-          background: rgba(0, 0, 0, 0.3);
-          border: 1px solid rgba(34, 211, 238, 0.2);
+          background: #f8fafc;
+          border: 1.5px solid #e2e8f0;
           border-radius: 12px;
-          padding: 0.875rem 1.25rem;
-          color: white;
+          padding: 0.9rem 1rem 0.9rem 3rem;
+          color: #0f172a;
           font-size: 0.95rem;
           outline: none;
-          transition: all 0.25s ease;
+          transition: all 0.2s;
           box-sizing: border-box;
           font-family: inherit;
         }
-        .erp-input::placeholder { color: rgba(148,163,184,0.5); }
-        .erp-input:focus {
-          border-color: rgba(34,211,238,0.6);
-          box-shadow: 0 0 0 3px rgba(34,211,238,0.1), 0 0 20px rgba(34,211,238,0.08);
-          background: rgba(8,145,178,0.08);
+        .lc-input::placeholder { color: #94a3b8; }
+        .lc-input:focus {
+          border-color: #3b82f6;
+          background: white;
+          box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
         }
-
-        /* ── Botón primario ── */
-        .erp-btn-primary {
-          width: 100%;
-          padding: 0.9rem 1.5rem;
-          border-radius: 12px;
-          border: 1px solid rgba(34,211,238,0.25);
-          background: linear-gradient(135deg, #0369a1 0%, #0e7490 50%, #155e75 100%);
-          color: white;
+        .lc-input-otp {
+          text-align: center;
+          font-size: 2rem;
+          letter-spacing: 0.55em;
           font-weight: 700;
-          font-size: 0.95rem;
-          letter-spacing: 0.03em;
-          cursor: pointer;
-          transition: all 0.25s ease;
-          font-family: inherit;
-          box-shadow: 0 4px 20px rgba(8,145,178,0.3);
-          position: relative;
-          overflow: hidden;
+          padding-left: 1.5rem;
         }
-        .erp-btn-primary::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(135deg, rgba(34,211,238,0.15) 0%, transparent 60%);
-          opacity: 0;
-          transition: opacity 0.25s;
-        }
-        .erp-btn-primary:hover:not(:disabled)::before { opacity: 1; }
-        .erp-btn-primary:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 30px rgba(8,145,178,0.45);
-        }
-        .erp-btn-primary:active:not(:disabled) { transform: translateY(0); }
-        .erp-btn-primary:disabled {
-          opacity: 0.45;
-          cursor: not-allowed;
-        }
-
-        /* ── Botón texto ── */
-        .erp-btn-text {
-          background: none;
-          border: none;
-          color: rgba(148,163,184,0.7);
-          font-size: 0.875rem;
-          cursor: pointer;
-          transition: color 0.2s;
-          font-family: inherit;
-          padding: 0.5rem;
-        }
-        .erp-btn-text:hover { color: rgba(34,211,238,0.9); }
 
         /* ── Label ── */
-        .erp-label {
+        .lc-label {
           display: block;
-          font-size: 0.72rem;
+          font-size: 0.8rem;
           font-weight: 600;
-          color: rgba(103,232,249,0.8);
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          margin-bottom: 0.5rem;
+          color: #475569;
+          margin-bottom: 0.45rem;
         }
 
         /* ── Error ── */
-        .erp-error {
-          background: rgba(239,68,68,0.1);
-          border: 1px solid rgba(239,68,68,0.3);
+        .lc-error {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
           border-radius: 10px;
           padding: 0.75rem 1rem;
-          color: #fca5a5;
+          color: #dc2626;
           font-size: 0.85rem;
           text-align: center;
           margin-bottom: 1.25rem;
         }
 
-        /* ── OTP input especial ── */
-        .otp-input {
-          text-align: center;
-          font-size: 1.75rem;
-          letter-spacing: 0.5em;
+        /* ── Botón primario ── */
+        .lc-btn {
+          width: 100%;
+          padding: 0.95rem;
+          border-radius: 12px;
+          border: none;
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          color: white;
           font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-family: inherit;
+          box-shadow: 0 4px 18px rgba(37,99,235,0.30);
+          letter-spacing: 0.01em;
         }
+        .lc-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 26px rgba(37,99,235,0.40);
+        }
+        .lc-btn:active:not(:disabled) { transform: translateY(0); }
+        .lc-btn:disabled { opacity: 0.48; cursor: not-allowed; }
 
-        /* ── Tagline animado ── */
-        .tagline-anim {
-          animation: fadeSlideUp 0.8s ease both;
+        /* ── Link botón ── */
+        .lc-link {
+          background: none;
+          border: none;
+          color: #2563eb;
+          font-size: 0.85rem;
+          cursor: pointer;
+          font-family: inherit;
+          padding: 0;
+          transition: color 0.15s;
         }
-        .tagline-anim-2 { animation: fadeSlideUp 0.8s ease 0.2s both; }
-        .tagline-anim-3 { animation: fadeSlideUp 0.8s ease 0.4s both; }
-
-        /* ── Barra decorativa de color ── */
-        .color-bar {
-          width: 48px;
-          height: 3px;
-          border-radius: 99px;
-          background: linear-gradient(90deg, #22d3ee, #818cf8);
-          margin: 0.75rem auto 1.25rem;
-        }
-
-        /* ── Chips de features ── */
-        .feature-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          background: rgba(34,211,238,0.07);
-          border: 1px solid rgba(34,211,238,0.18);
-          border-radius: 999px;
-          padding: 0.35rem 0.85rem;
-          font-size: 0.75rem;
-          color: rgba(103,232,249,0.85);
-          font-weight: 500;
-        }
+        .lc-link:hover { color: #1d4ed8; text-decoration: underline; }
 
         /* ── Step indicator ── */
+        .step-bar { display: flex; justify-content: center; gap: 6px; margin-top: 0.8rem; }
         .step-dot {
-          width: 8px; height: 8px;
-          border-radius: 50%;
+          height: 4px;
+          border-radius: 99px;
           transition: all 0.3s;
         }
 
+        /* ── Spinner ── */
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         @media (max-width: 768px) {
-          .login-page { flex-direction: column; }
-          .right-panel { display: none; }
-          .left-panel { padding: 2rem 1.25rem; }
+          .lp { flex-direction: column; }
+          .lp-left { display: none; }
+          .lp-right { flex: 1; padding: 1.5rem 1rem; }
+          .login-card { padding: 2rem 1.5rem; }
         }
       `}</style>
 
-      <div className="login-page">
+      <div className="lp">
 
-        {/* ════════════════════════════════════════
-            MITAD IZQUIERDA — Formulario
-        ════════════════════════════════════════ */}
-        <div className="left-panel" style={{ flex: "0 0 45%", minWidth: 0 }}>
-          <div className="glass-card">
+        {/* ════ IZQUIERDA — Personaje ════ */}
+        <div className="lp-left">
+          <div style={{ width: "100%", maxWidth: 420, height: 530 }}>
+            <TelecomCharacter />
+          </div>
+        </div>
 
-            {/* ── Logo / Marca ── */}
-            <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-              {/* Ícono SVG simple */}
-              <div style={{
-                width: 52, height: 52,
-                margin: "0 auto 1rem",
-                borderRadius: 14,
-                background: "linear-gradient(135deg, #0369a1, #0e7490)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 0 24px rgba(8,145,178,0.4)",
-              }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="rgba(34,211,238,0.2)" stroke="#22d3ee" strokeWidth="1.5"/>
-                  <path d="M8.56 8.56C9.55 7.57 10.72 7 12 7s2.45.57 3.44 1.56" stroke="#22d3ee" strokeWidth="1.5" strokeLinecap="round"/>
-                  <path d="M5.64 5.64C7.46 3.82 9.61 3 12 3s4.54.82 6.36 2.64" stroke="#67e8f9" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-                  <circle cx="12" cy="12" r="2.5" fill="#22d3ee"/>
-                  <line x1="12" y1="14.5" x2="12" y2="19" stroke="#22d3ee" strokeWidth="1.5" strokeLinecap="round"/>
-                  <line x1="9" y1="19" x2="15" y2="19" stroke="#22d3ee" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* ════ DERECHA — Tarjeta Login ════ */}
+        <div className="lp-right">
+          <div className="login-card">
+
+            {/* ── Marca NOVO ERP ── */}
+            <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
+              {/* Ícono WiFi + nombre */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: "0.4rem" }}>
+                <svg width="38" height="30" viewBox="0 0 38 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 8 Q19 0 36 8"    fill="none" stroke="#1d4ed8" strokeWidth="3"   strokeLinecap="round"/>
+                  <path d="M6 14 Q19 6 32 14"   fill="none" stroke="#2563eb" strokeWidth="3"   strokeLinecap="round"/>
+                  <path d="M11 20 Q19 13 27 20" fill="none" stroke="#3b82f6" strokeWidth="3"   strokeLinecap="round"/>
+                  <circle cx="19" cy="26" r="4"  fill="#2563eb"/>
                 </svg>
+                <span style={{ fontSize: "1.7rem", fontWeight: 800, color: "#1e3a8a", letterSpacing: "0.04em" }}>
+                  NOVO <span style={{ color: "#2563eb" }}>ERP</span>
+                </span>
               </div>
-
-              <h1 style={{
-                fontSize: "1.6rem", fontWeight: 800,
-                color: "white", letterSpacing: "0.04em",
-                margin: 0,
-              }}>
-                MI <span style={{ color: "#22d3ee" }}>ERP</span>
-              </h1>
-              <p style={{ color: "rgba(103,232,249,0.7)", fontSize: "0.8rem", marginTop: "0.3rem", fontWeight: 400 }}>
-                {paso === 1 ? "Acceso Corporativo Seguro" : "Verificación de Identidad"}
+              <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>
+                Soluciones en Telecomunicaciones
               </p>
 
-              {/* Step dots */}
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: "0.75rem" }}>
+              {/* Título de paso */}
+              <div style={{ marginTop: "1.4rem" }}>
+                <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#0f172a", margin: "0 0 0.25rem" }}>
+                  {paso === 1 ? "Bienvenido" : "Verificación OTP"}
+                </h1>
+                <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
+                  {paso === 1 ? "Inicia sesión para continuar" : "Ingresa el código enviado a tu correo"}
+                </p>
+              </div>
+
+              {/* Barra de pasos */}
+              <div className="step-bar">
                 <div className="step-dot" style={{
-                  background: paso >= 1 ? "#22d3ee" : "rgba(34,211,238,0.2)",
-                  boxShadow: paso === 1 ? "0 0 8px #22d3ee" : "none",
-                }} />
+                  width: paso === 1 ? 36 : 28,
+                  background: paso >= 1 ? "#2563eb" : "#e2e8f0",
+                }}/>
                 <div className="step-dot" style={{
-                  background: paso >= 2 ? "#22d3ee" : "rgba(34,211,238,0.2)",
-                  boxShadow: paso === 2 ? "0 0 8px #22d3ee" : "none",
-                }} />
+                  width: paso === 2 ? 36 : 28,
+                  background: paso >= 2 ? "#2563eb" : "#e2e8f0",
+                }}/>
               </div>
             </div>
 
             {/* ── Error ── */}
-            {error && <div className="erp-error">{error}</div>}
+            {error && <div className="lc-error">{error}</div>}
 
-            {/* ══ PASO 1: Credenciales ══ */}
+            {/* ════ PASO 1: Credenciales ════ */}
             {paso === 1 && (
-              <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+
                 <div>
-                  <label className="erp-label">Usuario</label>
-                  <input
-                    type="text"
-                    name="usuario"
-                    className="erp-input"
-                    onChange={handleChange}
-                    placeholder="Ej. admin"
-                    autoComplete="username"
-                    required
-                  />
+                  <label className="lc-label">Usuario</label>
+                  <div className="lc-wrap">
+                    <span className="lc-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      name="usuario"
+                      className="lc-input"
+                      onChange={handleChange}
+                      placeholder="Usuario o correo electrónico"
+                      autoComplete="username"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="erp-label">Contraseña</label>
-                  <input
-                    type="password"
-                    name="contraseña"
-                    className="erp-input"
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    required
-                  />
-                </div>
-
-                <div style={{ marginTop: "0.5rem" }}>
-                  <button type="submit" className="erp-btn-primary" disabled={loading}>
-                    {loading ? (
-                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                          style={{ animation: "spin 0.8s linear infinite" }}>
-                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  <label className="lc-label">Contraseña</label>
+                  <div className="lc-wrap">
+                    <span className="lc-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      </svg>
+                    </span>
+                    <input
+                      type={showPass ? "text" : "password"}
+                      name="contraseña"
+                      className="lc-input"
+                      onChange={handleChange}
+                      placeholder="Contraseña"
+                      autoComplete="current-password"
+                      required
+                    />
+                    <button type="button" className="lc-eye" onClick={() => setShowPass(!showPass)} aria-label="Mostrar/ocultar contraseña">
+                      {showPass ? (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
                         </svg>
-                        Verificando…
-                      </span>
-                    ) : "→ Ingresar al Sistema"}
-                  </button>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "#475569", cursor: "pointer" }}>
+                    <input type="checkbox" style={{ accentColor: "#2563eb", width: 16, height: 16 }} />
+                    Recordarme
+                  </label>
+                  <button type="button" className="lc-link">¿Olvidaste tu contraseña?</button>
+                </div>
+
+                <button type="submit" className="lc-btn" disabled={loading} style={{ marginTop: "0.4rem" }}>
+                  {loading ? (
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        style={{ animation: "spin 0.8s linear infinite" }}>
+                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                      </svg>
+                      Verificando…
+                    </span>
+                  ) : "Iniciar sesión"}
+                </button>
+
+                <p style={{ textAlign: "center", color: "#94a3b8", fontSize: "0.8rem", margin: 0 }}>
+                  ¿No tienes una cuenta?{" "}
+                  <button type="button" className="lc-link">Contáctanos</button>
+                </p>
               </form>
             )}
 
-            {/* ══ PASO 2: OTP ══ */}
+            {/* ════ PASO 2: OTP ════ */}
             {paso === 2 && (
               <form onSubmit={handleVerifyOtp} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                 <div style={{
                   textAlign: "center",
-                  color: "rgba(148,163,184,0.8)",
-                  fontSize: "0.85rem",
-                  background: "rgba(34,211,238,0.05)",
-                  border: "1px solid rgba(34,211,238,0.12)",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
                   borderRadius: 10,
                   padding: "0.75rem",
+                  color: "#1e40af",
+                  fontSize: "0.85rem",
                 }}>
-                  📧 Ingresa el código que enviamos a tu correo
+                  📧 Revisá tu correo e ingresá el código de 6 dígitos
                 </div>
 
                 <div>
-                  <label className="erp-label">Código OTP de 6 dígitos</label>
+                  <label className="lc-label">Código OTP de 6 dígitos</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                    className="erp-input otp-input"
+                    className="lc-input lc-input-otp"
                     placeholder="000000"
                     autoComplete="one-time-code"
                     required
+                    style={{ paddingLeft: "1.5rem" }}
                   />
                 </div>
 
-                <div>
-                  <button
-                    type="submit"
-                    className="erp-btn-primary"
-                    disabled={loading || otp.length < 6}
-                  >
-                    {loading ? (
-                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                          style={{ animation: "spin 0.8s linear infinite" }}>
-                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                        </svg>
-                        Verificando…
-                      </span>
-                    ) : "✓ Confirmar Código"}
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className="lc-btn"
+                  disabled={loading || otp.length < 6}
+                >
+                  {loading ? (
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        style={{ animation: "spin 0.8s linear infinite" }}>
+                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                      </svg>
+                      Verificando…
+                    </span>
+                  ) : "✓ Confirmar código"}
+                </button>
 
                 <div style={{ textAlign: "center" }}>
                   <button
                     type="button"
-                    className="erp-btn-text"
+                    className="lc-link"
                     onClick={() => { setPaso(1); setError(""); setOtp(""); setUsuarioId(null); }}
                   >
                     ← Volver al inicio
@@ -731,97 +672,16 @@ export default function Login() {
             <div style={{
               marginTop: "1.75rem",
               paddingTop: "1.25rem",
-              borderTop: "1px solid rgba(34,211,238,0.08)",
+              borderTop: "1px solid #f1f5f9",
               textAlign: "center",
-              color: "rgba(100,116,139,0.6)",
+              color: "#94a3b8",
               fontSize: "0.72rem",
             }}>
-              Sistema ERP © {new Date().getFullYear()} · Acceso restringido
-            </div>
-          </div>
-        </div>
-
-        {/* ════════════════════════════════════════
-            MITAD DERECHA — Robot animado + Tagline
-        ════════════════════════════════════════ */}
-        <div className="right-panel" style={{ flex: "0 0 55%", minWidth: 0 }}>
-
-          {/* Orbes decorativos de fondo */}
-          <div style={{
-            position: "absolute", top: "15%", right: "10%",
-            width: 300, height: 300, borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(8,145,178,0.12) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }} />
-          <div style={{
-            position: "absolute", bottom: "20%", left: "5%",
-            width: 200, height: 200, borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(129,140,248,0.08) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }} />
-
-          {/* ── Tagline superior ── */}
-          <div className="tagline-anim" style={{ textAlign: "center", zIndex: 2 }}>
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: "1.5rem" }}>
-              <span className="feature-chip">📡 4G / 5G</span>
-              <span className="feature-chip">🌐 Fibra Óptica</span>
-              <span className="feature-chip">📶 WiFi Empresarial</span>
-            </div>
-          </div>
-
-          {/* ── Robot SVG ── */}
-          <div style={{ width: "100%", maxWidth: 340, zIndex: 2 }}>
-            <TelecomRobot />
-          </div>
-
-          {/* ── Tagline inferior ── */}
-          <div className="tagline-anim-2" style={{ textAlign: "center", zIndex: 2, maxWidth: 380, padding: "0 1rem" }}>
-            <h2 style={{
-              fontSize: "1.6rem", fontWeight: 800,
-              color: "white", margin: "0 0 0.5rem",
-              lineHeight: 1.2,
-            }}>
-              Conectando el futuro
-              <br />
-              <span style={{
-                background: "linear-gradient(90deg, #22d3ee, #818cf8)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}>
-                hoy mismo
-              </span>
-            </h2>
-            <p className="tagline-anim-3" style={{
-              color: "rgba(148,163,184,0.7)",
-              fontSize: "0.875rem",
-              lineHeight: 1.6,
-              margin: "0.75rem 0 0",
-            }}>
-              Gestiona tus servicios de telecomunicaciones, ventas
-              y equipo desde una sola plataforma inteligente.
-            </p>
-
-            {/* Barra separadora animada */}
-            <div className="color-bar" style={{ marginTop: "1.25rem" }} />
-
-            {/* Stats rápidas */}
-            <div style={{ display: "flex", justifyContent: "center", gap: "2rem", marginTop: "0.25rem" }}>
-              {[["99.9%", "Uptime"], ["24/7", "Soporte"], ["5G", "Ready"]].map(([val, lbl]) => (
-                <div key={lbl} style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#22d3ee" }}>{val}</div>
-                  <div style={{ fontSize: "0.7rem", color: "rgba(148,163,184,0.55)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{lbl}</div>
-                </div>
-              ))}
+              NOVO ERP © {new Date().getFullYear()} · Acceso restringido
             </div>
           </div>
         </div>
       </div>
-
-      {/* ── Keyframe global para spinner ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
     </>
   );
 }

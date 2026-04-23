@@ -364,113 +364,258 @@ export default function DashboardLayout() {
         <BroadcastOverlay mensaje={broadcast} onClose={() => setBroadcast(null)} />
       )}
 
-      <div
-        className="flex h-screen bg-cover bg-center overflow-hidden relative"
-        style={{ backgroundImage: `url(${BG_IMAGE})` }}
-      >
-        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm z-0"></div>
+      {/* ── Estilos del layout claro ── */}
+      <style>{`
+        .dl-sidebar-scrollbar::-webkit-scrollbar { width: 4px; }
+        .dl-sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
+        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        @keyframes dl-fadein { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+        .dl-nav-label { animation: dl-fadein .2s ease both; }
+      `}</style>
 
+      {/* ── Fondo general claro ── */}
+      <div className="flex h-screen overflow-hidden" style={{ background: "#f1f5f9" }}>
+
+        {/* Overlay mobile */}
         {sidebarOpen && (
           <div
             onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
+            className="fixed inset-0 z-20 md:hidden"
+            style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}
           />
         )}
 
-        {/* SIDEBAR */}
-        <aside className={`
-          fixed md:static inset-y-0 left-0 z-30
-          bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col transition-all duration-500 ease-in-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-          md:translate-x-0
-          ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
-        `}>
+        {/* ════ SIDEBAR ════ */}
+        <aside
+          className={`fixed md:static inset-y-0 left-0 z-30 flex flex-col transition-all duration-300 ease-in-out
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+            md:translate-x-0
+            ${isDesktopCollapsed ? "md:w-20" : "md:w-64"}`}
+          style={{
+            background: "white",
+            borderRight: "1px solid #e2e8f0",
+            boxShadow: "2px 0 16px rgba(30,58,138,0.06)",
+          }}
+        >
+          {/* Botón colapsar */}
           <button
             onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
-            className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-20 bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md rounded-r-2xl items-center justify-center text-white border-y border-r border-white/20 z-50 shadow-[5px_0_15px_rgba(0,0,0,0.3)] transition-all group"
+            className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-16 rounded-r-xl items-center justify-center z-50 transition-all group"
+            style={{
+              background: "#2563eb",
+              border: "1px solid #1d4ed8",
+              boxShadow: "3px 0 12px rgba(37,99,235,0.25)",
+            }}
           >
-            <div className={`transition-transform duration-500 ${isDesktopCollapsed ? "rotate-180" : ""}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 group-hover:scale-125 transition-transform">
+            <div className={`transition-transform duration-300 ${isDesktopCollapsed ? "rotate-180" : ""}`}>
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="white" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
             </div>
           </button>
 
-          <div className="p-8 border-b border-white/5 flex justify-center items-center overflow-hidden">
-            <h1 className={`font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 transition-all duration-500 ${isDesktopCollapsed ? "text-xs opacity-0" : "text-2xl opacity-100"}`}>
-              NOVONET PRO
-            </h1>
-            {isDesktopCollapsed && <span className="text-blue-400 font-bold text-xl">N</span>}
+          {/* Logo NOVO ERP */}
+          <div
+            className="flex items-center overflow-hidden shrink-0"
+            style={{
+              padding: isDesktopCollapsed ? "1.25rem 0" : "1.25rem 1.25rem",
+              justifyContent: isDesktopCollapsed ? "center" : "flex-start",
+              borderBottom: "1px solid #f1f5f9",
+              minHeight: 68,
+            }}
+          >
+            {/* Ícono WiFi */}
+            <div
+              className="shrink-0 flex items-center justify-center rounded-xl"
+              style={{
+                width: 36, height: 36,
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                boxShadow: "0 4px 12px rgba(37,99,235,0.30)",
+              }}
+            >
+              <svg width="18" height="15" viewBox="0 0 24 20" fill="none">
+                <path d="M2 6Q12 0 22 6"    stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M5 11Q12 5 19 11"  stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M9 16Q12 13 15 16" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                <circle cx="12" cy="19" r="2" fill="white"/>
+              </svg>
+            </div>
+            {!isDesktopCollapsed && (
+              <span
+                className="dl-nav-label ml-3 font-black tracking-wide"
+                style={{ fontSize: "1.1rem", color: "#1e3a8a", whiteSpace: "nowrap" }}
+              >
+                NOVO <span style={{ color: "#2563eb" }}>ERP</span>
+              </span>
+            )}
           </div>
 
-          <nav className="flex-1 px-3 py-10 space-y-4 overflow-y-auto custom-scrollbar">
-            {menuItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <button
-                  key={item.name}
-                  onClick={() => { navigate(item.path); setSidebarOpen(false); }}
-                  className={`w-full flex items-center rounded-2xl transition-all duration-300 group ${
-                    isDesktopCollapsed ? "justify-center h-14" : "px-5 py-4 space-x-5"
-                  } ${
-                    isActive
-                      ? "bg-blue-600/20 border border-blue-500/40 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-                      : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <span className={`${isDesktopCollapsed ? "text-3xl" : "text-2xl"} transition-all group-hover:scale-110 drop-shadow-md`}>
-                    {item.icon}
-                  </span>
-                  {!isDesktopCollapsed && (
-                    <span className="font-bold tracking-wide truncate">{item.name}</span>
-                  )}
-                </button>
-              );
-            })}
+          {/* Nav */}
+          <nav
+            className="flex-1 dl-sidebar-scrollbar overflow-y-auto"
+            style={{ padding: isDesktopCollapsed ? "1rem 0.5rem" : "1rem 0.75rem" }}
+          >
+            {/* Separador de sección */}
+            {!isDesktopCollapsed && (
+              <p style={{ fontSize: "0.6rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", padding: "0 0.75rem", marginBottom: "0.4rem" }}>
+                Menú
+              </p>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {menuItems.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <button
+                    key={item.name}
+                    onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+                    className="w-full flex items-center transition-all duration-200 group"
+                    style={{
+                      borderRadius: 10,
+                      padding: isDesktopCollapsed ? "0.6rem 0" : "0.55rem 0.75rem",
+                      justifyContent: isDesktopCollapsed ? "center" : "flex-start",
+                      gap: isDesktopCollapsed ? 0 : 10,
+                      background: isActive ? "#eff6ff" : "transparent",
+                      border: isActive ? "1px solid #bfdbfe" : "1px solid transparent",
+                      color: isActive ? "#2563eb" : "#64748b",
+                      fontWeight: isActive ? 700 : 500,
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.color = "#1e293b"; } }}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; } }}
+                  >
+                    <span style={{ fontSize: isDesktopCollapsed ? "1.4rem" : "1.1rem", lineHeight: 1, flexShrink: 0 }}>
+                      {item.icon}
+                    </span>
+                    {!isDesktopCollapsed && (
+                      <span className="dl-nav-label truncate" style={{ fontSize: "0.82rem" }}>
+                        {item.name}
+                      </span>
+                    )}
+                    {isActive && !isDesktopCollapsed && (
+                      <div style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "#2563eb", flexShrink: 0 }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </nav>
 
-          <div className={`p-6 border-t border-white/5 bg-black/20 ${isDesktopCollapsed ? "text-center px-2" : ""}`}>
-            <div className={`flex items-center mb-6 ${isDesktopCollapsed ? "justify-center" : "space-x-4"}`}>
-              <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center font-black text-white shadow-xl border border-white/10">
+          {/* Footer usuario */}
+          <div
+            style={{
+              padding: isDesktopCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
+              borderTop: "1px solid #f1f5f9",
+              background: "#fafafa",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: isDesktopCollapsed ? 0 : 10,
+                justifyContent: isDesktopCollapsed ? "center" : "flex-start",
+                marginBottom: "0.6rem",
+              }}
+            >
+              <div
+                style={{
+                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, color: "white", fontSize: "0.9rem",
+                  boxShadow: "0 2px 8px rgba(37,99,235,0.30)",
+                }}
+              >
                 {user.usuario?.charAt(0).toUpperCase() || "U"}
               </div>
               {!isDesktopCollapsed && (
-                <div className="overflow-hidden text-left">
-                  <p className="text-sm font-black text-white truncate uppercase tracking-tight">{user.usuario}</p>
-                  <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">
+                <div className="dl-nav-label overflow-hidden">
+                  <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {user.usuario}
+                  </p>
+                  <p style={{ fontSize: "0.65rem", color: "#2563eb", fontWeight: 600, margin: 0, whiteSpace: "nowrap" }}>
                     {user.perfil} · {user.empresa}
                   </p>
                 </div>
               )}
             </div>
-            <button onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 text-[10px] font-black text-red-400 hover:text-white hover:bg-red-500/30 py-3 rounded-xl border border-red-500/20 transition-all uppercase tracking-widest">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center transition-all"
+              style={{
+                gap: 6,
+                fontSize: "0.7rem",
+                fontWeight: 700,
+                color: "#ef4444",
+                background: "transparent",
+                border: "1px solid #fecaca",
+                borderRadius: 8,
+                padding: "0.45rem",
+                cursor: "pointer",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+            >
               <span>🚫</span>
               {!isDesktopCollapsed && <span>Desconectar</span>}
             </button>
           </div>
         </aside>
 
-        {/* MAIN CONTENT */}
-        <main className="flex-1 flex flex-col relative z-10 overflow-hidden w-full transition-all duration-500">
-          <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-black/20 shrink-0 backdrop-blur-md">
-            <div className="flex items-center gap-6">
+        {/* ════ MAIN CONTENT ════ */}
+        <main className="flex-1 flex flex-col overflow-hidden w-full transition-all duration-300" style={{ minWidth: 0 }}>
+
+          {/* Header */}
+          <header
+            className="shrink-0 flex items-center justify-between"
+            style={{
+              height: 64,
+              padding: "0 1.75rem",
+              background: "white",
+              borderBottom: "1px solid #e2e8f0",
+              boxShadow: "0 1px 8px rgba(30,58,138,0.05)",
+            }}
+          >
+            <div className="flex items-center gap-4">
+              {/* Hamburguesa mobile */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden p-3 text-white bg-white/10 rounded-xl"
+                className="md:hidden flex items-center justify-center rounded-xl transition-colors"
+                style={{ width: 36, height: 36, background: "#f1f5f9", border: "1px solid #e2e8f0", cursor: "pointer" }}
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="#64748b" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">
-                {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
-              </h2>
+
+              {/* Título de página */}
+              <div>
+                <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "0.01em" }}>
+                  {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
+                </h2>
+                <p style={{ fontSize: "0.7rem", color: "#94a3b8", margin: 0, marginTop: 1 }}>
+                  NOVO ERP · {new Date().toLocaleDateString("es-GT", { weekday: "long", day: "numeric", month: "long" })}
+                </p>
+              </div>
+            </div>
+
+            {/* Lado derecho header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Indicador usuario */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 0 2px rgba(34,197,94,0.25)' }} />
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>
+                  {user.usuario}
+                </span>
+              </div>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-4 md:p-10 w-full">
+          <div className="flex-1 overflow-auto" style={{ padding: '1.25rem 1.5rem' }}>
             <Outlet />
           </div>
         </main>

@@ -4,109 +4,7 @@ import { useNavigate } from "react-router-dom";
 const API = "https://erp-backend-v1-qhk2.onrender.com";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Panel izquierdo — Ilustración animada telecomunicaciones
-───────────────────────────────────────────────────────────────────────────── */
-function TelecomIllustration() {
-  return (
-    <div style={{
-      width: "100%",
-      height: "100%",
-      position: "relative",
-      borderRadius: "20px",
-      overflow: "hidden",
-      boxShadow: "0 20px 60px rgba(15,23,42,0.40)",
-      background: "linear-gradient(145deg, #0c1a3a 0%, #0f2a5c 40%, #1a4080 70%, #0c1a3a 100%)",
-    }}>
-
-      {/* ── Fondo: antena/torre difuminada ── */}
-      <img
-        src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=70"
-        alt=""
-        aria-hidden="true"
-        style={{
-          position: "absolute", inset: 0,
-          width: "100%", height: "100%",
-          objectFit: "cover", objectPosition: "center",
-          opacity: 0.13, display: "block",
-        }}
-      />
-
-      {/* ── Overlay degradado azul ── */}
-      <div style={{
-        position: "absolute", inset: 0,
-        background: "linear-gradient(160deg, rgba(29,78,216,0.30) 0%, rgba(15,23,42,0.15) 55%, rgba(37,99,235,0.35) 100%)",
-        pointerEvents: "none",
-      }} />
-
-      {/* ── Orbes de luz animados ── */}
-      <div className="go go-1" />
-      <div className="go go-2" />
-      <div className="go go-3" />
-      <div className="go go-4" />
-
-      {/* ── Barrido de luz sutil ── */}
-      <div className="light-sweep" />
-
-      {/* ── Imagen principal: persona telecomunicaciones ── */}
-      <img
-        src="https://images.unsplash.com/photo-1607799279861-4dd421887fb3?w=480&q=80"
-        alt="Profesional NOVONET"
-        style={{
-          position: "absolute",
-          bottom: "72px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "78%",
-          maxWidth: "310px",
-          objectFit: "cover",
-          objectPosition: "center top",
-          aspectRatio: "3/4",
-          borderRadius: "140px 140px 0 0",
-          filter: "drop-shadow(0 8px 32px rgba(37,99,235,0.55)) brightness(1.05) saturate(1.1)",
-        }}
-      />
-
-      {/* ── Halo debajo de la persona ── */}
-      <div style={{
-        position: "absolute",
-        bottom: "68px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "240px",
-        height: "40px",
-        background: "radial-gradient(ellipse, rgba(59,130,246,0.45) 0%, transparent 70%)",
-        filter: "blur(12px)",
-        pointerEvents: "none",
-      }} />
-
-      {/* ── Tagline inferior ── */}
-      <div style={{
-        position: "absolute",
-        bottom: 0, left: 0, right: 0,
-        padding: "1.5rem 1.75rem 1.5rem",
-        background: "linear-gradient(to top, rgba(10,20,50,0.92) 0%, transparent 100%)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "0.35rem" }}>
-          <svg width="26" height="20" viewBox="0 0 38 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M2 8 Q19 0 36 8"    fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M6 14 Q19 6 32 14"  fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M11 20 Q19 13 27 20" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            <circle cx="19" cy="26" r="4" fill="white"/>
-          </svg>
-          <span style={{ color: "white", fontSize: "1.35rem", fontWeight: 800, letterSpacing: "0.05em" }}>
-            NOVONET
-          </span>
-        </div>
-        <p style={{ color: "rgba(186,220,255,0.88)", fontSize: "0.88rem", margin: 0, fontStyle: "italic" }}>
-          Conectamos lo que te mueve
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   Componente principal Login
+   Componente principal Login — Fondo imagen corporativa Novonet
 ───────────────────────────────────────────────────────────────────────────── */
 export default function Login() {
   const navigate = useNavigate();
@@ -124,7 +22,7 @@ export default function Login() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // ─── PASO 1: Login → solicitar OTP ─────────────────────────────────────────
+  // ─── PASO 1: Login → solicitar OTP ──────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -147,7 +45,7 @@ export default function Login() {
     }
   };
 
-  // ─── PASO 2: Verificar OTP ──────────────────────────────────────────────────
+  // ─── PASO 2: Verificar OTP ───────────────────────────────────────────────────
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -173,321 +71,429 @@ export default function Login() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-        /* ── Página ── */
+        /* ── Reset & base ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ══════════════════════════════════════════
+           PÁGINA — imagen de fondo full screen
+        ══════════════════════════════════════════ */
         .lp {
           font-family: 'Inter', system-ui, sans-serif;
           min-height: 100vh;
           display: flex;
-          background: linear-gradient(140deg, #dbeafe 0%, #eff6ff 35%, #e0f2fe 65%, #dbeafe 100%);
+          align-items: center;
+          justify-content: flex-end;
           position: relative;
           overflow: hidden;
+          background: #0a1a4a;
         }
-        .lp::before {
-          content: '';
+
+        /* Imagen de fondo */
+        .lp-bg {
           position: absolute;
           inset: 0;
-          background-image:
-            radial-gradient(circle at 18% 55%, rgba(59,130,246,0.10) 0%, transparent 55%),
-            radial-gradient(circle at 82% 18%, rgba(37,99,235,0.07) 0%, transparent 50%),
-            radial-gradient(circle at 50% 90%, rgba(96,165,250,0.06) 0%, transparent 45%);
-          pointer-events: none;
+          background-image: url('/fondo.jpeg');
+          background-size: cover;
+          background-position: center center;
+          background-repeat: no-repeat;
+          z-index: 0;
         }
 
-        /* ── Paneles ── */
-        .lp-left {
-          flex: 0 0 52%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          padding: 2rem 1rem;
+        /* Overlay degradado sutil — aclara el lado derecho para legibilidad */
+        .lp-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            105deg,
+            rgba(5, 15, 50, 0.05) 0%,
+            rgba(5, 15, 50, 0.10) 45%,
+            rgba(5, 20, 70, 0.60) 68%,
+            rgba(5, 20, 70, 0.82) 100%
+          );
           z-index: 1;
         }
+
+        /* ── Columna del formulario ── */
         .lp-right {
-          flex: 0 0 48%;
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          max-width: 460px;
+          padding: 2rem 2.5rem 2rem 2rem;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 2rem;
-          z-index: 1;
+          min-height: 100vh;
         }
 
-        /* ── Tarjeta blanca ── */
+        /* ══════════════════════════════════════════
+           CARD — glassmorphism
+        ══════════════════════════════════════════ */
         .login-card {
-          background: white;
-          border-radius: 24px;
+          width: 100%;
+          background: rgba(255, 255, 255, 0.10);
+          backdrop-filter: blur(28px) saturate(1.6);
+          -webkit-backdrop-filter: blur(28px) saturate(1.6);
+          border-radius: 28px;
+          border: 1px solid rgba(255, 255, 255, 0.22);
           box-shadow:
-            0 24px 64px rgba(30,58,138,0.12),
-            0 4px 20px rgba(30,58,138,0.07),
-            0 0 0 1px rgba(219,234,254,0.7);
-          width: 100%;
-          max-width: 440px;
-          padding: 2.5rem;
+            0 32px 80px rgba(5, 15, 60, 0.45),
+            0 8px 24px rgba(5, 15, 60, 0.30),
+            inset 0 1px 0 rgba(255,255,255,0.25);
+          padding: 2.5rem 2.25rem 2rem;
+          transition: box-shadow 0.3s ease;
+        }
+        .login-card:hover {
+          box-shadow:
+            0 40px 100px rgba(5, 15, 60, 0.55),
+            0 12px 32px rgba(5, 15, 60, 0.35),
+            inset 0 1px 0 rgba(255,255,255,0.30);
         }
 
-        /* ── Inputs ── */
-        .lc-wrap  { position: relative; }
-        .lc-icon  { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; }
-        .lc-eye   { position: absolute; right: 0.85rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; }
-        .lc-eye:hover { color: #64748b; }
-
-        .lc-input {
-          width: 100%;
-          background: #f8fafc;
-          border: 1.5px solid #e2e8f0;
-          border-radius: 12px;
-          padding: 0.9rem 1rem 0.9rem 3rem;
-          color: #0f172a;
-          font-size: 0.95rem;
-          outline: none;
-          transition: all 0.2s;
-          box-sizing: border-box;
-          font-family: inherit;
+        /* ── Logo marca ── */
+        .lc-brand {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin-bottom: 1.8rem;
+          gap: 0.5rem;
         }
-        .lc-input::placeholder { color: #94a3b8; }
-        .lc-input:focus {
-          border-color: #3b82f6;
-          background: white;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+        .lc-brand-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
         }
-        .lc-input-otp {
-          text-align: center;
+        .lc-brand-name {
           font-size: 2rem;
-          letter-spacing: 0.55em;
-          font-weight: 700;
-          padding-left: 1.5rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          color: #ffffff;
+          text-shadow: 0 2px 12px rgba(37,99,235,0.5);
+        }
+        .lc-brand-name span { color: #60a5fa; }
+        .lc-brand-sub {
+          font-size: 0.78rem;
+          color: rgba(186, 220, 255, 0.80);
+          font-style: italic;
+          letter-spacing: 0.02em;
+        }
+
+        /* Separador */
+        .lc-divider {
+          width: 40px;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(96,165,250,0.6), transparent);
+          border-radius: 99px;
+          margin: 0.6rem auto;
+        }
+
+        /* Título del paso */
+        .lc-title {
+          font-size: 1.35rem;
+          font-weight: 800;
+          color: #ffffff;
+          text-align: center;
+          margin-bottom: 0.2rem;
+          letter-spacing: -0.01em;
+        }
+        .lc-subtitle {
+          font-size: 0.82rem;
+          color: rgba(186,220,255,0.75);
+          text-align: center;
+          margin-bottom: 1.6rem;
+        }
+
+        /* ── Step indicator ── */
+        .step-bar {
+          display: flex;
+          justify-content: center;
+          gap: 6px;
+          margin-bottom: 1.5rem;
+        }
+        .step-dot {
+          height: 4px;
+          border-radius: 99px;
+          transition: all 0.35s cubic-bezier(.4,0,.2,1);
+        }
+
+        /* ── Error ── */
+        .lc-error {
+          background: rgba(239, 68, 68, 0.18);
+          border: 1px solid rgba(239,68,68,0.40);
+          border-radius: 12px;
+          padding: 0.75rem 1rem;
+          color: #fca5a5;
+          font-size: 0.84rem;
+          text-align: center;
+          margin-bottom: 1.1rem;
+          backdrop-filter: blur(4px);
         }
 
         /* ── Label ── */
         .lc-label {
           display: block;
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: #475569;
-          margin-bottom: 0.45rem;
-        }
-
-        /* ── Error ── */
-        .lc-error {
-          background: #fef2f2;
-          border: 1px solid #fecaca;
-          border-radius: 10px;
-          padding: 0.75rem 1rem;
-          color: #dc2626;
-          font-size: 0.85rem;
-          text-align: center;
-          margin-bottom: 1.25rem;
-        }
-
-        /* ── Botón primario ── */
-        .lc-btn {
-          width: 100%;
-          padding: 0.95rem;
-          border-radius: 12px;
-          border: none;
-          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-          color: white;
+          font-size: 0.75rem;
           font-weight: 700;
-          font-size: 1rem;
+          color: rgba(186,220,255,0.85);
+          margin-bottom: 0.4rem;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        /* ── Input wrapper ── */
+        .lc-wrap { position: relative; }
+        .lc-icon {
+          position: absolute;
+          left: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          color: rgba(147,197,253,0.75);
+          pointer-events: none;
+          display: flex;
+        }
+        .lc-eye {
+          position: absolute;
+          right: 0.85rem;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          color: rgba(147,197,253,0.65);
           cursor: pointer;
-          transition: all 0.2s;
+          padding: 4px;
+          display: flex;
+          transition: color 0.15s;
+        }
+        .lc-eye:hover { color: rgba(147,197,253,1); }
+
+        /* ── Inputs glass ── */
+        .lc-input {
+          width: 100%;
+          background: rgba(255,255,255,0.10);
+          border: 1.5px solid rgba(255,255,255,0.18);
+          border-radius: 14px;
+          padding: 0.9rem 1rem 0.9rem 3rem;
+          color: #ffffff;
+          font-size: 0.95rem;
+          outline: none;
+          transition: all 0.22s ease;
           font-family: inherit;
-          box-shadow: 0 4px 18px rgba(37,99,235,0.30);
-          letter-spacing: 0.01em;
+          backdrop-filter: blur(8px);
         }
-        .lc-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 26px rgba(37,99,235,0.40);
+        .lc-input::placeholder { color: rgba(147,197,253,0.50); }
+        .lc-input:focus {
+          border-color: rgba(96,165,250,0.70);
+          background: rgba(255,255,255,0.15);
+          box-shadow:
+            0 0 0 3px rgba(59,130,246,0.20),
+            inset 0 1px 0 rgba(255,255,255,0.12);
         }
-        .lc-btn:active:not(:disabled) { transform: translateY(0); }
-        .lc-btn:disabled { opacity: 0.48; cursor: not-allowed; }
+        .lc-input:-webkit-autofill {
+          -webkit-box-shadow: 0 0 0px 1000px rgba(15,35,100,0.7) inset;
+          -webkit-text-fill-color: #fff;
+        }
+
+        /* OTP */
+        .lc-input-otp {
+          text-align: center;
+          font-size: 1.9rem;
+          letter-spacing: 0.55em;
+          font-weight: 700;
+          padding-left: 1.5rem;
+        }
+
+        /* ── Checkbox fila ── */
+        .lc-row-check {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .lc-check-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.83rem;
+          color: rgba(186,220,255,0.80);
+          cursor: pointer;
+        }
 
         /* ── Link botón ── */
         .lc-link {
           background: none;
           border: none;
-          color: #2563eb;
-          font-size: 0.85rem;
+          color: #60a5fa;
+          font-size: 0.83rem;
           cursor: pointer;
           font-family: inherit;
           padding: 0;
           transition: color 0.15s;
+          font-weight: 600;
         }
-        .lc-link:hover { color: #1d4ed8; text-decoration: underline; }
+        .lc-link:hover { color: #93c5fd; text-decoration: underline; }
 
-        /* ── Step indicator ── */
-        .step-bar { display: flex; justify-content: center; gap: 6px; margin-top: 0.8rem; }
-        .step-dot {
-          height: 4px;
-          border-radius: 99px;
-          transition: all 0.3s;
+        /* ── Botón primario ── */
+        .lc-btn {
+          width: 100%;
+          padding: 0.95rem;
+          border-radius: 14px;
+          border: none;
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 60%, #1e40af 100%);
+          color: white;
+          font-weight: 800;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: all 0.22s ease;
+          font-family: inherit;
+          box-shadow:
+            0 6px 24px rgba(37,99,235,0.50),
+            inset 0 1px 0 rgba(255,255,255,0.20);
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          position: relative;
+          overflow: hidden;
+        }
+        .lc-btn::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 60%);
+          pointer-events: none;
+        }
+        .lc-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow:
+            0 12px 36px rgba(37,99,235,0.65),
+            inset 0 1px 0 rgba(255,255,255,0.25);
+        }
+        .lc-btn:active:not(:disabled) {
+          transform: translateY(0);
+          box-shadow: 0 4px 16px rgba(37,99,235,0.40);
+        }
+        .lc-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ── OTP info box ── */
+        .lc-otp-info {
+          text-align: center;
+          background: rgba(37,99,235,0.18);
+          border: 1px solid rgba(96,165,250,0.30);
+          border-radius: 12px;
+          padding: 0.75rem 1rem;
+          color: #93c5fd;
+          font-size: 0.84rem;
+          backdrop-filter: blur(4px);
+        }
+
+        /* ── Footer ── */
+        .lc-footer {
+          margin-top: 1.5rem;
+          padding-top: 1.1rem;
+          border-top: 1px solid rgba(255,255,255,0.10);
+          text-align: center;
+          color: rgba(147,197,253,0.50);
+          font-size: 0.70rem;
+          letter-spacing: 0.04em;
         }
 
         /* ── Spinner ── */
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ════════════════════════════════════════════════
-           LUCES ANIMADAS — panel izquierdo
-        ════════════════════════════════════════════════ */
-
-        /* Orbe 1: arriba izquierda, movimiento suave */
-        @keyframes goFloat1 {
-          0%,100% { transform: translate(0px, 0px) scale(1);    opacity: 0.60; }
-          25%      { transform: translate(20px,-25px) scale(1.07); opacity: 0.80; }
-          55%      { transform: translate(28px, 10px) scale(0.97); opacity: 0.50; }
-          80%      { transform: translate(-8px, 18px) scale(1.03); opacity: 0.65; }
-        }
-        /* Orbe 2: abajo derecha, periodo diferente */
-        @keyframes goFloat2 {
-          0%,100% { transform: translate(0px, 0px) scale(1);     opacity: 0.45; }
-          35%      { transform: translate(-24px,-18px) scale(1.12); opacity: 0.70; }
-          70%      { transform: translate(12px, 22px) scale(0.93); opacity: 0.38; }
-        }
-        /* Orbe 3: centro derecho */
-        @keyframes goFloat3 {
-          0%,100% { transform: translate(0px,0px) scale(1);     opacity: 0.30; }
-          50%      { transform: translate(14px,-30px) scale(1.18); opacity: 0.55; }
-        }
-        /* Orbe 4: pequeño, muy lento */
-        @keyframes goFloat4 {
-          0%,100% { transform: translate(0px,0px) scale(1);     opacity: 0.25; }
-          40%      { transform: translate(-18px, 12px) scale(1.20); opacity: 0.50; }
-          75%      { transform: translate(10px,-10px) scale(0.90); opacity: 0.20; }
+        /* ── Shimmer en la card ── */
+        @keyframes cardShimmer {
+          0%   { background-position: -400px 0; }
+          100% { background-position: 400px 0; }
         }
 
-        /* Barrido de luz diagonal — pasa cada ~8 s */
-        @keyframes sweep {
-          0%   { opacity: 0; transform: translateX(-320px) skewX(-18deg); }
-          12%  { opacity: 1; }
-          88%  { opacity: 0.6; }
-          100% { opacity: 0; transform: translateX(700px) skewX(-18deg); }
-        }
-
-        /* Clases base de los orbes */
-        .go {
-          position: absolute;
-          border-radius: 50%;
-          pointer-events: none;
-          filter: blur(45px);
-        }
-        .go-1 {
-          width: 210px; height: 210px;
-          background: radial-gradient(circle, rgba(59,130,246,0.70) 0%, transparent 68%);
-          top: 8%; left: 4%;
-          animation: goFloat1 7.5s ease-in-out infinite;
-        }
-        .go-2 {
-          width: 170px; height: 170px;
-          background: radial-gradient(circle, rgba(37,99,235,0.60) 0%, transparent 68%);
-          bottom: 18%; right: 5%;
-          animation: goFloat2 10s ease-in-out infinite;
-        }
-        .go-3 {
-          width: 130px; height: 130px;
-          background: radial-gradient(circle, rgba(96,165,250,0.50) 0%, transparent 70%);
-          top: 42%; right: 14%;
-          animation: goFloat3 12s ease-in-out infinite;
-        }
-        .go-4 {
-          width: 90px; height: 90px;
-          background: radial-gradient(circle, rgba(147,197,253,0.55) 0%, transparent 70%);
-          top: 25%; left: 38%;
-          animation: goFloat4 15s ease-in-out infinite;
-        }
-
-        /* Barrido de brillo */
-        .light-sweep {
-          position: absolute;
-          top: 0; bottom: 0;
-          left: 0;
-          width: 120px;
-          pointer-events: none;
-          background: linear-gradient(
-            105deg,
-            transparent 0%,
-            rgba(255,255,255,0.00) 38%,
-            rgba(255,255,255,0.09) 48%,
-            rgba(255,255,255,0.14) 50%,
-            rgba(255,255,255,0.09) 52%,
-            rgba(255,255,255,0.00) 62%,
-            transparent 100%
-          );
-          animation: sweep 8s ease-in-out infinite;
-        }
-
-        @media (max-width: 768px) {
-          .lp { flex-direction: column; }
-          .lp-left { display: none; }
-          .lp-right { flex: 1; padding: 1.5rem 1rem; }
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+          .lp { justify-content: center; }
+          .lp-right {
+            padding: 1.5rem 1rem;
+            max-width: 100%;
+            min-height: auto;
+          }
+          .lp-overlay {
+            background: rgba(5, 15, 60, 0.72);
+          }
           .login-card { padding: 2rem 1.5rem; }
+          .lc-brand-name { font-size: 1.65rem; }
         }
       `}</style>
 
       <div className="lp">
+        {/* ── Fondo imagen ── */}
+        <div className="lp-bg" />
 
-        {/* ════ IZQUIERDA — Ilustración ════ */}
-        <div className="lp-left">
-          <div style={{ width: "100%", maxWidth: 480, height: 580 }}>
-            <TelecomIllustration />
-          </div>
-        </div>
+        {/* ── Overlay degradado ── */}
+        <div className="lp-overlay" />
 
-        {/* ════ DERECHA — Tarjeta Login ════ */}
+        {/* ════ COLUMNA FORMULARIO (derecha) ════ */}
         <div className="lp-right">
           <div className="login-card">
 
             {/* ── Marca NOVONET ── */}
-            <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: "0.4rem" }}>
-                <svg width="38" height="30" viewBox="0 0 38 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 8 Q19 0 36 8"    fill="none" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round"/>
-                  <path d="M6 14 Q19 6 32 14"   fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round"/>
-                  <path d="M11 20 Q19 13 27 20" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round"/>
-                  <circle cx="19" cy="26" r="4"  fill="#2563eb"/>
+            <div className="lc-brand">
+              <div className="lc-brand-row">
+                {/* Logo N de Novonet — SVG vectorial */}
+                <svg width="42" height="42" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="ng" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%"   stopColor="#2563eb"/>
+                      <stop offset="50%"  stopColor="#0ea5e9"/>
+                      <stop offset="100%" stopColor="#06b6d4"/>
+                    </linearGradient>
+                  </defs>
+                  <rect width="42" height="42" rx="12" fill="rgba(255,255,255,0.12)"/>
+                  <text x="21" y="31" textAnchor="middle" fontFamily="Inter,sans-serif"
+                    fontWeight="900" fontSize="26" fill="url(#ng)">N</text>
                 </svg>
-                <span style={{ fontSize: "1.7rem", fontWeight: 800, color: "#1e3a8a", letterSpacing: "0.04em" }}>
-                  NOVO<span style={{ color: "#2563eb" }}>NET</span>
-                </span>
+                <span className="lc-brand-name">NOVO<span>NET</span></span>
               </div>
-              <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>
-                Soluciones en Telecomunicaciones
-              </p>
+              <p className="lc-brand-sub">Conectamos lo que te mueve</p>
+              <div className="lc-divider" />
+            </div>
 
-              <div style={{ marginTop: "1.4rem" }}>
-                <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#0f172a", margin: "0 0 0.25rem" }}>
-                  {paso === 1 ? "Bienvenido" : "Verificación OTP"}
-                </h1>
-                <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
-                  {paso === 1 ? "Inicia sesión para continuar" : "Ingresa el código enviado a tu correo"}
-                </p>
-              </div>
+            {/* ── Título del paso ── */}
+            <h1 className="lc-title">
+              {paso === 1 ? "Bienvenido de vuelta" : "Verificación OTP"}
+            </h1>
+            <p className="lc-subtitle">
+              {paso === 1
+                ? "Ingresa tus credenciales para acceder al sistema"
+                : "Revisá tu correo e ingresá el código de 6 dígitos"}
+            </p>
 
-              <div className="step-bar">
-                <div className="step-dot" style={{
-                  width: paso === 1 ? 36 : 28,
-                  background: paso >= 1 ? "#2563eb" : "#e2e8f0",
-                }}/>
-                <div className="step-dot" style={{
-                  width: paso === 2 ? 36 : 28,
-                  background: paso >= 2 ? "#2563eb" : "#e2e8f0",
-                }}/>
-              </div>
+            {/* Step bar */}
+            <div className="step-bar">
+              <div className="step-dot" style={{
+                width: paso === 1 ? 40 : 28,
+                background: paso >= 1
+                  ? "linear-gradient(90deg,#2563eb,#0ea5e9)"
+                  : "rgba(255,255,255,0.15)",
+              }}/>
+              <div className="step-dot" style={{
+                width: paso === 2 ? 40 : 28,
+                background: paso >= 2
+                  ? "linear-gradient(90deg,#2563eb,#0ea5e9)"
+                  : "rgba(255,255,255,0.15)",
+              }}/>
             </div>
 
             {/* ── Error ── */}
-            {error && <div className="lc-error">{error}</div>}
+            {error && <div className="lc-error">⚠ {error}</div>}
 
             {/* ════ PASO 1: Credenciales ════ */}
             {paso === 1 && (
-              <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <form onSubmit={handleLogin} style={{ display:"flex", flexDirection:"column", gap:"1rem" }}>
 
                 <div>
                   <label className="lc-label">Usuario</label>
                   <div className="lc-wrap">
                     <span className="lc-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                         <circle cx="12" cy="7" r="4"/>
                       </svg>
@@ -508,7 +514,8 @@ export default function Login() {
                   <label className="lc-label">Contraseña</label>
                   <div className="lc-wrap">
                     <span className="lc-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2"/>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                       </svg>
@@ -522,15 +529,19 @@ export default function Login() {
                       autoComplete="current-password"
                       required
                     />
-                    <button type="button" className="lc-eye" onClick={() => setShowPass(!showPass)} aria-label="Mostrar/ocultar contraseña">
+                    <button type="button" className="lc-eye"
+                      onClick={() => setShowPass(!showPass)}
+                      aria-label="Mostrar/ocultar contraseña">
                       {showPass ? (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
                           <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
                           <line x1="1" y1="1" x2="23" y2="23"/>
                         </svg>
                       ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                           <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -539,27 +550,29 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "#475569", cursor: "pointer" }}>
-                    <input type="checkbox" style={{ accentColor: "#2563eb", width: 16, height: 16 }} />
+                <div className="lc-row-check">
+                  <label className="lc-check-label">
+                    <input type="checkbox" style={{ accentColor:"#2563eb", width:15, height:15 }}/>
                     Recordarme
                   </label>
                   <button type="button" className="lc-link">¿Olvidaste tu contraseña?</button>
                 </div>
 
-                <button type="submit" className="lc-btn" disabled={loading} style={{ marginTop: "0.4rem" }}>
+                <button type="submit" className="lc-btn" disabled={loading}
+                  style={{ marginTop:"0.3rem" }}>
                   {loading ? (
-                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                        style={{ animation: "spin 0.8s linear infinite" }}>
+                    <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5"
+                        style={{ animation:"spin 0.8s linear infinite" }}>
                         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
                       </svg>
                       Verificando…
                     </span>
-                  ) : "Iniciar sesión"}
+                  ) : "→ Iniciar sesión"}
                 </button>
 
-                <p style={{ textAlign: "center", color: "#94a3b8", fontSize: "0.8rem", margin: 0 }}>
+                <p style={{ textAlign:"center", color:"rgba(147,197,253,0.55)", fontSize:"0.78rem" }}>
                   ¿No tienes una cuenta?{" "}
                   <button type="button" className="lc-link">Contáctanos</button>
                 </p>
@@ -568,44 +581,36 @@ export default function Login() {
 
             {/* ════ PASO 2: OTP ════ */}
             {paso === 2 && (
-              <form onSubmit={handleVerifyOtp} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                <div style={{
-                  textAlign: "center",
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: 10,
-                  padding: "0.75rem",
-                  color: "#1e40af",
-                  fontSize: "0.85rem",
-                }}>
+              <form onSubmit={handleVerifyOtp}
+                style={{ display:"flex", flexDirection:"column", gap:"1.25rem" }}>
+
+                <div className="lc-otp-info">
                   📧 Revisá tu correo e ingresá el código de 6 dígitos
                 </div>
 
                 <div>
-                  <label className="lc-label">Código OTP de 6 dígitos</label>
+                  <label className="lc-label">Código OTP</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g,""))}
                     className="lc-input lc-input-otp"
                     placeholder="000000"
                     autoComplete="one-time-code"
                     required
-                    style={{ paddingLeft: "1.5rem" }}
+                    style={{ paddingLeft:"1.5rem" }}
                   />
                 </div>
 
-                <button
-                  type="submit"
-                  className="lc-btn"
-                  disabled={loading || otp.length < 6}
-                >
+                <button type="submit" className="lc-btn"
+                  disabled={loading || otp.length < 6}>
                   {loading ? (
-                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                        style={{ animation: "spin 0.8s linear infinite" }}>
+                    <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5"
+                        style={{ animation:"spin 0.8s linear infinite" }}>
                         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
                       </svg>
                       Verificando…
@@ -613,12 +618,9 @@ export default function Login() {
                   ) : "✓ Confirmar código"}
                 </button>
 
-                <div style={{ textAlign: "center" }}>
-                  <button
-                    type="button"
-                    className="lc-link"
-                    onClick={() => { setPaso(1); setError(""); setOtp(""); setUsuarioId(null); }}
-                  >
+                <div style={{ textAlign:"center" }}>
+                  <button type="button" className="lc-link"
+                    onClick={() => { setPaso(1); setError(""); setOtp(""); setUsuarioId(null); }}>
                     ← Volver al inicio
                   </button>
                 </div>
@@ -626,16 +628,10 @@ export default function Login() {
             )}
 
             {/* ── Footer ── */}
-            <div style={{
-              marginTop: "1.75rem",
-              paddingTop: "1.25rem",
-              borderTop: "1px solid #f1f5f9",
-              textAlign: "center",
-              color: "#94a3b8",
-              fontSize: "0.72rem",
-            }}>
-              NOVONET © {new Date().getFullYear()} · Acceso restringido
+            <div className="lc-footer">
+              NOVONET © {new Date().getFullYear()} · Acceso restringido al sistema ERP
             </div>
+
           </div>
         </div>
       </div>

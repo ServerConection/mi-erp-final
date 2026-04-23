@@ -184,6 +184,8 @@ export default function ReporteComercialCore() {
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
   const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: "" });
+  // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
   // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
@@ -214,7 +216,7 @@ export default function ReporteComercialCore() {
     abortRef.current = ctrl;
     setLoading(true);
     try {
-      const filtrosActivos = filtrosOverride || filtros;
+      const filtrosActivos = filtrosOverride || filtrosAplicados;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
       const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
@@ -241,7 +243,7 @@ export default function ReporteComercialCore() {
     abortRef.current = ctrl;
     setLoading(true);
     try {
-      const filtrosActivos = filtrosOverride || filtros;
+      const filtrosActivos = filtrosOverride || filtrosAplicados;
       const p = new URLSearchParams(
         Object.fromEntries(
           Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
@@ -272,15 +274,16 @@ export default function ReporteComercialCore() {
     } finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
+  // updateFiltro solo actualiza el estado visual; la consulta se ejecuta al presionar "APLICAR FILTROS"
   const updateFiltro = (campo, valor) => {
-    const nuevosFiltros = { ...filtros, [campo]: valor };
-    setFiltros(nuevosFiltros);
-    fetchDashboard(nuevosFiltros);
+    setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
+  // Click en tarjeta de JotForm: aplica el filtro inmediatamente (acción interactiva intencional)
   const handleClickTarjetaJotform = (estado) => {
     const nuevosFiltros = { ...filtros, etapaJotform: estado };
     setFiltros(nuevosFiltros);
+    setFiltrosAplicados(nuevosFiltros);
     fetchDashboard(nuevosFiltros);
   };
 
@@ -659,7 +662,7 @@ export default function ReporteComercialCore() {
                   ))}
                 </select>
               </div>
-              <button onClick={() => fetchDashboard()} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
+              <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
             </div>
           </div>
 
@@ -873,10 +876,9 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>;
   };
 
+  // Solo actualiza el estado; la consulta se ejecuta al presionar "APLICAR FILTROS"
   const updateFiltro180 = (campo, valor) => {
-    const nuevos = { ...filtros, [campo]: valor };
-    setFiltros(nuevos);
-    onFetch(nuevos);
+    setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
   const inputCls  = "bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-violet-500 transition-colors uppercase";

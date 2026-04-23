@@ -146,6 +146,19 @@ export default function ReporteVelsa() {
     canal: "",
   });
 
+  // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    fechaDesde: getFechaHoyEcuador(),
+    fechaHasta: getFechaHoyEcuador(),
+    asesor: "",
+    supervisor: "",
+    estadoNetlife: "",
+    estadoRegularizacion: "",
+    etapaCRM: "",
+    etapaJotform: "",
+    canal: "",
+  });
+
   const [filtros180, setFiltros180] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
@@ -189,7 +202,7 @@ export default function ReporteVelsa() {
     const ctrl = new AbortController(); abortRef.current = ctrl;
     setLoading(true);
     try {
-      const filtrosActivos = filtrosOverride || filtros;
+      const filtrosActivos = filtrosOverride || filtrosAplicados;
       const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
@@ -227,16 +240,16 @@ export default function ReporteVelsa() {
     finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
-  // ── Helper: actualiza filtro y dispara fetch inmediatamente ───────────────
+  // ── Helper: actualiza el estado visual de filtros; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
   const updateFiltro = (campo, valor) => {
-    const nuevosFiltros = { ...filtros, [campo]: valor };
-    setFiltros(nuevosFiltros);
-    fetchDashboard(nuevosFiltros);
+    setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
+  // Click en tarjeta de JotForm: aplica el filtro inmediatamente (acción interactiva intencional)
   const handleClickTarjetaJotform = (estado) => {
     const nuevosFiltros = { ...filtros, etapaJotform: estado };
     setFiltros(nuevosFiltros);
+    setFiltrosAplicados(nuevosFiltros);
     fetchDashboard(nuevosFiltros);
   };
 
@@ -557,7 +570,7 @@ export default function ReporteVelsa() {
                 </select>
               </div>
 
-              <button onClick={() => fetchDashboard()} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
+              <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
                 {loading ? "CARGANDO..." : "APLICAR FILTROS"}
               </button>
             </div>
@@ -735,11 +748,9 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const CustomFunnelLabelCRM = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoCRM || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoCRM) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
   const CustomFunnelLabelJOT = ({ x, y, width, height, index }) => { if (height < 22) return null; const item = (embudoJotform || [])[index]; if (!item) return null; const pct = ((Number(item.total) / totalBaseEmbudoJOT) * 100).toFixed(1); return <text x={x + width / 2} y={y + height / 2} fill="#ffffff" textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight="900">{`${item.etapa} = ${item.total} (${pct}%)`}</text>; };
 
-  // ── Helper: actualiza filtro 180 y dispara fetch ──────────────────────────
+  // ── Helper: actualiza filtro 180; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
   const updateFiltro180 = (campo, valor) => {
-    const nuevos = { ...filtros, [campo]: valor };
-    setFiltros(nuevos);
-    onFetch(nuevos);
+    setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
   const inputCls = "bg-stone-950 border border-stone-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-amber-500 transition-colors uppercase";

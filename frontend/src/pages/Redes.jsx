@@ -7,7 +7,7 @@
 // ║  ✅ + Desglose de líneas/orígenes al filtrar 1 canal                   ║
 // ║  ✅ + Mejoras visuales premium                                          ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   ComposedChart, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell,
@@ -187,22 +187,45 @@ function agregarPorOrigenDia(filas) {
 function useMonitoreoData(desde, hasta, canalesSel) {
   const [data, setData]       = useState({ principal: null, ciudad: null, hora: null, atc: null });
   const [loading, setLoading] = useState(false);
+  const abortRef = useRef(null);
+
   useEffect(() => {
     if (!desde || !hasta) return;
+
+    // Cancelar fetch anterior si aún está en vuelo
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     const p = buildFiltroParams({ desde, hasta, canalesSel });
+
+    const fetchJson = (endpoint) =>
+      fetch(apiUrl(endpoint, p), { signal })
+        .then(r => r.json())
+        .catch(e => (e.name === "AbortError" ? "aborted" : null));
+
     Promise.all([
-      fetch(apiUrl("monitoreo-redes",  p)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-ciudad", p)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-hora",   p)).then(r => r.json()).catch(() => null),
-      fetch(apiUrl("monitoreo-atc",    p)).then(r => r.json()).catch(() => null),
-    ]).then(([p_, c, h, a]) => setData({
-      principal: p_?.success ? p_ : null,
-      ciudad:    c?.success  ? c  : null,
-      hora:      h?.success  ? h  : null,
-      atc:       a?.success  ? a  : null,
-    })).finally(() => setLoading(false));
+      fetchJson("monitoreo-redes"),
+      fetchJson("monitoreo-ciudad"),
+      fetchJson("monitoreo-hora"),
+      fetchJson("monitoreo-atc"),
+    ]).then(([p_, c, h, a]) => {
+      if (signal.aborted) return;          // llegó tarde, ignorar
+      setData({
+        principal: p_?.success ? p_ : null,
+        ciudad:    c?.success  ? c  : null,
+        hora:      h?.success  ? h  : null,
+        atc:       a?.success  ? a  : null,
+      });
+    }).finally(() => {
+      if (!signal.aborted) setLoading(false);
+    });
+
+    return () => controller.abort();
   }, [desde, hasta, JSON.stringify(canalesSel)]);
+
   return { data, loading };
 }
 
@@ -791,6 +814,16 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
   ];
 
   if (loading) return <Spinner />;
+
+  if (!principal) return (
+    <div className="flex flex-col items-center justify-center py-32 gap-4">
+      <div className="text-5xl">📭</div>
+      <div className="text-sm font-black uppercase tracking-widest" style={{ color: C.muted }}>Sin datos para el período</div>
+      <div className="text-[11px] text-center max-w-xs leading-relaxed" style={{ color: C.muted }}>
+        Selecciona un período de fechas y presiona <span className="font-black" style={{ color: C.primary }}>Aplicar</span> para cargar el monitoreo.
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -1614,8 +1647,6 @@ export default function Redes() {
     setTimeout(() => setApplying(false), 500);
   };
 
-  const tabsConFiltroCanal = ["general","graficos","asesorvpauta","metas","comparativo","pautas"];
-
   return (
     <div className="min-h-screen p-5 md:p-7" style={{ background: C.light }}>
       {/* Header */}
@@ -1637,11 +1668,35 @@ export default function Redes() {
             ))}
           </div>
         </div>
-        <div className="bg-white border rounded-2xl px-5 py-4 shadow-sm" style={{ borderColor: C.border }}>
-          <div className="flex flex-wrap items-end gap-3">
+        <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
+          {/* Fila 1 — Canal / Origen */}
+          <div className="px-5 py-3 flex flex-wrap items-center gap-3" style={{ background: "#f8fafc", borderBottom: `1px solid ${C.border}` }}>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
+              <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal / Origen</span>
+            </div>
+            <CanalSelector canalesSel={canalesSel} onChange={setCanalesSel} compact />
+            {canalesSel.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {canalesSel.map(c => {
+                  const cfg = getCanalCfg(c);
+                  return (
+                    <span key={c} style={{
+                      padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
+                      color: cfg.color, fontWeight: 900, fontSize: "8px",
+                      border: `1px solid ${cfg.color}30`,
+                      display: "inline-flex", alignItems: "center", gap: "4px",
+                    }}>{cfg.icon} {cfg.label}</span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          {/* Fila 2 — Período y botón Aplicar */}
+          <div className="px-5 py-3 flex flex-wrap items-end gap-3">
             {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
               <div key={key} className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>{label}</label>
+                <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
                 <input type="date" value={val}
                   onChange={e => key === "desde" ? setFechaDesde(e.target.value) : setFechaHasta(e.target.value)}
                   className="border rounded-xl px-3 py-2 text-[11px] font-bold outline-none bg-white [color-scheme:light]"
@@ -1653,8 +1708,10 @@ export default function Redes() {
               style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
               {applying || loading ? "Cargando..." : "Aplicar"}
             </button>
+            <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
+              Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
+            </p>
           </div>
-          <p className="text-[8px] font-medium mt-2 uppercase tracking-wide" style={{ color: C.muted }}>Período: {filtro.desde} → {filtro.hasta}</p>
         </div>
       </div>
 
@@ -1671,11 +1728,6 @@ export default function Redes() {
           </button>
         ))}
       </div>
-
-      {/* Panel filtros globales */}
-      {tabsConFiltroCanal.includes(tab) && (
-        <PanelFiltrosGlobales canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
-      )}
 
       {/* Contenido */}
       {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} canalesSel={canalesSel} />}

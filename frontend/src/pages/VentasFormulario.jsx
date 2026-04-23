@@ -8,22 +8,22 @@ const ESTADOS = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICAD
 const PAGOS   = ["EFEC", "TC", "CA"];
 
 const ESTADO_ESTILOS = {
-  ACTIVO:          "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40",
-  DETENIDO:        "bg-red-500/20 text-red-300 border border-red-500/40",
-  "RE-PLANIFICADO":"bg-orange-500/20 text-orange-300 border border-orange-500/40",
-  FACTIBLE:        "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40",
-  PLANIFICADO:     "bg-blue-500/20 text-blue-300 border border-blue-500/40",
-  ASIGNADO:        "bg-slate-500/20 text-slate-300 border border-slate-500/40",
+  ACTIVO:          "bg-emerald-50 text-emerald-700 border border-emerald-300",
+  DETENIDO:        "bg-red-50 text-red-700 border border-red-300",
+  "RE-PLANIFICADO":"bg-orange-50 text-orange-700 border border-orange-300",
+  FACTIBLE:        "bg-cyan-50 text-cyan-700 border border-cyan-300",
+  PLANIFICADO:     "bg-blue-50 text-blue-700 border border-blue-300",
+  ASIGNADO:        "bg-slate-100 text-slate-600 border border-slate-300",
 };
 
 const PAGO_ESTILOS = {
-  EFEC: "bg-emerald-500/20 text-emerald-300",
-  TC:   "bg-yellow-500/20 text-yellow-300",
-  CA:   "bg-sky-500/20 text-sky-300",
+  EFEC: "bg-emerald-50 text-emerald-700",
+  TC:   "bg-yellow-50 text-yellow-700",
+  CA:   "bg-sky-50 text-sky-700",
 };
 
-const inputCls = "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition text-sm";
-const selectCls = "w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm";
+const inputCls = "w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-sm";
+const selectCls = "w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-sm";
 const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1";
 
 // ── Modal Formulario ───────────────────────────────────────────────────────────
@@ -54,14 +54,14 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}>
-      <div className="w-full max-w-lg bg-slate-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-blue-600/10">
-          <h3 className="text-white font-black text-lg uppercase tracking-tight">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-blue-50">
+          <h3 className="text-slate-800 font-black text-lg uppercase tracking-tight">
             {modo === "crear" ? "➕ Nueva Venta" : "✏️ Editar Venta"}
           </h3>
           <button onClick={onCerrar}
-            className="text-slate-400 hover:text-white text-2xl leading-none transition-colors">×</button>
+            className="text-slate-400 hover:text-slate-700 text-2xl leading-none transition-colors">×</button>
         </div>
 
         {/* Body */}
@@ -107,7 +107,7 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
           <div>
             <label className={labelCls}>Fecha de Ingreso</label>
             <input type="date" value={form.fecha_ingreso} onChange={e => set("fecha_ingreso", e.target.value)}
-              className={inputCls + " [color-scheme:dark]"} />
+              className={inputCls + " [color-scheme:light]"} />
           </div>
 
           {/* Estado + Pago */}
@@ -127,20 +127,20 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
           </div>
 
           {/* Tercera Edad */}
-          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
             <button type="button" onClick={() => set("tercerdad", !form.tercerdad)}
-              className={`w-10 h-6 rounded-full transition-all duration-300 relative flex-shrink-0 ${form.tercerdad ? "bg-blue-500" : "bg-slate-600"}`}>
+              className={`w-10 h-6 rounded-full transition-all duration-300 relative flex-shrink-0 ${form.tercerdad ? "bg-blue-500" : "bg-slate-300"}`}>
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300 ${form.tercerdad ? "translate-x-4" : "translate-x-0"}`} />
             </button>
-            <span className="text-sm font-bold text-slate-300">
-              Tercera Edad: <span className={form.tercerdad ? "text-emerald-400" : "text-red-400"}>
+            <span className="text-sm font-bold text-slate-600">
+              Tercera Edad: <span className={form.tercerdad ? "text-emerald-600" : "text-red-600"}>
                 {form.tercerdad ? "SÍ" : "NO"}
               </span>
             </span>
           </div>
 
           {/* Checklist documentos */}
-          <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 space-y-2">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">✅ Checklist</p>
             {[
               { key: "check_cedula",      label: "Cédula ambos lados" },
@@ -151,10 +151,10 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
                 onClick={() => set(key, !form[key])}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-sm font-bold text-left
                   ${form[key]
-                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
-                    : "bg-white/5 border-white/10 text-slate-400 hover:border-white/20"}`}>
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                    : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
                 <span className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all
-                  ${form[key] ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}>
+                  ${form[key] ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`}>
                   {form[key] && <span className="text-white text-xs font-black">✓</span>}
                 </span>
                 {label}
@@ -178,7 +178,7 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
         {/* Footer */}
         <div className="px-6 pb-6 flex gap-3">
           <button onClick={onCerrar}
-            className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 font-bold text-sm transition-all">
+            className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-50 font-bold text-sm transition-all">
             Cancelar
           </button>
           <button onClick={() => onGuardar(form)} disabled={cargando}
@@ -197,16 +197,16 @@ function ModalEliminar({ registro, onConfirmar, onCerrar, cargando }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}>
-      <div className="w-full max-w-sm bg-slate-900/95 border border-red-500/30 rounded-2xl shadow-2xl p-6 text-center">
+      <div className="w-full max-w-sm bg-white border border-red-200 rounded-2xl shadow-2xl p-6 text-center">
         <div className="text-5xl mb-4">🗑️</div>
-        <h3 className="text-white font-black text-lg mb-2">¿Eliminar registro?</h3>
-        <p className="text-slate-400 text-sm mb-6">
-          Venta #{registro.numero_venta} — ID Bitrix: <strong className="text-white">{registro.id_bitrix || "N/A"}</strong>
+        <h3 className="text-slate-800 font-black text-lg mb-2">¿Eliminar registro?</h3>
+        <p className="text-slate-500 text-sm mb-6">
+          Venta #{registro.numero_venta} — ID Bitrix: <strong className="text-slate-800">{registro.id_bitrix || "N/A"}</strong>
           <br />Esta acción no se puede deshacer.
         </p>
         <div className="flex gap-3">
           <button onClick={onCerrar}
-            className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white font-bold text-sm transition-all">
+            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-700 font-bold text-sm transition-all">
             Cancelar
           </button>
           <button onClick={() => onConfirmar(registro.id)} disabled={cargando}
@@ -391,7 +391,7 @@ export default function Ventas() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-white uppercase tracking-tight">📈 Ventas</h2>
+          <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">📈 Ventas</h2>
           <p className="text-slate-400 text-sm mt-0.5">
             {esSoloVer
               ? "Vista global de todos los asesores"
@@ -402,7 +402,7 @@ export default function Ventas() {
         </div>
         <div className="flex gap-3">
           <button onClick={exportarCSV}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 font-bold text-sm transition-all">
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-100 font-bold text-sm transition-all">
             📥 Exportar CSV
           </button>
           {!esSoloVer && (
@@ -426,18 +426,18 @@ export default function Ventas() {
           <button key={label} onClick={() => setFiltroEstado(label)}
             className={`text-center p-3 rounded-2xl border transition-all ${
               filtroEstado === label
-                ? "bg-blue-600/20 border-blue-500/50 text-white"
-                : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                ? "bg-blue-50 border-blue-400 text-blue-700"
+                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
             }`}>
             <div className="text-xl">{icon}</div>
-            <div className="text-lg font-black text-white">{val}</div>
+            <div className="text-lg font-black text-slate-800">{val}</div>
             <div className="text-[10px] font-bold uppercase tracking-wider opacity-70 truncate">{label}</div>
           </button>
         ))}
       </div>
 
       {/* TABLA */}
-      <div className="bg-black/30 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         {cargando ? (
           <div className="flex items-center justify-center py-20 text-slate-400 font-bold">
             <span className="animate-pulse">⏳ Cargando registros…</span>
@@ -466,7 +466,7 @@ export default function Ventas() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10 bg-white/5">
+                <tr className="border-b border-slate-200 bg-slate-50">
                   {colsHeader.map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
@@ -477,18 +477,18 @@ export default function Ventas() {
               <tbody>
                 {ventasFiltradas.map((v, idx) => (
                   <tr key={v.id}
-                    className={`border-b border-white/5 transition-colors hover:bg-white/5 ${idx % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                    className={`border-b border-slate-100 transition-colors hover:bg-slate-50 ${idx % 2 === 0 ? "" : "bg-slate-50/50"}`}>
                     <td className="px-4 py-3 text-slate-400 font-bold">{v.numero_venta}</td>
-                    <td className="px-4 py-3 text-white font-mono text-xs">{v.id_bitrix || <span className="text-slate-600">—</span>}</td>
-                    <td className="px-4 py-3 text-slate-300 text-xs">{v.login || <span className="text-slate-600">—</span>}</td>
-                    <td className="px-4 py-3 text-slate-200 whitespace-nowrap">{v.plan || <span className="text-slate-600">—</span>}</td>
-                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{v.valor_plan || <span className="text-slate-600">—</span>}</td>
-                    <td className="px-4 py-3 text-emerald-300 font-bold whitespace-nowrap">
+                    <td className="px-4 py-3 text-slate-800 font-mono text-xs">{v.id_bitrix || <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-600 text-xs">{v.login || <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.plan || <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.valor_plan || <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-3 text-emerald-700 font-bold whitespace-nowrap">
                       {v.ingreso_telcos != null
                         ? `$${Number(v.ingreso_telcos).toFixed(2)}`
                         : <span className="text-slate-600">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                       {v.fecha_ingreso
                         ? new Date(v.fecha_ingreso).toLocaleDateString("es-EC", { day: "2-digit", month: "2-digit" })
                         : <span className="text-slate-600">—</span>}
@@ -504,7 +504,7 @@ export default function Ventas() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${v.tercerdad ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${v.tercerdad ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                         {v.tercerdad ? "SÍ" : "NO"}
                       </span>
                     </td>
@@ -517,13 +517,13 @@ export default function Ventas() {
                       <div className="flex gap-2">
                         {puedeEditar && !esSoloVer && (
                           <button onClick={() => setModal({ modo: "editar", registro: v })} title="Editar"
-                            className="w-8 h-8 rounded-lg bg-blue-600/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 flex items-center justify-center text-sm transition-all">
+                            className="w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-600 flex items-center justify-center text-sm transition-all">
                             ✏️
                           </button>
                         )}
                         {puedeEliminar && (
                           <button onClick={() => setModal({ modo: "eliminar", registro: v })} title="Eliminar"
-                            className="w-8 h-8 rounded-lg bg-red-600/20 hover:bg-red-500/30 border border-red-500/30 text-red-300 flex items-center justify-center text-sm transition-all">
+                            className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 border border-red-300 text-red-600 flex items-center justify-center text-sm transition-all">
                             🗑️
                           </button>
                         )}

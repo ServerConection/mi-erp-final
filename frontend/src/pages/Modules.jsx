@@ -1,12 +1,12 @@
 // Componente Reutilizable de "Tarjeta de Módulo"
 const ModuleCard = ({ title, icon, color, description }) => (
-  <div className="h-full p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-xl flex flex-col items-center justify-center text-center animate-fade-in-up">
-    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-6 shadow-lg ${color}`}>
+  <div className="h-full p-8 rounded-2xl bg-white border border-slate-200 shadow-md flex flex-col items-center justify-center text-center animate-fade-in-up">
+    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-6 shadow-sm ${color}`}>
       {icon}
     </div>
-    <h2 className="text-3xl font-bold text-white mb-2">{title}</h2>
-    <p className="text-blue-200 max-w-md">{description}</p>
-    <div className="mt-8 px-6 py-2 rounded-full border border-white/20 bg-white/5 text-sm text-white/60">
+    <h2 className="text-3xl font-bold text-slate-800 mb-2">{title}</h2>
+    <p className="text-slate-500 max-w-md">{description}</p>
+    <div className="mt-8 px-6 py-2 rounded-full border border-slate-200 bg-slate-50 text-sm text-slate-500">
       Módulo Activo v1.0
     </div>
   </div>
@@ -67,7 +67,7 @@ export const Seguimiento_Venta = () => (
   <ModuleCard 
     title="Seguimiento Ventas" 
     icon="✔️" 
-    color="bg-yellow-500/20 text-white-400"
+    color="bg-yellow-500/20 text-yellow-400"
     description="Seguimieto de ingresos en Jot para generar la continuidad de sus registros."
   />
 
@@ -78,7 +78,7 @@ export const Redes = () => (
   <ModuleCard 
     title="Redes" 
     icon="✔️" 
-    color="bg-yellow-500/20 text-white-400"
+    color="bg-yellow-500/20 text-yellow-400"
     description="Seguimieto de ingresos en Jot para generar la continuidad de sus registros."
   />
 

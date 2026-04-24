@@ -837,6 +837,16 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
 
   const canalPpal = pauta.canales.length>0 ? pauta.canales.sort((a,b)=>b.leads-a.leads)[0] : null;
 
+  // glob debe declararse ANTES de asesConCanal porque este último lo usa
+  const glob = useMemo(()=>{
+    const totL=asesores.reduce((s,a)=>s+a.leads,0);
+    const totJ=asesores.reduce((s,a)=>s+a.jot,0);
+    const totA=asesores.reduce((s,a)=>s+a.atc,0);
+    const sa=asesores.length>0?asesores.reduce((s,a)=>s+a.score,0)/asesores.length:0;
+    const top=[...asesores].sort((a,b)=>b.score-a.score)[0];
+    return { totL, totJ, totA, efect:pct(totJ,totL), pctAtc:pct(totA,totL), scoreAvg:sa, top };
+  }, [asesores]);
+
   // Cuando hay 1 canal filtrado, usar los datos proporcionales de asesXCanal
   // así las burbujas y scatter reflejan exactamente ese canal
   const asesConCanal = useMemo(() => {
@@ -858,15 +868,6 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
   }, [canalesSel, asesXCanal, asesores, canalPpal, pauta.totalInv, glob.totL]);
 
   const asesFilt = asel ? asesConCanal.filter(a=>a.nombre===asel) : asesConCanal;
-
-  const glob = useMemo(()=>{
-    const totL=asesores.reduce((s,a)=>s+a.leads,0);
-    const totJ=asesores.reduce((s,a)=>s+a.jot,0);
-    const totA=asesores.reduce((s,a)=>s+a.atc,0);
-    const sa=asesores.length>0?asesores.reduce((s,a)=>s+a.score,0)/asesores.length:0;
-    const top=[...asesores].sort((a,b)=>b.score-a.score)[0];
-    return { totL, totJ, totA, efect:pct(totJ,totL), pctAtc:pct(totA,totL), scoreAvg:sa, top };
-  }, [asesores]);
 
   const TABS=[
     {id:"campanas",l:"Por Campaña",i:"📡"},{id:"burbujas",l:"Costo vs Efect.",i:"🫧"},

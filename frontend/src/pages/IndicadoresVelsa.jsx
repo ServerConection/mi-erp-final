@@ -177,6 +177,12 @@ export default function ReporteVelsa() {
     [data.asesores]
   );
 
+  // ── Nombres de supervisores para el dropdown ──────────────────────────────
+  const nombresSupervisores = useMemo(
+    () => [...(data.supervisores || [])].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
+    [data.supervisores]
+  );
+
   // ── ETAPAS_JOTFORM derivado dinámicamente de los datos reales del backend ─
   const ETAPAS_JOTFORM = useMemo(() => {
     return (data.estadosNetlife || []).map(e => e.estado).filter(Boolean);
@@ -526,9 +532,13 @@ export default function ReporteVelsa() {
               {/* SUPERVISOR */}
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-stone-500 italic uppercase">SUPERVISOR</label>
-                <input type="text" placeholder="BUSCAR..." className={inputCls}
-                  value={filtros.supervisor}
-                  onChange={e => updateFiltro('supervisor', e.target.value)} />
+                <select className={selectCls} value={filtros.supervisor}
+                  onChange={e => updateFiltro('supervisor', e.target.value)}>
+                  <option value="">TODOS</option>
+                  {nombresSupervisores.map((s) => (
+                    <option key={s.nombre_grupo} value={s.nombre_grupo}>{s.nombre_grupo}</option>
+                  ))}
+                </select>
               </div>
 
               {/* ETAPA CRM */}
@@ -841,12 +851,20 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             </div>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>
-            <input type="text" placeholder="BUSCAR..." className={inputCls}
-              value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)} />
+            <select className={selectCls} value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)}>
+              <option value="">TODOS</option>
+              {nombresAsesores.map((a) => (
+                <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">SUPERVISOR</label>
-            <input type="text" placeholder="BUSCAR..." className={inputCls}
-              value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)} />
+            <select className={selectCls} value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)}>
+              <option value="">TODOS</option>
+              {nombresSupervisores.map((s) => (
+                <option key={s.nombre_grupo} value={s.nombre_grupo}>{s.nombre_grupo}</option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ETAPA CRM</label>
             <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>

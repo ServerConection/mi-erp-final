@@ -100,6 +100,47 @@ function ExpandableChart({ title, className = "", modalHeight = 500, children })
   );
 }
 
+/** Multi-select dropdown para Campaña/Origen */
+function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "orange" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const toggle = (opt) => {
+    if (value.includes(opt)) onChange(value.filter(v => v !== opt));
+    else onChange([...value, opt]);
+  };
+  const btnCls = `w-full text-left bg-stone-50 border border-stone-200 rounded-lg px-3 py-[9px] text-[9px] font-bold text-stone-600 flex justify-between items-center gap-1 hover:border-${accentColor}-300 transition-colors`;
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(o => !o)} className={btnCls}>
+        <span className="truncate">{value.length === 0 ? 'TODAS LAS CAMPAÑAS' : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
+        <span className={`text-${accentColor}-400 text-[8px] shrink-0`}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+          {value.length > 0 && (
+            <button onClick={() => onChange([])} className="w-full text-left px-3 py-2 text-[8px] font-black text-red-500 hover:bg-red-50 border-b border-stone-100 uppercase">
+              ✕ Limpiar selección
+            </button>
+          )}
+          {options.map((opt, i) => (
+            <label key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-stone-50 cursor-pointer text-[9px] font-bold text-stone-700 border-b border-stone-50 last:border-0">
+              <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)}
+                className={`accent-${accentColor}-500 w-3 h-3 shrink-0`} />
+              <span className="truncate">{opt}</span>
+            </label>
+          ))}
+          {options.length === 0 && <div className="px-3 py-3 text-[9px] text-stone-400 uppercase">Sin opciones</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ======================================================
 // COMPONENTE PRINCIPAL
 // ======================================================
@@ -144,7 +185,7 @@ export default function ReporteVelsa() {
     estadoRegularizacion: "",
     etapaCRM: "",
     etapaJotform: "",
-    canal: "",
+    canal: [],
   });
 
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
@@ -157,7 +198,7 @@ export default function ReporteVelsa() {
     estadoRegularizacion: "",
     etapaCRM: "",
     etapaJotform: "",
-    canal: "",
+    canal: [],
   });
 
   const [filtros180, setFiltros180] = useState({
@@ -209,7 +250,11 @@ export default function ReporteVelsa() {
     if (prefetchRef.current) prefetchRef.current.abort();
     const ctrl = new AbortController();
     prefetchRef.current = ctrl;
-    const p180 = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
+    const p180 = new URLSearchParams(Object.fromEntries(
+      Object.entries(filtrosActivos)
+        .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+        .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+    ));
     Promise.allSettled([
       fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/monitoreo-diario`, { signal: ctrl.signal }),
       fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/reporte180?${p180}`, { signal: ctrl.signal }),
@@ -222,7 +267,11 @@ export default function ReporteVelsa() {
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
-      const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
+      const p = new URLSearchParams(Object.fromEntries(
+        Object.entries(filtrosActivos)
+          .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+      ));
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) {
@@ -253,7 +302,11 @@ export default function ReporteVelsa() {
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtros180;
-      const p = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
+      const p = new URLSearchParams(Object.fromEntries(
+        Object.entries(filtrosActivos)
+          .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+      ));
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/reporte180?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) setReporte180Data(result);
@@ -586,13 +639,12 @@ export default function ReporteVelsa() {
               {/* CAMPAÑA / ORIGEN */}
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-orange-400 italic uppercase">📡 CAMPAÑA/ORIGEN</label>
-                <select className={selectCls} value={filtros.canal}
-                  onChange={e => updateFiltro('canal', e.target.value)}>
-                  <option value="">TODAS LAS CAMPAÑAS</option>
-                  {(data.canales || []).map((c, i) => (
-                    <option key={i} value={c}>{c}</option>
-                  ))}
-                </select>
+                <MultiSelectCanal
+                  value={filtros.canal}
+                  onChange={vals => updateFiltro('canal', vals)}
+                  options={data.canales || []}
+                  accentColor="orange"
+                />
               </div>
 
               <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">

@@ -14,7 +14,7 @@ import {
   ScatterChart, Scatter,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, Cell, LabelList, ReferenceLine,
+  ResponsiveContainer, Cell, LabelList, ReferenceLine, ReferenceArea,
   ComposedChart, ZAxis,
 } from "recharts";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
@@ -226,25 +226,38 @@ function BubbleCostoEfect({ asesores, canalMap }) {
       ...a, cpa, cpl, invAs, roi,
       col: PAL[i%PAL.length],
     };
-  }).filter(d=>d.leads>0 && d.x>0);
+  }).filter(d=>d.leads>0 && d.x>0 && !d.nombre?.toUpperCase().includes('NOVONET'));
 
   const avgX = data.length ? data.reduce((s,d)=>s+d.x,0)/data.length : 0;
   const avgY = data.length ? data.reduce((s,d)=>s+d.y,0)/data.length : 0;
+  const minX = data.length ? Math.min(...data.map(d=>d.x))*0.85 : 0;
+  const maxX = data.length ? Math.max(...data.map(d=>d.x))*1.12 : 1;
+  const minY = 0;
+  const maxY = data.length ? Math.max(...data.map(d=>d.y))*1.15 : 100;
 
   return (
     <ResponsiveContainer width="100%" height={400}>
       <ScatterChart margin={{ top:30, right:40, bottom:50, left:20 }}>
+        {/* Quadrant zones */}
+        <ReferenceArea x1={minX} x2={avgX} y1={avgY} y2={maxY} fill="#10b981" fillOpacity={0.07}
+          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:7, fill:"#059669", fontWeight:900 }} />
+        <ReferenceArea x1={avgX} x2={maxX} y1={avgY} y2={maxY} fill="#f59e0b" fillOpacity={0.07}
+          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:7, fill:"#d97706", fontWeight:900 }} />
+        <ReferenceArea x1={minX} x2={avgX} y1={minY} y2={avgY} fill="#06b6d4" fillOpacity={0.07}
+          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:7, fill:"#0891b2", fontWeight:900 }} />
+        <ReferenceArea x1={avgX} x2={maxX} y1={minY} y2={avgY} fill="#ef4444" fillOpacity={0.07}
+          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:7, fill:"#dc2626", fontWeight:900 }} />
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
         <XAxis type="number" dataKey="x" name="CPA Real $" tick={{ fontSize:9, fill:C.muted }}
-          tickFormatter={v=>`$${v.toFixed(0)}`}
+          tickFormatter={v=>`$${v.toFixed(0)}`} domain={[minX, maxX]}
           label={{ value:"← CPA (Inversión / JOT) — menor es mejor →", position:"insideBottom", offset:-35, fontSize:8, fill:C.muted }} />
-        <YAxis type="number" dataKey="y" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%"
+        <YAxis type="number" dataKey="y" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%" domain={[minY, maxY]}
           label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
         <ZAxis type="number" dataKey="z" range={[50,500]} />
-        <ReferenceLine x={avgX} stroke={`${C.muted}55`} strokeDasharray="5 3"
-          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:C.muted, position:"top" }} />
-        <ReferenceLine y={avgY} stroke={`${C.muted}55`} strokeDasharray="5 3"
-          label={{ value:`Avg ${avgY.toFixed(1)}%`, fontSize:7, fill:C.muted, position:"right" }} />
+        <ReferenceLine x={avgX} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
+          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:"#475569", position:"top" }} />
+        <ReferenceLine y={avgY} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
+          label={{ value:`Avg ${avgY.toFixed(1)}%`, fontSize:7, fill:"#475569", position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
@@ -290,15 +303,36 @@ function ScatterInvJOT({ asesores, canalMap }) {
     };
   }).filter(d=>d.leads>0);
 
+  const avgX = data.length ? data.reduce((s,d)=>s+d.x,0)/data.length : 0;
+  const avgY = data.length ? data.reduce((s,d)=>s+d.y,0)/data.length : 0;
+  const minX = 0;
+  const maxX = data.length ? Math.max(...data.map(d=>d.x))*1.15 : 1;
+  const minY = 0;
+  const maxY = data.length ? Math.max(...data.map(d=>d.y))*1.15 : 1;
+
   return (
     <ResponsiveContainer width="100%" height={320}>
       <ScatterChart margin={{ top:20, right:30, bottom:50, left:10 }}>
+        {/* Quadrant zones */}
+        <ReferenceArea x1={minX} x2={avgX} y1={avgY} y2={maxY} fill="#10b981" fillOpacity={0.08}
+          label={{ value:"✅ EFICIENTE", position:"insideTopLeft", fontSize:7, fill:"#059669", fontWeight:900 }} />
+        <ReferenceArea x1={avgX} x2={maxX} y1={avgY} y2={maxY} fill="#f59e0b" fillOpacity={0.08}
+          label={{ value:"⚠️ ALTO COSTO", position:"insideTopRight", fontSize:7, fill:"#d97706", fontWeight:900 }} />
+        <ReferenceArea x1={minX} x2={avgX} y1={minY} y2={avgY} fill="#f97316" fillOpacity={0.08}
+          label={{ value:"🟠 INVERTIR MÁS", position:"insideBottomLeft", fontSize:7, fill:"#ea580c", fontWeight:900 }} />
+        <ReferenceArea x1={avgX} x2={maxX} y1={minY} y2={avgY} fill="#ef4444" fillOpacity={0.08}
+          label={{ value:"🔴 ATACAR", position:"insideBottomRight", fontSize:7, fill:"#dc2626", fontWeight:900 }} />
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
         <XAxis type="number" dataKey="x" tick={{ fontSize:9, fill:C.muted }} tickFormatter={v=>`$${v.toFixed(0)}`}
+          domain={[minX, maxX]}
           label={{ value:"Inversión pauta asignada →", position:"insideBottom", offset:-30, fontSize:8, fill:C.muted }} />
-        <YAxis type="number" dataKey="y" tick={{ fontSize:9, fill:C.muted }}
+        <YAxis type="number" dataKey="y" tick={{ fontSize:9, fill:C.muted }} domain={[minY, maxY]}
           label={{ value:"JOT logrados", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:45 }} />
         <ZAxis range={[50,50]} />
+        <ReferenceLine x={avgX} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
+          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:"#475569", position:"top" }} />
+        <ReferenceLine y={avgY} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
+          label={{ value:`Avg ${avgY.toFixed(0)} JOT`, fontSize:7, fill:"#475569", position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;

@@ -903,6 +903,200 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
 
   const asesFilt = asel ? asesConCanal.filter(a=>a.nombre===asel) : asesConCanal;
 
+  // ─── Informe Gerencial 360° — Redes & Asesores ────────────────────────────
+  const generarInformeRedes = () => {
+    const hoy = new Date();
+    const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const diaSemana = hoy.getDay();
+    const diaActual = DIAS[diaSemana];
+    const esFinDeSemana = diaSemana === 0 || diaSemana === 6;
+    const esSabado = diaSemana === 6;
+    const manana = new Date(hoy); manana.setDate(hoy.getDate() + 1);
+    const diaManana = DIAS[manana.getDay()];
+    const mananaEsFDS = manana.getDay() === 0 || manana.getDay() === 6;
+    const mananaEsSabado = manana.getDay() === 6;
+    const esPrevioFDS = diaSemana === 5;
+
+    const horaActual = hoy.getHours() + hoy.getMinutes() / 60;
+    const INICIO = 8, FIN = 18;
+    const pctDia = Math.min(1, Math.max(0.05, (horaActual - INICIO) / (FIN - INICIO)));
+    const META_DIA_JOT = 65;
+    const factorManana = mananaEsFDS ? (mananaEsSabado ? 0.60 : 0.28) : 1.0;
+    const factorHoy = esFinDeSemana ? (esSabado ? 0.60 : 0.28) : 1.0;
+
+    const jotActual = glob.totJ || 0;
+    const metaAjustadaHoy = Math.round(META_DIA_JOT * factorHoy);
+    const metaAHora = Math.round(metaAjustadaHoy * pctDia);
+    const brechaJOT = jotActual - metaAHora;
+    const proyeccionCierre = pctDia > 0 ? Math.round(jotActual / pctDia) : jotActual;
+    const proyeccionManana = Math.round(META_DIA_JOT * factorManana);
+    const estadoDia = brechaJOT >= 0 ? '🟢 EN META' : brechaJOT >= -8 ? '🟡 EN RIESGO' : '🔴 BAJO META';
+    const colorEstado = brechaJOT >= 0 ? '#059669' : brechaJOT >= -8 ? '#d97706' : '#dc2626';
+    const bgEstado = brechaJOT >= 0 ? '#f0fdf4' : brechaJOT >= -8 ? '#fffbeb' : '#fef2f2';
+    const borderEstado = brechaJOT >= 0 ? '#10b981' : brechaJOT >= -8 ? '#f59e0b' : '#ef4444';
+
+    // Top/Bottom 3 asesores por score
+    const asesSorted = [...asesConCanal].sort((a, b) => b.score - a.score);
+    const top3 = asesSorted.slice(0, 3);
+    const bot3 = [...asesSorted].reverse().slice(0, 3);
+
+    // Canal metrics
+    const canalData = pauta.canales.sort((a, b) => b.leads - a.leads);
+
+    const semaforo = (val, good, warn) => val >= good ? '#059669' : val >= warn ? '#d97706' : '#dc2626';
+    const f1 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(1);
+    const f2 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(2);
+
+    const cplPromedio = asesConCanal.filter(a=>a.jot>0&&n(a.inv_asignada)>0).reduce((s,a,_,arr)=>{
+      return s + (n(a.inv_asignada)/a.jot)/arr.length;
+    }, 0);
+
+    const estrategiaTop = (a) => {
+      const ef = a.efect || 0;
+      const sc = a.score || 0;
+      const inv = n(a.inv_asignada);
+      const cpa = inv > 0 && a.jot > 0 ? inv / a.jot : 0;
+      if (ef >= 45) return `Efectividad ${ef.toFixed(1)}% — proceso de calificación y cierre de alto rendimiento. Compartir script con equipo.`;
+      if (sc >= 75) return `Score ${sc.toFixed(0)}/100 — equilibrio óptimo entre leads, JOT y atención. Mentor potencial.`;
+      if (cpa > 0 && cpa < cplPromedio * 0.8) return `CPA $${cpa.toFixed(0)} — inversión altamente eficiente. Replicar timing de contacto.`;
+      return `${a.jot} JOT con efectividad ${ef.toFixed(1)}% — metodología de seguimiento replicable.`;
+    };
+
+    const acciones = [];
+    if (brechaJOT < -5) acciones.push('📞 Activar leads en pipeline sin gestión del día — reasignar a asesores con disponibilidad.');
+    if (glob.efect < 35) acciones.push('🎯 Efectividad del equipo crítica — sesión de roleplay y revisión de objeciones con coordinación.');
+    if (glob.pctAtc > 35) acciones.push(`🚨 ATC elevado (${glob.pctAtc.toFixed(1)}%) — revisar calidad de leads entrantes por canal.`);
+    if (pauta.totalInv > 0 && glob.totJ < 10) acciones.push(`💰 Inversión $${pauta.totalInv.toFixed(0)} con solo ${glob.totJ} JOT — revisar eficiencia de pauta y distribución.`);
+    if (top3[0]) acciones.push(`🏆 Replicar estrategia de ${top3[0].nombre} (score ${top3[0].score.toFixed(0)}) — compartir con el equipo hoy.`);
+    if (mananaEsFDS) {
+      acciones.push(`📅 ${diaManana} es ${mananaEsSabado ? 'sábado' : 'domingo'} — meta ajustada a ${proyeccionManana} JOT. Solo campaña rotativa activa.`);
+      acciones.push('📊 Revisar rendimiento por canal esta semana — ajustar presupuesto de pauta para lunes.');
+    } else if (esPrevioFDS) {
+      acciones.push('📋 Cerrar semana: consolidar CPL y ROI por canal — presentar a coordinación antes de las 17h.');
+    } else {
+      acciones.push('📋 Briefing 07:45 — focos del día por canal, asignar prioridades de pauta activa.');
+    }
+    if (acciones.length < 4) acciones.push('✅ Equipo operando en niveles aceptables — monitorear ritmo de cierres cada 2 horas.');
+
+    const fechaStr = `${hoy.getDate()} de ${MESES[hoy.getMonth()]} de ${hoy.getFullYear()}`;
+    const horaStr = hoy.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Informe 360° Redes — ${fechaStr}</title>
+<style>
+@page{size:A4;margin:11mm 13mm;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#0f172a;background:#fff;}
+.p2{page-break-before:always;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #7c3aed;padding-bottom:7px;margin-bottom:10px;}
+.hdr h1{font-size:15pt;font-weight:900;color:#4c1d95;letter-spacing:-0.5px;}
+.hdr p{font-size:7.5pt;color:#64748b;margin-top:2px;}
+.hdr-r{text-align:right;font-size:7.5pt;color:#64748b;line-height:1.5;}
+.hdr-r .dia{font-size:9.5pt;font-weight:900;color:#0f172a;}
+.sec{font-size:8pt;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#4c1d95;border-left:3px solid #7c3aed;padding-left:7px;margin:9px 0 5px;}
+.sec.red{color:#b91c1c;border-color:#ef4444;}
+.banner{border-radius:8px;padding:7px 12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.banner .estado{font-size:11pt;font-weight:900;}
+.banner .det{font-size:7.5pt;color:#334155;text-align:right;line-height:1.6;}
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:9px;}
+.kcard{border-radius:6px;padding:6px 5px;border:1px solid;}
+.kcard .lbl{font-size:6pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:2px;}
+.kcard .val{font-size:12.5pt;font-weight:900;}
+table{width:100%;border-collapse:collapse;margin-bottom:9px;}
+th{background:#3b0764;color:#fff;font-size:6.5pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;}
+td{font-size:7pt;padding:4px 3px;border-bottom:1px solid #f1f5f9;text-align:center;}
+tr:nth-child(even) td{background:#faf5ff;}
+.tdn{text-align:left;font-weight:700;color:#0f172a;padding-left:6px;}
+.pcard{border-radius:7px;padding:8px 10px;margin-bottom:5px;border:1px solid;}
+.pcard .pname{font-size:9pt;font-weight:900;}
+.pcard .pmeta{display:flex;gap:10px;margin-top:3px;font-size:7pt;color:#475569;flex-wrap:wrap;}
+.pcard .ptip{margin-top:5px;font-size:7pt;color:#334155;background:#f8fafc;border-radius:4px;padding:4px 7px;border-left:2px solid;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
+.pcrd{border-radius:8px;padding:10px 12px;border:1px solid;}
+.pcrd .pl{font-size:6.5pt;font-weight:900;text-transform:uppercase;margin-bottom:4px;}
+.pcrd .pv{font-size:17pt;font-weight:900;}
+.pcrd .pd{font-size:6.5pt;margin-top:4px;color:#475569;line-height:1.5;}
+.aitem{display:flex;gap:6px;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:8pt;align-items:flex-start;}
+.ftr{margin-top:10px;padding-top:5px;border-top:1px solid #e9d5ff;font-size:6.5pt;color:#94a3b8;display:flex;justify-content:space-between;}
+</style></head><body>
+<div class="hdr">
+  <div><h1>REDES · ASESOR VS PAUTA</h1><p>Informe Gerencial 360° · Eficiencia de Inversión y Productividad</p></div>
+  <div class="hdr-r"><div class="dia">${diaActual.toUpperCase()}, ${fechaStr}</div><div>Generado a las ${horaStr}</div></div>
+</div>
+<div class="banner" style="background:${bgEstado};border:1.5px solid ${borderEstado};">
+  <span class="estado" style="color:${colorEstado}">${estadoDia}</span>
+  <span class="det">JOT: <b>${jotActual}</b> &nbsp;·&nbsp; Meta a esta hora: <b>${metaAHora}</b> &nbsp;·&nbsp; Brecha: <b>${brechaJOT>=0?'+':''}${brechaJOT}</b><br/>
+  ${esFinDeSemana?`⚠️ ${diaActual} — meta ajustada al ${Math.round(factorHoy*100)}% &nbsp;·&nbsp; `:''}Ritmo proyecta <b>${proyeccionCierre} JOT</b> al cierre · Inversión total: <b>$${pauta.totalInv.toFixed(0)}</b></span>
+</div>
+<div class="sec">📊 KPIs de Redes y Asesores</div>
+<div class="kgrid">
+${[
+  {l:'Total Leads',v:glob.totL,c:'#3b82f6',bg:'#eff6ff'},
+  {l:'JOT Total',v:glob.totJ,c:brechaJOT>=0?'#059669':'#dc2626',bg:brechaJOT>=0?'#f0fdf4':'#fef2f2'},
+  {l:'Efectividad',v:`${f1(glob.efect)}%`,c:semaforo(glob.efect,40,25),bg:'#f8fafc'},
+  {l:'ATC %',v:`${f1(glob.pctAtc)}%`,c:glob.pctAtc>35?'#dc2626':glob.pctAtc>20?'#d97706':'#059669',bg:'#f8fafc'},
+  {l:'Inversión $',v:`$${pauta.totalInv.toFixed(0)}`,c:'#7c3aed',bg:'#faf5ff'},
+  {l:'Score Prom.',v:glob.scoreAvg.toFixed(0),c:semaforo(glob.scoreAvg,60,35),bg:'#f8fafc'},
+].map(k=>`<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}
+</div>
+<div class="sec">📡 Rendimiento por Canal de Pauta</div>
+<table><thead><tr><th style="text-align:left;padding-left:6px">Canal</th><th>Leads</th><th>JOT</th><th>Activos</th><th>Efectiv.</th><th>Inversión $</th><th>CPL $</th><th>ROAS</th></tr></thead>
+<tbody>${canalData.slice(0,8).map(c=>{
+  const roas=c.roas?c.roas.toFixed(2):'—';
+  const cpl=c.cpl?`$${c.cpl.toFixed(2)}`:'—';
+  const ef=c.efect?c.efect.toFixed(1)+'%':'—';
+  const roasColor=c.roas&&c.roas>=1?'#059669':c.roas?'#dc2626':'#94a3b8';
+  return`<tr><td class="tdn">${c.canal}</td><td style="color:#3b82f6;font-weight:700">${c.leads}</td><td style="color:#059669;font-weight:900">${c.jot}</td><td>${c.activos}</td><td style="color:${semaforo(c.efect||0,40,25)};font-weight:700">${ef}</td><td style="color:#7c3aed;font-weight:700">$${c.inversion.toFixed(0)}</td><td style="color:#f59e0b;font-weight:700">${cpl}</td><td style="color:${roasColor};font-weight:900">${roas}x</td></tr>`;
+}).join('')}</tbody></table>
+<div class="sec">🏅 Ranking de Asesores (Top 10 por Score)</div>
+<table><thead><tr><th>#</th><th style="text-align:left;padding-left:6px">Asesor</th><th>Leads</th><th>JOT</th><th>Efectiv.</th><th>ATC %</th><th>Inv. Asig.</th><th>CPA $</th><th>Score</th></tr></thead>
+<tbody>${asesSorted.slice(0,10).map((a,i)=>{
+  const cpa=n(a.inv_asignada)>0&&a.jot>0?`$${(n(a.inv_asignada)/a.jot).toFixed(0)}`:'—';
+  const inv=n(a.inv_asignada)>0?`$${n(a.inv_asignada).toFixed(0)}`:'—';
+  return`<tr style="${i===0?'background:#f0fdf4':''}"><td style="color:${i===0?'#059669':i<3?'#d97706':'#94a3b8'};font-weight:900">${i===0?'🏆':i+1}</td><td class="tdn">${a.nombre}</td><td>${a.leads}</td><td style="color:#059669;font-weight:900">${a.jot}</td><td style="color:${semaforo(a.efect,40,25)};font-weight:700">${a.efect.toFixed(1)}%</td><td style="color:${a.pct_atc>35?'#dc2626':a.pct_atc>20?'#d97706':'#059669'}">${a.pct_atc.toFixed(1)}%</td><td style="color:#7c3aed">${inv}</td><td style="color:#f59e0b">${cpa}</td><td style="color:${semaforo(a.score,60,35)};font-weight:900">${a.score.toFixed(0)}</td></tr>`;
+}).join('')}</tbody></table>
+<div class="ftr"><span>ERP Novonet · Módulo Redes · Reporte auto-generado</span><span>Página 1 de 2</span></div>
+<div class="p2">
+<div class="hdr">
+  <div><h1>ESTRATEGIA &amp; ACCIÓN — REDES</h1><p>Asesor vs Pauta · ${diaActual} ${fechaStr}</p></div>
+  <div class="hdr-r"><div class="dia">Para: Gerencia y Coordinadores</div><div>Confidencial · Uso interno</div></div>
+</div>
+<div class="sec">🏆 TOP 3 — Replicar Estrategia</div>
+${top3.map((a,i)=>{
+  const clr=['#059669','#0284c7','#7c3aed'][i];
+  const bg=['#f0fdf4','#f0f9ff','#faf5ff'][i];
+  const bc=['#10b981','#38bdf8','#a78bfa'][i];
+  const inv=n(a.inv_asignada)>0?`$${n(a.inv_asignada).toFixed(0)}`:'N/A';
+  const cpa=n(a.inv_asignada)>0&&a.jot>0?`$${(n(a.inv_asignada)/a.jot).toFixed(0)}`:'—';
+  return`<div class="pcard" style="background:${bg};border-color:${bc}"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:14pt;font-weight:900;color:${clr};min-width:26px">#${i+1}</span><div><div class="pname">${a.nombre}</div><div class="pmeta"><span>JOT: <b>${a.jot}</b></span><span>Leads: <b>${a.leads}</b></span><span>Efectividad: <b>${a.efect.toFixed(1)}%</b></span><span>Score: <b>${a.score.toFixed(0)}</b></span><span>CPA: <b>${cpa}</b></span></div></div></div><div class="ptip" style="border-color:${bc}">💡 ${estrategiaTop(a)}</div></div>`;
+}).join('')}
+<div class="sec red">🚨 FOCOS DE INTERVENCIÓN</div>
+${bot3.slice(0,3).map(a=>{
+  const inv=n(a.inv_asignada)>0?`$${n(a.inv_asignada).toFixed(0)}`:'N/A';
+  const causas=[];
+  if(a.efect<20)causas.push(`efectividad ${a.efect.toFixed(1)}% — revisar script de calificación`);
+  if(a.pct_atc>40)causas.push(`ATC ${a.pct_atc.toFixed(1)}% — leads de baja intención, ajustar segmentación`);
+  if(a.jot<3)causas.push(`solo ${a.jot} JOT — requiere acompañamiento y revisión de agenda`);
+  if(!causas.length)causas.push(`score ${a.score.toFixed(0)}/100 — refuerzo de proceso y seguimiento`);
+  return`<div class="pcard" style="background:#fef2f2;border-color:#fca5a5"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12pt;font-weight:900;color:#dc2626;min-width:26px">⚠️</span><div><div class="pname">${a.nombre}</div><div class="pmeta"><span>JOT: <b style="color:#dc2626">${a.jot}</b></span><span>Leads: <b>${a.leads}</b></span><span>Efectividad: <b style="color:#dc2626">${a.efect.toFixed(1)}%</b></span><span>Inv.: <b>${inv}</b></span></div></div></div><div class="ptip" style="border-color:#ef4444;background:#fff5f5">🔧 ${causas.join(' · ')}</div></div>`;
+}).join('')}
+<div class="sec">🔮 Proyección para Mañana — ${diaManana.toUpperCase()}</div>
+<div class="pgrid">
+  <div class="pcrd" style="background:#faf5ff;border-color:#a78bfa"><div class="pl" style="color:#4c1d95">📈 Cierre Estimado Hoy</div><div class="pv" style="color:#4c1d95">${proyeccionCierre} JOT</div><div class="pd">Ritmo: ${jotActual} JOT en ${(pctDia*100).toFixed(0)}% del día · Meta: ${metaAjustadaHoy}${esFinDeSemana?' (ajustada FDS)':''}<br/>${brechaJOT>=0?'✅ Tendencia positiva':'⚠️ Accelerar ritmo — activar leads tibios'}</div></div>
+  <div class="pcrd" style="background:${mananaEsFDS?'#fffbeb':'#f0fdf4'};border-color:${mananaEsFDS?'#fbbf24':'#10b981'}"><div class="pl" style="color:${mananaEsFDS?'#92400e':'#065f46'}">🎯 Meta ${diaManana}</div><div class="pv" style="color:${mananaEsFDS?'#d97706':'#059669'}">${proyeccionManana} JOT</div><div class="pd">${mananaEsFDS?`⚠️ Fin de semana — factor ${Math.round(factorManana*100)}%<br/>Pausa/reducción de pauta digital recomendada`:`📅 Jornada completa — meta estándar ${META_DIA_JOT} JOT<br/>Mantener pauta activa en todos los canales`}</div></div>
+</div>
+<div class="sec">⚡ Plan de Acción — ${diaManana.toUpperCase()}</div>
+${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight:900;min-width:20px">${i+1}.</span><span>${a}</span></div>`).join('')}
+<div class="ftr"><span>ERP Novonet · Módulo Redes · Confidencial</span><span>Página 2 de 2 · ${fechaStr} ${horaStr}</span></div>
+</div>
+<script>window.onload=()=>setTimeout(()=>window.print(),350);</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   const TABS=[
     {id:"campanas",l:"Por Campaña",i:"📡"},{id:"burbujas",l:"Costo vs Efect.",i:"🫧"},
     {id:"inversion",l:"Inv. vs JOT",i:"💸"},{id:"costo",l:"Costo Total",i:"🧮"},
@@ -949,18 +1143,30 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
             💡 Inversión proporcional según leads por canal · Ticket est. ${TICKET_MENSUAL_EST}/cliente activo
           </p>
         </div>
-        {glob.top && (
-          <div style={{ background:"rgba(16,185,129,0.15)", border:"1px solid rgba(16,185,129,0.3)",
-            borderRadius:"14px", padding:"12px 18px", display:"flex", alignItems:"center", gap:"10px" }}>
-            <span style={{ fontSize:"24px" }}>🏆</span>
-            <div>
-              <div style={{ fontSize:"7px", color:"#64748b", textTransform:"uppercase", fontWeight:900 }}>Mejor Score</div>
-              <div style={{ fontSize:"12px", fontWeight:900, color:C.success }}>
-                {glob.top.nombre} — {glob.top.score.toFixed(0)} pts
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:"8px" }}>
+          {glob.top && (
+            <div style={{ background:"rgba(16,185,129,0.15)", border:"1px solid rgba(16,185,129,0.3)",
+              borderRadius:"14px", padding:"12px 18px", display:"flex", alignItems:"center", gap:"10px" }}>
+              <span style={{ fontSize:"24px" }}>🏆</span>
+              <div>
+                <div style={{ fontSize:"7px", color:"#64748b", textTransform:"uppercase", fontWeight:900 }}>Mejor Score</div>
+                <div style={{ fontSize:"12px", fontWeight:900, color:C.success }}>
+                  {glob.top.nombre} — {glob.top.score.toFixed(0)} pts
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+          <button onClick={generarInformeRedes}
+            style={{ background:"rgba(124,58,237,0.85)", border:"1px solid rgba(167,139,250,0.4)",
+              borderRadius:"12px", padding:"9px 18px", color:"#fff", fontSize:"9px", fontWeight:900,
+              cursor:"pointer", display:"flex", alignItems:"center", gap:"6px",
+              boxShadow:"0 4px 20px rgba(124,58,237,0.4)", letterSpacing:"0.05em",
+              textTransform:"uppercase", transition:"all .15s" }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(124,58,237,1)"}
+            onMouseLeave={e=>e.currentTarget.style.background="rgba(124,58,237,0.85)"}>
+            <span>📄</span> Informe 360°
+          </button>
+        </div>
       </div>
 
       {/* FILTROS — solo asesor (canal ya está en el panel global superior) */}

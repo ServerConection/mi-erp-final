@@ -369,6 +369,207 @@ export default function ReporteComercialCore() {
     setDiaFiltrado(prev => prev === fecha ? null : fecha);
   };
 
+  // ─── Informe Gerencial 360° ────────────────────────────────────────────────
+  const generarInforme360 = () => {
+    const hoy = new Date();
+    const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const diaSemana = hoy.getDay();
+    const diaActual = DIAS[diaSemana];
+    const esFinDeSemana = diaSemana === 0 || diaSemana === 6;
+    const esSabado = diaSemana === 6;
+    const manana = new Date(hoy); manana.setDate(hoy.getDate() + 1);
+    const diaManana = DIAS[manana.getDay()];
+    const mananaEsFDS = manana.getDay() === 0 || manana.getDay() === 6;
+    const mananaEsSabado = manana.getDay() === 6;
+    const esPrevioFDS = diaSemana === 5;
+
+    const horaActual = hoy.getHours() + hoy.getMinutes() / 60;
+    const INICIO = 8, FIN = 18;
+    const pctDia = Math.min(1, Math.max(0.05, (horaActual - INICIO) / (FIN - INICIO)));
+    const META_DIA = 65;
+    const factorFDS_Sabado = 0.60, factorFDS_Domingo = 0.28;
+    const factorManana = mananaEsFDS ? (mananaEsSabado ? factorFDS_Sabado : factorFDS_Domingo) : 1.0;
+    const factorHoy = esFinDeSemana ? (esSabado ? factorFDS_Sabado : factorFDS_Domingo) : 1.0;
+
+    const jotActual = Number(stats.ingresosJotform || 0);
+    const metaAjustadaHoy = Math.round(META_DIA * factorHoy);
+    const metaAHora = Math.round(metaAjustadaHoy * pctDia);
+    const brechaJOT = jotActual - metaAHora;
+    const proyeccionCierre = pctDia > 0 ? Math.round(jotActual / pctDia) : jotActual;
+    const proyeccionManana = Math.round(META_DIA * factorManana);
+    const estadoDia = brechaJOT >= 0 ? '🟢 EN META' : brechaJOT >= -8 ? '🟡 EN RIESGO' : '🔴 BAJO META';
+    const colorEstado = brechaJOT >= 0 ? '#059669' : brechaJOT >= -8 ? '#d97706' : '#dc2626';
+    const bgEstado = brechaJOT >= 0 ? '#f0fdf4' : brechaJOT >= -8 ? '#fffbeb' : '#fef2f2';
+    const borderEstado = brechaJOT >= 0 ? '#10b981' : brechaJOT >= -8 ? '#f59e0b' : '#ef4444';
+
+    const sups = [...(data.supervisores || [])].filter(s => s.nombre_grupo);
+    const supsOrd = [...sups].sort((a, b) => Number(b.ingresos_reales) - Number(a.ingresos_reales));
+    const top3 = supsOrd.slice(0, 3);
+    const bot3 = [...supsOrd].reverse().slice(0, 3).filter(s => Number(s.ingresos_reales || 0) < Number(supsOrd[0]?.ingresos_reales || 99));
+
+    const semaforo = (val, good, warn) => val >= good ? '#059669' : val >= warn ? '#d97706' : '#dc2626';
+    const f1 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(1);
+    const f0 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(0);
+
+    // Estrategia top 3 — dinámica basada en sus métricas
+    const estrategiaTop = (s, rank) => {
+      const ef = Number(s.eficiencia || 0);
+      const jot = Number(s.ingresos_reales || 0);
+      const inst = Number(s.tasa_instalacion || 0);
+      const desc = Number(s.pct_descarte || 0);
+      const tips = [];
+      if (ef >= 40) tips.push(`Efectividad ${ef.toFixed(1)}% — superior al equipo. Compartir script y proceso de calificación de leads.`);
+      if (inst >= 88) tips.push(`Tasa de instalación ${inst.toFixed(1)}% — excelente seguimiento técnico post-cierre.`);
+      if (desc <= 25) tips.push(`Descarte ${desc.toFixed(1)}% — alta calidad de leads atendidos. Revisar filtros de contactabilidad.`);
+      if (jot >= 15) tips.push(`Productividad ${jot} JOT — mantiene cadencia alta de cierres diarios.`);
+      if (tips.length === 0) tips.push(`Producción destacada con ${jot} JOT. Replicar metodología de seguimiento y timing de contacto.`);
+      return tips[0];
+    };
+
+    // Plan de acción mañana
+    const acciones = [];
+    if (brechaJOT < -5) acciones.push('📞 Activar recuperación de leads sin gestión del día — asignar a equipo de refuerzo.');
+    if (Number(stats.efectividad) < 38) acciones.push('🎯 Efectividad crítica — sesión de roleplay y revisión de objeciones con supervisores.');
+    if (Number(stats.descartePorc) > 35) acciones.push('🔍 Descarte elevado — ajustar segmentación de campaña y criterios de calificación.');
+    if (Number(stats.tasaInstalacion) < 82) acciones.push('🔧 Tasa instalación baja — coordinar urgente con equipo técnico, revisar agenda.');
+    if (Number(stats.regularizar) > 5) acciones.push(`📝 ${stats.regularizar} casos por regularizar — priorizar resolución antes del mediodía.`);
+    if (top3[0]) acciones.push(`🏆 Replicar metodología de ${top3[0]?.nombre_grupo} — sesión de best-practice con el equipo.`);
+    if (mananaEsFDS) {
+      acciones.push(`📅 ${diaManana} es ${mananaEsSabado ? 'sábado' : 'domingo'} — meta ajustada a ${proyeccionManana} JOT. Activar solo equipo rotativo.`);
+      acciones.push('💬 Enviar resumen semanal a gerencia antes del cierre de hoy.');
+    } else if (esPrevioFDS) {
+      acciones.push('📊 Cerrar semana con reporte consolidado — enviar a gerencia antes de las 17h.');
+      acciones.push('🗓️ Lunes: revisar backlog del fin de semana en primera hora.');
+    } else {
+      acciones.push('📋 Briefing 07:45 con supervisores — compartir focos del día y asignaciones.');
+    }
+    if (acciones.length < 4) acciones.push('✅ Mantener ritmo de cierre — equipo en condiciones operativas estables.');
+
+    const fechaStr = `${hoy.getDate()} de ${MESES[hoy.getMonth()]} de ${hoy.getFullYear()}`;
+    const horaStr = hoy.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Informe 360° NOVONET — ${fechaStr}</title>
+<style>
+@page{size:A4;margin:11mm 13mm;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#0f172a;background:#fff;}
+.p2{page-break-before:always;padding-top:0;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1d4ed8;padding-bottom:7px;margin-bottom:10px;}
+.hdr h1{font-size:15pt;font-weight:900;color:#1e3a8a;letter-spacing:-0.5px;}
+.hdr p{font-size:7.5pt;color:#64748b;margin-top:2px;}
+.hdr-r{text-align:right;font-size:7.5pt;color:#64748b;line-height:1.5;}
+.hdr-r .dia{font-size:9.5pt;font-weight:900;color:#0f172a;}
+.sec{font-size:8pt;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#1e40af;border-left:3px solid #3b82f6;padding-left:7px;margin:9px 0 5px;}
+.sec.red{color:#b91c1c;border-color:#ef4444;}
+.banner{border-radius:8px;padding:7px 12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.banner .estado{font-size:11pt;font-weight:900;}
+.banner .det{font-size:7.5pt;color:#334155;text-align:right;line-height:1.6;}
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:9px;}
+.kcard{border-radius:6px;padding:6px 5px;border:1px solid;}
+.kcard .lbl{font-size:6pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:2px;}
+.kcard .val{font-size:12.5pt;font-weight:900;}
+.kcard .meta{font-size:6pt;color:#94a3b8;margin-top:1px;}
+table{width:100%;border-collapse:collapse;margin-bottom:9px;}
+th{background:#1e3a8a;color:#fff;font-size:6.5pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;}
+td{font-size:7pt;padding:4px 3px;border-bottom:1px solid #f1f5f9;text-align:center;}
+tr:nth-child(even) td{background:#f8fafc;}
+.tdn{text-align:left;font-weight:700;color:#0f172a;padding-left:6px;}
+.pcard{border-radius:7px;padding:8px 10px;margin-bottom:5px;border:1px solid;}
+.pcard .pname{font-size:9pt;font-weight:900;}
+.pcard .pmeta{display:flex;gap:10px;margin-top:3px;font-size:7pt;color:#475569;flex-wrap:wrap;}
+.pcard .ptip{margin-top:5px;font-size:7pt;color:#334155;background:#f8fafc;border-radius:4px;padding:4px 7px;border-left:2px solid;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
+.pcrd{border-radius:8px;padding:10px 12px;border:1px solid;}
+.pcrd .pl{font-size:6.5pt;font-weight:900;text-transform:uppercase;margin-bottom:4px;}
+.pcrd .pv{font-size:17pt;font-weight:900;}
+.pcrd .pd{font-size:6.5pt;margin-top:4px;color:#475569;line-height:1.5;}
+.aitem{display:flex;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:8pt;align-items:flex-start;}
+.ftr{margin-top:10px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:6.5pt;color:#94a3b8;display:flex;justify-content:space-between;}
+</style></head><body>
+
+<!-- PÁGINA 1 -->
+<div class="hdr">
+  <div><h1>NOVONET · ERP</h1><p>Informe de Gestión Comercial 360° · Indicadores Comerciales</p></div>
+  <div class="hdr-r"><div class="dia">${diaActual.toUpperCase()}, ${fechaStr}</div><div>Generado a las ${horaStr} · Período ${filtros.fechaDesde} → ${filtros.fechaHasta}</div></div>
+</div>
+<div class="banner" style="background:${bgEstado};border:1.5px solid ${borderEstado};">
+  <span class="estado" style="color:${colorEstado}">${estadoDia}</span>
+  <span class="det">JOT logrados: <b>${jotActual}</b> &nbsp;·&nbsp; Meta a esta hora: <b>${metaAHora}</b> &nbsp;·&nbsp; Brecha: <b>${brechaJOT>=0?'+':''}${brechaJOT}</b><br/>
+  ${esFinDeSemana?`⚠️ ${diaActual} — meta ajustada al ${Math.round(factorHoy*100)}% por fin de semana &nbsp;·&nbsp; `:''}Ritmo actual proyecta <b>${proyeccionCierre} JOT</b> al cierre de jornada</span>
+</div>
+<div class="sec">📊 Indicadores Clave del Día</div>
+<div class="kgrid">
+${[
+  {l:'Leads Totales',v:stats.leadsGestionables,c:'#2563eb',bg:'#eff6ff'},
+  {l:'Ingresos JOT',v:jotActual,c:brechaJOT>=0?'#059669':'#dc2626',bg:brechaJOT>=0?'#f0fdf4':'#fef2f2'},
+  {l:'Efectividad',v:`${f1(stats.efectividad)}%`,c:semaforo(Number(stats.efectividad),40,25),bg:'#f8fafc'},
+  {l:'Tasa Inst.',v:`${f1(stats.tasaInstalacion)}%`,c:semaforo(Number(stats.tasaInstalacion),85,70),bg:'#f8fafc'},
+  {l:'Descarte %',v:`${f1(stats.descartePorc)}%`,c:Number(stats.descartePorc)<=30?'#059669':'#dc2626',bg:'#f8fafc'},
+  {l:'Regularizar',v:stats.regularizar||0,c:Number(stats.regularizar)>0?'#d97706':'#059669',bg:Number(stats.regularizar)>0?'#fffbeb':'#f0fdf4'},
+].map(k=>`<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}
+</div>
+<div class="sec">📋 Evaluación 360° por Supervisor</div>
+<table><thead><tr><th style="text-align:left;padding-left:6px">Supervisor</th><th>JOT</th><th>Leads</th><th>Efectiv.</th><th>Tasa Inst.</th><th>Activos</th><th>Descarte</th><th>Est.</th></tr></thead>
+<tbody>${sups.slice(0,13).map(s=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const inst=Number(s.tasa_instalacion||0);
+  const act=Number(s.ventas_activas||0);
+  const desc=Number(s.pct_descarte||0);
+  const est=jot>=12?'🟢':jot>=6?'🟡':'🔴';
+  return`<tr><td class="tdn">${s.nombre_grupo||'—'}</td><td style="color:${semaforo(jot,12,6)};font-weight:900">${jot}</td><td>${leads}</td><td style="color:${semaforo(Number(ef),40,25)};font-weight:700">${ef}%</td><td style="color:${semaforo(inst,85,70)};font-weight:700">${inst.toFixed(1)}%</td><td>${act}</td><td style="color:${Number(desc)<=30?'#059669':'#dc2626'}">${desc.toFixed(1)}%</td><td>${est}</td></tr>`;
+}).join('')}</tbody></table>
+<div class="ftr"><span>ERP Novonet · Reporte auto-generado · Uso interno gerencial</span><span>Página 1 de 2</span></div>
+
+<!-- PÁGINA 2 -->
+<div class="p2">
+<div class="hdr">
+  <div><h1>ESTRATEGIA &amp; ACCIÓN</h1><p>Novonet · Indicadores Comerciales · ${diaActual} ${fechaStr}</p></div>
+  <div class="hdr-r"><div class="dia">Para: Gerencia y Coordinadores</div><div>Confidencial · Uso interno</div></div>
+</div>
+<div class="sec">🏆 TOP 3 — Replicar Estrategia</div>
+${top3.map((s,i)=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const act=Number(s.ventas_activas||0);
+  const clr=['#059669','#0284c7','#7c3aed'][i];
+  const bg=['#f0fdf4','#f0f9ff','#faf5ff'][i];
+  const bc=['#10b981','#38bdf8','#a78bfa'][i];
+  return`<div class="pcard" style="background:${bg};border-color:${bc}"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:14pt;font-weight:900;color:${clr};min-width:26px">#${i+1}</span><div><div class="pname">${s.nombre_grupo||'—'}</div><div class="pmeta"><span>JOT: <b>${jot}</b></span><span>Leads: <b>${leads}</b></span><span>Efectividad: <b>${ef}%</b></span><span>Activos: <b>${act}</b></span></div></div></div><div class="ptip" style="border-color:${bc}">💡 ${estrategiaTop(s,i)}</div></div>`;
+}).join('')}
+<div class="sec red">🚨 FOCOS DE INTERVENCIÓN</div>
+${bot3.slice(0,3).map(s=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const desc=Number(s.pct_descarte||0);
+  const causas=[];
+  if(Number(ef)<20)causas.push(`efectividad ${ef}% — revisar proceso y script de cierre`);
+  if(desc>40)causas.push(`descarte ${desc.toFixed(1)}% — calidad de leads o contactabilidad`);
+  if(jot<4)causas.push(`producción mínima (${jot} JOT) — requiere acompañamiento directo`);
+  if(!causas.length)causas.push(`métricas bajo el promedio del equipo — agenda reunión 1:1`);
+  return`<div class="pcard" style="background:#fef2f2;border-color:#fca5a5"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12pt;font-weight:900;color:#dc2626;min-width:26px">⚠️</span><div><div class="pname">${s.nombre_grupo||'—'}</div><div class="pmeta"><span>JOT: <b style="color:#dc2626">${jot}</b></span><span>Leads: <b>${leads}</b></span><span>Efectividad: <b style="color:#dc2626">${ef}%</b></span><span>Descarte: <b style="color:#dc2626">${desc.toFixed(1)}%</b></span></div></div></div><div class="ptip" style="border-color:#ef4444;background:#fff5f5">🔧 ${causas.join(' · ')}</div></div>`;
+}).join('')}
+<div class="sec">🔮 Proyección para Mañana — ${diaManana.toUpperCase()}</div>
+<div class="pgrid">
+  <div class="pcrd" style="background:#f0f9ff;border-color:#38bdf8"><div class="pl" style="color:#0369a1">📈 Cierre Estimado Hoy</div><div class="pv" style="color:#0369a1">${proyeccionCierre} JOT</div><div class="pd">Ritmo: ${jotActual} JOT en el ${(pctDia*100).toFixed(0)}% del día · Meta: ${metaAjustadaHoy}${esFinDeSemana?' (ajustada FDS)':''}<br/>${brechaJOT>=0?'✅ Tendencia positiva — mantener cadencia':'⚠️ Acelerar ritmo de cierres en las próximas horas'}</div></div>
+  <div class="pcrd" style="background:${mananaEsFDS?'#fffbeb':'#f0fdf4'};border-color:${mananaEsFDS?'#fbbf24':'#10b981'}"><div class="pl" style="color:${mananaEsFDS?'#92400e':'#065f46'}">🎯 Meta ${diaManana}</div><div class="pv" style="color:${mananaEsFDS?'#d97706':'#059669'}">${proyeccionManana} JOT</div><div class="pd">${mananaEsFDS?`⚠️ Fin de semana — factor ${Math.round(factorManana*100)}% aplicado<br/>Priorizar leads de alta intención sobre volumen`:`📅 Jornada laboral completa — meta estándar de ${META_DIA} JOT<br/>Iniciar con briefing de supervisores a las 07:45`}</div></div>
+</div>
+<div class="sec">⚡ Plan de Acción — ${diaManana.toUpperCase()}</div>
+${acciones.map((a,i)=>`<div class="aitem"><span style="color:#3b82f6;font-weight:900;min-width:20px">${i+1}.</span><span>${a}</span></div>`).join('')}
+<div class="ftr"><span>ERP Novonet · Reporte auto-generado · Confidencial</span><span>Página 2 de 2 · ${fechaStr} ${horaStr}</span></div>
+</div>
+<script>window.onload=()=>setTimeout(()=>window.print(),350);</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   useEffect(() => {
     if (tabActiva === "GENERAL") fetchDashboard();
     else if (tabActiva === "MONITOREO") fetchMonitoreo();
@@ -739,6 +940,9 @@ export default function ReporteComercialCore() {
                 />
               </div>
               <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-blue-600 hover:bg-blue-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
+              <button onClick={generarInforme360} className="bg-slate-800 hover:bg-slate-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">
+                <span>📄</span> Informe 360°
+              </button>
             </div>
           </div>
 

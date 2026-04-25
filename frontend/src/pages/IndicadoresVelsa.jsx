@@ -327,7 +327,195 @@ export default function ReporteVelsa() {
     fetchDashboard(nuevosFiltros);
   };
 
-  useEffect(() => { 
+  // ─── Informe Gerencial 360° VELSA ─────────────────────────────────────────
+  const generarInforme360 = () => {
+    const hoy = new Date();
+    const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const diaSemana = hoy.getDay();
+    const diaActual = DIAS[diaSemana];
+    const esFinDeSemana = diaSemana === 0 || diaSemana === 6;
+    const esSabado = diaSemana === 6;
+    const manana = new Date(hoy); manana.setDate(hoy.getDate() + 1);
+    const diaManana = DIAS[manana.getDay()];
+    const mananaEsFDS = manana.getDay() === 0 || manana.getDay() === 6;
+    const mananaEsSabado = manana.getDay() === 6;
+    const esPrevioFDS = diaSemana === 5;
+
+    const horaActual = hoy.getHours() + hoy.getMinutes() / 60;
+    const INICIO = 8, FIN = 18;
+    const pctDia = Math.min(1, Math.max(0.05, (horaActual - INICIO) / (FIN - INICIO)));
+    const META_DIA = 65;
+    const factorManana = mananaEsFDS ? (mananaEsSabado ? 0.60 : 0.28) : 1.0;
+    const factorHoy = esFinDeSemana ? (esSabado ? 0.60 : 0.28) : 1.0;
+
+    const jotActual = Number(stats.ingresosJotform || 0);
+    const metaAjustadaHoy = Math.round(META_DIA * factorHoy);
+    const metaAHora = Math.round(metaAjustadaHoy * pctDia);
+    const brechaJOT = jotActual - metaAHora;
+    const proyeccionCierre = pctDia > 0 ? Math.round(jotActual / pctDia) : jotActual;
+    const proyeccionManana = Math.round(META_DIA * factorManana);
+    const estadoDia = brechaJOT >= 0 ? '🟢 EN META' : brechaJOT >= -8 ? '🟡 EN RIESGO' : '🔴 BAJO META';
+    const colorEstado = brechaJOT >= 0 ? '#059669' : brechaJOT >= -8 ? '#d97706' : '#dc2626';
+    const bgEstado = brechaJOT >= 0 ? '#fff7ed' : brechaJOT >= -8 ? '#fffbeb' : '#fef2f2';
+    const borderEstado = brechaJOT >= 0 ? '#f97316' : brechaJOT >= -8 ? '#f59e0b' : '#ef4444';
+
+    const sups = [...(data.supervisores || [])].filter(s => s.nombre_grupo);
+    const supsOrd = [...sups].sort((a, b) => Number(b.ingresos_reales) - Number(a.ingresos_reales));
+    const top3 = supsOrd.slice(0, 3);
+    const bot3 = [...supsOrd].reverse().slice(0, 3).filter(s => Number(s.ingresos_reales || 0) < Number(supsOrd[0]?.ingresos_reales || 99));
+
+    const semaforo = (val, good, warn) => val >= good ? '#059669' : val >= warn ? '#d97706' : '#dc2626';
+    const f1 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(1);
+
+    const estrategiaTop = (s) => {
+      const ef = Number(s.eficiencia || 0);
+      const jot = Number(s.ingresos_reales || 0);
+      const inst = Number(s.tasa_instalacion || 0);
+      const desc = Number(s.pct_descarte || 0);
+      if (ef >= 40) return `Efectividad ${ef.toFixed(1)}% sobresaliente — compartir cadencia de llamadas y proceso de calificación.`;
+      if (inst >= 88) return `Tasa instalación ${inst.toFixed(1)}% — coordinación técnica ejemplar. Replicar protocolo post-cierre.`;
+      if (desc <= 25) return `Descarte ${desc.toFixed(1)}% — gestión de leads de alta calidad. Revisar criterios de filtrado.`;
+      return `Producción ${jot} JOT destacada — replicar metodología de seguimiento y timing de contacto.`;
+    };
+
+    const acciones = [];
+    if (brechaJOT < -5) acciones.push('📞 Activar recuperación de leads sin gestión — redistribuir entre asesores disponibles.');
+    if (Number(stats.efectividad) < 38) acciones.push('🎯 Efectividad por debajo del umbral — sesión de roleplay y revisión de objeciones.');
+    if (Number(stats.descartePorc) > 35) acciones.push('🔍 Descarte elevado — ajustar segmentación de campaña y criterios de calificación VELSA.');
+    if (Number(stats.tasaInstalacion) < 80) acciones.push('🔧 Tasa instalación baja — coordinación urgente área técnica, priorizar agenda del día.');
+    if (Number(stats.regularizar) > 5) acciones.push(`📝 ${stats.regularizar} casos por regularizar — resolver antes del mediodía, involucrar coordinador.`);
+    if (top3[0]) acciones.push(`🏆 Compartir metodología de ${top3[0]?.nombre_grupo} — sesión de best-practice con el equipo completo.`);
+    if (mananaEsFDS) {
+      acciones.push(`📅 ${diaManana} es ${mananaEsSabado ? 'sábado' : 'domingo'} — meta ajustada a ${proyeccionManana} JOT. Solo equipo rotativo.`);
+      acciones.push('💬 Enviar resumen semanal de VELSA a gerencia antes del cierre de hoy.');
+    } else if (esPrevioFDS) {
+      acciones.push('📊 Consolidar métricas semanales — enviar reporte a coordinación antes de las 17h.');
+    } else {
+      acciones.push('📋 Briefing 07:45 con supervisores VELSA — asignar focos del día y metas por asesor.');
+    }
+    if (acciones.length < 4) acciones.push('✅ Equipo en condiciones óptimas — mantener ritmo y reforzar seguimiento de leads tibios.');
+
+    const fechaStr = `${hoy.getDate()} de ${MESES[hoy.getMonth()]} de ${hoy.getFullYear()}`;
+    const horaStr = hoy.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Informe 360° VELSA — ${fechaStr}</title>
+<style>
+@page{size:A4;margin:11mm 13mm;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#0f172a;background:#fff;}
+.p2{page-break-before:always;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #ea580c;padding-bottom:7px;margin-bottom:10px;}
+.hdr h1{font-size:15pt;font-weight:900;color:#c2410c;letter-spacing:-0.5px;}
+.hdr p{font-size:7.5pt;color:#78716c;margin-top:2px;}
+.hdr-r{text-align:right;font-size:7.5pt;color:#78716c;line-height:1.5;}
+.hdr-r .dia{font-size:9.5pt;font-weight:900;color:#0f172a;}
+.sec{font-size:8pt;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#c2410c;border-left:3px solid #f97316;padding-left:7px;margin:9px 0 5px;}
+.sec.red{color:#b91c1c;border-color:#ef4444;}
+.banner{border-radius:8px;padding:7px 12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.banner .estado{font-size:11pt;font-weight:900;}
+.banner .det{font-size:7.5pt;color:#334155;text-align:right;line-height:1.6;}
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:9px;}
+.kcard{border-radius:6px;padding:6px 5px;border:1px solid;}
+.kcard .lbl{font-size:6pt;color:#78716c;font-weight:700;text-transform:uppercase;margin-bottom:2px;}
+.kcard .val{font-size:12.5pt;font-weight:900;}
+table{width:100%;border-collapse:collapse;margin-bottom:9px;}
+th{background:#9a3412;color:#fff;font-size:6.5pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;}
+td{font-size:7pt;padding:4px 3px;border-bottom:1px solid #fef3c7;text-align:center;}
+tr:nth-child(even) td{background:#fff7ed;}
+.tdn{text-align:left;font-weight:700;color:#0f172a;padding-left:6px;}
+.pcard{border-radius:7px;padding:8px 10px;margin-bottom:5px;border:1px solid;}
+.pcard .pname{font-size:9pt;font-weight:900;}
+.pcard .pmeta{display:flex;gap:10px;margin-top:3px;font-size:7pt;color:#57534e;flex-wrap:wrap;}
+.pcard .ptip{margin-top:5px;font-size:7pt;color:#292524;background:#fafaf9;border-radius:4px;padding:4px 7px;border-left:2px solid;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
+.pcrd{border-radius:8px;padding:10px 12px;border:1px solid;}
+.pcrd .pl{font-size:6.5pt;font-weight:900;text-transform:uppercase;margin-bottom:4px;}
+.pcrd .pv{font-size:17pt;font-weight:900;}
+.pcrd .pd{font-size:6.5pt;margin-top:4px;color:#57534e;line-height:1.5;}
+.aitem{display:flex;gap:6px;padding:4px 0;border-bottom:1px solid #fef3c7;font-size:8pt;align-items:flex-start;}
+.ftr{margin-top:10px;padding-top:5px;border-top:1px solid #fed7aa;font-size:6.5pt;color:#a8a29e;display:flex;justify-content:space-between;}
+</style></head><body>
+<div class="hdr">
+  <div><h1>VELSA · ERP</h1><p>Informe de Gestión Comercial 360° · Indicadores Comerciales VELSA</p></div>
+  <div class="hdr-r"><div class="dia">${diaActual.toUpperCase()}, ${fechaStr}</div><div>Generado a las ${horaStr} · Período ${filtros.fechaDesde} → ${filtros.fechaHasta}</div></div>
+</div>
+<div class="banner" style="background:${bgEstado};border:1.5px solid ${borderEstado};">
+  <span class="estado" style="color:${colorEstado}">${estadoDia}</span>
+  <span class="det">JOT logrados: <b>${jotActual}</b> &nbsp;·&nbsp; Meta a esta hora: <b>${metaAHora}</b> &nbsp;·&nbsp; Brecha: <b>${brechaJOT>=0?'+':''}${brechaJOT}</b><br/>
+  ${esFinDeSemana?`⚠️ ${diaActual} — meta ajustada al ${Math.round(factorHoy*100)}% &nbsp;·&nbsp; `:''}Ritmo proyecta <b>${proyeccionCierre} JOT</b> al cierre</span>
+</div>
+<div class="sec">📊 Indicadores Clave del Día</div>
+<div class="kgrid">
+${[
+  {l:'Leads Totales',v:stats.leadsGestionables,c:'#ea580c',bg:'#fff7ed'},
+  {l:'Ingresos JOT',v:jotActual,c:brechaJOT>=0?'#059669':'#dc2626',bg:brechaJOT>=0?'#f0fdf4':'#fef2f2'},
+  {l:'Efectividad',v:`${f1(stats.efectividad)}%`,c:semaforo(Number(stats.efectividad),40,25),bg:'#fafaf9'},
+  {l:'Tasa Inst.',v:`${f1(stats.tasaInstalacion)}%`,c:semaforo(Number(stats.tasaInstalacion),80,65),bg:'#fafaf9'},
+  {l:'Descarte %',v:`${f1(stats.descartePorc)}%`,c:Number(stats.descartePorc)<=30?'#059669':'#dc2626',bg:'#fafaf9'},
+  {l:'Regularizar',v:stats.regularizar||0,c:Number(stats.regularizar)>0?'#d97706':'#059669',bg:Number(stats.regularizar)>0?'#fffbeb':'#f0fdf4'},
+].map(k=>`<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}
+</div>
+<div class="sec">📋 Evaluación 360° por Supervisor</div>
+<table><thead><tr><th style="text-align:left;padding-left:6px">Supervisor</th><th>JOT</th><th>Leads</th><th>Efectiv.</th><th>Tasa Inst.</th><th>Activos</th><th>Descarte</th><th>Est.</th></tr></thead>
+<tbody>${sups.slice(0,13).map(s=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const inst=Number(s.tasa_instalacion||0);
+  const act=Number(s.ventas_activas||0);
+  const desc=Number(s.pct_descarte||0);
+  const est=jot>=12?'🟢':jot>=6?'🟡':'🔴';
+  return`<tr><td class="tdn">${s.nombre_grupo||'—'}</td><td style="color:${semaforo(jot,12,6)};font-weight:900">${jot}</td><td>${leads}</td><td style="color:${semaforo(Number(ef),40,25)};font-weight:700">${ef}%</td><td style="color:${semaforo(inst,80,65)};font-weight:700">${inst.toFixed(1)}%</td><td>${act}</td><td style="color:${Number(desc)<=30?'#059669':'#dc2626'}">${desc.toFixed(1)}%</td><td>${est}</td></tr>`;
+}).join('')}</tbody></table>
+<div class="ftr"><span>ERP VELSA · Reporte auto-generado · Uso interno gerencial</span><span>Página 1 de 2</span></div>
+<div class="p2">
+<div class="hdr">
+  <div><h1>ESTRATEGIA &amp; ACCIÓN</h1><p>VELSA · Indicadores Comerciales · ${diaActual} ${fechaStr}</p></div>
+  <div class="hdr-r"><div class="dia">Para: Gerencia y Coordinadores</div><div>Confidencial · Uso interno</div></div>
+</div>
+<div class="sec">🏆 TOP 3 — Replicar Estrategia</div>
+${top3.map((s,i)=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const act=Number(s.ventas_activas||0);
+  const clr=['#c2410c','#b45309','#7c3aed'][i];
+  const bg=['#fff7ed','#fefce8','#faf5ff'][i];
+  const bc=['#fb923c','#fbbf24','#a78bfa'][i];
+  return`<div class="pcard" style="background:${bg};border-color:${bc}"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:14pt;font-weight:900;color:${clr};min-width:26px">#${i+1}</span><div><div class="pname">${s.nombre_grupo||'—'}</div><div class="pmeta"><span>JOT: <b>${jot}</b></span><span>Leads: <b>${leads}</b></span><span>Efectividad: <b>${ef}%</b></span><span>Activos: <b>${act}</b></span></div></div></div><div class="ptip" style="border-color:${bc}">💡 ${estrategiaTop(s)}</div></div>`;
+}).join('')}
+<div class="sec red">🚨 FOCOS DE INTERVENCIÓN</div>
+${bot3.slice(0,3).map(s=>{
+  const jot=Number(s.ingresos_reales||0);
+  const leads=Number(s.leads_gestionables||0);
+  const ef=leads>0?((jot/leads)*100).toFixed(1):'0.0';
+  const desc=Number(s.pct_descarte||0);
+  const causas=[];
+  if(Number(ef)<20)causas.push(`efectividad ${ef}% — revisar proceso de calificación y script`);
+  if(desc>40)causas.push(`descarte ${desc.toFixed(1)}% — revisar calidad de leads VELSA`);
+  if(jot<4)causas.push(`producción mínima (${jot} JOT) — acompañamiento directo urgente`);
+  if(!causas.length)causas.push(`métricas bajo el promedio del equipo — agendar reunión 1:1 hoy`);
+  return`<div class="pcard" style="background:#fef2f2;border-color:#fca5a5"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12pt;font-weight:900;color:#dc2626;min-width:26px">⚠️</span><div><div class="pname">${s.nombre_grupo||'—'}</div><div class="pmeta"><span>JOT: <b style="color:#dc2626">${jot}</b></span><span>Leads: <b>${leads}</b></span><span>Efectividad: <b style="color:#dc2626">${ef}%</b></span><span>Descarte: <b style="color:#dc2626">${desc.toFixed(1)}%</b></span></div></div></div><div class="ptip" style="border-color:#ef4444;background:#fff5f5">🔧 ${causas.join(' · ')}</div></div>`;
+}).join('')}
+<div class="sec">🔮 Proyección para Mañana — ${diaManana.toUpperCase()}</div>
+<div class="pgrid">
+  <div class="pcrd" style="background:#fff7ed;border-color:#fb923c"><div class="pl" style="color:#c2410c">📈 Cierre Estimado Hoy</div><div class="pv" style="color:#c2410c">${proyeccionCierre} JOT</div><div class="pd">Ritmo: ${jotActual} JOT en el ${(pctDia*100).toFixed(0)}% del día · Meta: ${metaAjustadaHoy}${esFinDeSemana?' (ajustada)':''}<br/>${brechaJOT>=0?'✅ Tendencia positiva — mantener cadencia':'⚠️ Acelerar cierres en las próximas horas'}</div></div>
+  <div class="pcrd" style="background:${mananaEsFDS?'#fffbeb':'#f0fdf4'};border-color:${mananaEsFDS?'#fbbf24':'#10b981'}"><div class="pl" style="color:${mananaEsFDS?'#92400e':'#065f46'}">🎯 Meta ${diaManana}</div><div class="pv" style="color:${mananaEsFDS?'#d97706':'#059669'}">${proyeccionManana} JOT</div><div class="pd">${mananaEsFDS?`⚠️ Fin de semana — factor ${Math.round(factorManana*100)}% aplicado<br/>Enfoque en leads de alta intención, no cantidad`:`📅 Jornada completa — meta estándar ${META_DIA} JOT<br/>Briefing supervisores VELSA a las 07:45`}</div></div>
+</div>
+<div class="sec">⚡ Plan de Acción — ${diaManana.toUpperCase()}</div>
+${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight:900;min-width:20px">${i+1}.</span><span>${a}</span></div>`).join('')}
+<div class="ftr"><span>ERP VELSA · Reporte auto-generado · Confidencial</span><span>Página 2 de 2 · ${fechaStr} ${horaStr}</span></div>
+</div>
+<script>window.onload=()=>setTimeout(()=>window.print(),350);</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  useEffect(() => {
     if (tabActiva === "GENERAL") fetchDashboard();
     else if (tabActiva === "MONITOREO") fetchMonitoreo();
     else if (tabActiva === "REPORTE180") fetchReporte180();
@@ -649,6 +837,9 @@ export default function ReporteVelsa() {
 
               <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
                 {loading ? "CARGANDO..." : "APLICAR FILTROS"}
+              </button>
+              <button onClick={generarInforme360} className="bg-stone-800 hover:bg-stone-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">
+                <span>📄</span> Informe 360°
               </button>
             </div>
           </div>

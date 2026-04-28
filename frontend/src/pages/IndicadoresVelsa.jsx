@@ -764,6 +764,9 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           <button onClick={() => setTabActiva("REPORTE180")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "REPORTE180" ? "bg-amber-600 text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
             🔭 REPORTE 180°
           </button>
+          <button onClick={() => setTabActiva("CONSULTA")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "CONSULTA" ? "bg-[#1A3A6E] text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
+            📥 CONSULTA Y DESCARGA
+          </button>
         </div>
       </div>
 
@@ -1001,7 +1004,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           <DailyMonitoringTable title="CONTROL OPERATIVO: ASESORES" data={monitoreoData.asesores} hasScroll={true} />
         </div>
 
-      ) : (
+      ) : tabActiva === "REPORTE180" ? (
         <Reporte180
           data={reporte180Data}
           filtros={filtros180}
@@ -1011,6 +1014,173 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           etapasCRM={data.etapasCRM}
           ETAPAS_JOTFORM={ETAPAS_JOTFORM}
         />
+      ) : (
+        <ConsultaDescargaVelsa />
+      )}
+    </div>
+  );
+}
+
+// ======================================================
+// CONSULTA Y DESCARGA — VELSA
+// ======================================================
+const COLUMNAS_VELSA = [
+  { header: 'FECHA DE CARGA A JOT',                    field: 'created_at' },
+  { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix' },
+  { header: 'CODIGO EJECUTIVO',                         field: 'codigo_asesor' },
+  { header: 'PLAN. CASA',                               field: 'plan_casa' },
+  { header: 'PLAN. PROFESIONAL.',                       field: 'plan_profesional' },
+  { header: 'PLAN PYME',                                field: 'plan_pyme' },
+  { header: 'PLAN HOGAR ADULTO MAYOR',                  field: 'plan_hogar_adulto_mayor' },
+  { header: 'APLICA DESCUENTO (3ERA EDAD O CONADIS)',   field: 'aplica_descuento' },
+  { header: 'ADICIONAL',                                field: 'servicio_normales' },
+  { header: 'LOGIN',                                    field: 'inicio_sesion_netlife' },
+  { header: 'ESTADO DE NETLIFE',                        field: 'estado_venta_netlife' },
+  { header: 'FORMA DE PAGO',                            field: 'forma_pago' },
+  { header: 'FECHA DE INGRESO A TELCOS',                field: 'ingreso_telcos_vendedores' },
+  { header: 'FECHA DE ASIGNACIÓN EN TELCOS',            field: 'fecha_agenda' },
+  { header: 'FECHA DE ACTIVACIÓN EN TELCOS',            field: 'fecha_activacion_telcos' },
+  { header: 'PROVINCIA',                                field: 'provincia' },
+  { header: 'CIUDAD',                                   field: 'ciudad' },
+  { header: 'OBSERVACIÓN DE LA VENTA',                  field: 'observacion_venta' },
+  { header: 'ESTADO DE REGULARIZACIÓN',                 field: 'estado_regularizacion_novo' },
+  { header: 'DETALLE DE REGULARIZACIÓN',                field: 'detalle_regularizacion' },
+  { header: 'COBRO TC CLIENTE',                         field: null },
+];
+
+function ConsultaDescargaVelsa() {
+  const hoy = new Date().toISOString().split('T')[0];
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [loading,    setLoading]    = useState(false);
+  const [rows,       setRows]       = useState(null);
+  const [error,      setError]      = useState(null);
+
+  const consultar = async () => {
+    setLoading(true); setError(null); setRows(null);
+    try {
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`);
+      const result = await res.json();
+      if (result.success) setRows(result.rows);
+      else setError(result.error || 'Error al consultar');
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const descargarExcel = () => {
+    if (!rows || rows.length === 0) return;
+    const header = COLUMNAS_VELSA.map(c => c.header);
+    const data_  = rows.map(row =>
+      COLUMNAS_VELSA.map(c => {
+        if (!c.field) return '';
+        const v = row[c.field];
+        if (v === null || v === undefined) return '';
+        if (c.field.startsWith('fecha') || c.field === 'created_at' || c.field === 'ingreso_telcos_vendedores') {
+          try { return new Date(v).toLocaleDateString('es-EC'); } catch { return String(v); }
+        }
+        return v;
+      })
+    );
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data_]);
+    ws['!cols'] = COLUMNAS_VELSA.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Velsa');
+    XLSX.writeFile(wb, `Consulta_Velsa_${fechaDesde}_${fechaHasta}.xlsx`);
+  };
+
+  return (
+    <div className="animate-in slide-in-from-right-5 duration-500 space-y-5">
+      {/* Header panel */}
+      <div className="bg-[#1A3A6E] text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-[#0f2550]">
+        <div>
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — VELSA</h2>
+          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">Vista: vw_jotform_velsa_netlife_completo · Filtro por Fecha de Carga a JOT</p>
+        </div>
+        <div className="text-right text-[9px] text-blue-300">
+          {rows !== null && <div className="text-lg font-black text-white">{rows.length.toLocaleString()} registros</div>}
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Fecha Inicio (JOT)</label>
+            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
+              className="border border-stone-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Fecha Fin (JOT)</label>
+            <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
+              className="border border-stone-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <button onClick={consultar} disabled={loading}
+            className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
+            {loading ? '⏳ Consultando...' : '🔍 Consultar'}
+          </button>
+          {rows !== null && rows.length > 0 && (
+            <button onClick={descargarExcel}
+              className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-emerald-600 hover:bg-emerald-700 shadow transition-all active:scale-95 flex items-center gap-2">
+              ⬇️ Descargar Excel ({rows.length.toLocaleString()} filas)
+            </button>
+          )}
+        </div>
+        {error && <p className="mt-3 text-[10px] font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg">⚠️ {error}</p>}
+      </div>
+
+      {/* Tabla preview */}
+      {rows !== null && (
+        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+            <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3A6E]">
+              Vista previa — {Math.min(rows.length, 200)} de {rows.length.toLocaleString()} registros
+            </span>
+            <span className="text-[9px] text-stone-400">El Excel contiene todos los registros</span>
+          </div>
+          {rows.length === 0 ? (
+            <div className="py-16 text-center text-stone-400 text-sm">No se encontraron registros para el período seleccionado.</div>
+          ) : (
+            <div className="overflow-auto max-h-[500px]">
+              <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    {COLUMNAS_VELSA.map((c, i) => (
+                      <th key={i} className="px-3 py-2 text-left font-black uppercase tracking-widest border-b border-r border-stone-200 last:border-r-0"
+                        style={{ background: '#1A3A6E', color: '#fff', minWidth: '120px', fontSize: '7px' }}>
+                        {c.header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.slice(0, 200).map((row, ri) => (
+                    <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}>
+                      {COLUMNAS_VELSA.map((c, ci) => {
+                        let val = c.field ? row[c.field] : '';
+                        if (val !== null && val !== undefined && (c.field?.startsWith('fecha') || c.field === 'created_at' || c.field === 'ingreso_telcos_vendedores')) {
+                          try { val = new Date(val).toLocaleDateString('es-EC'); } catch {}
+                        }
+                        return (
+                          <td key={ci} className="px-3 py-1.5 border-b border-r border-stone-100 last:border-r-0 text-stone-600 max-w-[200px] truncate">
+                            {val ?? ''}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!rows && !loading && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-blue-50">📥</div>
+          <div className="text-sm font-black text-stone-500">Selecciona el período y presiona "Consultar"</div>
+          <div className="text-xs text-stone-400 text-center max-w-sm">Los datos provienen de <span className="font-black text-[#1A3A6E]">vw_jotform_velsa_netlife_completo</span> y se filtran por la fecha de carga en JOT.</div>
+        </div>
       )}
     </div>
   );

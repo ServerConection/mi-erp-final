@@ -889,8 +889,57 @@ const getReporte180 = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSULTA Y DESCARGA — vista_analisis_novonet
+// ─────────────────────────────────────────────────────────────────────────────
+const getConsultaDescargaNovonet = async (req, res) => {
+    try {
+        const { fechaDesde, fechaHasta } = req.query;
+        if (!fechaDesde || !fechaHasta) {
+            return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
+        }
+
+        const result = await pool.query(`
+            SELECT
+                created_at,
+                id_bitrix,
+                codigo_asesor,
+                plan_casa,
+                plan_profesional,
+                plan_pyme,
+                plan_hogar_adulto_mayor,
+                descuento_3era_edad,
+                servicio_empaquetado,
+                login_netlife,
+                estatus_netlife,
+                forma_pago,
+                fecha_ingreso_telcos,
+                fecha_activacion,
+                provincia,
+                ciudad,
+                nombre_empresa,
+                estado_regularizacion,
+                novedades_atc
+            FROM vista_analisis_novonet
+            WHERE created_at::date BETWEEN $1 AND $2
+            ORDER BY created_at ASC
+            LIMIT 100000
+        `, [fechaDesde, fechaHasta]);
+
+        res.json({
+            success: true,
+            total: result.rows.length,
+            rows: result.rows
+        });
+    } catch (error) {
+        console.error("ERROR CONSULTA DESCARGA NOVONET:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     getIndicadoresDashboard,
     getMonitoreoDiario,
-    getReporte180
+    getReporte180,
+    getConsultaDescargaNovonet
 };

@@ -661,8 +661,58 @@ const getReporte180Velsa = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSULTA Y DESCARGA — vw_jotform_velsa_netlife_completo
+// ─────────────────────────────────────────────────────────────────────────────
+const getConsultaDescargaVelsa = async (req, res) => {
+    try {
+        const { fechaDesde, fechaHasta } = req.query;
+        if (!fechaDesde || !fechaHasta) {
+            return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
+        }
+
+        const result = await pool.query(`
+            SELECT
+                created_at,
+                id_bitrix,
+                codigo_asesor,
+                plan_casa,
+                plan_profesional,
+                plan_pyme,
+                plan_hogar_adulto_mayor,
+                aplica_descuento,
+                servicio_normales,
+                inicio_sesion_netlife,
+                estado_venta_netlife,
+                forma_pago,
+                ingreso_telcos_vendedores,
+                fecha_agenda,
+                fecha_activacion_telcos,
+                provincia,
+                ciudad,
+                observacion_venta,
+                estado_regularizacion_novo,
+                detalle_regularizacion
+            FROM vw_jotform_velsa_netlife_completo
+            WHERE created_at::date BETWEEN $1 AND $2
+            ORDER BY created_at ASC
+            LIMIT 100000
+        `, [fechaDesde, fechaHasta]);
+
+        res.json({
+            success: true,
+            total: result.rows.length,
+            rows: result.rows
+        });
+    } catch (error) {
+        console.error("ERROR CONSULTA DESCARGA VELSA:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     getIndicadoresDashboardVelsa,
     getMonitoreoDiarioVelsa,
-    getReporte180Velsa
+    getReporte180Velsa,
+    getConsultaDescargaVelsa
 };

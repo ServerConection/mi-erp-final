@@ -452,47 +452,64 @@ export default function ReporteComercialCore() {
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
 <title>Informe 360° NOVONET — ${fechaStr}</title>
 <style>
-@page{size:A4;margin:11mm 13mm;}
+@page{size:A4;margin:0mm 13mm 10mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#0f172a;background:#fff;}
-.p2{page-break-before:always;padding-top:0;}
-.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1d4ed8;padding-bottom:7px;margin-bottom:10px;}
-.hdr h1{font-size:15pt;font-weight:900;color:#1e3a8a;letter-spacing:-0.5px;}
-.hdr p{font-size:7.5pt;color:#64748b;margin-top:2px;}
-.hdr-r{text-align:right;font-size:7.5pt;color:#64748b;line-height:1.5;}
-.hdr-r .dia{font-size:9.5pt;font-weight:900;color:#0f172a;}
-.sec{font-size:8pt;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#1e40af;border-left:3px solid #3b82f6;padding-left:7px;margin:9px 0 5px;}
-.sec.red{color:#b91c1c;border-color:#ef4444;}
-.banner{border-radius:8px;padding:7px 12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
-.banner .estado{font-size:11pt;font-weight:900;}
-.banner .det{font-size:7.5pt;color:#334155;text-align:right;line-height:1.6;}
-.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:9px;}
-.kcard{border-radius:6px;padding:6px 5px;border:1px solid;}
-.kcard .lbl{font-size:6pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:2px;}
-.kcard .val{font-size:12.5pt;font-weight:900;}
-.kcard .meta{font-size:6pt;color:#94a3b8;margin-top:1px;}
-table{width:100%;border-collapse:collapse;margin-bottom:9px;}
-th{background:#1e3a8a;color:#fff;font-size:6.5pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;}
-td{font-size:7pt;padding:4px 3px;border-bottom:1px solid #f1f5f9;text-align:center;}
-tr:nth-child(even) td{background:#f8fafc;}
-.tdn{text-align:left;font-weight:700;color:#0f172a;padding-left:6px;}
-.pcard{border-radius:7px;padding:8px 10px;margin-bottom:5px;border:1px solid;}
-.pcard .pname{font-size:9pt;font-weight:900;}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;font-size:8.5pt;color:#0f172a;background:#fff;}
+.p2{page-break-before:always;}
+/* ── Barra de color corporativo ── */
+.topbar{height:6px;background:linear-gradient(90deg,#1A3A6E 0%,#378ADD 65%,#70bdf5 100%);margin-bottom:0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+/* ── Header ── */
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1A3A6E;padding:9px 0 9px;margin-bottom:11px;}
+.hdr-logo{display:flex;align-items:center;gap:9px;}
+.hdr-badge{background:#1A3A6E;color:#fff;font-size:10pt;font-weight:900;padding:5px 11px;border-radius:5px;letter-spacing:1px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.hdr h1{font-size:13pt;font-weight:900;color:#1A3A6E;letter-spacing:-0.3px;margin:0;}
+.hdr p{font-size:7pt;color:#64748b;margin-top:2px;}
+.hdr-r{text-align:right;font-size:7pt;color:#64748b;line-height:1.7;}
+.hdr-r .dia{font-size:9.5pt;font-weight:900;color:#1A3A6E;}
+/* ── Secciones ── */
+.sec{font-size:7.5pt;font-weight:900;text-transform:uppercase;letter-spacing:.9px;color:#1A3A6E;border-left:3px solid #378ADD;padding:4px 8px;margin:11px 0 5px;background:#eef4fc;border-radius:0 4px 4px 0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.sec.red{color:#b91c1c;border-color:#ef4444;background:#fff5f5;}
+/* ── Banner estado ── */
+.banner{border-radius:8px;padding:8px 13px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.banner .estado{font-size:12pt;font-weight:900;}
+.banner .det{font-size:7pt;color:#334155;text-align:right;line-height:1.7;}
+/* ── KPI Cards ── */
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:11px;}
+.kcard{border-radius:7px;padding:8px 6px;border-width:1px;border-style:solid;text-align:center;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.kcard .lbl{font-size:5.5pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:3px;letter-spacing:.3px;}
+.kcard .val{font-size:17pt;font-weight:900;line-height:1.1;}
+.kcard .meta{font-size:5.5pt;color:#94a3b8;margin-top:2px;}
+/* ── Tablas ── */
+table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+th{background:#1A3A6E;color:#fff;font-size:6.5pt;font-weight:700;padding:6px 4px;text-align:center;text-transform:uppercase;letter-spacing:.3px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+td{font-size:7pt;padding:4.5px 3px;border-bottom:1px solid #dbe8f8;text-align:center;}
+tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.tdn{text-align:left;font-weight:700;color:#1A3A6E;padding-left:7px;}
+/* ── Cards supervisor / proyección ── */
+.pcard{border-radius:8px;padding:9px 11px;margin-bottom:6px;border-width:1px;border-style:solid;}
+.pcard .pname{font-size:9pt;font-weight:900;color:#0f172a;}
 .pcard .pmeta{display:flex;gap:10px;margin-top:3px;font-size:7pt;color:#475569;flex-wrap:wrap;}
-.pcard .ptip{margin-top:5px;font-size:7pt;color:#334155;background:#f8fafc;border-radius:4px;padding:4px 7px;border-left:2px solid;}
-.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
-.pcrd{border-radius:8px;padding:10px 12px;border:1px solid;}
-.pcrd .pl{font-size:6.5pt;font-weight:900;text-transform:uppercase;margin-bottom:4px;}
-.pcrd .pv{font-size:17pt;font-weight:900;}
+.pcard .ptip{margin-top:5px;font-size:7pt;color:#334155;background:#f0f6ff;border-radius:4px;padding:5px 8px;border-left:2px solid #378ADD;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px;}
+.pcrd{border-radius:9px;padding:11px 13px;border-width:1px;border-style:solid;}
+.pcrd .pl{font-size:6pt;font-weight:900;text-transform:uppercase;margin-bottom:4px;letter-spacing:.4px;}
+.pcrd .pv{font-size:22pt;font-weight:900;line-height:1.05;}
 .pcrd .pd{font-size:6.5pt;margin-top:4px;color:#475569;line-height:1.5;}
-.aitem{display:flex;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:8pt;align-items:flex-start;}
-.ftr{margin-top:10px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:6.5pt;color:#94a3b8;display:flex;justify-content:space-between;}
+/* ── Acciones ── */
+.aitem{display:flex;gap:7px;padding:5px 0;border-bottom:1px solid #dbe8f8;font-size:8pt;align-items:flex-start;}
+/* ── Footer ── */
+.ftr{margin-top:12px;padding-top:6px;border-top:2px solid #1A3A6E;font-size:6.5pt;color:#64748b;display:flex;justify-content:space-between;align-items:center;}
+.ftr-logo{font-weight:900;color:#1A3A6E;letter-spacing:.5px;font-size:7pt;}
 </style></head><body>
 
 <!-- PÁGINA 1 -->
+<div class="topbar"></div>
 <div class="hdr">
-  <div><h1>NOVONET · ERP</h1><p>Informe de Gestión Comercial 360° · Indicadores Comerciales</p></div>
-  <div class="hdr-r"><div class="dia">${diaActual.toUpperCase()}, ${fechaStr}</div><div>Generado a las ${horaStr} · Período ${filtros.fechaDesde} → ${filtros.fechaHasta}</div></div>
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>SISTEMA DE INDICADORES</h1><p>Informe de Gestión Comercial 360° — Novonet</p></div>
+  </div>
+  <div class="hdr-r"><div class="dia">${diaActual.toUpperCase()}, ${fechaStr}</div><div>Generado: ${horaStr} &nbsp;·&nbsp; Período: ${filtros.fechaDesde} → ${filtros.fechaHasta}</div></div>
 </div>
 <div class="banner" style="background:${bgEstado};border:1.5px solid ${borderEstado};">
   <span class="estado" style="color:${colorEstado}">${estadoDia}</span>
@@ -522,12 +539,16 @@ ${[
   const est=jot>=12?'🟢':jot>=6?'🟡':'🔴';
   return`<tr><td class="tdn">${s.nombre_grupo||'—'}</td><td style="color:${semaforo(jot,12,6)};font-weight:900">${jot}</td><td>${leads}</td><td style="color:${semaforo(Number(ef),40,25)};font-weight:700">${ef}%</td><td style="color:${semaforo(inst,85,70)};font-weight:700">${inst.toFixed(1)}%</td><td>${act}</td><td style="color:${Number(desc)<=30?'#059669':'#dc2626'}">${desc.toFixed(1)}%</td><td>${est}</td></tr>`;
 }).join('')}</tbody></table>
-<div class="ftr"><span>ERP Novonet · Reporte auto-generado · Uso interno gerencial</span><span>Página 1 de 2</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe de Gestión Comercial 360° · Confidencial · Uso Gerencial</span><span>Página 1 / 2</span></div>
 
 <!-- PÁGINA 2 -->
 <div class="p2">
+<div class="topbar"></div>
 <div class="hdr">
-  <div><h1>ESTRATEGIA &amp; ACCIÓN</h1><p>Novonet · Indicadores Comerciales · ${diaActual} ${fechaStr}</p></div>
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>ESTRATEGIA &amp; ACCIÓN</h1><p>Novonet · Indicadores Comerciales · ${diaActual} ${fechaStr}</p></div>
+  </div>
   <div class="hdr-r"><div class="dia">Para: Gerencia y Coordinadores</div><div>Confidencial · Uso interno</div></div>
 </div>
 <div class="sec">🏆 TOP 3 — Replicar Estrategia</div>
@@ -561,7 +582,7 @@ ${bot3.slice(0,3).map(s=>{
 </div>
 <div class="sec">⚡ Plan de Acción — ${diaManana.toUpperCase()}</div>
 ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#3b82f6;font-weight:900;min-width:20px">${i+1}.</span><span>${a}</span></div>`).join('')}
-<div class="ftr"><span>ERP Novonet · Reporte auto-generado · Confidencial</span><span>Página 2 de 2 · ${fechaStr} ${horaStr}</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe Gerencial 360° · Confidencial · Generado: ${horaStr}</span><span>Página 2 / 2 · ${fechaStr}</span></div>
 </div>
 <script>window.onload=()=>setTimeout(()=>window.print(),350);</script>
 </body></html>`;
@@ -870,7 +891,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#3b82f6;font-weight
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
           {/* Panel de filtros */}
-          <div className="bg-slate-50 rounded-2xl shadow-sm mb-8 overflow-hidden border border-slate-200">
+          <div className="bg-slate-50 rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200">
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               <div className="lg:col-span-2 flex flex-col gap-2">
                 <label className="text-[9px] font-black text-blue-400 italic tracking-widest uppercase">PERÍODO DE CONSULTA</label>

@@ -472,6 +472,123 @@ export default function TabReporteData({ filtro }) {
     XLSX.writeFile(wb, `ReporteData_${MESES[mes - 1]}_${anio}.xlsx`);
   };
 
+  // ─── Reporte Visual Gerencial ───────────────────────────────────────────────
+  const generarReporteVisual = () => {
+    if (!data) return;
+    const mesNombre = MESES[data.meta.mes - 1];
+    const anioR     = data.meta.anio;
+    const dias      = data.meta.dias;
+    const fechaGen  = new Date().toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric' });
+    const horaGen   = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+
+    const totInv     = (data.inversion  || []).reduce((s, r) => s + n(r.inversion_usd),  0);
+    const totLeads   = (data.etapas     || []).reduce((s, r) => s + n(r.total_leads),     0);
+    const totVS      = (data.etapas     || []).reduce((s, r) => s + n(r.venta_subida),    0);
+    const totJot     = (data.status_jot || []).reduce((s, r) => s + n(r.ingreso_jot),     0);
+    const totActivos = (data.status_jot || []).reduce((s, r) => s + n(r.activos),         0);
+    const efect      = totLeads > 0 ? ((totVS / totLeads) * 100).toFixed(1) + '%' : '—';
+    const cplStr     = totLeads > 0 ? '$' + (totInv / totLeads).toFixed(2) : '—';
+    const canalesStr = canalesSel.length > 0 ? canalesSel.map(c => getCfg(c).label).join(' · ') : 'Todos los canales';
+
+    const buildTableHTML = (filas, dias_) => {
+      if (!filas || filas.length === 0) return '<p style="color:#94a3b8;padding:8px;font-size:7pt">Sin datos</p>';
+      const headers = dias_.map(d => `<th>${d.dia}<br/><span>${(d.nombre || '').substring(0,3)}</span></th>`).join('');
+      const rows = filas.map(f => {
+        if (f.separador) return `<tr><td colspan="${dias_.length + 2}" class="sep-row">${f.label}</td></tr>`;
+        const cells = dias_.map(d => {
+          const val = f.byDia?.[Number(d.dia)];
+          const pct = f.pctDia?.[Number(d.dia)];
+          let display = '';
+          if (f.fmt) display = f.fmt(val) || '—';
+          else if (f.showPct) display = fmtCantPct(val, pct) || '—';
+          else display = (val !== undefined && val !== null && n(val) !== 0) ? String(n(val)) : '—';
+          return `<td>${display}</td>`;
+        }).join('');
+        const totVal = f.fmt ? f.fmt(f.total) :
+                       f.showPct ? fmtCantPct(f.total, f.totalPct) :
+                       (f.total !== null && f.total !== undefined ? String(n(f.total) % 1 !== 0 ? n(f.total).toFixed(2) : n(f.total)) : '—');
+        return `<tr><td class="tdn" style="color:${f.color || '#475569'}">${f.label}</td>${cells}<td class="tot">${totVal}</td></tr>`;
+      }).join('');
+      return `<table><thead><tr><th style="text-align:left;min-width:200px">MÉTRICA</th>${headers}<th>TOTAL</th></tr></thead><tbody>${rows}</tbody></table>`;
+    };
+
+    const kpis = [
+      { l: 'Leads Totales',    v: totLeads,                     c: '#2563eb', bg: '#eff6ff' },
+      { l: 'Ingresos JOT',     v: totJot,                       c: '#16a34a', bg: '#f0fdf4' },
+      { l: 'Activos',          v: totActivos,                   c: '#059669', bg: '#ecfdf5' },
+      { l: 'Efectividad',      v: efect,                        c: '#0284c7', bg: '#f0f9ff' },
+      { l: 'Inversión Total',  v: '$' + totInv.toFixed(2),      c: '#7c3aed', bg: '#f5f3ff' },
+      { l: 'CPL',              v: cplStr,                       c: '#0891b2', bg: '#ecfeff' },
+    ];
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Reporte Data Redes — ${mesNombre} ${anioR}</title>
+<style>
+@page{size:A4 landscape;margin:0mm 12mm 10mm;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;font-size:7.5pt;color:#0f172a;background:#fff;}
+.pgbreak{page-break-before:always;}
+.topbar{height:6px;background:linear-gradient(90deg,#1A3A6E 0%,#378ADD 65%,#70bdf5 100%);print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1A3A6E;padding:8px 0 8px;margin-bottom:10px;}
+.hdr-logo{display:flex;align-items:center;gap:9px;}
+.hdr-badge{background:#1A3A6E;color:#fff;font-size:10pt;font-weight:900;padding:4px 10px;border-radius:5px;letter-spacing:1px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.hdr h1{font-size:12pt;font-weight:900;color:#1A3A6E;letter-spacing:-0.3px;margin:0;}
+.hdr p{font-size:7pt;color:#64748b;margin-top:2px;}
+.hdr-r{text-align:right;font-size:7pt;color:#64748b;line-height:1.7;}
+.hdr-r .periodo{font-size:10pt;font-weight:900;color:#1A3A6E;}
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:11px;}
+.kcard{border-radius:7px;padding:8px 6px;border-width:1px;border-style:solid;text-align:center;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.kcard .lbl{font-size:5.5pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:3px;letter-spacing:.3px;}
+.kcard .val{font-size:17pt;font-weight:900;line-height:1.1;}
+.sec{font-size:7pt;font-weight:900;text-transform:uppercase;letter-spacing:.9px;color:#1A3A6E;border-left:3px solid #378ADD;padding:4px 8px;margin:10px 0 4px;background:#eef4fc;border-radius:0 4px 4px 0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:6.5pt;}
+th{background:#1A3A6E;color:#fff;font-size:6pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;letter-spacing:.2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+th span{font-weight:400;font-size:5pt;display:block;color:#a8c8f0;}
+td{padding:3.5px 3px;border-bottom:1px solid #dbe8f8;text-align:center;color:#475569;}
+tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.tdn{text-align:left!important;font-weight:700;padding-left:6px!important;font-size:6.5pt;min-width:200px;}
+.tot{font-weight:900;color:#1A3A6E!important;border-left:1px solid #c4d9f0;}
+.sep-row{background:#eef4fc!important;font-weight:900;font-size:5.5pt;color:#1A3A6E;padding:4px 6px;letter-spacing:.5px;text-align:left;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.ftr{margin-top:12px;padding-top:6px;border-top:2px solid #1A3A6E;font-size:6pt;color:#64748b;display:flex;justify-content:space-between;align-items:center;}
+.ftr-logo{font-weight:900;color:#1A3A6E;letter-spacing:.5px;font-size:7pt;}
+</style></head><body>
+<div class="topbar"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>REPORTE DATA — REDES DIGITALES</h1><p>Análisis de Canales de Publicidad &nbsp;·&nbsp; ${canalesStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="periodo">${mesNombre.toUpperCase()} ${anioR}</div><div>Generado: ${fechaGen} &nbsp;·&nbsp; ${horaGen} &nbsp;·&nbsp; ${dias.length} días analizados</div></div>
+</div>
+<div class="kgrid">${kpis.map(k => `<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}</div>
+<div class="sec">💰 Inversión &amp; Costos de Adquisición</div>
+${buildTableHTML(buildInversionFilas(data, dias), dias)}
+<div class="sec">📊 Leads por Canal + Etapas Bitrix</div>
+${buildTableHTML(buildEtapasFilas(data, dias), dias)}
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Uso Gerencial</span><span>Página 1 / 2</span></div>
+<div class="pgbreak"></div>
+<div class="topbar"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>REPORTE DATA — CONTINUACIÓN</h1><p>${mesNombre.toUpperCase()} ${anioR} &nbsp;·&nbsp; ${canalesStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="periodo">ESTATUS &amp; MÉTRICAS DE CIERRE</div><div>Generado: ${horaGen}</div></div>
+</div>
+<div class="sec">📋 Estatus Ventas JOT</div>
+${buildTableHTML(buildJotFilas(data, dias), dias)}
+<div class="sec">💳 Forma de Pago</div>
+${buildTableHTML(buildPagoFilas(data, dias), dias)}
+<div class="sec">⏱️ Ciclo de Venta</div>
+${buildTableHTML(buildCicloFilas(data, dias), dias)}
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Página 2 / 2</span></div>
+<script>window.onload=()=>setTimeout(()=>window.print(),400);</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1100,height=760');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   const dias = data?.meta?.dias || [];
 
   return (
@@ -512,6 +629,13 @@ export default function TabReporteData({ filtro }) {
                 className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
                 style={{ background: C.success }}>
                 ↓ Excel
+              </button>
+            )}
+            {data && (
+              <button onClick={generarReporteVisual}
+                className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
+                style={{ background: "#1A3A6E" }}>
+                📊 Ver Reporte
               </button>
             )}
           </div>

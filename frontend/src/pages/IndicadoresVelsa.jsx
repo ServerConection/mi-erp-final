@@ -1026,7 +1026,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 // ======================================================
 const COLUMNAS_VELSA = [
   { header: 'FECHA DE CARGA A JOT',                    field: 'created_at' },
-  { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix' },
+  { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix_ghl' },
   { header: 'CODIGO EJECUTIVO',                         field: 'codigo_asesor' },
   { header: 'PLAN. CASA',                               field: 'plan_casa' },
   { header: 'PLAN. PROFESIONAL.',                       field: 'plan_profesional' },

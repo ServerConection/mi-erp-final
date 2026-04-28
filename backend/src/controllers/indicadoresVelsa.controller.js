@@ -674,7 +674,7 @@ const getConsultaDescargaVelsa = async (req, res) => {
         const result = await pool.query(`
             SELECT
                 created_at,
-                id_bitrix,
+                id_bitrix_ghl,
                 codigo_asesor,
                 plan_casa,
                 plan_profesional,

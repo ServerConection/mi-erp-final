@@ -227,6 +227,136 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "b
   );
 }
 
+
+// ======================================================
+// DATA VISOR — tabla colapsable de datos raw
+// ======================================================
+function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtroBadge = null }) {
+  const [open, setOpen] = useState(false);
+  const cols = data.length > 0 ? Object.keys(data[0]) : [];
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+      <div className={`${color} text-white px-5 py-3 flex justify-between items-center`}>
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest hover:opacity-80 transition-opacity">
+          <span>{open ? '▼' : '▶'}</span>
+          {title}
+          {filtroBadge}
+          <span className="bg-white/20 px-2 py-0.5 rounded-full text-[8px] ml-1">{data.length} REGISTROS</span>
+        </button>
+        {onDownload && (
+          <button onClick={onDownload} className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all border border-white/20">
+            ↓ EXCEL
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="overflow-x-auto max-h-72 overflow-y-auto">
+          {data.length === 0 ? (
+            <div className="text-center py-8 text-[10px] text-slate-400 uppercase font-bold">Sin datos para el período seleccionado</div>
+          ) : (
+            <table className="w-full text-[8px] font-mono">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-800 text-white">
+                  {cols.map(c => (
+                    <th key={c} className="px-2 py-1.5 text-left font-black uppercase whitespace-nowrap border-r border-slate-700 last:border-0">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                    {cols.map(c => (
+                      <td key={c} className="px-2 py-1 border-r border-slate-100 last:border-0 whitespace-nowrap text-slate-700 max-w-[160px] truncate">
+                        {row[c] != null ? String(row[c]) : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ======================================================
+// DAILY MONITORING TABLE — control operativo diario
+// ======================================================
+function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
+  const tdB = "text-right px-3 py-1.5 border-r border-slate-200 last:border-0 tabular-nums";
+  const th  = "px-3 py-2 text-right font-black text-[8px] uppercase tracking-wider border-r border-slate-300 last:border-0 whitespace-nowrap";
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+      <div className="bg-slate-800 text-white px-5 py-3">
+        <h3 className="text-[10px] font-black uppercase tracking-widest">{title}</h3>
+      </div>
+      <div className={hasScroll ? "overflow-x-auto max-h-80 overflow-y-auto" : "overflow-x-auto"}>
+        {data.length === 0 ? (
+          <div className="text-center py-8 text-[10px] text-slate-400 uppercase font-bold">Sin datos de monitoreo</div>
+        ) : (
+          <table className="w-full text-[9px]">
+            <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-300">
+              <tr>
+                <th className="px-3 py-2 text-left font-black text-[8px] uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">NOMBRE</th>
+                <th className={th}>LEADS MES</th>
+                <th className={th}>LEADS HOY</th>
+                <th className={th}>CRM MES</th>
+                <th className={th}>CRM HOY</th>
+                <th className={th}>V.SUB CRM</th>
+                <th className={th}>JOT HOY</th>
+                <th className={th}>ACTIVOS HOY</th>
+                <th className={th}>DESCARTE%</th>
+                <th className={th}>TARJETA%</th>
+                <th className={th}>EFECT%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row, i) => {
+                const efect = Number(row.v_subida_jot_hoy || 0) > 0 && Number(row.real_dia_leads || 0) > 0
+                  ? ((Number(row.v_subida_jot_hoy) / Number(row.real_dia_leads)) * 100).toFixed(1)
+                  : '—';
+                const efectNum = parseFloat(efect);
+                return (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-slate-50 hover:bg-slate-100"}>
+                    <td className="px-3 py-1.5 font-black text-slate-800 border-r border-slate-200 whitespace-nowrap max-w-[160px] truncate">{row.nombre_grupo || '—'}</td>
+                    <td className={tdB}>{row.real_mes_leads ?? '—'}</td>
+                    <td className={`${tdB} font-black text-violet-700`}>{row.real_dia_leads ?? '—'}</td>
+                    <td className={tdB}>{row.crm_acumulado ?? '—'}</td>
+                    <td className={tdB}>{row.crm_dia ?? '—'}</td>
+                    <td className={`${tdB} text-blue-600 font-black`}>{row.v_subida_crm_hoy ?? '—'}</td>
+                    <td className={`${tdB} text-emerald-600 font-black`}>{row.v_subida_jot_hoy ?? '—'}</td>
+                    <td className={tdB}>{row.activos_jot_hoy ?? '—'}</td>
+                    <td className={`${tdB} ${Number(row.real_descarte || 0) > 30 ? 'text-red-500 font-black' : 'text-slate-600'}`}>{row.real_descarte != null ? `${Number(row.real_descarte).toFixed(1)}%` : '—'}</td>
+                    <td className={tdB}>{row.real_tarjeta != null ? `${Number(row.real_tarjeta).toFixed(1)}%` : '—'}</td>
+                    <td className={`${tdB} font-black ${!isNaN(efectNum) ? (efectNum >= 30 ? 'text-emerald-600' : efectNum >= 15 ? 'text-amber-500' : 'text-red-500') : 'text-slate-400'}`}>
+                      {efect !== '—' ? `${efect}%` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-slate-800 text-white sticky bottom-0">
+              <tr>
+                <td className="px-3 py-1.5 font-black text-[8px] uppercase border-r border-slate-700">TOTAL</td>
+                {['real_mes_leads','real_dia_leads','crm_acumulado','crm_dia','v_subida_crm_hoy','v_subida_jot_hoy','activos_jot_hoy'].map(f => (
+                  <td key={f} className="text-right px-3 py-1.5 font-black border-r border-slate-700 tabular-nums">
+                    {data.reduce((a,r) => a + Number(r[f]||0), 0)}
+                  </td>
+                ))}
+                <td className="text-right px-3 py-1.5 text-slate-400 border-r border-slate-700">—</td>
+                <td className="text-right px-3 py-1.5 text-slate-400 border-r border-slate-700">—</td>
+                <td className="text-right px-3 py-1.5 text-slate-400">—</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);

@@ -410,6 +410,38 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
 
+        // ── DIAGNÓSTICO AUTOMÁTICO: si no hay supervisores, inspeccionar las fechas ──
+        if (supervisoresConBacklog.length === 0) {
+            try {
+                const diag = await pool.query(`
+                    SELECT
+                        COUNT(*)::int                                          AS total_filas,
+                        COUNT(t1_hgl_created_at_fecha)::int                   AS hgl_no_null,
+                        COUNT(t2_jot_created_at_fecha)::int                   AS jot_no_null,
+                        MIN(t1_hgl_created_at_fecha::text)                    AS hgl_min,
+                        MAX(t1_hgl_created_at_fecha::text)                    AS hgl_max,
+                        MIN(t2_jot_created_at_fecha::text)                    AS jot_min,
+                        MAX(t2_jot_created_at_fecha::text)                    AS jot_max,
+                        COUNT(*) FILTER (
+                            WHERE t1_hgl_created_at_fecha::text ~ '^\\d{4}-\\d{2}-\\d{2}'
+                        )::int                                                 AS hgl_iso_format,
+                        COUNT(*) FILTER (
+                            WHERE t2_jot_created_at_fecha IS NOT NULL
+                            AND TRIM(t2_jot_created_at_fecha::text) != ''
+                        )::int                                                 AS jot_con_valor
+                    FROM public.velsa_netlife_maestra_cons
+                `);
+                const d = diag.rows[0] || {};
+                console.warn(`[DIAGNÓSTICO VELSA] 0 resultados para ${desde}→${hasta}`);
+                console.warn(`[DIAGNÓSTICO VELSA] total_filas=${d.total_filas} | hgl_no_null=${d.hgl_no_null} | jot_no_null=${d.jot_no_null}`);
+                console.warn(`[DIAGNÓSTICO VELSA] hgl rango: [${d.hgl_min}] → [${d.hgl_max}]`);
+                console.warn(`[DIAGNÓSTICO VELSA] jot rango: [${d.jot_min}] → [${d.jot_max}]`);
+                console.warn(`[DIAGNÓSTICO VELSA] hgl_iso_format=${d.hgl_iso_format} | jot_con_valor=${d.jot_con_valor}`);
+            } catch (diagErr) {
+                console.warn(`[DIAGNÓSTICO VELSA] Error al diagnosticar: ${diagErr.message}`);
+            }
+        }
+
         const resultado = {
             success: true,
             supervisores: supervisoresConBacklog,
@@ -679,14 +711,14 @@ const getReporte180Velsa = async (req, res) => {
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSULTA Y DESCARGA — vw_jotform_velsa_netlife_completo
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────────
+// CONSULTA Y DESCARGA
+// ────────────────────────────────────────────────────────────────────────────────
 const getConsultaDescargaVelsa = async (req, res) => {
     try {
         const { fechaDesde, fechaHasta } = req.query;
         if (!fechaDesde || !fechaHasta) {
-            return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
+            return res.status(400).json({ success: false, error: 'Parametros fechaDesde y fechaHasta requeridos' });
         }
 
         const result = await pool.query(`
@@ -723,7 +755,45 @@ const getConsultaDescargaVelsa = async (req, res) => {
             rows: result.rows
         });
     } catch (error) {
-        console.error("ERROR CONSULTA DESCARGA VELSA:", error);
+        console.error('ERROR CONSULTA DESCARGA VELSA:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// DEBUG
+const getDebugFechasVelsa = async (req, res) => {
+    try {
+        const [diagGeneral, muestraHGL, muestraJOT] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*)::int AS total_filas,
+                    COUNT(t1_hgl_created_at_fecha)::int AS hgl_no_null,
+                    COUNT(t2_jot_created_at_fecha)::int AS jot_no_null,
+                    MIN(t1_hgl_created_at_fecha::text) AS hgl_min,
+                    MAX(t1_hgl_created_at_fecha::text) AS hgl_max,
+                    MIN(t2_jot_created_at_fecha::text) AS jot_min,
+                    MAX(t2_jot_created_at_fecha::text) AS jot_max,
+                    COUNT(*) FILTER (WHERE t1_hgl_created_at_fecha IS NOT NULL)::int AS hgl_con_valor,
+                    COUNT(*) FILTER (WHERE t2_jot_created_at_fecha IS NOT NULL AND TRIM(t2_jot_created_at_fecha::text) != '')::int AS jot_con_valor
+                FROM public.velsa_netlife_maestra_cons
+            `),
+            pool.query(`
+                SELECT t1_hgl_created_at_fecha::text AS hgl_texto, t1_pipeline_stage_id
+                FROM public.velsa_netlife_maestra_cons
+                WHERE t1_hgl_created_at_fecha IS NOT NULL
+                LIMIT 5
+            `),
+            pool.query(`
+                SELECT t2_jot_created_at_fecha::text AS jot_texto, t2_estado_venta_netlife
+                FROM public.velsa_netlife_maestra_cons
+                WHERE t2_jot_created_at_fecha IS NOT NULL
+                AND TRIM(t2_jot_created_at_fecha::text) != ''
+                LIMIT 5
+            `),
+        ]);
+        res.json({ success: true, resumen: diagGeneral.rows[0], muestra_hgl: muestraHGL.rows, muestra_jot: muestraJOT.rows });
+    } catch (error) {
+        console.error('ERROR DEBUG FECHAS VELSA:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -732,5 +802,6 @@ module.exports = {
     getIndicadoresDashboardVelsa,
     getMonitoreoDiarioVelsa,
     getReporte180Velsa,
-    getConsultaDescargaVelsa
+    getConsultaDescargaVelsa,
+    getDebugFechasVelsa,
 };

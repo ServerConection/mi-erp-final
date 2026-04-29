@@ -14,7 +14,7 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, Cell, LabelList, ReferenceLine,
+  ResponsiveContainer, Cell, LabelList, ReferenceLine, ReferenceArea,
   ComposedChart,
 } from "recharts";
 
@@ -351,10 +351,15 @@ function ScatterPremium({ metricas }) {
   );
   const avgEf  = conInv.reduce((s,m)=>s+m.efect,0)/conInv.length;
   const avgCpl = conInv.reduce((s,m)=>s+m.cpl,0)/conInv.length;
+  const pad    = 0.18;
+  const minCpl = Math.max(0, Math.min(...conInv.map(m=>m.cpl)) * (1-pad));
+  const maxCpl = Math.max(...conInv.map(m=>m.cpl)) * (1+pad);
+  const minEf  = Math.max(0, Math.min(...conInv.map(m=>m.efect)) * (1-pad));
+  const maxEf  = Math.min(100, Math.max(...conInv.map(m=>m.efect)) * (1+pad));
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <ScatterChart margin={{ top:20, right:30, bottom:40, left:10 }}>
+    <ResponsiveContainer width="100%" height={320}>
+      <ScatterChart margin={{ top:24, right:40, bottom:44, left:10 }}>
         <defs>
           {conInv.map(m => (
             <radialGradient key={m.canal} id={`sc${m.canal.replace(/\W/g,"")}`} cx="50%" cy="50%" r="50%">
@@ -365,13 +370,28 @@ function ScatterPremium({ metricas }) {
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
         <XAxis type="number" dataKey="cpl" name="CPL $" tick={{ fontSize:9, fill:C.muted }}
+          domain={[minCpl, maxCpl]}
           tickFormatter={v=>`$${v.toFixed(2)}`}
-          label={{ value:"← CPL más barato mejor →", position:"insideBottom", offset:-28, fontSize:8, fill:C.muted }} />
+          label={{ value:"← CPL más barato mejor →", position:"insideBottom", offset:-30, fontSize:8, fill:C.muted }} />
         <YAxis type="number" dataKey="efect" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%"
+          domain={[minEf, maxEf]}
           label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
-        <ReferenceLine x={avgCpl} stroke={`${C.muted}50`} strokeDasharray="5 3"
+        {/* ── CUADRANTES: CPL bajo=mejor (X), Efectividad alta=mejor (Y) ── */}
+        <ReferenceArea x1={minCpl} x2={avgCpl} y1={avgEf} y2={maxEf}
+          fill={C.success} fillOpacity={0.08} stroke="none"
+          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:8, fill:C.success, fontWeight:700 }} />
+        <ReferenceArea x1={avgCpl} x2={maxCpl} y1={avgEf} y2={maxEf}
+          fill={C.warning} fillOpacity={0.08} stroke="none"
+          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:8, fill:C.warning, fontWeight:700 }} />
+        <ReferenceArea x1={minCpl} x2={avgCpl} y1={minEf} y2={avgEf}
+          fill={C.sky} fillOpacity={0.08} stroke="none"
+          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:8, fill:C.cyan, fontWeight:700 }} />
+        <ReferenceArea x1={avgCpl} x2={maxCpl} y1={minEf} y2={avgEf}
+          fill={C.danger} fillOpacity={0.08} stroke="none"
+          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:8, fill:C.danger, fontWeight:700 }} />
+        <ReferenceLine x={avgCpl} stroke={`${C.muted}70`} strokeDasharray="5 3"
           label={{ value:`Avg $${avgCpl.toFixed(2)}`, fontSize:7, fill:C.muted, position:"top" }} />
-        <ReferenceLine y={avgEf} stroke={`${C.muted}50`} strokeDasharray="5 3"
+        <ReferenceLine y={avgEf} stroke={`${C.muted}70`} strokeDasharray="5 3"
           label={{ value:`Avg ${avgEf.toFixed(1)}%`, fontSize:7, fill:C.muted, position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;

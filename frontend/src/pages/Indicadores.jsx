@@ -1,9 +1,12 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
+
+// Contexto para saber si un gráfico está en modo expandido (modal)
+const ExpandedCtx = createContext({ isExpanded: false, modalHeight: 500 });
 
 const formatFechaCorta = (fechaStr) => {
   if (!fechaStr) return fechaStr;
@@ -131,7 +134,7 @@ function ChartModal({ open, onClose, title, children }) {
           <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic">{title}</span>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-black transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100">✕</button>
         </div>
-        <div className="flex-1 p-6 overflow-auto" style={{ minHeight: 400 }}>
+        <div className="flex-1 p-6 overflow-auto flex flex-col" style={{ minHeight: 400 }}>
           {children}
         </div>
         <div className="px-6 py-3 border-t border-slate-800 text-center">
@@ -156,12 +159,22 @@ function ExpandableChart({ title, className = "", modalHeight = 500, children })
         </div>
       </div>
       <ChartModal open={open} onClose={() => setOpen(false)} title={title}>
-        <div style={{ height: modalHeight }}>
-          {children}
-        </div>
+        <ExpandedCtx.Provider value={{ isExpanded: true, modalHeight }}>
+          <div className="flex flex-col h-full" style={{ minHeight: modalHeight }}>
+            {children}
+          </div>
+        </ExpandedCtx.Provider>
       </ChartModal>
     </>
   );
+}
+
+// Wrapper de área de gráfica: altura fija en thumbnail, flex-1 en modal
+function ChartArea({ h = 300, children }) {
+  const { isExpanded } = useContext(ExpandedCtx);
+  return isExpanded
+    ? <div className="flex-1 min-h-0" style={{ minHeight: h }}>{children}</div>
+    : <div style={{ height: h }}>{children}</div>;
 }
 
 // ======================================================
@@ -1111,7 +1124,7 @@ ${asesoresPDF.length > 0 ? `
                   </button>
                 )}
               </div>
-              <div className="h-[260px]"><GraficoBarrasDia /></div>
+              <ChartArea h={260}><GraficoBarrasDia /></ChartArea>
             </ExpandableChart>
 
             <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
@@ -1120,7 +1133,7 @@ ${asesoresPDF.length > 0 ? `
                 EMBUDO DE CONVERSIÓN
                 <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
               </h3>
-              <div className="h-[300px]"><GraficoEmbudo /></div>
+              <ChartArea h={300}><GraficoEmbudo /></ChartArea>
             </ExpandableChart>
           </div>
 
@@ -1163,7 +1176,7 @@ ${asesoresPDF.length > 0 ? `
                 <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-sm bg-violet-500"></span> GESTIONABLES</span>
                 <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
               </div>
-              <div className="h-[300px]"><GraficoAsesores /></div>
+              <ChartArea h={300}><GraficoAsesores /></ChartArea>
             </ExpandableChart>
 
             <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
@@ -1175,7 +1188,7 @@ ${asesoresPDF.length > 0 ? `
                 <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-sm bg-cyan-500"></span> GESTIONABLES</span>
                 <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
               </div>
-              <div className="h-[300px]"><GraficoSupervisores /></div>
+              <ChartArea h={300}><GraficoSupervisores /></ChartArea>
             </ExpandableChart>
           </div>
 
@@ -1529,7 +1542,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
             <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoCRM}</span>
           </h3>
-          <div className="h-[340px]"><GraficoEmbudoCRM /></div>
+          <ChartArea h={340}><GraficoEmbudoCRM /></ChartArea>
         </ExpandableChart>
 
         <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={550}>
@@ -1538,7 +1551,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             EMBUDO JOTFORM — ESTADOS NETLIFE
             <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
           </h3>
-          <div className="h-[340px]"><GraficoEmbudoJOT /></div>
+          <ChartArea h={340}><GraficoEmbudoJOT /></ChartArea>
         </ExpandableChart>
       </div>
 

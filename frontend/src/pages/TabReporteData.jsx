@@ -472,14 +472,14 @@ export default function TabReporteData({ filtro }) {
     XLSX.writeFile(wb, `ReporteData_${MESES[mes - 1]}_${anio}.xlsx`);
   };
 
-  // ─── Reporte Visual Gerencial ───────────────────────────────────────────────
+  // ─── Reporte Visual Gerencial — Call Center Analytics Dashboard ────────────
   const generarReporteVisual = () => {
     if (!data) return;
-    const mesNombre = MESES[data.meta.mes - 1];
-    const anioR     = data.meta.anio;
-    const dias      = data.meta.dias;
-    const fechaGen  = new Date().toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric' });
-    const horaGen   = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+    const mesNombre  = MESES[data.meta.mes - 1];
+    const anioR      = data.meta.anio;
+    const dias       = data.meta.dias;
+    const fechaGen   = new Date().toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric' });
+    const horaGen    = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
 
     const totInv     = (data.inversion  || []).reduce((s, r) => s + n(r.inversion_usd),  0);
     const totLeads   = (data.etapas     || []).reduce((s, r) => s + n(r.total_leads),     0);
@@ -490,7 +490,7 @@ export default function TabReporteData({ filtro }) {
     const cplStr     = totLeads > 0 ? '$' + (totInv / totLeads).toFixed(2) : '—';
     const canalesStr = canalesSel.length > 0 ? canalesSel.map(c => getCfg(c).label).join(' · ') : 'Todos los canales';
 
-    // ── Insights para la página de Recomendaciones ─────────────────────────
+    // ── Insights reutilizados en página 3
     const horaData   = data.hora || [];
     const totalLH    = horaData.reduce((s, r) => s + n(r.n_leads), 0);
     const horaMaxL   = horaData.reduce((mx, h) => n(h.n_leads) > n(mx?.n_leads || 0) ? h : mx, null);
@@ -501,6 +501,52 @@ export default function TabReporteData({ filtro }) {
     const motAtcTop  = [...(data.atc_totales || [])].sort((a, b) => n(b.cantidad) - n(a.cantidad))[0] || null;
     const motAtc2    = [...(data.atc_totales || [])].sort((a, b) => n(b.cantidad) - n(a.cantidad))[1] || null;
     const fmtHora    = (h) => `${String(h).padStart(2,'0')}:00`;
+
+    // ── Embudo de conversión
+    const totATC  = (data.etapas || []).reduce((s,r) => s + n(r.atc_soporte), 0);
+    const totFC   = (data.etapas || []).reduce((s,r) => s + n(r.fuera_cobertura), 0);
+    const totZP   = (data.etapas || []).reduce((s,r) => s + n(r.zonas_peligrosas), 0);
+    const totINN  = (data.etapas || []).reduce((s,r) => s + n(r.innegociable), 0);
+    const totNeg  = Math.max(0, totLeads - totATC - totFC - totZP - totINN);
+    const pOf = (a, b) => b > 0 ? (a / b * 100).toFixed(0) : '0';
+    const funnelSteps = [
+      { label:'LEADS TOTALES',  val:totLeads,   pct:'100',                   color:'#1A3A6E' },
+      { label:'NEGOCIABLES',    val:totNeg,     pct:pOf(totNeg,totLeads),    color:'#2563eb' },
+      { label:'VENTAS SUBIDAS', val:totVS,      pct:pOf(totVS,totLeads),     color:'#0891b2' },
+      { label:'INGRESOS JOT',   val:totJot,     pct:pOf(totJot,totLeads),    color:'#059669' },
+      { label:'ACTIVOS MES',    val:totActivos, pct:pOf(totActivos,totLeads), color:'#16a34a' },
+    ];
+
+    // ── Forma de pago
+    const totPC   = (data.pago||[]).reduce((s,r)=>s+n(r.pago_cuenta),0);
+    const totPE   = (data.pago||[]).reduce((s,r)=>s+n(r.pago_efectivo),0);
+    const totPT   = (data.pago||[]).reduce((s,r)=>s+n(r.pago_tarjeta),0);
+    const totPago = totPC + totPE + totPT;
+    const pca = (a,b) => b>0 ? (a/b*100).toFixed(1) : '0.0';
+
+    // ── Ciclo de venta
+    const cicloKeys   = ['ciclo_0','ciclo_1','ciclo_2','ciclo_3','ciclo_4','ciclo_mas5'];
+    const cicloLabels = ['0 días','1 día','2 días','3 días','4 días','+5 días'];
+    const cicloColors = ['#16a34a','#0891b2','#2563eb','#d97706','#dc2626','#7c3aed'];
+    const cicloVals   = cicloKeys.map(k=>(data.ciclo||[]).reduce((s,r)=>s+n(r[k]),0));
+    const totCiclo    = cicloVals.reduce((a,b)=>a+b,0);
+    const maxCiclo    = Math.max(...cicloVals, 1);
+
+    // ── Top ciudades / ATC
+    const topCiudades = [...(data.ciudad||[])].sort((a,b)=>n(b.total_leads)-n(a.total_leads)).slice(0,8);
+    const maxCiudad   = topCiudades[0] ? n(topCiudades[0].total_leads) : 1;
+    const totLCity    = (data.ciudad||[]).reduce((s,r)=>s+n(r.total_leads),0);
+    const topAtc      = [...(data.atc_totales||[])].sort((a,b)=>n(b.cantidad)-n(a.cantidad)).slice(0,8);
+    const maxAtc      = topAtc[0] ? n(topAtc[0].cantidad) : 1;
+    const totAtcT     = (data.atc_totales||[]).reduce((s,r)=>s+n(r.cantidad),0);
+    const maxHL       = Math.max(...horaData.map(h=>n(h.n_leads)), 1);
+
+    // ── HTML helpers
+    const bar = (label, val, maxVal, color, extra='') =>
+      `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;">` +
+      `<div style="width:160px;font-size:5.8pt;text-align:right;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">${label}</div>` +
+      `<div style="flex:1;background:#e2e8f0;border-radius:3px;height:13px;overflow:hidden;"><div style="width:${maxVal>0?Math.max(2,Math.round(val/maxVal*100)):2}%;height:100%;background:${color};border-radius:3px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div></div>` +
+      `<div style="width:72px;font-size:5.8pt;color:#1A3A6E;font-weight:700">${extra||val}</div></div>`;
 
     const buildTableHTML = (filas, dias_) => {
       if (!filas || filas.length === 0) return '<p style="color:#94a3b8;padding:8px;font-size:7pt">Sin datos</p>';
@@ -533,71 +579,158 @@ export default function TabReporteData({ filtro }) {
       { l: 'CPL',              v: cplStr,                       c: '#0891b2', bg: '#ecfeff' },
     ];
 
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
-<title>Reporte Data Redes — ${mesNombre} ${anioR}</title>
-<style>
+    // ── Embudo HTML (centrado, proporcional)
+    const funnelHTML = funnelSteps.map((s,i) => {
+      const w = Math.max(45, Number(s.pct));
+      return `<div style="margin-bottom:5px;">` +
+        `<div style="display:flex;align-items:stretch;height:28px;">` +
+        `<div style="width:${(100-w)/2}%;"></div>` +
+        `<div style="width:${w}%;background:${s.color};border-radius:5px;display:flex;justify-content:space-between;align-items:center;padding:0 10px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">` +
+        `<span style="font-size:6pt;font-weight:700;color:#fff">${s.label}</span>` +
+        `<span style="font-size:11pt;font-weight:900;color:#fff">${s.val}</span>` +
+        `<span style="font-size:6pt;background:rgba(255,255,255,0.25);padding:1px 6px;border-radius:3px;color:#fff">${s.pct}%</span>` +
+        `</div><div style="width:${(100-w)/2}%;"></div></div>` +
+        (i < funnelSteps.length-1 ? `<div style="text-align:center;font-size:8pt;color:#94a3b8;line-height:1.2">▼</div>` : '') +
+        `</div>`;
+    }).join('');
+
+    const pagoHTML = totPago > 0
+      ? bar('Cuenta Bancaria', totPC, totPago, '#0891b2', `${totPC} (${pca(totPC,totPago)}%)`) +
+        bar('Efectivo',        totPE, totPago, '#16a34a', `${totPE} (${pca(totPE,totPago)}%)`) +
+        bar('Tarjeta',         totPT, totPago, '#7c3aed', `${totPT} (${pca(totPT,totPago)}%)`) +
+        `<div style="margin-top:6px;padding-top:5px;border-top:1px solid #dbe8f8;font-size:5.8pt;color:#64748b;text-align:right">Total JOT: <strong style="color:#1A3A6E">${totPago}</strong></div>`
+      : '<p style="font-size:6pt;color:#94a3b8">Sin datos de pago</p>';
+
+    const cicloHTML = cicloVals.map((v,i) =>
+      `<div style="display:flex;align-items:center;gap:6px;margin:4px 0;">` +
+      `<div style="width:52px;font-size:5.8pt;color:#475569;text-align:right;font-weight:700">${cicloLabels[i]}</div>` +
+      `<div style="flex:1;background:#e2e8f0;border-radius:3px;height:14px;overflow:hidden;"><div style="width:${Math.round(v/maxCiclo*100)}%;height:100%;background:${cicloColors[i]};border-radius:3px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div></div>` +
+      `<div style="width:85px;font-size:5.8pt;color:#1A3A6E;font-weight:700">${v} (${pca(v,totCiclo)}%)</div></div>`
+    ).join('');
+
+    const ciudadesHTML = topCiudades.length > 0
+      ? topCiudades.map(c => bar(c.ciudad, n(c.total_leads), maxCiudad, '#1A3A6E', `${n(c.total_leads)} (${pca(n(c.total_leads),totLCity)}%)`)).join('')
+      : '<p style="font-size:6pt;color:#94a3b8">Sin datos</p>';
+
+    const atcHTML = topAtc.length > 0
+      ? topAtc.map(r => bar(r.motivo_atc||'Sin motivo', n(r.cantidad), maxAtc, '#dc2626', `${n(r.cantidad)} (${pca(n(r.cantidad),totAtcT)}%)`)).join('')
+      : '<p style="font-size:6pt;color:#94a3b8">Sin datos</p>';
+
+    const heatmapHTML = Array.from({length:24}, (_,h) => {
+      const row = horaData.find(r=>Number(r.hora)===h)||{n_leads:0,atc:0,pct_atc:0};
+      const leads = n(row.n_leads); const pctAtc = n(row.pct_atc);
+      const intensity = maxHL>0 ? leads/maxHL : 0;
+      let bg='#f0f6ff', fg='#1A3A6E';
+      if(intensity>0.7){bg='#1A3A6E';fg='#fff';}
+      else if(intensity>0.4){bg='#378ADD';fg='#fff';}
+      else if(intensity>0.2){bg='#93c5fd';fg='#1A3A6E';}
+      else if(intensity>0.05){bg='#dbeafe';fg='#1A3A6E';}
+      let badge='';
+      if(pctAtc>40) badge=`<div style="font-size:4pt;background:#dc2626;color:#fff;border-radius:2px;padding:0 2px;margin-top:1px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">ATC!</div>`;
+      else if(pctAtc>20) badge=`<div style="font-size:4pt;background:#f59e0b;color:#fff;border-radius:2px;padding:0 2px;margin-top:1px;print-color-adjust:exact;-webkit-print-color-adjust:exact;">atc</div>`;
+      return `<div style="background:${bg};border-radius:4px;padding:4px 2px;text-align:center;print-color-adjust:exact;-webkit-print-color-adjust:exact;">` +
+        `<div style="font-size:5pt;color:${fg};font-weight:700">${String(h).padStart(2,'0')}h</div>` +
+        `<div style="font-size:8pt;color:${fg};font-weight:900;line-height:1.1">${leads||'—'}</div>${badge}</div>`;
+    }).join('');
+
+    const CSS = `
 @page{size:A4 landscape;margin:0mm 12mm 10mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Segoe UI',system-ui,Arial,sans-serif;font-size:7.5pt;color:#0f172a;background:#fff;}
-.pgbreak{page-break-before:always;}
-.topbar{height:6px;background:linear-gradient(90deg,#1A3A6E 0%,#378ADD 65%,#70bdf5 100%);print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.pg{page-break-before:always;}
+.tb{height:6px;background:linear-gradient(90deg,#1A3A6E 0%,#378ADD 65%,#70bdf5 100%);print-color-adjust:exact;-webkit-print-color-adjust:exact;}
 .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1A3A6E;padding:8px 0 8px;margin-bottom:10px;}
 .hdr-logo{display:flex;align-items:center;gap:9px;}
 .hdr-badge{background:#1A3A6E;color:#fff;font-size:10pt;font-weight:900;padding:4px 10px;border-radius:5px;letter-spacing:1px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-.hdr h1{font-size:12pt;font-weight:900;color:#1A3A6E;letter-spacing:-0.3px;margin:0;}
+.hdr h1{font-size:12pt;font-weight:900;color:#1A3A6E;margin:0;}
 .hdr p{font-size:7pt;color:#64748b;margin-top:2px;}
 .hdr-r{text-align:right;font-size:7pt;color:#64748b;line-height:1.7;}
 .hdr-r .periodo{font-size:10pt;font-weight:900;color:#1A3A6E;}
-.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:11px;}
+.kgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:10px;}
 .kcard{border-radius:7px;padding:8px 6px;border-width:1px;border-style:solid;text-align:center;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-.kcard .lbl{font-size:5.5pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:3px;letter-spacing:.3px;}
+.kcard .lbl{font-size:5.5pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:3px;}
 .kcard .val{font-size:17pt;font-weight:900;line-height:1.1;}
-.sec{font-size:7pt;font-weight:900;text-transform:uppercase;letter-spacing:.9px;color:#1A3A6E;border-left:3px solid #378ADD;padding:4px 8px;margin:10px 0 4px;background:#eef4fc;border-radius:0 4px 4px 0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:6.5pt;}
-th{background:#1A3A6E;color:#fff;font-size:6pt;font-weight:700;padding:5px 3px;text-align:center;text-transform:uppercase;letter-spacing:.2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-th span{font-weight:400;font-size:5pt;display:block;color:#a8c8f0;}
-td{padding:3.5px 3px;border-bottom:1px solid #dbe8f8;text-align:center;color:#475569;}
-tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-.tdn{text-align:left!important;font-weight:700;padding-left:6px!important;font-size:6.5pt;min-width:200px;}
-.tot{font-weight:900;color:#1A3A6E!important;border-left:1px solid #c4d9f0;}
-.sep-row{background:#eef4fc!important;font-weight:900;font-size:5.5pt;color:#1A3A6E;padding:4px 6px;letter-spacing:.5px;text-align:left;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-.ftr{margin-top:12px;padding-top:6px;border-top:2px solid #1A3A6E;font-size:6pt;color:#64748b;display:flex;justify-content:space-between;align-items:center;}
+.sec{font-size:7pt;font-weight:900;text-transform:uppercase;letter-spacing:.9px;color:#1A3A6E;border-left:3px solid #378ADD;padding:4px 8px;margin:8px 0 5px;background:#eef4fc;border-radius:0 4px 4px 0;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.box{border:1px solid #dbe8f8;border-radius:6px;padding:10px;background:#fafcff;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.ftr{margin-top:10px;padding-top:6px;border-top:2px solid #1A3A6E;font-size:6pt;color:#64748b;display:flex;justify-content:space-between;align-items:center;}
 .ftr-logo{font-weight:900;color:#1A3A6E;letter-spacing:.5px;font-size:7pt;}
-</style></head><body>
-<div class="topbar"></div>
-<div class="hdr">
-  <div class="hdr-logo">
-    <span class="hdr-badge">NOVO ERP</span>
-    <div><h1>REPORTE DATA — REDES DIGITALES</h1><p>Análisis de Canales de Publicidad &nbsp;·&nbsp; ${canalesStr}</p></div>
-  </div>
-  <div class="hdr-r"><div class="periodo">${mesNombre.toUpperCase()} ${anioR}</div><div>Generado: ${fechaGen} &nbsp;·&nbsp; ${horaGen} &nbsp;·&nbsp; ${dias.length} días analizados</div></div>
-</div>
-<div class="kgrid">${kpis.map(k => `<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}</div>
-<div class="sec">💰 Inversión &amp; Costos de Adquisición</div>
-${buildTableHTML(buildInversionFilas(data, dias), dias)}
-<div class="sec">📊 Leads por Canal + Etapas Bitrix</div>
-${buildTableHTML(buildEtapasFilas(data, dias), dias)}
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Uso Gerencial</span><span>Página 1 / 3</span></div>
-<div class="pgbreak"></div>
-<div class="topbar"></div>
-<div class="hdr">
-  <div class="hdr-logo">
-    <span class="hdr-badge">NOVO ERP</span>
-    <div><h1>REPORTE DATA — CONTINUACIÓN</h1><p>${mesNombre.toUpperCase()} ${anioR} &nbsp;·&nbsp; ${canalesStr}</p></div>
-  </div>
-  <div class="hdr-r"><div class="periodo">ESTATUS &amp; MÉTRICAS DE CIERRE</div><div>Generado: ${horaGen}</div></div>
-</div>
-<div class="sec">📋 Estatus Ventas JOT</div>
-${buildTableHTML(buildJotFilas(data, dias), dias)}
-<div class="sec">💳 Forma de Pago</div>
-${buildTableHTML(buildPagoFilas(data, dias), dias)}
-<div class="sec">⏱️ Ciclo de Venta</div>
-${buildTableHTML(buildCicloFilas(data, dias), dias)}
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Página 2 / 3</span></div>
-<div class="pgbreak"></div>
+table{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:6pt;}
+th{background:#1A3A6E;color:#fff;font-size:5.5pt;font-weight:700;padding:4px 3px;text-align:center;text-transform:uppercase;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+th span{font-weight:400;font-size:5pt;display:block;color:#a8c8f0;}
+td{padding:3px;border-bottom:1px solid #dbe8f8;text-align:center;color:#475569;}
+tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+.tdn{text-align:left!important;font-weight:700;padding-left:6px!important;min-width:180px;}
+.tot{font-weight:900;color:#1A3A6E!important;border-left:1px solid #c4d9f0;}
+.sep-row{background:#eef4fc!important;font-weight:900;font-size:5.5pt;color:#1A3A6E;padding:4px 6px;text-align:left;print-color-adjust:exact;-webkit-print-color-adjust:exact;}`;
 
-<!-- PÁGINA 3 — RECOMENDACIONES ESTRATÉGICAS -->
-<div class="topbar"></div>
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Reporte Visual — ${mesNombre} ${anioR}</title>
+<style>${CSS}</style></head><body>
+
+<!-- ══ PÁGINA 1: KPIs + EMBUDO + PAGO + CICLO ══ -->
+<div class="tb"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>REPORTE VISUAL — REDES DIGITALES</h1><p>Análisis de Canales de Publicidad &nbsp;·&nbsp; ${canalesStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="periodo">${mesNombre.toUpperCase()} ${anioR}</div><div>Generado: ${fechaGen} &nbsp;·&nbsp; ${horaGen} &nbsp;·&nbsp; ${dias.length} días</div></div>
+</div>
+<div class="kgrid">${kpis.map(k=>`<div class="kcard" style="background:${k.bg};border-color:${k.c}40"><div class="lbl">${k.l}</div><div class="val" style="color:${k.c}">${k.v}</div></div>`).join('')}</div>
+<div class="g2" style="grid-template-columns:1.3fr 1fr;align-items:start;">
+  <div>
+    <div class="sec">🎯 Embudo de Conversión — Leads a Activos</div>
+    <div class="box">${funnelHTML}</div>
+  </div>
+  <div>
+    <div class="sec">💳 Distribución Forma de Pago</div>
+    <div class="box" style="margin-bottom:8px">${pagoHTML}</div>
+    <div class="sec">⏱️ Ciclo de Venta (días para activar)</div>
+    <div class="box">${cicloHTML}</div>
+  </div>
+</div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Visual — Redes Digitales · Confidencial · Uso Gerencial</span><span>Pág. 1 / 3</span></div>
+
+<!-- ══ PÁGINA 2: CIUDADES + ATC + HEATMAP HORARIO ══ -->
+<div class="pg"></div>
+<div class="tb"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>DISTRIBUCIÓN GEOGRÁFICA &amp; ANÁLISIS CALL CENTER</h1><p>${mesNombre.toUpperCase()} ${anioR} &nbsp;·&nbsp; ${canalesStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="periodo">CALIDAD DE LEADS</div><div>Generado: ${horaGen}</div></div>
+</div>
+<div class="g2" style="align-items:start;margin-bottom:10px;">
+  <div>
+    <div class="sec">🗺️ Top 8 Ciudades — Volumen de Leads</div>
+    <div class="box">${ciudadesHTML}</div>
+  </div>
+  <div>
+    <div class="sec">📞 Top 8 Motivos ATC / Soporte</div>
+    <div class="box">${atcHTML}</div>
+  </div>
+</div>
+<div class="sec">🕐 Heatmap — Distribución de Leads por Hora del Día</div>
+<div class="box">
+  <div style="display:flex;gap:10px;margin-bottom:6px;align-items:center;flex-wrap:wrap;font-size:5.5pt;color:#64748b">
+    <div style="display:flex;align-items:center;gap:3px"><div style="width:10px;height:10px;background:#1A3A6E;border-radius:2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div>Alto (&gt;70%)</div>
+    <div style="display:flex;align-items:center;gap:3px"><div style="width:10px;height:10px;background:#378ADD;border-radius:2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div>Medio-Alto</div>
+    <div style="display:flex;align-items:center;gap:3px"><div style="width:10px;height:10px;background:#93c5fd;border-radius:2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div>Medio</div>
+    <div style="display:flex;align-items:center;gap:3px"><div style="width:10px;height:10px;background:#dbeafe;border-radius:2px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div>Bajo</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <span style="background:#f59e0b;color:#fff;padding:1px 5px;border-radius:2px;font-weight:700;print-color-adjust:exact;-webkit-print-color-adjust:exact;">atc</span>ATC 20-40%
+      &nbsp;<span style="background:#dc2626;color:#fff;padding:1px 5px;border-radius:2px;font-weight:700;print-color-adjust:exact;-webkit-print-color-adjust:exact;">ATC!</span>ATC &gt;40%
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;">${heatmapHTML}</div>
+</div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Visual — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Pág. 2 / 3</span></div>
+
+<!-- ══ PÁGINA 3 — ANÁLISIS HORARIO & RECOMENDACIONES ESTRATÉGICAS ══ -->
+<div class="pg"></div>
+<div class="tb"></div>
 <div class="hdr">
   <div class="hdr-logo">
     <span class="hdr-badge">NOVO ERP</span>
@@ -647,41 +780,41 @@ ${horaData.length > 0 ? `
     ${horaMaxL ? `<tr>
       <td class="tdn" style="color:#2563eb">🏆 Hora pico de leads</td>
       <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMaxL.hora)}</b> concentra <b>${n(horaMaxL.n_leads)}</b> leads (${totalLH > 0 ? ((n(horaMaxL.n_leads)/totalLH)*100).toFixed(1) : 0}% del total diario)</td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Asignar máximo de asesores disponibles en esta franja. Priorizar contacto inmediato en los primeros 5 min de recepción del lead.</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Asignar máximo de asesores disponibles en esta franja. Priorizar contacto inmediato en los primeros 5 min.</td>
     </tr>` : ''}
     ${horaMaxAtc ? `<tr style="background:#fef2f2">
       <td class="tdn" style="color:#dc2626">🔴 Hora crítica de ATC</td>
       <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMaxAtc.hora)}</b> registra <b>${n(horaMaxAtc.pct_atc).toFixed(1)}%</b> de leads ATC (${n(horaMaxAtc.atc)} casos)</td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Reforzar equipo de soporte en esta franja. Analizar origen de los ATC: ¿son leads de baja calidad, zona sin cobertura o falla de contactabilidad?</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Reforzar equipo de soporte en esta franja. Analizar origen: ¿leads de baja calidad, zona sin cobertura o falla de contactabilidad?</td>
     </tr>` : ''}
     ${horaMinAtc ? `<tr>
-      <td class="tdn" style="color:#059669">✅ Ventana de menor ATC</td>
+      <td class="tdn" style="color:#059669">✅ Ventana menor ATC</td>
       <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMinAtc.hora)}</b> es la franja con menor ATC: <b>${n(horaMinAtc.pct_atc).toFixed(1)}%</b> (${n(horaMinAtc.n_leads)} leads)</td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Aprovechar esta franja para gestionar leads más calificados. Puede ser ideal para seguimientos y cierres de negociación.</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Aprovechar esta franja para gestionar leads más calificados. Ideal para seguimientos y cierres.</td>
     </tr>` : ''}
     ${horasBuenas.length > 0 ? `<tr style="background:#f0fdf4">
       <td class="tdn" style="color:#059669">🎯 Franjas óptimas de cierre</td>
-      <td style="text-align:left;padding-left:4px">Horas con volumen alto de leads Y ATC menor al 30%: <b>${horasBuenas.map(h => fmtHora(h.hora)).join(', ')}</b></td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Concentrar las llamadas de cierre en estas franjas. Son las ventanas con mayor probabilidad de conversión efectiva.</td>
+      <td style="text-align:left;padding-left:4px">Horas con volumen alto Y ATC &lt;30%: <b>${horasBuenas.map(h => fmtHora(h.hora)).join(', ')}</b></td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Concentrar las llamadas de cierre en estas franjas. Mayor probabilidad de conversión efectiva.</td>
     </tr>` : ''}
     ${ciudadTop ? `<tr>
       <td class="tdn" style="color:#7c3aed">🏙️ Ciudad más efectiva</td>
-      <td style="text-align:left;padding-left:4px"><b>${ciudadTop.ciudad}</b> lidera con <b>${n(ciudadTop.pct_activos).toFixed(1)}%</b> de tasa de activación (${n(ciudadTop.activos)} activos de ${n(ciudadTop.total_leads)} leads)</td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Analizar el perfil de lead de ${ciudadTop.ciudad} y replicar los criterios de segmentación en otras ciudades con menor efectividad.</td>
+      <td style="text-align:left;padding-left:4px"><b>${ciudadTop.ciudad}</b> lidera con <b>${n(ciudadTop.pct_activos).toFixed(1)}%</b> de activación (${n(ciudadTop.activos)} activos / ${n(ciudadTop.total_leads)} leads)</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Analizar el perfil de lead de ${ciudadTop.ciudad} y replicar la segmentación en ciudades con menor efectividad.</td>
     </tr>` : ''}
-    ${motAtcTop ? `<tr style="${(data.atc_totales||[]).indexOf(motAtcTop) % 2 === 1 ? 'background:#f0f6ff;' : ''}">
+    ${motAtcTop ? `<tr style="background:#fef2f2">
       <td class="tdn" style="color:#dc2626">📞 Principal motivo ATC</td>
       <td style="text-align:left;padding-left:4px"><b>${motAtcTop.motivo_atc}</b> con <b>${n(motAtcTop.cantidad)}</b> casos${motAtc2 ? ` · 2do: ${motAtc2.motivo_atc} (${n(motAtc2.cantidad)})` : ''}</td>
-      <td style="text-align:left;padding-left:4px;color:#334155">Escalar a coordinación de ventas. Si el motivo es operativo, coordinar con equipo técnico. Si es comercial, revisar calidad del lead.</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Escalar a coordinación. Si es operativo: equipo técnico. Si es comercial: revisar calidad del lead.</td>
     </tr>` : ''}
   </tbody>
 </table>
 
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Análisis Horario &amp; Recomendaciones — Confidencial · Uso Gerencial</span><span>Página 3 / 3 · ${fechaGen}</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Análisis Horario &amp; Recomendaciones — Confidencial · Uso Gerencial</span><span>Pág. 3 / 3 · ${fechaGen}</span></div>
 <script>window.onload=()=>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
 
-    const w = window.open('', '_blank', 'width=1100,height=760');
+    const w = window.open('', '_blank', 'width=1200,height=820');
     if (w) { w.document.write(html); w.document.close(); }
   };
 
@@ -869,124 +1002,4 @@ ${horaData.length > 0 ? `
             <TablaHorizontal filas={buildEtapasFilas(data, dias)} dias={dias} accent={C.primary} />
           </Block>
 
-          <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
-            <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
-          </Block>
-
-          <Block title="Forma de Pago" accent={C.cyan} id="bloque-pago">
-            <TablaHorizontal filas={buildPagoFilas(data, dias)} dias={dias} accent={C.cyan} />
-          </Block>
-
-          <Block title="Ciclo de Venta" accent={C.warning} id="bloque-ciclo">
-            <TablaHorizontal filas={buildCicloFilas(data, dias)} dias={dias} accent={C.warning} />
-          </Block>
-
-          <Block title="Leads por Hora del Día" accent={C.cyan} id="bloque-hora">
-            <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
-              <thead className="sticky top-0 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
-                <tr>
-                  {["HORA","LEADS (%)","ATC","% ATC"].map((h) => (
-                    <th key={h} className="px-4 py-2 text-center font-black border-r last:border-r-0"
-                      style={{ color: C.cyan, borderColor: C.border }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const totalH = (data.hora || []).reduce((s, r) => s + n(r.n_leads), 0);
-                  return (data.hora || []).map((h, i) => {
-                    const pct = totalH > 0 ? ((n(h.n_leads) / totalH) * 100).toFixed(1) : "0";
-                    return (
-                      <tr key={i} className="border-b hover:bg-blue-50/20" style={{ borderColor: C.border }}>
-                        <td className="px-4 py-1.5 text-center font-black border-r" style={{ color: C.violet, borderColor: C.border }}>
-                          {String(h.hora).padStart(2, "0")}:00
-                        </td>
-                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.primary, borderColor: C.border }}>
-                          {n(h.n_leads)} <span style={{ color: C.muted }}>({pct}%)</span>
-                        </td>
-                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.danger, borderColor: C.border }}>
-                          {n(h.atc)}
-                        </td>
-                        <td className="px-4 py-1.5 text-center font-black"
-                          style={{ color: n(h.pct_atc) > 40 ? C.danger : n(h.pct_atc) > 20 ? C.warning : C.success }}>
-                          {n(h.pct_atc).toFixed(1)}%
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </Block>
-
-          <Block title="Motivos ATC" accent={C.danger} id="bloque-atc">
-            <div className="p-5 space-y-3">
-              {(() => {
-                const total = (data.atc_totales || []).reduce((s, r) => s + n(r.cantidad), 0);
-                return (data.atc_totales || []).map((r, i) => {
-                  const pct = total > 0 ? ((n(r.cantidad) / total) * 100).toFixed(1) : "0";
-                  return (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="text-[9px] font-semibold w-52 truncate" style={{ color: C.slate }}>{r.motivo_atc}</div>
-                      <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: `${C.danger}15` }}>
-                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: C.danger }} />
-                      </div>
-                      <div className="text-[9px] font-black w-10 text-right" style={{ color: C.danger }}>{n(r.cantidad)}</div>
-                      <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>{pct}%</div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          </Block>
-
-          <Block title="Activos e Ingresos por Ciudad" accent={C.primary} id="bloque-ciudad">
-            <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
-              <thead className="sticky top-0 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
-                <tr>
-                  {["CIUDAD","PROVINCIA","LEADS (%)","ACTIVOS","INGRESOS JOT","% ACTIVOS"].map((h) => (
-                    <th key={h} className="px-4 py-2 text-center font-black border-r last:border-r-0"
-                      style={{ color: C.primary, borderColor: C.border }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const totalC = (data.ciudad || []).reduce((s, r) => s + n(r.total_leads), 0);
-                  return (data.ciudad || []).map((r, i) => {
-                    const pct = totalC > 0 ? ((n(r.total_leads) / totalC) * 100).toFixed(1) : "0";
-                    return (
-                      <tr key={i} className="border-b hover:bg-blue-50/20" style={{ borderColor: C.border }}>
-                        <td className="px-4 py-1.5 font-black border-r" style={{ color: C.cyan, borderColor: C.border }}>{r.ciudad}</td>
-                        <td className="px-4 py-1.5 border-r" style={{ color: C.muted, borderColor: C.border }}>{r.provincia}</td>
-                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.primary, borderColor: C.border }}>
-                          {n(r.total_leads)} <span style={{ color: C.muted }}>({pct}%)</span>
-                        </td>
-                        <td className="px-4 py-1.5 text-center font-black border-r" style={{ color: C.success, borderColor: C.border }}>{n(r.activos)}</td>
-                        <td className="px-4 py-1.5 text-center border-r" style={{ color: C.slate, borderColor: C.border }}>{n(r.ingresos_jot)}</td>
-                        <td className="px-4 py-1.5 text-center font-black"
-                          style={{ color: n(r.pct_activos) >= 10 ? C.success : n(r.pct_activos) >= 5 ? C.warning : C.danger }}>
-                          {n(r.pct_activos).toFixed(1)}%
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </Block>
-        </div>
-      )}
-
-      {!loading && !data && (
-        <div className="flex flex-col items-center justify-center py-24 gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: `${C.primary}10` }}>📑</div>
-          <div className="text-sm font-black" style={{ color: C.slate }}>Selecciona mes, año y presiona "Generar"</div>
-          <div className="text-xs text-center max-w-sm leading-relaxed" style={{ color: C.muted }}>
-            Filtra por canal de publicidad para ver datos específicos, o deja en "Todos" para el consolidado.
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+          <Block title="Estatus Ventas JOT" accent={C.suc

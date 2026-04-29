@@ -1724,4 +1724,71 @@ function HorizontalTable({ title, data, hasScroll }) {
           <thead>
             <tr className="bg-slate-200 border-b border-slate-400 font-black text-[8px]">
               <th className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>ENTIDAD</th>
-              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-100 py
+              <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-100 py-1">PRES. VENTAS ACTIVAS</th>
+              <th className="border-r border-slate-400 text-center px-3">GEST.</th>
+              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-100">VENTAS SUBIDAS</th>
+              <th className="border-r border-slate-400 text-center px-3">EFECT. %</th>
+              <th className="border-r border-slate-400 text-center px-3">DESC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">INST. %</th>
+              <th className="border-r border-slate-400 text-center px-3 bg-slate-50">EFIC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">TJC. %</th>
+              <th className="border-r border-slate-400 text-center px-3">3ED. %</th>
+              <th className="text-center px-3">REGU.</th>
+            </tr>
+            <tr className="bg-white border-b border-slate-400 text-[8px] text-slate-500 font-black">
+              <th className="p-2 border-r border-slate-400 sticky left-0 bg-white z-10 text-left" style={{ width: NW, minWidth: NW, maxWidth: NW }}>NOMBRE</th>
+              <th className={thD}>REAL</th><th className={thD}>BACK</th>
+              <th className="px-3 py-2 border-r border-slate-100 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">TOT</th>
+              <th className={thDB}>CREC</th><th className={thDB}>TOT</th><th className={thD}>CRM</th><th className={thDB}>JOTF</th>
+              <th className={thDB}>REAL</th><th className={thDB}>REAL</th><th className={thDB}>REAL</th>
+              <th className="px-3 py-2 border-r border-slate-400 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">REAL</th>
+              <th className={thDB}>REAL</th><th className={thDB}>REAL</th>
+              <th className="px-3 py-2 w-16 text-center whitespace-nowrap">REAL</th>
+            </tr>
+            <tr className="bg-slate-200 text-slate-800 text-[8px] font-black border-b-2 border-slate-400">
+              <td className="px-2 py-1.5 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>▶ TOTAL</td>
+              <td className="text-center border-r border-slate-700 px-3 py-1.5">{totals.real_mes}</td>
+              <td className="text-center border-r border-slate-700 px-3">{totals.backlog}</td>
+              <td className="text-center border-r border-slate-700 px-3 bg-slate-700 text-white">{totals.total_activas_calculada}</td>
+              <td className="text-center border-r border-slate-600 px-3 text-slate-400">—</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.gestionables}</td>
+              <td className="text-center border-r border-slate-700 px-3">{totals.ventas_crm}</td>
+              <td className="text-center border-r border-slate-600 px-3 font-black">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.efectividad_real}%</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.descarte}%</td>
+              <td className="text-center border-r border-slate-600 px-3">{totals.tasa_instalacion}%</td>
+              <td className="text-center border-r border-slate-400 px-3 bg-slate-50">{totals.eficiencia}%</td>
+              <td className="text-center border-r border-slate-600 px-3">{tarjetaPct}%</td>
+              <td className="text-center border-r border-slate-600 px-3">{terceraEdadPct}%</td>
+              <td className="text-center px-3">{totals.regularizacion}</td>
+            </tr>
+          </thead>
+          <tbody>
+            {safeData.map((row, i) => (
+              <tr key={i} className={`border-b border-slate-200 hover:bg-blue-50/40 transition-colors text-[8px] ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                <td className="px-2 py-1.5 border-r border-slate-300 sticky left-0 font-black text-slate-800 whitespace-nowrap truncate"
+                  style={{ background: i % 2 === 0 ? 'white' : '#f8fafc', width: NW, minWidth: NW, maxWidth: NW }}>
+                  {row.nombre_grupo}
+                </td>
+                <td className={tdD}>{row.real_mes || '—'}</td>
+                <td className={tdD}>{row.backlog ?? '—'}</td>
+                <td className={`${tdD} bg-slate-50 font-black`}>{row.total_activas_calculada || '—'}</td>
+                <td className={`${tdDB} text-slate-400`}>—</td>
+                <td className={tdDB}>{row.gestionables || '—'}</td>
+                <td className={tdD}>{row.ventas_crm || '—'}</td>
+                <td className={`${tdDB} font-black text-blue-700`}>{row.ingresos_reales || '—'}</td>
+                <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
+                <td className={`${tdDB} bg-slate-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
+                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

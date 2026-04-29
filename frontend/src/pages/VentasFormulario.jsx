@@ -38,7 +38,7 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
     plan:             registro.plan             || "",
     valor_plan:       registro.valor_plan       || "",
     login:            registro.login            || "",
-    ingreso_telcos:   registro.ingreso_telcos != null ? String(registro.ingreso_telcos) : "",
+    ingreso_telcos:   registro.ingreso_telcos ? String(registro.ingreso_telcos).split("T")[0] : "",
     fecha_ingreso:    registro.fecha_ingreso ? registro.fecha_ingreso.split("T")[0] : "",
     estado:           registro.estado           || "ACTIVO",
     pago:             registro.pago             || "EFEC",
@@ -98,9 +98,9 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
           {/* Ingreso Telcos */}
           <div>
             <label className={labelCls}>Ingreso Telcos</label>
-            <input type="number" step="0.01" min="0" value={form.ingreso_telcos}
+            <input type="date" value={form.ingreso_telcos}
               onChange={e => set("ingreso_telcos", e.target.value)}
-              placeholder="Ej: 120.50" className={inputCls} />
+              className={inputCls} />
           </div>
 
           {/* Fecha Ingreso */}
@@ -275,7 +275,7 @@ export default function Ventas() {
         plan:             form.plan?.trim()              || null,
         valor_plan:       form.valor_plan?.trim()        || null,
         login:            form.login?.trim()             || null,
-        ingreso_telcos:   form.ingreso_telcos !== "" ? Number(form.ingreso_telcos) : null,
+        ingreso_telcos:   form.ingreso_telcos || null,
         fecha_ingreso:    form.fecha_ingreso             || null,
         observacion:      form.observacion?.trim()       || null,
         check_cedula:     form.check_cedula,
@@ -483,10 +483,10 @@ export default function Ventas() {
                     <td className="px-4 py-3 text-slate-600 text-xs">{v.login || <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.plan || <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.valor_plan || <span className="text-slate-400">—</span>}</td>
-                    <td className="px-4 py-3 text-emerald-700 font-bold whitespace-nowrap">
-                      {v.ingreso_telcos != null
-                        ? `$${Number(v.ingreso_telcos).toFixed(2)}`
-                        : <span className="text-slate-600">—</span>}
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                      {v.ingreso_telcos
+                        ? String(v.ingreso_telcos).split("T")[0]
+                        : <span className="text-slate-400">—</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                       {v.fecha_ingreso

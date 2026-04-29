@@ -1568,4 +1568,42 @@ function HorizontalTable({ title, data, hasScroll }) {
               <td className="text-center border-r border-stone-600 px-3 text-stone-400">—</td>
               <td className="text-center border-r border-stone-600 px-3">{totals.gestionables}</td>
               <td className="text-center border-r border-stone-700 px-3">{totals.ventas_crm}</td>
-              <td className="text-c
+              <td className="text-center border-r border-stone-600 px-3 font-black">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-stone-600 px-3">{totals.efectividad_real}%</td>
+              <td className="text-center border-r border-stone-600 px-3">{totals.descarte}%</td>
+              <td className="text-center border-r border-stone-600 px-3">{totals.tasa_instalacion}%</td>
+              <td className="text-center border-r border-stone-400 px-3 bg-stone-50">{totals.eficiencia}%</td>
+              <td className="text-center border-r border-stone-600 px-3">{tarjetaPct}%</td>
+              <td className="text-center border-r border-stone-600 px-3">{terceraEdadPct}%</td>
+              <td className="text-center px-3">{totals.regularizacion}</td>
+            </tr>
+          </thead>
+          <tbody>
+            {safeData.map((row, i) => (
+              <tr key={i} className={`border-b border-stone-200 hover:bg-orange-50/40 transition-colors text-[8px] ${i % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`}>
+                <td className="px-2 py-1.5 border-r border-stone-300 sticky left-0 font-black text-stone-800 whitespace-nowrap truncate"
+                  style={{ background: i % 2 === 0 ? 'white' : '#fafaf9', width: NW, minWidth: NW, maxWidth: NW }}>
+                  {row.nombre_grupo}
+                </td>
+                <td className={tdD}>{row.real_mes || '—'}</td>
+                <td className={tdD}>{row.backlog ?? '—'}</td>
+                <td className={`${tdD} bg-stone-50 font-black`}>{row.total_activas_calculada || '—'}</td>
+                <td className={`${tdDB} text-stone-400`}>—</td>
+                <td className={tdDB}>{row.gestionables || '—'}</td>
+                <td className={tdD}>{row.ventas_crm || '—'}</td>
+                <td className={`${tdDB} font-black text-orange-700`}>{row.ingresos_reales || '—'}</td>
+                <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
+                <td className={`${tdDB} bg-stone-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
+                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

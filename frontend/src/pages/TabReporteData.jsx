@@ -490,6 +490,18 @@ export default function TabReporteData({ filtro }) {
     const cplStr     = totLeads > 0 ? '$' + (totInv / totLeads).toFixed(2) : '—';
     const canalesStr = canalesSel.length > 0 ? canalesSel.map(c => getCfg(c).label).join(' · ') : 'Todos los canales';
 
+    // ── Insights para la página de Recomendaciones ─────────────────────────
+    const horaData   = data.hora || [];
+    const totalLH    = horaData.reduce((s, r) => s + n(r.n_leads), 0);
+    const horaMaxL   = horaData.reduce((mx, h) => n(h.n_leads) > n(mx?.n_leads || 0) ? h : mx, null);
+    const horaMaxAtc = horaData.reduce((mx, h) => n(h.pct_atc) > n(mx?.pct_atc || 0) ? h : mx, null);
+    const horaMinAtc = [...horaData].filter(h => n(h.n_leads) > 0).sort((a, b) => n(a.pct_atc) - n(b.pct_atc))[0] || null;
+    const horasBuenas = horaData.filter(h => n(h.n_leads) >= (totalLH / Math.max(horaData.length, 1)) * 0.8 && n(h.pct_atc) < 30);
+    const ciudadTop  = [...(data.ciudad || [])].sort((a, b) => n(b.pct_activos) - n(a.pct_activos))[0] || null;
+    const motAtcTop  = [...(data.atc_totales || [])].sort((a, b) => n(b.cantidad) - n(a.cantidad))[0] || null;
+    const motAtc2    = [...(data.atc_totales || [])].sort((a, b) => n(b.cantidad) - n(a.cantidad))[1] || null;
+    const fmtHora    = (h) => `${String(h).padStart(2,'0')}:00`;
+
     const buildTableHTML = (filas, dias_) => {
       if (!filas || filas.length === 0) return '<p style="color:#94a3b8;padding:8px;font-size:7pt">Sin datos</p>';
       const headers = dias_.map(d => `<th>${d.dia}<br/><span>${(d.nombre || '').substring(0,3)}</span></th>`).join('');
@@ -565,7 +577,7 @@ tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-
 ${buildTableHTML(buildInversionFilas(data, dias), dias)}
 <div class="sec">📊 Leads por Canal + Etapas Bitrix</div>
 ${buildTableHTML(buildEtapasFilas(data, dias), dias)}
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Uso Gerencial</span><span>Página 1 / 2</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Uso Gerencial</span><span>Página 1 / 3</span></div>
 <div class="pgbreak"></div>
 <div class="topbar"></div>
 <div class="hdr">
@@ -581,7 +593,91 @@ ${buildTableHTML(buildJotFilas(data, dias), dias)}
 ${buildTableHTML(buildPagoFilas(data, dias), dias)}
 <div class="sec">⏱️ Ciclo de Venta</div>
 ${buildTableHTML(buildCicloFilas(data, dias), dias)}
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Página 2 / 2</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Data — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Página 2 / 3</span></div>
+<div class="pgbreak"></div>
+
+<!-- PÁGINA 3 — RECOMENDACIONES ESTRATÉGICAS -->
+<div class="topbar"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>ANÁLISIS HORARIO &amp; RECOMENDACIONES</h1><p>${mesNombre.toUpperCase()} ${anioR} &nbsp;·&nbsp; ${canalesStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="periodo">Para Toma de Decisiones</div><div>Generado: ${fechaGen} &nbsp;·&nbsp; ${horaGen}</div></div>
+</div>
+
+<div class="sec">⏰ Distribución de Leads &amp; ATC por Hora del Día</div>
+${horaData.length > 0 ? `
+<table>
+  <thead><tr>
+    <th>Hora</th>
+    <th>Leads</th>
+    <th>% del Total</th>
+    <th>ATC</th>
+    <th>% ATC</th>
+    <th>Diagnóstico</th>
+  </tr></thead>
+  <tbody>${horaData.map((h, i) => {
+    const pct = totalLH > 0 ? ((n(h.n_leads) / totalLH) * 100).toFixed(1) : '0.0';
+    const pctAtc = n(h.pct_atc);
+    const esPico = horaMaxL && h.hora === horaMaxL.hora;
+    const esAtcAlto = pctAtc > 40;
+    const esVentana = n(h.n_leads) >= (totalLH / Math.max(horaData.length,1)) * 0.8 && pctAtc < 30;
+    const diag = esPico ? '🏆 Pico de captación' : esAtcAlto ? '🔴 ATC elevado' : esVentana ? '✅ Ventana óptima' : pctAtc < 20 ? '🟢 Baja presión ATC' : '';
+    const bg = esPico ? 'background:#f0fdf4;' : esAtcAlto ? 'background:#fef2f2;' : esVentana ? 'background:#eff6ff;' : i % 2 === 1 ? 'background:#f0f6ff;' : '';
+    return `<tr style="${bg}">
+      <td style="font-weight:900;color:#1A3A6E">${fmtHora(h.hora)}</td>
+      <td style="font-weight:700;color:#2563eb">${n(h.n_leads)}</td>
+      <td style="color:#64748b">${pct}%</td>
+      <td style="color:#dc2626">${n(h.atc)}</td>
+      <td style="font-weight:700;color:${pctAtc > 40 ? '#dc2626' : pctAtc > 20 ? '#d97706' : '#059669'}">${pctAtc.toFixed(1)}%</td>
+      <td style="text-align:left;padding-left:6px;color:#334155;font-size:6pt">${diag}</td>
+    </tr>`;
+  }).join('')}</tbody>
+</table>` : '<p style="color:#94a3b8;padding:8px;font-size:7pt">Sin datos de hora para el período.</p>'}
+
+<div class="sec">💡 Recomendaciones Estratégicas — ${mesNombre.toUpperCase()} ${anioR}</div>
+<table style="margin-bottom:0">
+  <thead><tr>
+    <th style="text-align:left;min-width:180px">Insight</th>
+    <th style="text-align:left">Hallazgo</th>
+    <th style="text-align:left">Acción Recomendada</th>
+  </tr></thead>
+  <tbody>
+    ${horaMaxL ? `<tr>
+      <td class="tdn" style="color:#2563eb">🏆 Hora pico de leads</td>
+      <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMaxL.hora)}</b> concentra <b>${n(horaMaxL.n_leads)}</b> leads (${totalLH > 0 ? ((n(horaMaxL.n_leads)/totalLH)*100).toFixed(1) : 0}% del total diario)</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Asignar máximo de asesores disponibles en esta franja. Priorizar contacto inmediato en los primeros 5 min de recepción del lead.</td>
+    </tr>` : ''}
+    ${horaMaxAtc ? `<tr style="background:#fef2f2">
+      <td class="tdn" style="color:#dc2626">🔴 Hora crítica de ATC</td>
+      <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMaxAtc.hora)}</b> registra <b>${n(horaMaxAtc.pct_atc).toFixed(1)}%</b> de leads ATC (${n(horaMaxAtc.atc)} casos)</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Reforzar equipo de soporte en esta franja. Analizar origen de los ATC: ¿son leads de baja calidad, zona sin cobertura o falla de contactabilidad?</td>
+    </tr>` : ''}
+    ${horaMinAtc ? `<tr>
+      <td class="tdn" style="color:#059669">✅ Ventana de menor ATC</td>
+      <td style="text-align:left;padding-left:4px">La hora <b>${fmtHora(horaMinAtc.hora)}</b> es la franja con menor ATC: <b>${n(horaMinAtc.pct_atc).toFixed(1)}%</b> (${n(horaMinAtc.n_leads)} leads)</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Aprovechar esta franja para gestionar leads más calificados. Puede ser ideal para seguimientos y cierres de negociación.</td>
+    </tr>` : ''}
+    ${horasBuenas.length > 0 ? `<tr style="background:#f0fdf4">
+      <td class="tdn" style="color:#059669">🎯 Franjas óptimas de cierre</td>
+      <td style="text-align:left;padding-left:4px">Horas con volumen alto de leads Y ATC menor al 30%: <b>${horasBuenas.map(h => fmtHora(h.hora)).join(', ')}</b></td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Concentrar las llamadas de cierre en estas franjas. Son las ventanas con mayor probabilidad de conversión efectiva.</td>
+    </tr>` : ''}
+    ${ciudadTop ? `<tr>
+      <td class="tdn" style="color:#7c3aed">🏙️ Ciudad más efectiva</td>
+      <td style="text-align:left;padding-left:4px"><b>${ciudadTop.ciudad}</b> lidera con <b>${n(ciudadTop.pct_activos).toFixed(1)}%</b> de tasa de activación (${n(ciudadTop.activos)} activos de ${n(ciudadTop.total_leads)} leads)</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Analizar el perfil de lead de ${ciudadTop.ciudad} y replicar los criterios de segmentación en otras ciudades con menor efectividad.</td>
+    </tr>` : ''}
+    ${motAtcTop ? `<tr style="${(data.atc_totales||[]).indexOf(motAtcTop) % 2 === 1 ? 'background:#f0f6ff;' : ''}">
+      <td class="tdn" style="color:#dc2626">📞 Principal motivo ATC</td>
+      <td style="text-align:left;padding-left:4px"><b>${motAtcTop.motivo_atc}</b> con <b>${n(motAtcTop.cantidad)}</b> casos${motAtc2 ? ` · 2do: ${motAtc2.motivo_atc} (${n(motAtc2.cantidad)})` : ''}</td>
+      <td style="text-align:left;padding-left:4px;color:#334155">Escalar a coordinación de ventas. Si el motivo es operativo, coordinar con equipo técnico. Si es comercial, revisar calidad del lead.</td>
+    </tr>` : ''}
+  </tbody>
+</table>
+
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Análisis Horario &amp; Recomendaciones — Confidencial · Uso Gerencial</span><span>Página 3 / 3 · ${fechaGen}</span></div>
 <script>window.onload=()=>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
 

@@ -408,6 +408,10 @@ export default function ReporteComercialCore() {
     const top3 = supsOrd.slice(0, 3);
     const bot3 = [...supsOrd].reverse().slice(0, 3).filter(s => Number(s.ingresos_reales || 0) < Number(supsOrd[0]?.ingresos_reales || 99));
 
+    // ── Asesores para página 3 del PDF ───────────────────────────────────────
+    const asesoresPDF = [...(data.asesores || allAsesores || [])].filter(a => a.nombre_grupo)
+      .sort((a, b) => Number(b.ingresos_reales) - Number(a.ingresos_reales)).slice(0, 20);
+
     const semaforo = (val, good, warn) => val >= good ? '#059669' : val >= warn ? '#d97706' : '#dc2626';
     const f1 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(1);
     const f0 = v => isNaN(Number(v)) ? '—' : Number(v).toFixed(0);
@@ -539,7 +543,7 @@ ${[
   const est=jot>=12?'🟢':jot>=6?'🟡':'🔴';
   return`<tr><td class="tdn">${s.nombre_grupo||'—'}</td><td style="color:${semaforo(jot,12,6)};font-weight:900">${jot}</td><td>${leads}</td><td style="color:${semaforo(Number(ef),40,25)};font-weight:700">${ef}%</td><td style="color:${semaforo(inst,85,70)};font-weight:700">${inst.toFixed(1)}%</td><td>${act}</td><td style="color:${Number(desc)<=30?'#059669':'#dc2626'}">${desc.toFixed(1)}%</td><td>${est}</td></tr>`;
 }).join('')}</tbody></table>
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe de Gestión Comercial 360° · Confidencial · Uso Gerencial</span><span>Página 1 / 2</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe de Gestión Comercial 360° · Confidencial · Uso Gerencial</span><span>Página 1 / 3</span></div>
 
 <!-- PÁGINA 2 -->
 <div class="p2">
@@ -582,7 +586,65 @@ ${bot3.slice(0,3).map(s=>{
 </div>
 <div class="sec">⚡ Plan de Acción — ${diaManana.toUpperCase()}</div>
 ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#3b82f6;font-weight:900;min-width:20px">${i+1}.</span><span>${a}</span></div>`).join('')}
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe Gerencial 360° · Confidencial · Generado: ${horaStr}</span><span>Página 2 / 2 · ${fechaStr}</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe Gerencial 360° · Confidencial · Generado: ${horaStr}</span><span>Página 2 / 3 · ${fechaStr}</span></div>
+</div>
+
+<!-- PÁGINA 3 — RENDIMIENTO POR ASESOR -->
+<div class="p2">
+<div class="topbar"></div>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-badge">NOVO ERP</span>
+    <div><h1>RENDIMIENTO INDIVIDUAL — ASESORES</h1><p>Novonet · Indicadores por Asesor · ${diaActual} ${fechaStr}</p></div>
+  </div>
+  <div class="hdr-r"><div class="dia">Período: ${filtros.fechaDesde} → ${filtros.fechaHasta}</div><div>Confidencial · Uso Gerencial</div></div>
+</div>
+<div class="sec">👤 Evaluación 360° por Asesor — Top ${asesoresPDF.length} por JOT</div>
+${asesoresPDF.length > 0 ? `
+<table>
+  <thead><tr>
+    <th style="text-align:left;padding-left:6px;min-width:160px">Asesor</th>
+    <th>JOT</th>
+    <th>Leads</th>
+    <th>Efectiv.</th>
+    <th>Tasa Inst.</th>
+    <th>Activos</th>
+    <th>Descarte</th>
+    <th>Est.</th>
+  </tr></thead>
+  <tbody>${asesoresPDF.map((a, idx) => {
+    const jot  = Number(a.ingresos_reales || 0);
+    const leads = Number(a.leads_gestionables || 0);
+    const ef   = leads > 0 ? ((jot / leads) * 100).toFixed(1) : '0.0';
+    const inst = Number(a.tasa_instalacion || 0);
+    const act  = Number(a.ventas_activas || 0);
+    const desc = Number(a.pct_descarte || 0);
+    const est  = jot >= 5 ? '🟢' : jot >= 2 ? '🟡' : '🔴';
+    const bg   = idx % 2 === 1 ? 'background:#f0f6ff;' : '';
+    return `<tr style="${bg}">
+      <td class="tdn">${a.nombre_grupo || '—'}</td>
+      <td style="color:${semaforo(jot,5,2)};font-weight:900">${jot}</td>
+      <td>${leads}</td>
+      <td style="color:${semaforo(Number(ef),40,25)};font-weight:700">${ef}%</td>
+      <td style="color:${semaforo(inst,85,70)};font-weight:700">${inst.toFixed(1)}%</td>
+      <td>${act}</td>
+      <td style="color:${Number(desc)<=30?'#059669':'#dc2626'}">${desc.toFixed(1)}%</td>
+      <td>${est}</td>
+    </tr>`;
+  }).join('')}
+  <tr style="background:#eef4fc;font-weight:900;font-size:6pt;color:#1A3A6E">
+    <td class="tdn">TOTAL / PROMEDIO EQUIPO</td>
+    <td>${asesoresPDF.reduce((s,a)=>s+Number(a.ingresos_reales||0),0)}</td>
+    <td>${asesoresPDF.reduce((s,a)=>s+Number(a.leads_gestionables||0),0)}</td>
+    <td>${(asesoresPDF.reduce((s,a)=>{const l=Number(a.leads_gestionables||0);const j=Number(a.ingresos_reales||0);return s+(l>0?j/l:0)},0)/Math.max(asesoresPDF.length,1)*100).toFixed(1)}%</td>
+    <td>${(asesoresPDF.reduce((s,a)=>s+Number(a.tasa_instalacion||0),0)/Math.max(asesoresPDF.length,1)).toFixed(1)}%</td>
+    <td>${asesoresPDF.reduce((s,a)=>s+Number(a.ventas_activas||0),0)}</td>
+    <td>${(asesoresPDF.reduce((s,a)=>s+Number(a.pct_descarte||0),0)/Math.max(asesoresPDF.length,1)).toFixed(1)}%</td>
+    <td>—</td>
+  </tr>
+  </tbody>
+</table>` : '<p style="color:#94a3b8;padding:8px;font-size:7pt">No hay datos de asesores para el período seleccionado.</p>'}
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NOVONET</span><span>Informe Gerencial 360° · Confidencial · Generado: ${horaStr}</span><span>Página 3 / 3 · ${fechaStr}</span></div>
 </div>
 <script>window.onload=()=>setTimeout(()=>window.print(),350);</script>
 </body></html>`;

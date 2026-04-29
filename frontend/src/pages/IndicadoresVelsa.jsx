@@ -96,21 +96,19 @@ function ExpandableChart({ title, className = "", modalHeight = 500, children })
       </div>
       <ChartModal open={open} onClose={() => setOpen(false)} title={title}>
         <ExpandedCtx.Provider value={{ isExpanded: true, modalHeight }}>
-          <div className="flex flex-col h-full" style={{ minHeight: modalHeight }}>
-            {children}
-          </div>
+          {children}
         </ExpandedCtx.Provider>
       </ChartModal>
     </>
   );
 }
 
-// Wrapper de área de gráfica: altura fija en thumbnail, flex-1 en modal
+// Wrapper de área de gráfica:
+// - Vista normal  → altura fija h px
+// - Modal expandido → altura modalHeight (explícita en px para que ResponsiveContainer funcione)
 function ChartArea({ h = 300, children }) {
-  const { isExpanded } = useContext(ExpandedCtx);
-  return isExpanded
-    ? <div className="flex-1 min-h-0" style={{ minHeight: h }}>{children}</div>
-    : <div style={{ height: h }}>{children}</div>;
+  const { isExpanded, modalHeight } = useContext(ExpandedCtx);
+  return <div style={{ height: isExpanded ? modalHeight : h }}>{children}</div>;
 }
 
 /** Multi-select dropdown para Campaña/Origen */
@@ -935,7 +933,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-600 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
@@ -950,7 +948,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <ChartArea h={300}><GraficoBarrasDia /></ChartArea>
             </ExpandableChart>
 
-            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
@@ -988,7 +986,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-amber-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse shrink-0"></span>
                 ASESORES — GESTIONABLES VS INGRESOS HOY
@@ -1000,7 +998,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <ChartArea h={320}><GraficoAsesores /></ChartArea>
             </ExpandableChart>
 
-            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={500}>
+            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-400 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse shrink-0"></span>
                 SUPERVISORES — GESTIONABLES VS INGRESOS HOY
@@ -1351,7 +1349,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={550}>
+        <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={620}>
           <h3 className="text-[10px] font-black text-amber-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
             EMBUDO CRM — ETAPAS DE NEGOCIACIÓN
@@ -1360,7 +1358,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <ChartArea h={340}><GraficoEmbudoCRM /></ChartArea>
         </ExpandableChart>
 
-        <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={550}>
+        <ExpandableChart title={`EMBUDO JOTFORM — ESTADOS NETLIFE — TOTAL: ${totalBaseEmbudoJOT}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={620}>
           <h3 className="text-[10px] font-black text-emerald-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             EMBUDO JOTFORM — ESTADOS NETLIFE
@@ -1570,177 +1568,4 @@ function HorizontalTable({ title, data, hasScroll }) {
               <td className="text-center border-r border-stone-600 px-3 text-stone-400">—</td>
               <td className="text-center border-r border-stone-600 px-3">{totals.gestionables}</td>
               <td className="text-center border-r border-stone-700 px-3">{totals.ventas_crm}</td>
-              <td className="text-center border-r border-stone-600 px-3">{totals.ingresos_reales}</td>
-              <td className="text-center border-r border-stone-600 px-3 text-emerald-300">{totals.efectividad_real}%</td>
-              <td className="text-center border-r border-stone-600 px-3 text-rose-300">{totals.descarte}%</td>
-              <td className="text-center border-r border-stone-600 px-3 text-cyan-300">{totals.tasa_instalacion}%</td>
-              <td className="text-center border-r border-stone-600 px-3 bg-stone-700 text-yellow-300">{totals.eficiencia}%</td>
-              <td className="text-center border-r border-stone-600 px-3 text-amber-300">{tarjetaPct}%</td>
-              <td className="text-center border-r border-stone-600 px-3 text-pink-300">{terceraEdadPct}%</td>
-              <td className="text-center px-3">{totals.regularizacion}</td>
-            </tr>
-          </thead>
-          <tbody className="font-mono leading-none">
-            {safeData.map((row, idx) => (
-              <tr key={idx} className="border-b border-stone-200 hover:bg-stone-50 transition-colors">
-                <td className="px-2 py-2 border-r border-stone-400 sticky left-0 bg-white font-bold text-[8px] truncate uppercase" style={{ width: NW, minWidth: NW, maxWidth: NW }} title={row.nombre_grupo}>{row.nombre_grupo}</td>
-                <td className={tdD}>{row.real_mes}</td>
-                <td className={tdD}>{row.backlog}</td>
-                <td className="text-center px-3 py-2 border-r border-stone-100 w-16 font-bold bg-stone-50 whitespace-nowrap">{row.total_activas_calculada}</td>
-                <td className={`${tdDB} text-stone-400`}>{row.crec_vs_ma}</td>
-                <td className={tdDB}>{row.gestionables}</td>
-                <td className={tdD}>{row.ventas_crm}</td>
-                <td className={tdDB}>{row.ingresos_reales}</td>
-                <td className={`${tdDB} font-bold`}>{row.efectividad_real}%</td>
-                <td className={tdDB}>{row.descarte}%</td>
-                <td className={tdDB}>{row.tasa_instalacion}%</td>
-                <td className="text-center px-3 py-2 border-r border-stone-400 w-16 font-bold bg-stone-50 whitespace-nowrap">{row.eficiencia}%</td>
-                <td className={`${tdDB} text-amber-600`}>{row.ingresos_reales > 0 ? ((Number(row.tarjeta_credito) / Number(row.ingresos_reales)) * 100).toFixed(1) : 0}%</td>
-                <td className={`${tdDB} text-pink-600`}>{row.real_mes > 0 ? ((Number(row.tercera_edad) / Number(row.real_mes)) * 100).toFixed(1) : 0}%</td>
-                <td className="text-center px-3 py-2 w-16 font-bold whitespace-nowrap">{row.regularizacion}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ======================================================
-// DAILY MONITORING TABLE
-// ======================================================
-function DailyMonitoringTable({ title, data, hasScroll }) {
-  const safeData = data || [];
-  const n = safeData.length || 1;
-
-  const descargarExcel = () => {
-    if (!safeData.length) return;
-    const ws = XLSX.utils.json_to_sheet(safeData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Datos');
-    XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  const totals = {
-    real_mes_leads:   safeData.reduce((a, r) => a + Number(r.real_mes_leads || 0), 0),
-    real_dia_leads:   safeData.reduce((a, r) => a + Number(r.real_dia_leads || 0), 0),
-    crm_acumulado:    safeData.reduce((a, r) => a + Number(r.crm_acumulado || 0), 0),
-    crm_dia:          safeData.reduce((a, r) => a + Number(r.crm_dia || 0), 0),
-    v_subida_crm_hoy: safeData.reduce((a, r) => a + Number(r.v_subida_crm_hoy || 0), 0),
-    v_subida_jot_hoy: safeData.reduce((a, r) => a + Number(r.v_subida_jot_hoy || 0), 0),
-    real_efectividad: (safeData.reduce((a, r) => a + Number(r.real_efectividad || 0), 0) / n).toFixed(1),
-    real_descarte:    (safeData.reduce((a, r) => a + Number(r.real_descarte || 0), 0) / n).toFixed(1),
-    real_tarjeta:     (safeData.reduce((a, r) => a + Number(r.real_tarjeta || 0), 0) / n).toFixed(1),
-  };
-
-  return (
-    <div className="bg-white border border-stone-300 shadow-2xl rounded-xl overflow-hidden uppercase">
-      <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex justify-between items-center text-slate-800">
-        <span className="text-[10px] font-black italic tracking-[0.2em] flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block animate-pulse"></span>
-          {title} <span className="text-slate-500 font-mono normal-case">({safeData.length} registros)</span>
-        </span>
-        <button onClick={descargarExcel} className="text-[9px] bg-orange-600 hover:bg-orange-500 px-4 py-1.5 rounded-full font-black transition-all flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
-      </div>
-      <div className={`overflow-auto ${hasScroll ? 'max-h-[500px]' : ''}`}>
-        <table className="w-full text-[10px] border-collapse whitespace-nowrap">
-          <thead className="sticky top-0 z-20">
-            <tr className="bg-stone-200 text-stone-700 font-black italic text-[9px]">
-              <th className="p-3 text-left sticky left-0 bg-stone-200 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">NOMBRE</th>
-              <th colSpan="3" className="border-l-2 border-stone-300 text-center bg-orange-100/50">LEADS MES</th>
-              <th colSpan="3" className="border-l-2 border-stone-300 text-center bg-amber-100/50">LEADS HOY</th>
-              <th colSpan="2" className="border-l-2 border-stone-300 text-center bg-stone-50">CRM</th>
-              <th colSpan="2" className="border-l-2 border-stone-300 text-center bg-emerald-100/50">VENTAS</th>
-              <th colSpan="3" className="border-l-2 border-stone-300 text-center bg-yellow-50">EFECTIVIDAD</th>
-            </tr>
-            <tr className="bg-white border-b border-stone-300 text-[8px] font-black text-stone-500">
-              <th className="p-2 border-r border-stone-200 sticky left-0 bg-white">ENTIDAD</th>
-              <th className="p-2 border-r border-stone-100 w-12 text-stone-400">OBJ</th>
-              <th className="p-2 border-r border-stone-100 w-12">REAL</th>
-              <th className="p-2 border-l-2 border-stone-300 w-12 bg-red-50 text-red-600">FALTA</th>
-              <th className="p-2 border-r border-stone-100 w-12 text-stone-400">OBJ</th>
-              <th className="p-2 border-r border-stone-100 w-12 text-orange-600">REAL</th>
-              <th className="p-2 border-l-2 border-stone-300 w-12 bg-red-50 text-red-600">FALTA</th>
-              <th className="p-2 border-r border-stone-100 w-12">ACUM</th>
-              <th className="p-2 border-l-2 border-stone-300 w-12">DIA</th>
-              <th className="p-2 border-r border-stone-100 w-12">CRM</th>
-              <th className="p-2 border-l-2 border-stone-300 w-12 text-emerald-600 font-black">JOTF</th>
-              <th className="p-2 border-r border-stone-100 w-14 italic text-orange-600">EFECT %</th>
-              <th className="p-2 border-r border-stone-100 w-14 italic text-rose-600">DESC %</th>
-              <th className="p-2 w-14 italic text-amber-600">TJC %</th>
-            </tr>
-            <tr className="bg-slate-200 text-slate-800 text-[8px] font-black border-b-2 border-slate-400">
-              <td className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10">▶ TOTAL</td>
-              <td className="p-2 text-center text-stone-400">—</td>
-              <td className="p-2 text-center">{totals.real_mes_leads}</td>
-              <td className="p-2 text-center text-red-300">{(2000 * safeData.length - totals.real_mes_leads).toLocaleString()}</td>
-              <td className="p-2 text-center text-stone-400">—</td>
-              <td className="p-2 text-center text-orange-300">{totals.real_dia_leads}</td>
-              <td className="p-2 text-center text-red-300">{Math.max(0, 70 * safeData.length - totals.real_dia_leads)}</td>
-              <td className="p-2 text-center">{totals.crm_acumulado}</td>
-              <td className="p-2 text-center">{totals.crm_dia}</td>
-              <td className="p-2 text-center">{totals.v_subida_crm_hoy}</td>
-              <td className="p-2 text-center text-emerald-300">{totals.v_subida_jot_hoy}</td>
-              <td className={`p-2 text-center ${Number(totals.real_efectividad) < 80 ? 'text-red-300' : 'text-emerald-300'}`}>{totals.real_efectividad}%</td>
-              <td className={`p-2 text-center ${Number(totals.real_descarte) > 20 ? 'text-red-300' : 'text-stone-300'}`}>{totals.real_descarte}%</td>
-              <td className="p-2 text-center text-amber-300">{totals.real_tarjeta}%</td>
-            </tr>
-          </thead>
-          <tbody className="font-mono divide-y divide-stone-100">
-            {safeData.map((row, idx) => (
-              <tr key={idx} className="hover:bg-stone-50 transition-colors">
-                <td className="p-3 font-black text-stone-800 sticky left-0 bg-white border-r border-stone-200 z-10 uppercase">{row.nombre_grupo}</td>
-                <td className="p-3 text-center text-stone-400">2000</td>
-                <td className="p-3 text-center font-black">{row.real_mes_leads}</td>
-                <td className="p-3 text-center bg-red-50/50 font-black text-red-600 italic">{(2000 - Number(row.real_mes_leads)).toLocaleString()}</td>
-                <td className="p-3 text-center text-stone-400">70</td>
-                <td className="p-3 text-center font-black text-orange-700">{row.real_dia_leads}</td>
-                <td className="p-3 text-center bg-red-50/50 font-black text-red-600 italic">{Math.max(0, 70 - Number(row.real_dia_leads))}</td>
-                <td className="p-3 text-center font-bold text-stone-600">{row.crm_acumulado}</td>
-                <td className="p-3 text-center font-black text-stone-900">{row.crm_dia}</td>
-                <td className="p-3 text-center font-bold text-stone-600">{row.v_subida_crm_hoy}</td>
-                <td className="p-3 text-center font-black text-emerald-700 bg-emerald-50/30">{row.v_subida_jot_hoy}</td>
-                <td className={`p-3 text-center font-black ${Number(row.real_efectividad) < 80 ? 'text-red-500' : 'text-emerald-600'}`}>{row.real_efectividad}%</td>
-                <td className={`p-3 text-center font-black ${Number(row.real_descarte) > 20 ? 'text-red-500' : 'text-stone-600'}`}>{row.real_descarte}%</td>
-                <td className="p-3 text-center font-black text-amber-600">{row.real_tarjeta}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ======================================================
-// DATA VISOR
-// ======================================================
-function DataVisor({ title, data, onDownload, color }) {
-  if (!data || !data.length) return null;
-  return (
-    <div className="bg-white border border-stone-300 shadow-lg rounded-2xl overflow-hidden mb-4">
-      <div className={`${color} text-white px-6 py-3 flex justify-between items-center`}>
-        <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-[0.2em] uppercase">{title}</h3>
-          <span className="text-[8px] font-bold opacity-60 italic uppercase">MOSTRANDO ÚLTIMOS {Math.min(data.length, 30)} DE {data.length} REGISTROS</span>
-        </div>
-        <button onClick={onDownload} className="text-[9px] bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-full font-black backdrop-blur-sm transition-all border border-white/10 flex items-center gap-2 uppercase">⬇️ DESCARGAR EXCEL</button>
-      </div>
-      <div className="max-h-56 overflow-auto text-[9px] font-bold text-stone-600 font-mono">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-stone-100 sticky top-0 border-b border-stone-300 z-10 shadow-sm">
-            <tr>{Object.keys(data[0]).map(h => <th key={h} className="px-4 py-2 border-r border-stone-200 text-[8px] text-stone-400 font-black uppercase">{h}</th>)}</tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {data.slice(0, 30).map((row, i) => (
-              <tr key={i} className="hover:bg-stone-50 transition-colors">
-                {Object.values(row).map((v, j) => <td key={j} className="px-4 py-2 border-r border-stone-50 truncate max-w-[150px]">{v ?? "—"}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+              <td className="text-c

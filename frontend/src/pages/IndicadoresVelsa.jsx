@@ -1178,7 +1178,7 @@ const COLUMNAS_VELSA = [
   { header: 'LOGIN',                                    field: 'inicio_sesion_netlife' },
   { header: 'ESTADO DE NETLIFE',                        field: 'estado_venta_netlife' },
   { header: 'FORMA DE PAGO',                            field: 'forma_pago' },
-  { header: 'FECHA DE INGRESO A TELCOS',                field: 'ingreso_telcos_vendedores' },
+  { header: 'FECHA DE INGRESO A TELCOS',                field: 'fecha_ingresa_telcos' },
   { header: 'FECHA DE ASIGNACIÓN EN TELCOS',            field: 'fecha_agenda' },
   { header: 'FECHA DE ACTIVACIÓN EN TELCOS',            field: 'fecha_activacion_telcos' },
   { header: 'PROVINCIA',                                field: 'provincia' },

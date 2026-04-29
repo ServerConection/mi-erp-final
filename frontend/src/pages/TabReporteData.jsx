@@ -1002,4 +1002,19 @@ ${horaData.length > 0 ? `
             <TablaHorizontal filas={buildEtapasFilas(data, dias)} dias={dias} accent={C.primary} />
           </Block>
 
-          <Block title="Estatus Ventas JOT" accent={C.suc
+          <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
+            <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
+          </Block>
+
+          <Block title="Forma de Pago" accent={C.cyan} id="bloque-pago">
+            <TablaHorizontal filas={buildPagoFilas(data, dias)} dias={dias} accent={C.cyan} />
+          </Block>
+
+          <Block title="Ciclo de Venta" accent={C.warning} id="bloque-ciclo">
+            <TablaHorizontal filas={buildCicloFilas(data, dias)} dias={dias} accent={C.warning} />
+          </Block>
+        </div>
+      )}
+    </div>
+  );
+}

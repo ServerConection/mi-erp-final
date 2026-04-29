@@ -80,6 +80,8 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
+        console.log(`[DASHBOARD VELSA] Rango: ${desde} → ${hasta} | asesor=${asesor||'todos'} | sup=${supervisor||'todos'} | canal=${canal||'-'}`);
+
         // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
         const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal });
         const cached = getDashboardVelsaCache(cacheKey);
@@ -247,7 +249,9 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
             AND vn.t2_fecha_activacion_telcos::date >= $1::date
             AND vn.t2_fecha_activacion_telcos::date <= $2::date
-            AND vn.t2_jot_created_at_fecha::date < $1::date
+            AND vn.t2_jot_created_at_fecha IS NOT NULL
+            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
+            AND ${parseFecha('vn.t2_jot_created_at_fecha')} < $1::date
             ${filters}
             GROUP BY 1
         `;

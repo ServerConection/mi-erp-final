@@ -342,6 +342,8 @@ export default function ReporteVelsa() {
     canal: [],
   });
 
+  const [apiError, setApiError] = useState(null);
+
   const [filtros180, setFiltros180] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
@@ -416,12 +418,21 @@ export default function ReporteVelsa() {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) {
+        setApiError(null);
         setData({ ...result, porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0), porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0) });
         mostrarAlertas(result.supervisores);
         // Pre-calentar las otras tabs en background (sin bloquear UI)
         prefetchBackground(filtrosActivos);
+      } else {
+        setApiError(result.error || 'Error al consultar datos. Intente de nuevo.');
+        console.error("[DASHBOARD VELSA] Error API:", result.error);
       }
-    } catch (e) { if (e.name !== 'AbortError') console.error("Error Dashboard:", e); }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.error("Error Dashboard:", e);
+        setApiError('Error de conexión. Verifique el servidor.');
+      }
+    }
     finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
@@ -458,6 +469,14 @@ export default function ReporteVelsa() {
   // ── Helper: actualiza el estado visual de filtros; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
   const updateFiltro = (campo, valor) => {
     setFiltros(prev => ({ ...prev, [campo]: valor }));
+  };
+
+  // ── Helper especial para fechas: aplica y consulta de inmediato (sin esperar APLICAR) ─
+  const updateFiltroFecha = (campo, valor) => {
+    const nuevosFiltros = { ...filtros, [campo]: valor };
+    setFiltros(nuevosFiltros);
+    setFiltrosAplicados(nuevosFiltros);
+    fetchDashboard(nuevosFiltros);
   };
 
   // Click en tarjeta de JotForm: aplica el filtro inmediatamente (acción interactiva intencional)
@@ -923,11 +942,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 <div className="flex bg-white border border-slate-300 rounded-2xl p-1.5 shadow-inner">
                   <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                     value={filtros.fechaDesde}
-                    onChange={e => updateFiltro('fechaDesde', e.target.value)} />
+                    onChange={e => updateFiltroFecha('fechaDesde', e.target.value)} />
                   <div className="text-slate-400 px-2 font-black self-center">-</div>
                   <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                     value={filtros.fechaHasta}
-                    onChange={e => updateFiltro('fechaHasta', e.target.value)} />
+                    onChange={e => updateFiltroFecha('fechaHasta', e.target.value)} />
                 </div>
               </div>
 
@@ -1016,6 +1035,15 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               </button>
             </div>
           </div>
+
+          {/* Banner de error de API */}
+          {apiError && (
+            <div className="mb-4 flex items-center gap-3 bg-red-50 border border-red-300 text-red-800 rounded-xl px-4 py-3 text-[11px] font-bold shadow-sm">
+              <span className="text-lg">⚠️</span>
+              <span className="flex-1">ERROR AL CARGAR DATOS: {apiError}</span>
+              <button onClick={() => setApiError(null)} className="text-red-400 hover:text-red-600 font-black text-base leading-none">✕</button>
+            </div>
+          )}
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">

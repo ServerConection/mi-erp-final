@@ -699,7 +699,7 @@ const getConsultaDescargaVelsa = async (req, res) => {
                 inicio_sesion_netlife,
                 estado_venta_netlife,
                 forma_pago,
-                ingreso_telcos_vendedores,
+                fecha_ingresa_telcos,
                 fecha_agenda,
                 fecha_activacion_telcos,
                 provincia,

@@ -168,13 +168,24 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
         // Filtro por canal de pauta → convierte a lista de b_origen
+        // También incluye filas JOT cuyo j_id_bitrix apunta a un deal con ese b_origen,
+        // para que los indicadores JOT no queden en 0 al filtrar por campaña.
         if (canal && CANAL_ORIGENES_MAP[canal]) {
             const origenesCanal = CANAL_ORIGENES_MAP[canal];
             const startIdx = values.length + 1;
             const placeholders = origenesCanal.map((_, i) => `$${startIdx + i}`).join(', ');
             values.push(...origenesCanal);
-            filtersJoin   += ` AND mb.b_origen IN (${placeholders})`;
-            filtersNoJoin += ` AND mb.b_origen IN (${placeholders})`;
+            const origenFilter = `(
+                mb.b_origen IN (${placeholders})
+                OR mb.j_id_bitrix::text IN (
+                    SELECT mb2.b_id::text
+                    FROM mestra_bitrix mb2
+                    WHERE mb2.b_origen IN (${placeholders})
+                      AND mb2.b_id IS NOT NULL
+                )
+            )`;
+            filtersJoin   += ` AND ${origenFilter}`;
+            filtersNoJoin += ` AND ${origenFilter}`;
         }
 
         const ETAPAS_GESTIONABLES = `(

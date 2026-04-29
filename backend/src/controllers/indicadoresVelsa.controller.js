@@ -98,7 +98,21 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
         if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
         // Filtro por campaña/origen (campo t1_relation_tags en velsa_netlife_maestra_cons)
-        if (canal) { values.push(`%${canal}%`); filters += ` AND vn.t1_relation_tags ILIKE $${values.length}`; }
+        // También incluye filas JOT cuyo t2_id_bitrix_ghl apunta al id_unificado del deal correcto,
+        // para que los indicadores JOT no queden en 0 al filtrar por campaña.
+        if (canal) {
+            values.push(`%${canal}%`);
+            const canalIdx = values.length;
+            filters += ` AND (
+                vn.t1_relation_tags ILIKE $${canalIdx}
+                OR vn.t2_id_bitrix_ghl::text IN (
+                    SELECT vn2.id_unificado::text
+                    FROM velsa_netlife_maestra_cons vn2
+                    WHERE vn2.t1_relation_tags ILIKE $${canalIdx}
+                      AND vn2.id_unificado IS NOT NULL
+                )
+            )`;
+        }
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
         const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;

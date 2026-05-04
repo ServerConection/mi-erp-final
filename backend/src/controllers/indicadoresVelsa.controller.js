@@ -380,6 +380,10 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         ]);
 
         // ── Lote 2: tablas de detalle + backlogs (4 queries) ──────────────────────
+        // DEBUG: mostrar SQL de backlog para verificar filtros de fecha_activacion_telcos
+        const _sqlBacklogDebug = queryBacklog('vn.supervisor_asignado');
+        console.log(`[BACKLOG VELSA DEBUG] SQL generado (supervisor):\n${_sqlBacklogDebug}`);
+        console.log(`[BACKLOG VELSA DEBUG] Values: ${JSON.stringify(values)}`);
         const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),

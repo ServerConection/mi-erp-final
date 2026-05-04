@@ -188,6 +188,10 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersNoJoin += ` AND ${origenFilter}`;
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS GESTIONABLES:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
         const ETAPAS_GESTIONABLES = `(
             'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
             'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
@@ -196,15 +200,21 @@ const getIndicadoresDashboard = async (req, res) => {
             'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
             'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200',
-            'SEGUIMIENTO PLAN 200'
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200',
+            'CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS',
+            'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE'
         )`;
 
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS DESCARTE:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
         const ETAPAS_DESCARTE = `(
             'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
             'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
             'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+            'FUERA DE COBERTURA','DESCARTE'
         )`;
 
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
@@ -536,8 +546,17 @@ const getMonitoreoDiario = async (req, res) => {
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200')";
-        const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO')";
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS GESTIONABLES:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
+        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200','CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE')";
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS DESCARTE:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
+        const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','FUERA DE COBERTURA','DESCARTE')";
 
         // JOIN con fallback igual que en dashboard
         const joinMonitoreo = `
@@ -597,7 +616,7 @@ LEFT JOIN LATERAL (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE ${parseFecha('mb.b_cerrado')} = $2::date
+                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 ) AS crm_dia,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
@@ -755,6 +774,10 @@ const getReporte180 = async (req, res) => {
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS GESTIONABLES:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
         const ETAPAS_GESTIONABLES = `(
             'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
             'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
@@ -763,14 +786,21 @@ const getReporte180 = async (req, res) => {
             'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
             'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
+            'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200',
+            'CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS',
+            'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE'
         )`;
 
+        // ─────────────────────────────────────────────────────────────────────
+        // ETAPAS DESCARTE:
+        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
+        // ─────────────────────────────────────────────────────────────────────
         const ETAPAS_DESCARTE = `(
             'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
             'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
             'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO'
+            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+            'FUERA DE COBERTURA','DESCARTE'
         )`;
 
         const queryKPIs = `

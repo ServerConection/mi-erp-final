@@ -248,16 +248,12 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 COUNT(*)::int AS activas_mes
             FROM ${dedupVN}
             WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-            AND vn.t2_fecha_activacion_telcos IS NOT NULL
-            AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
-            AND vn.t2_fecha_activacion_telcos::date >= $1::date
-            AND vn.t2_fecha_activacion_telcos::date <= $2::date
-            AND vn.t2_fecha_ingresa_telcos IS NOT NULL
-            AND TRIM(vn.t2_fecha_ingresa_telcos::text) != ''
-            AND vn.t2_fecha_ingresa_telcos::date >= $1::date
-            AND vn.t2_fecha_ingresa_telcos::date <= $2::date
-            ${filters}
-            GROUP BY 1
+       AND ${parseFecha('vn.t2_fecha_activacion_telcos')} >= $1::date
+    AND ${parseFecha('vn.t2_fecha_activacion_telcos')} <= $2::date
+    AND ${parseFecha('vn.t2_fecha_ingresa_telcos')} >= $1::date
+    AND ${parseFecha('vn.t2_fecha_ingresa_telcos')} <= $2::date
+    ${filters}
+    GROUP BY 1
         `;
 
         // ── Backlog ───────────────────────────────────────────────────────────────

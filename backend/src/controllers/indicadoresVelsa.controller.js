@@ -235,10 +235,14 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             `;
         };
 
-        // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
-        // PERO cuya orden fue creada ANTES del inicio del período (fecha_desde).
+        // Backlog = registros con estado_venta_netlife = 'ACTIVO'
+        // cuya fecha_activacion_telcos está DENTRO del período consultado [fecha_desde, fecha_hasta]
+        // (debe ser >= fecha_desde Y <= fecha_hasta — no mayor al período seleccionado),
+        // PERO cuya orden (jot) fue creada ANTES del inicio del período (fecha_desde).
         // Esto garantiza que solo se cuentan órdenes pendientes pre-período que se activaron
         // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
+        // parseFecha() se usa en t2_fecha_activacion_telcos para manejar ambos formatos de fecha
+        // (ISO y 'Mon DD YYYY'), igual que el resto de fechas del controlador.
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -247,8 +251,8 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
             AND vn.t2_fecha_activacion_telcos IS NOT NULL
             AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
-            AND vn.t2_fecha_activacion_telcos::date >= $1::date
-            AND vn.t2_fecha_activacion_telcos::date <= $2::date
+            AND ${parseFecha('vn.t2_fecha_activacion_telcos')} >= $1::date
+            AND ${parseFecha('vn.t2_fecha_activacion_telcos')} <= $2::date
             AND vn.t2_jot_created_at_fecha IS NOT NULL
             AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
             AND ${parseFecha('vn.t2_jot_created_at_fecha')} < $1::date

@@ -237,10 +237,10 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         // ── Activas Mes ──────────────────────────────────────────────────────────
         // Registros ACTIVO cuya fecha_activacion_telcos está dentro del período
-        // Y cuya fecha_ingresa_telcos >= fecha_desde (ingresaron en el mismo período o después).
+        // Y cuya fecha_ingresa_telcos también está dentro del período (BETWEEN $1 AND $2).
         // SQL equivalente:
         //   WHERE t2_fecha_activacion_telcos BETWEEN $1 AND $2
-        //     AND t2_fecha_ingresa_telcos >= $1
+        //     AND t2_fecha_ingresa_telcos BETWEEN $1 AND $2
         //     AND t2_estado_venta_netlife = 'ACTIVO'
         const queryActivasMes = (columna) => `
             SELECT
@@ -255,6 +255,7 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             AND vn.t2_fecha_ingresa_telcos IS NOT NULL
             AND TRIM(vn.t2_fecha_ingresa_telcos::text) != ''
             AND vn.t2_fecha_ingresa_telcos::date >= $1::date
+            AND vn.t2_fecha_ingresa_telcos::date <= $2::date
             ${filters}
             GROUP BY 1
         `;

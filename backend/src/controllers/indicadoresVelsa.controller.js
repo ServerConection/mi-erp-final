@@ -235,14 +235,38 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             `;
         };
 
-        // Backlog = registros con estado_venta_netlife = 'ACTIVO'
-        // cuya fecha_activacion_telcos está DENTRO del período consultado [fecha_desde, fecha_hasta]
-        // (debe ser >= fecha_desde Y <= fecha_hasta — no mayor al período seleccionado),
-        // PERO cuya orden (jot) fue creada ANTES del inicio del período (fecha_desde).
-        // Esto garantiza que solo se cuentan órdenes pendientes pre-período que se activaron
-        // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
-        // parseFecha() se usa en t2_fecha_activacion_telcos para manejar ambos formatos de fecha
-        // (ISO y 'Mon DD YYYY'), igual que el resto de fechas del controlador.
+        // ── Activas Mes ──────────────────────────────────────────────────────────
+        // Registros ACTIVO cuya fecha_activacion_telcos está dentro del período
+        // Y cuya fecha_ingresa_telcos >= fecha_desde (ingresaron en el mismo período o después).
+        // SQL equivalente:
+        //   WHERE t2_fecha_activacion_telcos BETWEEN $1 AND $2
+        //     AND t2_fecha_ingresa_telcos >= $1
+        //     AND t2_estado_venta_netlife = 'ACTIVO'
+        const queryActivasMes = (columna) => `
+            SELECT
+                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(*)::int AS activas_mes
+            FROM ${dedupVN}
+            WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+            AND vn.t2_fecha_activacion_telcos IS NOT NULL
+            AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
+            AND vn.t2_fecha_activacion_telcos::date >= $1::date
+            AND vn.t2_fecha_activacion_telcos::date <= $2::date
+            AND vn.t2_fecha_ingresa_telcos IS NOT NULL
+            AND TRIM(vn.t2_fecha_ingresa_telcos::text) != ''
+            AND vn.t2_fecha_ingresa_telcos::date >= $1::date
+            ${filters}
+            GROUP BY 1
+        `;
+
+        // ── Backlog ───────────────────────────────────────────────────────────────
+        // Registros ACTIVO cuya fecha_activacion_telcos está dentro del período
+        // PERO cuya fecha_ingresa_telcos < fecha_desde (ingresaron ANTES del período).
+        // Son activaciones del período que venían pendientes de períodos anteriores.
+        // SQL equivalente:
+        //   WHERE t2_fecha_activacion_telcos BETWEEN $1 AND $2
+        //     AND t2_fecha_ingresa_telcos < $1
+        //     AND t2_estado_venta_netlife = 'ACTIVO'
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
@@ -251,11 +275,11 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
             AND vn.t2_fecha_activacion_telcos IS NOT NULL
             AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
-            AND ${parseFecha('vn.t2_fecha_activacion_telcos')} >= $1::date
-            AND ${parseFecha('vn.t2_fecha_activacion_telcos')} <= $2::date
-            AND vn.t2_jot_created_at_fecha IS NOT NULL
-            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
-            AND ${parseFecha('vn.t2_jot_created_at_fecha')} < $1::date
+            AND vn.t2_fecha_activacion_telcos::date >= $1::date
+            AND vn.t2_fecha_activacion_telcos::date <= $2::date
+            AND vn.t2_fecha_ingresa_telcos IS NOT NULL
+            AND TRIM(vn.t2_fecha_ingresa_telcos::text) != ''
+            AND vn.t2_fecha_ingresa_telcos::date < $1::date
             ${filters}
             GROUP BY 1
         `;
@@ -379,27 +403,30 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             ]),
         ]);
 
-        // ── Lote 2: tablas de detalle + backlogs (4 queries) ──────────────────────
-        // DEBUG: mostrar SQL de backlog para verificar filtros de fecha_activacion_telcos
-        const _sqlBacklogDebug = queryBacklog('vn.supervisor_asignado');
-        console.log(`[BACKLOG VELSA DEBUG] SQL generado (supervisor):\n${_sqlBacklogDebug}`);
-        console.log(`[BACKLOG VELSA DEBUG] Values: ${JSON.stringify(values)}`);
-        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
+        // ── Lote 2: tablas de detalle + backlogs + activas_mes (6 queries) ────────
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivasMesSup, resActivasMesAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('vn.supervisor_asignado'), values),
             pool.query(queryBacklog('vn.t1_assigned_to'), values),
+            pool.query(queryActivasMes('vn.supervisor_asignado'), values),
+            pool.query(queryActivasMes('vn.t1_assigned_to'), values),
         ]);
 
-        const mergeBacklog = (filas, backlogRows) => {
+        const mergeBacklog = (filas, backlogRows, activasMesRows) => {
             return filas.map(row => {
                 const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
-                return { ...row, backlog: bl ? Number(bl.backlog) : 0 };
+                const am = activasMesRows.find(a => a.nombre_grupo === row.nombre_grupo);
+                return {
+                    ...row,
+                    backlog:      bl ? Number(bl.backlog)      : 0,
+                    activas_mes:  am ? Number(am.activas_mes)  : 0,
+                };
             });
         };
 
-        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
-        const asesoresConBacklog     = mergeBacklog(resAses.rows, resBacklogAses.rows);
+        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows, resActivasMesSup.rows);
+        const asesoresConBacklog     = mergeBacklog(resAses.rows, resBacklogAses.rows, resActivasMesAses.rows);
 
         const estadosNetlife = resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total || 0) }));
 
@@ -415,8 +442,9 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         const porcentajeTarjeta = totalJotformTarjeta > 0
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
-        const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
-        console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
+        const totalBacklogSup    = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog     || 0), 0);
+        const totalActivasMesSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.activas_mes || 0), 0);
+        console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup} | Activas Mes Total: ${totalActivasMesSup}`);
 
         // ── DIAGNÓSTICO AUTOMÁTICO: si no hay supervisores, inspeccionar las fechas ──
         if (supervisoresConBacklog.length === 0) {

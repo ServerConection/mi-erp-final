@@ -5,9 +5,8 @@ const { enviarOTP } = require('../services/email.service');
 
 // Solo habilitar en entorno de desarrollo
 router.post('/test-email', async (req, res) => {
-  // check temporal de prueba
-  if (req.body.secret !== 'erp-test-2026') {
-    return res.status(403).json({ success: false, error: 'No autorizado' });
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'No disponible en producción' });
   }
 
   try {

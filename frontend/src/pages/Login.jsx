@@ -29,16 +29,16 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/auth/login`, {
+      const res = await fetch(`${API}/api/otp/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario: formData.usuario, password: formData.contraseña }),
       });
       const data = await res.json();
       if (!data.success) { setError(data.error || "Credenciales inválidas."); return; }
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("userProfile", JSON.stringify(data.user));
-      navigate("/");
+      setUsuarioId(data.usuario_id);
+      setUsuarioLogin(data.usuario || formData.usuario);
+      setPaso(2);
     } catch {
       setError("Error de conexión con el servidor.");
     } finally {

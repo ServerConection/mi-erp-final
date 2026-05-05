@@ -9,154 +9,11 @@ const getPrimerDiaMes = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPER: ejecuta todas las queries en paralelo y devuelve objeto con KPIs
-// ─────────────────────────────────────────────────────────────────────────────
-const buildResumen = async (view, fechaDesde, fechaHasta) => {
-  const dateFilter = `
-    AND DATE(created_at) >= $1::date
-    AND DATE(created_at) <= $2::date
-  `;
-
-  const [
-    totalRes,
-    calidadRes,
-    estadoRegRes,
-    auditoriaRes,
-    formasPagoRes,
-    planesRes,
-    asesoresRes,
-    tendenciaRes,
-    supervisoresRes,
-  ] = await Promise.all([
-    // 1. Total de registros
-    pool.query(
-      `SELECT COUNT(*) AS total FROM ${view} WHERE 1=1 ${dateFilter}`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 2. Distribución por calidad_venta
-    pool.query(
-      `SELECT COALESCE(UPPER(TRIM(calidad_venta)), 'SIN DATO') AS categoria,
-              COUNT(*) AS cantidad
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY categoria ORDER BY cantidad DESC`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 3. Estado de regularización
-    pool.query(
-      `SELECT COALESCE(UPPER(TRIM(estado_regularizacion)), 'SIN DATO') AS categoria,
-              COUNT(*) AS cantidad
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY categoria ORDER BY cantidad DESC`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 4. Auditoría de documentos
-    pool.query(
-      `SELECT COALESCE(UPPER(TRIM(auditoria_documentos)), 'SIN DATO') AS categoria,
-              COUNT(*) AS cantidad
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY categoria ORDER BY cantidad DESC`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 5. Formas de pago
-    pool.query(
-      `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
-              COUNT(*) AS cantidad
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY categoria ORDER BY cantidad DESC`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 6. Planes (dinámico: cuenta columnas de planes no nulas)
-    pool.query(
-      `SELECT
-         SUM(CASE WHEN plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '' THEN 1 ELSE 0 END) AS plan_casa,
-         SUM(CASE WHEN plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '' THEN 1 ELSE 0 END) AS plan_pyme,
-         SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END) AS plan_hogar_adulto_mayor,
-         SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END) AS plan_profesional
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 7. Top 15 asesores por número de ventas
-    pool.query(
-      `SELECT
-         COALESCE(nombre_completo, codigo_asesor, 'Sin nombre') AS asesor,
-         COUNT(*) AS total,
-         SUM(CASE WHEN UPPER(TRIM(calidad_venta)) = 'APROBADO' THEN 1 ELSE 0 END) AS aprobadas,
-         SUM(CASE WHEN UPPER(TRIM(calidad_venta)) = 'RECHAZADO' THEN 1 ELSE 0 END) AS rechazadas
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY asesor
-       ORDER BY total DESC
-       LIMIT 15`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 8. Tendencia diaria (últimos 30 días o rango)
-    pool.query(
-      `SELECT
-         DATE(created_at) AS fecha,
-         COUNT(*) AS total,
-         SUM(CASE WHEN UPPER(TRIM(calidad_venta)) = 'APROBADO' THEN 1 ELSE 0 END) AS aprobadas
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY DATE(created_at)
-       ORDER BY fecha ASC`,
-      [fechaDesde, fechaHasta]
-    ),
-    // 9. Por supervisor
-    pool.query(
-      `SELECT
-         COALESCE(UPPER(TRIM(supervisor)), 'SIN SUPERVISOR') AS supervisor,
-         COUNT(*) AS total,
-         SUM(CASE WHEN UPPER(TRIM(calidad_venta)) = 'APROBADO' THEN 1 ELSE 0 END) AS aprobadas
-       FROM ${view}
-       WHERE 1=1 ${dateFilter}
-       GROUP BY supervisor
-       ORDER BY total DESC
-       LIMIT 12`,
-      [fechaDesde, fechaHasta]
-    ),
-  ]);
-
-  const planesRow = planesRes.rows[0] || {};
-  const planesArr = [
-    { name: 'Plan Casa', value: parseInt(planesRow.plan_casa) || 0 },
-    { name: 'Plan Pyme', value: parseInt(planesRow.plan_pyme) || 0 },
-    { name: 'Plan Adulto Mayor', value: parseInt(planesRow.plan_hogar_adulto_mayor) || 0 },
-    { name: 'Plan Profesional', value: parseInt(planesRow.plan_profesional) || 0 },
-  ].filter(p => p.value > 0);
-
-  return {
-    total: parseInt(totalRes.rows[0]?.total) || 0,
-    calidadVenta: calidadRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
-    estadoRegularizacion: estadoRegRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
-    auditoria: auditoriaRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
-    formasPago: formasPagoRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
-    planes: planesArr,
-    asesores: asesoresRes.rows.map(r => ({
-      asesor: r.asesor,
-      total: parseInt(r.total),
-      aprobadas: parseInt(r.aprobadas),
-      rechazadas: parseInt(r.rechazadas),
-    })),
-    tendencia: tendenciaRes.rows.map(r => ({
-      fecha: r.fecha ? String(r.fecha).substring(5, 10) : '',
-      total: parseInt(r.total),
-      aprobadas: parseInt(r.aprobadas),
-    })),
-    supervisores: supervisoresRes.rows.map(r => ({
-      supervisor: r.supervisor,
-      total: parseInt(r.total),
-      aprobadas: parseInt(r.aprobadas),
-    })),
-  };
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/analista/novonet
+// RESUMEN NOVONET — vista_analisis_novonet
+// Columnas confirmadas:
+//   created_at, codigo_asesor, estatus_netlife, estado_regularizacion,
+//   forma_pago, plan_casa, plan_profesional, plan_pyme, plan_hogar_adulto_mayor,
+//   novedades_atc, provincia, ciudad
 // ─────────────────────────────────────────────────────────────────────────────
 const getResumenNovonet = async (req, res) => {
   try {
@@ -164,17 +21,148 @@ const getResumenNovonet = async (req, res) => {
     const primerDia = getPrimerDiaMes();
     const { desde = primerDia, hasta = hoy } = req.query;
 
-    const data = await buildResumen('public.vista_analisis_novonet', desde, hasta);
+    const [
+      totalRes, estatusRes, regularizRes, formasPagoRes,
+      planesRes, asesoresRes, tendenciaRes, provinciaRes,
+    ] = await Promise.all([
 
-    return res.json({ success: true, desde, hasta, ...data });
+      // 1. Total
+      pool.query(
+        `SELECT COUNT(*) AS total FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+        [desde, hasta]
+      ),
+
+      // 2. Estatus Netlife (equivalente calidad de venta)
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(estatus_netlife)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 3. Estado regularización
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(estado_regularizacion)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 4. Formas de pago
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 5. Planes
+      pool.query(
+        `SELECT
+           SUM(CASE WHEN plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '' THEN 1 ELSE 0 END)::int AS plan_casa,
+           SUM(CASE WHEN plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '' THEN 1 ELSE 0 END)::int AS plan_pyme,
+           SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END)::int AS plan_hogar,
+           SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END)::int AS plan_profesional
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+        [desde, hasta]
+      ),
+
+      // 6. Top 15 asesores — scatter data (total + activos)
+      pool.query(
+        `SELECT
+           COALESCE(codigo_asesor, 'Sin código') AS asesor,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos,
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estado_regularizacion)) = 'REGULARIZADO')::int AS regularizados,
+           ROUND(
+             COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO') * 100.0
+             / NULLIF(COUNT(*), 0), 1
+           ) AS pct_activo
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY codigo_asesor
+         ORDER BY total DESC
+         LIMIT 20`,
+        [desde, hasta]
+      ),
+
+      // 7. Tendencia diaria
+      pool.query(
+        `SELECT
+           created_at::date AS fecha,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY created_at::date
+         ORDER BY fecha ASC`,
+        [desde, hasta]
+      ),
+
+      // 8. Por provincia (top 8)
+      pool.query(
+        `SELECT
+           COALESCE(UPPER(TRIM(provincia)), 'SIN DATO') AS provincia,
+           COUNT(*)::int AS total
+         FROM vista_analisis_novonet
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+           AND provincia IS NOT NULL AND TRIM(provincia) <> ''
+         GROUP BY provincia
+         ORDER BY total DESC
+         LIMIT 8`,
+        [desde, hasta]
+      ),
+    ]);
+
+    const p = planesRes.rows[0] || {};
+    const planes = [
+      { name: 'Casa', value: p.plan_casa || 0 },
+      { name: 'Pyme', value: p.plan_pyme || 0 },
+      { name: 'Adulto Mayor', value: p.plan_hogar || 0 },
+      { name: 'Profesional', value: p.plan_profesional || 0 },
+    ].filter(x => x.value > 0);
+
+    return res.json({
+      success: true, desde, hasta,
+      total: parseInt(totalRes.rows[0]?.total) || 0,
+      calidadVenta:        estatusRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      estadoRegularizacion: regularizRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      formasPago:          formasPagoRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      planes,
+      asesores: asesoresRes.rows.map(r => ({
+        asesor:        r.asesor,
+        total:         r.total,
+        activos:       r.activos,
+        regularizados: r.regularizados,
+        pctActivo:     parseFloat(r.pct_activo) || 0,
+      })),
+      tendencia: tendenciaRes.rows.map(r => ({
+        fecha:   String(r.fecha).substring(5, 10),
+        total:   r.total,
+        activos: r.activos,
+      })),
+      provincias: provinciaRes.rows.map(r => ({ name: r.provincia, value: r.total })),
+    });
   } catch (error) {
-    console.error('[analista.controller] getResumenNovonet:', error);
-    return res.status(500).json({ success: false, error: 'Error obteniendo resumen NOVONET' });
+    console.error('[analista] getResumenNovonet:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/analista/velsa
+// RESUMEN VELSA — vw_jotform_velsa_netlife_completo
+// Columnas confirmadas:
+//   created_at, codigo_asesor, estado_venta_netlife, estado_regularizacion_novo,
+//   forma_pago, plan_casa, plan_profesional, plan_pyme, plan_hogar_adulto_mayor,
+//   provincia, ciudad
 // ─────────────────────────────────────────────────────────────────────────────
 const getResumenVelsa = async (req, res) => {
   try {
@@ -182,12 +170,137 @@ const getResumenVelsa = async (req, res) => {
     const primerDia = getPrimerDiaMes();
     const { desde = primerDia, hasta = hoy } = req.query;
 
-    const data = await buildResumen('public.vw_jotform_velsa_netlife_completo', desde, hasta);
+    const [
+      totalRes, estatusRes, regularizRes, formasPagoRes,
+      planesRes, asesoresRes, tendenciaRes, provinciaRes,
+    ] = await Promise.all([
 
-    return res.json({ success: true, desde, hasta, ...data });
+      // 1. Total
+      pool.query(
+        `SELECT COUNT(*) AS total FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+        [desde, hasta]
+      ),
+
+      // 2. Estado venta Netlife (calidad de venta)
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(estado_venta_netlife)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 3. Estado regularización
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(estado_regularizacion_novo)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 4. Formas de pago
+      pool.query(
+        `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
+                COUNT(*) AS cantidad
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY categoria ORDER BY cantidad DESC`,
+        [desde, hasta]
+      ),
+
+      // 5. Planes
+      pool.query(
+        `SELECT
+           SUM(CASE WHEN plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '' THEN 1 ELSE 0 END)::int AS plan_casa,
+           SUM(CASE WHEN plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '' THEN 1 ELSE 0 END)::int AS plan_pyme,
+           SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END)::int AS plan_hogar,
+           SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END)::int AS plan_profesional
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+        [desde, hasta]
+      ),
+
+      // 6. Top 20 asesores — scatter data
+      pool.query(
+        `SELECT
+           COALESCE(codigo_asesor, 'Sin código') AS asesor,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos,
+           ROUND(
+             COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO') * 100.0
+             / NULLIF(COUNT(*), 0), 1
+           ) AS pct_activo
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY codigo_asesor
+         ORDER BY total DESC
+         LIMIT 20`,
+        [desde, hasta]
+      ),
+
+      // 7. Tendencia diaria
+      pool.query(
+        `SELECT
+           created_at::date AS fecha,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY created_at::date
+         ORDER BY fecha ASC`,
+        [desde, hasta]
+      ),
+
+      // 8. Por provincia (top 8)
+      pool.query(
+        `SELECT
+           COALESCE(UPPER(TRIM(provincia)), 'SIN DATO') AS provincia,
+           COUNT(*)::int AS total
+         FROM vw_jotform_velsa_netlife_completo
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+           AND provincia IS NOT NULL AND TRIM(provincia) <> ''
+         GROUP BY provincia
+         ORDER BY total DESC
+         LIMIT 8`,
+        [desde, hasta]
+      ),
+    ]);
+
+    const p = planesRes.rows[0] || {};
+    const planes = [
+      { name: 'Casa', value: p.plan_casa || 0 },
+      { name: 'Pyme', value: p.plan_pyme || 0 },
+      { name: 'Adulto Mayor', value: p.plan_hogar || 0 },
+      { name: 'Profesional', value: p.plan_profesional || 0 },
+    ].filter(x => x.value > 0);
+
+    return res.json({
+      success: true, desde, hasta,
+      total: parseInt(totalRes.rows[0]?.total) || 0,
+      calidadVenta:         estatusRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      estadoRegularizacion: regularizRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      formasPago:           formasPagoRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
+      planes,
+      asesores: asesoresRes.rows.map(r => ({
+        asesor:    r.asesor,
+        total:     r.total,
+        activos:   r.activos,
+        pctActivo: parseFloat(r.pct_activo) || 0,
+      })),
+      tendencia: tendenciaRes.rows.map(r => ({
+        fecha:   String(r.fecha).substring(5, 10),
+        total:   r.total,
+        activos: r.activos,
+      })),
+      provincias: provinciaRes.rows.map(r => ({ name: r.provincia, value: r.total })),
+    });
   } catch (error) {
-    console.error('[analista.controller] getResumenVelsa:', error);
-    return res.status(500).json({ success: false, error: 'Error obteniendo resumen VELSA' });
+    console.error('[analista] getResumenVelsa:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API = "https://erp-backend-v1-qhk2.onrender.com";
+// OTP desactivado temporalmente — login directo
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Componente principal Login — Fondo imagen corporativa Novonet
@@ -28,16 +29,16 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/otp/login`, {
+      const res = await fetch(`${API}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario: formData.usuario, password: formData.contraseña }),
       });
       const data = await res.json();
-      if (!data.success) { setError("Credenciales inválidas."); return; }
-      setUsuarioId(data.usuario_id);
-      setUsuarioLogin(data.usuario || formData.usuario);
-      setPaso(2);
+      if (!data.success) { setError(data.error || "Credenciales inválidas."); return; }
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("userProfile", JSON.stringify(data.user));
+      navigate("/");
     } catch {
       setError("Error de conexión con el servidor.");
     } finally {

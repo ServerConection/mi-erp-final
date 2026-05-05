@@ -202,7 +202,7 @@ const getIndicadoresDashboard = async (req, res) => {
             'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
             'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200',
             'CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS',
-            'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE'
+            'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE', 'POSTVENTA NOVONET', 'DESCARTE'
         )`;
 
         // ─────────────────────────────────────────────────────────────────────

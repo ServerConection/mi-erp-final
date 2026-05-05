@@ -1,9 +1,3 @@
-// email.service.js — OTP via Gmail (Nodemailer)
-// Variables de entorno requeridas en Render:
-//   MAIL_USER = tucorreo@gmail.com
-//   MAIL_PASS = contraseña_de_aplicacion_gmail  (NO la contraseña normal)
-//   MAIL_FROM = Sistema ERP <tucorreo@gmail.com>  (opcional)
-
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
@@ -16,13 +10,28 @@ const transporter = nodemailer.createTransport({
 
 async function enviarOTP(correo, otp) {
   try {
+    const htmlBody = '<div style="font-family:Arial;padding:20px">'
+      + '<h2>Acceso al ERP</h2>'
+      + '<p>Tu codigo de acceso es:</p>'
+      + '<h1 style="letter-spacing:4px">' + otp + '</h1>'
+      + '<p>Este codigo expira en 10 minutos.</p>'
+      + '</div>';
+
     const info = await transporter.sendMail({
       from: process.env.MAIL_FROM || process.env.MAIL_USER,
       to: correo,
-      subject: 'Código de acceso ERP',
-      text: `Tu código OTP es: ${otp}`,
-      html: `
-        <div style="font-family:Arial;padding:20px">
-          <h2>Acceso al ERP</h2>
-          <p>Tu código de acceso es:</p>
-      
+      subject: 'Codigo de acceso ERP',
+      text: 'Tu codigo OTP es: ' + otp,
+      html: htmlBody,
+    });
+
+    console.log('EMAIL OTP enviado:', info.messageId);
+    return true;
+
+  } catch (error) {
+    console.error('ERROR EMAIL OTP:', error.message);
+    throw new Error('Error enviando correo');
+  }
+}
+
+module.exports = { enviarOTP };

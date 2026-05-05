@@ -275,6 +275,8 @@ const ALL_MENU_ITEMS = [
   { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },
   { name: "Comisiones",         path: "/comisiones",          icon: "💰", permiso: "Comisiones" },
+  { name: "Resumen NOVONET",    path: "/resumen-novonet",     icon: "📊", permiso: "ResumenNovonet" },
+  { name: "Resumen VELSA",      path: "/resumen-velsa",       icon: "🟣", permiso: "ResumenVelsa" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

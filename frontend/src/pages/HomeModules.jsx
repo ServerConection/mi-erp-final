@@ -134,6 +134,22 @@ export default function HomeModules() {
       color: "text-indigo-400",
       desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago."
     },
+    {
+      title: "Resumen NOVONET",
+      path: "/resumen-novonet",
+      icon: "📊",
+      color: "text-blue-400",
+      desc: "Analítica de calidad de ventas NOVONET: aprobación, regularización, auditoría y ranking de asesores.",
+      rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR'],
+    },
+    {
+      title: "Resumen VELSA",
+      path: "/resumen-velsa",
+      icon: "🟣",
+      color: "text-purple-400",
+      desc: "Analítica de calidad de ventas VELSA: aprobación, regularización, auditoría y ranking de asesores.",
+      rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR'],
+    },
   ];
 
   return (

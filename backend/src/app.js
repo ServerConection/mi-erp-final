@@ -17,6 +17,7 @@ const comparativaIndicadoresRoutes = require('./routes/comparativaIndicadores.ro
 const alertasRoutes                = require('./routes/alertas.routes');
 const broadcastRoutes              = require('./routes/broadcast.routes');
 const ventasRoutes                 = require('./routes/ventas.routes');
+const analistaRoutes               = require('./routes/analista.routes');
 
 const app = express();
 
@@ -81,6 +82,9 @@ app.use('/api/alertas',           alertasRoutes);
 
 // Ventas
 app.use('/api/ventas',            ventasRoutes);
+
+// Analista — Resumen NOVONET y VELSA
+app.use('/api/analista',          analistaRoutes);
 
 // Broadcast TV
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

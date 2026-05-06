@@ -322,12 +322,13 @@ export default function ReporteVelsa() {
   const [crmTablaLoading, setCrmTablaLoading] = useState(false);
   const [crmTablaErr, setCrmTablaErr] = useState(null);
   const [crmTablaCargada, setCrmTablaCargada] = useState(false);
-  const [filtrosCrm, setFiltrosCrm] = useState({
-    desde: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).substring(0,7) + '-01',
-    hasta: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }),
-    etapa: '',
-    asesor_id: '',
-    estado: '',
+  const [filtrosCrm, setFiltrosCrm] = useState(() => {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+    // Por defecto: últimos 3 meses para mostrar datos históricos del sync
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
+    d.setMonth(d.getMonth() - 3);
+    const desde3m = d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+    return { desde: desde3m, hasta: hoy, etapa: '', asesor_id: '', estado: '' };
   });
 
   const [filtros, setFiltros] = useState({
@@ -1297,11 +1298,16 @@ function TablaCrmBitrix({ data, loading, error, filtros, setFiltros, onFetch }) 
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   const primerMes = hoy.substring(0,7) + '-01';
 
+  const d7  = (() => { const d=new Date(hoy); d.setDate(d.getDate()-6);   return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })();
+  const d3m = (() => { const d=new Date(hoy); d.setMonth(d.getMonth()-3); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })();
+  const d6m = (() => { const d=new Date(hoy); d.setMonth(d.getMonth()-6); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })();
   const presets = [
-    { label: 'HOY',  desde: hoy, hasta: hoy },
-    { label: '7D',   desde: (() => { const d=new Date(hoy); d.setDate(d.getDate()-6); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })(), hasta: hoy },
-    { label: 'MES',  desde: primerMes, hasta: hoy },
-    { label: '3M',   desde: (() => { const d=new Date(hoy); d.setMonth(d.getMonth()-3); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })(), hasta: hoy },
+    { label: 'HOY',   desde: hoy,    hasta: hoy },
+    { label: '7D',    desde: d7,     hasta: hoy },
+    { label: 'MES',   desde: primerMes, hasta: hoy },
+    { label: '3M',    desde: d3m,    hasta: hoy },
+    { label: '6M',    desde: d6m,    hasta: hoy },
+    { label: 'TODO',  desde: '2024-01-01', hasta: hoy },
   ];
 
   const aplicar = () => { setPagina(0); onFetch(filtros); };
@@ -1359,6 +1365,23 @@ function TablaCrmBitrix({ data, loading, error, filtros, setFiltros, onFetch }) 
           </button>
         </div>
       </div>
+
+      {/* Aviso: migración pendiente */}
+      {data.tiene_custom === false && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl px-5 py-4 flex items-start gap-3">
+          <span className="text-xl shrink-0">⚠️</span>
+          <div>
+            <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Migración v2 pendiente — campos custom vacíos</p>
+            <p className="text-[9px] text-amber-700 mt-1">
+              Los deals se muestran sin campos custom (ciudad, provincia, asesor, cédula…).
+              Para activarlos corre en la carpeta <code className="bg-amber-100 px-1 rounded">backend/</code>:
+            </p>
+            <code className="block mt-2 bg-amber-100 px-3 py-1.5 rounded-lg text-[9px] text-amber-900 font-mono">
+              node migration-v2.js &nbsp;&nbsp;→&nbsp;&nbsp; node sync-bitrix.js
+            </code>
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       {!!kpi.total && (

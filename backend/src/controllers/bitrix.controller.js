@@ -203,40 +203,84 @@ const getResumenVelsaBitrix = async (req, res) => {
   }
 };
 
+// ── Detectar si columna campos_custom ya existe ───────────────────────────────
+let _tieneCustom = null; // caché en memoria por proceso
+const tieneCamposCustom = async () => {
+  if (_tieneCustom !== null) return _tieneCustom;
+  const r = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema='public' AND table_name='bitrix_deals' AND column_name='campos_custom'`
+  );
+  _tieneCustom = r.rows.length > 0;
+  return _tieneCustom;
+};
+
 // ── GET /api/bitrix/velsa/tabla ───────────────────────────────────────────────
-// Tabla consumible completa: deals cruzados con etapas, usuarios y campos custom.
-// Parámetros: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&etapa=&asesor_id=&estado=&limit=&offset=
 const getTablaBitrix = async (req, res) => {
   try {
-    const hoy      = getFechaEcuador();
+    const hoy       = getFechaEcuador();
     const primerDia = getPrimerDiaMes();
     const {
-      desde   = primerDia,
-      hasta   = hoy,
-      etapa   = null,
+      desde     = primerDia,
+      hasta     = hoy,
+      etapa     = null,
       asesor_id = null,
-      estado  = null,   // 'ganado' | 'perdido' | 'proceso'
-      limit   = 1000,
-      offset  = 0,
+      estado    = null,
+      limit     = 1000,
+      offset    = 0,
     } = req.query;
 
     const CAT = 8;
 
-    // Construir filtros dinámicos
-    const conditions = [
-      `d.category_id = ${CAT}`,
-      `d.fecha_creacion::date BETWEEN '${desde}'::date AND '${hasta}'::date`,
+    // ── Filtros dinámicos con parámetros seguros ──────────────────────────────
+    const params  = [CAT, desde, hasta];
+    const conds   = [
+      `d.category_id = $1`,
+      `d.fecha_creacion::date BETWEEN $2::date AND $3::date`,
     ];
-    if (etapa)     conditions.push(`d.stage_id = '${etapa.replace(/'/g,"''")}'`);
-    if (asesor_id) conditions.push(`d.asesor_id = ${parseInt(asesor_id)}`);
-    if (estado === 'ganado')  conditions.push(`d.ganado = true`);
-    if (estado === 'perdido') conditions.push(`d.perdido = true`);
-    if (estado === 'proceso') conditions.push(`d.ganado = false AND d.perdido = false`);
+    if (etapa)     { params.push(etapa);          conds.push(`d.stage_id = $${params.length}`); }
+    if (asesor_id) { params.push(parseInt(asesor_id)); conds.push(`d.asesor_id = $${params.length}`); }
+    if (estado === 'ganado')  conds.push(`d.ganado = true`);
+    if (estado === 'perdido') conds.push(`d.perdido = true`);
+    if (estado === 'proceso') conds.push(`d.ganado = false AND d.perdido = false`);
+    const WHERE = conds.join(' AND ');
 
-    const WHERE = conditions.join(' AND ');
+    // ── Verificar si la columna campos_custom existe (sin ella usamos fallback) ─
+    const conCustom = await tieneCamposCustom();
+
+    // ── Bloque de campos custom (condicional) ─────────────────────────────────
+    const customSelect = conCustom ? `
+          COALESCE(d.campos_custom->>'ciudad',             '') AS ciudad,
+          COALESCE(d.campos_custom->>'provincia',          '') AS provincia,
+          COALESCE(d.campos_custom->>'nombre_asesor',      '') AS nombre_asesor_campo,
+          COALESCE(d.campos_custom->>'cedula',             '') AS cedula,
+          COALESCE(d.campos_custom->>'forma_pago',         '') AS forma_pago,
+          COALESCE(d.campos_custom->>'megas_plan',         '') AS megas_plan,
+          COALESCE(d.campos_custom->>'motivo_atc',         '') AS motivo_atc,
+          COALESCE(d.campos_custom->>'regularizado',       '') AS regularizado,
+          COALESCE(d.campos_custom->>'volver_llamar',      '') AS volver_llamar,
+          COALESCE(d.campos_custom->>'fecha_venta_subida', '') AS fecha_venta_subida,
+          COALESCE(d.campos_custom->>'deuda',              '') AS deuda,
+          COALESCE(d.campos_custom->>'contrato',           '') AS contrato,
+          COALESCE(d.campos_custom->>'login',              '') AS login,
+          COALESCE(d.campos_custom->>'pagado_instalacion', '') AS pagado_instalacion,
+          COALESCE(d.campos_custom->>'desiste_compra',     '') AS desiste_compra,
+          COALESCE(d.campos_custom->>'innegociable',       '') AS innegociable,` : `
+          '' AS ciudad, '' AS provincia, '' AS nombre_asesor_campo,
+          '' AS cedula, '' AS forma_pago, '' AS megas_plan,
+          '' AS motivo_atc, '' AS regularizado, '' AS volver_llamar,
+          '' AS fecha_venta_subida, '' AS deuda, '' AS contrato,
+          '' AS login, '' AS pagado_instalacion, '' AS desiste_compra,
+          '' AS innegociable,`;
+
+    const camposUfQuery = conCustom
+      ? `SELECT DISTINCT jsonb_object_keys(campos_custom) AS clave
+         FROM bitrix_deals
+         WHERE category_id = ${CAT} AND campos_custom IS NOT NULL AND campos_custom != '{}'
+         ORDER BY clave LIMIT 80`
+      : `SELECT 'migration-v2 pendiente' AS clave`;
 
     const [rowsRes, countRes, camposRes] = await Promise.all([
-      // Filas enriquecidas
       pool.query(`
         SELECT
           d.id,
@@ -255,48 +299,20 @@ const getTablaBitrix = async (req, res) => {
           d.fecha_creacion,
           d.fecha_modificacion,
           d.fecha_cierre,
-          -- Campos custom mapeados
-          COALESCE(d.campos_custom->>'ciudad',             '') AS ciudad,
-          COALESCE(d.campos_custom->>'provincia',          '') AS provincia,
-          COALESCE(d.campos_custom->>'nombre_asesor',      '') AS nombre_asesor_campo,
-          COALESCE(d.campos_custom->>'cedula',             '') AS cedula,
-          COALESCE(d.campos_custom->>'forma_pago',         '') AS forma_pago,
-          COALESCE(d.campos_custom->>'megas_plan',         '') AS megas_plan,
-          COALESCE(d.campos_custom->>'motivo_atc',         '') AS motivo_atc,
-          COALESCE(d.campos_custom->>'regularizado',       '') AS regularizado,
-          COALESCE(d.campos_custom->>'volver_llamar',      '') AS volver_llamar,
-          COALESCE(d.campos_custom->>'fecha_venta_subida', '') AS fecha_venta_subida,
-          COALESCE(d.campos_custom->>'deuda',              '') AS deuda,
-          COALESCE(d.campos_custom->>'contrato',           '') AS contrato,
-          COALESCE(d.campos_custom->>'login',              '') AS login,
-          COALESCE(d.campos_custom->>'pagado_instalacion', '') AS pagado_instalacion,
-          COALESCE(d.campos_custom->>'desiste_compra',     '') AS desiste_compra,
-          COALESCE(d.campos_custom->>'innegociable',       '') AS innegociable
+          ${customSelect}
+          d.updated_at
         FROM bitrix_deals d
-        LEFT JOIN bitrix_categorias bc ON bc.id      = d.category_id
+        LEFT JOIN bitrix_categorias bc ON bc.id       = d.category_id
         LEFT JOIN bitrix_etapas     be ON be.status_id = d.stage_id
-        LEFT JOIN bitrix_usuarios   u  ON u.id       = d.asesor_id
+        LEFT JOIN bitrix_usuarios   u  ON u.id        = d.asesor_id
         WHERE ${WHERE}
         ORDER BY d.fecha_creacion DESC
         LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
-      `),
+      `, params),
 
-      // Total para paginación
-      pool.query(`
-        SELECT COUNT(*)::int AS total
-        FROM bitrix_deals d
-        WHERE ${WHERE}
-      `),
+      pool.query(`SELECT COUNT(*)::int AS total FROM bitrix_deals d WHERE ${WHERE}`, params),
 
-      // Claves UF_ reales presentes en la DB (para diagnóstico)
-      pool.query(`
-        SELECT DISTINCT jsonb_object_keys(campos_custom) AS clave
-        FROM bitrix_deals
-        WHERE category_id = ${CAT}
-          AND campos_custom != '{}'
-        ORDER BY clave
-        LIMIT 80
-      `),
+      pool.query(camposUfQuery),
     ]);
 
     return res.json({
@@ -306,12 +322,15 @@ const getTablaBitrix = async (req, res) => {
       total:       countRes.rows[0]?.total || 0,
       limit:       parseInt(limit),
       offset:      parseInt(offset),
-      campos_uf:   camposRes.rows.map(r => r.clave),  // debug: campos UF presentes
+      tiene_custom: conCustom,
+      campos_uf:   camposRes.rows.map(r => r.clave),
       filas:       rowsRes.rows,
     });
 
   } catch (err) {
     console.error('[bitrix] getTablaBitrix:', err);
+    // Resetear caché si error de columna para que reintente en la próxima petición
+    if (err.message?.includes('campos_custom')) _tieneCustom = null;
     return res.status(500).json({ success: false, error: err.message });
   }
 };

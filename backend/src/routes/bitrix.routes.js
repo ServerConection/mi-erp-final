@@ -1,6 +1,6 @@
 const express   = require('express');
 const router    = express.Router();
-const { verificarToken } = require('../middlewares/auth.middleware');
+const { verificarToken } = require('../middleware/auth');
 const { triggerSync, getSyncStatus, getResumenVelsaBitrix } = require('../controllers/bitrix.controller');
 
 // Sync manual (requiere auth)

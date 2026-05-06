@@ -317,6 +317,19 @@ export default function ReporteVelsa() {
     mapaCalor: [],
   });
 
+  // ── CRM Bitrix tab ────────────────────────────────────────────────────────────
+  const [crmTabla, setCrmTabla] = useState({ filas: [], total: 0, campos_uf: [], desde: '', hasta: '' });
+  const [crmTablaLoading, setCrmTablaLoading] = useState(false);
+  const [crmTablaErr, setCrmTablaErr] = useState(null);
+  const [crmTablaCargada, setCrmTablaCargada] = useState(false);
+  const [filtrosCrm, setFiltrosCrm] = useState({
+    desde: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).substring(0,7) + '-01',
+    hasta: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }),
+    etapa: '',
+    asesor_id: '',
+    estado: '',
+  });
+
   const [filtros, setFiltros] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
@@ -464,6 +477,30 @@ export default function ReporteVelsa() {
       if (result.success) setReporte180Data(result);
     } catch (e) { if (e.name !== 'AbortError') console.error("Error Reporte180:", e); }
     finally { if (!ctrl.signal.aborted) setLoading(false); }
+  };
+
+  const fetchCrmTabla = async (overrides) => {
+    setCrmTablaLoading(true);
+    setCrmTablaErr(null);
+    try {
+      const f = { ...filtrosCrm, ...(overrides || {}) };
+      const p = new URLSearchParams(Object.fromEntries(
+        Object.entries(f).filter(([, v]) => v !== '' && v !== null)
+      ));
+      p.set('limit', 2000);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/bitrix/velsa/tabla?${p}`);
+      const result = await res.json();
+      if (result.success) {
+        setCrmTabla(result);
+        setCrmTablaCargada(true);
+      } else {
+        setCrmTablaErr(result.error || 'Error al consultar CRM Bitrix');
+      }
+    } catch (e) {
+      setCrmTablaErr('Error de conexión con el servidor');
+    } finally {
+      setCrmTablaLoading(false);
+    }
   };
 
   // ── Helper: actualiza el estado visual de filtros; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
@@ -708,6 +745,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     if (tabActiva === "GENERAL") fetchDashboard();
     else if (tabActiva === "MONITOREO") fetchMonitoreo();
     else if (tabActiva === "REPORTE180") fetchReporte180();
+    else if (tabActiva === "CRM" && !crmTablaCargada) fetchCrmTabla();
   }, [tabActiva]);
 
   const descargarExcel = (tipo) => {
@@ -926,6 +964,9 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           </button>
           <button onClick={() => setTabActiva("CONSULTA")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "CONSULTA" ? "bg-[#1A3A6E] text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
             📥 CONSULTA Y DESCARGA
+          </button>
+          <button onClick={() => setTabActiva("CRM")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "CRM" ? "bg-blue-700 text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
+            🔵 CRM BITRIX
           </button>
         </div>
       </div>
@@ -1183,8 +1224,331 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           etapasCRM={data.etapasCRM}
           ETAPAS_JOTFORM={ETAPAS_JOTFORM}
         />
+      ) : tabActiva === "CRM" ? (
+        <TablaCrmBitrix
+          data={crmTabla}
+          loading={crmTablaLoading}
+          error={crmTablaErr}
+          filtros={filtrosCrm}
+          setFiltros={setFiltrosCrm}
+          onFetch={fetchCrmTabla}
+        />
       ) : (
         <ConsultaDescargaVelsa />
+      )}
+    </div>
+  );
+}
+
+// ======================================================
+// CRM BITRIX — TABLA CONSUMIBLE
+// ======================================================
+const ETAPAS_CAT8 = [
+  { id: 'C8:NEW',                nombre: 'CONTACTO NUEVO' },
+  { id: 'C8:UC_BMJ7AX',         nombre: 'CLIENTE CON ACUERDO' },
+  { id: 'C8:UC_M5PCP4',         nombre: 'PENDIENTE CIERRE' },
+  { id: 'C8:PREPARATION',       nombre: 'CLIENTE 2 HORAS' },
+  { id: 'C8:PREPAYMENT_INVOICE',nombre: 'CLIENTE 4 HORAS' },
+  { id: 'C8:EXECUTING',         nombre: 'CLIENTE 6 HORAS' },
+  { id: 'C8:FINAL_INVOICE',     nombre: 'CLIENTE 8 HORAS' },
+  { id: 'C8:UC_PNTKY7',         nombre: 'CLIENTE 12 HORAS' },
+  { id: 'C8:UC_TI17A3',         nombre: 'OPORTUNIDADES SUPERVISOR' },
+  { id: 'C8:UC_Q9LSSI',         nombre: 'ATC' },
+  { id: 'C8:UC_023RNI',         nombre: 'ZONA PELIGROSA' },
+  { id: 'C8:UC_CB4X0H',         nombre: 'FUERA DE COBERTURA' },
+  { id: 'C8:WON',               nombre: 'VENTA SUBIDA ✅' },
+  { id: 'C8:LOSE',              nombre: 'DESCARTE ❌' },
+];
+
+const COLS_CRM = [
+  { h: 'ID',             f: 'id' },
+  { h: 'NOMBRE',         f: 'nombre' },
+  { h: 'PIPELINE',       f: 'pipeline' },
+  { h: 'ETAPA',          f: 'etapa' },
+  { h: 'ESTADO',         f: 'estado' },
+  { h: 'ASESOR',         f: 'asesor' },
+  { h: 'FUENTE',         f: 'fuente' },
+  { h: 'MONTO',          f: 'monto' },
+  { h: 'CIUDAD',         f: 'ciudad' },
+  { h: 'PROVINCIA',      f: 'provincia' },
+  { h: 'ASESOR CAMPO',   f: 'nombre_asesor_campo' },
+  { h: 'CÉDULA',         f: 'cedula' },
+  { h: 'FORMA PAGO',     f: 'forma_pago' },
+  { h: 'MEGAS',          f: 'megas_plan' },
+  { h: 'MOTIVO ATC',     f: 'motivo_atc' },
+  { h: 'REGULARIZADO',   f: 'regularizado' },
+  { h: 'VTA SUBIDA',     f: 'fecha_venta_subida' },
+  { h: 'DEUDA',          f: 'deuda' },
+  { h: 'CONTRATO',       f: 'contrato' },
+  { h: 'LOGIN',          f: 'login' },
+  { h: 'PAGADO INST.',   f: 'pagado_instalacion' },
+  { h: 'DESISTE',        f: 'desiste_compra' },
+  { h: 'INNEGOCIABLE',   f: 'innegociable' },
+  { h: 'F. CREACIÓN',    f: 'fecha_creacion' },
+  { h: 'F. MODIFICACIÓN',f: 'fecha_modificacion' },
+  { h: 'F. CIERRE',      f: 'fecha_cierre' },
+];
+
+function TablaCrmBitrix({ data, loading, error, filtros, setFiltros, onFetch }) {
+  const [busqueda, setBusqueda] = useState('');
+  const [pagina,   setPagina]   = useState(0);
+  const POR_PAG = 50;
+
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+  const primerMes = hoy.substring(0,7) + '-01';
+
+  const presets = [
+    { label: 'HOY',  desde: hoy, hasta: hoy },
+    { label: '7D',   desde: (() => { const d=new Date(hoy); d.setDate(d.getDate()-6); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })(), hasta: hoy },
+    { label: 'MES',  desde: primerMes, hasta: hoy },
+    { label: '3M',   desde: (() => { const d=new Date(hoy); d.setMonth(d.getMonth()-3); return d.toLocaleDateString('en-CA',{timeZone:'America/Guayaquil'}); })(), hasta: hoy },
+  ];
+
+  const aplicar = () => { setPagina(0); onFetch(filtros); };
+
+  const filasFiltradas = useMemo(() => {
+    if (!busqueda.trim()) return data.filas || [];
+    const q = busqueda.toLowerCase();
+    return (data.filas || []).filter(r =>
+      Object.values(r).some(v => v && String(v).toLowerCase().includes(q))
+    );
+  }, [data.filas, busqueda]);
+
+  const totalPags  = Math.ceil(filasFiltradas.length / POR_PAG);
+  const filasPage  = filasFiltradas.slice(pagina * POR_PAG, (pagina + 1) * POR_PAG);
+
+  const kpi = useMemo(() => {
+    const filas = data.filas || [];
+    return {
+      total:    filas.length,
+      ganados:  filas.filter(r => r.estado === 'GANADO').length,
+      perdidos: filas.filter(r => r.estado === 'PERDIDO').length,
+      proceso:  filas.filter(r => r.estado === 'EN PROCESO').length,
+    };
+  }, [data.filas]);
+
+  const exportarExcel = () => {
+    if (!filasFiltradas.length) return;
+    const ws = XLSX.utils.json_to_sheet(filasFiltradas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CRM Bitrix VELSA');
+    XLSX.writeFile(wb, `CRM_Bitrix_${filtros.desde}_${filtros.hasta}.xlsx`);
+  };
+
+  const labelCls = "block text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1";
+  const inputCls = "w-full bg-white border border-slate-200 rounded-lg px-2.5 py-[7px] text-[9px] font-bold text-slate-700 focus:outline-none focus:border-blue-400";
+
+  const estadoColor = (e) => {
+    if (e === 'GANADO')     return 'bg-emerald-100 text-emerald-700';
+    if (e === 'PERDIDO')    return 'bg-red-100 text-red-700';
+    return 'bg-blue-50 text-blue-700';
+  };
+
+  return (
+    <div className="animate-in fade-in duration-500 space-y-5">
+      {/* Header */}
+      <div className="bg-blue-700 text-white p-5 rounded-2xl flex flex-wrap justify-between items-center gap-3 shadow-xl border-b-4 border-blue-900">
+        <div>
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">🔵 CRM BITRIX — TABLA CONSUMIBLE</h2>
+          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase">VELSA VENTAS NETLIFE · CAT:8 · CRUZADO CON ETAPAS Y ASESORES</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={exportarExcel} disabled={!filasFiltradas.length}
+            className="bg-white/15 hover:bg-white/25 px-4 py-2 rounded-xl text-[9px] font-black border border-white/20 uppercase transition-all disabled:opacity-40">
+            ↓ EXCEL ({filasFiltradas.length})
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      {!!kpi.total && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'TOTAL DEALS',    val: kpi.total,    color: 'border-blue-500  bg-blue-50   text-blue-700' },
+            { label: 'VENTAS SUBIDAS', val: kpi.ganados,  color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+            { label: 'DESCARTES',      val: kpi.perdidos, color: 'border-red-500   bg-red-50    text-red-700' },
+            { label: 'EN PROCESO',     val: kpi.proceso,  color: 'border-amber-500 bg-amber-50  text-amber-700' },
+          ].map(k => (
+            <div key={k.label} className={`rounded-xl border-l-4 p-4 shadow-sm ${k.color}`}>
+              <p className="text-[8px] font-black uppercase tracking-widest opacity-60">{k.label}</p>
+              <p className="text-3xl font-black tabular-nums mt-0.5">{k.val}</p>
+              {kpi.total > 0 && <p className="text-[9px] font-bold opacity-50 mt-0.5">{((k.val/kpi.total)*100).toFixed(1)}%</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-end">
+          {/* Presets */}
+          <div>
+            <span className={labelCls}>PERÍODO</span>
+            <div className="flex gap-1">
+              {presets.map(p => (
+                <button key={p.label}
+                  onClick={() => setFiltros(f => ({ ...f, desde: p.desde, hasta: p.hasta }))}
+                  className={`px-3 py-[7px] rounded-lg text-[8px] font-black uppercase border transition-all
+                    ${filtros.desde === p.desde && filtros.hasta === p.hasta
+                      ? 'bg-blue-700 text-white border-blue-700'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Desde */}
+          <div className="min-w-[110px]">
+            <label className={labelCls}>DESDE</label>
+            <input type="date" className={inputCls} value={filtros.desde}
+              onChange={e => setFiltros(f => ({ ...f, desde: e.target.value }))} />
+          </div>
+          {/* Hasta */}
+          <div className="min-w-[110px]">
+            <label className={labelCls}>HASTA</label>
+            <input type="date" className={inputCls} value={filtros.hasta}
+              onChange={e => setFiltros(f => ({ ...f, hasta: e.target.value }))} />
+          </div>
+          {/* Etapa */}
+          <div className="min-w-[160px]">
+            <label className={labelCls}>ETAPA</label>
+            <select className={inputCls} value={filtros.etapa}
+              onChange={e => setFiltros(f => ({ ...f, etapa: e.target.value }))}>
+              <option value="">TODAS LAS ETAPAS</option>
+              {ETAPAS_CAT8.map(e => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+          </div>
+          {/* Estado */}
+          <div className="min-w-[130px]">
+            <label className={labelCls}>ESTADO</label>
+            <select className={inputCls} value={filtros.estado}
+              onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))}>
+              <option value="">TODOS</option>
+              <option value="ganado">GANADO</option>
+              <option value="perdido">PERDIDO</option>
+              <option value="proceso">EN PROCESO</option>
+            </select>
+          </div>
+          {/* Buscar */}
+          <div className="flex-1 min-w-[160px]">
+            <label className={labelCls}>BUSCAR EN TABLA</label>
+            <input type="text" placeholder="nombre, asesor, ciudad..." className={inputCls}
+              value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(0); }} />
+          </div>
+          {/* Aplicar */}
+          <button onClick={aplicar} disabled={loading}
+            className="bg-blue-700 hover:bg-blue-800 text-white px-5 py-[9px] rounded-lg text-[9px] font-black uppercase transition-all disabled:opacity-50 shadow-sm">
+            {loading ? 'CARGANDO...' : 'APLICAR FILTROS'}
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-[10px] font-bold">
+          ❌ {error}
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
+          <div className="inline-block w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cargando deals de Bitrix...</p>
+        </div>
+      )}
+
+      {/* Tabla */}
+      {!loading && filasFiltradas.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+          {/* Paginación arriba */}
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
+            <span className="text-[9px] font-black text-slate-500 uppercase">
+              {filasFiltradas.length} deals
+              {busqueda && ` (filtrado de ${data.total})`}
+              {' '}· Página {pagina+1}/{totalPags || 1}
+            </span>
+            <div className="flex gap-1">
+              <button onClick={() => setPagina(0)} disabled={pagina===0}
+                className="px-2 py-1 text-[8px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">«</button>
+              <button onClick={() => setPagina(p => Math.max(0,p-1))} disabled={pagina===0}
+                className="px-3 py-1 text-[8px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">‹ ANT</button>
+              <button onClick={() => setPagina(p => Math.min(totalPags-1,p+1))} disabled={pagina>=totalPags-1}
+                className="px-3 py-1 text-[8px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">SIG ›</button>
+              <button onClick={() => setPagina(totalPags-1)} disabled={pagina>=totalPags-1}
+                className="px-2 py-1 text-[8px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">»</button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full text-[8px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-blue-900 text-white">
+                  {COLS_CRM.map(c => (
+                    <th key={c.f} className="px-2 py-2 text-left font-black uppercase whitespace-nowrap border-r border-blue-800 last:border-0 tracking-wider">
+                      {c.h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filasPage.map((row, i) => (
+                  <tr key={row.id || i} className={i % 2 === 0 ? "bg-white hover:bg-blue-50" : "bg-slate-50 hover:bg-blue-50"}>
+                    {COLS_CRM.map(c => {
+                      let val = row[c.f];
+                      // Formatear fechas
+                      if (c.f.startsWith('fecha_') && val) val = String(val).substring(0,10);
+                      // Formatear monto
+                      if (c.f === 'monto' && val != null) val = Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2 });
+                      const cell = val != null && val !== '' ? String(val) : '—';
+                      return (
+                        <td key={c.f} className={`px-2 py-1.5 border-r border-slate-100 last:border-0 whitespace-nowrap max-w-[180px] truncate font-mono
+                          ${c.f === 'estado' && val ? estadoColor(val) + ' font-black rounded-md px-2' : 'text-slate-700'}`}>
+                          {c.f === 'estado' && val ? (
+                            <span className={`px-1.5 py-0.5 rounded-md text-[7px] font-black uppercase ${estadoColor(val)}`}>{cell}</span>
+                          ) : cell}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Paginación abajo */}
+          <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-1">
+            <button onClick={() => setPagina(p => Math.max(0,p-1))} disabled={pagina===0}
+              className="px-4 py-1.5 text-[9px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">‹ ANT</button>
+            <button onClick={() => setPagina(p => Math.min(totalPags-1,p+1))} disabled={pagina>=totalPags-1}
+              className="px-4 py-1.5 text-[9px] font-black bg-white border border-slate-200 rounded-lg hover:border-blue-400 disabled:opacity-30">SIG ›</button>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && data.filas?.length === 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
+          <p className="text-4xl mb-3">🔵</p>
+          <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin deals para el período seleccionado</p>
+          <p className="text-[9px] text-slate-400 mt-1">Ajusta los filtros y presiona APLICAR</p>
+        </div>
+      )}
+
+      {/* Campos UF detectados (debug) */}
+      {data.campos_uf?.length > 0 && (
+        <details className="bg-slate-100 rounded-xl border border-slate-200">
+          <summary className="px-4 py-2 text-[8px] font-black text-slate-500 uppercase cursor-pointer">
+            🔍 CAMPOS UF_ DETECTADOS EN DB ({data.campos_uf.length}) — expandir para ver
+          </summary>
+          <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+            {data.campos_uf.map(c => (
+              <span key={c} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[7px] font-mono text-slate-600">{c}</span>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );

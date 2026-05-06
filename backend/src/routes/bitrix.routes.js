@@ -1,6 +1,5 @@
-const express   = require('express');
-const router    = express.Router();
-const { verificarToken } = require('../middleware/auth');
+const express = require('express');
+const router  = express.Router();
 const {
   triggerSync,
   getSyncStatus,
@@ -8,14 +7,14 @@ const {
   getTablaBitrix,
 } = require('../controllers/bitrix.controller');
 
-// Sync manual
-router.post('/sync',         verificarToken, triggerSync);
-router.get('/sync/status',   verificarToken, getSyncStatus);
+const { verificarToken } = require('../middleware/auth');
 
-// Dashboard CRM VELSA (KPIs + gráficos)
-router.get('/velsa',         verificarToken, getResumenVelsaBitrix);
+// Sync manual — sí requiere auth (acción que modifica datos)
+router.post('/sync',        verificarToken, triggerSync);
+router.get('/sync/status',  verificarToken, getSyncStatus);
 
-// Tabla consumible completa (deals cruzados con catálogos + campos custom)
-router.get('/velsa/tabla',   verificarToken, getTablaBitrix);
+// Consultas de solo lectura — sin verificarToken igual que indicadoresVelsa.routes.js
+router.get('/velsa',        getResumenVelsaBitrix);
+router.get('/velsa/tabla',  getTablaBitrix);
 
 module.exports = router;

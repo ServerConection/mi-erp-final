@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
-import { 
+import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
+  ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
 
 // Contexto para saber si un gráfico está en modo expandido (modal)
@@ -1209,25 +1209,24 @@ ${asesoresPDF.length>0?`
     </ResponsiveContainer>
   );
 
-  // FIX: FunnelChart usa dataKey="value" y nameKey="name" (campos que ahora envía el backend)
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart>
-            <Funnel
-              data={data.graficoEmbudo || []}
-              dataKey="value"
-              nameKey="name"
-              isAnimationActive={false}
-              label={CustomFunnelLabel}
-            >
-              {(data.graficoEmbudo || []).map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />
+          <BarChart data={data.graficoEmbudo || []} margin={{top:24,right:8,left:0,bottom:64}} barCategoryGap="18%">
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+            <XAxis dataKey="etapa" axisLine={false} tickLine={false}
+              tick={{fill:'#94a3b8',fontSize:8,fontWeight:700}}
+              interval={0} angle={-38} textAnchor="end"/>
+            <YAxis axisLine={false} tickLine={false} tick={{fill:'#94a3b8',fontSize:9}}/>
+            <Tooltip content={<TooltipEmbudo/>}/>
+            <Bar dataKey="total" radius={[6,6,0,0]} isAnimationActive={false}>
+              {(data.graficoEmbudo || []).map((_,index)=>(
+                <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]}/>
               ))}
-            </Funnel>
-            <Tooltip content={<TooltipEmbudo />} />
-          </FunnelChart>
+              <LabelList dataKey="total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
@@ -1801,17 +1800,24 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const inputCls  = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none focus:border-violet-500 transition-colors uppercase";
   const selectCls = "bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none appearance-none uppercase";
 
-  // FIX: FunnelChart 180° también usa dataKey="value" y nameKey="name"
   const GraficoEmbudoCRM = () => (
     <div className="flex gap-4 h-full">
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart>
-            <Funnel data={embudoCRM || []} dataKey="value" nameKey="name" isAnimationActive={false} label={CustomFunnelLabelCRM}>
-              {(embudoCRM || []).map((_, index) => <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]} />)}
-            </Funnel>
-            <Tooltip content={<TooltipEmbudo />} />
-          </FunnelChart>
+          <BarChart data={embudoCRM || []} margin={{top:24,right:8,left:0,bottom:64}} barCategoryGap="18%">
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+            <XAxis dataKey="etapa" axisLine={false} tickLine={false}
+              tick={{fill:'#94a3b8',fontSize:8,fontWeight:700}}
+              interval={0} angle={-38} textAnchor="end"/>
+            <YAxis axisLine={false} tickLine={false} tick={{fill:'#94a3b8',fontSize:9}}/>
+            <Tooltip content={<TooltipEmbudo/>}/>
+            <Bar dataKey="total" radius={[6,6,0,0]} isAnimationActive={false}>
+              {(embudoCRM || []).map((_,index)=>(
+                <Cell key={`crm-${index}`} fill={COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length]}/>
+              ))}
+              <LabelList dataKey="total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
@@ -1825,14 +1831,22 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 
   const GraficoEmbudoJOT = () => (
     <div className="flex gap-4 h-full">
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart>
-            <Funnel data={embudoJotform || []} dataKey="value" nameKey="name" isAnimationActive={false} label={CustomFunnelLabelJOT}>
-              {(embudoJotform || []).map((_, index) => <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]} />)}
-            </Funnel>
-            <Tooltip content={<TooltipEmbudo />} />
-          </FunnelChart>
+          <BarChart data={embudoJotform || []} margin={{top:24,right:8,left:0,bottom:64}} barCategoryGap="18%">
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+            <XAxis dataKey="etapa" axisLine={false} tickLine={false}
+              tick={{fill:'#94a3b8',fontSize:8,fontWeight:700}}
+              interval={0} angle={-38} textAnchor="end"/>
+            <YAxis axisLine={false} tickLine={false} tick={{fill:'#94a3b8',fontSize:9}}/>
+            <Tooltip content={<TooltipEmbudo/>}/>
+            <Bar dataKey="total" radius={[6,6,0,0]} isAnimationActive={false}>
+              {(embudoJotform || []).map((_,index)=>(
+                <Cell key={`jot-${index}`} fill={COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length]}/>
+              ))}
+              <LabelList dataKey="total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">

@@ -120,10 +120,47 @@ export default function ResumenVelsa() {
   const [error,setError]   = useState(null);
 
   // ── Interactividad ──────────────────────────────────────────────────────────
-  const [tab,setTab]           = useState("general");       // general | rendimiento | geografia
+  const [tab,setTab]           = useState("general");       // general | rendimiento | geografia | crm
   const [seriesOn,setSeriesOn] = useState({total:true,activos:true});
   const [sortRank,setSortRank] = useState("total");         // total | pctActivo
   const [rankDesc,setRankDesc] = useState(true);
+
+  // ── CRM Bitrix ──────────────────────────────────────────────────────────────
+  const [crm,setCrm]         = useState(null);
+  const [crmLoad,setCrmLoad] = useState(false);
+  const [crmErr,setCrmErr]   = useState(null);
+  const [sortCrm,setSortCrm] = useState("total");
+  const [crmDesc,setCrmDesc] = useState(true);
+  const [crmSeries,setCrmSeries] = useState({total:true,ganados:true});
+  const toggleCrmSerie = k => setCrmSeries(s=>({...s,[k]:!s[k]}));
+
+  const fetchCrm = async (d=desde, h=hasta) => {
+    setCrmLoad(true); setCrmErr(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/api/bitrix/velsa?desde=${d}&hasta=${h}`,
+        { headers:{Authorization:`Bearer ${token}`} });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error||"Error CRM");
+      setCrm({
+        ...json,
+        embudo:   Array.isArray(json.embudo)   ? json.embudo.map(r=>({...r,total:safe(r.total),value:safe(r.value)})) : [],
+        tendencia:Array.isArray(json.tendencia) ? json.tendencia.map(r=>({...r,total:safe(r.total),ganados:safe(r.ganados)})) : [],
+        asesores: Array.isArray(json.asesores)  ? json.asesores.map(a=>({...a,total:safe(a.total),ganados:safe(a.ganados),pctConversion:safe(a.pctConversion)})) : [],
+        fuentes:  Array.isArray(json.fuentes)   ? json.fuentes.map(r=>({...r,value:safe(r.value)})) : [],
+        total: safe(json.total),
+      });
+    } catch(err) { setCrmErr(err.message); }
+    finally { setCrmLoad(false); }
+  };
+
+  const rankCrmOrdenado = useMemo(()=>{
+    if (!crm?.asesores) return [];
+    return [...crm.asesores].sort((a,b)=> crmDesc
+      ? safe(b[sortCrm]) - safe(a[sortCrm])
+      : safe(a[sortCrm]) - safe(b[sortCrm])
+    );
+  },[crm,sortCrm,crmDesc]);
 
   const toggleSerie = k => setSeriesOn(s => ({...s,[k]:!s[k]}));
 
@@ -257,9 +294,9 @@ export default function ResumenVelsa() {
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex gap-1 bg-white rounded-2xl p-1 border border-slate-200 shadow-sm w-fit">
-          {[["general","🗂️ General"],["rendimiento","🎯 Rendimiento"],["geografia","🗺️ Geografía"]].map(([k,lbl])=>(
-            <button key={k} onClick={()=>setTab(k)}
+        <div className="flex gap-1 bg-white rounded-2xl p-1 border border-slate-200 shadow-sm w-fit flex-wrap">
+          {[["general","🗂️ General"],["rendimiento","🎯 Rendimiento"],["geografia","🗺️ Geografía"],["crm","🔵 CRM Bitrix"]].map(([k,lbl])=>(
+            <button key={k} onClick={()=>{ setTab(k); if(k==="crm"&&!crm&&!crmLoad) fetchCrm(); }}
               className={`text-[11px] font-bold px-4 py-2 rounded-xl transition-all ${tab===k?"bg-purple-500 text-white shadow":"text-slate-500 hover:bg-slate-50"}`}>
               {lbl}
             </button>
@@ -460,6 +497,176 @@ export default function ResumenVelsa() {
               </ChartBoundary>
             )}
           </Card>
+        </>)}
+
+        {/* ══ TAB CRM BITRIX ══ */}
+        {tab==="crm" && (<>
+          {crmLoad && (
+            <div className="flex items-center justify-center h-40">
+              <div className="w-8 h-8 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"/>
+              <span className="ml-3 text-slate-500 text-sm">Cargando CRM Bitrix…</span>
+            </div>
+          )}
+          {crmErr && <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm">⚠️ {crmErr}</div>}
+
+          {!crm && !crmLoad && !crmErr && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
+              <p className="text-blue-600 font-bold text-sm mb-2">🔵 CRM Bitrix — VELSA VENTAS NETLIFE</p>
+              <p className="text-slate-500 text-xs mb-4">Primero ejecuta una sincronización para traer los datos del CRM.</p>
+              <button onClick={()=>fetchCrm()}
+                className="bg-purple-500 hover:bg-purple-400 text-white text-sm font-bold px-6 py-2 rounded-xl transition-colors">
+                Cargar datos CRM
+              </button>
+            </div>
+          )}
+
+          {crm && !crmLoad && (<>
+
+            {/* KPIs CRM */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-[10px] text-slate-400">
+                {crm.ultimaSync
+                  ? `Última sync: ${new Date(crm.ultimaSync).toLocaleString('es-EC',{timeZone:'America/Guayaquil'})}`
+                  : 'Sin sincronización registrada — ejecuta /api/bitrix/sync'}
+              </div>
+              <button onClick={()=>fetchCrm()}
+                className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 transition-colors">
+                🔄 Recargar
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <KpiCard icon="📋" label="Total CRM"       value={crm.total}                color="text-slate-800"/>
+              <KpiCard icon="✅" label="Ventas Subidas"  value={crm.kpi.ventas_subidas}   color="text-green-500"
+                sub={`${crm.kpi.pct_conversion}% conversión`} bg="bg-green-50 border-green-200"/>
+              <KpiCard icon="❌" label="Descartes"       value={crm.kpi.descartes}        color="text-red-500"
+                bg="bg-red-50 border-red-200"/>
+              <KpiCard icon="⏳" label="En Proceso"      value={crm.kpi.en_proceso}       color="text-purple-500"
+                bg="bg-purple-50 border-purple-200"/>
+            </div>
+
+            {/* Embudo CRM — barras verticales */}
+            <Card icon="🔵" title="Embudo CRM — VELSA VENTAS NETLIFE (Cat:8)">
+              <p className="text-xs text-slate-400 mb-3">Distribución de deals por etapa en el período seleccionado</p>
+              {crm.embudo.length === 0 ? <EmptyChart msg="Sin datos en DB — ejecuta la sincronización"/> : (
+                <ChartBoundary>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={crm.embudo} margin={{top:24,right:10,left:0,bottom:70}} barCategoryGap="18%">
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                      <XAxis dataKey="etapa" axisLine={false} tickLine={false}
+                        tick={{fill:'#94a3b8',fontSize:8,fontWeight:700}}
+                        interval={0} angle={-38} textAnchor="end"/>
+                      <YAxis axisLine={false} tickLine={false} tick={{fill:'#94a3b8',fontSize:9}}/>
+                      <Tooltip content={<Tip/>}/>
+                      <Bar dataKey="total" name="Deals" radius={[6,6,0,0]} isAnimationActive>
+                        {crm.embudo.map((e,i)=>(
+                          <Cell key={i} fill={
+                            e.es_ganado ? P.green :
+                            e.es_perdido ? P.red :
+                            PASTEL[i % PASTEL.length]
+                          }/>
+                        ))}
+                        <LabelList dataKey="total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartBoundary>
+              )}
+            </Card>
+
+            {/* Tendencia CRM */}
+            <Card icon="📈" title="Tendencia Diaria — Ingresos CRM">
+              <div className="flex gap-2 mb-3 flex-wrap">
+                {[["total","Total CRM",P.purple],["ganados","Ventas Subidas",P.green]].map(([k,lbl,col])=>(
+                  <button key={k} onClick={()=>toggleCrmSerie(k)}
+                    className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-lg border transition-all ${crmSeries[k]?"text-white shadow-sm":"bg-white text-slate-400 border-slate-200"}`}
+                    style={crmSeries[k]?{background:col,borderColor:col}:{}}>
+                    <span className="w-2 h-2 rounded-full inline-block" style={{background:crmSeries[k]?'white':col}}/>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {crm.tendencia.length === 0 ? <EmptyChart/> : (
+                <ChartBoundary>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={crm.tendencia} margin={{top:5,right:10,left:0,bottom:0}}>
+                      <defs>
+                        <linearGradient id="gTC" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={P.purple} stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor={P.purple} stopOpacity={0.02}/>
+                        </linearGradient>
+                        <linearGradient id="gGC" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={P.green} stopOpacity={0.30}/>
+                          <stop offset="95%" stopColor={P.green} stopOpacity={0.02}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                      <XAxis dataKey="fecha" tick={{fill:"#94a3b8",fontSize:10}}/>
+                      <YAxis tick={{fill:"#94a3b8",fontSize:10}}/>
+                      <Tooltip content={<Tip/>}/>
+                      {crmSeries.total   && <Area type="monotone" dataKey="total"   name="Total CRM"     stroke={P.purple} fill="url(#gTC)" strokeWidth={2.5} dot={false} animationDuration={500}/>}
+                      {crmSeries.ganados && <Area type="monotone" dataKey="ganados" name="Ventas Subidas" stroke={P.green}  fill="url(#gGC)" strokeWidth={2.5} dot={false} animationDuration={500}/>}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </ChartBoundary>
+              )}
+            </Card>
+
+            {/* Ranking asesores CRM */}
+            <Card icon="🏆" title="Ranking Asesores — CRM Bitrix">
+              <div className="flex flex-wrap gap-2 mb-4 items-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Ordenar por:</span>
+                {[["total","Total CRM"],["ganados","Ventas Subidas"],["pctConversion","% Conversión"]].map(([k,lbl])=>(
+                  <button key={k} onClick={()=>setSortCrm(k)}
+                    className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-all ${sortCrm===k?"bg-purple-500 text-white border-purple-500":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
+                    {lbl}
+                  </button>
+                ))}
+                <button onClick={()=>setCrmDesc(d=>!d)}
+                  className="text-[10px] font-bold px-3 py-1.5 rounded-lg border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 transition-all">
+                  {crmDesc?"↓ Mayor a menor":"↑ Menor a mayor"}
+                </button>
+              </div>
+              {rankCrmOrdenado.length === 0 ? <EmptyChart/> : (
+                <ChartBoundary>
+                  <ResponsiveContainer width="100%" height={Math.max(260,rankCrmOrdenado.length*30)}>
+                    <BarChart data={rankCrmOrdenado} layout="vertical" margin={{top:0,right:70,left:10,bottom:0}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false}/>
+                      <XAxis type="number" tick={{fill:"#94a3b8",fontSize:10}}/>
+                      <YAxis type="category" dataKey="asesor" width={110}
+                        tick={{fill:"#64748b",fontSize:9}}
+                        tickFormatter={v=>v.length>15?v.substring(0,14)+"…":v}/>
+                      <Tooltip content={<Tip/>}/>
+                      <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
+                      <Bar dataKey="total"   name="Total CRM"      fill={P.purple} radius={[0,5,5,0]} isAnimationActive>
+                        <LabelList dataKey="total" position="right" style={{fill:"#64748b",fontSize:9,fontWeight:700}}/>
+                      </Bar>
+                      <Bar dataKey="ganados" name="Ventas Subidas" fill={P.green}  radius={[0,5,5,0]} isAnimationActive/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartBoundary>
+              )}
+            </Card>
+
+            {/* Fuentes */}
+            {crm.fuentes.length > 0 && (
+              <Card icon="📡" title="Fuente de Leads — CRM Bitrix">
+                <ChartBoundary>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={crm.fuentes} dataKey="value" nameKey="name"
+                        cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={4}
+                        label={({percent})=>percent>0.04?`${(percent*100).toFixed(0)}%`:""}>
+                        {crm.fuentes.map((_,i)=><Cell key={i} fill={PASTEL[i%PASTEL.length]}/>)}
+                      </Pie>
+                      <Tooltip content={<Tip/>}/>
+                      <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartBoundary>
+              </Card>
+            )}
+          </>)}
         </>)}
 
         {/* ══ TAB GEOGRAFÍA ══ */}

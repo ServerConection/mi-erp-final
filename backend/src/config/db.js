@@ -8,9 +8,7 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   port:     process.env.DB_PORT,
 
-  ssl: process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: true }
-    : false,
+  ssl: { rejectUnauthorized: false },
 
   max:                    15,      // máx conexiones simultáneas
   idleTimeoutMillis:      10000,   // cerrar inactivas antes de que Render las mate (30s)

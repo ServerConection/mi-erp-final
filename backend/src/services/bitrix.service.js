@@ -5,7 +5,7 @@
 
 const pool = require('../config/db');
 
-const WEBHOOK   = process.env.BITRIX_WEBHOOK; // https://aclopecuador.bitrix24.es/rest/34852/00em2r3oa8igj2yt
+const WEBHOOK   = process.env.BITRIX_WEBHOOK;
 const CAT_VELSA = [8];   // pipelines a sincronizar; agregar más si se necesita
 
 // ── Cliente HTTP con reintentos ───────────────────────────────────────────────
@@ -75,6 +75,55 @@ const bitrixListAll = async (method, params = {}, maxPages = 400) => {
   return all;
 };
 
+// ── Mapeo de campos UF_CRM a nombres amigables ────────────────────────────────
+// Ejecuta:  node bitrix-discover-fields.js
+// para ver los nombres UF_CRM_XXXXXX reales de tu instalación y actualizar este mapa.
+//
+// INSTRUCCIÓN: después del primer sync corre en psql / pgAdmin:
+//   SELECT DISTINCT jsonb_object_keys(campos_custom) FROM bitrix_deals LIMIT 50;
+// para ver qué campos llegaron realmente.
+const MAPA_UF = {
+  // ── Completa con los nombres que salgan del discover-fields ─────────────────
+  // 'UF_CRM_XXXXXXX': 'nombre_amigable',
+
+  // Nombres típicos en instalaciones Bitrix (ajustar con los reales):
+  UF_CRM_1_CIUDAD:            'ciudad',
+  UF_CRM_1_PROVINCIA:         'provincia',
+  UF_CRM_1_NOMBRE_ASESOR:     'nombre_asesor',
+  UF_CRM_1_CEDULA:            'cedula',
+  UF_CRM_1_FORMA_PAGO:        'forma_pago',
+  UF_CRM_1_MEGAS_PLAN:        'megas_plan',
+  UF_CRM_1_MOTIVO_ATC:        'motivo_atc',
+  UF_CRM_1_REGULARIZADO:      'regularizado',
+  UF_CRM_1_VOLVER_LLAMAR:     'volver_llamar',
+  UF_CRM_1_FECHA_VENTA:       'fecha_venta_subida',
+  UF_CRM_1_DEUDA:             'deuda',
+  UF_CRM_1_CONTRATO:          'contrato',
+  UF_CRM_1_LOGIN:             'login',
+  UF_CRM_1_PAGADO_INST:       'pagado_instalacion',
+  UF_CRM_1_DESISTE:           'desiste_compra',
+  UF_CRM_1_INNEGOCIABLE:      'innegociable',
+};
+
+const mapearCamposCustom = (deal) => {
+  const custom = {};
+
+  for (const [k, v] of Object.entries(deal)) {
+    if (!k.startsWith('UF_')) continue;
+    const val = Array.isArray(v) ? v.join(', ') : v;
+    if (val === null || val === '' || val === undefined) continue;
+
+    // Guardar con nombre UF_ original (siempre)
+    custom[k] = val;
+
+    // Agregar alias amigable si está en el mapa
+    const alias = MAPA_UF[k];
+    if (alias) custom[alias] = val;
+  }
+
+  return Object.keys(custom).length > 0 ? custom : null;
+};
+
 // ── SYNC PRINCIPAL ────────────────────────────────────────────────────────────
 const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA } = {}) => {
   const logId = await iniciarLog('incremental');
@@ -93,10 +142,12 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
       const deals = await bitrixListAll('crm.deal.list', {
         filter,
         order: { DATE_CREATE: 'DESC' },
+        // Campos estándar + TODOS los campos custom UF_*
         select: [
           'ID','TITLE','CATEGORY_ID','STAGE_ID','ASSIGNED_BY_ID',
           'SOURCE_ID','DATE_CREATE','DATE_MODIFY','CLOSEDATE',
           'CLOSED','STAGE_SEMANTIC_ID','OPPORTUNITY','CURRENCY_ID',
+          'UF_*',
         ],
       });
 
@@ -104,13 +155,14 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
         const ganado  = d.STAGE_SEMANTIC_ID === 'S'; // Success
         const perdido = d.STAGE_SEMANTIC_ID === 'F'; // Failure
         const cerrado = d.CLOSED === 'Y';
+        const camposCustom = mapearCamposCustom(d);
 
         const res = await pool.query(
           `INSERT INTO bitrix_deals
              (id, titulo, category_id, stage_id, asesor_id, source_id,
               fecha_creacion, fecha_modificacion, fecha_cierre,
-              cerrado, ganado, perdido, monto, moneda, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+              cerrado, ganado, perdido, monto, moneda, campos_custom, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
            ON CONFLICT (id) DO UPDATE SET
              titulo             = EXCLUDED.titulo,
              stage_id           = EXCLUDED.stage_id,
@@ -121,6 +173,7 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
              ganado             = EXCLUDED.ganado,
              perdido            = EXCLUDED.perdido,
              monto              = EXCLUDED.monto,
+             campos_custom      = EXCLUDED.campos_custom,
              updated_at         = NOW()
            RETURNING (xmax = 0) AS es_nuevo`,
           [
@@ -136,6 +189,7 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
             cerrado, ganado, perdido,
             parseFloat(d.OPPORTUNITY) || 0,
             d.CURRENCY_ID || 'USD',
+            camposCustom ? JSON.stringify(camposCustom) : '{}',
           ]
         );
 

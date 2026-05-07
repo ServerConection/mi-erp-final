@@ -277,6 +277,7 @@ const ALL_MENU_ITEMS = [
   { name: "Comisiones",         path: "/comisiones",          icon: "💰", permiso: "Comisiones" },
   { name: "Resumen NOVONET",    path: "/resumen-novonet",     icon: "📊", permiso: "ResumenNovonet" },
   { name: "Resumen VELSA",      path: "/resumen-velsa",       icon: "🟣", permiso: "ResumenVelsa" },
+  { name: "JOT Formulario",     path: "/jot-formulario",      icon: "📋", permiso: null },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

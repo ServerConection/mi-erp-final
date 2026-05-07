@@ -26,6 +26,7 @@ const AppSheetModule       = lazy(() => import("./pages/AppSheetModule"));
 const Ventas               = lazy(() => import("./pages/VentasFormulario"));
 const ResumenNovonet       = lazy(() => import("./pages/ResumenNovonet"));
 const ResumenVelsa         = lazy(() => import("./pages/ResumenVelsa"));
+const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -70,6 +71,7 @@ export default function App() {
 
             <Route path="resumen-novonet"            element={<ResumenNovonet />} />
             <Route path="resumen-velsa"              element={<ResumenVelsa />} />
+            <Route path="jot-formulario"             element={<JotFormulario />} />
 
             {/* Rutas sin ítem en el menú lateral */}
             <Route path="notificaciones"            element={<Notificaciones />} />

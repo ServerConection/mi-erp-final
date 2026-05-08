@@ -1,3 +1,34 @@
+/**
+ * INDICADORES VELSA — v2 Bitrix
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Lee velsa_netlife_maestra_cons (Render DB) con columnas b_ y j_ generadas
+ * por bitrixJotformService.js (vista_8 Cat.19 + maestra_velsa_jotform_netlife).
+ *
+ * Mapa de columnas respecto a la versión GHL anterior:
+ *   t1_hgl_created_at_fecha  → b_creado_el_fecha
+ *   t1_hgl_created_at_hora   → b_creado_el_hora
+ *   t1_hgl_updated_at_fecha  → b_modificado_el_fecha
+ *   t1_hgl_updated_at_hora   → b_modificado_el_hora
+ *   t1_pipeline_stage_id     → b_etapa_de_la_negociacion
+ *   t1_assigned_to           → b_persona_responsable
+ *   t1_relation_tags         → b_origen
+ *   t2_jot_created_at_fecha  → j_fecha_registro_sistema
+ *   t2_jot_created_at_hora   → j_hora_registro_sistema
+ *   t2_estado_venta_netlife  → j_estado_venta_netlife
+ *   t2_regularizado          → j_regularizado
+ *   t2_forma_pago            → j_forma_pago
+ *   t2_aplica_descuento      → j_aplica_descuento
+ *   t2_ciudad                → j_ciudad  (COALESCE con b_ciudad en detalle)
+ *   t2_fecha_activacion_telcos → j_fecha_activacion_telcos
+ *   t2_fecha_ingresa_telcos  → j_fecha_ingresa_telcos
+ *   t2_inicio_sesion_netlife → j_inicio_sesion_netlife  (COALESCE con b_login)
+ *   t2_clausulas             → j_clausulas
+ *   t2_observacion_auditoria → j_observacion_auditoria
+ *   t2_estado_regularizacion_novo → j_estado_regularizacion_novo
+ *   t2_id_bitrix_ghl         → j_id_bitrix_ghl
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 const pool = require('../config/db');
 
 const getFechaEcuador = () => {
@@ -11,35 +42,36 @@ const getPrimerDiaMesEcuador = () => {
     return `${fechaEcuador.getFullYear()}-${String(fechaEcuador.getMonth() + 1).padStart(2, '0')}-01`;
 };
 
-const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
+// b_* columnas vienen como DATE desde Render DB — cast directo, sin parseo complejo
+const parseFechaB = (col) => `(${col})`;
+// j_* columnas también son DATE en Render DB
+const parseFechaJ = (col) => `(${col})`;
+
 const dedupVN = `public.velsa_netlife_maestra_cons vn`;
 
-// FIX: los valores reales de t2_estado_venta_netlife son texto directo (no catálogo codificado)
-// ACTIVO = 'ACTIVO', confirmado en BD
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Caché de etapas CRM + canales de Velsa (5 minutos)
-// Equivalente al getEtapasCache() de Novonet — evita 2 full-scans por request
 // ─────────────────────────────────────────────────────────────────────────────
 let _cacheEtapasVelsa    = null;
 let _cacheEtapasVelsaTTL = 0;
-const CACHE_TTL_MS       = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL_MS       = 5 * 60 * 1000;
 
 const getEtapasVelsaCache = async () => {
     const ahora = Date.now();
     if (_cacheEtapasVelsa && ahora < _cacheEtapasVelsaTTL) return _cacheEtapasVelsa;
 
     const [resEtapas, resCanales] = await Promise.all([
-        pool.query(`SELECT DISTINCT vn.t1_pipeline_stage_id AS etapa
+        pool.query(`SELECT DISTINCT vn.b_etapa_de_la_negociacion AS etapa
                     FROM public.velsa_netlife_maestra_cons vn
-                    WHERE vn.t1_pipeline_stage_id IS NOT NULL
-                      AND TRIM(vn.t1_pipeline_stage_id) <> ''
+                    WHERE vn.b_etapa_de_la_negociacion IS NOT NULL
+                      AND TRIM(vn.b_etapa_de_la_negociacion) <> ''
                     ORDER BY etapa ASC`),
-        pool.query(`SELECT DISTINCT vn.t1_relation_tags AS canal
+        pool.query(`SELECT DISTINCT vn.b_origen AS canal
                     FROM public.velsa_netlife_maestra_cons vn
-                    WHERE vn.t1_relation_tags IS NOT NULL
-                      AND TRIM(vn.t1_relation_tags) <> ''
+                    WHERE vn.b_origen IS NOT NULL
+                      AND TRIM(vn.b_origen) <> ''
                     ORDER BY canal ASC
                     LIMIT 50`),
     ]);
@@ -56,7 +88,7 @@ const getEtapasVelsaCache = async () => {
 // Caché de resultados del dashboard Velsa (2 minutos por combinación de params)
 // ─────────────────────────────────────────────────────────────────────────────
 const _cacheDashboardVelsa = new Map();
-const CACHE_DASH_TTL_MS    = 2 * 60 * 1000; // 2 minutos
+const CACHE_DASH_TTL_MS    = 2 * 60 * 1000;
 
 const getDashboardVelsaCache = (key) => {
     const entry = _cacheDashboardVelsa.get(key);
@@ -76,71 +108,63 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
 
-        const hoy = getFechaEcuador();
+        const hoy   = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         console.log(`[DASHBOARD VELSA] Rango: ${desde} → ${hasta} | asesor=${asesor||'todos'} | sup=${supervisor||'todos'} | canal=${canal||'-'}`);
 
-        // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
         const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal });
         const cached = getDashboardVelsaCache(cacheKey);
         if (cached) {
-            console.log(`[DASHBOARD VELSA] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
+            console.log(`[DASHBOARD VELSA] Cache hit → ${desde}~${hasta}`);
             return res.json(cached);
         }
 
-        let values = [desde, hasta];
+        let values  = [desde, hasta];
         let filters = "";
 
-        if (asesor) { values.push(`%${asesor}%`); filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`; }
-        if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
-        if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
-        if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND vn.t2_regularizado ILIKE $${values.length}`; }
-        if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
-        if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
-        // Filtro por campaña/origen (campo t1_relation_tags en velsa_netlife_maestra_cons)
-        // También incluye filas JOT cuyo t2_id_bitrix_ghl apunta al id_unificado del deal correcto,
-        // para que los indicadores JOT no queden en 0 al filtrar por campaña.
+        if (asesor)              { values.push(`%${asesor}%`);              filters += ` AND vn.b_persona_responsable ILIKE $${values.length}`; }
+        if (supervisor)          { values.push(`%${supervisor}%`);          filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
+        if (estadoNetlife)       { values.push(`%${estadoNetlife}%`);       filters += ` AND vn.j_estado_venta_netlife ILIKE $${values.length}`; }
+        if (estadoRegularizacion){ values.push(`%${estadoRegularizacion}%`);filters += ` AND vn.j_regularizado ILIKE $${values.length}`; }
+        if (etapaCRM)            { values.push(`%${etapaCRM}%`);            filters += ` AND vn.b_etapa_de_la_negociacion ILIKE $${values.length}`; }
+        if (etapaJotform)        { values.push(`%${etapaJotform}%`);        filters += ` AND vn.j_estado_venta_netlife ILIKE $${values.length}`; }
         if (canal) {
             values.push(`%${canal}%`);
             const canalIdx = values.length;
             filters += ` AND (
-                vn.t1_relation_tags ILIKE $${canalIdx}
-                OR vn.t2_id_bitrix_ghl::text IN (
+                vn.b_origen ILIKE $${canalIdx}
+                OR vn.j_id_bitrix_ghl::text IN (
                     SELECT vn2.id_unificado::text
                     FROM velsa_netlife_maestra_cons vn2
-                    WHERE vn2.t1_relation_tags ILIKE $${canalIdx}
+                    WHERE vn2.b_origen ILIKE $${canalIdx}
                       AND vn2.id_unificado IS NOT NULL
                 )
             )`;
         }
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-        const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
+        const ETAPAS_DESCARTE    = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
-        // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
-        // parseFecha (CASE+regex) antes se evaluaba 10-12 veces por fila.
-        // Con MATERIALIZED CTE se evalúa 1 vez; el SELECT exterior usa aliases.
         const queryKPI = (columna) => {
-            const groupCol = columna === 'vn.supervisor_asignado' ? 'supervisor_asignado' : 't1_assigned_to';
+            const groupCol = columna === 'vn.supervisor_asignado' ? 'supervisor_asignado' : 'b_persona_responsable';
             return `
             WITH _base AS MATERIALIZED (
                 SELECT
                     vn.supervisor_asignado,
-                    vn.t1_assigned_to,
-                    vn.t1_pipeline_stage_id,
-                    vn.t2_estado_venta_netlife,
-                    vn.t2_regularizado,
-                    vn.t2_forma_pago,
-                    vn.t2_aplica_descuento,
-                    -- Fechas pre-calculadas 1 vez por fila:
-                    ${parseFecha('vn.t1_hgl_created_at_fecha')}  AS _hgl_date,
-                    vn.t2_jot_created_at_fecha::date              AS _jf_date
+                    vn.b_persona_responsable,
+                    vn.b_etapa_de_la_negociacion,
+                    vn.j_estado_venta_netlife,
+                    vn.j_regularizado,
+                    vn.j_forma_pago,
+                    vn.j_aplica_descuento,
+                    vn.b_creado_el_fecha      AS _hgl_date,
+                    vn.j_fecha_registro_sistema AS _jf_date
                 FROM ${dedupVN}
                 WHERE (
-                    ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
-                    OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                    vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
+                    OR vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                 ) ${filters}
             )
             SELECT
@@ -148,85 +172,85 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 COUNT(*) FILTER (WHERE _hgl_date BETWEEN $1::date AND $2::date) AS leads_totales,
                 COUNT(*) FILTER (
                     WHERE _hgl_date BETWEEN $1::date AND $2::date
-                    AND t1_pipeline_stage_id = 'VENTA SUBIDA'
+                    AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _hgl_date BETWEEN $1::date AND $2::date
-                        AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND t2_regularizado = 'POR REGULARIZAR'
+                    AND j_regularizado = 'POR REGULARIZAR'
                 ) AS por_regularizar,
                 COUNT(*) FILTER (
                     WHERE (_jf_date BETWEEN $1::date AND $2::date OR _hgl_date BETWEEN $1::date AND $2::date)
-                    AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS gestionables,
                 COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date) AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    AND j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS activas,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    AND j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS real_mes,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    AND j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 COUNT(*) FILTER (
-                    WHERE t2_forma_pago ILIKE '%TARJETA DE CREDITO%'
+                    WHERE j_forma_pago ILIKE '%TARJETA DE CREDITO%'
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS tarjeta_credito,
                 COUNT(*) FILTER (
-                    WHERE t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                    AND t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    WHERE j_aplica_descuento ILIKE '%TERCERA EDAD%'
+                    AND j_estado_venta_netlife = ${ESTADO_ACTIVO}
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS tercera_edad,
                 (COUNT(*) FILTER (
-                    WHERE t1_pipeline_stage_id IN ${ETAPAS_DESCARTE}
+                    WHERE b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
                     AND _hgl_date BETWEEN $1::date AND $2::date
                 )::numeric /
                 NULLIF(COUNT(*) FILTER (
                     WHERE (_jf_date BETWEEN $1::date AND $2::date OR _hgl_date BETWEEN $1::date AND $2::date)
-                    AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ), 0) * 100)::numeric(10,2) AS descarte,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND t2_estado_venta_netlife NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-                    AND t2_regularizado = 'POR REGULARIZAR'
+                    AND j_estado_venta_netlife NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
+                    AND j_regularizado = 'POR REGULARIZAR'
                 ) AS regularizacion,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_jf_date BETWEEN $1::date AND $2::date OR _hgl_date BETWEEN $1::date AND $2::date)
-                        AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND t2_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
                     / NULLIF(COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND t2_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_jf_date BETWEEN $1::date AND $2::date OR _hgl_date BETWEEN $1::date AND $2::date)
-                        AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
-                        AND t2_estado_venta_netlife NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
+                        AND j_estado_venta_netlife NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _hgl_date BETWEEN $1::date AND $2::date
-                        AND t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
@@ -236,106 +260,91 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
         };
 
         // ── Activas Mes ──────────────────────────────────────────────────────────
-        // Registros ACTIVO cuya fecha_activacion_telcos está dentro del período
-        // Y cuya fecha_ingresa_telcos también está dentro del período (BETWEEN $1 AND $2).
-        // SQL equivalente:
-        //   WHERE t2_fecha_activacion_telcos BETWEEN $1 AND $2
-        //     AND t2_fecha_ingresa_telcos BETWEEN $1 AND $2
-        //     AND t2_estado_venta_netlife = 'ACTIVO'
         const queryActivasMes = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS activas_mes
             FROM ${dedupVN}
-            WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-       AND ${parseFecha('vn.t2_fecha_activacion_telcos')} >= $1::date
-    AND ${parseFecha('vn.t2_fecha_activacion_telcos')} <= $2::date
-    AND ${parseFecha('vn.t2_fecha_ingresa_telcos')} >= $1::date
-    AND ${parseFecha('vn.t2_fecha_ingresa_telcos')} <= $2::date
-    ${filters}
-    GROUP BY 1
+            WHERE vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
+              AND vn.j_fecha_activacion_telcos >= $1::date
+              AND vn.j_fecha_activacion_telcos <= $2::date
+              AND vn.j_fecha_ingresa_telcos    >= $1::date
+              AND vn.j_fecha_ingresa_telcos    <= $2::date
+            ${filters}
+            GROUP BY 1
         `;
 
         // ── Backlog ───────────────────────────────────────────────────────────────
-        // Registros ACTIVO cuya fecha_activacion_telcos está dentro del período
-        // PERO cuya fecha_ingresa_telcos < fecha_desde (ingresaron ANTES del período).
-        // Son activaciones del período que venían pendientes de períodos anteriores.
-        // SQL equivalente:
-        //   WHERE t2_fecha_activacion_telcos BETWEEN $1 AND $2
-        //     AND t2_fecha_ingresa_telcos < $1
-        //     AND t2_estado_venta_netlife = 'ACTIVO'
         const queryBacklog = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM ${dedupVN}
-            WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-            AND vn.t2_fecha_activacion_telcos IS NOT NULL
-            AND TRIM(vn.t2_fecha_activacion_telcos::text) != ''
-            AND vn.t2_fecha_activacion_telcos::date >= $1::date
-            AND vn.t2_fecha_activacion_telcos::date <= $2::date
-            AND vn.t2_fecha_ingresa_telcos IS NOT NULL
-            AND TRIM(vn.t2_fecha_ingresa_telcos::text) != ''
-            AND vn.t2_fecha_ingresa_telcos::date < $1::date
+            WHERE vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
+              AND vn.j_fecha_activacion_telcos IS NOT NULL
+              AND vn.j_fecha_activacion_telcos >= $1::date
+              AND vn.j_fecha_activacion_telcos <= $2::date
+              AND vn.j_fecha_ingresa_telcos IS NOT NULL
+              AND vn.j_fecha_ingresa_telcos < $1::date
             ${filters}
             GROUP BY 1
         `;
 
         const queryCRM = `
             SELECT
-                vn.id_unificado                  AS "ID_CRM",
-                vn.t1_pipeline_stage_id          AS "ETAPA_CRM",
-                vn.t1_hgl_created_at_fecha       AS "FECHA_CREACION_CRM",
-                vn.t1_assigned_to                AS "ASESOR",
-                vn.t1_hgl_created_at_hora        AS "HORA_CREACION",
-                vn.supervisor_asignado           AS "SUPERVISOR_ASIGNADO",
-                vn.t1_hgl_updated_at_fecha       AS "FECHA_MODIFICACION",
-                vn.t1_hgl_updated_at_hora        AS "HORA_MODIFICACION",
-                vn.t1_relation_tags              AS "ORIGEN",
-                vn.ventasdiajot                  AS "VENTAS_DIA_JOT",
-                vn.t1_phone                      AS "TELEFONO",
-                vn.t2_ciudad                     AS "CIUDAD",
-                vn.t2_estado_venta_netlife       AS "ESTADO_NETLIFE",
-                vn.t2_jot_created_at_fecha       AS "FECHA_JOT",
-                vn.t2_regularizado               AS "ESTADO_REGULARIZACION",
-                vn.t2_observacion_auditoria      AS "OBSERVACION_AUDITORIA"
+                vn.id_unificado                        AS "ID_CRM",
+                vn.b_etapa_de_la_negociacion           AS "ETAPA_CRM",
+                vn.b_creado_el_fecha                   AS "FECHA_CREACION_CRM",
+                vn.b_persona_responsable               AS "ASESOR",
+                vn.b_creado_el_hora                    AS "HORA_CREACION",
+                vn.supervisor_asignado                 AS "SUPERVISOR_ASIGNADO",
+                vn.b_modificado_el_fecha               AS "FECHA_MODIFICACION",
+                vn.b_modificado_el_hora                AS "HORA_MODIFICACION",
+                vn.b_origen                            AS "ORIGEN",
+                NULL                                   AS "VENTAS_DIA_JOT",
+                NULL                                   AS "TELEFONO",
+                COALESCE(vn.b_ciudad, vn.j_ciudad)     AS "CIUDAD",
+                vn.j_estado_venta_netlife              AS "ESTADO_NETLIFE",
+                vn.j_fecha_registro_sistema            AS "FECHA_JOT",
+                vn.j_regularizado                      AS "ESTADO_REGULARIZACION",
+                vn.j_observacion_auditoria             AS "OBSERVACION_AUDITORIA"
             FROM ${dedupVN}
-            WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+            WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
             ${filters}
             LIMIT 6000
         `;
 
         const queryJotform = `
             SELECT
-                vn.t2_jot_created_at_fecha       AS "FECHA_CREACION_JOT",
-                vn.t2_id_bitrix_ghl              AS "ID_CRM",
-                vn.t2_estado_venta_netlife       AS "ESTADO_NETLIFE",
-                vn.t2_fecha_activacion_telcos    AS "FECHA_ACTIVACION",
-                vn.t2_clausulas                  AS "NOVEDADES_ATC",
-                vn.t2_regularizado               AS "ESTADO_REGULARIZACION",
-                vn.t2_regularizado       AS "OBSERVACION_REGULARIZADO",
-                vn.t2_estado_regularizacion_novo AS "MOTIVO_REGULARIZAR",
-                vn.t2_observacion_auditoria      AS "OBSERVACION_AUDITORIA",
-                vn.t2_forma_pago                 AS "FORMA_PAGO",
-                vn.t1_assigned_to                AS "ASESOR",
-                vn.supervisor_asignado           AS "SUPERVISOR_ASIGNADO",
-                vn.t1_phone                      AS "TELF",
-                vn.t2_inicio_sesion_netlife      AS "LOGIN",
-                vn.t2_ciudad                     AS "CIUDAD",
-                vn.t2_aplica_descuento           AS "TERCERA_EDAD",
-                vn.t1_pipeline_stage_id          AS "ETAPA_CRM"
+                vn.j_fecha_registro_sistema            AS "FECHA_CREACION_JOT",
+                vn.j_id_bitrix_ghl                     AS "ID_CRM",
+                vn.j_estado_venta_netlife              AS "ESTADO_NETLIFE",
+                vn.j_fecha_activacion_telcos           AS "FECHA_ACTIVACION",
+                vn.j_clausulas                         AS "NOVEDADES_ATC",
+                vn.j_regularizado                      AS "ESTADO_REGULARIZACION",
+                vn.j_regularizado                      AS "OBSERVACION_REGULARIZADO",
+                vn.j_estado_regularizacion_novo        AS "MOTIVO_REGULARIZAR",
+                vn.j_observacion_auditoria             AS "OBSERVACION_AUDITORIA",
+                vn.j_forma_pago                        AS "FORMA_PAGO",
+                vn.b_persona_responsable               AS "ASESOR",
+                vn.supervisor_asignado                 AS "SUPERVISOR_ASIGNADO",
+                NULL                                   AS "TELF",
+                COALESCE(vn.b_login, vn.j_inicio_sesion_netlife) AS "LOGIN",
+                COALESCE(vn.b_ciudad, vn.j_ciudad)     AS "CIUDAD",
+                vn.j_aplica_descuento                  AS "TERCERA_EDAD",
+                vn.b_etapa_de_la_negociacion           AS "ETAPA_CRM"
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ${filters}
             LIMIT 6000
         `;
 
         const queryEstados = `
             SELECT
-                COALESCE(NULLIF(TRIM(vn.t2_estado_venta_netlife::text), ''), 'SIN ESTADO') AS estado,
+                COALESCE(NULLIF(TRIM(vn.j_estado_venta_netlife::text), ''), 'SIN ESTADO') AS estado,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ${filters}
             GROUP BY 1
             ORDER BY total DESC
@@ -343,56 +352,51 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         const queryEmbudo = `
             SELECT
-                COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
+                COALESCE(vn.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+            WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
             ${filters}
-            GROUP BY vn.t1_pipeline_stage_id
+            GROUP BY vn.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
 
         const queryPorDia = `
             SELECT
-                vn.t2_jot_created_at_fecha::date AS fecha,
+                vn.j_fecha_registro_sistema AS fecha,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha IS NOT NULL
-            AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            WHERE vn.j_fecha_registro_sistema IS NOT NULL
+              AND vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ${filters}
             GROUP BY 1
             ORDER BY fecha ASC
         `;
 
-        // ── Optimización: TerceraEdad + Tarjeta en un solo scan de tabla ──────────────
-        // Antes eran 2 queries separadas con el mismo WHERE → ahora 1 sola query
         const queryMetasGlobales = `
             SELECT
                 COUNT(*) FILTER (
-                    WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    WHERE vn.j_aplica_descuento ILIKE '%TERCERA EDAD%'
+                    AND vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_tercera_edad,
                 COUNT(*) FILTER (
-                    WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    WHERE vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS total_activos,
                 COUNT(*) FILTER (
-                    WHERE vn.t2_forma_pago ILIKE '%TARJETA DE CREDITO%'
+                    WHERE vn.j_forma_pago ILIKE '%TARJETA DE CREDITO%'
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ${filters}
         `;
-        // Nota: queryEtapasCRM y queryCanales ahora vienen del caché (getEtapasVelsaCache)
 
-        // ── Lote 1: KPIs + agregaciones ligeras (6 queries) + caché de etapas ──────
-        // Equivalente al patrón de Novonet: 2 lotes para no saturar el pool (max 15).
-        // etapasCRM y canales vienen del caché → 0 queries adicionales si está en TTL.
+        // ── Lote 1: KPIs + agregaciones + caché de etapas ───────────────────────
         const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales]] = await Promise.all([
             getEtapasVelsaCache(),
             Promise.all([
                 pool.query(queryKPI('vn.supervisor_asignado'), values),
-                pool.query(queryKPI('vn.t1_assigned_to'), values),
+                pool.query(queryKPI('vn.b_persona_responsable'), values),
                 pool.query(queryEstados, values),
                 pool.query(queryEmbudo, values),
                 pool.query(queryPorDia, values),
@@ -400,14 +404,14 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             ]),
         ]);
 
-        // ── Lote 2: tablas de detalle + backlogs + activas_mes (6 queries) ────────
+        // ── Lote 2: tablas de detalle + backlogs + activas_mes ───────────────────
         const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivasMesSup, resActivasMesAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('vn.supervisor_asignado'), values),
-            pool.query(queryBacklog('vn.t1_assigned_to'), values),
+            pool.query(queryBacklog('vn.b_persona_responsable'), values),
             pool.query(queryActivasMes('vn.supervisor_asignado'), values),
-            pool.query(queryActivasMes('vn.t1_assigned_to'), values),
+            pool.query(queryActivasMes('vn.b_persona_responsable'), values),
         ]);
 
         const mergeBacklog = (filas, backlogRows, activasMesRows) => {
@@ -416,8 +420,8 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
                 const am = activasMesRows.find(a => a.nombre_grupo === row.nombre_grupo);
                 return {
                     ...row,
-                    backlog:      bl ? Number(bl.backlog)      : 0,
-                    activas_mes:  am ? Number(am.activas_mes)  : 0,
+                    backlog:     bl ? Number(bl.backlog)     : 0,
+                    activas_mes: am ? Number(am.activas_mes) : 0,
                 };
             });
         };
@@ -427,7 +431,6 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         const estadosNetlife = resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total || 0) }));
 
-        // ── Desempaquetar la query consolidada de metas globales ────────────────
         const rowMetas            = resMetasGlobales.rows[0] || {};
         const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
         const totalActivosTercera = Number(rowMetas.total_activos       || 0);
@@ -441,35 +444,33 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
 
         const totalBacklogSup    = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog     || 0), 0);
         const totalActivasMesSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.activas_mes || 0), 0);
-        console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup} | Activas Mes Total: ${totalActivasMesSup}`);
+        console.log(`[DASHBOARD VELSA] Supervisores: ${supervisoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog: ${totalBacklogSup} | ActivasMes: ${totalActivasMesSup}`);
 
-        // ── DIAGNÓSTICO AUTOMÁTICO: si no hay supervisores, inspeccionar las fechas ──
         if (supervisoresConBacklog.length === 0) {
             try {
                 const diag = await pool.query(`
                     SELECT
-                        COUNT(*)::int                                          AS total_filas,
-                        COUNT(t1_hgl_created_at_fecha)::int                   AS hgl_no_null,
-                        COUNT(t2_jot_created_at_fecha)::int                   AS jot_no_null,
-                        MIN(t1_hgl_created_at_fecha::text)                    AS hgl_min,
-                        MAX(t1_hgl_created_at_fecha::text)                    AS hgl_max,
-                        MIN(t2_jot_created_at_fecha::text)                    AS jot_min,
-                        MAX(t2_jot_created_at_fecha::text)                    AS jot_max,
+                        COUNT(*)::int                             AS total_filas,
+                        COUNT(b_creado_el_fecha)::int             AS hgl_no_null,
+                        COUNT(j_fecha_registro_sistema)::int      AS jot_no_null,
+                        MIN(b_creado_el_fecha::text)              AS hgl_min,
+                        MAX(b_creado_el_fecha::text)              AS hgl_max,
+                        MIN(j_fecha_registro_sistema::text)       AS jot_min,
+                        MAX(j_fecha_registro_sistema::text)       AS jot_max,
                         COUNT(*) FILTER (
-                            WHERE t1_hgl_created_at_fecha::text ~ '^\\d{4}-\\d{2}-\\d{2}'
-                        )::int                                                 AS hgl_iso_format,
+                            WHERE b_creado_el_fecha IS NOT NULL
+                        )::int                                    AS hgl_con_valor,
                         COUNT(*) FILTER (
-                            WHERE t2_jot_created_at_fecha IS NOT NULL
-                            AND TRIM(t2_jot_created_at_fecha::text) != ''
-                        )::int                                                 AS jot_con_valor
+                            WHERE j_fecha_registro_sistema IS NOT NULL
+                        )::int                                    AS jot_con_valor
                     FROM public.velsa_netlife_maestra_cons
                 `);
                 const d = diag.rows[0] || {};
                 console.warn(`[DIAGNÓSTICO VELSA] 0 resultados para ${desde}→${hasta}`);
                 console.warn(`[DIAGNÓSTICO VELSA] total_filas=${d.total_filas} | hgl_no_null=${d.hgl_no_null} | jot_no_null=${d.jot_no_null}`);
-                console.warn(`[DIAGNÓSTICO VELSA] hgl rango: [${d.hgl_min}] → [${d.hgl_max}]`);
-                console.warn(`[DIAGNÓSTICO VELSA] jot rango: [${d.jot_min}] → [${d.jot_max}]`);
-                console.warn(`[DIAGNÓSTICO VELSA] hgl_iso_format=${d.hgl_iso_format} | jot_con_valor=${d.jot_con_valor}`);
+                console.warn(`[DIAGNÓSTICO VELSA] b_creado_el_fecha rango: [${d.hgl_min}] → [${d.hgl_max}]`);
+                console.warn(`[DIAGNÓSTICO VELSA] j_fecha_registro_sistema rango: [${d.jot_min}] → [${d.jot_max}]`);
+                console.warn(`[DIAGNÓSTICO VELSA] hgl_con_valor=${d.hgl_con_valor} | jot_con_valor=${d.jot_con_valor}`);
             } catch (diagErr) {
                 console.warn(`[DIAGNÓSTICO VELSA] Error al diagnosticar: ${diagErr.message}`);
             }
@@ -484,13 +485,12 @@ const getIndicadoresDashboardVelsa = async (req, res) => {
             estadosNetlife,
             graficoEmbudo: resEmbudo.rows,
             graficoBarrasDia: resDia.rows,
-            etapasCRM: etapasCache.etapasCRM,   // viene del caché (sin query adicional)
+            etapasCRM: etapasCache.etapasCRM,
             porcentajeTerceraEdad,
             porcentajeTarjeta,
-            canales: etapasCache.canales,        // viene del caché (sin query adicional)
+            canales: etapasCache.canales,
         };
 
-        // Guardar en caché para solicitudes idénticas en los próximos 2 minutos
         setDashboardVelsaCache(cacheKey, resultado);
         res.json(resultado);
 
@@ -511,52 +511,49 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
         console.log(`[MONITOREO VELSA] Consultando desde ${iniciomes} hasta ${hoy}`);
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-        const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
+        const ETAPAS_DESCARTE    = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
         const queryMonitoreo = (columna) => `
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*) FILTER (
-                    WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
                 COUNT(*) FILTER (
-                    WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
-                    AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                    WHERE vn.b_creado_el_fecha = $2::date
+                    AND vn.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                 ) AS real_dia_leads,
                 COUNT(*) FILTER (
-                    WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
                 COUNT(*) FILTER (
-                    WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
+                    WHERE vn.b_creado_el_fecha = $2::date
                 ) AS crm_dia,
                 COUNT(*) FILTER (
-                    WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} = $2::date
-                    AND vn.t1_pipeline_stage_id = 'VENTA SUBIDA'
+                    WHERE vn.b_creado_el_fecha = $2::date
+                    AND vn.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
-                        AND vn.t1_pipeline_stage_id IN ${ETAPAS_DESCARTE}
+                        WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
+                        AND vn.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
-                        AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
+                        AND vn.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                        AND vn.t2_forma_pago ILIKE '%TARJETA DE CREDITO%'
+                        WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
+                        AND vn.j_forma_pago ILIKE '%TARJETA DE CREDITO%'
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
             FROM ${dedupVN}
-            WHERE (
-                vn.t1_hgl_created_at_fecha::date BETWEEN $1::date AND $2::date
-                OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
-            )
+            WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
             GROUP BY 1
             ORDER BY real_mes_leads DESC
         `;
@@ -565,29 +562,33 @@ const getMonitoreoDiarioVelsa = async (req, res) => {
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
-                COUNT(*) FILTER (WHERE vn.t2_estado_venta_netlife = 'ACTIVO')::int AS activos_jot_hoy,
+                COUNT(*) FILTER (WHERE vn.j_estado_venta_netlife = 'ACTIVO')::int AS activos_jot_hoy,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE vn.t2_forma_pago ILIKE '%TARJETA DE CREDITO%')::numeric
+                    COUNT(*) FILTER (WHERE vn.j_forma_pago ILIKE '%TARJETA DE CREDITO%')::numeric
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha IS NOT NULL
-            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
-            AND vn.t2_jot_created_at_fecha::date = $1::date
+            WHERE vn.j_fecha_registro_sistema IS NOT NULL
+              AND vn.j_fecha_registro_sistema = $1::date
             GROUP BY 1
         `;
 
         const [resSup, resAses, resJotSupHoy, resJotAsesHoy] = await Promise.all([
-            pool.query(queryMonitoreo('vn.supervisor_asignado'), [iniciomes, hoy]),
-            pool.query(queryMonitoreo('vn.t1_assigned_to'),      [iniciomes, hoy]),
-            pool.query(queryJotHoy('vn.supervisor_asignado'),    [hoy]),
-            pool.query(queryJotHoy('vn.t1_assigned_to'),         [hoy]),
+            pool.query(queryMonitoreo('vn.supervisor_asignado'),    [iniciomes, hoy]),
+            pool.query(queryMonitoreo('vn.b_persona_responsable'),  [iniciomes, hoy]),
+            pool.query(queryJotHoy('vn.supervisor_asignado'),       [hoy]),
+            pool.query(queryJotHoy('vn.b_persona_responsable'),     [hoy]),
         ]);
 
         const mergeJot = (filas, jotRows) => {
             return filas.map(row => {
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
-                return { ...row, v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0, activos_jot_hoy: jot ? Number(jot.activos_jot_hoy) : 0, real_efectividad: jot ? Number(jot.real_efectividad) : 0 };
+                return {
+                    ...row,
+                    v_subida_jot_hoy: jot ? Number(jot.v_subida_jot_hoy) : 0,
+                    activos_jot_hoy:  jot ? Number(jot.activos_jot_hoy)  : 0,
+                    real_efectividad: jot ? Number(jot.real_efectividad)  : 0,
+                };
             });
         };
 
@@ -618,97 +619,96 @@ const getReporte180Velsa = async (req, res) => {
         let values  = [desde, hasta];
         let filters = "";
 
-        if (asesor) { values.push(`%${asesor}%`); filters += ` AND vn.t1_assigned_to ILIKE $${values.length}`; }
-        if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
-        if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
-        if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND vn.t2_regularizado ILIKE $${values.length}`; }
-        if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND vn.t1_pipeline_stage_id ILIKE $${values.length}`; }
-        if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND vn.t2_estado_venta_netlife ILIKE $${values.length}`; }
+        if (asesor)              { values.push(`%${asesor}%`);              filters += ` AND vn.b_persona_responsable ILIKE $${values.length}`; }
+        if (supervisor)          { values.push(`%${supervisor}%`);          filters += ` AND vn.supervisor_asignado ILIKE $${values.length}`; }
+        if (estadoNetlife)       { values.push(`%${estadoNetlife}%`);       filters += ` AND vn.j_estado_venta_netlife ILIKE $${values.length}`; }
+        if (estadoRegularizacion){ values.push(`%${estadoRegularizacion}%`);filters += ` AND vn.j_regularizado ILIKE $${values.length}`; }
+        if (etapaCRM)            { values.push(`%${etapaCRM}%`);            filters += ` AND vn.b_etapa_de_la_negociacion ILIKE $${values.length}`; }
+        if (etapaJotform)        { values.push(`%${etapaJotform}%`);        filters += ` AND vn.j_estado_venta_netlife ILIKE $${values.length}`; }
 
         const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-        const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
+        const ETAPAS_DESCARTE    = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
 
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
-                    WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-                    AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
+                    WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
+                    AND vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
                 ) AS ventas_activas,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE vn.t1_pipeline_stage_id IN ${ETAPAS_DESCARTE}
-                        AND ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+                        WHERE vn.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                        AND vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
-                            OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
-                        AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        WHERE (vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
+                            OR vn.b_creado_el_fecha BETWEEN $1::date AND $2::date)
+                        AND vn.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS pct_descarte,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE (${parseFecha('vn.t2_jot_created_at_fecha')} BETWEEN $1::date AND $2::date
-                            OR ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date)
-                        AND vn.t1_pipeline_stage_id IN ${ETAPAS_GESTIONABLES}
+                        WHERE (vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
+                            OR vn.b_creado_el_fecha BETWEEN $1::date AND $2::date)
+                        AND vn.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
                     ), 0)
                 , 0) * 100, 2) AS pct_efectividad,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE vn.t2_aplica_descuento ILIKE '%TERCERA EDAD%'
-                        AND vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-                        AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE vn.j_aplica_descuento ILIKE '%TERCERA EDAD%'
+                        AND vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
+                        AND vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE vn.t2_estado_venta_netlife = ${ESTADO_ACTIVO}
-                        AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE vn.j_estado_venta_netlife = ${ESTADO_ACTIVO}
+                        AND vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
             FROM ${dedupVN}
             WHERE (
-                ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
-                OR vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+                vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
+                OR vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ) ${filters}
         `;
 
         const queryEmbudoCRM = `
             SELECT
-                COALESCE(vn.t1_pipeline_stage_id, 'SIN ETAPA') AS etapa,
+                COALESCE(vn.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE ${parseFecha('vn.t1_hgl_created_at_fecha')} BETWEEN $1::date AND $2::date
+            WHERE vn.b_creado_el_fecha BETWEEN $1::date AND $2::date
             ${filters}
-            GROUP BY vn.t1_pipeline_stage_id
+            GROUP BY vn.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
 
         const queryEmbudoJotform = `
             SELECT
-                COALESCE(vn.t2_estado_venta_netlife, 'SIN ESTADO') AS etapa,
+                COALESCE(vn.j_estado_venta_netlife, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
+            WHERE vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
             ${filters}
-            GROUP BY vn.t2_estado_venta_netlife
+            GROUP BY vn.j_estado_venta_netlife
             ORDER BY total DESC
         `;
 
         const queryMapaCalor = `
             SELECT
-                TRIM(vn.t2_jot_created_at_fecha::text) AS fecha,
-                COALESCE(TRIM(vn.t2_ciudad), 'SIN CIUDAD') AS ciudad,
+                vn.j_fecha_registro_sistema::text AS fecha,
+                COALESCE(TRIM(COALESCE(vn.b_ciudad, vn.j_ciudad)), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
             FROM ${dedupVN}
-            WHERE vn.t2_jot_created_at_fecha IS NOT NULL
-            AND TRIM(vn.t2_jot_created_at_fecha::text) != ''
-            AND vn.t2_jot_created_at_fecha::date BETWEEN $1::date AND $2::date
-            AND vn.t2_ciudad IS NOT NULL
-            AND TRIM(vn.t2_ciudad) != ''
+            WHERE vn.j_fecha_registro_sistema IS NOT NULL
+              AND vn.j_fecha_registro_sistema BETWEEN $1::date AND $2::date
+              AND COALESCE(vn.b_ciudad, vn.j_ciudad) IS NOT NULL
+              AND TRIM(COALESCE(vn.b_ciudad, vn.j_ciudad)) != ''
             ${filters}
             GROUP BY 1, 2
             ORDER BY 1 ASC, 3 DESC
@@ -745,7 +745,7 @@ const getReporte180Velsa = async (req, res) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────────
-// CONSULTA Y DESCARGA
+// CONSULTA Y DESCARGA (usa view JotForm directamente — sin cambios de columnas)
 // ────────────────────────────────────────────────────────────────────────────────
 const getConsultaDescargaVelsa = async (req, res) => {
     try {
@@ -799,32 +799,36 @@ const getDebugFechasVelsa = async (req, res) => {
         const [diagGeneral, muestraHGL, muestraJOT] = await Promise.all([
             pool.query(`
                 SELECT
-                    COUNT(*)::int AS total_filas,
-                    COUNT(t1_hgl_created_at_fecha)::int AS hgl_no_null,
-                    COUNT(t2_jot_created_at_fecha)::int AS jot_no_null,
-                    MIN(t1_hgl_created_at_fecha::text) AS hgl_min,
-                    MAX(t1_hgl_created_at_fecha::text) AS hgl_max,
-                    MIN(t2_jot_created_at_fecha::text) AS jot_min,
-                    MAX(t2_jot_created_at_fecha::text) AS jot_max,
-                    COUNT(*) FILTER (WHERE t1_hgl_created_at_fecha IS NOT NULL)::int AS hgl_con_valor,
-                    COUNT(*) FILTER (WHERE t2_jot_created_at_fecha IS NOT NULL AND TRIM(t2_jot_created_at_fecha::text) != '')::int AS jot_con_valor
+                    COUNT(*)::int                              AS total_filas,
+                    COUNT(b_creado_el_fecha)::int              AS hgl_no_null,
+                    COUNT(j_fecha_registro_sistema)::int       AS jot_no_null,
+                    MIN(b_creado_el_fecha::text)               AS hgl_min,
+                    MAX(b_creado_el_fecha::text)               AS hgl_max,
+                    MIN(j_fecha_registro_sistema::text)        AS jot_min,
+                    MAX(j_fecha_registro_sistema::text)        AS jot_max,
+                    COUNT(*) FILTER (WHERE b_creado_el_fecha IS NOT NULL)::int            AS hgl_con_valor,
+                    COUNT(*) FILTER (WHERE j_fecha_registro_sistema IS NOT NULL)::int     AS jot_con_valor
                 FROM public.velsa_netlife_maestra_cons
             `),
             pool.query(`
-                SELECT t1_hgl_created_at_fecha::text AS hgl_texto, t1_pipeline_stage_id
+                SELECT b_creado_el_fecha::text AS hgl_texto, b_etapa_de_la_negociacion
                 FROM public.velsa_netlife_maestra_cons
-                WHERE t1_hgl_created_at_fecha IS NOT NULL
+                WHERE b_creado_el_fecha IS NOT NULL
                 LIMIT 5
             `),
             pool.query(`
-                SELECT t2_jot_created_at_fecha::text AS jot_texto, t2_estado_venta_netlife
+                SELECT j_fecha_registro_sistema::text AS jot_texto, j_estado_venta_netlife
                 FROM public.velsa_netlife_maestra_cons
-                WHERE t2_jot_created_at_fecha IS NOT NULL
-                AND TRIM(t2_jot_created_at_fecha::text) != ''
+                WHERE j_fecha_registro_sistema IS NOT NULL
                 LIMIT 5
             `),
         ]);
-        res.json({ success: true, resumen: diagGeneral.rows[0], muestra_hgl: muestraHGL.rows, muestra_jot: muestraJOT.rows });
+        res.json({
+            success: true,
+            resumen:     diagGeneral.rows[0],
+            muestra_hgl: muestraHGL.rows,
+            muestra_jot: muestraJOT.rows,
+        });
     } catch (error) {
         console.error('ERROR DEBUG FECHAS VELSA:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -838,3 +842,4 @@ module.exports = {
     getConsultaDescargaVelsa,
     getDebugFechasVelsa,
 };
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

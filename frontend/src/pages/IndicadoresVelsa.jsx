@@ -1191,5 +1191,3 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     </div>
   );
 }
-
-// ======================================================

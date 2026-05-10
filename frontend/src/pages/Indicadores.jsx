@@ -1323,21 +1323,33 @@ ${asesoresPDF.length>0?`
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase">
-          <span className="bg-blue-600 text-white px-2 py-1 rounded italic text-xl">REV</span> SISTEMA DE INDICADORES
-        </h1>
-        <div className="flex gap-2 bg-slate-200 p-1 rounded-xl border border-slate-300 w-full sm:w-auto">
-          <button onClick={() => setTabActiva("GENERAL")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "GENERAL" ? "bg-[#0F172A] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>📊 REPORTE GENERAL D-1</button>
-          <button onClick={() => setTabActiva("MONITOREO")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "MONITOREO" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>⏱️ MONITOREO LEADS</button>
-          <button onClick={() => setTabActiva("REPORTE180")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "REPORTE180" ? "bg-violet-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>🔭 REPORTE 180°</button>
-          <button onClick={() => setTabActiva("CONSULTA")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "CONSULTA" ? "bg-[#1A3A6E] text-white shadow-lg" : "text-slate-500 hover:bg-slate-300"}`}>📥 CONSULTA Y DESCARGA</button>
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase">
+            <span className="text-white px-2.5 py-1 rounded-lg italic text-lg font-black shadow-lg" style={{background:'linear-gradient(135deg,#2563eb,#1d4ed8)'}}>REV</span>
+            SISTEMA DE INDICADORES
+          </h1>
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Novonet · Netlife · Análisis en tiempo real</p>
+        </div>
+        <div className="flex gap-1 bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-inner w-full sm:w-auto overflow-x-auto">
+          {[
+            { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#0F172A,#1e293b)' },
+            { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#2563eb,#1d4ed8)' },
+            { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
+            { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setTabActiva(tab.id)}
+              style={tabActiva === tab.id ? { background: tab.grad } : {}}
+              className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm'}`}>
+              <span className="text-[11px]">{tab.icon}</span>{tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
           {/* Panel de filtros */}
-          <div className="bg-slate-50 rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200/80" style={{boxShadow:'0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(37,99,235,.04)'}}>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               <div className="lg:col-span-2 flex flex-col gap-2">
                 <label className="text-[9px] font-black text-blue-400 italic tracking-widest uppercase">PERÍODO DE CONSULTA</label>
@@ -2025,34 +2037,56 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
 // ======================================================
 // KPI MINI
 // ======================================================
+const COLOR_MAP_MINI = {
+  'border-l-blue-600':    { from:'#2563eb', to:'#60a5fa' },
+  'border-l-indigo-600':  { from:'#4f46e5', to:'#818cf8' },
+  'border-l-orange-600':  { from:'#ea580c', to:'#fb923c' },
+  'border-l-amber-500':   { from:'#d97706', to:'#fbbf24' },
+  'border-l-emerald-600': { from:'#059669', to:'#34d399' },
+  'border-l-rose-500':    { from:'#e11d48', to:'#fb7185' },
+  'border-l-violet-600':  { from:'#7c3aed', to:'#a78bfa' },
+  'border-l-slate-600':   { from:'#475569', to:'#94a3b8' },
+  'border-l-teal-600':    { from:'#0d9488', to:'#2dd4bf' },
+};
 const KpiMini = ({ label, value, meta, real, color }) => {
-  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%', '')) : null;
-  const realNum = real !== undefined ? parseFloat(String(real).replace('%', '')) : null;
+  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%','')) : null;
+  const realNum = real !== undefined ? parseFloat(String(real).replace('%','')) : null;
   const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
   const cumple  = metaNum !== null && realNum !== null && pct >= 97;
-  const realColor = cumple ? '#059669' : '#f59e0b';
-  const barColor  = cumple ? '#10b981' : '#fbbf24';
+  const c       = COLOR_MAP_MINI[color] || COLOR_MAP_MINI['border-l-blue-600'];
+  const barGrad = cumple
+    ? `linear-gradient(90deg,${c.from},${c.to})`
+    : 'linear-gradient(90deg,#fbbf24,#f97316)';
   return (
-    <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
-      <span className="text-[9px] font-black text-slate-400 tracking-wider leading-tight uppercase">{label}</span>
-      {meta !== undefined ? (
-        <>
-          <div className="mt-2 grid grid-cols-2 border-t border-slate-100 pt-2 gap-2">
-            <div className="flex flex-col">
-              <span className="text-[8px] font-bold text-slate-400 uppercase">META</span>
-              <span className="text-[12px] font-black text-slate-500">{meta}</span>
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+      style={{ borderTop:`3px solid ${c.from}` }}>
+      <div className="px-3 pt-2.5 pb-1 flex-1">
+        <span className="text-[8px] font-black text-slate-400 tracking-widest leading-tight uppercase block mb-2">{label}</span>
+        {meta !== undefined ? (
+          <div className="flex justify-between items-end gap-1">
+            <div>
+              <div className="text-[7px] font-bold text-slate-300 uppercase tracking-wider">REAL</div>
+              <div className="text-[15px] font-black leading-none" style={{ color: cumple ? c.from : '#f59e0b' }}>{real}</div>
             </div>
-            <div className="flex flex-col border-l border-slate-100 pl-2">
-              <span className="text-[8px] font-bold text-slate-400 uppercase">REAL</span>
-              <span className="text-[12px] font-black" style={{ color: realColor }}>{real}</span>
+            <div className="text-right">
+              <div className="text-[7px] font-bold text-slate-300 uppercase tracking-wider">META</div>
+              <div className="text-[11px] font-black text-slate-400 leading-none">{meta}</div>
             </div>
           </div>
-          <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1 overflow-hidden">
-            <div className="h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+        ) : (
+          <div className="text-xl font-black leading-none mt-1" style={{ color: c.from }}>{value}</div>
+        )}
+      </div>
+      {meta !== undefined && (
+        <div className="px-3 pb-2.5 mt-1">
+          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="h-1.5 rounded-full transition-all duration-700" style={{ width:`${pct}%`, background: barGrad }} />
           </div>
-        </>
-      ) : (
-        <span className="text-xl font-black text-slate-800 mt-1">{value}</span>
+          <div className="flex justify-between items-center mt-1">
+            <span className="text-[7px] text-slate-300 font-bold tracking-wide">{pct.toFixed(0)}% de meta</span>
+            <span className="text-[8px] font-black" style={{ color: cumple ? c.from : '#f59e0b' }}>{cumple ? '✓ OK' : '↑ Falta'}</span>
+          </div>
+        </div>
       )}
     </div>
   );

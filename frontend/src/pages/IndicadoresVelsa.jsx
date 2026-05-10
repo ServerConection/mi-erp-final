@@ -912,23 +912,26 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-        <h1 className="text-2xl font-black text-stone-800 tracking-tight flex items-center gap-2 uppercase">
-          <span className="bg-orange-600 text-white px-2 py-1 rounded italic text-xl">VLS</span>
-          SISTEMA DE INDICADORES
-        </h1>
-        <div className="flex gap-2 bg-stone-200 p-1 rounded-xl border border-stone-300 w-full sm:w-auto">
-          <button onClick={() => setTabActiva("GENERAL")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "GENERAL" ? "bg-stone-900 text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
-            📊 REPORTE GENERAL D-1
-          </button>
-          <button onClick={() => setTabActiva("MONITOREO")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "MONITOREO" ? "bg-orange-600 text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
-            ⏱️ MONITOREO LEADS
-          </button>
-          <button onClick={() => setTabActiva("REPORTE180")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "REPORTE180" ? "bg-amber-600 text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
-            🔭 REPORTE 180°
-          </button>
-          <button onClick={() => setTabActiva("CONSULTA")} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${tabActiva === "CONSULTA" ? "bg-[#1A3A6E] text-white shadow-lg" : "text-stone-500 hover:bg-stone-300"}`}>
-            📥 CONSULTA Y DESCARGA
-          </button>
+        <div>
+          <h1 className="text-2xl font-black text-stone-800 tracking-tight flex items-center gap-2 uppercase">
+            <span className="text-white px-2.5 py-1 rounded-lg italic text-lg font-black shadow-lg" style={{background:'linear-gradient(135deg,#ea580c,#c2410c)'}}>VLS</span>
+            SISTEMA DE INDICADORES
+          </h1>
+          <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Velsa · Netlife · Análisis en tiempo real</p>
+        </div>
+        <div className="flex gap-1 bg-stone-100/80 backdrop-blur-sm p-1 rounded-2xl border border-stone-200 shadow-inner w-full sm:w-auto overflow-x-auto">
+          {[
+            { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#1c1917,#292524)' },
+            { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#ea580c,#c2410c)' },
+            { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
+            { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setTabActiva(tab.id)}
+              style={tabActiva === tab.id ? { background: tab.grad } : {}}
+              className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-stone-500 hover:bg-white hover:text-stone-700 hover:shadow-sm'}`}>
+              <span className="text-[11px]">{tab.icon}</span>{tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -936,7 +939,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
         <div className="animate-in fade-in duration-500">
 
           {/* Panel de filtros */}
-          <div className="bg-slate-50 rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200/80" style={{boxShadow:'0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(234,88,12,.04)'}}>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               {/* Período — solo actualiza al cambiar fecha (no hace fetch por tecla) */}
               <div className="lg:col-span-2 flex flex-col gap-2">
@@ -1082,10 +1085,12 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 <div
                   key={i}
                   onClick={() => handleClickTarjetaJotform(e.estado)}
-                  className={`px-3 py-3 rounded-xl flex justify-between items-center shadow-sm cursor-pointer transition-all border hover:scale-105 active:scale-95 ${filtros.etapaJotform === e.estado ? 'bg-orange-50 border-orange-400 shadow-orange-100' : 'bg-white border-stone-100 hover:border-orange-300'}`}
+                  className={`px-3 py-3 rounded-xl flex justify-between items-center cursor-pointer transition-all duration-200 border ${filtros.etapaJotform === e.estado ? 'border-orange-400 shadow-lg shadow-orange-100 scale-[1.02]' : 'bg-white border-stone-100 hover:border-orange-200 hover:shadow-sm hover:scale-[1.01]'}`}
+                  style={filtros.etapaJotform === e.estado ? {background:'linear-gradient(135deg,#fff7ed,#ffedd5)',borderColor:'#f97316'} : {}}
                 >
-                  <span className="text-[10px] font-bold text-stone-600 uppercase leading-tight pr-2">{e.estado}</span>
-                  <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${filtros.etapaJotform === e.estado ? 'text-white bg-orange-500' : 'text-orange-600 bg-orange-50'}`}>{e.total}</span>
+                  <span className={`text-[9px] font-black uppercase leading-tight pr-2 ${filtros.etapaJotform === e.estado ? 'text-orange-700' : 'text-stone-600'}`}>{e.estado}</span>
+                  <span className={`text-sm font-black px-2 py-1 rounded-lg shrink-0 ${filtros.etapaJotform === e.estado ? 'text-white' : 'text-orange-600 bg-orange-50'}`}
+                    style={filtros.etapaJotform === e.estado ? {background:'linear-gradient(135deg,#ea580c,#c2410c)'} : {}}>{e.total}</span>
                 </div>
               ))}
             </div>
@@ -1093,7 +1098,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
+            <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-300" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-600 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse shrink-0"></span>
                 PRODUCCIÓN POR DÍA (CERRADOS)
@@ -1108,7 +1113,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <ChartArea h={300}><GraficoBarrasDia /></ChartArea>
             </ExpandableChart>
 
-            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
+            <ExpandableChart title={`EMBUDO DE CONVERSIÓN — TOTAL: ${totalBaseEmbudo}`} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-300" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
                 EMBUDO DE CONVERSIÓN
@@ -1129,7 +1134,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
       ) : tabActiva === "MONITOREO" ? (
         <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
-          <div className="bg-orange-600 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-orange-700">
+          <div className="text-white p-5 rounded-2xl flex justify-between items-center shadow-xl" style={{background:'linear-gradient(135deg,#ea580c,#c2410c)',boxShadow:'0 8px 32px rgba(234,88,12,.25)'}}>
             <div>
               <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">
                 <span className="relative flex h-3 w-3">
@@ -1598,13 +1603,16 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
         </div>
       </div>
       <div className="px-4 pb-2">
-        <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
-          <div className="h-2 rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+        <div className="w-full bg-stone-100 rounded-full h-2.5 overflow-hidden" style={{ boxShadow:'inset 0 1px 3px rgba(0,0,0,.06)' }}>
+          <div className="h-2.5 rounded-full transition-all duration-700"
+            style={{ width:`${pct}%`, background: cumple ? `linear-gradient(90deg,${c.accent},${c.bar})` : 'linear-gradient(90deg,#94a3b8,#cbd5e1)' }} />
         </div>
       </div>
-      <div className="px-4 py-2 flex justify-between items-center mt-auto" style={{ backgroundColor: c.accentBg }}>
-        <span className="text-[8px] font-black text-stone-500 uppercase tracking-wider">AVANCE</span>
-        <span className="text-[9px] font-black" style={{ color: cumple ? c.accent : '#94a3b8' }}>{pctLabel} DE META</span>
+      <div className="px-4 py-2 flex justify-between items-center mt-auto rounded-b-2xl" style={{ backgroundColor: c.accentBg }}>
+        <span className="text-[8px] font-black text-stone-400 uppercase tracking-wider">AVANCE</span>
+        <span className="text-[9px] font-black flex items-center gap-1" style={{ color: cumple ? c.accent : '#94a3b8' }}>
+          {cumple ? '✓' : '○'} {pctLabel} de meta
+        </span>
       </div>
     </div>
   );
@@ -1613,34 +1621,55 @@ function KpiCard180({ label, meta, real, tipo, color, invertido }) {
 // ======================================================
 // KPI MINI
 // ======================================================
+const COLOR_MAP_MINI = {
+  'border-l-orange-600':  { from:'#ea580c', to:'#fb923c' },
+  'border-l-amber-500':   { from:'#d97706', to:'#fbbf24' },
+  'border-l-emerald-600': { from:'#059669', to:'#34d399' },
+  'border-l-rose-500':    { from:'#e11d48', to:'#fb7185' },
+  'border-l-blue-600':    { from:'#2563eb', to:'#60a5fa' },
+  'border-l-violet-600':  { from:'#7c3aed', to:'#a78bfa' },
+  'border-l-stone-600':   { from:'#57534e', to:'#a8a29e' },
+  'border-l-teal-600':    { from:'#0d9488', to:'#2dd4bf' },
+};
 const KpiMini = ({ label, value, meta, real, color }) => {
-  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%', '')) : null;
-  const realNum = real !== undefined ? parseFloat(String(real).replace('%', '')) : null;
+  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%','')) : null;
+  const realNum = real !== undefined ? parseFloat(String(real).replace('%','')) : null;
   const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
   const cumple  = metaNum !== null && realNum !== null && pct >= 97;
-  const realColor = cumple ? '#059669' : '#f59e0b';
-  const barColor  = cumple ? '#10b981' : '#fbbf24';
+  const c       = COLOR_MAP_MINI[color] || COLOR_MAP_MINI['border-l-orange-600'];
+  const barGrad = cumple
+    ? `linear-gradient(90deg,${c.from},${c.to})`
+    : 'linear-gradient(90deg,#fbbf24,#f97316)';
   return (
-    <div className={`bg-white p-3 rounded-xl border-l-4 ${color} shadow-sm flex flex-col justify-between min-h-[80px]`}>
-      <span className="text-[9px] font-black text-stone-400 tracking-wider leading-tight uppercase">{label}</span>
-      {meta !== undefined ? (
-        <>
-          <div className="mt-2 grid grid-cols-2 border-t border-stone-100 pt-2 gap-2">
-            <div className="flex flex-col">
-              <span className="text-[8px] font-bold text-stone-400 uppercase">META</span>
-              <span className="text-[12px] font-black text-stone-500">{meta}</span>
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+      style={{ borderTop:`3px solid ${c.from}` }}>
+      <div className="px-3 pt-2.5 pb-1 flex-1">
+        <span className="text-[8px] font-black text-stone-400 tracking-widest leading-tight uppercase block mb-2">{label}</span>
+        {meta !== undefined ? (
+          <div className="flex justify-between items-end gap-1">
+            <div>
+              <div className="text-[7px] font-bold text-stone-300 uppercase tracking-wider">REAL</div>
+              <div className="text-[15px] font-black leading-none" style={{ color: cumple ? c.from : '#f59e0b' }}>{real}</div>
             </div>
-            <div className="flex flex-col border-l border-stone-100 pl-2">
-              <span className="text-[8px] font-bold text-stone-400 uppercase">REAL</span>
-              <span className="text-[12px] font-black" style={{ color: realColor }}>{real}</span>
+            <div className="text-right">
+              <div className="text-[7px] font-bold text-stone-300 uppercase tracking-wider">META</div>
+              <div className="text-[11px] font-black text-stone-400 leading-none">{meta}</div>
             </div>
           </div>
-          <div className="mt-1.5 w-full bg-stone-100 rounded-full h-1 overflow-hidden">
-            <div className="h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+        ) : (
+          <div className="text-xl font-black leading-none mt-1" style={{ color: c.from }}>{value}</div>
+        )}
+      </div>
+      {meta !== undefined && (
+        <div className="px-3 pb-2.5 mt-1">
+          <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+            <div className="h-1.5 rounded-full transition-all duration-700" style={{ width:`${pct}%`, background: barGrad }} />
           </div>
-        </>
-      ) : (
-        <span className="text-xl font-black text-stone-800 mt-1">{value}</span>
+          <div className="flex justify-between items-center mt-1">
+            <span className="text-[7px] text-stone-300 font-bold tracking-wide">{pct.toFixed(0)}% de meta</span>
+            <span className="text-[8px] font-black" style={{ color: cumple ? c.from : '#f59e0b' }}>{cumple ? '✓ OK' : '↑ Falta'}</span>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
 import { RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
+import BitrixLive from './pages/BitrixLive';
 
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
@@ -81,7 +82,8 @@ export default function App() {
           </Route>
 
           <Route path="tv"  element={<TVMode />} />
-          <Route path="*"   element={<Navigate to="/login" />} />
+          <Route path="*"   element={<Navigate to="/login" />
+            <Route path="/bitrix-live" element={<ProtectedRoute><BitrixLive /></ProtectedRoute>} />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

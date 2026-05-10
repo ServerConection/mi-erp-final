@@ -336,3 +336,80 @@ const getTablaBitrix = async (req, res) => {
 };
 
 module.exports = { triggerSync, getSyncStatus, getResumenVelsaBitrix, getTablaBitrix };
+
+// ── GET /api/bitrix/live-actividad ──────────────────────────────────────────
+const getLiveActividad = async (req, res) => {
+  try {
+    const horas = parseInt(req.query.horas || '24', 10);
+
+    const sql = `
+      WITH novonet AS (
+        SELECT
+          COALESCE(data->>'ASSIGNED_BY_NAME', data->>'ASSIGNED_BY_ID', 'Sin asignar') AS asesor,
+          data->>'TITLE'       AS negocio,
+          data->>'STAGE_ID'    AS etapa,
+          data->>'CURRENCY_ID' AS moneda,
+          (data->>'OPPORTUNITY')::numeric AS monto,
+          date_modify,
+          'NOVONET' AS cuenta
+        FROM crm_deals
+        WHERE date_modify >= NOW() - ($1 || ' hours')::interval
+      ),
+      velsa AS (
+        SELECT
+          COALESCE(data->>'ASSIGNED_BY_NAME', data->>'ASSIGNED_BY_ID', 'Sin asignar') AS asesor,
+          data->>'TITLE'       AS negocio,
+          data->>'STAGE_ID'    AS etapa,
+          data->>'CURRENCY_ID' AS moneda,
+          (data->>'OPPORTUNITY')::numeric AS monto,
+          date_modify,
+          'VELSA' AS cuenta
+        FROM crm_deals_velsa
+        WHERE date_modify >= NOW() - ($1 || ' hours')::interval
+      ),
+      combinado AS (SELECT * FROM novonet UNION ALL SELECT * FROM velsa)
+      SELECT
+        asesor,
+        cuenta,
+        COUNT(*)               AS total_movimientos,
+        MAX(date_modify)       AS ultima_actividad,
+        SUM(monto)             AS monto_total,
+        json_agg(
+          json_build_object(
+            'negocio', negocio,
+            'etapa', etapa,
+            'monto', monto,
+            'fecha', date_modify
+          ) ORDER BY date_modify DESC
+        ) AS movimientos
+      FROM combinado
+      GROUP BY asesor, cuenta
+      ORDER BY ultima_actividad DESC
+    `;
+
+    const { rows } = await pool.query(sql, [horas]);
+
+    const ahora = new Date();
+    const resultado = rows.map(r => {
+      const diff = Math.floor((ahora - new Date(r.ultima_actividad)) / 1000 / 60);
+      const estado = diff < 30 ? 'activo' : diff < 120 ? 'reciente' : 'inactivo';
+      return {
+        asesor:          r.asesor,
+        cuenta:          r.cuenta,
+        totalMovimientos: Number(r.total_movimientos),
+        ultimaActividad:  r.ultima_actividad,
+        minutosAtras:     diff,
+        estado,
+        montoTotal:       Number(r.monto_total || 0),
+        ultimosMovimientos: (r.movimientos || []).slice(0, 5),
+      };
+    });
+
+    res.json({ success: true, horas, total: resultado.length, data: resultado });
+  } catch (err) {
+    console.error('[live-actividad error]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+module.exports = Object.assign(module.exports, { getLiveActividad });

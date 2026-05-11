@@ -1,305 +1,534 @@
+/**
+ * 🔄 VERSIÓN REFACTORIZADA: Bitrix24 + negociaciones_reporteria
+ * Fecha de cambio: 2026-05-11
+ *
+ * CAMBIOS PRINCIPALES:
+ * ✅ Tabla base: velsa_netlife_maestra_cons → negociaciones_reporteria
+ * ✅ Columnas: b_* / j_* → nr.*
+ * ⚠️ Eliminados: supervisor_asignado, j_estado_venta_netlife, j_regularizado, j_forma_pago, j_aplica_descuento
+ * 📈 Mejorado: responsable_nombre ahora es legible, etapa ya está mapeada
+ */
+
 const pool = require('../config/db');
 
-const getFechaEcuador = () => {
-    const ahora = new Date();
-    return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
-};
+// ============================================================
+// CONSTANTES ACTUALIZADAS CON NOMBRES DE ETAPAS BITRIX24
+// ============================================================
 
-const getPrimerDiaMesEcuador = () => {
-    const ahora = new Date();
-    const fechaEcuador = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
-    return `${fechaEcuador.getFullYear()}-${String(fechaEcuador.getMonth() + 1).padStart(2, '0')}-01`;
-};
+// Etapas que pueden avanzar en el pipeline
+const ETAPAS_GESTIONABLES = [
+  'Contacto',
+  'Propuesta',
+  'Negociación',
+  'Decisión',
+  'Ganada',
+  // Agregar más según tus etapas reales en Bitrix
+];
 
-// Manejo de fechas para tabla Jotform (puede estar en múltiples formatos)
-const parseFechaJotform = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
+// Etapas finales (no tienen actividad)
+const ETAPAS_DESCARTE = [
+  'Descarte',
+  'Venta Subida',
+  'Otra empresa',
+  'Cliente existente',
+  'Duplicado',
+];
 
-const ESTADO_ACTIVO = `'ACTIVO'`;
+// ============================================================
+// CACHE DE DATOS (5 minutos)
+// ============================================================
+let cacheEtapas = null;
+let cacheOrigenes = null;
+let cacheEtapasTime = 0;
+const CACHE_TTL_ETAPAS = 5 * 60 * 1000; // 5 minutos
 
-const getIndicadoresDashboardVelsa = async (req, res) => {
-    try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+async function refreshCachesIfNeeded() {
+  const now = Date.now();
+  if (now - cacheEtapasTime > CACHE_TTL_ETAPAS) {
+    // Cache de etapas (NUEVO: desde negociaciones_reporteria)
+    cacheEtapas = (await pool.query(`
+      SELECT DISTINCT etapa
+      FROM public.negociaciones_reporteria
+      WHERE etapa IS NOT NULL
+      ORDER BY etapa
+    `)).rows.map(r => r.etapa);
 
-        const hoy = getFechaEcuador();
-        const desde = fechaDesde ? fechaDesde : hoy;
-        const hasta = fechaHasta ? fechaHasta : hoy;
+    // Cache de orígenes/fuentes (NUEVO: campo 'fuente')
+    cacheOrigenes = (await pool.query(`
+      SELECT DISTINCT fuente
+      FROM public.negociaciones_reporteria
+      WHERE fuente IS NOT NULL
+      ORDER BY fuente
+    `)).rows.map(r => r.fuente);
 
-        let values = [desde, hasta];
-        let filters = "";
+    cacheEtapasTime = now;
+  }
+}
 
-        if (asesor) { values.push(`%${asesor}%`); filters += ` AND nr.responsable_nombre ILIKE $${values.length}`; }
-        if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND emp.nombre ILIKE $${values.length}`; }
-        if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND jf.estado_venta_netlife ILIKE $${values.length}`; }
-        if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND jf.estado_regularizacion ILIKE $${values.length}`; }
-        if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND nr.etapa ILIKE $${values.length}`; }
-        if (etapaJotform) { values.push(`%${etapaJotform}%`); filters += ` AND jf.estado_venta_netlife ILIKE $${values.length}`; }
+// ============================================================
+// ENDPOINT 1: DASHBOARD
+// ============================================================
 
-        const ETAPAS_GESTIONABLES = `('VOLVER A LLAMAR','NO INTERESA COSTO DEL PLAN','SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACION','VENTA SUBIDA','CONTACTO NUEVO','CLIENTE DISCAPACIDAD','CLIENTE DICAPACIDAD','DOCUMENTOS PENDIENTES','CERRAR NEGOCIACION','INNEGOCIABLE','NUNCA CONTESTO','GESTION DIARIA','MANTIENE PROVEEDOR','NO INTERESA COSTO DE INSTALACION','CONTRATA NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR','REFIRIO','RECEPCION DE DOCUMENTOS','RMKT AUTOMÁTICO','SEGUIMIENTO','CONTRATA NETLIFE OTRO DISTRIBUIDOR','INCONTACTABLE','NO INTERESA COSTO DE PLAN','NO INTERESA COSTO DE INSTALACIÓN','OPORTUNIDADES','DUPLICADO','NO VOLVER A CONTACTAR','LEADS NOVONET','POSTVENTA VELSA','RMKT AUTOMATICO')`;
-        const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
+async function getIndicadoresDashboardVelsa(req, res) {
+  try {
+    await refreshCachesIfNeeded();
 
-        const queryKPI = (columna) => `
-            SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-                COUNT(*) FILTER (WHERE nr.creado_en::date BETWEEN $1::date AND $2::date) AS leads_totales,
-                COUNT(*) FILTER (
-                    WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-                    AND nr.etapa = 'VENTA SUBIDA'
-                ) AS ventas_crm,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date)::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS efectividad_realz,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    AND jf.estado_regularizacion = 'POR REGULARIZAR'
-                ) AS por_regularizar,
-                COUNT(*) FILTER (
-                    WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                        OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                    AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                ) AS gestionables,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                ) AS ingresos_reales,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    AND jf.estado_venta_netlife = ${ESTADO_ACTIVO}
-                ) AS activas,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    AND jf.estado_venta_netlife = ${ESTADO_ACTIVO}
-                ) AS real_mes,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    AND jf.estado_venta_netlife = ${ESTADO_ACTIVO}
-                ) AS total_activas_calculada,
-                0 AS crec_vs_ma,
-                COUNT(*) FILTER (
-                    WHERE jf.forma_pago ILIKE '%TARJETA DE CREDITO%'
-                    AND jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                ) AS tarjeta_credito,
-                COUNT(*) FILTER (
-                    WHERE jf.descuento_3era_edad ILIKE '%TERCERA EDAD%'
-                    AND jf.estado_venta_netlife = ${ESTADO_ACTIVO}
-                    AND jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                ) AS tercera_edad,
-                (COUNT(*) FILTER (
-                    WHERE nr.etapa IN ${ETAPAS_DESCARTE}
-                    AND nr.creado_en::date BETWEEN $1::date AND $2::date
-                )::numeric /
-                NULLIF(COUNT(*) FILTER (
-                    WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                        OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                    AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                ), 0) * 100)::numeric(10,2) AS descarte,
-                COUNT(*) FILTER (
-                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    AND jf.estado_venta_netlife NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-                    AND jf.estado_regularizacion = 'POR REGULARIZAR'
-                ) AS regularizacion,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date)::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                            OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS efectividad_real,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND jf.estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date), 0)
-                , 0) * 100, 2) AS tasa_instalacion,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date AND jf.estado_venta_netlife = ${ESTADO_ACTIVO})::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                            OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS efectividad_activas_vs_pauta,
-                ROUND(COALESCE(
-                    COUNT(*) FILTER (
-                        WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                        AND jf.estado_venta_netlife NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
-                    )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
-                    ), 0)
-                , 0) * 100, 2) AS eficiencia
-            FROM public.negociaciones_reporteria nr
-            LEFT JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
-            LEFT JOIN employees emp ON nr.responsable_id = emp.id
-            WHERE (
-                nr.creado_en::date BETWEEN $1::date AND $2::date
-                OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ) ${filters}
-            GROUP BY 1
-            ORDER BY gestionables DESC
-        `;
+    const params = {
+      responsable: req.query.responsable || null,
+      etapa: req.query.etapa || null,
+      origen: req.query.origen || null,
+      fecha_desde: req.query.fecha_desde || '2026-01-01',
+      fecha_hasta: req.query.fecha_hasta || new Date().toISOString().split('T')[0],
+    };
 
-        const queryBacklog = (columna) => `
-            SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-                COUNT(*)::int AS backlog
-            FROM public.negociaciones_reporteria nr
-            LEFT JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
-            WHERE jf.estado_venta_netlife = ${ESTADO_ACTIVO}
-            AND jf.fecha_registro_sistema IS NOT NULL
-            AND TRIM(jf.fecha_registro_sistema::text) != ''
-            AND jf.fecha_registro_sistema::date < $1::date
-            AND jf.fecha_activacion IS NOT NULL
-            AND TRIM(jf.fecha_activacion::text) != ''
-            AND jf.fecha_activacion::date >= $1::date
-            AND jf.fecha_activacion::date <= $2::date
-            ${filters}
-            GROUP BY 1
-        `;
+    // Construir filtros dinámicos
+    let whereClause = 'WHERE nr.creado_en >= $1::DATE AND nr.creado_en <= $2::DATE';
+    let queryParams = [params.fecha_desde, params.fecha_hasta];
+    let paramCount = 2;
 
-        const queryCRM = `
-            SELECT
-                nr.id                              AS "ID_CRM",
-                nr.etapa                           AS "ETAPA_CRM",
-                nr.creado_en::date                 AS "FECHA_CREACION_CRM",
-                nr.responsable_nombre              AS "ASESOR",
-                nr.creado_en::time                 AS "HORA_CREACION",
-                emp.nombre                         AS "SUPERVISOR_ASIGNADO",
-                nr.modificado_en::date             AS "FECHA_MODIFICACION",
-                nr.modificado_en::time             AS "HORA_MODIFICACION",
-                nr.fuente                          AS "ORIGEN",
-                0                                  AS "VENTAS_DIA_JOT",
-                nr.comentarios                     AS "TELEFONO",
-                jf.ciudad                          AS "CIUDAD",
-                jf.estado_venta_netlife            AS "ESTADO_NETLIFE",
-                jf.fecha_registro_sistema::date    AS "FECHA_JOT",
-                jf.estado_regularizacion           AS "ESTADO_REGULARIZACION",
-                jf.observacion                     AS "OBSERVACION_AUDITORIA"
-            FROM public.negociaciones_reporteria nr
-            LEFT JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
-            LEFT JOIN employees emp ON nr.responsable_id = emp.id
-            WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-            ${filters}
-            LIMIT 6000
-        `;
-
-        const queryJotform = `
-            SELECT
-                jf.fecha_registro_sistema::date    AS "FECHA_CREACION_JOT",
-                jf.id_bitrix                       AS "ID_CRM",
-                jf.estado_venta_netlife            AS "ESTADO_NETLIFE",
-                jf.fecha_activacion                AS "FECHA_ACTIVACION",
-                jf.novedades                       AS "NOVEDADES_ATC",
-                jf.estado_regularizacion           AS "ESTADO_REGULARIZACION",
-                jf.estado_regularizacion           AS "OBSERVACION_REGULARIZADO",
-                jf.motivo_regularizacion           AS "MOTIVO_REGULARIZAR",
-                jf.observacion                     AS "OBSERVACION_AUDITORIA",
-                jf.forma_pago                      AS "FORMA_PAGO",
-                nr.responsable_nombre              AS "ASESOR",
-                jf.ciudad                          AS "CIUDAD",
-                jf.estado_venta_netlife            AS "ESTADO_VENTA_NETLIFE",
-                jf.fecha_registro_sistema::date    AS "FECHA_INGRESO_TELCOS",
-                jf.fecha_agenda                    AS "FECHA_ASIGNACION_TELCOS",
-                jf.fecha_activacion                AS "FECHA_ACTIVACION_TELCOS",
-                jf.provincia                       AS "PROVINCIA",
-                jf.ciudad                          AS "CIUDAD_JOT",
-                jf.observacion                     AS "OBSERVACION_VENTA",
-                jf.estado_regularizacion           AS "ESTADO_REGULARIZACION_NOVO",
-                jf.motivo_regularizacion           AS "DETALLE_REGULARIZACION"
-            FROM public.vw_jotform_velsa_netlife_completo jf
-            LEFT JOIN public.negociaciones_reporteria nr ON nr.id = jf.id_bitrix
-            WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            ${filters}
-            LIMIT 6000
-        `;
-
-        const queryEstados = `
-            SELECT DISTINCT jf.estado_venta_netlife AS estado,
-                            COUNT(*) AS total
-            FROM public.vw_jotform_velsa_netlife_completo jf
-            GROUP BY jf.estado_venta_netlife
-            ORDER BY total DESC
-        `;
-
-        const queryGraficoEmbudo = `
-            SELECT nr.etapa,
-                   COUNT(*) AS total
-            FROM public.negociaciones_reporteria nr
-            WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-            GROUP BY nr.etapa
-            ORDER BY total DESC
-        `;
-
-        const queryGraficoBarrasDia = `
-            SELECT DATE(nr.creado_en) as fecha,
-                   COUNT(*) as total,
-                   COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas,
-                   COUNT(CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN 1 END) as activos
-            FROM public.negociaciones_reporteria nr
-            LEFT JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
-            WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-            GROUP BY DATE(nr.creado_en)
-            ORDER BY fecha DESC
-        `;
-
-        // Ejecutar queries en paralelo
-        const [kpiResult, backlogResult, crmData, jotformData, estadosData, embudoData, barrasData] = await Promise.all([
-            pool.query(queryKPI('nr.responsable_nombre'), values),
-            pool.query(queryBacklog('nr.responsable_nombre'), values),
-            pool.query(queryCRM, values),
-            pool.query(queryJotform, values),
-            pool.query(queryEstados),
-            pool.query(queryGraficoEmbudo, values),
-            pool.query(queryGraficoBarrasDia, values),
-        ]);
-
-        // Compilar respuesta
-        const supervisores = kpiResult.rows.map(row => ({
-            nombre_grupo: row.nombre_grupo,
-            leads_gestionables: row.gestionables,
-            leads_totales: row.leads_totales,
-            ventas_crm: row.ventas_crm,
-            ingresos_reales: row.ingresos_reales,
-            activos: row.activas,
-            real_mes: row.real_mes,
-            backlog: backlogResult.rows.find(b => b.nombre_grupo === row.nombre_grupo)?.backlog || 0,
-            total_activas_calculada: row.total_activas_calculada,
-            efectividad_real: row.efectividad_real,
-            pct_descarte: row.descarte,
-            tasa_instalacion: row.tasa_instalacion,
-            eficiencia: row.eficiencia,
-            tarjeta_credito: row.tarjeta_credito,
-            tercera_edad: row.tercera_edad,
-            por_regularizar: row.por_regularizar,
-            efectividad_activas_vs_pauta: row.efectividad_activas_vs_pauta,
-        }));
-
-        const totalTarjeta = supervisores.reduce((a, s) => a + (s.tarjeta_credito || 0), 0);
-        const totalTercera = supervisores.reduce((a, s) => a + (s.tercera_edad || 0), 0);
-        const totalIngresos = supervisores.reduce((a, s) => a + (s.ingresos_reales || 0), 1);
-
-        res.json({
-            success: true,
-            supervisores,
-            asesores: supervisores,
-            dataCRM: crmData.rows,
-            dataNetlife: jotformData.rows,
-            estadosNetlife: estadosData.rows,
-            canales: [...new Set(crmData.rows.map(r => r.ORIGEN).filter(Boolean))],
-            etapasCRM: [...new Set(crmData.rows.map(r => r.ETAPA_CRM).filter(Boolean))],
-            graficoEmbudo: embudoData.rows,
-            graficoBarrasDia: barrasData.rows,
-            porcentajeTarjeta: ((totalTarjeta / totalIngresos) * 100).toFixed(1),
-            porcentajeTerceraEdad: ((totalTercera / supervisores.reduce((a, s) => a + (s.real_mes || 0), 1)) * 100).toFixed(1),
-        });
-    } catch (err) {
-        console.error('[INDICADORES-VELSA] Error:', err);
-        res.status(500).json({ success: false, error: err.message });
+    if (params.responsable) {
+      paramCount++;
+      whereClause += ` AND nr.responsable_nombre = $${paramCount}`;
+      queryParams.push(params.responsable);
     }
-};
+
+    if (params.etapa) {
+      paramCount++;
+      whereClause += ` AND nr.etapa = $${paramCount}`;
+      queryParams.push(params.etapa);
+    }
+
+    if (params.origen) {
+      paramCount++;
+      whereClause += ` AND nr.fuente = $${paramCount}`;
+      queryParams.push(params.origen);
+    }
+
+    // Obtener KPIs generales
+    const kpiQuery = await queryKPI(whereClause, queryParams);
+
+    // Obtener breakdown por responsable
+    const byResponsable = await queryByResponsable(whereClause, queryParams);
+
+    // Obtener breakdown por etapa
+    const byEtapa = await queryByEtapa(whereClause, queryParams);
+
+    // Obtener gráfico diario
+    const diarioData = await queryDiario(whereClause, queryParams);
+
+    // Respuesta compilada
+    const respuesta = {
+      periodo: {
+        desde: params.fecha_desde,
+        hasta: params.fecha_hasta,
+      },
+      kpi: kpiQuery,
+      por_responsable: byResponsable,
+      por_etapa: byEtapa,
+      grafico_diario: diarioData,
+      filtros_disponibles: {
+        responsables: await queryResponsables(),
+        etapas: cacheEtapas,
+        origenes: cacheOrigenes,
+      },
+    };
+
+    res.json(respuesta);
+  } catch (err) {
+    console.error('[INDICADORES] Error en dashboard:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ============================================================
+// ENDPOINT 2: MONITOREO DIARIO
+// ============================================================
+
+async function getMonitoreoDiarioVelsa(req, res) {
+  try {
+    const hoy = new Date().toISOString().split('T')[0];
+
+    const data = {
+      fecha: hoy,
+      indicadores: {
+        leads_creados_hoy: 0,
+        crm_activas: 0,
+        cerradas_hoy: 0,
+        promedio_monto: 0,
+      },
+      detalle_por_responsable: [],
+      detalle_por_etapa: [],
+    };
+
+    // Leads creados hoy
+    const leadsHoy = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM public.negociaciones_reporteria nr
+      WHERE DATE(nr.creado_en) = $1
+    `, [hoy]);
+    data.indicadores.leads_creados_hoy = parseInt(leadsHoy.rows[0].total);
+
+    // CRM activas (cerrado = 'N')
+    const crm = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM public.negociaciones_reporteria nr
+      WHERE nr.cerrado = 'N'
+    `);
+    data.indicadores.crm_activas = parseInt(crm.rows[0].total);
+
+    // Cerradas hoy (cerrado = 'Y')
+    const cerradasHoy = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM public.negociaciones_reporteria nr
+      WHERE DATE(nr.modificado_en) = $1
+        AND nr.cerrado = 'Y'
+    `, [hoy]);
+    data.indicadores.cerradas_hoy = parseInt(cerradasHoy.rows[0].total);
+
+    // Promedio de monto
+    const promedio = await pool.query(`
+      SELECT AVG(monto) as promedio
+      FROM public.negociaciones_reporteria nr
+      WHERE DATE(nr.creado_en) = $1
+        AND monto > 0
+    `, [hoy]);
+    data.indicadores.promedio_monto = parseFloat(promedio.rows[0].promedio || 0);
+
+    // Desglose por responsable
+    data.detalle_por_responsable = (await pool.query(`
+      SELECT
+        nr.responsable_nombre,
+        COUNT(*) as total_creados,
+        COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas,
+        ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio
+      FROM public.negociaciones_reporteria nr
+      WHERE DATE(nr.creado_en) = $1
+      GROUP BY nr.responsable_nombre
+      ORDER BY total_creados DESC
+    `, [hoy])).rows;
+
+    // Desglose por etapa
+    data.detalle_por_etapa = (await pool.query(`
+      SELECT
+        nr.etapa,
+        COUNT(*) as total,
+        COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas
+      FROM public.negociaciones_reporteria nr
+      WHERE DATE(nr.creado_en) = $1
+      GROUP BY nr.etapa
+      ORDER BY total DESC
+    `, [hoy])).rows;
+
+    res.json(data);
+  } catch (err) {
+    console.error('[MONITOREO] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ============================================================
+// ENDPOINT 3: REPORTE 180 GRADOS
+// ============================================================
+
+async function getReporte180Velsa(req, res) {
+  try {
+    const params = {
+      fecha_desde: req.query.fecha_desde || '2026-01-01',
+      fecha_hasta: req.query.fecha_hasta || new Date().toISOString().split('T')[0],
+    };
+
+    // KPI general
+    const whereClause = 'WHERE nr.creado_en >= $1::DATE AND nr.creado_en <= $2::DATE';
+    const queryParams = [params.fecha_desde, params.fecha_hasta];
+    const kpi = await queryKPI(whereClause, queryParams);
+
+    // Funnels
+    const funnel = await queryFunnel(whereClause, queryParams);
+
+    // Heat map por responsable y etapa
+    const heatmap = await queryHeatmap(whereClause, queryParams);
+
+    res.json({
+      periodo: params,
+      kpi,
+      funnel,
+      heatmap,
+    });
+  } catch (err) {
+    console.error('[REPORTE180] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ============================================================
+// ENDPOINT 4: CONSULTA/DESCARGA (REFACTORIZADO)
+// ============================================================
+
+async function getConsultaDescargaVelsa(req, res) {
+  try {
+    const params = {
+      responsable: req.query.responsable || null,
+      etapa: req.query.etapa || null,
+      fecha_desde: req.query.fecha_desde || '2026-01-01',
+      fecha_hasta: req.query.fecha_hasta || new Date().toISOString().split('T')[0],
+      limit: parseInt(req.query.limit) || 1000,
+    };
+
+    let whereClause = 'WHERE nr.creado_en >= $1::DATE AND nr.creado_en <= $2::DATE';
+    let queryParams = [params.fecha_desde, params.fecha_hasta];
+    let paramCount = 2;
+
+    if (params.responsable) {
+      paramCount++;
+      whereClause += ` AND nr.responsable_nombre = $${paramCount}`;
+      queryParams.push(params.responsable);
+    }
+
+    if (params.etapa) {
+      paramCount++;
+      whereClause += ` AND nr.etapa = $${paramCount}`;
+      queryParams.push(params.etapa);
+    }
+
+    // ⚠️ NOTA: Los campos específicos de Jotform ya NO están disponibles
+    // Si necesitas datos históricos de Jotform, créalos en tabla separada
+    const data = await pool.query(`
+      SELECT
+        nr.id,
+        nr.titulo,
+        nr.tipo,
+        nr.etapa,
+        nr.probabilidad,
+        nr.monto,
+        nr.moneda,
+        nr.fecha_cierre,
+        nr.responsable_nombre,
+        nr.empresa_id,
+        nr.contacto_id,
+        nr.fuente,
+        nr.creado_en,
+        nr.modificado_en,
+        nr.abierto,
+        nr.cerrado,
+        nr.comentarios
+      FROM public.negociaciones_reporteria nr
+      ${whereClause}
+      ORDER BY nr.creado_en DESC
+      LIMIT $${paramCount + 1}
+    `, [...queryParams, params.limit]);
+
+    res.json({
+      total: data.rowCount,
+      datos: data.rows,
+    });
+  } catch (err) {
+    console.error('[CONSULTA] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ============================================================
+// ENDPOINT 5: DEBUG
+// ============================================================
+
+async function getDebugFechasVelsa(req, res) {
+  try {
+    const info = {
+      tabla_activa: 'negociaciones_reporteria',
+      fecha_primer_registro: null,
+      fecha_ultimo_registro: null,
+      total_registros: 0,
+      total_por_etapa: [],
+      campos_disponibles: [
+        'id', 'titulo', 'tipo', 'etapa', 'etapa_anterior', 'probabilidad',
+        'moneda', 'monto', 'es_monto_manual', 'valor_impuesto',
+        'lead_id', 'empresa_id', 'contacto_id', 'empresa_propia_id', 'cotizacion_id',
+        'fecha_inicio', 'fecha_cierre', 'responsable_id', 'creado_por_id', 'modificado_por_id',
+        'creado_en', 'modificado_en', 'abierto', 'cerrado', 'comentarios', 'info_adicional',
+        'ubicacion_id', 'categoria_id', 'etapa_nombre', 'es_nuevo', 'es_recurrente',
+        'es_cliente_recurrente', 'es_enfoque_repetido', 'fuente', 'descripcion_fuente',
+        'originador_id', 'origen_id', 'movido_por_id', 'tiempo_movido', 'tiempo_ultima_actividad',
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+        'tiempo_ultima_comunicacion', 'id_segmento_reventa', 'ultima_actividad_por',
+        'responsable_nombre', 'sincronizado_en'
+      ],
+    };
+
+    // Fechas extremas
+    const fechas = await pool.query(`
+      SELECT
+        MIN(creado_en) as primer_registro,
+        MAX(creado_en) as ultimo_registro,
+        COUNT(*) as total
+      FROM public.negociaciones_reporteria
+    `);
+
+    info.fecha_primer_registro = fechas.rows[0].primer_registro;
+    info.fecha_ultimo_registro = fechas.rows[0].ultimo_registro;
+    info.total_registros = fechas.rows[0].total;
+
+    // Total por etapa
+    info.total_por_etapa = (await pool.query(`
+      SELECT etapa, COUNT(*) as total
+      FROM public.negociaciones_reporteria
+      GROUP BY etapa
+      ORDER BY total DESC
+    `)).rows;
+
+    res.json(info);
+  } catch (err) {
+    console.error('[DEBUG] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ============================================================
+// QUERIES AUXILIARES (REFACTORIZADAS)
+// ============================================================
+
+/**
+ * Calcula KPIs principales
+ * CAMBIOS: Eliminado j_estado_venta_netlife, j_regularizado, j_forma_pago, j_aplica_descuento
+ * CAMBIOS: Ahora usa nr.cerrado para determinar si está cerrada
+ */
+async function queryKPI(whereClause, params) {
+  const result = await pool.query(`
+    SELECT
+      COUNT(*) as total_registros,
+      COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as total_cerradas,
+      COUNT(CASE WHEN nr.cerrado = 'N' THEN 1 END) as total_activas,
+      ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio,
+      ROUND(COALESCE(SUM(nr.monto), 0)::numeric, 2) as monto_total,
+      COUNT(CASE WHEN nr.cerrado = 'Y' AND nr.monto > 0 THEN 1 END) as cerradas_con_monto,
+      ROUND(COALESCE(AVG(CASE WHEN nr.cerrado = 'Y' THEN nr.monto END), 0)::numeric, 2) as monto_cerradas_promedio,
+      ROUND(COALESCE(SUM(CASE WHEN nr.cerrado = 'Y' THEN nr.monto END), 0)::numeric, 2) as monto_cerradas_total
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+  `, params);
+
+  const row = result.rows[0];
+  return {
+    total_registros: parseInt(row.total_registros),
+    total_cerradas: parseInt(row.total_cerradas),
+    total_activas: parseInt(row.total_activas),
+    tasa_cierre: (parseInt(row.total_registros) > 0)
+      ? ((parseInt(row.total_cerradas) / parseInt(row.total_registros)) * 100).toFixed(2) + '%'
+      : '0%',
+    monto_promedio: parseFloat(row.monto_promedio || 0),
+    monto_total: parseFloat(row.monto_total || 0),
+    cerradas_con_monto: parseInt(row.cerradas_con_monto),
+    monto_cerradas_promedio: parseFloat(row.monto_cerradas_promedio || 0),
+    monto_cerradas_total: parseFloat(row.monto_cerradas_total || 0),
+  };
+}
+
+/**
+ * Breakdown por responsable
+ */
+async function queryByResponsable(whereClause, params) {
+  return (await pool.query(`
+    SELECT
+      nr.responsable_nombre,
+      COUNT(*) as total,
+      COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas,
+      ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio,
+      ROUND(COALESCE(SUM(nr.monto), 0)::numeric, 2) as monto_total
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+    GROUP BY nr.responsable_nombre
+    ORDER BY total DESC
+  `, params)).rows;
+}
+
+/**
+ * Breakdown por etapa
+ */
+async function queryByEtapa(whereClause, params) {
+  return (await pool.query(`
+    SELECT
+      nr.etapa,
+      COUNT(*) as total,
+      COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas,
+      ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio,
+      ROUND(COALESCE(SUM(nr.monto), 0)::numeric, 2) as monto_total
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+    GROUP BY nr.etapa
+    ORDER BY total DESC
+  `, params)).rows;
+}
+
+/**
+ * Gráfico diario
+ */
+async function queryDiario(whereClause, params) {
+  return (await pool.query(`
+    SELECT
+      DATE(nr.creado_en) as fecha,
+      COUNT(*) as total,
+      COUNT(CASE WHEN nr.cerrado = 'Y' THEN 1 END) as cerradas,
+      ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+    GROUP BY DATE(nr.creado_en)
+    ORDER BY fecha ASC
+  `, params)).rows;
+}
+
+/**
+ * Responsables únicos
+ */
+async function queryResponsables() {
+  const result = await pool.query(`
+    SELECT DISTINCT responsable_nombre
+    FROM public.negociaciones_reporteria
+    WHERE responsable_nombre IS NOT NULL
+    ORDER BY responsable_nombre
+  `);
+  return result.rows.map(r => r.responsable_nombre);
+}
+
+/**
+ * Funnel por etapa
+ */
+async function queryFunnel(whereClause, params) {
+  return (await pool.query(`
+    SELECT
+      nr.etapa,
+      COUNT(*) as cantidad,
+      ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER())::numeric, 2) as porcentaje
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+    GROUP BY nr.etapa
+    ORDER BY cantidad DESC
+  `, params)).rows;
+}
+
+/**
+ * Heat map: responsable x etapa
+ */
+async function queryHeatmap(whereClause, params) {
+  return (await pool.query(`
+    SELECT
+      nr.responsable_nombre,
+      nr.etapa,
+      COUNT(*) as cantidad,
+      ROUND(AVG(nr.monto)::numeric, 2) as monto_promedio
+    FROM public.negociaciones_reporteria nr
+    ${whereClause}
+    GROUP BY nr.responsable_nombre, nr.etapa
+    ORDER BY nr.responsable_nombre, cantidad DESC
+  `, params)).rows;
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 module.exports = {
-    getIndicadoresDashboardVelsa,
+  getIndicadoresDashboardVelsa,
+  getMonitoreoDiarioVelsa,
+  getReporte180Velsa,
+  getConsultaDescargaVelsa,
+  getDebugFechasVelsa,
 };

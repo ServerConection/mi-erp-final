@@ -1,8 +1,6 @@
-/**
- * 🔄 JOB CRON: Refresca vista materializada cada 15 minutos
- * Vista: mv_indicadores_velsa_completo
- * Frecuencia: */15 * * * * (cada 15 minutos)
- */
+// JOB CRON: Refresca vista materializada cada 15 minutos
+// Vista: mv_indicadores_velsa_completo
+// Ejecuta automáticamente cada 15 minutos
 
 const cron = require('node-cron');
 const pool = require('../config/db');

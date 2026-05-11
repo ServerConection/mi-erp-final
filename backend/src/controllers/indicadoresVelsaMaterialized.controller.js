@@ -78,7 +78,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         0 AS efectividad_activas_vs_pauta
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       GROUP BY mv.supervisor
       ORDER BY ingresos_reales DESC
     `;
@@ -102,7 +102,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         0 AS efectividad_activas_vs_pauta
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       GROUP BY mv.asesor
       ORDER BY ingresos_reales DESC
     `;
@@ -122,7 +122,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
         mv.aplica_descuento AS "APLICA_DESCUENTO"
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       LIMIT 6000
     `;
 
@@ -148,7 +148,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT mv.id_crm) AS total
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.etapa_crm IS NOT NULL
-        AND (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
       GROUP BY mv.etapa_crm
       ORDER BY total DESC
     `;
@@ -159,7 +159,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT mv.id_jotform) AS total,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS activos
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
       GROUP BY dia
       ORDER BY dia ASC
     `;
@@ -171,7 +171,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END)::numeric /
           NULLIF(COUNT(DISTINCT mv.id_jotform), 0) * 100 AS porcentajeTerceraEdad
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
     `;
 
     const [supResult, aseResult, crmData, estadosData, etapasData, embudoData, barrasData, porcentajesData] = await Promise.all([
@@ -237,7 +237,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         0 AS gestionables
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
       GROUP BY mv.supervisor
       ORDER BY real_dia_leads DESC
     `;
@@ -256,7 +256,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
       GROUP BY mv.asesor
       ORDER BY real_dia_leads DESC
     `;

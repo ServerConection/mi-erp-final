@@ -420,7 +420,18 @@ export default function ReporteVelsa() {
       const result = await res.json();
       if (result.success) {
         setApiError(null);
-        setData({ ...result, porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0), porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0) });
+        setData({
+          supervisores: result.supervisores || [],
+          asesores: result.asesores || [],
+          dataCRM: result.dataCRM || [],
+          dataNetlife: result.dataNetlife || [],
+          estadosNetlife: result.estadosNetlife || [],
+          etapasCRM: result.etapasCRM || [],
+          graficoEmbudo: [],
+          graficoBarrasDia: [],
+          porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
+          porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0)
+        });
         mostrarAlertas(result.supervisores);
         // Pre-calentar las otras tabs en background (sin bloquear UI)
         prefetchBackground(filtrosActivos);

@@ -1,7 +1,0 @@
-node_modules
-npm-debug.log
-.env
-*.log
-auth_info_baileys
-baileys_store.json
-uploads/temp

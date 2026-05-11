@@ -1,23 +1,65 @@
 /**
- * 🚀 CONTROLADOR OPTIMIZADO: Usa vista materializada mv_indicadores_velsa_completo
- * Rendimiento: 10x más rápido que JOINs complejos
- * Datos frescos: Refresco automático cada 15 minutos
- * Fecha: 2026-05-11
+ * 🚀 CONTROLADOR VELSA OPTIMIZADO - Reestructurado 2026-05-11
+ * Basado en patrones de Novonet: caché, 2 lotes de queries, cálculos reales
+ * Usa vista materializada mv_indicadores_velsa_completo
  */
 
 const pool = require('../config/db');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CACHÉ DE DASHBOARD (2 minutos por combinación de parámetros)
+// ─────────────────────────────────────────────────────────────────────────────
+const _cacheDashboard = new Map();
+const CACHE_DASH_TTL_MS = 2 * 60 * 1000; // 2 minutos
+
+const getDashboardCache = (key) => {
+    const entry = _cacheDashboard.get(key);
+    if (entry && Date.now() < entry.ttl) return entry.data;
+    _cacheDashboard.delete(key);
+    return null;
+};
+
+const setDashboardCache = (key, data) => {
+    _cacheDashboard.set(key, { data, ttl: Date.now() + CACHE_DASH_TTL_MS });
+    if (_cacheDashboard.size > 100) {
+        const ahora = Date.now();
+        for (const [k, v] of _cacheDashboard) if (ahora > v.ttl) _cacheDashboard.delete(k);
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 const getFechaEcuador = () => {
     const ahora = new Date();
     return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 };
 
-const ESTADO_ACTIVO = `'ACTIVO'`;
-const ETAPAS_DESCARTE = `('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL','CONTRATO OTRO PROVEEDOR')`;
+const getPrimerDiaMesEcuador = () => {
+    const ahora = new Date();
+    const fechaEcuador = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
+    return `${fechaEcuador.getFullYear()}-${String(fechaEcuador.getMonth() + 1).padStart(2, '0')}-01`;
+};
 
-// ============================================================
-// ENDPOINT 1: DASHBOARD KPIs (Optimizado con MV)
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ETAPAS_DESCARTE = `(
+    'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
+    'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
+    'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
+    'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+    'INCONTACTABLE','NO INTERESA COSTO INSTALACION','CONTRATO NETLIFE OTRO CANAL',
+    'CONTRATO OTRO PROVEEDOR'
+)`;
+
+const ESTADO_ACTIVO = "'ACTIVO'";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT 1: DASHBOARD KPIs
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getIndicadoresDashboardVelsa(req, res) {
   try {
@@ -26,6 +68,14 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const hoy = getFechaEcuador();
     const desde = fechaDesde || hoy;
     const hasta = fechaHasta || hoy;
+
+    // ── CACHÉ: Retorno inmediato si ya fue consultado ──
+    const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM });
+    const cached = getDashboardCache(cacheKey);
+    if (cached) {
+        console.log(`[DASHBOARD-VELSA] Cache hit → ${desde}~${hasta}`);
+        return res.json(cached);
+    }
 
     let values = [desde, hasta];
     let filters = "";
@@ -36,29 +86,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
     if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
     if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
 
-    const queryKPI = (columna) => `
-      SELECT
-        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-        COUNT(DISTINCT mv.id_registro) AS total_registros,
-        COUNT(DISTINCT CASE WHEN mv.fecha_creacion_crm BETWEEN $1::date AND $2::date THEN mv.id_crm END) AS leads_crm,
-        COUNT(DISTINCT CASE WHEN mv.fecha_registro_jotform BETWEEN $1::date AND $2::date THEN mv.id_jotform END) AS ingresos_jotform,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta_credito,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
-        COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descartados,
-        ROUND(
-          CASE WHEN COUNT(DISTINCT mv.id_crm) > 0
-            THEN (COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END)::numeric / COUNT(DISTINCT mv.id_crm) * 100)
-            ELSE 0
-          END, 2
-        ) AS tasa_efectividad
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
-      GROUP BY 1
-      ORDER BY total_registros DESC
-    `;
-
+    // ── LOTE 1: KPIs y agregaciones (6 queries) ──────────────────────────────
     const querySupervisores = `
       SELECT
         mv.supervisor AS nombre_grupo,
@@ -71,11 +99,11 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
         ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion,
-        0 AS backlog,
-        0 AS real_mes,
-        0 AS gestionables,
-        0 AS por_regularizar,
-        0 AS efectividad_activas_vs_pauta
+        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS real_mes,
+        COUNT(DISTINCT mv.id_crm) AS gestionables,
+        COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
         AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
@@ -95,11 +123,11 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
         ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion,
-        0 AS backlog,
-        0 AS real_mes,
-        0 AS gestionables,
-        0 AS por_regularizar,
-        0 AS efectividad_activas_vs_pauta
+        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS real_mes,
+        COUNT(DISTINCT mv.id_crm) AS gestionables,
+        COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
         AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
@@ -107,6 +135,56 @@ async function getIndicadoresDashboardVelsa(req, res) {
       ORDER BY ingresos_reales DESC
     `;
 
+    const queryEstados = `
+      SELECT mv.estado_venta AS estado, COUNT(*) AS total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.estado_venta IS NOT NULL
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.estado_venta
+      ORDER BY total DESC
+    `;
+
+    const queryEmbudo = `
+      SELECT
+        COALESCE(mv.etapa_crm, 'SIN ETAPA') AS etapa,
+        COUNT(DISTINCT mv.id_crm) AS total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.etapa_crm
+      ORDER BY total DESC
+    `;
+
+    const queryPorDia = `
+      SELECT
+        EXTRACT(DAY FROM COALESCE(mv.fecha_registro_jotform::date, mv.fecha_creacion_crm::date)) AS dia,
+        COUNT(DISTINCT mv.id_jotform) AS total,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY dia
+      ORDER BY dia ASC
+    `;
+
+    const queryMetasGlobales = `
+      SELECT
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' AND mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS total_tercera_edad,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS total_activos,
+        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS total_tarjeta,
+        COUNT(DISTINCT mv.id_jotform) AS total_jotform
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+    `;
+
+    const [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales] = await Promise.all([
+      pool.query(querySupervisores, values),
+      pool.query(queryAsesores, values),
+      pool.query(queryEstados, values),
+      pool.query(queryEmbudo, values),
+      pool.query(queryPorDia, values),
+      pool.query(queryMetasGlobales, values),
+    ]);
+
+    // ── LOTE 2: Tablas detalle (espera al lote 1 para no saturar pool) ──────
     const queryCRM = `
       SELECT
         mv.id_crm AS "ID_CRM",
@@ -126,80 +204,66 @@ async function getIndicadoresDashboardVelsa(req, res) {
       LIMIT 6000
     `;
 
-    const queryEstados = `
-      SELECT mv.estado_venta AS estado, COUNT(*) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.estado_venta IS NOT NULL
-      GROUP BY mv.estado_venta
-      ORDER BY total DESC
-    `;
-
     const queryEtapas = `
-      SELECT DISTINCT mv.etapa_crm, COUNT(*) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.etapa_crm IS NOT NULL
-      GROUP BY mv.etapa_crm
-      ORDER BY total DESC
-    `;
-
-    const queryGraficoEmbudo = `
-      SELECT
-        mv.etapa_crm AS etapa,
-        COUNT(DISTINCT mv.id_crm) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.etapa_crm IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY mv.etapa_crm
-      ORDER BY total DESC
-    `;
-
-    const queryGraficoBarrasDia = `
-      SELECT
-        EXTRACT(DAY FROM COALESCE(mv.fecha_registro_jotform::date, mv.fecha_creacion_crm::date)) AS dia,
-        COUNT(DISTINCT mv.id_jotform) AS total,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS activos
+      SELECT DISTINCT mv.etapa_crm AS etapa, COUNT(*) AS total
       FROM public.mv_indicadores_velsa_completo mv
       WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY dia
-      ORDER BY dia ASC
+      GROUP BY mv.etapa_crm
+      ORDER BY total DESC
     `;
 
-    const queryPorcentajes = `
-      SELECT
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END)::numeric /
-          NULLIF(COUNT(DISTINCT mv.id_jotform), 0) * 100 AS porcentajeTarjeta,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END)::numeric /
-          NULLIF(COUNT(DISTINCT mv.id_jotform), 0) * 100 AS porcentajeTerceraEdad
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
-    `;
-
-    const [supResult, aseResult, crmData, estadosData, etapasData, embudoData, barrasData, porcentajesData] = await Promise.all([
-      pool.query(querySupervisores, values),
-      pool.query(queryAsesores, values),
+    const [resCRM, resEtapas] = await Promise.all([
       pool.query(queryCRM, values),
-      pool.query(queryEstados),
-      pool.query(queryEtapas),
-      pool.query(queryGraficoEmbudo, values),
-      pool.query(queryGraficoBarrasDia, values),
-      pool.query(queryPorcentajes, values),
+      pool.query(queryEtapas, values),
     ]);
 
-    const porcentajes = porcentajesData.rows[0] || { porcentajeTarjeta: 0, porcentajeTerceraEdad: 0 };
+    // ── Calcular porcentajes ──────────────────────────────────────────────────
+    const rowMetas = resMetasGlobales.rows[0] || {};
+    const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
+    const totalActivosTercera = Number(rowMetas.total_activos       || 0);
+    const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
+    const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
 
-    res.json({
+    const porcentajeTerceraEdad = totalActivosTercera > 0 ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+    const porcentajeTarjeta = totalJotformTarjeta > 0 ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+
+    // ── Formatear respuesta ──────────────────────────────────────────────────
+    const estadosNetlife = resEstados.rows.map(r => ({
+      estado: r.estado,
+      total: Number(r.total || 0),
+    }));
+
+    const graficoEmbudo = resEmbudo.rows.map(r => ({
+      name: r.etapa,
+      value: Number(r.total || 0),
+      etapa: r.etapa,
+      total: Number(r.total || 0),
+    }));
+
+    const graficoBarrasDia = resDia.rows.map(r => ({
+      dia: Number(r.dia),
+      total: Number(r.total),
+      activos: Number(r.activos),
+    }));
+
+    const resultado = {
       success: true,
-      supervisores: supResult.rows,
-      asesores: aseResult.rows,
-      dataCRM: crmData.rows,
-      dataNetlife: crmData.rows,
-      estadosNetlife: estadosData.rows,
-      etapasCRM: etapasData.rows,
-      graficoEmbudo: embudoData.rows.map(row => ({ etapa: row.etapa, total: Number(row.total) })),
-      graficoBarrasDia: barrasData.rows.map(row => ({ dia: Number(row.dia), total: Number(row.total), activos: Number(row.activos) })),
-      porcentajeTarjeta: Number(porcentajes.porcentajeTarjeta || 0).toFixed(1),
-      porcentajeTerceraEdad: Number(porcentajes.porcentajeTerceraEdad || 0).toFixed(1),
-    });
+      supervisores: resSup.rows,
+      asesores: resAses.rows,
+      dataCRM: resCRM.rows,
+      dataNetlife: resCRM.rows,
+      estadosNetlife,
+      etapasCRM: resEtapas.rows,
+      graficoEmbudo,
+      graficoBarrasDia,
+      porcentajeTarjeta: Number(porcentajeTarjeta).toFixed(1),
+      porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
+    };
+
+    // ── Guardar en caché ─────────────────────────────────────────────────────
+    setDashboardCache(cacheKey, resultado);
+    console.log(`[DASHBOARD-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+    res.json(resultado);
 
   } catch (err) {
     console.error('[INDICADORES-VELSA-MV] Error:', err);
@@ -207,9 +271,9 @@ async function getIndicadoresDashboardVelsa(req, res) {
   }
 }
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 // ENDPOINT 2: MONITOREO DIARIO
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getMonitoreoDiarioVelsa(req, res) {
   try {
@@ -233,8 +297,8 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos_jot_hoy,
         COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy,
         COUNT(DISTINCT mv.id_crm) AS real_mes_leads,
-        0 AS backlog,
-        0 AS gestionables
+        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
+        COUNT(DISTINCT mv.id_crm) AS gestionables
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
         AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
@@ -253,7 +317,10 @@ async function getMonitoreoDiarioVelsa(req, res) {
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_jotform), 0), 1) AS real_tarjeta,
         COUNT(DISTINCT mv.id_crm) AS crm_acumulado,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos_jot_hoy,
-        COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy
+        COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy,
+        COUNT(DISTINCT mv.id_crm) AS real_mes_leads,
+        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
+        COUNT(DISTINCT mv.id_crm) AS gestionables
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
         AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
@@ -278,9 +345,9 @@ async function getMonitoreoDiarioVelsa(req, res) {
   }
 }
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 // ENDPOINT 3: REPORTE 180 DIAS
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getReporte180Velsa(req, res) {
   try {
@@ -298,32 +365,28 @@ async function getReporte180Velsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
         COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS total_descartados,
         COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS pago_tarjeta,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
-        ROUND(
-          100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0),
-          2
-        ) AS pct_descarte,
-        ROUND(
-          CASE WHEN COUNT(DISTINCT mv.id_crm) > 0
-            THEN (COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END)::numeric / COUNT(DISTINCT mv.id_crm) * 100)
-            ELSE 0
-          END, 2
-        ) AS pct_efectividad
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 2) AS pct_descarte,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 2) AS pct_efectividad
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
     `;
 
     const result = await pool.query(query, values);
     const kpis = result.rows[0] || {};
 
+    const tercera_edad = Number(kpis.tercera_edad || 0);
+    const ingresos_jot = Number(kpis.ingresos_jot || 0);
+    const pct_tercera_edad = ingresos_jot > 0 ? Math.round((tercera_edad / ingresos_jot) * 100) : 0;
+
     res.json({
       success: true,
       kpis: {
-        ingresos_jot: kpis.ingresos_jot || 0,
-        ventas_activas: kpis.ventas_activas || 0,
-        pct_descarte: kpis.pct_descarte || 0,
-        pct_efectividad: kpis.pct_efectividad || 0,
-        pct_tercera_edad: (kpis.tercera_edad || 0) > 0 ? Math.round((kpis.tercera_edad / kpis.ingresos_jot) * 100) : 0
+        ingresos_jot: Number(kpis.ingresos_jot || 0),
+        ventas_activas: Number(kpis.ventas_activas || 0),
+        pct_descarte: Number(kpis.pct_descarte || 0),
+        pct_efectividad: Number(kpis.pct_efectividad || 0),
+        pct_tercera_edad: pct_tercera_edad
       },
       resumen_180: kpis
     });
@@ -334,9 +397,9 @@ async function getReporte180Velsa(req, res) {
   }
 }
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 // ENDPOINT 4: CONSULTA Y DESCARGA
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getConsultaDescargaVelsa(req, res) {
   try {
@@ -374,7 +437,7 @@ async function getConsultaDescargaVelsa(req, res) {
         mv.estado_regularizacion,
         mv.aplica_descuento
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
       LIMIT 50000
     `;
@@ -393,9 +456,9 @@ async function getConsultaDescargaVelsa(req, res) {
   }
 }
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 // ENDPOINT 5: STATUS DE LA VISTA MATERIALIZADA
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getStatusMaterializedView(req, res) {
   try {
@@ -429,9 +492,9 @@ async function getStatusMaterializedView(req, res) {
   }
 }
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 // EXPORTS
-// ============================================================
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
   getIndicadoresDashboardVelsa,

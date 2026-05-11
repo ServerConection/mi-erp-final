@@ -1,0 +1,243 @@
+.comparativa-supervisores {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.comparativa-supervisores h1 {
+  color: #333;
+  margin-bottom: 30px;
+  text-align: center;
+  font-size: 2em;
+}
+
+/* Sección de Filtros */
+.filtros-section {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filtro-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.filtro-group label {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.9em;
+}
+
+.filtro-group input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.btn-filtrar {
+  padding: 10px 20px;
+  background: #0088FE;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.3s;
+}
+
+.btn-filtrar:hover:not(:disabled) {
+  background: #0066cc;
+}
+
+.btn-filtrar:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Tarjetas de Resumen */
+.resumen-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  transition: transform 0.3s;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card h3 {
+  color: #666;
+  margin: 0 0 10px 0;
+  font-size: 0.9em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.card .valor {
+  color: #0088FE;
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  border-bottom: 2px solid #eee;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+  color: #666;
+  transition: all 0.3s;
+  font-size: 0.9em;
+}
+
+.tab:hover {
+  color: #0088FE;
+}
+
+.tab.active {
+  color: #0088FE;
+  border-bottom-color: #0088FE;
+}
+
+/* Contenido de Tabs */
+.tab-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content h2 {
+  color: #333;
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.3em;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 10px;
+}
+
+/* Tablas */
+.tabla-comparativa {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 0.9em;
+}
+
+.tabla-comparativa thead {
+  background: #f5f5f5;
+}
+
+.tabla-comparativa th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+}
+
+.tabla-comparativa td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  color: #555;
+}
+
+.tabla-comparativa tbody tr:hover {
+  background: #f9f9f9;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .filtros-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filtro-group {
+    min-width: unset;
+  }
+
+  .btn-filtrar {
+    width: 100%;
+  }
+
+  .tabs {
+    flex-direction: column;
+  }
+
+  .tab {
+    width: 100%;
+    text-align: left;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    padding-left: 0;
+  }
+
+  .tab.active {
+    border-left-color: #0088FE;
+    border-bottom: none;
+  }
+
+  .tab-content {
+    padding: 15px;
+  }
+
+  .tabla-comparativa {
+    font-size: 0.8em;
+  }
+
+  .tabla-comparativa th,
+  .tabla-comparativa td {
+    padding: 8px;
+  }
+
+  .resumen-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Animaciones de carga */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}

@@ -985,7 +985,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 <select className={selectCls} value={filtros.etapaCRM}
                   onChange={e => updateFiltro('etapaCRM', e.target.value)}>
                   <option value="">TODAS</option>
-                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa.etapa_crm}>{etapa.etapa_crm}</option>)}
                 </select>
               </div>
 
@@ -1487,7 +1487,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ETAPA CRM</label>
             <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>
               <option value="">TODAS</option>
-              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
+              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa.etapa_crm}>{etapa.etapa_crm}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">NETLIFE</label>

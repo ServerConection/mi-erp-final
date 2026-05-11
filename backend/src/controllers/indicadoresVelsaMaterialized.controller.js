@@ -346,7 +346,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 3: REPORTE 180 DIAS
+// ENDPOINT 3: REPORTE 180 DIAS (estructura completa: supervisores, asesores, dataCRM, gráficos)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getReporte180Velsa(req, res) {
@@ -358,38 +358,165 @@ async function getReporte180Velsa(req, res) {
 
     const values = [desde, hasta];
 
-    const query = `
+    // ── LOTE 1: KPIs y agregaciones ──────────────────────────────
+    const querySupervisores = `
       SELECT
-        COUNT(DISTINCT mv.id_crm) AS total_leads_crm,
-        COUNT(DISTINCT mv.id_jotform) AS ingresos_jot,
+        mv.supervisor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
+        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS total_descartados,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS pago_tarjeta,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 2) AS pct_descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 2) AS pct_efectividad
+        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT mv.id_crm) AS leads_totales,
+        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
+        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta,
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.supervisor IS NOT NULL
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.supervisor
+      ORDER BY ventas_crm DESC
+    `;
+
+    const queryAsesores = `
+      SELECT
+        mv.asesor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
+        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
+        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT mv.id_crm) AS leads_totales,
+        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
+        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta,
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.asesor IS NOT NULL
+        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.asesor
+      ORDER BY ventas_crm DESC
+    `;
+
+    const queryEstados = `
+      SELECT
+        mv.estado_venta AS estado,
+        COUNT(*) AS total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.estado_venta
+      ORDER BY total DESC
+    `;
+
+    const queryEmbudo = `
+      SELECT
+        mv.etapa_crm AS etapa,
+        COUNT(*) AS total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY mv.etapa_crm
+      ORDER BY total DESC
+    `;
+
+    const queryPorDia = `
+      SELECT
+        EXTRACT(DAY FROM mv.fecha_creacion_crm)::INT AS dia,
+        COUNT(DISTINCT mv.id_crm) AS total,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      GROUP BY EXTRACT(DAY FROM mv.fecha_creacion_crm)
+      ORDER BY dia
+    `;
+
+    const queryMetasGlobales = `
+      SELECT
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' AND mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS total_tercera_edad,
+        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS total_activos,
+        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS total_tarjeta,
+        COUNT(DISTINCT mv.id_jotform) AS total_jotform
       FROM public.mv_indicadores_velsa_completo mv
       WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
     `;
 
-    const result = await pool.query(query, values);
-    const kpis = result.rows[0] || {};
+    const [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales] = await Promise.all([
+      pool.query(querySupervisores, values),
+      pool.query(queryAsesores, values),
+      pool.query(queryEstados, values),
+      pool.query(queryEmbudo, values),
+      pool.query(queryPorDia, values),
+      pool.query(queryMetasGlobales, values),
+    ]);
 
-    const tercera_edad = Number(kpis.tercera_edad || 0);
-    const ingresos_jot = Number(kpis.ingresos_jot || 0);
-    const pct_tercera_edad = ingresos_jot > 0 ? Math.round((tercera_edad / ingresos_jot) * 100) : 0;
+    // ── LOTE 2: Tablas detalle ──────
+    const queryCRM = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.etapa_crm AS "ETAPA",
+        mv.fecha_creacion_crm AS "FECHA_CREACION",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR",
+        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
+        mv.origen AS "ORIGEN",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+        mv.aplica_descuento AS "APLICA_DESCUENTO"
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      LIMIT 6000
+    `;
 
-    res.json({
+    const [resCRM] = await Promise.all([
+      pool.query(queryCRM, values),
+    ]);
+
+    // ── Calcular porcentajes ──────────────────────────────────────────────────
+    const rowMetas = resMetasGlobales.rows[0] || {};
+    const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
+    const totalActivosTercera = Number(rowMetas.total_activos       || 0);
+    const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
+    const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
+
+    const porcentajeTerceraEdad = totalActivosTercera > 0 ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+    const porcentajeTarjeta = totalJotformTarjeta > 0 ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+
+    // ── Formatear respuesta ──────────────────────────────────────────────────
+    const estadosNetlife = resEstados.rows.map(r => ({
+      estado: r.estado,
+      total: Number(r.total || 0),
+    }));
+
+    const graficoEmbudo = resEmbudo.rows.map(r => ({
+      name: r.etapa,
+      value: Number(r.total || 0),
+      etapa: r.etapa,
+      total: Number(r.total || 0),
+    }));
+
+    const graficoBarrasDia = resDia.rows.map(r => ({
+      dia: Number(r.dia),
+      total: Number(r.total),
+      activos: Number(r.activos),
+    }));
+
+    const resultado = {
       success: true,
-      kpis: {
-        ingresos_jot: Number(kpis.ingresos_jot || 0),
-        ventas_activas: Number(kpis.ventas_activas || 0),
-        pct_descarte: Number(kpis.pct_descarte || 0),
-        pct_efectividad: Number(kpis.pct_efectividad || 0),
-        pct_tercera_edad: pct_tercera_edad
-      },
-      resumen_180: kpis
-    });
+      supervisores: resSup.rows,
+      asesores: resAses.rows,
+      dataCRM: resCRM.rows,
+      dataNetlife: resCRM.rows,
+      estadosNetlife,
+      graficoEmbudo,
+      graficoBarrasDia,
+      porcentajeTarjeta: Number(porcentajeTarjeta).toFixed(1),
+      porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
+    };
+
+    console.log(`[REPORTE-180-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+    res.json(resultado);
 
   } catch (err) {
     console.error('[REPORTE-180-MV] Error:', err);

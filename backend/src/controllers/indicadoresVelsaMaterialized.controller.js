@@ -40,8 +40,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
       SELECT
         COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(DISTINCT mv.id_registro) AS total_registros,
-        COUNT(DISTINCT CASE WHEN mv.fecha_creacion_date BETWEEN $1::date AND $2::date THEN mv.id_crm END) AS leads_crm,
-        COUNT(DISTINCT CASE WHEN mv.fecha_registro_date BETWEEN $1::date AND $2::date THEN mv.id_jotform END) AS ingresos_jotform,
+        COUNT(DISTINCT CASE WHEN mv.fecha_creacion_crm BETWEEN $1::date AND $2::date THEN mv.id_crm END) AS leads_crm,
+        COUNT(DISTINCT CASE WHEN mv.fecha_registro_jotform BETWEEN $1::date AND $2::date THEN mv.id_jotform END) AS ingresos_jotform,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos,
         COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta_credito,
         COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
@@ -54,7 +54,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
           END, 2
         ) AS tasa_efectividad
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date) ${filters}
       GROUP BY 1
       ORDER BY total_registros DESC
     `;
@@ -71,7 +71,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
+        AND (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date) ${filters}
       GROUP BY mv.supervisor
       ORDER BY ingresos_reales DESC
     `;
@@ -88,7 +88,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
+        AND (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date) ${filters}
       GROUP BY mv.asesor
       ORDER BY ingresos_reales DESC
     `;
@@ -97,18 +97,18 @@ async function getIndicadoresDashboardVelsa(req, res) {
       SELECT
         mv.id_crm AS "ID_CRM",
         mv.etapa_crm AS "ETAPA",
-        mv.fecha_creacion_date AS "FECHA_CREACION",
+        mv.fecha_creacion_crm AS "FECHA_CREACION",
         mv.asesor AS "ASESOR",
         mv.supervisor AS "SUPERVISOR",
-        mv.fecha_modificacion_date AS "FECHA_MODIFICACION",
+        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
         mv.origen AS "ORIGEN",
         mv.estado_venta AS "ESTADO_NETLIFE",
-        mv.fecha_activacion_date AS "FECHA_ACTIVACION",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
         mv.aplica_descuento AS "APLICA_DESCUENTO"
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date) ${filters}
       LIMIT 6000
     `;
 
@@ -179,7 +179,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date)
+        AND (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date)
       GROUP BY mv.supervisor
       ORDER BY real_dia_leads DESC
     `;
@@ -198,7 +198,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date)
+        AND (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date)
       GROUP BY mv.asesor
       ORDER BY real_dia_leads DESC
     `;
@@ -252,7 +252,7 @@ async function getReporte180Velsa(req, res) {
           END, 2
         ) AS pct_efectividad
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date)
+      WHERE (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date)
     `;
 
     const result = await pool.query(query, values);
@@ -308,16 +308,16 @@ async function getConsultaDescargaVelsa(req, res) {
         mv.asesor,
         mv.supervisor,
         mv.etapa_crm,
-        mv.fecha_creacion_date AS fecha_creacion_crm,
-        mv.fecha_registro_date AS fecha_registro_jotform,
+        mv.fecha_creacion_crm AS fecha_creacion_crm,
+        mv.fecha_registro_jotform AS fecha_registro_jotform,
         mv.estado_venta,
-        mv.fecha_activacion_date AS fecha_activacion,
+        mv.fecha_activacion AS fecha_activacion,
         mv.forma_pago,
         mv.estado_regularizacion,
         mv.aplica_descuento
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
-      ORDER BY mv.fecha_creacion_date DESC NULLS LAST
+      WHERE (mv.fecha_creacion_crm BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform BETWEEN $1::date AND $2::date) ${filters}
+      ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
       LIMIT 50000
     `;
 

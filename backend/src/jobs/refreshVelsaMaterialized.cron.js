@@ -23,7 +23,7 @@ const refreshMaterializedView = async () => {
   try {
     console.log(`[REFRESH-MV-VELSA] Iniciando refresco de vista materializada...`);
 
-    await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_indicadores_velsa_completo');
+    await pool.query('REFRESH MATERIALIZED VIEW public.mv_indicadores_velsa_completo');
 
     const duration = Date.now() - startTime;
     lastRefreshTime = new Date();

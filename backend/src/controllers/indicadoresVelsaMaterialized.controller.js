@@ -44,7 +44,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.fecha_registro_date BETWEEN $1::date AND $2::date THEN mv.id_jotform END) AS ingresos_jotform,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos,
         COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta_credito,
-        COUNT(DISTINCT CASE WHEN mv.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
         COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
         COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descartados,
         ROUND(
@@ -72,7 +72,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         mv.fecha_activacion_date AS "FECHA_ACTIVACION",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-        mv.descuento_3era_edad AS "DESCUENTO_3ERA_EDAD"
+        mv.aplica_descuento AS "APLICA_DESCUENTO"
       FROM public.mv_indicadores_velsa_completo mv
       WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
       LIMIT 6000
@@ -170,7 +170,7 @@ async function getReporte180Velsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS total_activos,
         COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS total_descartados,
         COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS pago_tarjeta,
-        COUNT(DISTINCT CASE WHEN mv.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
+        COUNT(DISTINCT CASE WHEN mv.aplica_descuento ILIKE '%TERCERA EDAD%' THEN mv.id_jotform END) AS tercera_edad,
         ROUND(
           CASE WHEN COUNT(DISTINCT mv.id_crm) > 0
             THEN (COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END)::numeric / COUNT(DISTINCT mv.id_crm) * 100)
@@ -227,7 +227,7 @@ async function getConsultaDescargaVelsa(req, res) {
         mv.fecha_activacion,
         mv.forma_pago,
         mv.estado_regularizacion,
-        mv.descuento_3era_edad
+        mv.aplica_descuento
       FROM public.mv_indicadores_velsa_completo mv
       WHERE (mv.fecha_creacion_date BETWEEN $1::date AND $2::date OR mv.fecha_registro_date BETWEEN $1::date AND $2::date) ${filters}
       LIMIT 50000

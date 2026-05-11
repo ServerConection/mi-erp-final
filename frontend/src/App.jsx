@@ -83,9 +83,4 @@ export default function App() {
 
               <Route path="tv" element={<TVMode />} />
         <Route path="bitrix-live" element={<ProtectedRoute><BitrixLive /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/login" />} />
-      </Routes>
-      </Suspense>
-    </BrowserRouter>
-  );
-}
+        <Route path="*" element={<Navigate to="

@@ -4,7 +4,7 @@
  *
  * ESTRUCTURA:
  * ✅ FULL OUTER JOIN: negociaciones_reporteria (nr) + vw_jotform_velsa_netlife_completo (jf)
- * ✅ Columna JOIN: nr.id = jf.id_bitrix
+ * ✅ Columna JOIN: nr.id = jf.id_negociacion_bitrix
  * ✅ Datos de negociaciones: etapa, responsable, fecha_creación, modificado_en
  * ✅ Datos de Jotform: estado_venta, fecha_activación, forma_pago, descuento_3era_edad, estado_regularización
  * ✅ LEFT JOIN employees para supervisores
@@ -47,22 +47,22 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const queryKPI = (columna) => `
       SELECT
         COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-        COUNT(DISTINCT COALESCE(nr.id, jf.id_bitrix)) AS total_registros,
+        COUNT(DISTINCT COALESCE(nr.id, jf.id_negociacion_bitrix)) AS total_registros,
         COUNT(DISTINCT CASE WHEN nr.creado_en::date BETWEEN $1::date AND $2::date THEN nr.id END) AS leads_crm,
-        COUNT(DISTINCT CASE WHEN jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date THEN jf.id_bitrix END) AS ingresos_jotform,
-        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_bitrix END) AS activos,
-        COUNT(DISTINCT CASE WHEN jf.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN jf.id_bitrix END) AS tarjeta_credito,
-        COUNT(DISTINCT CASE WHEN jf.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN jf.id_bitrix END) AS tercera_edad,
-        COUNT(DISTINCT CASE WHEN jf.estado_regularizacion = 'POR REGULARIZAR' THEN jf.id_bitrix END) AS por_regularizar,
+        COUNT(DISTINCT CASE WHEN jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date THEN jf.id_negociacion_bitrix END) AS ingresos_jotform,
+        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_negociacion_bitrix END) AS activos,
+        COUNT(DISTINCT CASE WHEN jf.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN jf.id_negociacion_bitrix END) AS tarjeta_credito,
+        COUNT(DISTINCT CASE WHEN jf.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN jf.id_negociacion_bitrix END) AS tercera_edad,
+        COUNT(DISTINCT CASE WHEN jf.estado_regularizacion = 'POR REGULARIZAR' THEN jf.id_negociacion_bitrix END) AS por_regularizar,
         COUNT(DISTINCT CASE WHEN nr.etapa IN ${ETAPAS_DESCARTE} THEN nr.id END) AS descartados,
         ROUND(
           CASE WHEN COUNT(DISTINCT nr.id) > 0
-            THEN (COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_bitrix END)::numeric / COUNT(DISTINCT nr.id) * 100)
+            THEN (COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_negociacion_bitrix END)::numeric / COUNT(DISTINCT nr.id) * 100)
             ELSE 0
           END, 2
         ) AS tasa_efectividad
       FROM public.negociaciones_reporteria nr
-      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
+      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_negociacion_bitrix
       LEFT JOIN employees emp ON nr.responsable_id = emp.id
       WHERE (nr.creado_en::date BETWEEN $1::date AND $2::date OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date) ${filters}
       GROUP BY 1
@@ -84,7 +84,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         jf.estado_regularizacion AS "ESTADO_REGULARIZACION",
         jf.descuento_3era_edad AS "DESCUENTO_3ERA_EDAD"
       FROM public.negociaciones_reporteria nr
-      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
+      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_negociacion_bitrix
       LEFT JOIN employees emp ON nr.responsable_id = emp.id
       WHERE (nr.creado_en::date BETWEEN $1::date AND $2::date OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date) ${filters}
       LIMIT 6000
@@ -107,7 +107,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
     `;
 
     const [kpiResult, crmData, estadosData, etapasData] = await Promise.all([
-      pool.query(queryKPI('COALESCE(nr.responsable_nombre, jf.id_bitrix::text)'), values),
+      pool.query(queryKPI('COALESCE(nr.responsable_nombre, jf.id_negociacion_bitrix::text)'), values),
       pool.query(queryCRM, values),
       pool.query(queryEstados),
       pool.query(queryEtapas),
@@ -144,11 +144,11 @@ async function getMonitoreoDiarioVelsa(req, res) {
       SELECT
         DATE(COALESCE(nr.creado_en, jf.fecha_registro_sistema)) AS fecha,
         COUNT(DISTINCT nr.id) AS leads_crm,
-        COUNT(DISTINCT jf.id_bitrix) AS registros_jotform,
-        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_bitrix END) AS activos_dia,
+        COUNT(DISTINCT jf.id_negociacion_bitrix) AS registros_jotform,
+        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_negociacion_bitrix END) AS activos_dia,
         COUNT(DISTINCT CASE WHEN nr.etapa IN ${ETAPAS_DESCARTE} THEN nr.id END) AS descartados_dia
       FROM public.negociaciones_reporteria nr
-      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
+      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_negociacion_bitrix
       WHERE (nr.creado_en::date BETWEEN $1::date AND $2::date OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date)
       GROUP BY DATE(COALESCE(nr.creado_en, jf.fecha_registro_sistema))
       ORDER BY fecha DESC
@@ -179,19 +179,19 @@ async function getReporte180Velsa(req, res) {
     const query = `
       SELECT
         COUNT(DISTINCT nr.id) AS total_leads_crm,
-        COUNT(DISTINCT jf.id_bitrix) AS total_registros_jotform,
-        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_bitrix END) AS total_activos,
+        COUNT(DISTINCT jf.id_negociacion_bitrix) AS total_registros_jotform,
+        COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_negociacion_bitrix END) AS total_activos,
         COUNT(DISTINCT CASE WHEN nr.etapa IN ${ETAPAS_DESCARTE} THEN nr.id END) AS total_descartados,
-        COUNT(DISTINCT CASE WHEN jf.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN jf.id_bitrix END) AS pago_tarjeta,
-        COUNT(DISTINCT CASE WHEN jf.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN jf.id_bitrix END) AS tercera_edad,
+        COUNT(DISTINCT CASE WHEN jf.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN jf.id_negociacion_bitrix END) AS pago_tarjeta,
+        COUNT(DISTINCT CASE WHEN jf.descuento_3era_edad ILIKE '%TERCERA EDAD%' THEN jf.id_negociacion_bitrix END) AS tercera_edad,
         ROUND(
           CASE WHEN COUNT(DISTINCT nr.id) > 0
-            THEN (COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_bitrix END)::numeric / COUNT(DISTINCT nr.id) * 100)
+            THEN (COUNT(DISTINCT CASE WHEN jf.estado_venta_netlife = ${ESTADO_ACTIVO} THEN jf.id_negociacion_bitrix END)::numeric / COUNT(DISTINCT nr.id) * 100)
             ELSE 0
           END, 2
         ) AS efectividad_general
       FROM public.negociaciones_reporteria nr
-      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
+      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_negociacion_bitrix
       WHERE (nr.creado_en::date BETWEEN $1::date AND $2::date OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date)
     `;
 
@@ -230,9 +230,9 @@ async function getConsultaDescargaVelsa(req, res) {
 
     const query = `
       SELECT
-        COALESCE(nr.id, jf.id_bitrix) AS id_consulta,
+        COALESCE(nr.id, jf.id_negociacion_bitrix) AS id_consulta,
         nr.id AS id_crm,
-        jf.id_bitrix AS id_jotform,
+        jf.id_negociacion_bitrix AS id_jotform,
         nr.responsable_nombre AS asesor,
         nr.etapa AS etapa_crm,
         nr.creado_en AS fecha_creacion_crm,
@@ -243,7 +243,7 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.estado_regularizacion AS estado_regularizacion,
         jf.descuento_3era_edad AS descuento_3era_edad
       FROM public.negociaciones_reporteria nr
-      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
+      FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_negociacion_bitrix
       WHERE (nr.creado_en::date BETWEEN $1::date AND $2::date OR jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date) ${filters}
       LIMIT 50000
     `;

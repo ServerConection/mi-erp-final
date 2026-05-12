@@ -112,8 +112,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
           CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.supervisor IS NOT NULL
-          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+          AND mv.fecha_creacion_crm >= $1::date
+          AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
       )
       SELECT
         base.supervisor AS nombre_grupo,
@@ -145,8 +145,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
           CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.asesor IS NOT NULL
-          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+          AND mv.fecha_creacion_crm >= $1::date
+          AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
       )
       SELECT
         base.asesor AS nombre_grupo,
@@ -173,7 +173,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
       SELECT mv.estado_venta AS estado, COUNT(*) AS total
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.estado_venta IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+        AND mv.fecha_creacion_crm >= $1::date
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
       GROUP BY mv.estado_venta
       ORDER BY total DESC
     `;
@@ -183,18 +184,20 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COALESCE(mv.etapa_crm, 'SIN ETAPA') AS etapa,
         COUNT(DISTINCT mv.id_crm) AS total
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      WHERE mv.fecha_creacion_crm >= $1::date
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
       GROUP BY mv.etapa_crm
       ORDER BY total DESC
     `;
 
     const queryPorDia = `
       SELECT
-        EXTRACT(DAY FROM COALESCE(mv.fecha_registro_jotform::date, mv.fecha_creacion_crm::date)) AS dia,
+        EXTRACT(DAY FROM mv.fecha_creacion_crm::date) AS dia,
         COUNT(DISTINCT mv.id_jotform) AS total,
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      WHERE mv.fecha_creacion_crm >= $1::date
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
       GROUP BY dia
       ORDER BY dia ASC
     `;
@@ -206,7 +209,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS total_tarjeta,
         COUNT(DISTINCT mv.id_jotform) AS total_jotform
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+      WHERE mv.fecha_creacion_crm >= $1::date
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
     `;
 
     const [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales] = await Promise.all([

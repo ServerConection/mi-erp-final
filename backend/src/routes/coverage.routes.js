@@ -10,7 +10,11 @@ const coverageController = require('../controllers/coverage.controller');
 const authMiddleware = require('../middleware/auth');
 
 // Configurar multer para subida de archivos
-const upload = multer({ dest: 'uploads/' });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+});
+const upload = multer({ storage });
 
 /**
  * POST /api/coverage/load

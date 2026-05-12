@@ -174,7 +174,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.estado_venta IS NOT NULL
         AND mv.fecha_creacion_crm >= $1::date
-        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
       GROUP BY mv.estado_venta
       ORDER BY total DESC
     `;
@@ -185,7 +185,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT mv.id_crm) AS total
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.fecha_creacion_crm >= $1::date
-        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
       GROUP BY mv.etapa_crm
       ORDER BY total DESC
     `;
@@ -197,7 +197,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos
       FROM public.mv_indicadores_velsa_completo mv
       WHERE mv.fecha_creacion_crm >= $1::date
-        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
       GROUP BY dia
       ORDER BY dia ASC
     `;

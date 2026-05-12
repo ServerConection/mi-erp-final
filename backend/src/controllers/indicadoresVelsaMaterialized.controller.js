@@ -46,27 +46,24 @@ const getPrimerDiaMesEcuador = () => {
 // CONSTANTES
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ⚠️  Todas las comparaciones usan UPPER(etapa_crm) → siempre mayúsculas
 const ETAPAS_DESCARTE = `(
     'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
     'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-    'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-    'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE'
+    'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','VENTA ECUANET DIRECTA',
+    'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO','DESCARTE'
 )`;
 
-// ✅ ETAPAS GESTIONABLES - Lista completa de Novonet con variaciones para capturar todos los datos
+// ✅ ETAPAS GESTIONABLES VELSA — todas en MAYÚSCULAS (se comparan con UPPER(etapa_crm))
 const ETAPAS_GESTIONABLES = `(
-    'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
-    'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
-    'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
-    'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
-    'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
-    'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-    'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-    'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200',
-    'CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS',
-    'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE','POSTVENTA NOVONET','DESCARTE',
-    'Contacto Nuevo','GESTION DIARIA Pendiente Cierre','GESTION DIARIA PENDIENTE CIERRE',
-    'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR','REMARKETING'
+    'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','VOLVER A LLAMAR',
+    'GESTION DIARIA','GESTION DIARIA / PENDIENTE CIERRE','GESTION DIARIA PENDIENTE CIERRE',
+    'VENTA SUBIDA','CLIENTE 2 HORAS','CLIENTE 4 HORAS','CLIENTE 6 HORAS',
+    'CLIENTE 8 HORAS','CLIENTE 12 HORAS','CLIENTE CON ACUERDO',
+    'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
+    'PENDIENTE CIERRE','DESCARTE','REMARKETING','SEGUIMIENTO NEGOCIACION',
+    'SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+    'DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
 )`;
 
 const ESTADO_ACTIVO = "'ACTIVO'";
@@ -107,7 +104,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
           mv.id_crm, mv.id_jotform, mv.supervisor,
           mv.estado_venta, mv.etapa_crm, mv.estado_regularizacion,
           mv.fecha_registro_jotform,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.supervisor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
@@ -126,7 +123,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
         COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
-        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
+        COUNT(DISTINCT CASE WHEN UPPER(base.etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
         COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM base
@@ -140,7 +137,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
           mv.id_crm, mv.id_jotform, mv.asesor,
           mv.estado_venta, mv.etapa_crm, mv.estado_regularizacion,
           mv.fecha_registro_jotform,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.asesor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
@@ -159,7 +156,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
         COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
-        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
+        COUNT(DISTINCT CASE WHEN UPPER(base.etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
         COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM base
@@ -326,7 +323,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
           mv.id_crm, mv.id_jotform, mv.supervisor,
           mv.estado_venta, mv.etapa_crm, mv.forma_pago,
           mv.fecha_registro_jotform,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.supervisor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
@@ -345,7 +342,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
         COUNT(DISTINCT base.id_crm) AS real_mes_leads,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
-        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
+        COUNT(DISTINCT CASE WHEN UPPER(base.etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
       FROM base
       GROUP BY base.supervisor
       ORDER BY real_dia_leads DESC
@@ -357,7 +354,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
           mv.id_crm, mv.id_jotform, mv.asesor,
           mv.estado_venta, mv.etapa_crm, mv.forma_pago,
           mv.fecha_registro_jotform,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.asesor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
@@ -376,7 +373,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
         COUNT(DISTINCT base.id_crm) AS real_mes_leads,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
-        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
+        COUNT(DISTINCT CASE WHEN UPPER(base.etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
       FROM base
       GROUP BY base.asesor
       ORDER BY real_dia_leads DESC
@@ -418,7 +415,7 @@ async function getReporte180Velsa(req, res) {
         SELECT
           mv.id_crm, mv.id_jotform, mv.supervisor,
           mv.estado_venta, mv.etapa_crm, mv.forma_pago, mv.aplica_descuento,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.supervisor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
@@ -446,7 +443,7 @@ async function getReporte180Velsa(req, res) {
         SELECT
           mv.id_crm, mv.id_jotform, mv.asesor,
           mv.estado_venta, mv.etapa_crm, mv.forma_pago, mv.aplica_descuento,
-          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.asesor IS NOT NULL
           AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')

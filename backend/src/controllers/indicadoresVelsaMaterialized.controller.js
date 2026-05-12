@@ -25,7 +25,7 @@ const ETAPAS_GESTIONABLES_UPPER = [
 ];
 const ETAPAS_GESTIONABLES = `(${ETAPAS_GESTIONABLES_UPPER.map(e => `'${e}'`).join(',')})`;
 
-const ETAPAS_DESCARTE = `('DESCARTE','FUERA DE COBERTURA','ZONA PELIGROSA','DESCARTE PLAN DE 200')`;
+const ETAPAS_DESCARTE = `('DESCARTE')`;
 
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {

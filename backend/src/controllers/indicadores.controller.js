@@ -210,10 +210,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
         // ─────────────────────────────────────────────────────────────────────
         const ETAPAS_DESCARTE = `(
-            'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
-            'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE'
+           'DESCARTE'
         )`;
 
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────

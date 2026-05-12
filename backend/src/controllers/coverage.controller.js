@@ -80,12 +80,12 @@ async function parseKML(kmlContent) {
   }
 }
 
-async function handleCoverageFile(filePath) {
+async function handleCoverageFile(filePath, originalName = '') {
   try {
     const data = fs.readFileSync(filePath);
     let kmlContent;
 
-    if (filePath.endsWith('.kmz')) {
+    if (originalName.toLowerCase().endsWith('.kmz') || filePath.endsWith('.kmz')) {
       try {
         const zip = new AdmZip(data);
         const entries = zip.getEntries();
@@ -120,7 +120,7 @@ exports.loadCoverage = async (req, res) => {
       });
     }
 
-    const zones = await handleCoverageFile(req.file.path);
+    const zones = await handleCoverageFile(req.file.path, req.file.originalname);
 
     loadedZones = zones;
     loadedAt = new Date().toISOString();

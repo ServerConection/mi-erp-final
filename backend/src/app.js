@@ -19,6 +19,7 @@ const broadcastRoutes              = require('./routes/broadcast.routes');
 const ventasRoutes                 = require('./routes/ventas.routes');
 const analistaRoutes               = require('./routes/analista.routes');
 const bitrixRoutes                 = require('./routes/bitrix.routes');
+const coverageRoutes               = require('./routes/coverage.routes');
 
 const app = express();
 
@@ -89,6 +90,9 @@ app.use('/api/analista',          analistaRoutes);
 
 // Bitrix24 CRM — sync y dashboard VELSA
 app.use('/api/bitrix',            bitrixRoutes);
+
+// Coverage — Consulta de cobertura de internet
+app.use('/api/coverage',          coverageRoutes);
 
 // Broadcast TV
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

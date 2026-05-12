@@ -514,13 +514,13 @@ export default function ReporteVelsa() {
     setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
-  // ── Helper especial para fechas: aplica y consulta de inmediato (sin esperar APLICAR) ─
+  // ── Helper especial para fechas: SOLO actualiza el estado (NO consulta automáticamente) ─
   const updateFiltroFecha = (campo, valor) => {
     const nuevosFiltros = { ...filtros, [campo]: valor };
     setFiltros(nuevosFiltros);
-    setFiltrosAplicados(nuevosFiltros);
-    fetchDashboard(nuevosFiltros);
-    fetchDetalleCRMData(nuevosFiltros);  // ✅ También cargar datos CRM
+    // ❌ REMOVIDO: fetchDashboard(nuevosFiltros);
+    // ❌ REMOVIDO: fetchDetalleCRMData(nuevosFiltros);
+    // ✅ Ahora solo consulta cuando hace clic en "APLICAR FILTROS"
   };
 
   // Click en tarjeta de JotForm: aplica el filtro inmediatamente (acción interactiva intencional)

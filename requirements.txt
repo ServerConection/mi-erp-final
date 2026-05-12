@@ -1,2 +1,2 @@
-shapely==2.0.2
-lxml==4.9.4
+shapely>=2.0.4
+lxml>=4.9.0

@@ -302,6 +302,7 @@ export default function ReporteVelsa() {
     graficoEmbudo: [],
     graficoBarrasDia: [],
     etapasCRM: [],
+    etapasJotform: [],
     porcentajeTerceraEdad: 0,
     porcentajeTarjeta: 0,
   });
@@ -374,8 +375,11 @@ export default function ReporteVelsa() {
 
   // ── ETAPAS_JOTFORM derivado dinámicamente de los datos reales del backend ─
   const ETAPAS_JOTFORM = useMemo(() => {
+    // Usa el array plano de strings que retorna el nuevo backend
+    if (data.etapasJotform && data.etapasJotform.length > 0) return data.etapasJotform;
+    // Fallback: derivar de estadosNetlife si no viene etapasJotform
     return (data.estadosNetlife || []).map(e => e.estado).filter(Boolean);
-  }, [data.estadosNetlife]);
+  }, [data.etapasJotform, data.estadosNetlife]);
 
   const mostrarAlertas = (supervisores) => {
     const nuevasAlertas = [];
@@ -431,6 +435,7 @@ export default function ReporteVelsa() {
           dataNetlife: result.dataNetlife || [],
           estadosNetlife: result.estadosNetlife || [],
           etapasCRM: result.etapasCRM || [],
+          etapasJotform: result.etapasJotform || [],
           graficoEmbudo: result.graficoEmbudo || [],
           graficoBarrasDia: result.graficoBarrasDia || [],
           porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
@@ -477,7 +482,25 @@ export default function ReporteVelsa() {
       ));
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/reporte180?${p}`, { signal: ctrl.signal });
       const result = await res.json();
-      if (result.success) setReporte180Data(result);
+      if (result.success) {
+        const asesores = result.asesores || [];
+        const totJOT   = asesores.reduce((s, a) => s + Number(a.ingresos_reales || 0), 0);
+        const totActivos = asesores.reduce((s, a) => s + Number(a.real_mes || 0), 0);
+        const totGest  = asesores.reduce((s, a) => s + Number(a.gestionables || 0), 0);
+        const totDesc  = asesores.reduce((s, a) => s + Number(a.descarte_count || 0), 0);
+        setReporte180Data({
+          kpis: {
+            ingresos_jot:     totJOT,
+            ventas_activas:   totActivos,
+            pct_descarte:     totGest > 0 ? parseFloat(((totDesc / totGest) * 100).toFixed(1)) : 0,
+            pct_efectividad:  totGest > 0 ? parseFloat(((totJOT  / totGest) * 100).toFixed(1)) : 0,
+            pct_tercera_edad: Number(result.porcentajeTerceraEdad || 0),
+          },
+          embudoCRM:    result.graficoEmbudo || [],
+          embudoJotform: (result.estadosNetlife || []).map(e => ({ etapa: e.estado, total: e.total })),
+          mapaCalor:    [],
+        });
+      }
     } catch (e) { if (e.name !== 'AbortError') console.error("Error Reporte180:", e); }
     finally { setLoading(false); }
   };
@@ -776,7 +799,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: totalGestionables,
-      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
+      regularizar: s.reduce((acc, c) => acc + Number(c.regularizacion || 0), 0),
       ingresosJotform: totalJotform,
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables: crm.length,
@@ -1049,7 +1072,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 <select className={selectCls} value={filtros.etapaCRM}
                   onChange={e => updateFiltro('etapaCRM', e.target.value)}>
                   <option value="">TODAS</option>
-                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa.etapa_crm}>{etapa.etapa_crm}</option>)}
+                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
                 </select>
               </div>
 
@@ -1555,7 +1578,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ETAPA CRM</label>
             <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>
               <option value="">TODAS</option>
-              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa.etapa_crm}>{etapa.etapa_crm}</option>)}
+              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">NETLIFE</label>

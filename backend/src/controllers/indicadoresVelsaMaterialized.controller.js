@@ -91,8 +91,9 @@ const queryBacklog = (columna, filters) => `
     COUNT(DISTINCT mv.id_jotform)::int AS backlog
   FROM ${MV}
   WHERE mv.id_jotform IS NOT NULL
-    AND mv.fecha_registro_jotform IS NOT NULL
+    AND mv.fecha_activacion IS NOT NULL
     AND mv.fecha_registro_jotform::date < $1::date
+    AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
     AND mv.estado_venta = ${ESTADO_ACTIVO}
     ${filters}
   GROUP BY 1
@@ -136,8 +137,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const filters    = buildFilters(req.query, valuesMain);
 
     // Valores para backlog (solo $1=desde)
-    const valuesBk  = [desde];
-    const filtersBk = buildFilters(req.query, valuesBk);
+ const valuesBk  = [desde, hasta];
+const filtersBk = buildFilters(req.query, valuesBk);
 
     const qEstados = `
       SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total

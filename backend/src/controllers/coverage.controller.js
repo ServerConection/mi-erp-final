@@ -1,11 +1,13 @@
 /**
  * Coverage Controller
  * Maneja validación de cobertura de internet
+ * Pure JavaScript - Sin dependencias Python
  */
 
-const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const AdmZip = require('adm-zip');
+const xml2js = require('xml2js');
 
 const coverageDir = path.join(process.cwd(), 'coverage-data');
 
@@ -17,55 +19,96 @@ let loadedZones = null;
 let loadedAt = null;
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Ejecutar servicio Python
+// Point in Polygon Algorithm
 // ════════════════════════════════════════════════════════════════════════════════
 
-function runCoverageService(operation, params) {
-  return new Promise((resolve, reject) => {
-    try {
-      const pythonScriptPath = path.join(process.cwd(), 'coverage-api-service.py');
-      const jsonInput = JSON.stringify({ operation, params, dataDir: coverageDir });
-      const pythonProcess = spawn('python3', [pythonScriptPath]);
+function pointInPolygon(point, polygon) {
+  const [x, y] = point;
+  let inside = false;
 
-      let output = '';
-      let errorOutput = '';
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
 
-      pythonProcess.stdout.on('data', (data) => {
-        output += data.toString();
-      });
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
 
-      pythonProcess.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-      });
-
-      pythonProcess.on('close', (code) => {
-        if (code !== 0) {
-          return reject(new Error(`Python error: ${errorOutput}`));
-        }
-        try {
-          const result = JSON.parse(output);
-          resolve(result);
-        } catch (e) {
-          reject(new Error(`Invalid response: ${output}`));
-        }
-      });
-
-      setTimeout(() => {
-        pythonProcess.kill();
-        reject(new Error('Python service timeout'));
-      }, 30000);
-
-      pythonProcess.stdin.write(jsonInput);
-      pythonProcess.stdin.end();
-
-    } catch (error) {
-      reject(error);
-    }
-  });
+  return inside;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Controladores
+// Parse KML/KMZ
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function parseKML(kmlContent) {
+  try {
+    const parser = new xml2js.Parser({ mergeAttrs: true });
+    const result = await parser.parseStringPromise(kmlContent);
+
+    const zones = [];
+    const kml = result.kml;
+
+    if (kml && kml.Document) {
+      const document = kml.Document[0];
+      const placemarks = document.Placemark || [];
+
+      placemarks.forEach((placemark) => {
+        const name = placemark.name ? placemark.name[0] : 'Sin nombre';
+        const polygons = placemark.Polygon || [];
+
+        polygons.forEach((polygon) => {
+          const outerBoundary = polygon.outerBoundaryIs?.[0];
+          if (outerBoundary) {
+            const linearRing = outerBoundary.LinearRing?.[0];
+            if (linearRing && linearRing.coordinates) {
+              const coords = linearRing.coordinates[0]
+                .trim()
+                .split(/\s+/)
+                .map(pair => pair.split(',').slice(0, 2).map(Number));
+
+              zones.push({ name, coordinates: coords });
+            }
+          }
+        });
+      });
+    }
+
+    return zones;
+  } catch (error) {
+    throw new Error(`KML Parse error: ${error.message}`);
+  }
+}
+
+async function handleCoverageFile(filePath) {
+  try {
+    const data = fs.readFileSync(filePath);
+    let kmlContent;
+
+    if (filePath.endsWith('.kmz')) {
+      try {
+        const zip = new AdmZip(data);
+        const entries = zip.getEntries();
+        const kmlEntry = entries.find(e => e.entryName.endsWith('.kml'));
+
+        if (!kmlEntry) throw new Error('No KML found in KMZ');
+
+        kmlContent = kmlEntry.getData().toString('utf8');
+      } catch (e) {
+        throw new Error(`KMZ extraction failed: ${e.message}`);
+      }
+    } else {
+      kmlContent = data.toString('utf8');
+    }
+
+    return await parseKML(kmlContent);
+  } catch (error) {
+    throw new Error(`File processing error: ${error.message}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Controllers
 // ════════════════════════════════════════════════════════════════════════════════
 
 exports.loadCoverage = async (req, res) => {
@@ -77,19 +120,16 @@ exports.loadCoverage = async (req, res) => {
       });
     }
 
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
+    const zones = await handleCoverageFile(req.file.path);
 
-    const result = await runCoverageService('load', { filePath, fileName });
-
-    loadedZones = result.zones || [];
+    loadedZones = zones;
     loadedAt = new Date().toISOString();
 
     return res.status(200).json({
       status: 'ok',
-      fileName,
-      zonesLoaded: loadedZones.length,
-      message: `Se cargaron ${loadedZones.length} zonas`,
+      fileName: req.file.originalname,
+      zonesLoaded: zones.length,
+      message: `Se cargaron ${zones.length} zonas exitosamente`,
       loadedAt
     });
 
@@ -137,13 +177,23 @@ exports.checkCoverage = async (req, res) => {
       });
     }
 
-    const result = await runCoverageService('check', { latitude, longitude });
+    const point = [longitude, latitude];
+    let hasCoverage = false;
+    let zoneName = 'Unknown';
+
+    for (const zone of loadedZones) {
+      if (pointInPolygon(point, zone.coordinates)) {
+        hasCoverage = true;
+        zoneName = zone.name;
+        break;
+      }
+    }
 
     return res.status(200).json({
       latitude,
       longitude,
-      hasCoverage: result.has_coverage,
-      zoneName: result.zone_name || 'Unknown',
+      hasCoverage,
+      zoneName,
       timestamp: new Date().toISOString()
     });
 
@@ -167,11 +217,6 @@ exports.checkBatch = async (req, res) => {
       });
     }
 
-    const validPoints = points.map((p) => ({
-      latitude: parseFloat(p.latitude),
-      longitude: parseFloat(p.longitude)
-    }));
-
     if (!loadedZones || loadedZones.length === 0) {
       return res.status(400).json({
         status: 'error',
@@ -179,15 +224,32 @@ exports.checkBatch = async (req, res) => {
       });
     }
 
-    const result = await runCoverageService('check_batch', { points: validPoints });
+    const results = points.map(p => {
+      const latitude = parseFloat(p.latitude);
+      const longitude = parseFloat(p.longitude);
+      const point = [longitude, latitude];
 
-    const withCoverage = result.results.filter(r => r.has_coverage).length;
+      let hasCoverage = false;
+      let zoneName = 'Unknown';
+
+      for (const zone of loadedZones) {
+        if (pointInPolygon(point, zone.coordinates)) {
+          hasCoverage = true;
+          zoneName = zone.name;
+          break;
+        }
+      }
+
+      return { latitude, longitude, hasCoverage, zoneName };
+    });
+
+    const withCoverage = results.filter(r => r.hasCoverage).length;
 
     return res.status(200).json({
-      totalPoints: result.results.length,
+      totalPoints: results.length,
       pointsWithCoverage: withCoverage,
-      pointsWithoutCoverage: result.results.length - withCoverage,
-      results: result.results,
+      pointsWithoutCoverage: results.length - withCoverage,
+      results,
       timestamp: new Date().toISOString()
     });
 

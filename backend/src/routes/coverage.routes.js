@@ -10,11 +10,10 @@ const coverageController = require('../controllers/coverage.controller');
 const { verificarToken } = require('../middleware/auth');
 
 // Configurar multer para subida de archivos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 200 * 1024 * 1024 } // 200MB max
 });
-const upload = multer({ storage });
 
 /**
  * POST /api/coverage/load

@@ -482,25 +482,7 @@ export default function ReporteVelsa() {
       ));
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/reporte180?${p}`, { signal: ctrl.signal });
       const result = await res.json();
-      if (result.success) {
-        const asesores = result.asesores || [];
-        const totJOT   = asesores.reduce((s, a) => s + Number(a.ingresos_reales || 0), 0);
-        const totActivos = asesores.reduce((s, a) => s + Number(a.real_mes || 0), 0);
-        const totGest  = asesores.reduce((s, a) => s + Number(a.gestionables || 0), 0);
-        const totDesc  = asesores.reduce((s, a) => s + Number(a.descarte_count || 0), 0);
-        setReporte180Data({
-          kpis: {
-            ingresos_jot:     totJOT,
-            ventas_activas:   totActivos,
-            pct_descarte:     totGest > 0 ? parseFloat(((totDesc / totGest) * 100).toFixed(1)) : 0,
-            pct_efectividad:  totGest > 0 ? parseFloat(((totJOT  / totGest) * 100).toFixed(1)) : 0,
-            pct_tercera_edad: Number(result.porcentajeTerceraEdad || 0),
-          },
-          embudoCRM:    result.graficoEmbudo || [],
-          embudoJotform: (result.estadosNetlife || []).map(e => ({ etapa: e.estado, total: e.total })),
-          mapaCalor:    [],
-        });
-      }
+      if (result.success) setReporte180Data(result);
     } catch (e) { if (e.name !== 'AbortError') console.error("Error Reporte180:", e); }
     finally { setLoading(false); }
   };

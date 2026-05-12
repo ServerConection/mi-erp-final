@@ -1,674 +1,503 @@
-/**
- * CONTROLADOR VELSA — v3.0 (2026-05-12)
- * Reescrito para corregir: etapasCRM vacío, supervisor IS NOT NULL, backlog separado,
- * campos faltantes en HorizontalTable, reporte180 sin kpis.
- * Basado en el patrón Novonet: getEtapasCache, mergeBacklog, queryKPI, queryBacklog.
- */
-
 const pool = require('../config/db');
 
-// ─── CACHÉ ───────────────────────────────────────────────────────────────────
-const _cacheDash   = new Map();
-const _cacheEtapas = new Map();
-const CACHE_DASH_TTL   = 2 * 60 * 1000;
-const CACHE_ETAPAS_TTL = 5 * 60 * 1000;
-
-const getCache = (m, k)        => { const e = m.get(k); if (e && Date.now() < e.ttl) return e.data; m.delete(k); return null; };
-const setCache = (m, k, d, t)  => { m.set(k, { data: d, ttl: Date.now() + t }); if (m.size > 100) { const n = Date.now(); for (const [ck, cv] of m) if (n > cv.ttl) m.delete(ck); } };
-
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
-// ─── CONSTANTES ──────────────────────────────────────────────────────────────
-// Siempre comparar con UPPER(etapa_crm)
+const getPrimerDiaMesEcuador = () => {
+  const f = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+const MV = `public.mv_indicadores_velsa_completo mv`;
+const ESTADO_ACTIVO = `'ACTIVO'`;
+
 const ETAPAS_GESTIONABLES = `(
-  'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','VOLVER A LLAMAR',
-  'GESTION DIARIA','GESTION DIARIA / PENDIENTE CIERRE','GESTION DIARIA PENDIENTE CIERRE',
-  'VENTA SUBIDA',
-  'CLIENTE 2 HORAS','CLIENTE 4 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE 12 HORAS',
-  'CLIENTE CON ACUERDO','PENDIENTE CIERRE',
-  'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SIUPERVISOR',
-  'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
-  'REMARKETING',
-  'SEGUIMIENTO NEGOCIACION','SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-  'SEGUIMIENTO NEGOCIACIÓN','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO',
-  'DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200','ATC'
+  'Venta Subida','OPORTUNIDADES SIUPERVISOR','GESTION DIARIA / PENDIENTE CIERRE',
+  'CLIENTE CON ACUERDO','CLIENTE 8 HORAS','DOCUMENTOS PENDIENTES','CONTACTO NUEVO',
+  'CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 12 HORAS','CLIENTE 4 HORAS',
+  'VOLVER A LLAMAR','GESTION DIARIA','PENDIENTE CIERRE','VENTA SUBIDA',
+  'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
+  'REMARKETING','SEGUIMIENTO NEGOCIACION','SEGUIMIENTO NEGOCIACION CON CONTACTO',
+  'SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACIÓN','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO',
+  'DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200','ATC','GESTION DIARIA PENDIENTE CIERRE',
+  'CLIENTE CON ACUERDO','PENDIENTE CIERRE'
 )`;
 
 const ETAPAS_DESCARTE = `(
-  'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
-  'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-  'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACION','NO INTERESA COSTO INSTALACIÓN',
-  'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET',
-  'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPANERO',
-  'CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-  'DESCARTE','FUERA DE COBERTURA','ZONA PELIGROSA'
+  'Descarte','FUERA DE COBERTURA','ZONA PELIGROSA','DESCARTE','DESCARTE PLAN DE 200'
 )`;
 
-// ─── CACHÉ DE ETAPAS ─────────────────────────────────────────────────────────
-async function getEtapasCache() {
-  const cached = getCache(_cacheEtapas, 'velsa_etapas');
-  if (cached) return cached;
-  const [resCRM, resJOT] = await Promise.all([
-    pool.query(`SELECT DISTINCT etapa_crm FROM public.mv_indicadores_velsa_completo WHERE etapa_crm IS NOT NULL ORDER BY etapa_crm`),
-    pool.query(`SELECT DISTINCT estado_venta FROM public.mv_indicadores_velsa_completo WHERE estado_venta IS NOT NULL ORDER BY estado_venta`),
-  ]);
-  const result = {
-    etapasCRM:     resCRM.rows.map(r => r.etapa_crm),
-    etapasJotform: resJOT.rows.map(r => r.estado_venta),
-  };
-  setCache(_cacheEtapas, 'velsa_etapas', result, CACHE_ETAPAS_TTL);
-  return result;
+// ── Filtros dinámicos ─────────────────────────────────────────────────────────
+function buildFilters(q, values) {
+  let f = '';
+  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = q;
+  if (asesor)               { values.push(`%${asesor}%`);               f += ` AND mv.asesor ILIKE $${values.length}`; }
+  if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
+  if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
+  if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); f += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
+  if (etapaCRM)             { values.push(`%${etapaCRM}%`);             f += ` AND mv.etapa_crm ILIKE $${values.length}`; }
+  if (etapaJotform)         { values.push(`%${etapaJotform}%`);         f += ` AND mv.estado_venta ILIKE $${values.length}`; }
+  return f;
 }
 
-// ─── MERGE BACKLOG ───────────────────────────────────────────────────────────
-// Une rows de KPI con rows de backlog y calcula campos derivados para HorizontalTable
-function mergeBacklog(kpiRows, backlogRows) {
-  const bkMap = {};
-  (backlogRows || []).forEach(r => { bkMap[r.nombre_grupo] = Number(r.backlog || 0); });
+// ── Query KPI por columna de agrupación ──────────────────────────────────────
+const queryKPI = (columna, filters) => `
+  SELECT
+    COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+    COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS leads_totales,
+    COUNT(*) FILTER (
+      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+          OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+      AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+    ) AS gestionables,
+    COUNT(*) FILTER (
+      WHERE mv.etapa_crm = 'Venta Subida'
+      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    ) AS ventas_crm,
+    COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
+    COUNT(*) FILTER (
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+      AND mv.estado_venta = ${ESTADO_ACTIVO}
+    ) AS real_mes,
+    COUNT(*) FILTER (
+      WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE}
+      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    ) AS descarte_count,
+    COUNT(*) FILTER (
+      WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%'
+      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+    ) AS tarjeta_credito,
+    COUNT(*) FILTER (
+      WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%'
+      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+    ) AS tercera_edad,
+    COUNT(*) FILTER (
+      WHERE mv.estado_regularizacion ILIKE '%REGULARIZAR%'
+      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+    ) AS regularizacion
+  FROM ${MV}
+  WHERE (
+    mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+  ) ${filters}
+  GROUP BY 1 ORDER BY ingresos_reales DESC, ventas_crm DESC
+`;
 
+// ── Query Backlog — solo usa $1 (desde) ──────────────────────────────────────
+const queryBacklog = (columna, filters) => `
+  SELECT
+    COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+    COUNT(DISTINCT mv.id_jotform)::int AS backlog
+  FROM ${MV}
+  WHERE mv.id_jotform IS NOT NULL
+    AND mv.fecha_registro_jotform IS NOT NULL
+    AND mv.fecha_registro_jotform::date < $1::date
+    AND mv.estado_venta = ${ESTADO_ACTIVO}
+    ${filters}
+  GROUP BY 1
+`;
+
+// ── Merge KPI + Backlog + calcular campos derivados ──────────────────────────
+function mergeBacklog(kpiRows, backlogRows) {
+  const map = {};
+  (backlogRows || []).forEach(r => { map[r.nombre_grupo] = Number(r.backlog || 0); });
   return kpiRows.map(r => {
-    const gest   = Number(r.gestionables  || 0);
-    const jot    = Number(r.ingresos_reales || 0);
-    const realMs = Number(r.real_mes       || 0);
-    const leads  = Number(r.leads_totales  || 0);
-    const desc   = Number(r.descarte_count || 0);
-    const bk     = bkMap[r.nombre_grupo]   || 0;
+    const gest  = Number(r.gestionables   || 0);
+    const jot   = Number(r.ingresos_reales || 0);
+    const activ = Number(r.real_mes       || 0);
+    const desc  = Number(r.descarte_count || 0);
+    const leads = Number(r.leads_totales  || 0);
+    const bk    = map[r.nombre_grupo] || 0;
     return {
-      nombre_grupo:             r.nombre_grupo,
-      leads_totales:            leads,
-      gestionables:             gest,
-      ventas_crm:               Number(r.ventas_crm      || 0),
-      ingresos_reales:          jot,
-      real_mes:                 realMs,
-      backlog:                  bk,
-      total_activas_calculada:  realMs + bk,
-      descarte_count:           desc,
-      descarte:                 leads  > 0 ? parseFloat(((desc  / leads)  * 100).toFixed(1)) : 0,
-      efectividad_real:         gest   > 0 ? parseFloat(((jot   / gest)   * 100).toFixed(1)) : 0,
-      tasa_instalacion:         jot    > 0 ? parseFloat(((realMs / jot)   * 100).toFixed(1)) : 0,
-      eficiencia:               leads  > 0 ? parseFloat(((realMs / leads) * 100).toFixed(1)) : 0,
-      tarjeta_credito:          Number(r.tarjeta_credito || 0),
-      tercera_edad:             Number(r.tercera_edad    || 0),
-      regularizacion:           Number(r.regularizacion  || 0),
-      por_regularizar:          Number(r.regularizacion  || 0),
-      pct_descarte:             leads  > 0 ? parseFloat(((desc  / leads)  * 100).toFixed(1)) : 0,
-      efectividad_activas_vs_pauta: leads > 0 ? parseFloat(((realMs / leads) * 100).toFixed(1)) : 0,
+      ...r,
+      backlog:                    bk,
+      total_activas_calculada:    activ + bk,
+      descarte:                   gest  > 0 ? parseFloat(((desc  / gest)  * 100).toFixed(1)) : 0,
+      efectividad_real:           gest  > 0 ? parseFloat(((jot   / gest)  * 100).toFixed(1)) : 0,
+      tasa_instalacion:           jot   > 0 ? parseFloat(((activ / jot)   * 100).toFixed(1)) : 0,
+      eficiencia:                 leads > 0 ? parseFloat(((activ / leads) * 100).toFixed(1)) : 0,
+      efectividad_activas_vs_pauta: gest > 0 ? parseFloat(((activ / gest) * 100).toFixed(1)) : 0,
     };
   });
 }
 
-// ─── BUILDERS DE QUERIES ─────────────────────────────────────────────────────
-// $1 = desde, $2 = hasta; filtros usan $3, $4, ...
-function buildQueryKPI(columna, filters) {
-  return `
-    WITH base AS MATERIALIZED (
-      SELECT
-        COALESCE(mv.${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-        mv.id_crm, mv.id_jotform,
-        mv.etapa_crm, mv.estado_venta, mv.estado_regularizacion,
-        mv.fecha_creacion_crm, mv.fecha_registro_jotform,
-        mv.forma_pago, mv.aplica_descuento,
-        CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE (
-        (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day'))
-        OR
-        (mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      ) ${filters}
-    )
-    SELECT
-      nombre_grupo,
-      COUNT(DISTINCT id_crm)                                                                                  AS leads_totales,
-      COUNT(DISTINCT CASE WHEN UPPER(etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN id_crm END)                   AS gestionables,
-      COUNT(DISTINCT CASE WHEN UPPER(etapa_crm) = 'VENTA SUBIDA'          THEN id_crm END)                   AS ventas_crm,
-      COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-            AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-            THEN id_jotform END)                                                                              AS ingresos_reales,
-      COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-            AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-            AND estado_venta = 'ACTIVO' THEN id_jotform END)                                                 AS real_mes,
-      SUM(es_descarte)                                                                                        AS descarte_count,
-      COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-            AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-            AND forma_pago ILIKE '%TARJETA DE CREDITO%' THEN id_jotform END)                                 AS tarjeta_credito,
-      COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-            AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-            AND aplica_descuento = 'TERCERA EDAD' AND estado_venta = 'ACTIVO' THEN id_jotform END)           AS tercera_edad,
-      COUNT(*) FILTER (WHERE estado_regularizacion = 'POR REGULARIZAR')                                      AS regularizacion
-    FROM base
-    GROUP BY nombre_grupo
-    ORDER BY ingresos_reales DESC, ventas_crm DESC
-  `;
-}
-
-function buildQueryBacklog(columna, filters) {
-  // $1 = desde, $2 = hasta (no usado), $3+ = filtros
-  return `
-    SELECT
-      COALESCE(mv.${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-      COUNT(DISTINCT mv.id_jotform) AS backlog
-    FROM public.mv_indicadores_velsa_completo mv
-    WHERE mv.id_jotform IS NOT NULL
-      AND mv.fecha_registro_jotform < $1::date
-      AND mv.estado_venta = 'ACTIVO'
-      ${filters}
-    GROUP BY COALESCE(mv.${columna}, 'SIN ASIGNAR')
-    ORDER BY backlog DESC
-  `;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 1 — DASHBOARD KPIs
+// DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 async function getIndicadoresDashboardVelsa(req, res) {
   try {
-    const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM } = req.query;
     const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
 
-    let values  = [desde, hasta];
-    let filters = '';
-    if (asesor)                { values.push(`%${asesor}%`);                filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (supervisor)            { values.push(`%${supervisor}%`);            filters += ` AND mv.supervisor ILIKE $${values.length}`; }
-    if (estadoNetlife)         { values.push(`%${estadoNetlife}%`);         filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
-    if (estadoRegularizacion)  { values.push(`%${estadoRegularizacion}%`);  filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
-    if (etapaCRM)              { values.push(`%${etapaCRM}%`);              filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
+    // Valores para queries principales (usan $1=desde, $2=hasta)
+    const valuesMain = [desde, hasta];
+    const filters    = buildFilters(req.query, valuesMain);
 
-    const querySup   = buildQueryKPI('supervisor', filters);
-    const queryAse   = buildQueryKPI('asesor',     filters);
-    const queryBkSup = buildQueryBacklog('supervisor', filters);
-    const queryBkAse = buildQueryBacklog('asesor',     filters);
+    // Valores para backlog (solo $1=desde)
+    const valuesBk  = [desde];
+    const filtersBk = buildFilters(req.query, valuesBk);
 
-    const queryEstados = `
-      SELECT mv.estado_venta AS estado, COUNT(*) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.estado_venta IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-          OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-        ${filters}
-      GROUP BY mv.estado_venta ORDER BY total DESC
+    const qEstados = `
+      SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY 1 ORDER BY total DESC
     `;
-
-    const queryEmbudo = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-        ${filters}
+    const qEmbudo = `
+      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      FROM ${MV}
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.etapa_crm ORDER BY total DESC
     `;
-
-    const queryPorDia = `
+    const qPorDia = `
       SELECT
         mv.fecha_registro_jotform::date::text AS fecha,
-        EXTRACT(DAY FROM mv.fecha_registro_jotform::date)::INT AS dia,
-        COUNT(DISTINCT mv.id_jotform)                          AS total,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS activos
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform >= $1::date
-        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-        ${filters}
-      GROUP BY mv.fecha_registro_jotform::date
-      ORDER BY mv.fecha_registro_jotform::date ASC
+        EXTRACT(DAY FROM mv.fecha_registro_jotform::date)::int AS dia,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY 1 ORDER BY 1 ASC
     `;
-
-    const queryMetas = `
+    const qEtapasCRM = `
+      SELECT DISTINCT mv.etapa_crm AS etapa FROM ${MV}
+      WHERE mv.etapa_crm IS NOT NULL AND TRIM(mv.etapa_crm) <> ''
+      ORDER BY etapa ASC
+    `;
+    const qEtapasJot = `
+      SELECT DISTINCT mv.estado_venta FROM ${MV}
+      WHERE mv.estado_venta IS NOT NULL AND TRIM(mv.estado_venta) <> ''
+      ORDER BY mv.estado_venta ASC
+    `;
+    const qTercera = `
       SELECT
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' AND mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS total_tercera_edad,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = 'ACTIVO'                                          THEN mv.id_jotform END) AS total_activos,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%'                          THEN mv.id_jotform END) AS total_tarjeta,
-        COUNT(DISTINCT mv.id_jotform)                                                                                        AS total_jotform
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform >= $1::date
-        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-        ${filters}
+        COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO}) AS total_tercera,
+        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO}) AS total_activos
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
     `;
-
-    const queryCRM = `
+    const qTarjeta = `
       SELECT
-        mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA",
-        mv.fecha_creacion_crm AS "FECHA_CREACION_CRM",
-        mv.asesor AS "ASESOR", mv.supervisor AS "SUPERVISOR",
-        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
-        mv.origen AS "ORIGEN", mv.estado_venta AS "ESTADO_NETLIFE",
-        mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.forma_pago AS "FORMA_PAGO",
-        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-        mv.aplica_descuento AS "APLICA_DESCUENTO",
-        mv.id_jotform AS "ID_JOTFORM"
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-          OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-        ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
-      LIMIT 6000
+        COUNT(*) FILTER (WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%') AS total_tarjeta,
+        COUNT(*) AS total_jotform
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
     `;
 
-    // Ejecutar todo en paralelo
     const [
-      resSup, resAse, resBkSup, resBkAse,
-      resEstados, resEmbudo, resDia, resMetas, resCRM, etapasData,
+      resSup, resAses, resBkSup, resBkAses,
+      resEstados, resEmbudo, resDia,
+      resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
     ] = await Promise.all([
-      pool.query(querySup,   values),
-      pool.query(queryAse,   values),
-      pool.query(queryBkSup, values),
-      pool.query(queryBkAse, values),
-      pool.query(queryEstados, values),
-      pool.query(queryEmbudo,  values),
-      pool.query(queryPorDia,  values),
-      pool.query(queryMetas,   values),
-      pool.query(queryCRM,     values),
-      getEtapasCache(),
+      pool.query(queryKPI('mv.supervisor', filters), valuesMain),
+      pool.query(queryKPI('mv.asesor',     filters), valuesMain),
+      pool.query(queryBacklog('mv.supervisor', filtersBk), valuesBk),
+      pool.query(queryBacklog('mv.asesor',     filtersBk), valuesBk),
+      pool.query(qEstados,   valuesMain),
+      pool.query(qEmbudo,    valuesMain),
+      pool.query(qPorDia,    valuesMain),
+      pool.query(qEtapasCRM),
+      pool.query(qEtapasJot),
+      pool.query(qTercera,   valuesMain),
+      pool.query(qTarjeta,   valuesMain),
     ]);
 
-    const supervisores = mergeBacklog(resSup.rows, resBkSup.rows);
-    const asesores     = mergeBacklog(resAse.rows, resBkAse.rows);
+    const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
+    const asesores     = mergeBacklog(resAses.rows, resBkAses.rows);
 
-    const rowM = resMetas.rows[0] || {};
-    const totTerceraEdad = Number(rowM.total_tercera_edad || 0);
-    const totActivos     = Number(rowM.total_activos      || 0);
-    const totTarjeta     = Number(rowM.total_tarjeta      || 0);
-    const totJOT         = Number(rowM.total_jotform      || 0);
-    const porcentajeTerceraEdad = totActivos > 0 ? Number(((totTerceraEdad / totActivos) * 100).toFixed(2)) : 0;
-    const porcentajeTarjeta     = totJOT     > 0 ? Number(((totTarjeta     / totJOT)     * 100).toFixed(2)) : 0;
+    const tRow = resTercera.rows[0] || {};
+    const porcentajeTerceraEdad = Number(tRow.total_activos) > 0
+      ? parseFloat(((Number(tRow.total_tercera) / Number(tRow.total_activos)) * 100).toFixed(2)) : 0;
 
-    const graficoBarrasDia = resDia.rows.map(r => ({
-      fecha: r.fecha,
-      dia:   Number(r.dia),
-      total: Number(r.total),
-      activos: Number(r.activos),
-    }));
+    const taRow = resTarjeta.rows[0] || {};
+    const porcentajeTarjeta = Number(taRow.total_jotform) > 0
+      ? parseFloat(((Number(taRow.total_tarjeta) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
 
-    const graficoEmbudo = resEmbudo.rows.map(r => ({
-      etapa: r.etapa, total: Number(r.total), name: r.etapa, value: Number(r.total),
-    }));
+    console.log(`[DASHBOARD-VELSA] ${desde}~${hasta} | Sup:${supervisores.length} Ases:${asesores.length}`);
 
-    const estadosNetlife = resEstados.rows.map(r => ({
-      estado: r.estado, total: Number(r.total),
-    }));
-
-    const resultado = {
-      success: true,
-      supervisores,
-      asesores,
-      dataCRM:      resCRM.rows,
-      dataNetlife:  resCRM.rows,
-      estadosNetlife,
-      etapasCRM:    etapasData.etapasCRM,
-      etapasJotform: etapasData.etapasJotform,
-      graficoEmbudo,
-      graficoBarrasDia,
-      porcentajeTarjeta:     Number(porcentajeTarjeta).toFixed(1),
-      porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
-    };
-
-    console.log(`[DASHBOARD-VELSA] Sup:${supervisores.length} Ase:${asesores.length} CRM:${resCRM.rows.length} 3E:${porcentajeTerceraEdad}% TJC:${porcentajeTarjeta}%`);
-    res.json(resultado);
-
-  } catch (err) {
-    console.error('[DASHBOARD-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 2 — MONITOREO DIARIO
-// ─────────────────────────────────────────────────────────────────────────────
-async function getMonitoreoDiarioVelsa(req, res) {
-  try {
-    const { fechaDesde, fechaHasta } = req.query;
-    const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
-    const values = [desde, hasta];
-
-    const buildMonitoreo = (columna) => `
-      WITH base AS MATERIALIZED (
-        SELECT
-          COALESCE(mv.${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-          mv.id_crm, mv.id_jotform,
-          mv.estado_venta, mv.etapa_crm, mv.forma_pago,
-          mv.fecha_creacion_crm, mv.fecha_registro_jotform,
-          CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
-        FROM public.mv_indicadores_velsa_completo mv
-        WHERE (
-          (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day'))
-          OR
-          (mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-        )
-      )
-      SELECT
-        nombre_grupo,
-        COUNT(DISTINCT id_crm)   AS real_mes_leads,
-        COUNT(DISTINCT CASE WHEN UPPER(etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN id_crm END) AS real_dia_leads,
-        COUNT(DISTINCT id_crm)   AS crm_acumulado,
-        COUNT(DISTINCT id_crm)   AS crm_dia,
-        COUNT(DISTINCT CASE WHEN UPPER(etapa_crm) = 'VENTA SUBIDA' THEN id_crm END)          AS v_subida_crm_hoy,
-        COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-              AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-              THEN id_jotform END)                                                              AS v_subida_jot_hoy,
-        COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-              AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-              AND estado_venta = 'ACTIVO' THEN id_jotform END)                                 AS activos_jot_hoy,
-        ROUND(100.0 * SUM(es_descarte) / NULLIF(COUNT(DISTINCT id_crm), 0), 1)                AS real_descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-              AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-              AND forma_pago ILIKE '%TARJETA DE CREDITO%' THEN id_jotform END)
-          / NULLIF(COUNT(DISTINCT CASE WHEN id_jotform IS NOT NULL
-              AND fecha_registro_jotform >= $1::date AND fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-              THEN id_jotform END), 0), 1)                                                     AS real_tarjeta,
-        COUNT(DISTINCT CASE WHEN UPPER(etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN id_crm END) AS gestionables
-      FROM base
-      GROUP BY nombre_grupo
-      ORDER BY v_subida_jot_hoy DESC
-    `;
-
-    const [resSup, resAse] = await Promise.all([
-      pool.query(buildMonitoreo('supervisor'), values),
-      pool.query(buildMonitoreo('asesor'),     values),
-    ]);
-
-    res.json({ success: true, supervisores: resSup.rows, asesores: resAse.rows });
-
-  } catch (err) {
-    console.error('[MONITOREO-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 3 — REPORTE 180 DÍAS
-// ─────────────────────────────────────────────────────────────────────────────
-async function getReporte180Velsa(req, res) {
-  try {
-    const { fechaDesde, fechaHasta, asesor, supervisor, estadoNetlife, etapaCRM } = req.query;
-    const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
-
-    let values  = [desde, hasta];
-    let filters = '';
-    if (asesor)      { values.push(`%${asesor}%`);      filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (supervisor)  { values.push(`%${supervisor}%`);  filters += ` AND mv.supervisor ILIKE $${values.length}`; }
-    if (estadoNetlife){ values.push(`%${estadoNetlife}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
-    if (etapaCRM)    { values.push(`%${etapaCRM}%`);    filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
-
-    const querySup   = buildQueryKPI('supervisor', filters);
-    const queryAse   = buildQueryKPI('asesor',     filters);
-    const queryBkSup = buildQueryBacklog('supervisor', filters);
-    const queryBkAse = buildQueryBacklog('asesor',     filters);
-
-    const queryEstados = `
-      SELECT mv.estado_venta AS estado, COUNT(*) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.estado_venta IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-          OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-        ${filters}
-      GROUP BY mv.estado_venta ORDER BY total DESC
-    `;
-
-    const queryEmbudo = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm) AS total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-        ${filters}
-      GROUP BY mv.etapa_crm ORDER BY total DESC
-    `;
-
-    const queryMetas = `
-      SELECT
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' AND mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS total_tercera_edad,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = 'ACTIVO' THEN mv.id_jotform END) AS total_activos,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS total_tarjeta,
-        COUNT(DISTINCT mv.id_jotform) AS total_jotform
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform >= $1::date
-        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-        ${filters}
-    `;
-
-    const [resSup, resAse, resBkSup, resBkAse, resEstados, resEmbudo, resMetas] = await Promise.all([
-      pool.query(querySup,     values),
-      pool.query(queryAse,     values),
-      pool.query(queryBkSup,   values),
-      pool.query(queryBkAse,   values),
-      pool.query(queryEstados, values),
-      pool.query(queryEmbudo,  values),
-      pool.query(queryMetas,   values),
-    ]);
-
-    const supervisores = mergeBacklog(resSup.rows, resBkSup.rows);
-    const asesores     = mergeBacklog(resAse.rows, resBkAse.rows);
-
-    const rowM = resMetas.rows[0] || {};
-    const totActivos = Number(rowM.total_activos || 0);
-    const totJOT     = Number(rowM.total_jotform || 0);
-    const totTercera = Number(rowM.total_tercera_edad || 0);
-    const totTarjeta = Number(rowM.total_tarjeta || 0);
-    const porcentajeTerceraEdad = totActivos > 0 ? Number(((totTercera / totActivos) * 100).toFixed(2)) : 0;
-    const porcentajeTarjeta     = totJOT     > 0 ? Number(((totTarjeta / totJOT)     * 100).toFixed(2)) : 0;
-
-    const graficoEmbudo   = resEmbudo.rows.map(r => ({ etapa: r.etapa, total: Number(r.total), name: r.etapa, value: Number(r.total) }));
-    const estadosNetlife  = resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) }));
-
-    console.log(`[REPORTE-180-VELSA] Sup:${supervisores.length} Ase:${asesores.length} 3E:${porcentajeTerceraEdad}%`);
     res.json({
       success: true,
       supervisores,
       asesores,
-      estadosNetlife,
-      graficoEmbudo,
-      porcentajeTarjeta:     Number(porcentajeTarjeta).toFixed(1),
-      porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
+      estadosNetlife:   resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
+      graficoEmbudo:    resEmbudo.rows,
+      graficoBarrasDia: resDia.rows,
+      etapasCRM:        resEtapasCRM.rows.map(r => r.etapa),
+      etapasJotform:    resEtapasJot.rows.map(r => r.estado_venta),
+      porcentajeTerceraEdad,
+      porcentajeTarjeta,
     });
-
-  } catch (err) {
-    console.error('[REPORTE-180-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+  } catch (error) {
+    console.error('[DASHBOARD-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 4 — CONSULTA Y DESCARGA
+// MONITOREO DIARIO
+// ─────────────────────────────────────────────────────────────────────────────
+async function getMonitoreoDiarioVelsa(req, res) {
+  try {
+    const hoy       = getFechaEcuador();
+    const iniciomes = getPrimerDiaMesEcuador();
+
+    const qMon = (columna) => `
+      SELECT
+        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS real_dia_leads,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND mv.etapa_crm = 'Venta Subida') AS v_subida_crm_hoy,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables
+      FROM ${MV}
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      GROUP BY 1 ORDER BY real_mes_leads DESC
+    `;
+    const qJotHoy = (columna) => `
+      SELECT
+        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+        COUNT(*)::int AS v_subida_jot_hoy,
+        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos_jot_hoy
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform::date = $1::date
+      GROUP BY 1
+    `;
+
+    const [resSup, resAses, resJotSup, resJotAses] = await Promise.all([
+      pool.query(qMon('mv.supervisor'),    [iniciomes, hoy]),
+      pool.query(qMon('mv.asesor'),        [iniciomes, hoy]),
+      pool.query(qJotHoy('mv.supervisor'), [hoy]),
+      pool.query(qJotHoy('mv.asesor'),     [hoy]),
+    ]);
+
+    const merge = (filas, jot) => filas.map(r => {
+      const j = jot.find(x => x.nombre_grupo === r.nombre_grupo) || {};
+      return { ...r, v_subida_jot_hoy: Number(j.v_subida_jot_hoy||0), activos_jot_hoy: Number(j.activos_jot_hoy||0) };
+    });
+
+    res.json({ success: true, supervisores: merge(resSup.rows, resJotSup.rows), asesores: merge(resAses.rows, resJotAses.rows) });
+  } catch (error) {
+    console.error('[MONITOREO-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORTE 180
+// ─────────────────────────────────────────────────────────────────────────────
+async function getReporte180Velsa(req, res) {
+  try {
+    const hoy   = getFechaEcuador();
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
+    const values  = [desde, hasta];
+    const filters = buildFilters(req.query, values);
+
+    const qKPIs = `
+      SELECT
+        COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
+        COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        ROUND(COALESCE(
+          COUNT(*) FILTER (WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}),0)
+        ,0)*100,2) AS pct_descarte,
+        ROUND(COALESCE(
+          COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}),0)
+        ,0)*100,2) AS pct_efectividad,
+        ROUND(COALESCE(
+          COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO} AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date),0)
+        ,0)*100,2) AS pct_tercera_edad
+      FROM ${MV}
+      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+    `;
+    const qEmbudoCRM = `
+      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      FROM ${MV} WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY mv.etapa_crm ORDER BY total DESC
+    `;
+    const qEmbudoJot = `
+      SELECT COALESCE(mv.estado_venta,'SIN ESTADO') AS etapa, COUNT(*)::int AS total
+      FROM ${MV} WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY mv.estado_venta ORDER BY total DESC
+    `;
+    const qMapaCalor = `
+      SELECT mv.fecha_registro_jotform::date::text AS fecha, COALESCE(mv.ciudad,'SIN CIUDAD') AS ciudad, COUNT(*)::int AS total
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform IS NOT NULL AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+        AND mv.ciudad IS NOT NULL AND TRIM(mv.ciudad) != '' ${filters}
+      GROUP BY 1,2 ORDER BY 1 ASC, 3 DESC
+    `;
+
+    const [resKPIs, resEmbCRM, resEmbJot, resMapa] = await Promise.all([
+      pool.query(qKPIs,      values),
+      pool.query(qEmbudoCRM, values),
+      pool.query(qEmbudoJot, values),
+      pool.query(qMapaCalor, values),
+    ]);
+
+    const k = resKPIs.rows[0] || {};
+    res.json({
+      success: true,
+      kpis: {
+        ingresos_jot:     Number(k.ingresos_jot     || 0),
+        ventas_activas:   Number(k.ventas_activas   || 0),
+        pct_descarte:     Number(k.pct_descarte     || 0),
+        pct_efectividad:  Number(k.pct_efectividad  || 0),
+        pct_tercera_edad: Number(k.pct_tercera_edad || 0),
+      },
+      embudoCRM:     resEmbCRM.rows,
+      embudoJotform: resEmbJot.rows,
+      mapaCalor:     resMapa.rows,
+    });
+  } catch (error) {
+    console.error('[REPORTE180-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSULTA / DESCARGA
 // ─────────────────────────────────────────────────────────────────────────────
 async function getConsultaDescargaVelsa(req, res) {
   try {
-    const { fechaDesde, fechaHasta, asesor, estado } = req.query;
     const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
+    const values  = [desde, hasta];
+    const filters = buildFilters(req.query, values);
 
-    let values  = [desde, hasta];
-    let filters = '';
-    if (asesor) { values.push(`%${asesor}%`); filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (estado) { values.push(`%${estado}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
-
-    const query = `
+    const result = await pool.query(`
       SELECT
-        mv.id_registro, mv.id_crm, mv.id_jotform,
-        mv.asesor, mv.supervisor, mv.etapa_crm,
-        mv.fecha_creacion_crm, mv.fecha_registro_jotform,
-        mv.estado_venta, mv.fecha_activacion,
-        mv.forma_pago, mv.estado_regularizacion, mv.aplica_descuento, mv.origen
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-          OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-        ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
-      LIMIT 50000
-    `;
+        mv.id_crm, mv.id_jotform, mv.asesor, mv.supervisor,
+        mv.etapa_crm, mv.estado_venta, mv.estado_regularizacion,
+        mv.fecha_creacion_crm, mv.fecha_registro_jotform, mv.fecha_activacion,
+        mv.forma_pago, mv.aplica_descuento, mv.ciudad, mv.origen
+      FROM ${MV}
+      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+          OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+      ${filters}
+      ORDER BY mv.fecha_creacion_crm DESC LIMIT 10000
+    `, values);
 
-    const result = await pool.query(query, values);
-    res.json({ success: true, rows: result.rows, registros: result.rows, total: result.rows.length });
-
-  } catch (err) {
-    console.error('[CONSULTA-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, registros: result.rows, total: result.rowCount });
+  } catch (error) {
+    console.error('[CONSULTA-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 5 — STATUS VISTA MATERIALIZADA
+// STATUS MV
 // ─────────────────────────────────────────────────────────────────────────────
 async function getStatusMaterializedView(req, res) {
   try {
     const result = await pool.query(`
-      SELECT
-        COUNT(*)                 AS total_registros,
-        COUNT(DISTINCT id_crm)   AS total_leads_crm,
-        COUNT(DISTINCT id_jotform) AS total_registros_jotform,
-        MAX(refresh_timestamp)   AS last_refresh,
-        CURRENT_TIMESTAMP        AS current_time
-      FROM public.mv_indicadores_velsa_completo
+      SELECT schemaname, matviewname, ispopulated,
+        pg_size_pretty(pg_total_relation_size(schemaname||'.'||matviewname)) AS size
+      FROM pg_matviews WHERE matviewname = 'mv_indicadores_velsa_completo'
     `);
-    const row = result.rows[0];
-    res.json({ success: true, status: row });
-  } catch (err) {
-    console.error('[STATUS-MV] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    const total = await pool.query(`SELECT COUNT(*) AS total FROM public.mv_indicadores_velsa_completo`);
+    res.json({ success: true, status: result.rows[0] || {}, totalRegistros: Number(total.rows[0]?.total || 0) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 6 — DETALLE CRM DATA
+// DETALLE CRM
 // ─────────────────────────────────────────────────────────────────────────────
 async function getDetalleCRMData(req, res) {
   try {
-    const { fechaDesde, fechaHasta, asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM } = req.query;
     const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
+    const values  = [desde, hasta];
+    const filters = buildFilters(req.query, values);
 
-    let values  = [desde, hasta];
-    let filters = '';
-    if (asesor)               { values.push(`%${asesor}%`);               filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (supervisor)           { values.push(`%${supervisor}%`);           filters += ` AND mv.supervisor ILIKE $${values.length}`; }
-    if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
-    if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
-    if (etapaCRM)             { values.push(`%${etapaCRM}%`);             filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
-
-    const query = `
+    const result = await pool.query(`
       SELECT
-        mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA",
+        mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
         mv.fecha_creacion_crm AS "FECHA_CREACION_CRM",
-        mv.asesor AS "ASESOR", mv.supervisor AS "SUPERVISOR",
-        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
-        mv.origen AS "ORIGEN", mv.estado_venta AS "ESTADO_NETLIFE",
-        mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.forma_pago AS "FORMA_PAGO",
-        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-        mv.aplica_descuento AS "APLICA_DESCUENTO",
-        mv.id_jotform AS "ID_JOTFORM"
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.fecha_creacion_crm >= $1::date
-        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
-        ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
-      LIMIT 6000
-    `;
+        mv.asesor AS "ASESOR", mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION", mv.origen AS "ORIGEN"
+      FROM ${MV}
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
+      ORDER BY mv.fecha_creacion_crm DESC LIMIT 6000
+    `, values);
 
-    const result = await pool.query(query, values);
-    console.log(`[DETALLE-CRM-VELSA] ${desde}~${hasta} | ${result.rows.length} registros`);
-    res.json({ success: true, registros: result.rows, total: result.rows.length, periodo: { desde, hasta } });
-
-  } catch (err) {
-    console.error('[DETALLE-CRM-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.log(`[DETALLE-CRM-VELSA] ${desde}~${hasta} | ${result.rowCount} registros`);
+    res.json({ success: true, registros: result.rows, total: result.rowCount });
+  } catch (error) {
+    console.error('[DETALLE-CRM-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 7 — ACTIVAS
+// ACTIVAS
 // ─────────────────────────────────────────────────────────────────────────────
 async function getActivasVelsa(req, res) {
   try {
-    const { fechaDesde, fechaHasta, asesor, supervisor } = req.query;
     const hoy   = getFechaEcuador();
-    const desde = fechaDesde || hoy;
-    const hasta = fechaHasta || hoy;
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
+    const values  = [desde, hasta];
+    const filters = buildFilters(req.query, values);
 
-    let values  = [desde, hasta];
-    let filters = '';
-    if (asesor)      { values.push(`%${asesor}%`);      filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (supervisor)  { values.push(`%${supervisor}%`);  filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    const result = await pool.query(`
+      SELECT
+        COALESCE(mv.supervisor,'SIN ASIGNAR') AS supervisor,
+        COALESCE(mv.asesor,'SIN ASIGNAR') AS asesor,
+        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activas,
+        COUNT(*)::int AS total_jotform
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY 1,2 ORDER BY activas DESC
+    `, values);
 
-    const buildActivas = (col) => `
-      SELECT COALESCE(mv.${col},'SIN ASIGNAR') AS nombre_grupo, COUNT(DISTINCT mv.id_jotform) AS activas
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-        AND mv.estado_venta = 'ACTIVO' ${filters}
-      GROUP BY COALESCE(mv.${col},'SIN ASIGNAR') ORDER BY activas DESC
-    `;
-
-    const queryGlobal = `
-      SELECT COUNT(DISTINCT mv.id_jotform) AS activas_total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
-        AND mv.estado_venta = 'ACTIVO' ${filters}
-    `;
-
-    const [resSup, resAse, resGlobal] = await Promise.all([
-      pool.query(buildActivas('supervisor'), values),
-      pool.query(buildActivas('asesor'),     values),
-      pool.query(queryGlobal, values),
-    ]);
-
-    res.json({ success: true, supervisores: resSup.rows, asesores: resAse.rows, global: resGlobal.rows[0], periodo: { desde, hasta } });
-
-  } catch (err) {
-    console.error('[ACTIVAS-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, registros: result.rows });
+  } catch (error) {
+    console.error('[ACTIVAS-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDPOINT 8 — BACKLOG
+// BACKLOG
 // ─────────────────────────────────────────────────────────────────────────────
 async function getBacklogVelsa(req, res) {
   try {
-    const { fechaDesde, asesor, supervisor } = req.query;
-    const desde = fechaDesde || getFechaEcuador();
+    const hoy    = getFechaEcuador();
+    const values = [req.query.fechaDesde || hoy];
+    const filters = buildFilters(req.query, values);
 
-    let values  = [desde];
-    let filters = '';
-    if (asesor)      { values.push(`%${asesor}%`);      filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (supervisor)  { values.push(`%${supervisor}%`);  filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    const result = await pool.query(`
+      SELECT
+        COALESCE(mv.supervisor,'SIN ASIGNAR') AS supervisor,
+        COALESCE(mv.asesor,'SIN ASIGNAR') AS asesor,
+        COUNT(DISTINCT mv.id_jotform)::int AS backlog
+      FROM ${MV}
+      WHERE mv.id_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform::date < $1::date
+        AND mv.estado_venta = ${ESTADO_ACTIVO}
+        ${filters}
+      GROUP BY 1,2 ORDER BY backlog DESC
+    `, values);
 
-    const buildBkQuery = (col) => `
-      SELECT COALESCE(mv.${col},'SIN ASIGNAR') AS nombre_grupo, COUNT(DISTINCT mv.id_jotform) AS backlog
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date AND mv.estado_venta = 'ACTIVO' ${filters}
-      GROUP BY COALESCE(mv.${col},'SIN ASIGNAR') ORDER BY backlog DESC
-    `;
-
-    const queryGlobal = `
-      SELECT COUNT(DISTINCT mv.id_jotform) AS backlog_total
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date AND mv.estado_venta = 'ACTIVO' ${filters}
-    `;
-
-    const [resSup, resAse, resGlobal] = await Promise.all([
-      pool.query(buildBkQuery('supervisor'), values),
-      pool.query(buildBkQuery('asesor'),     values),
-      pool.query(queryGlobal, values),
-    ]);
-
-    res.json({ success: true, supervisores: resSup.rows, asesores: resAse.rows, global: resGlobal.rows[0], periodo: { desde } });
-
-  } catch (err) {
-    console.error('[BACKLOG-VELSA] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, registros: result.rows });
+  } catch (error) {
+    console.error('[BACKLOG-VELSA] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
-// ─── EXPORTS ─────────────────────────────────────────────────────────────────
 module.exports = {
   getIndicadoresDashboardVelsa,
   getMonitoreoDiarioVelsa,

@@ -205,9 +205,9 @@ async function getIndicadoresDashboardVelsa(req, res) {
     `;
 
     const queryEtapas = `
-      SELECT DISTINCT mv.etapa_crm AS etapa, COUNT(*) AS total
+      SELECT mv.etapa_crm AS etapa, COUNT(*) AS total
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       GROUP BY mv.etapa_crm
       ORDER BY total DESC
     `;

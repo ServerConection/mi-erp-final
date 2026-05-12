@@ -132,13 +132,11 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const desde = req.query.fechaDesde || hoy;
     const hasta = req.query.fechaHasta || hoy;
 
-    // Valores para queries principales (usan $1=desde, $2=hasta)
     const valuesMain = [desde, hasta];
     const filters    = buildFilters(req.query, valuesMain);
 
-    // Valores para backlog (solo $1=desde)
- const valuesBk  = [desde, hasta];
-const filtersBk = buildFilters(req.query, valuesBk);
+    const valuesBk  = [desde, hasta];
+    const filtersBk = buildFilters(req.query, valuesBk);
 
     const qEstados = `
       SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total
@@ -187,11 +185,30 @@ const filtersBk = buildFilters(req.query, valuesBk);
       FROM ${MV}
       WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
     `;
+    const qNetlife = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.etapa_crm AS "ETAPA",
+        mv.fecha_creacion_crm AS "FECHA_CREACION",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR",
+        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
+        mv.origen AS "ORIGEN",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+        mv.aplica_descuento AS "APLICA_DESCUENTO"
+      FROM ${MV}
+      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      LIMIT 6000
+    `;
 
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
+      resNetlife,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -204,6 +221,7 @@ const filtersBk = buildFilters(req.query, valuesBk);
       pool.query(qEtapasJot),
       pool.query(qTercera,   valuesMain),
       pool.query(qTarjeta,   valuesMain),
+      pool.query(qNetlife,   valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -223,6 +241,7 @@ const filtersBk = buildFilters(req.query, valuesBk);
       success: true,
       supervisores,
       asesores,
+      dataNetlife:      resNetlife.rows,
       estadosNetlife:   resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
       graficoEmbudo:    resEmbudo.rows,
       graficoBarrasDia: resDia.rows,

@@ -13,7 +13,7 @@ const authMiddleware = require('../middleware/auth');
  * Carga un archivo KML/KMZ
  * Requiere autenticación
  */
-router.post('/load', authMiddleware, coverageController.loadCoverage);
+router.post('/load', authMiddleware, ...coverageController.loadCoverage);
 
 /**
  * GET /api/coverage/check

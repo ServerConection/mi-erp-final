@@ -53,11 +53,9 @@ const ETAPAS_DESCARTE = `(
     'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE'
 )`;
 
+// ✅ ETAPAS GESTIONABLES - Incluye ambas variaciones (mayúsculas y mixed case) para máxima eficiencia
 const ETAPAS_GESTIONABLES = `(
-    'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','VENTA SUBIDA','CLIENTE 2 HORAS',
-    'CLIENTE 4 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE 12 HORAS',
-    'CLIENTE CON ACUERDO','GESTION DIARIA / PENDIENTE CIERRE','OPORTUNIDADES SUPERVISOR','DESCARTE',
-      'CLIENTE 2 HORAS',
+    'CLIENTE 2 HORAS',
     'CLIENTE 4 HORAS',
     'CLIENTE 6 HORAS',
     'CLIENTE 8 HORAS',
@@ -69,8 +67,8 @@ const ETAPAS_GESTIONABLES = `(
     'GESTION DIARIA / PENDIENTE CIERRE',
     'OPORTUNIDADES SUPERVISOR',
     'VENTA SUBIDA',
-	'Venta Subida',
-	'Descarte'
+    'Venta Subida',
+    'Descarte'
 )`;
 
 const ESTADO_ACTIVO = "'ACTIVO'";
@@ -690,6 +688,87 @@ async function getStatusMaterializedView(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT 6: DETALLE CRM DATA (Solo CRM, sin Jotform)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getDetalleCRMData(req, res) {
+  try {
+    const { fechaDesde, fechaHasta, asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM } = req.query;
+
+    const hoy = getFechaEcuador();
+    const desde = fechaDesde || hoy;
+    const hasta = fechaHasta || hoy;
+
+    let values = [desde, hasta];
+    let filters = "";
+
+    if (asesor) {
+      values.push(`%${asesor}%`);
+      filters += ` AND mv.asesor ILIKE $${values.length}`;
+    }
+
+    if (supervisor) {
+      values.push(`%${supervisor}%`);
+      filters += ` AND mv.supervisor ILIKE $${values.length}`;
+    }
+
+    if (estadoNetlife) {
+      values.push(`%${estadoNetlife}%`);
+      filters += ` AND mv.estado_venta ILIKE $${values.length}`;
+    }
+
+    if (estadoRegularizacion) {
+      values.push(`%${estadoRegularizacion}%`);
+      filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`;
+    }
+
+    if (etapaCRM) {
+      values.push(`%${etapaCRM}%`);
+      filters += ` AND mv.etapa_crm ILIKE $${values.length}`;
+    }
+
+    // ✅ QUERY SOLO CRM - Filtrado ÚNICAMENTE por fecha_creacion_crm
+    const query = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.etapa_crm AS "ETAPA",
+        mv.fecha_creacion_crm AS "FECHA_CREACION",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR",
+        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
+        mv.origen AS "ORIGEN",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+        mv.aplica_descuento AS "APLICA_DESCUENTO",
+        mv.id_jotform AS "ID_JOTFORM"
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.fecha_creacion_crm >= $1::date
+        AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+        ${filters}
+      ORDER BY mv.fecha_creacion_crm DESC NULLS LAST
+      LIMIT 6000
+    `;
+
+    const result = await pool.query(query, values);
+
+    console.log(`[DETALLE-CRM] Período: ${desde}~${hasta} | Registros: ${result.rows.length}`);
+
+    res.json({
+      success: true,
+      registros: result.rows,
+      total: result.rows.length,
+      periodo: { desde, hasta }
+    });
+
+  } catch (err) {
+    console.error('[DETALLE-CRM] Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -699,4 +778,5 @@ module.exports = {
   getReporte180Velsa,
   getConsultaDescargaVelsa,
   getStatusMaterializedView,
+  getDetalleCRMData,
 };

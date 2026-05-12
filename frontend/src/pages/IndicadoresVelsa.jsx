@@ -292,22 +292,25 @@ export default function ReporteVelsa() {
   const prefetchRef = useRef(null);
   const [alertas, setAlertas] = useState([]);
   
-  const [data, setData] = useState({ 
-    supervisores: [], 
-    asesores: [], 
-    dataCRM: [], 
-    dataNetlife: [], 
+  const [data, setData] = useState({
+    supervisores: [],
+    asesores: [],
+    dataCRM: [],
+    dataNetlife: [],
     estadosNetlife: [],
-    graficoEmbudo: [],   
+    graficoEmbudo: [],
     graficoBarrasDia: [],
     etapasCRM: [],
     porcentajeTerceraEdad: 0,
     porcentajeTarjeta: 0,
   });
-  
-  const [monitoreoData, setMonitoreoData] = useState({ 
-    supervisores: [], 
-    asesores: [] 
+
+  // ✅ Estado para datos CRM detallado (solo CRM, sin Jotform)
+  const [dataCRMDetalle, setDataCRMDetalle] = useState([]);
+
+  const [monitoreoData, setMonitoreoData] = useState({
+    supervisores: [],
+    asesores: []
   });
 
   const [reporte180Data, setReporte180Data] = useState({
@@ -478,6 +481,33 @@ export default function ReporteVelsa() {
     finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
+  // ✅ NUEVA FUNCIÓN: Cargar datos CRM detallado (solo CRM, sin Jotform)
+  const fetchDetalleCRMData = async (filtrosOverride) => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      const filtrosActivos = filtrosOverride || filtrosAplicados;
+      const p = new URLSearchParams(Object.fromEntries(
+        Object.entries(filtrosActivos)
+          .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+      ));
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/indicadores-velsa/detalle-crm-data?${p}`,
+        { signal: ctrl.signal }
+      );
+      const result = await res.json();
+      if (result.success) {
+        setDataCRMDetalle(result.registros || []);
+        console.log(`[DETALLE-CRM] Cargados ${result.registros?.length || 0} registros CRM`);
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.error("Error al cargar detalle CRM:", e);
+      }
+    }
+  };
 
   // ── Helper: actualiza el estado visual de filtros; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
   const updateFiltro = (campo, valor) => {
@@ -490,6 +520,7 @@ export default function ReporteVelsa() {
     setFiltros(nuevosFiltros);
     setFiltrosAplicados(nuevosFiltros);
     fetchDashboard(nuevosFiltros);
+    fetchDetalleCRMData(nuevosFiltros);  // ✅ También cargar datos CRM
   };
 
   // Click en tarjeta de JotForm: aplica el filtro inmediatamente (acción interactiva intencional)
@@ -759,9 +790,9 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
   const COLORES_EMBUDO = ['#f97316','#fb923c','#fdba74','#fbbf24','#34d399','#10b981'];
 
-  const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
-  const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 4} fill="#fb923c" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
-  const CustomFaltanteLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 4} fill="#f87171" textAnchor="middle" fontSize={9} fontWeight="900">-{value}</text>;
+  const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={11} fontWeight="900" dominantBaseline="middle">{value}</text>;
+  const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 8} fill="#fb923c" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
+  const CustomFaltanteLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 8} fill="#f87171" textAnchor="middle" fontSize={10} fontWeight="900">-{value}</text>;
   const CustomXAxisTickVertical = ({ x, y, payload }) => {
     const nombre = (payload.value || '').length > 14 ? payload.value.substring(0, 14) + '…' : payload.value;
     return <g transform={`translate(${x},${y})`}><text x={0} y={0} dy={4} textAnchor="end" fill="#78716c" fontSize={8} fontWeight={700} transform="rotate(-55)">{nombre}</text></g>;
@@ -803,7 +834,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={(data.graficoBarrasDia || []).map(d => ({ ...d, faltante: Math.max(0, 65 - Number(d.total)), activos: Number(d.activos || 0) }))}
-        margin={{ top: 24, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}
+        margin={{ top: 30, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
         <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#57534e', fontSize: 10 }} />
@@ -811,23 +842,42 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
         <Tooltip cursor={{ fill: '#1c1917' }} contentStyle={{ backgroundColor: '#0c0a09', border: '1px solid #44403c', borderRadius: '8px', fontSize: '10px' }}
           formatter={(value, name) => { if (name === 'total') return [value, 'REAL']; if (name === 'activos') return [value, 'ACTIVOS']; if (name === 'faltante') return [value, 'FALTANTE']; return [value, name]; }} />
         <ReferenceLine y={65} stroke="#f97316" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: 'META 65', fill: '#f97316', fontSize: 8, fontWeight: 900, position: 'insideTopRight' }} />
-        <Bar dataKey="total" stackId="a" fill="#f97316" radius={[0,0,0,0]} barSize={22}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
-        <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={22}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
-        <Bar dataKey="activos" fill="#fb923c" radius={[4,4,0,0]} barSize={12}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
+        <Bar dataKey="total" stackId="a" fill="#f97316" radius={[0,0,0,0]} barSize={24}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
+        <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={24}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
+        <Bar dataKey="activos" fill="#fb923c" radius={[4,4,0,0]} barSize={14}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
       </BarChart>
     </ResponsiveContainer>
   );
+
+  const CustomEmbudoLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 6} fill="#1c1917" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
 
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart>
-            <Funnel data={data.graficoEmbudo || []} dataKey="total" nameKey="etapa" isAnimationActive={false} label={CustomFunnelLabel}>
+          <BarChart
+            data={data.graficoEmbudo || []}
+            margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
+            barCategoryGap="15%"
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
+            <XAxis
+              dataKey="etapa"
+              axisLine={false}
+              tickLine={false}
+              tick={<CustomXAxisTickVertical />}
+              interval={0}
+            />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: '#0c0a09', border: 'none', borderRadius: '8px', fontSize: '10px' }}
+              formatter={(value) => [value, 'Total']}
+            />
+            <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={28}>
               {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
-            </Funnel>
-            <Tooltip contentStyle={{ backgroundColor: '#0c0a09', border: 'none', borderRadius: '8px', fontSize: '10px' }} />
-          </FunnelChart>
+              <LabelList dataKey="total" content={CustomEmbudoLabel} />
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
@@ -1044,7 +1094,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 />
               </div>
 
-              <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
+              <button onClick={() => {
+                setFiltrosAplicados(filtros);
+                fetchDashboard(filtros);
+                fetchDetalleCRMData(filtros);  // ✅ Cargar datos CRM detallado
+              }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
                 {loading ? "CARGANDO..." : "APLICAR FILTROS"}
               </button>
               <button onClick={generarInforme360} className="bg-stone-800 hover:bg-stone-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">
@@ -1139,7 +1193,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
           <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} /></div>
           <div className="grid grid-cols-1 gap-4">
-            <DataVisor title="DETALLE BASE CRM" data={data.dataCRM} onDownload={() => descargarExcel("CRM")} color="bg-stone-600" />
+            <DataVisor title="DETALLE BASE CRM" data={dataCRMDetalle} onDownload={() => descargarExcel("CRM")} color="bg-stone-600" />
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-orange-600" />
           </div>
         </div>

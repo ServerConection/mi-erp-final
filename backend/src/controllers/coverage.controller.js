@@ -49,30 +49,80 @@ async function parseKML(kmlContent) {
     const zones = [];
     const kml = result.kml;
 
-    if (kml && kml.Document) {
-      const document = kml.Document[0];
-      const placemarks = document.Placemark || [];
+    if (!kml) return zones;
 
-      placemarks.forEach((placemark) => {
-        const name = placemark.name ? placemark.name[0] : 'Sin nombre';
-        const polygons = placemark.Polygon || [];
+    // DEBUG: Log estructura del KML
+    console.log('[KML STRUCTURE]', JSON.stringify(Object.keys(kml), null, 2));
+    if (kml.Document) console.log('[KML.Document]', JSON.stringify(Object.keys(kml.Document[0]), null, 2));
+    if (kml.Folder) console.log('[KML.Folder]', JSON.stringify(Object.keys(kml.Folder[0]), null, 2));
 
-        polygons.forEach((polygon) => {
-          const outerBoundary = polygon.outerBoundaryIs?.[0];
-          if (outerBoundary) {
-            const linearRing = outerBoundary.LinearRing?.[0];
-            if (linearRing && linearRing.coordinates) {
-              const coords = linearRing.coordinates[0]
-                .trim()
-                .split(/\s+/)
-                .map(pair => pair.split(',').slice(0, 2).map(Number));
+    // Buscar placemarks en múltiples ubicaciones del árbol KML
+    let placemarks = [];
 
-              zones.push({ name, coordinates: coords });
+    if (kml.Document?.[0]?.Placemark) {
+      console.log('[FOUND] Placemarks en Document');
+      placemarks = kml.Document[0].Placemark;
+    } else if (kml.Placemark) {
+      console.log('[FOUND] Placemarks en raíz');
+      placemarks = kml.Placemark;
+    } else if (kml.Folder?.[0]?.Placemark) {
+      console.log('[FOUND] Placemarks en Folder');
+      placemarks = kml.Folder[0].Placemark;
+    }
+
+    console.log(`[PLACEMARKS] Total encontrados: ${placemarks.length}`);
+
+    // Procesar cada placemark
+    placemarks.forEach((placemark) => {
+      const name = placemark.name?.[0] || 'Sin nombre';
+
+      // Buscar Polygons
+      const polygons = placemark.Polygon || [];
+      polygons.forEach((polygon) => {
+        const outerBoundary = polygon.outerBoundaryIs?.[0];
+        if (outerBoundary) {
+          const linearRing = outerBoundary.LinearRing?.[0];
+          if (linearRing?.coordinates) {
+            const coords = linearRing.coordinates[0]
+              .trim()
+              .split(/\s+/)
+              .map(pair => pair.split(',').slice(0, 2).map(Number));
+
+            if (coords.length > 2) {
+              zones.push({ name, coordinates: coords, type: 'Polygon' });
             }
           }
-        });
+        }
       });
-    }
+
+      // Buscar Points (convertir a un círculo de 100m de radio)
+      const points = placemark.Point || [];
+      points.forEach((point) => {
+        if (point.coordinates?.[0]) {
+          const coords = point.coordinates[0]
+            .trim()
+            .split(',')
+            .map(Number);
+
+          if (coords.length >= 2) {
+            const [lon, lat] = coords;
+            // Crear un pequeño círculo alrededor del punto (100m aprox)
+            const buffer = 0.01; // ~1km en grados
+            zones.push({
+              name,
+              coordinates: [
+                [lon - buffer, lat - buffer],
+                [lon + buffer, lat - buffer],
+                [lon + buffer, lat + buffer],
+                [lon - buffer, lat + buffer],
+                [lon - buffer, lat - buffer]
+              ],
+              type: 'Point'
+            });
+          }
+        }
+      });
+    });
 
     return zones;
   } catch (error) {

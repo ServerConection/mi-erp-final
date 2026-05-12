@@ -10,21 +10,23 @@ const getPrimerDiaMesEcuador = () => {
 const MV = `public.mv_indicadores_velsa_completo mv`;
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
-const ETAPAS_GESTIONABLES = `(
-  'Venta Subida','OPORTUNIDADES SIUPERVISOR','GESTION DIARIA / PENDIENTE CIERRE',
-  'CLIENTE CON ACUERDO','CLIENTE 8 HORAS','DOCUMENTOS PENDIENTES','CONTACTO NUEVO',
-  'CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 12 HORAS','CLIENTE 4 HORAS',
-  'VOLVER A LLAMAR','GESTION DIARIA','PENDIENTE CIERRE','VENTA SUBIDA',
-  'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
-  'REMARKETING','SEGUIMIENTO NEGOCIACION','SEGUIMIENTO NEGOCIACION CON CONTACTO',
-  'SEGUIMIENTO SIN CONTACTO','SEGUIMIENTO NEGOCIACIÓN','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO',
-  'DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200','ATC','GESTION DIARIA PENDIENTE CIERRE',
-  'CLIENTE CON ACUERDO','PENDIENTE CIERRE'
-)`;
+// Solo etapas verdaderamente gestionables — SIN descartes
+const ETAPAS_GESTIONABLES_UPPER = [
+  'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','VOLVER A LLAMAR',
+  'GESTION DIARIA','GESTION DIARIA / PENDIENTE CIERRE','GESTION DIARIA PENDIENTE CIERRE',
+  'VENTA SUBIDA',
+  'CLIENTE 2 HORAS','CLIENTE 4 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE 12 HORAS',
+  'CLIENTE CON ACUERDO','PENDIENTE CIERRE',
+  'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SIUPERVISOR',
+  'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
+  'REMARKETING',
+  'SEGUIMIENTO NEGOCIACION','SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+  'SEGUIMIENTO NEGOCIACIÓN','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO',
+  'ATC',
+];
+const ETAPAS_GESTIONABLES = `(${ETAPAS_GESTIONABLES_UPPER.map(e => `'${e}'`).join(',')})`;
 
-const ETAPAS_DESCARTE = `(
-  'Descarte','FUERA DE COBERTURA','ZONA PELIGROSA','DESCARTE','DESCARTE PLAN DE 200'
-)`;
+const ETAPAS_DESCARTE = `('DESCARTE','FUERA DE COBERTURA','ZONA PELIGROSA','DESCARTE PLAN DE 200')`;
 
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
@@ -47,10 +49,10 @@ const queryKPI = (columna, filters) => `
     COUNT(*) FILTER (
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
           OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
-      AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+      AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}
     ) AS gestionables,
     COUNT(*) FILTER (
-      WHERE mv.etapa_crm = 'Venta Subida'
+      WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
       AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
     ) AS ventas_crm,
     COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
@@ -59,7 +61,7 @@ const queryKPI = (columna, filters) => `
       AND mv.estado_venta = ${ESTADO_ACTIVO}
     ) AS real_mes,
     COUNT(*) FILTER (
-      WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE}
+      WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE}
       AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
     ) AS descarte_count,
     COUNT(*) FILTER (
@@ -247,11 +249,11 @@ async function getMonitoreoDiarioVelsa(req, res) {
       SELECT
         COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS real_dia_leads,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}) AS real_dia_leads,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND mv.etapa_crm = 'Venta Subida') AS v_subida_crm_hoy,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) = 'VENTA SUBIDA') AS v_subida_crm_hoy,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}) AS gestionables
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY real_mes_leads DESC
@@ -302,12 +304,12 @@ async function getReporte180Velsa(req, res) {
         COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
         COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}),0)
+          COUNT(*) FILTER (WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
@@ -326,19 +328,11 @@ async function getReporte180Velsa(req, res) {
       FROM ${MV} WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.estado_venta ORDER BY total DESC
     `;
-    const qMapaCalor = `
-      SELECT mv.fecha_registro_jotform::date::text AS fecha, COALESCE(mv.ciudad,'SIN CIUDAD') AS ciudad, COUNT(*)::int AS total
-      FROM ${MV}
-      WHERE mv.fecha_registro_jotform IS NOT NULL AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
-        AND mv.ciudad IS NOT NULL AND TRIM(mv.ciudad) != '' ${filters}
-      GROUP BY 1,2 ORDER BY 1 ASC, 3 DESC
-    `;
 
-    const [resKPIs, resEmbCRM, resEmbJot, resMapa] = await Promise.all([
+    const [resKPIs, resEmbCRM, resEmbJot] = await Promise.all([
       pool.query(qKPIs,      values),
       pool.query(qEmbudoCRM, values),
       pool.query(qEmbudoJot, values),
-      pool.query(qMapaCalor, values),
     ]);
 
     const k = resKPIs.rows[0] || {};
@@ -353,7 +347,7 @@ async function getReporte180Velsa(req, res) {
       },
       embudoCRM:     resEmbCRM.rows,
       embudoJotform: resEmbJot.rows,
-      mapaCalor:     resMapa.rows,
+      mapaCalor:     [],
     });
   } catch (error) {
     console.error('[REPORTE180-VELSA] Error:', error);

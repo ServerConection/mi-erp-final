@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const coverageController = require('../controllers/coverage.controller');
-const authMiddleware = require('../middleware/auth');
+const { verificarToken } = require('../middleware/auth');
 
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
@@ -21,7 +21,7 @@ const upload = multer({ storage });
  * Carga un archivo KML/KMZ
  * Requiere autenticación
  */
-router.post('/load', authMiddleware, upload.single('file'), coverageController.loadCoverage);
+router.post('/load', verificarToken, upload.single('file'), coverageController.loadCoverage);
 
 /**
  * GET /api/coverage/check
@@ -29,7 +29,7 @@ router.post('/load', authMiddleware, upload.single('file'), coverageController.l
  * Query params: lat, lon
  * Requiere autenticación
  */
-router.get('/check', authMiddleware, coverageController.checkCoverage);
+router.get('/check', verificarToken, coverageController.checkCoverage);
 
 /**
  * POST /api/coverage/check-batch
@@ -37,14 +37,14 @@ router.get('/check', authMiddleware, coverageController.checkCoverage);
  * Body: { points: [{latitude, longitude}, ...] }
  * Requiere autenticación
  */
-router.post('/check-batch', authMiddleware, coverageController.checkBatch);
+router.post('/check-batch', verificarToken, coverageController.checkBatch);
 
 /**
  * GET /api/coverage/zones
  * Lista zonas cargadas
  * Requiere autenticación
  */
-router.get('/zones', authMiddleware, coverageController.getZones);
+router.get('/zones', verificarToken, coverageController.getZones);
 
 /**
  * GET /api/coverage/status

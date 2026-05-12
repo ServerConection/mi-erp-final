@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zonas de Cobertura de Ejemplo</name>
+    <Placemark>
+      <name>Zona Centro Quito</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -78.5,−2.9,0
+              -78.4,−2.9,0
+              -78.4,−2.8,0
+              -78.5,−2.8,0
+              -78.5,−2.9,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Zona Norte Quito</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -78.5,−0.3,0
+              -78.4,−0.3,0
+              -78.4,−0.2,0
+              -78.5,−0.2,0
+              -78.5,−0.3,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

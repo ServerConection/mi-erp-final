@@ -777,7 +777,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   };
 
   const dataGraficoAsesores = (monitoreoData.asesores || []).map(a => {
-    const g   = Number(a.real_dia_leads   || 0);
+    const g   = Number(a.gestionables   || 0);
     const j   = Number(a.v_subida_jot_hoy || 0);
     const crm = Number(a.v_subida_crm_hoy || 0);
     const act = Number(a.activos_jot_hoy  || 0);
@@ -786,7 +786,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       efect_jot: pct(j, g), efect_crm: pct(crm, g), efect_pauta: pct(act, g) };
   });
   const dataGraficoSupervisores = (monitoreoData.supervisores || []).map(s => {
-    const g   = Number(s.real_dia_leads   || 0);
+    const g   = Number(s.gestionables   || 0);
     const j   = Number(s.v_subida_jot_hoy || 0);
     const crm = Number(s.v_subida_crm_hoy || 0);
     const act = Number(s.activos_jot_hoy  || 0);

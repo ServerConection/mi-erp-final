@@ -784,7 +784,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       regularizar: s.reduce((acc, c) => acc + Number(c.regularizacion || 0), 0),
       ingresosJotform: totalJotform,
       descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
-      leadsGestionables: crm.length,
+      leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
       tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
       tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),

@@ -60,7 +60,8 @@ const ETAPAS_GESTIONABLES = `(
     'GESTION DIARIA','GESTION DIARIA / PENDIENTE CIERRE','GESTION DIARIA PENDIENTE CIERRE',
     'VENTA SUBIDA','CLIENTE 2 HORAS','CLIENTE 4 HORAS','CLIENTE 6 HORAS',
     'CLIENTE 8 HORAS','CLIENTE 12 HORAS','CLIENTE CON ACUERDO',
-    'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
+    'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SIUPERVISOR',
+    'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
     'PENDIENTE CIERRE','DESCARTE','REMARKETING','SEGUIMIENTO NEGOCIACION',
     'SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
     'DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
@@ -208,13 +209,24 @@ async function getIndicadoresDashboardVelsa(req, res) {
         AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
     `;
 
-    const [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales] = await Promise.all([
+    // ── Gestionables globales SIN filtro supervisor (incluye leads sin sup asignado) ──
+    const queryGestionablesTotal = `
+      SELECT
+        COUNT(DISTINCT CASE WHEN UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES} THEN mv.id_crm END) AS gestionables_total,
+        COUNT(DISTINCT mv.id_crm) AS leads_total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+          OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+    `;
+
+    const [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales, resGestionables] = await Promise.all([
       pool.query(querySupervisores, values),
       pool.query(queryAsesores, values),
       pool.query(queryEstados, values),
       pool.query(queryEmbudo, values),
       pool.query(queryPorDia, values),
       pool.query(queryMetasGlobales, values),
+      pool.query(queryGestionablesTotal, values),
     ]);
 
     // ── LOTE 2: Tablas detalle (espera al lote 1 para no saturar pool) ──────
@@ -279,6 +291,9 @@ async function getIndicadoresDashboardVelsa(req, res) {
       activos: Number(r.activos),
     }));
 
+    const gestionablesGlobal = Number(resGestionables.rows[0]?.gestionables_total || 0);
+    const leadsTotal         = Number(resGestionables.rows[0]?.leads_total || 0);
+
     const resultado = {
       success: true,
       supervisores: resSup.rows,
@@ -291,11 +306,12 @@ async function getIndicadoresDashboardVelsa(req, res) {
       graficoBarrasDia,
       porcentajeTarjeta: Number(porcentajeTarjeta).toFixed(1),
       porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
+      // ← KPIs globales sin filtro supervisor (incluye leads sin supervisor asignado)
+      gestionablesTotal: gestionablesGlobal,
+      leadsTotal,
     };
 
-    // ── Guardar en caché (DESACTIVADO POR AHORA) ─────────────────────────────
-    // setDashboardCache(cacheKey, resultado);
-    console.log(`[DASHBOARD-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | Etapas: ${resEtapas.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+    console.log(`[DASHBOARD-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | Gestionables: ${gestionablesGlobal} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
     res.json(resultado);
 
   } catch (err) {

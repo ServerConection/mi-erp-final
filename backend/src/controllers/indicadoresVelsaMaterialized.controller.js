@@ -53,22 +53,20 @@ const ETAPAS_DESCARTE = `(
     'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE'
 )`;
 
-// ✅ ETAPAS GESTIONABLES - Incluye ambas variaciones (mayúsculas y mixed case) para máxima eficiencia
+// ✅ ETAPAS GESTIONABLES - Lista completa de Novonet con variaciones para capturar todos los datos
 const ETAPAS_GESTIONABLES = `(
-    'CLIENTE 2 HORAS',
-    'CLIENTE 4 HORAS',
-    'CLIENTE 6 HORAS',
-    'CLIENTE 8 HORAS',
-    'CLIENTE 12 HORAS',
-    'CLIENTE CON ACUERDO',
-    'CONTACTO NUEVO',
-    'DESCARTE',
-    'DOCUMENTOS PENDIENTES',
-    'GESTION DIARIA / PENDIENTE CIERRE',
-    'OPORTUNIDADES SUPERVISOR',
-    'VENTA SUBIDA',
-    'Venta Subida',
-    'Descarte'
+    'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
+    'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
+    'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
+    'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
+    'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
+    'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
+    'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
+    'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200',
+    'CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS',
+    'CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE','POSTVENTA NOVONET','DESCARTE',
+    'Contacto Nuevo','GESTION DIARIA Pendiente Cierre','GESTION DIARIA PENDIENTE CIERRE',
+    'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR','REMARKETING'
 )`;
 
 const ESTADO_ACTIVO = "'ACTIVO'";
@@ -112,8 +110,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
           CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.supervisor IS NOT NULL
-          AND mv.fecha_creacion_crm >= $1::date
-          AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       )
       SELECT
         base.supervisor AS nombre_grupo,
@@ -145,8 +143,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
           CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
         FROM public.mv_indicadores_velsa_completo mv
         WHERE mv.asesor IS NOT NULL
-          AND mv.fecha_creacion_crm >= $1::date
-          AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') ${filters}
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
       )
       SELECT
         base.asesor AS nombre_grupo,
@@ -773,6 +771,164 @@ async function getDetalleCRMData(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT 7: ACTIVAS (Ventas con estado ACTIVO en período)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getActivasVelsa(req, res) {
+  try {
+    const { fechaDesde, fechaHasta, asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM } = req.query;
+
+    const hoy = getFechaEcuador();
+    const desde = fechaDesde || hoy;
+    const hasta = fechaHasta || hoy;
+
+    let values = [desde, hasta];
+    let filters = "";
+
+    if (asesor) { values.push(`%${asesor}%`); filters += ` AND mv.asesor ILIKE $${values.length}`; }
+    if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
+    if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
+    if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
+
+    // ✅ ACTIVAS: Registros Jotform con estado ACTIVO en el período
+    const querySupervisores = `
+      SELECT
+        mv.supervisor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_jotform) AS activas
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.supervisor IS NOT NULL
+        AND mv.fecha_registro_jotform >= $1::date
+        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+      GROUP BY mv.supervisor
+      ORDER BY activas DESC
+    `;
+
+    const queryAsesores = `
+      SELECT
+        mv.asesor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_jotform) AS activas
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.asesor IS NOT NULL
+        AND mv.fecha_registro_jotform >= $1::date
+        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+      GROUP BY mv.asesor
+      ORDER BY activas DESC
+    `;
+
+    const queryGlobal = `
+      SELECT
+        COUNT(DISTINCT mv.id_jotform) AS activas_total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.fecha_registro_jotform >= $1::date
+        AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+    `;
+
+    const [resSup, resAses, resGlobal] = await Promise.all([
+      pool.query(querySupervisores, values),
+      pool.query(queryAsesores, values),
+      pool.query(queryGlobal, values),
+    ]);
+
+    console.log(`[ACTIVAS-VELSA] Período: ${desde}~${hasta} | Total: ${resGlobal.rows[0]?.activas_total || 0}`);
+
+    res.json({
+      success: true,
+      supervisores: resSup.rows,
+      asesores: resAses.rows,
+      global: resGlobal.rows[0],
+      periodo: { desde, hasta }
+    });
+
+  } catch (err) {
+    console.error('[ACTIVAS-VELSA] Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT 8: BACKLOG (Activaciones en período pero registros anteriores)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getBacklogVelsa(req, res) {
+  try {
+    const { fechaDesde, fechaHasta, asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM } = req.query;
+
+    const hoy = getFechaEcuador();
+    const desde = fechaDesde || hoy;
+    const hasta = fechaHasta || hoy;
+
+    let values = [desde, hasta];
+    let filters = "";
+
+    if (asesor) { values.push(`%${asesor}%`); filters += ` AND mv.asesor ILIKE $${values.length}`; }
+    if (supervisor) { values.push(`%${supervisor}%`); filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    if (estadoNetlife) { values.push(`%${estadoNetlife}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
+    if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); filters += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
+    if (etapaCRM) { values.push(`%${etapaCRM}%`); filters += ` AND mv.etapa_crm ILIKE $${values.length}`; }
+
+    // ✅ BACKLOG: Registros activados en período PERO registrados ANTES del período
+    const querySupervisores = `
+      SELECT
+        mv.supervisor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_jotform) AS backlog
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.supervisor IS NOT NULL
+        AND mv.id_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform < $1::date
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+      GROUP BY mv.supervisor
+      ORDER BY backlog DESC
+    `;
+
+    const queryAsesores = `
+      SELECT
+        mv.asesor AS nombre_grupo,
+        COUNT(DISTINCT mv.id_jotform) AS backlog
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.asesor IS NOT NULL
+        AND mv.id_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform < $1::date
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+      GROUP BY mv.asesor
+      ORDER BY backlog DESC
+    `;
+
+    const queryGlobal = `
+      SELECT
+        COUNT(DISTINCT mv.id_jotform) AS backlog_total
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.id_jotform IS NOT NULL
+        AND mv.fecha_registro_jotform < $1::date
+        AND mv.estado_venta = 'ACTIVO' ${filters}
+    `;
+
+    const [resSup, resAses, resGlobal] = await Promise.all([
+      pool.query(querySupervisores, [desde]),
+      pool.query(queryAsesores, [desde]),
+      pool.query(queryGlobal, [desde]),
+    ]);
+
+    console.log(`[BACKLOG-VELSA] Período: ${desde} | Total: ${resGlobal.rows[0]?.backlog_total || 0}`);
+
+    res.json({
+      success: true,
+      supervisores: resSup.rows,
+      asesores: resAses.rows,
+      global: resGlobal.rows[0],
+      periodo: { desde }
+    });
+
+  } catch (err) {
+    console.error('[BACKLOG-VELSA] Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -783,4 +939,6 @@ module.exports = {
   getConsultaDescargaVelsa,
   getStatusMaterializedView,
   getDetalleCRMData,
+  getActivasVelsa,
+  getBacklogVelsa,
 };

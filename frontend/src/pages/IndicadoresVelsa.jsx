@@ -837,7 +837,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
         margin={{ top: 30, right: 10, left: 0, bottom: 50 }} barCategoryGap="20%" barGap={2}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
-        <XAxis dataKey="fecha" axisLine={false} tickLine={false} tickFormatter={formatFechaCorta} interval="preserveStartEnd" tick={{ fill: '#57534e', fontSize: 10 }} />
+        <XAxis dataKey="dia" axisLine={false} tickLine={false} tickFormatter={(val) => `${val}`} interval="preserveStartEnd" tick={{ fill: '#57534e', fontSize: 10 }} />
         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} domain={[0, dataMax => Math.max(dataMax, 70)]} />
         <Tooltip cursor={{ fill: '#1c1917' }} contentStyle={{ backgroundColor: '#0c0a09', border: '1px solid #44403c', borderRadius: '8px', fontSize: '10px' }}
           formatter={(value, name) => { if (name === 'total') return [value, 'REAL']; if (name === 'activos') return [value, 'ACTIVOS']; if (name === 'faltante') return [value, 'FALTANTE']; return [value, name]; }} />

@@ -69,13 +69,13 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const desde = fechaDesde || hoy;
     const hasta = fechaHasta || hoy;
 
-    // ── CACHÉ: Retorno inmediato si ya fue consultado ──
-    const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM });
-    const cached = getDashboardCache(cacheKey);
-    if (cached) {
-        console.log(`[DASHBOARD-VELSA] Cache hit → ${desde}~${hasta}`);
-        return res.json(cached);
-    }
+    // ── CACHÉ DESACTIVADO POR AHORA (para datos frescos) ──
+    // const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM });
+    // const cached = getDashboardCache(cacheKey);
+    // if (cached) {
+    //     console.log(`[DASHBOARD-VELSA] Cache hit → ${desde}~${hasta}`);
+    //     return res.json(cached);
+    // }
 
     let values = [desde, hasta];
     let filters = "";
@@ -260,9 +260,9 @@ async function getIndicadoresDashboardVelsa(req, res) {
       porcentajeTerceraEdad: Number(porcentajeTerceraEdad).toFixed(1),
     };
 
-    // ── Guardar en caché ─────────────────────────────────────────────────────
-    setDashboardCache(cacheKey, resultado);
-    console.log(`[DASHBOARD-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
+    // ── Guardar en caché (DESACTIVADO POR AHORA) ─────────────────────────────
+    // setDashboardCache(cacheKey, resultado);
+    console.log(`[DASHBOARD-VELSA] Supervisores: ${resSup.rows.length} | Asesores: ${resAses.rows.length} | CRM: ${resCRM.rows.length} | Etapas: ${resEtapas.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}%`);
     res.json(resultado);
 
   } catch (err) {

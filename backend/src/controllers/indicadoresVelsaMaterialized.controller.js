@@ -55,6 +55,15 @@ const ETAPAS_DESCARTE = `(
     'CONTRATO OTRO PROVEEDOR'
 )`;
 
+const ETAPAS_GESTIONABLES = `(
+    'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
+    'DOCUMENTOS RECIBIDOS','APROBACIÓN EN PROCESO','DOCUMENTOS INCOMPLETOS',
+    'NO CONTESTA','ESPERA RESPUESTA','ENVIADO A NETLIFE','ENVIADO A GERENTE',
+    'APROBADO','RECHAZADO','CONTRATO ENVIADO','CONTRATO RECIBIDO',
+    'INSTALACION AGENDADA','INSTALACION EN PROCESO','INSTALACION COMPLETADA',
+    'POSTVENTA NETLIFE','DESCARTE'
+)`;
+
 const ESTADO_ACTIVO = "'ACTIVO'";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,50 +97,68 @@ async function getIndicadoresDashboardVelsa(req, res) {
 
     // ── LOTE 1: KPIs y agregaciones (6 queries) ──────────────────────────────
     const querySupervisores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.supervisor,
+          mv.estado_venta, mv.etapa_crm, mv.estado_regularizacion,
+          mv.fecha_registro_jotform,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.supervisor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+      )
       SELECT
-        mv.supervisor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
-        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
-        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
-        COUNT(DISTINCT mv.id_crm) AS leads_totales,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
-        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion,
-        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS real_mes,
-        COUNT(DISTINCT mv.id_crm) AS gestionables,
-        COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS efectividad_activas_vs_pauta
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
-      GROUP BY mv.supervisor
+        base.supervisor AS nombre_grupo,
+        COUNT(DISTINCT base.id_crm) AS ventas_crm,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) AS ingresos_reales,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(DISTINCT base.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT base.id_crm) AS leads_totales,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS eficiencia,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
+        COUNT(DISTINCT base.id_crm) AS gestionables,
+        COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
+      FROM base
+      GROUP BY base.supervisor
       ORDER BY ingresos_reales DESC
     `;
 
     const queryAsesores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.asesor,
+          mv.estado_venta, mv.etapa_crm, mv.estado_regularizacion,
+          mv.fecha_registro_jotform,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.asesor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
+      )
       SELECT
-        mv.asesor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
-        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
-        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
-        COUNT(DISTINCT mv.id_crm) AS leads_totales,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
-        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS tasa_instalacion,
-        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS real_mes,
-        COUNT(DISTINCT mv.id_crm) AS gestionables,
-        COUNT(DISTINCT CASE WHEN mv.estado_regularizacion = 'POR REGULARIZAR' THEN mv.id_jotform END) AS por_regularizar,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS efectividad_activas_vs_pauta
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day')) ${filters}
-      GROUP BY mv.asesor
+        base.asesor AS nombre_grupo,
+        COUNT(DISTINCT base.id_crm) AS ventas_crm,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) AS ingresos_reales,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(DISTINCT base.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT base.id_crm) AS leads_totales,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS eficiencia,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
+        COUNT(DISTINCT base.id_crm) AS gestionables,
+        COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
+      FROM base
+      GROUP BY base.asesor
       ORDER BY ingresos_reales DESC
     `;
 
@@ -285,46 +312,64 @@ async function getMonitoreoDiarioVelsa(req, res) {
     const values = [desde, hasta];
 
     const querySupervisores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.supervisor,
+          mv.estado_venta, mv.etapa_crm, mv.forma_pago,
+          mv.fecha_registro_jotform,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.supervisor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      )
       SELECT
-        mv.supervisor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_jotform) AS real_dia_leads,
-        COUNT(DISTINCT mv.id_crm) AS crm_dia,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS v_subida_jot_hoy,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS real_descarte_count,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS real_descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_jotform), 0), 1) AS real_tarjeta,
-        COUNT(DISTINCT mv.id_crm) AS crm_acumulado,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos_jot_hoy,
-        COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy,
-        COUNT(DISTINCT mv.id_crm) AS real_mes_leads,
-        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
-        COUNT(DISTINCT mv.id_crm) AS gestionables
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY mv.supervisor
+        base.supervisor AS nombre_grupo,
+        COUNT(DISTINCT base.id_jotform) AS real_dia_leads,
+        COUNT(DISTINCT base.id_crm) AS crm_dia,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS v_subida_jot_hoy,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS real_descarte_count,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS real_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.forma_pago ILIKE '%TARJETA DE CREDITO%') / NULLIF(COUNT(DISTINCT base.id_jotform), 0), 1) AS real_tarjeta,
+        COUNT(DISTINCT base.id_crm) AS crm_acumulado,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS activos_jot_hoy,
+        COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
+        COUNT(DISTINCT base.id_crm) AS real_mes_leads,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
+        COUNT(DISTINCT base.id_crm) AS gestionables
+      FROM base
+      GROUP BY base.supervisor
       ORDER BY real_dia_leads DESC
     `;
 
     const queryAsesores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.asesor,
+          mv.estado_venta, mv.etapa_crm, mv.forma_pago,
+          mv.fecha_registro_jotform,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.asesor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      )
       SELECT
-        mv.asesor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_jotform) AS real_dia_leads,
-        COUNT(DISTINCT mv.id_crm) AS crm_dia,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS v_subida_jot_hoy,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS real_descarte_count,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS real_descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) / NULLIF(COUNT(DISTINCT mv.id_jotform), 0), 1) AS real_tarjeta,
-        COUNT(DISTINCT mv.id_crm) AS crm_acumulado,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS activos_jot_hoy,
-        COUNT(DISTINCT CASE WHEN mv.id_crm IS NOT NULL THEN 1 END) AS v_subida_crm_hoy,
-        COUNT(DISTINCT mv.id_crm) AS real_mes_leads,
-        COUNT(DISTINCT CASE WHEN mv.id_jotform IS NOT NULL AND mv.fecha_registro_jotform < $1::date THEN mv.id_jotform END) AS backlog,
-        COUNT(DISTINCT mv.id_crm) AS gestionables
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY mv.asesor
+        base.asesor AS nombre_grupo,
+        COUNT(DISTINCT base.id_jotform) AS real_dia_leads,
+        COUNT(DISTINCT base.id_crm) AS crm_dia,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS v_subida_jot_hoy,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS real_descarte_count,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS real_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.forma_pago ILIKE '%TARJETA DE CREDITO%') / NULLIF(COUNT(DISTINCT base.id_jotform), 0), 1) AS real_tarjeta,
+        COUNT(DISTINCT base.id_crm) AS crm_acumulado,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS activos_jot_hoy,
+        COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
+        COUNT(DISTINCT base.id_crm) AS real_mes_leads,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
+        COUNT(DISTINCT base.id_crm) AS gestionables
+      FROM base
+      GROUP BY base.asesor
       ORDER BY real_dia_leads DESC
     `;
 
@@ -360,42 +405,58 @@ async function getReporte180Velsa(req, res) {
 
     // ── LOTE 1: KPIs y agregaciones ──────────────────────────────
     const querySupervisores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.supervisor,
+          mv.estado_venta, mv.etapa_crm, mv.forma_pago, mv.aplica_descuento,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.supervisor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      )
       SELECT
-        mv.supervisor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
-        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
-        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
-        COUNT(DISTINCT mv.id_crm) AS leads_totales,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
-        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.supervisor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY mv.supervisor
+        base.supervisor AS nombre_grupo,
+        COUNT(DISTINCT base.id_crm) AS ventas_crm,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) AS ingresos_reales,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(DISTINCT base.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT base.id_crm) AS leads_totales,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS eficiencia,
+        COUNT(*) FILTER (WHERE base.forma_pago ILIKE '%TARJETA DE CREDITO%') AS tarjeta,
+        COUNT(*) FILTER (WHERE base.aplica_descuento = 'TERCERA EDAD') AS tercera_edad
+      FROM base
+      GROUP BY base.supervisor
       ORDER BY ventas_crm DESC
     `;
 
     const queryAsesores = `
+      WITH base AS MATERIALIZED (
+        SELECT
+          mv.id_crm, mv.id_jotform, mv.asesor,
+          mv.estado_venta, mv.etapa_crm, mv.forma_pago, mv.aplica_descuento,
+          CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN 1 ELSE 0 END AS es_descarte
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.asesor IS NOT NULL
+          AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day')
+               OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
+      )
       SELECT
-        mv.asesor AS nombre_grupo,
-        COUNT(DISTINCT mv.id_crm) AS ventas_crm,
-        COUNT(DISTINCT mv.id_jotform) AS ingresos_reales,
-        COUNT(DISTINCT CASE WHEN mv.estado_venta = ${ESTADO_ACTIVO} THEN mv.id_jotform END) AS ventas_activas,
-        COUNT(DISTINCT mv.id_crm) AS leads_gestionables,
-        COUNT(DISTINCT mv.id_crm) AS leads_totales,
-        COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) AS descarte,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN mv.etapa_crm IN ${ETAPAS_DESCARTE} THEN mv.id_crm END) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS pct_descarte,
-        ROUND(100.0 * COUNT(DISTINCT mv.id_jotform) / NULLIF(COUNT(DISTINCT mv.id_crm), 0), 1) AS eficiencia,
-        COUNT(DISTINCT CASE WHEN mv.forma_pago ILIKE '%TARJETA DE CREDITO%' THEN mv.id_jotform END) AS tarjeta,
-        COUNT(DISTINCT CASE WHEN mv.aplica_descuento = 'TERCERA EDAD' THEN mv.id_jotform END) AS tercera_edad
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.asesor IS NOT NULL
-        AND (mv.fecha_creacion_crm >= $1::date AND mv.fecha_creacion_crm < ($2::date + INTERVAL '1 day') OR mv.fecha_registro_jotform >= $1::date AND mv.fecha_registro_jotform < ($2::date + INTERVAL '1 day'))
-      GROUP BY mv.asesor
+        base.asesor AS nombre_grupo,
+        COUNT(DISTINCT base.id_crm) AS ventas_crm,
+        COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) AS ingresos_reales,
+        COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(DISTINCT base.id_crm) AS leads_gestionables,
+        COUNT(DISTINCT base.id_crm) AS leads_totales,
+        COUNT(*) FILTER (WHERE base.es_descarte = 1) AS descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.es_descarte = 1) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS pct_descarte,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS eficiencia,
+        COUNT(*) FILTER (WHERE base.forma_pago ILIKE '%TARJETA DE CREDITO%') AS tarjeta,
+        COUNT(*) FILTER (WHERE base.aplica_descuento = 'TERCERA EDAD') AS tercera_edad
+      FROM base
+      GROUP BY base.asesor
       ORDER BY ventas_crm DESC
     `;
 

@@ -427,8 +427,8 @@ export default function ReporteVelsa() {
           dataNetlife: result.dataNetlife || [],
           estadosNetlife: result.estadosNetlife || [],
           etapasCRM: result.etapasCRM || [],
-          graficoEmbudo: [],
-          graficoBarrasDia: [],
+          graficoEmbudo: result.graficoEmbudo || [],
+          graficoBarrasDia: result.graficoBarrasDia || [],
           porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0)
         });

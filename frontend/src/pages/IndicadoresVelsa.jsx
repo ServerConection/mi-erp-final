@@ -289,6 +289,7 @@ export default function ReporteVelsa() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
   const abortRef = useRef(null);
+  const abortCRMRef = useRef(null);   // ← ref independiente para fetchDetalleCRMData
   const prefetchRef = useRef(null);
   const [alertas, setAlertas] = useState([]);
   
@@ -448,7 +449,7 @@ export default function ReporteVelsa() {
         setApiError('Error de conexión. Verifique el servidor.');
       }
     }
-    finally { if (!ctrl.signal.aborted) setLoading(false); }
+    finally { setLoading(false); }
   };
 
   const fetchMonitoreo = async () => {
@@ -460,7 +461,7 @@ export default function ReporteVelsa() {
       const result = await res.json();
       if (result.success) setMonitoreoData(result);
     } catch (e) { if (e.name !== 'AbortError') console.error("Error Monitoreo:", e); }
-    finally { if (!ctrl.signal.aborted) setLoading(false); }
+    finally { setLoading(false); }
   };
 
   const fetchReporte180 = async (filtrosOverride) => {
@@ -478,14 +479,15 @@ export default function ReporteVelsa() {
       const result = await res.json();
       if (result.success) setReporte180Data(result);
     } catch (e) { if (e.name !== 'AbortError') console.error("Error Reporte180:", e); }
-    finally { if (!ctrl.signal.aborted) setLoading(false); }
+    finally { setLoading(false); }
   };
 
   // ✅ NUEVA FUNCIÓN: Cargar datos CRM detallado (solo CRM, sin Jotform)
   const fetchDetalleCRMData = async (filtrosOverride) => {
-    if (abortRef.current) abortRef.current.abort();
+    // ← usa su propio ref para NO cancelar fetchDashboard cuando se llaman juntos
+    if (abortCRMRef.current) abortCRMRef.current.abort();
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    abortCRMRef.current = ctrl;
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
       const p = new URLSearchParams(Object.fromEntries(

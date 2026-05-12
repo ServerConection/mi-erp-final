@@ -976,7 +976,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <div>
           <h1 className="text-2xl font-black text-stone-800 tracking-tight flex items-center gap-2 uppercase">
-            <span className="text-white px-2.5 py-1 rounded-lg italic text-lg font-black shadow-lg" style={{background:'linear-gradient(135deg,#ea580c,#c2410c)'}}>VLS</span>
+            <span className="text-white px-2.5 py-1 rounded-lg italic text-lg font-black shadow-lg" style={{background:'linear-gradient(135deg,#dc2626,#991b1b)'}}>🔴 VLS</span>
             SISTEMA DE INDICADORES
           </h1>
           <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Velsa · Netlife · Análisis en tiempo real</p>

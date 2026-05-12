@@ -126,7 +126,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
         COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
-        COUNT(DISTINCT base.id_crm) FILTER (WHERE base.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables,
+        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
         COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM base
@@ -159,7 +159,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS tasa_instalacion,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
         COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) AS real_mes,
-        COUNT(DISTINCT base.id_crm) FILTER (WHERE base.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables,
+        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables,
         COUNT(*) FILTER (WHERE base.estado_regularizacion = 'POR REGULARIZAR') AS por_regularizar,
         ROUND(100.0 * COUNT(*) FILTER (WHERE base.estado_venta = ${ESTADO_ACTIVO}) / NULLIF(COUNT(DISTINCT base.id_crm), 0), 1) AS efectividad_activas_vs_pauta
       FROM base
@@ -345,7 +345,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
         COUNT(DISTINCT base.id_crm) AS real_mes_leads,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
-        COUNT(DISTINCT base.id_crm) FILTER (WHERE base.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables
+        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
       FROM base
       GROUP BY base.supervisor
       ORDER BY real_dia_leads DESC
@@ -376,7 +376,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(DISTINCT base.id_crm) AS v_subida_crm_hoy,
         COUNT(DISTINCT base.id_crm) AS real_mes_leads,
         COUNT(*) FILTER (WHERE base.id_jotform IS NOT NULL AND base.fecha_registro_jotform < $1::date) AS backlog,
-        COUNT(DISTINCT base.id_crm) FILTER (WHERE base.etapa_crm IN ${ETAPAS_GESTIONABLES}) AS gestionables
+        COUNT(DISTINCT CASE WHEN base.etapa_crm IN ${ETAPAS_GESTIONABLES} THEN base.id_crm END) AS gestionables
       FROM base
       GROUP BY base.asesor
       ORDER BY real_dia_leads DESC

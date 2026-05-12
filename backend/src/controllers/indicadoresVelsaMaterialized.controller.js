@@ -159,7 +159,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
       FROM ${MV}
       WHERE mv.fecha_registro_jotform IS NOT NULL
         AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY 1 ORDER BY 1 ASC
+      GROUP BY mv.fecha_registro_jotform::date ORDER BY mv.fecha_registro_jotform::date ASC
     `;
     const qEtapasCRM = `
       SELECT DISTINCT mv.etapa_crm AS etapa FROM ${MV}

@@ -7,7 +7,7 @@ const getUserRol = () => {
     const token = localStorage.getItem('token');
     if (!token) return null;
     const decoded = jwtDecode(token);
-    return decoded.rol || null;
+    return decoded.perfil || decoded.rol || null;
   } catch (error) {
     console.error('Error decodificando token:', error);
     return null;

@@ -30,6 +30,8 @@ const ResumenVelsa         = lazy(() => import("./pages/ResumenVelsa"));
 const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
 const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
+const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
+const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -83,6 +85,8 @@ export default function App() {
             <Route path="guia-planes-marzo"         element={<Guiaplanesmarzo />} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="automarcador"             element={<Automarcador />} />
+            <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
+            <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
           </Route>
 
               <Route path="tv" element={<TVMode />} />

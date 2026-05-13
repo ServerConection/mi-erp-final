@@ -165,6 +165,22 @@ export default function HomeModules() {
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'],
     },
+    {
+      title: "Broadcast NOVONET",
+      path: "/broadcast-novonet",
+      icon: "🔵",
+      color: "text-sky-400",
+      desc: "Proyecta mensajes, alertas y logros en las pantallas del equipo NOVONET. Soporta audio.",
+      rolesPermitidos: ['ANALISTA', 'COORDINADOR', 'ADMINISTRADOR'],
+    },
+    {
+      title: "Broadcast VELSA",
+      path: "/broadcast-velsa",
+      icon: "🟣",
+      color: "text-purple-400",
+      desc: "Proyecta mensajes, alertas y logros en las pantallas del equipo VELSA. Soporta audio.",
+      rolesPermitidos: ['ANALISTA', 'COORDINADOR', 'ADMINISTRADOR'],
+    },
   ];
 
   return (

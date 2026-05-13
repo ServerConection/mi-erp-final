@@ -157,6 +157,14 @@ export default function HomeModules() {
       color: "text-teal-400",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps.",
     },
+    {
+      title: "Automarcador",
+      path: "/automarcador",
+      icon: "📞",
+      color: "text-red-400",
+      desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
+      rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'],
+    },
   ];
 
   return (

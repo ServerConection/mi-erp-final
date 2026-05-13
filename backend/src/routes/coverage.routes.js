@@ -52,4 +52,13 @@ router.get('/zones', verificarToken, coverageController.getZones);
  */
 router.get('/status', coverageController.getCoverageStatus);
 
+/**
+ * POST /api/coverage/resolve-link
+ * Parsea un enlace de WhatsApp / Google Maps / Apple Maps y extrae coordenadas.
+ * Body: { "link": "https://maps.google.com/?q=LAT,LNG" }
+ * También acepta coordenadas directas: { "link": "-2.4189, -79.3459" }
+ * Requiere autenticación
+ */
+router.post('/resolve-link', verificarToken, coverageController.resolveLink);
+
 module.exports = router;

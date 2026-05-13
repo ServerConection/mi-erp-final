@@ -150,6 +150,13 @@ export default function HomeModules() {
       desc: "Analítica de calidad de ventas VELSA: aprobación, regularización, auditoría y ranking de asesores.",
       rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR'],
     },
+    {
+      title: "Cobertura",
+      path: "/cobertura",
+      icon: "🗺️",
+      color: "text-teal-400",
+      desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps.",
+    },
   ];
 
   return (

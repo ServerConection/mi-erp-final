@@ -9,6 +9,109 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 const xml2js = require('xml2js');
 
+// ════════════════════════════════════════════════════════════════════════════════
+// Location URL Parser  (WhatsApp, Google Maps, Apple Maps, coordenadas directas)
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Valida que lat/lon estén en rango geográfico.
+ */
+function isValidCoords(lat, lon) {
+  return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+/**
+ * Parsea un par "lat,lon" o "lat, lon".
+ * @returns {{lat: number, lon: number} | null}
+ */
+function parseCoordPair(text) {
+  const m = text.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+  if (m) {
+    const lat = parseFloat(m[1]);
+    const lon = parseFloat(m[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon };
+  }
+  return null;
+}
+
+/**
+ * Extrae coordenadas de texto libre, URL de Google Maps, Apple Maps, etc.
+ * Formatos soportados:
+ *  - Coordenadas directas:    "-2.4189, -79.3459"
+ *  - Google Maps ?q=LAT,LNG:  https://maps.google.com/?q=-2.4189,-79.3459
+ *  - Google Maps place:       https://google.com/maps/place/NAME/@LAT,LNG,ZOOMz
+ *  - Apple Maps:              https://maps.apple.com/?ll=LAT,LNG
+ *  - URL con patrón coords:   cualquier URL que contenga LAT,LNG
+ *
+ * @returns {{lat: number, lon: number} | null}
+ */
+function parseCoordinatesFromUrl(text) {
+  text = (text || '').trim();
+
+  // 1. Coordenadas directas: "lat, lon" o "lat,lon"
+  const direct = parseCoordPair(text);
+  if (direct) return direct;
+
+  try {
+    const url = new URL(text);
+    const params = new URLSearchParams(url.search);
+
+    // 2. Google Maps ?q=LAT,LNG  (WhatsApp comparte en este formato)
+    if (params.has('q')) {
+      const r = parseCoordPair(params.get('q'));
+      if (r) return r;
+    }
+
+    // 3. Apple Maps ?ll=LAT,LNG
+    if (params.has('ll')) {
+      const r = parseCoordPair(params.get('ll'));
+      if (r) return r;
+    }
+
+    // 4. Google Maps place: /@LAT,LNG,ZOOMz en el path
+    const pathMatch = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (pathMatch) {
+      const lat = parseFloat(pathMatch[1]);
+      const lon = parseFloat(pathMatch[2]);
+      if (isValidCoords(lat, lon)) return { lat, lon };
+    }
+
+    // 5. Google Maps /search/LAT,+LNG
+    const searchMatch = url.pathname.match(/\/search\/(-?\d+\.?\d*)(?:,\+?|,\s*)(-?\d+\.?\d*)/);
+    if (searchMatch) {
+      const lat = parseFloat(searchMatch[1]);
+      const lon = parseFloat(searchMatch[2]);
+      if (isValidCoords(lat, lon)) return { lat, lon };
+    }
+
+  } catch (e) {
+    // no era una URL válida — continuar
+  }
+
+  // 6. Búsqueda general: cualquier patrón "LAT,LNG" con 4+ decimales en cualquier texto
+  const generalMatch = text.match(/(-?\d{1,2}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
+  if (generalMatch) {
+    const lat = parseFloat(generalMatch[1]);
+    const lon = parseFloat(generalMatch[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon };
+  }
+
+  return null;
+}
+
+/**
+ * Detecta si la URL es un enlace acortado que necesita resolución de redirect.
+ */
+function isShortenedUrl(url) {
+  const shortHosts = ['goo.gl', 'maps.app.goo.gl', 'bit.ly', 't.co', 'tinyurl.com'];
+  try {
+    const { hostname } = new URL(url);
+    return shortHosts.some(h => hostname === h || hostname.endsWith('.' + h));
+  } catch {
+    return false;
+  }
+}
+
 const coverageDir = path.join(process.cwd(), 'coverage-data');
 
 if (!fs.existsSync(coverageDir)) {
@@ -347,4 +450,112 @@ exports.getCoverageStatus = (req, res) => {
     loadedAt: loadedAt || null,
     timestamp: new Date().toISOString()
   });
+};
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Resolver + parsear enlaces de ubicación (WhatsApp, Google Maps, etc.)
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/coverage/resolve-link
+ * Body: { "link": "https://maps.google.com/?q=-2.4189,-79.3459" }
+ *
+ * 1. Intenta parsear el enlace directamente.
+ * 2. Si es una URL acortada (goo.gl, maps.app.goo.gl), sigue el redireccionamiento
+ *    y parsea la URL final.
+ * 3. Retorna { lat, lon } o un error 422 si no se puede extraer.
+ */
+exports.resolveLink = async (req, res) => {
+  try {
+    const { link } = req.body;
+
+    if (!link || typeof link !== 'string') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Campo "link" requerido'
+      });
+    }
+
+    const trimmed = link.trim();
+
+    // ── Paso 1: intento directo ──────────────────────────────────────────────
+    const direct = parseCoordinatesFromUrl(trimmed);
+    if (direct) {
+      return res.status(200).json({
+        status: 'ok',
+        lat: direct.lat,
+        lon: direct.lon,
+        source: 'direct',
+        message: `Coordenadas extraídas: ${direct.lat}, ${direct.lon}`
+      });
+    }
+
+    // ── Paso 2: resolver redirect (URLs acortadas) ───────────────────────────
+    if (isShortenedUrl(trimmed) || trimmed.startsWith('http')) {
+      try {
+        // fetch con redirect: 'follow' devuelve response.url = URL final
+        const response = await fetch(trimmed, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(8000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; CoverageBot/1.0)'
+          }
+        });
+
+        const finalUrl = response.url;
+
+        // Intentar parsear la URL final
+        if (finalUrl && finalUrl !== trimmed) {
+          const fromRedirect = parseCoordinatesFromUrl(finalUrl);
+          if (fromRedirect) {
+            return res.status(200).json({
+              status: 'ok',
+              lat: fromRedirect.lat,
+              lon: fromRedirect.lon,
+              source: 'redirect',
+              resolvedUrl: finalUrl,
+              message: `Coordenadas extraídas tras redirección: ${fromRedirect.lat}, ${fromRedirect.lon}`
+            });
+          }
+        }
+
+        // Intentar buscar coords en el HTML de respuesta (último recurso)
+        const html = await response.text().catch(() => '');
+        const htmlMatch = html.match(/(-?\d{1,2}\.\d{6,}),(-?\d{1,3}\.\d{6,})/);
+        if (htmlMatch) {
+          const lat = parseFloat(htmlMatch[1]);
+          const lon = parseFloat(htmlMatch[2]);
+          if (isValidCoords(lat, lon)) {
+            return res.status(200).json({
+              status: 'ok',
+              lat,
+              lon,
+              source: 'html',
+              message: `Coordenadas extraídas del contenido: ${lat}, ${lon}`
+            });
+          }
+        }
+
+      } catch (fetchErr) {
+        console.warn('[Coverage] Error resolviendo redirect:', fetchErr.message);
+      }
+    }
+
+    // ── Paso 3: no se pudo extraer ───────────────────────────────────────────
+    return res.status(422).json({
+      status: 'error',
+      message:
+        'No se pudo extraer coordenadas del enlace. ' +
+        'Usa un enlace directo de Google Maps (maps.google.com/?q=LAT,LNG) ' +
+        'o escribe las coordenadas directamente (ej: -2.4189, -79.3459).'
+    });
+
+  } catch (error) {
+    console.error('[Coverage resolveLink Error]', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
 };

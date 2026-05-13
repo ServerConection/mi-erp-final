@@ -28,6 +28,7 @@ const Ventas               = lazy(() => import("./pages/VentasFormulario"));
 const ResumenNovonet       = lazy(() => import("./pages/ResumenNovonet"));
 const ResumenVelsa         = lazy(() => import("./pages/ResumenVelsa"));
 const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
+const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="broadcast"                 element={<BroadcastPanel />} />
             <Route path="appsheet"                  element={<AppSheetModule />} />
             <Route path="guia-planes-marzo"         element={<Guiaplanesmarzo />} />
+            <Route path="cobertura"                element={<CoverageChecker />} />
           </Route>
 
               <Route path="tv" element={<TVMode />} />

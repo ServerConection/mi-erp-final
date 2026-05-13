@@ -762,7 +762,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   }, [tabActiva]);
 
   const descargarExcel = (tipo) => {
-    const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
+    const list = tipo === "CRM" ? dataCRMDetalle : data.dataNetlife;
     if (!list || !list.length) return;
     const ws = XLSX.utils.json_to_sheet(list);
     const wb = XLSX.utils.book_new();

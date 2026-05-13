@@ -30,6 +30,7 @@ const ResumenVelsa         = lazy(() => import("./pages/ResumenVelsa"));
 const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
 const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
+const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="guia-planes-marzo"         element={<Guiaplanesmarzo />} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="automarcador"             element={<Automarcador />} />
+            <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
           </Route>

@@ -166,6 +166,14 @@ export default function HomeModules() {
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'],
     },
     {
+      title: "Reportería Vidika",
+      path: "/vidika",
+      icon: "📊",
+      color: "text-sky-400",
+      desc: "Panel de reportería en tiempo real. Sesión automática integrada con el ERP.",
+      rolesPermitidos: ['ANALISTA', 'COORDINADOR', 'ADMINISTRADOR', 'GERENCIA'],
+    },
+    {
       title: "Broadcast NOVONET",
       path: "/broadcast-novonet",
       icon: "🔵",

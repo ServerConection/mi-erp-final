@@ -1,26 +1,526 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* Custom Scrollbar para Dark Mode */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --brand-blue:    #2563eb;
+  --brand-blue-lt: #3b82f6;
+  --brand-indigo:  #4f46e5;
+  --accent-teal:   #0d9488;
+  --accent-amber:  #d97706;
+  --accent-rose:   #e11d48;
+  --surface:       #ffffff;
+  --surface-2:     #f8fafc;
+  --surface-3:     #f1f5f9;
+  --border:        #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --text-primary:  #0f172a;
+  --text-secondary:#475569;
+  --text-muted:    #94a3b8;
+  --shadow-sm:     0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:     0 4px 16px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
+  --shadow-lg:     0 8px 32px rgba(15,23,42,.12), 0 2px 8px rgba(15,23,42,.06);
+  --shadow-glow:   0 0 0 3px rgba(37,99,235,.12);
+  --radius-sm:     8px;
+  --radius-md:     12px;
+  --radius-lg:     16px;
+  --radius-xl:     20px;
+  --transition:    all .2s cubic-bezier(.4,0,.2,1);
 }
 
-/* Animación suave de entrada */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+/* ═══════════════════════════════════════════════════════════════════════
+   BASE
+═══════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
-.animate-fade-in-up {
-  animation: fadeInUp 0.5s ease-out forwards;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCROLLBARS — LIGHT, MINIMAL
+═══════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.35); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — TOOLTIPS PROFESIONALES
+═══════════════════════════════════════════════════════════════════════ */
+.recharts-tooltip-wrapper {
+  filter: drop-shadow(0 8px 24px rgba(15,23,42,.18)) !important;
+  transition: none !important;
+}
+
+.recharts-default-tooltip {
+  background: rgba(15,23,42,.92) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.35) !important;
+  min-width: 130px;
+}
+
+.recharts-tooltip-label {
+  color: #94a3b8 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .08em !important;
+  margin-bottom: 6px !important;
+}
+
+.recharts-tooltip-item {
+  color: #f1f5f9 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  padding: 1px 0 !important;
+}
+
+.recharts-tooltip-item-name {
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-item-value {
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 900 !important;
+}
+
+.recharts-tooltip-item-separator { color: #475569 !important; }
+
+/* ── Cursor / highlight ── */
+.recharts-rectangle.recharts-tooltip-cursor {
+  fill: rgba(37,99,235,.06) !important;
+  rx: 4px !important;
+}
+
+.recharts-sector.recharts-active-shape path {
+  filter: brightness(1.15) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — GRIDS Y EJES
+═══════════════════════════════════════════════════════════════════════ */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #f1f5f9 !important;
+  stroke-width: 1px !important;
+}
+
+.recharts-cartesian-axis-tick-value {
+  fill: #94a3b8 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.recharts-label {
+  font-weight: 800 !important;
+}
+
+/* ── Eje referencia line ── */
+.recharts-reference-line-line {
+  stroke-dasharray: 4 4 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — LEYENDA
+═══════════════════════════════════════════════════════════════════════ */
+.recharts-legend-wrapper {
+  padding-top: 8px !important;
+}
+
+.recharts-legend-item-text {
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .05em !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — BARRAS — HOVER GLOW SUAVE
+═══════════════════════════════════════════════════════════════════════ */
+.recharts-bar-rectangle path {
+  transition: filter .18s ease, opacity .18s ease !important;
+}
+
+.recharts-bar-rectangle:hover path {
+  filter: brightness(1.12) saturate(1.15) !important;
+}
+
+/* ── Dot en line charts ── */
+.recharts-dot circle {
+  transition: r .18s ease !important;
+}
+
+.recharts-active-dot circle {
+  stroke-width: 3 !important;
+  r: 6 !important;
+}
+
+/* ── Funnel ── */
+.recharts-funnel-trapezoid path {
+  transition: filter .18s ease !important;
+}
+.recharts-funnel-trapezoid:hover path {
+  filter: brightness(1.1) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CARDS — HOVER LIFT
+═══════════════════════════════════════════════════════════════════════ */
+.erp-card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.erp-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+  border-color: var(--border);
+}
+
+/* KPI card especial */
+.erp-kpi-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.erp-kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(37,99,235,.03) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TABLAS — FILAS INTERACTIVAS
+═══════════════════════════════════════════════════════════════════════ */
+.erp-table tbody tr {
+  transition: background-color .14s ease;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.erp-table tbody tr:hover {
+  background-color: rgba(37,99,235,.03) !important;
+}
+
+.erp-table th {
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #64748b;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BOTONES — ESTADOS INTERACTIVOS
+═══════════════════════════════════════════════════════════════════════ */
+.erp-btn-primary {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: white;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(37,99,235,.30);
+  transition: var(--transition);
+  border: none;
+  cursor: pointer;
+}
+
+.erp-btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(37,99,235,.40);
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.erp-btn-primary:active {
+  transform: translateY(0);
+  filter: brightness(.97);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SELECTS / INPUTS — FOCUS STATE LIMPIO
+═══════════════════════════════════════════════════════════════════════ */
+select:focus, input[type="text"]:focus, input[type="date"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BADGES / PILLS
+═══════════════════════════════════════════════════════════════════════ */
+.erp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SKELETON LOADING — SHIMMER
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.erp-skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ANIMACIONES DE ENTRADA
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up   { animation: fadeInUp   .45s cubic-bezier(.16,1,.3,1) both; }
+.animate-fade-in-scale { animation: fadeInScale .35s cubic-bezier(.16,1,.3,1) both; }
+.animate-slide-in-right { animation: slideInRight .4s cubic-bezier(.16,1,.3,1) both; }
+.animate-count-up     { animation: countUp .5s cubic-bezier(.16,1,.3,1) both; }
+
+/* Delays para listas */
+.delay-50  { animation-delay: .05s; }
+.delay-100 { animation-delay: .10s; }
+.delay-150 { animation-delay: .15s; }
+.delay-200 { animation-delay: .20s; }
+.delay-250 { animation-delay: .25s; }
+.delay-300 { animation-delay: .30s; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GRADIENTES UTILITARIOS
+═══════════════════════════════════════════════════════════════════════ */
+.gradient-blue   { background: linear-gradient(135deg, #2563eb, #4f46e5); }
+.gradient-teal   { background: linear-gradient(135deg, #0d9488, #059669); }
+.gradient-amber  { background: linear-gradient(135deg, #d97706, #f59e0b); }
+.gradient-rose   { background: linear-gradient(135deg, #e11d48, #f43f5e); }
+.gradient-purple { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+.gradient-slate  { background: linear-gradient(135deg, #334155, #475569); }
+.gradient-orange { background: linear-gradient(135deg, #ea580c, #f97316); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GRÁFICOS CONTAINER
+═══════════════════════════════════════════════════════════════════════ */
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  transition: box-shadow .25s ease;
+}
+
+.chart-container:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.chart-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-title::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 14px;
+  border-radius: 99px;
+  background: var(--brand-blue);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STATS / NÚMERO GRANDE
+═══════════════════════════════════════════════════════════════════════ */
+.stat-number {
+  font-size: clamp(24px, 3vw, 40px);
+  font-weight: 900;
+  letter-spacing: -.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SIDEBAR NAV ITEM — ESTADO ACTIVO MEJORADO
+═══════════════════════════════════════════════════════════════════════ */
+.nav-item-active {
+  background: linear-gradient(90deg, rgba(37,99,235,.10) 0%, rgba(37,99,235,.04) 100%);
+  border-left: 3px solid #2563eb;
+  color: #2563eb;
+}
+
+.nav-item-inactive {
+  border-left: 3px solid transparent;
+  transition: background .15s ease, color .15s ease;
+}
+
+.nav-item-inactive:hover {
+  background: rgba(37,99,235,.04);
+  color: #2563eb;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROGRESS BAR ANIMADA
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes progressGrow {
+  from { width: 0; }
+}
+
+.erp-progress {
+  height: 6px;
+  border-radius: 99px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.erp-progress-bar {
+  height: 100%;
+  border-radius: 99px;
+  animation: progressGrow .8s cubic-bezier(.16,1,.3,1) both;
+  background: linear-gradient(90deg, #2563eb, #4f46e5);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GLOW PULSE — PARA KPIs DESTACADOS
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,.0); }
+  50%       { box-shadow: 0 0 0 6px rgba(37,99,235,.08); }
+}
+
+.erp-glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECIENTES — DOT INDICATOR
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes dotPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.5); opacity: .6; }
+}
+
+.live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: dotPulse 1.8s ease-in-out infinite;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TABS — SELECTOR ESTILO PILL
+═══════════════════════════════════════════════════════════════════════ */
+.tab-pill-container {
+  background: #f1f5f9;
+  border-radius: 99px;
+  padding: 3px;
+  display: flex;
+  gap: 2px;
+}
+
+.tab-pill {
+  border-radius: 99px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  border: none;
+  background: transparent;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.tab-pill.active {
+  background: white;
+  color: #2563eb;
+  box-shadow: 0 1px 4px rgba(15,23,42,.10);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — ÁREA GRADIENT FILL (LineChart con area)
+═══════════════════════════════════════════════════════════════════════ */
+.recharts-area-area {
+  opacity: .15 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NÚMERO CONTABLE — ANIMACIÓN
+═══════════════════════════════════════════════════════════════════════ */
+.num-highlight {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESPONSIVE — MOBILE TWEAKS
+═══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .recharts-cartesian-axis-tick-value { font-size: 8px !important; }
+  .recharts-tooltip-item-value        { font-size: 12px !important; }
 }

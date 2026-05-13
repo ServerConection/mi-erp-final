@@ -374,12 +374,17 @@ export default function DashboardLayout() {
         .dl-sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .dl-sidebar-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
         .dl-sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-        @keyframes dl-fadein { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
-        .dl-nav-label { animation: dl-fadein .2s ease both; }
+        @keyframes dl-fadein { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+        .dl-nav-label { animation: dl-fadein .22s cubic-bezier(.16,1,.3,1) both; }
+        .dl-nav-btn { transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+        .dl-nav-btn:hover:not(.dl-active) { background: rgba(37,99,235,.05) !important; color: #1e40af !important; }
+        .dl-active { background: linear-gradient(90deg,rgba(37,99,235,.12),rgba(37,99,235,.04)) !important; color: #2563eb !important; border-left: 3px solid #2563eb !important; }
+        .dl-logout:hover { background: #fef2f2 !important; }
+        @keyframes dl-logoshine { 0%,100%{opacity:.7} 50%{opacity:1} }
       `}</style>
 
       {/* ── Fondo general claro ── */}
-      <div className="flex h-screen overflow-hidden" style={{ background: "#f1f5f9" }}>
+      <div className="flex h-screen overflow-hidden" style={{ background: "linear-gradient(160deg,#f8fafc 0%,#f1f5f9 100%)" }}>
 
         {/* Overlay mobile */}
         {sidebarOpen && (
@@ -423,19 +428,20 @@ export default function DashboardLayout() {
           <div
             className="flex items-center overflow-hidden shrink-0"
             style={{
-              padding: isDesktopCollapsed ? "1.25rem 0" : "1.25rem 1.25rem",
+              padding: isDesktopCollapsed ? "1.1rem 0" : "1.1rem 1.25rem",
               justifyContent: isDesktopCollapsed ? "center" : "flex-start",
               borderBottom: "1px solid #f1f5f9",
-              minHeight: 68,
+              minHeight: 64,
+              background: "linear-gradient(90deg,rgba(37,99,235,.03),transparent)",
             }}
           >
-            {/* Ícono WiFi */}
             <div
               className="shrink-0 flex items-center justify-center rounded-xl"
               style={{
                 width: 36, height: 36,
-                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                boxShadow: "0 4px 12px rgba(37,99,235,0.30)",
+                background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                boxShadow: "0 4px 12px rgba(37,99,235,.35), 0 0 0 3px rgba(37,99,235,.10)",
+                flexShrink: 0,
               }}
             >
               <svg width="18" height="15" viewBox="0 0 24 20" fill="none">
@@ -446,12 +452,12 @@ export default function DashboardLayout() {
               </svg>
             </div>
             {!isDesktopCollapsed && (
-              <span
-                className="dl-nav-label ml-3 font-black tracking-wide"
-                style={{ fontSize: "1.1rem", color: "#1e3a8a", whiteSpace: "nowrap" }}
-              >
-                NOVO <span style={{ color: "#2563eb" }}>ERP</span>
-              </span>
+              <div className="dl-nav-label ml-3 overflow-hidden">
+                <span className="font-black tracking-wide" style={{ fontSize: "1.05rem", color: "#0f172a", whiteSpace: "nowrap" }}>
+                  NOVO <span style={{ background: "linear-gradient(90deg,#2563eb,#4f46e5)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
+                </span>
+                <p style={{ fontSize: "0.6rem", color: "#94a3b8", margin: 0, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Sistema de Gestión</p>
+              </div>
             )}
           </div>
 
@@ -462,8 +468,8 @@ export default function DashboardLayout() {
           >
             {/* Separador de sección */}
             {!isDesktopCollapsed && (
-              <p style={{ fontSize: "0.6rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", padding: "0 0.75rem", marginBottom: "0.4rem" }}>
-                Menú
+              <p style={{ fontSize: "0.58rem", fontWeight: 800, color: "#c1c9d4", textTransform: "uppercase", letterSpacing: "0.14em", padding: "0 0.5rem", marginBottom: "0.5rem" }}>
+                Navegación
               </p>
             )}
 
@@ -474,31 +480,30 @@ export default function DashboardLayout() {
                   <button
                     key={item.name}
                     onClick={() => { navigate(item.path); setSidebarOpen(false); }}
-                    className="w-full flex items-center transition-all duration-200 group"
+                    className={`w-full flex items-center dl-nav-btn ${isActive ? "dl-active" : ""}`}
                     style={{
                       borderRadius: 10,
-                      padding: isDesktopCollapsed ? "0.6rem 0" : "0.55rem 0.75rem",
+                      padding: isDesktopCollapsed ? "0.6rem 0" : "0.52rem 0.75rem",
                       justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                       gap: isDesktopCollapsed ? 0 : 10,
-                      background: isActive ? "#eff6ff" : "transparent",
-                      border: isActive ? "1px solid #bfdbfe" : "1px solid transparent",
+                      border: isActive ? "none" : "none",
+                      borderLeft: isActive ? "3px solid #2563eb" : "3px solid transparent",
                       color: isActive ? "#2563eb" : "#64748b",
                       fontWeight: isActive ? 700 : 500,
                       cursor: "pointer",
+                      background: isActive ? "linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.03))" : "transparent",
                     }}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.color = "#1e293b"; } }}
-                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; } }}
                   >
-                    <span style={{ fontSize: isDesktopCollapsed ? "1.4rem" : "1.1rem", lineHeight: 1, flexShrink: 0 }}>
+                    <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : "1.05rem", lineHeight: 1, flexShrink: 0, filter: isActive ? "none" : "saturate(.8)" }}>
                       {item.icon}
                     </span>
                     {!isDesktopCollapsed && (
-                      <span className="dl-nav-label truncate" style={{ fontSize: "0.82rem" }}>
+                      <span className="dl-nav-label truncate" style={{ fontSize: "0.8rem", letterSpacing: ".01em" }}>
                         {item.name}
                       </span>
                     )}
                     {isActive && !isDesktopCollapsed && (
-                      <div style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "#2563eb", flexShrink: 0 }} />
+                      <div style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: "#2563eb", flexShrink: 0, boxShadow: "0 0 0 3px rgba(37,99,235,.20)" }} />
                     )}
                   </button>
                 );
@@ -511,13 +516,12 @@ export default function DashboardLayout() {
             style={{
               padding: isDesktopCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
               borderTop: "1px solid #f1f5f9",
-              background: "#fafafa",
+              background: "linear-gradient(180deg,#fafafa,#f8fafc)",
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
+                display: "flex", alignItems: "center",
                 gap: isDesktopCollapsed ? 0 : 10,
                 justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                 marginBottom: "0.6rem",
@@ -526,20 +530,22 @@ export default function DashboardLayout() {
               <div
                 style={{
                   width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                  background: "linear-gradient(135deg, #2563eb, #4f46e5)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 800, color: "white", fontSize: "0.9rem",
-                  boxShadow: "0 2px 8px rgba(37,99,235,0.30)",
+                  fontWeight: 900, color: "white", fontSize: "0.9rem",
+                  boxShadow: "0 3px 10px rgba(37,99,235,.30)",
+                  letterSpacing: "-.01em",
                 }}
               >
                 {user.usuario?.charAt(0).toUpperCase() || "U"}
               </div>
               {!isDesktopCollapsed && (
-                <div className="dl-nav-label overflow-hidden">
-                  <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div className="dl-nav-label overflow-hidden flex-1">
+                  <p style={{ fontSize: "0.78rem", fontWeight: 700, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {user.usuario}
                   </p>
-                  <p style={{ fontSize: "0.65rem", color: "#2563eb", fontWeight: 600, margin: 0, whiteSpace: "nowrap" }}>
+                  <p style={{ fontSize: "0.62rem", fontWeight: 600, margin: 0, whiteSpace: "nowrap",
+                    background: "linear-gradient(90deg,#2563eb,#4f46e5)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                     {user.perfil} · {user.empresa}
                   </p>
                 </div>
@@ -547,24 +553,16 @@ export default function DashboardLayout() {
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center justify-center transition-all"
+              className="dl-logout w-full flex items-center justify-center"
               style={{
-                gap: 6,
-                fontSize: "0.7rem",
-                fontWeight: 700,
-                color: "#ef4444",
-                background: "transparent",
-                border: "1px solid #fecaca",
-                borderRadius: 8,
-                padding: "0.45rem",
-                cursor: "pointer",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
+                gap: 6, fontSize: "0.68rem", fontWeight: 700, color: "#ef4444",
+                background: "transparent", border: "1px solid #fecaca",
+                borderRadius: 8, padding: "0.42rem", cursor: "pointer",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                transition: "background .15s ease",
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
             >
-              <span>🚫</span>
+              <span style={{ fontSize: "0.85rem" }}>⏻</span>
               {!isDesktopCollapsed && <span>Desconectar</span>}
             </button>
           </div>
@@ -577,49 +575,62 @@ export default function DashboardLayout() {
           <header
             className="shrink-0 flex items-center justify-between"
             style={{
-              height: 64,
-              padding: "0 1.75rem",
+              height: 60,
+              padding: "0 1.5rem",
               background: "white",
-              borderBottom: "1px solid #e2e8f0",
-              boxShadow: "0 1px 8px rgba(30,58,138,0.05)",
+              borderBottom: "1px solid #e8edf5",
+              boxShadow: "0 1px 0 #e8edf5, 0 2px 12px rgba(15,23,42,.04)",
             }}
           >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {/* Hamburguesa mobile */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden flex items-center justify-center rounded-xl transition-colors"
-                style={{ width: 36, height: 36, background: "#f1f5f9", border: "1px solid #e2e8f0", cursor: "pointer" }}
+                className="md:hidden flex items-center justify-center rounded-xl"
+                style={{ width: 34, height: 34, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer" }}
               >
-                <svg className="w-5 h-5" fill="none" stroke="#64748b" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <svg className="w-4 h-4" fill="none" stroke="#64748b" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
 
-              {/* Título de página */}
-              <div>
-                <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "0.01em" }}>
-                  {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
-                </h2>
-                <p style={{ fontSize: "0.7rem", color: "#94a3b8", margin: 0, marginTop: 1 }}>
-                  NOVO ERP · {new Date().toLocaleDateString("es-GT", { weekday: "long", day: "numeric", month: "long" })}
-                </p>
+              {/* Breadcrumb / título */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                  background: "linear-gradient(135deg,#2563eb,#4f46e5)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "0.9rem",
+                }}>
+                  {menuItems.find(m => m.path === location.pathname)?.icon || "🏠"}
+                </div>
+                <div>
+                  <h2 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: ".01em", lineHeight: 1.2 }}>
+                    {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
+                  </h2>
+                  <p style={{ fontSize: "0.62rem", color: "#94a3b8", margin: 0, letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600 }}>
+                    {new Date().toLocaleDateString("es-GT", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Lado derecho header */}
+            {/* Lado derecho */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* Indicador usuario */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 0 2px rgba(34,197,94,0.25)' }} />
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 7,
+                background: "#f8fafc", border: "1px solid #e2e8f0",
+                borderRadius: 99, padding: "4px 12px 4px 8px",
+              }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 0 2.5px rgba(34,197,94,.22)", flexShrink: 0 }} />
+                <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#334155", letterSpacing: ".02em" }}>
                   {user.usuario}
                 </span>
               </div>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto" style={{ padding: '1.25rem 1.5rem' }}>
+          <div className="flex-1 overflow-auto" style={{ padding: "1.25rem 1.5rem" }}>
             <Outlet />
           </div>
         </main>

@@ -335,81 +335,137 @@ const getTablaBitrix = async (req, res) => {
   }
 };
 
-module.exports = { triggerSync, getSyncStatus, getResumenVelsaBitrix, getTablaBitrix };
+// ── Configuración de APIs Bitrix24 ────────────────────────────────────────────
+const BITRIX_APIS = {
+  NOVONET: (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, ''),
+  VELSA:   (process.env.BITRIX_VELSA_URL   || 'https://aclopecuador.bitrix24.es/rest/34852/0sl0qc3ccg3agc9x').replace(/\/$/, ''),
+};
 
-// ── GET /api/bitrix/live-actividad ──────────────────────────────────────────
+// Campos que pedimos a la API
+const BITRIX_SELECT = ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'ASSIGNED_BY_NAME', 'OPPORTUNITY', 'CURRENCY_ID', 'DATE_MODIFY'];
+
+/**
+ * Obtiene todos los deals de una cuenta Bitrix24 modificados desde `desde`.
+ * Maneja paginación automáticamente (Bitrix devuelve max 50 por página).
+ * Límite de seguridad: 600 deals (12 páginas) para evitar sobrecarga.
+ */
+async function fetchBitrixDeals(baseUrl, cuenta, desde) {
+  const deals  = [];
+  let   start  = 0;
+  const limit  = 600; // techo de seguridad
+  // Formato que acepta Bitrix: YYYY-MM-DDTHH:MM:SS
+  const filtroFecha = desde.toISOString().slice(0, 19);
+
+  while (deals.length < limit) {
+    const params = new URLSearchParams();
+    params.set('filter[>DATE_MODIFY]', filtroFecha);
+    params.set('order[DATE_MODIFY]', 'DESC');
+    BITRIX_SELECT.forEach((f, i) => params.set(`select[${i}]`, f));
+    params.set('start', start);
+
+    const url  = `${baseUrl}/crm.deal.list.json?${params.toString()}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+
+    if (!resp.ok) throw new Error(`Bitrix ${cuenta} HTTP ${resp.status}`);
+    const json = await resp.json();
+    if (json.error) throw new Error(`Bitrix ${cuenta}: ${json.error_description || json.error}`);
+
+    const page = json.result || [];
+    deals.push(...page);
+
+    // Sin más páginas o página vacía → terminar
+    if (!json.next || page.length === 0) break;
+    start = json.next;
+  }
+
+  return deals.map(d => ({
+    asesor:     (d.ASSIGNED_BY_NAME || `ID-${d.ASSIGNED_BY_ID}` || 'Sin asignar').trim(),
+    negocio:    d.TITLE   || '—',
+    etapa:      d.STAGE_ID || '—',
+    monto:      parseFloat(d.OPPORTUNITY || 0),
+    moneda:     d.CURRENCY_ID || '',
+    dateModify: new Date(d.DATE_MODIFY),
+    cuenta,
+  }));
+}
+
+// ── GET /api/bitrix/live-actividad ────────────────────────────────────────────
 const getLiveActividad = async (req, res) => {
   try {
-    const horas = parseInt(req.query.horas || '24', 10);
+    const horas = Math.min(parseInt(req.query.horas || '24', 10), 168); // máx 7 días
+    const desde = new Date(Date.now() - horas * 60 * 60 * 1000);
 
-    const sql = `
-      WITH novonet AS (
-        SELECT
-          COALESCE(data->>'ASSIGNED_BY_NAME', data->>'ASSIGNED_BY_ID', 'Sin asignar') AS asesor,
-          data->>'TITLE'       AS negocio,
-          data->>'STAGE_ID'    AS etapa,
-          data->>'CURRENCY_ID' AS moneda,
-          (data->>'OPPORTUNITY')::numeric AS monto,
-          date_modify,
-          'NOVONET' AS cuenta
-        FROM crm_deals
-        WHERE date_modify >= NOW() - ($1 || ' hours')::interval
-      ),
-      velsa AS (
-        SELECT
-          COALESCE(data->>'ASSIGNED_BY_NAME', data->>'ASSIGNED_BY_ID', 'Sin asignar') AS asesor,
-          data->>'TITLE'       AS negocio,
-          data->>'STAGE_ID'    AS etapa,
-          data->>'CURRENCY_ID' AS moneda,
-          (data->>'OPPORTUNITY')::numeric AS monto,
-          date_modify,
-          'VELSA' AS cuenta
-        FROM crm_deals_velsa
-        WHERE date_modify >= NOW() - ($1 || ' hours')::interval
-      ),
-      combinado AS (SELECT * FROM novonet UNION ALL SELECT * FROM velsa)
-      SELECT
-        asesor,
-        cuenta,
-        COUNT(*)               AS total_movimientos,
-        MAX(date_modify)       AS ultima_actividad,
-        SUM(monto)             AS monto_total,
-        json_agg(
-          json_build_object(
-            'negocio', negocio,
-            'etapa', etapa,
-            'monto', monto,
-            'fecha', date_modify
-          ) ORDER BY date_modify DESC
-        ) AS movimientos
-      FROM combinado
-      GROUP BY asesor, cuenta
-      ORDER BY ultima_actividad DESC
-    `;
+    // Llamadas paralelas a NOVONET y VELSA
+    const [dealsNovonet, dealsVelsa] = await Promise.all([
+      fetchBitrixDeals(BITRIX_APIS.NOVONET, 'NOVONET', desde).catch(e => {
+        console.error('[bitrix novonet]', e.message);
+        return [];
+      }),
+      fetchBitrixDeals(BITRIX_APIS.VELSA, 'VELSA', desde).catch(e => {
+        console.error('[bitrix velsa]', e.message);
+        return [];
+      }),
+    ]);
 
-    const { rows } = await pool.query(sql, [horas]);
+    const todos = [...dealsNovonet, ...dealsVelsa];
+
+    // Agrupar por asesor + cuenta
+    const mapa = new Map();
+    for (const deal of todos) {
+      const key = `${deal.asesor}||${deal.cuenta}`;
+      if (!mapa.has(key)) {
+        mapa.set(key, {
+          asesor:          deal.asesor,
+          cuenta:          deal.cuenta,
+          movimientos:     [],
+          montoTotal:      0,
+          ultimaActividad: deal.dateModify,
+        });
+      }
+      const entry = mapa.get(key);
+      entry.movimientos.push({
+        negocio: deal.negocio,
+        etapa:   deal.etapa,
+        monto:   deal.monto,
+        fecha:   deal.dateModify,
+      });
+      entry.montoTotal += deal.monto;
+      if (deal.dateModify > entry.ultimaActividad) {
+        entry.ultimaActividad = deal.dateModify;
+      }
+    }
 
     const ahora = new Date();
-    const resultado = rows.map(r => {
-      const diff = Math.floor((ahora - new Date(r.ultima_actividad)) / 1000 / 60);
-      const estado = diff < 30 ? 'activo' : diff < 120 ? 'reciente' : 'inactivo';
-      return {
-        asesor:          r.asesor,
-        cuenta:          r.cuenta,
-        totalMovimientos: Number(r.total_movimientos),
-        ultimaActividad:  r.ultima_actividad,
-        minutosAtras:     diff,
-        estado,
-        montoTotal:       Number(r.monto_total || 0),
-        ultimosMovimientos: (r.movimientos || []).slice(0, 5),
-      };
-    });
+    const resultado = Array.from(mapa.values())
+      .map(r => {
+        // Ordenar movimientos más recientes primero
+        r.movimientos.sort((a, b) => b.fecha - a.fecha);
+        const diff  = Math.floor((ahora - r.ultimaActividad) / 1000 / 60);
+        const estado = diff < 30 ? 'activo' : diff < 120 ? 'reciente' : 'inactivo';
+        return {
+          asesor:             r.asesor,
+          cuenta:             r.cuenta,
+          totalMovimientos:   r.movimientos.length,
+          ultimaActividad:    r.ultimaActividad,
+          minutosAtras:       diff,
+          estado,
+          montoTotal:         Math.round(r.montoTotal * 100) / 100,
+          ultimosMovimientos: r.movimientos.slice(0, 5),
+        };
+      })
+      .sort((a, b) => b.ultimaActividad - a.ultimaActividad);
 
-    res.json({ success: true, horas, total: resultado.length, data: resultado });
+    res.json({
+      success: true,
+      horas,
+      total:   resultado.length,
+      fuentes: { novonet: dealsNovonet.length, velsa: dealsVelsa.length },
+      data:    resultado,
+    });
   } catch (err) {
     console.error('[live-actividad error]', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-module.exports = Object.assign(module.exports, { getLiveActividad });
+module.exports = { triggerSync, getSyncStatus, getResumenVelsaBitrix, getTablaBitrix, getLiveActividad };

@@ -102,7 +102,22 @@ function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("token")}` };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Leer perfil del usuario logueado
+// ─────────────────────────────────────────────────────────────────────────────
+function getUserPerfil() {
+  try {
+    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
+    return (u.perfil || "").toUpperCase();
+  } catch {
+    return "";
+  }
+}
+
 export default function CoverageChecker() {
+  // ── Perfil del usuario ──────────────────────────────────────────────────────
+  const isAdmin = getUserPerfil() === "ADMINISTRADOR";
+
   // ── Estado general ──────────────────────────────────────────────────────────
   const [tab, setTab] = useState("link"); // "link" | "coords"
   const [apiStatus, setApiStatus] = useState("checking"); // "online" | "offline" | "checking"
@@ -492,66 +507,73 @@ export default function CoverageChecker() {
             {loading ? "⏳ Verificando…" : "🔍 Consultar Cobertura"}
           </button>
 
-          {/* Carga KML/KMZ */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-            <h2 className="font-semibold text-slate-700">📁 Cargar zonas KML / KMZ</h2>
-            <p className="text-xs text-slate-400">
-              Carga el archivo con las zonas de cobertura. Máx. 200 MB.
-            </p>
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
-              onDragLeave={() => setDragover(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragover(false);
-                const f = e.dataTransfer.files[0];
-                if (f && (f.name.endsWith(".kml") || f.name.endsWith(".kmz"))) {
-                  setSelectedFile(f);
-                  setUploadMsg(null);
-                }
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
-                dragover ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".kml,.kmz"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files[0];
-                  if (f) { setSelectedFile(f); setUploadMsg(null); }
-                }}
-              />
-              <p className="text-sm text-slate-600 font-medium">
-                {selectedFile ? `📄 ${selectedFile.name}` : "📤 Arrastra o haz clic para seleccionar"}
+          {/* Carga KML/KMZ — solo ADMINISTRADOR */}
+          {isAdmin ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-slate-700">📁 Cargar zonas KML / KMZ</h2>
+                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                  Solo admin
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Carga el archivo con las zonas de cobertura. Máx. 200 MB.
               </p>
-            </div>
-
-            {selectedFile && (
-              <button
-                onClick={handleUpload}
-                disabled={uploading}
-                className="w-full py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 transition disabled:opacity-40"
-              >
-                {uploading ? "⏳ Subiendo…" : `📤 Subir ${selectedFile.name}`}
-              </button>
-            )}
-
-            {uploadMsg && (
-              <p
-                className={`text-xs rounded-lg px-3 py-2 ${
-                  uploadMsg.type === "ok"
-                    ? "bg-green-50 text-green-700"
-                    : "bg-red-50 text-red-700"
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
+                onDragLeave={() => setDragover(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragover(false);
+                  const f = e.dataTransfer.files[0];
+                  if (f && (f.name.endsWith(".kml") || f.name.endsWith(".kmz"))) {
+                    setSelectedFile(f);
+                    setUploadMsg(null);
+                  }
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
+                  dragover ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
                 }`}
               >
-                {uploadMsg.text}
-              </p>
-            )}
-          </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".kml,.kmz"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files[0];
+                    if (f) { setSelectedFile(f); setUploadMsg(null); }
+                  }}
+                />
+                <p className="text-sm text-slate-600 font-medium">
+                  {selectedFile ? `📄 ${selectedFile.name}` : "📤 Arrastra o haz clic para seleccionar"}
+                </p>
+              </div>
+
+              {selectedFile && (
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading}
+                  className="w-full py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 transition disabled:opacity-40"
+                >
+                  {uploading ? "⏳ Subiendo…" : `📤 Subir ${selectedFile.name}`}
+                </button>
+              )}
+
+              {uploadMsg && (
+                <p
+                  className={`text-xs rounded-lg px-3 py-2 ${
+                    uploadMsg.type === "ok"
+                      ? "bg-green-50 text-green-700"
+                      : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {uploadMsg.text}
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* ── Panel derecho: resultado + historial ── */}

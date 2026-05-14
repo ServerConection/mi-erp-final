@@ -344,79 +344,140 @@ const BITRIX_APIS = {
 // Campos de deals que pedimos a la API
 const BITRIX_SELECT = ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'OPPORTUNITY', 'CURRENCY_ID', 'DATE_MODIFY'];
 
-// ── Caché de usuarios por cuenta (TTL 10 minutos) ────────────────────────────
-// Evita llamar user.get en cada request — los usuarios cambian poco
-const _userCache = {
-  NOVONET: { mapa: null, expira: 0 },
-  VELSA:   { mapa: null, expira: 0 },
-};
-const USER_CACHE_TTL = 10 * 60 * 1000; // 10 min en ms
+// Tipos de actividad Bitrix24
+const TIPO_ACT = { '1':'Reunión','2':'Email','4':'Tarea','6':'Llamada','12':'WhatsApp','13':'Notificación' };
 
-/**
- * Obtiene mapa { userId → "Nombre Apellido" } desde Bitrix24.
- * Pagina hasta traer todos los usuarios activos.
- */
+// ── Caché de usuarios (TTL 10 min) ───────────────────────────────────────────
+const _userCache  = { NOVONET: { mapa: null, expira: 0 }, VELSA: { mapa: null, expira: 0 } };
+const USER_CACHE_TTL  = 10 * 60 * 1000;
+
+// ── Caché de etapas (TTL 1 hora) ─────────────────────────────────────────────
+const _stageCache = { NOVONET: { mapa: null, expira: 0 }, VELSA: { mapa: null, expira: 0 } };
+const STAGE_CACHE_TTL = 60 * 60 * 1000;
+
+/** Mapa { userId → "Nombre Apellido" } — cachea 10 min */
 async function fetchUserMap(baseUrl, cuenta) {
   const cache = _userCache[cuenta];
   if (cache.mapa && Date.now() < cache.expira) return cache.mapa;
-
   const mapa = new Map();
   let start  = 0;
-
   while (true) {
     const params = new URLSearchParams();
     params.set('ACTIVE', 'Y');
-    ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME'].forEach((f, i) => params.set(`select[${i}]`, f));
+    ['ID', 'NAME', 'LAST_NAME'].forEach((f, i) => params.set(`select[${i}]`, f));
     params.set('start', start);
-
     const resp = await fetch(`${baseUrl}/user.get.json?${params.toString()}`,
       { signal: AbortSignal.timeout(10_000) });
     if (!resp.ok) break;
     const json = await resp.json();
     if (json.error || !json.result) break;
-
-    for (const u of json.result) {
-      const nombre = [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `ID-${u.ID}`;
-      mapa.set(String(u.ID), nombre);
-    }
-
+    for (const u of json.result)
+      mapa.set(String(u.ID), [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `ID-${u.ID}`);
     if (!json.next) break;
     start = json.next;
   }
-
   cache.mapa   = mapa;
   cache.expira = Date.now() + USER_CACHE_TTL;
-  console.log(`[bitrix] Usuarios ${cuenta} cacheados: ${mapa.size}`);
+  console.log(`[bitrix] Usuarios ${cuenta}: ${mapa.size}`);
+  return mapa;
+}
+
+/** Mapa { STATUS_ID → "Nombre etapa" } — cachea 1 hora, fetch paralelo por categoría */
+async function fetchStageMap(baseUrl, cuenta) {
+  const cache = _stageCache[cuenta];
+  if (cache.mapa && Date.now() < cache.expira) return cache.mapa;
+  const mapa = new Map();
+  try {
+    // 1. Obtener todas las categorías (pipelines)
+    const catResp = await fetch(`${baseUrl}/crm.dealcategory.list.json`,
+      { signal: AbortSignal.timeout(10_000) });
+    const catJson  = await catResp.json();
+    const catIds   = [0, ...(catJson.result || []).map(c => Number(c.ID))];
+
+    // 2. Traer etapas de todas las categorías en paralelo
+    const stageResults = await Promise.all(
+      catIds.map(catId =>
+        fetch(`${baseUrl}/crm.dealcategory.stage.list.json?id=${catId}`,
+          { signal: AbortSignal.timeout(10_000) })
+          .then(r => r.json())
+          .catch(() => ({ result: [] }))
+      )
+    );
+    for (const stJson of stageResults)
+      for (const s of (stJson.result || []))
+        mapa.set(s.STATUS_ID, s.NAME);
+  } catch (e) { console.error(`[bitrix] stageMap ${cuenta}:`, e.message); }
+  cache.mapa   = mapa;
+  cache.expira = Date.now() + STAGE_CACHE_TTL;
+  console.log(`[bitrix] Etapas ${cuenta}: ${mapa.size}`);
   return mapa;
 }
 
 /**
- * Obtiene todos los deals modificados desde `desde` en una cuenta Bitrix24.
- * Maneja paginación (Bitrix devuelve max 50 por página).
- * Límite de seguridad: 600 deals para evitar sobrecarga.
+ * Mapa { dealId → última actividad } para deals del período.
+ * Trae llamadas, emails, WhatsApp, tareas, etc.
  */
-async function fetchBitrixDeals(baseUrl, cuenta, desde) {
-  // Cargar mapa de usuarios en paralelo con los deals
-  const [userMap, deals] = await Promise.all([
-    fetchUserMap(baseUrl, cuenta).catch(() => new Map()),
-    (async () => {
-      const list = [];
-      let   start = 0;
-      const filtroFecha = desde.toISOString().slice(0, 19); // YYYY-MM-DDTHH:MM:SS
+async function fetchActividades(baseUrl, desde) {
+  const mapa  = new Map();
+  const fecha = desde.toISOString().slice(0, 10); // YYYY-MM-DD
+  try {
+    let start = 0;
+    while (mapa.size <= 2000) {
+      const params = new URLSearchParams();
+      params.set('filter[OWNER_TYPE_ID]', '2'); // 2 = deals
+      params.set('filter[>ADD_DATE]', fecha);
+      params.set('order[ID]', 'DESC');
+      ['ID','TYPE_ID','SUBJECT','DESCRIPTION','DURATION','DIRECTION','OWNER_ID','ADD_DATE']
+        .forEach((f, i) => params.set(`select[${i}]`, f));
+      params.set('start', start);
+      const resp = await fetch(`${baseUrl}/crm.activity.list.json?${params.toString()}`,
+        { signal: AbortSignal.timeout(15_000) });
+      if (!resp.ok) break;
+      const json = await resp.json();
+      if (json.error || !json.result || json.result.length === 0) break;
+      for (const act of json.result) {
+        const did = String(act.OWNER_ID);
+        if (!mapa.has(did)) { // primera = más reciente (orden DESC por ID)
+          const durSeg = parseInt(act.DURATION || 0);
+          mapa.set(did, {
+            tipo:        TIPO_ACT[String(act.TYPE_ID)] || `Tipo ${act.TYPE_ID}`,
+            esLlamada:   String(act.TYPE_ID) === '6',
+            asunto:      act.SUBJECT || '',
+            descripcion: (act.DESCRIPTION || '').replace(/<[^>]*>/g, '').substring(0, 250),
+            duracion:    durSeg,
+            durMinutos:  durSeg ? `${Math.floor(durSeg / 60)}:${String(durSeg % 60).padStart(2, '0')}` : null,
+            direccion:   act.DIRECTION === '1' ? 'Entrante' : act.DIRECTION === '2' ? 'Saliente' : '',
+            fecha:       act.ADD_DATE ? new Date(act.ADD_DATE) : null,
+          });
+        }
+      }
+      if (!json.next) break;
+      start = json.next;
+    }
+  } catch (e) { console.error('[bitrix] fetchActividades:', e.message); }
+  return mapa;
+}
 
+/** Deals de una cuenta en el período — users, etapas y deals en paralelo */
+async function fetchBitrixDeals(baseUrl, cuenta, desde) {
+  const [userMap, stageMap, rawDeals] = await Promise.all([
+    fetchUserMap(baseUrl, cuenta).catch(() => new Map()),
+    fetchStageMap(baseUrl, cuenta).catch(() => new Map()),
+    (async () => {
+      const list  = [];
+      let   start = 0;
+      const filtroFecha = desde.toISOString().slice(0, 19);
       while (list.length < 600) {
         const params = new URLSearchParams();
         params.set('filter[>DATE_MODIFY]', filtroFecha);
         params.set('order[DATE_MODIFY]', 'DESC');
         BITRIX_SELECT.forEach((f, i) => params.set(`select[${i}]`, f));
         params.set('start', start);
-
         const resp = await fetch(`${baseUrl}/crm.deal.list.json?${params.toString()}`,
           { signal: AbortSignal.timeout(15_000) });
         if (!resp.ok) throw new Error(`Bitrix ${cuenta} HTTP ${resp.status}`);
         const json = await resp.json();
         if (json.error) throw new Error(`Bitrix ${cuenta}: ${json.error_description || json.error}`);
-
         const page = json.result || [];
         list.push(...page);
         if (!json.next || page.length === 0) break;
@@ -426,48 +487,53 @@ async function fetchBitrixDeals(baseUrl, cuenta, desde) {
     })(),
   ]);
 
-  return deals.map(d => {
-    // Nombre real desde el mapa de usuarios; fallback al ID si no está
-    const nombreAsesor = userMap.get(String(d.ASSIGNED_BY_ID))
-      || `Asesor ${d.ASSIGNED_BY_ID}`;
-    return {
-      asesor:     nombreAsesor,
-      negocio:    d.TITLE    || '—',
-      etapa:      d.STAGE_ID || '—',
-      monto:      parseFloat(d.OPPORTUNITY || 0),
-      moneda:     d.CURRENCY_ID || '',
-      dateModify: new Date(d.DATE_MODIFY),
-      cuenta,
-    };
-  });
+  return rawDeals.map(d => ({
+    dealId:     String(d.ID),
+    asesor:     userMap.get(String(d.ASSIGNED_BY_ID))  || `Asesor ${d.ASSIGNED_BY_ID}`,
+    negocio:    d.TITLE    || '—',
+    etapa:      stageMap.get(d.STAGE_ID) || d.STAGE_ID || '—',
+    monto:      parseFloat(d.OPPORTUNITY || 0),
+    moneda:     d.CURRENCY_ID || '',
+    dateModify: new Date(d.DATE_MODIFY),
+    cuenta,
+  }));
 }
 
 // ── GET /api/bitrix/live-actividad ────────────────────────────────────────────
 const getLiveActividad = async (req, res) => {
   try {
-    const horas = Math.min(parseInt(req.query.horas || '24', 10), 168); // máx 7 días
+    const horas = Math.min(parseInt(req.query.horas || '24', 10), 168);
     const desde = new Date(Date.now() - horas * 60 * 60 * 1000);
 
-    // Llamadas paralelas a NOVONET y VELSA
-    const [dealsNovonet, dealsVelsa] = await Promise.all([
-      fetchBitrixDeals(BITRIX_APIS.NOVONET, 'NOVONET', desde).catch(e => {
-        console.error('[bitrix novonet]', e.message);
-        return [];
-      }),
-      fetchBitrixDeals(BITRIX_APIS.VELSA, 'VELSA', desde).catch(e => {
-        console.error('[bitrix velsa]', e.message);
-        return [];
-      }),
+    // Deals y actividades en paralelo (4 fetches simultáneos)
+    const [
+      [dealsNovonet, dealsVelsa],
+      [actsNovonet,  actsVelsa ],
+    ] = await Promise.all([
+      Promise.all([
+        fetchBitrixDeals(BITRIX_APIS.NOVONET, 'NOVONET', desde)
+          .catch(e => { console.error('[bitrix novonet]', e.message); return []; }),
+        fetchBitrixDeals(BITRIX_APIS.VELSA, 'VELSA', desde)
+          .catch(e => { console.error('[bitrix velsa]', e.message); return []; }),
+      ]),
+      Promise.all([
+        fetchActividades(BITRIX_APIS.NOVONET, desde).catch(() => new Map()),
+        fetchActividades(BITRIX_APIS.VELSA,   desde).catch(() => new Map()),
+      ]),
     ]);
 
-    const todos = [...dealsNovonet, ...dealsVelsa];
+    // Combinar deals con su última actividad
+    const todos = [
+      ...dealsNovonet.map(d => ({ ...d, actDeal: actsNovonet.get(d.dealId) || null })),
+      ...dealsVelsa.map(d =>   ({ ...d, actDeal: actsVelsa.get(d.dealId)   || null })),
+    ];
 
     // Agrupar por asesor + cuenta
-    const mapa = new Map();
+    const mapaAsesores = new Map();
     for (const deal of todos) {
       const key = `${deal.asesor}||${deal.cuenta}`;
-      if (!mapa.has(key)) {
-        mapa.set(key, {
+      if (!mapaAsesores.has(key)) {
+        mapaAsesores.set(key, {
           asesor:          deal.asesor,
           cuenta:          deal.cuenta,
           movimientos:     [],
@@ -475,35 +541,34 @@ const getLiveActividad = async (req, res) => {
           ultimaActividad: deal.dateModify,
         });
       }
-      const entry = mapa.get(key);
+      const entry = mapaAsesores.get(key);
       entry.movimientos.push({
-        negocio: deal.negocio,
-        etapa:   deal.etapa,
-        monto:   deal.monto,
-        fecha:   deal.dateModify,
+        dealId:    deal.dealId,
+        negocio:   deal.negocio,
+        etapa:     deal.etapa,
+        monto:     deal.monto,
+        fecha:     deal.dateModify,
+        actividad: deal.actDeal,  // última actividad registrada en ese negocio
       });
       entry.montoTotal += deal.monto;
-      if (deal.dateModify > entry.ultimaActividad) {
-        entry.ultimaActividad = deal.dateModify;
-      }
+      if (deal.dateModify > entry.ultimaActividad) entry.ultimaActividad = deal.dateModify;
     }
 
-    const ahora = new Date();
-    const resultado = Array.from(mapa.values())
+    const ahora     = new Date();
+    const resultado = Array.from(mapaAsesores.values())
       .map(r => {
-        // Ordenar movimientos más recientes primero
         r.movimientos.sort((a, b) => b.fecha - a.fecha);
-        const diff  = Math.floor((ahora - r.ultimaActividad) / 1000 / 60);
+        const diff   = Math.floor((ahora - r.ultimaActividad) / 1000 / 60);
         const estado = diff < 30 ? 'activo' : diff < 120 ? 'reciente' : 'inactivo';
         return {
-          asesor:             r.asesor,
-          cuenta:             r.cuenta,
-          totalMovimientos:   r.movimientos.length,
-          ultimaActividad:    r.ultimaActividad,
-          minutosAtras:       diff,
+          asesor:           r.asesor,
+          cuenta:           r.cuenta,
+          totalMovimientos: r.movimientos.length,
+          ultimaActividad:  r.ultimaActividad,
+          minutosAtras:     diff,
           estado,
-          montoTotal:         Math.round(r.montoTotal * 100) / 100,
-          ultimosMovimientos: r.movimientos.slice(0, 5),
+          montoTotal:       Math.round(r.montoTotal * 100) / 100,
+          movimientos:      r.movimientos,   // TODOS — sin slice
         };
       })
       .sort((a, b) => b.ultimaActividad - a.ultimaActividad);
@@ -516,7 +581,7 @@ const getLiveActividad = async (req, res) => {
       data:    resultado,
     });
   } catch (err) {
-    console.error('[live-actividad error]', err.message);
+    console.error("[live-actividad error]", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 };

@@ -18,11 +18,17 @@ const getSocket = () => {
   if (!socketSingleton) {
     socketSingleton = io(API, {
       auth: { token: localStorage.getItem('token') },
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],   // polling como fallback si WS falla
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 15,
       reconnectionDelay: 2000,
       reconnectionDelayMax: 10000,
+    });
+    socketSingleton.on("connect", () => {
+      console.log("[Socket] Conectado:", socketSingleton.id);
+    });
+    socketSingleton.on("connect_error", (err) => {
+      console.warn("[Socket] Error de conexión:", err.message);
     });
   }
   return socketSingleton;

@@ -1,5 +1,4 @@
 // src/routes/broadcast.routes.js
-// Montar en app.js: app.use('/api/broadcast', require('./routes/broadcast.routes'));
 
 const router       = require('express').Router();
 const express      = require('express');
@@ -10,23 +9,22 @@ const multer       = require('multer');
 const path         = require('path');
 const fs           = require('fs');
 
-// ── Almacenamiento de archivos ────────────────────────────────────────────────
+// Almacenamiento de archivos
 const uploadDir = path.join(process.cwd(), 'uploads', 'broadcast');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  filename:    (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
 });
 
-// Acepta imagen Y audio_archivo en la misma petición
-const upload = multer({ storage, limits: { fileSize: 30 * 1024 * 1024 } }); // 30 MB
+const upload = multer({ storage, limits: { fileSize: 30 * 1024 * 1024 } });
 const uploadFields = upload.fields([
   { name: 'imagen',        maxCount: 1 },
   { name: 'audio_archivo', maxCount: 1 },
 ]);
 
-// ── Tabla de mensajes ─────────────────────────────────────────────────────────
+// Tabla de mensajes
 const crearTabla = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.broadcast_mensajes (
@@ -48,13 +46,11 @@ const crearTabla = async () => {
       created_at      TIMESTAMPTZ DEFAULT NOW()
     );
   `);
-
-  // Migración segura: agregar columnas si ya existía la tabla sin ellas
   const alters = [
-    `ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS canal       VARCHAR(30)`,
-    `ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS audio_url   VARCHAR(500)`,
-    `ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS color_fondo VARCHAR(20) DEFAULT '#0f172a'`,
-    `ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS color_texto VARCHAR(20) DEFAULT '#ffffff'`,
+    "ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS canal       VARCHAR(30)",
+    "ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS audio_url   VARCHAR(500)",
+    "ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS color_fondo VARCHAR(20) DEFAULT '#0f172a'",
+    "ALTER TABLE public.broadcast_mensajes ADD COLUMN IF NOT EXISTS color_texto VARCHAR(20) DEFAULT '#ffffff'",
   ];
   for (const sql of alters) {
     await pool.query(sql).catch(() => {});
@@ -62,24 +58,21 @@ const crearTabla = async () => {
 };
 crearTabla().catch(console.error);
 
-// Mapa de jobs programados en memoria
 const jobsActivos = {};
 
-// ── Emitir broadcast filtrando por canal/empresa ───────────────────────────────
+// Emitir broadcast filtrando por canal/empresa
+// Rooms:
+//   ADMINISTRADOR -> broadcast:all   (todos los canales)
+//   TV sin login  -> tv:all          (todos los canales)
+//   ANALISTA/GER  -> empresa:NOVONET | empresa:VELSA
 //
-//  Lógica de rooms (configurada en socket.js):
-//    · ADMINISTRADOR        → room 'broadcast:all'
-//    · Resto de perfiles    → room 'empresa:NOVONET' | 'empresa:VELSA' | ...
-//
-//  Al emitir:
-//    · canal='novonet'  → empresa:NOVONET + broadcast:all
-//    · canal='velsa'    → empresa:VELSA   + broadcast:all
-//    · sin canal        → io.emit() (todos)
-// ─────────────────────────────────────────────────────────────────────────────
+// Emision:
+//   canal=novonet -> empresa:NOVONET + broadcast:all + tv:all
+//   canal=velsa   -> empresa:VELSA   + broadcast:all + tv:all
+//   sin canal     -> broadcast:all + tv:all
 const emitirBroadcast = async (mensaje) => {
   const io = getIO();
 
-  // Enriquecer con datos en vivo si aplica
   let datosVivos = null;
   if (mensaje.datos_vivos) {
     try {
@@ -93,21 +86,20 @@ const emitirBroadcast = async (mensaje) => {
     } catch (e) { console.error('[BROADCAST] Error datos vivos:', e.message); }
   }
 
-  const payload = { ...mensaje, datosVivos, timestamp: new Date().toISOString() };
+  const payload = Object.assign({}, mensaje, { datosVivos: datosVivos, timestamp: new Date().toISOString() });
   const canal   = (mensaje.canal || '').toLowerCase().trim();
 
   if (canal === 'novonet') {
-    io.to('empresa:NOVONET').to('broadcast:all').emit('broadcast_mensaje', payload);
-    console.log(`[BROADCAST] → empresa:NOVONET + broadcast:all (admins)`);
+    io.to('empresa:NOVONET').to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
+    console.log('[BROADCAST] -> empresa:NOVONET + broadcast:all + tv:all');
   } else if (canal === 'velsa') {
-    io.to('empresa:VELSA').to('broadcast:all').emit('broadcast_mensaje', payload);
-    console.log(`[BROADCAST] → empresa:VELSA + broadcast:all (admins)`);
+    io.to('empresa:VELSA').to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
+    console.log('[BROADCAST] -> empresa:VELSA + broadcast:all + tv:all');
   } else {
-    io.emit('broadcast_mensaje', payload);
-    console.log(`[BROADCAST] → TODOS (sin canal)`);
+    io.to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
+    console.log('[BROADCAST] -> broadcast:all + tv:all (sin canal especifico)');
   }
 
-  // Marcar como enviado en BD
   if (mensaje.id) {
     await pool.query(
       'UPDATE public.broadcast_mensajes SET enviado = true WHERE id = $1',
@@ -116,7 +108,7 @@ const emitirBroadcast = async (mensaje) => {
   }
 };
 
-// ── POST /api/broadcast/enviar — envío inmediato ──────────────────────────────
+// POST /api/broadcast/enviar
 router.post('/enviar', uploadFields, async (req, res) => {
   try {
     const {
@@ -126,12 +118,12 @@ router.post('/enviar', uploadFields, async (req, res) => {
       audio_url: audioUrlBody,
     } = req.body;
 
-    const imagen_url = req.files?.imagen?.[0]
-      ? `/uploads/broadcast/${req.files.imagen[0].filename}`
+    const imagen_url = req.files && req.files.imagen && req.files.imagen[0]
+      ? '/uploads/broadcast/' + req.files.imagen[0].filename
       : req.body.imagen_url || null;
 
-    const audio_url = req.files?.audio_archivo?.[0]
-      ? `/uploads/broadcast/${req.files.audio_archivo[0].filename}`
+    const audio_url = req.files && req.files.audio_archivo && req.files.audio_archivo[0]
+      ? '/uploads/broadcast/' + req.files.audio_archivo[0].filename
       : audioUrlBody || null;
 
     const { rows } = await pool.query(`
@@ -153,12 +145,12 @@ router.post('/enviar', uploadFields, async (req, res) => {
     await emitirBroadcast(rows[0]);
     res.json({ success: true, mensaje: 'Broadcast enviado', data: rows[0] });
   } catch (e) {
-    console.error('[BROADCAST] Error envío:', e.message);
+    console.error('[BROADCAST] Error envio:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// ── POST /api/broadcast/programar — programar para una hora ──────────────────
+// POST /api/broadcast/programar
 router.post('/programar', uploadFields, async (req, res) => {
   try {
     const {
@@ -168,12 +160,12 @@ router.post('/programar', uploadFields, async (req, res) => {
       audio_url: audioUrlBody,
     } = req.body;
 
-    const imagen_url = req.files?.imagen?.[0]
-      ? `/uploads/broadcast/${req.files.imagen[0].filename}`
+    const imagen_url = req.files && req.files.imagen && req.files.imagen[0]
+      ? '/uploads/broadcast/' + req.files.imagen[0].filename
       : req.body.imagen_url || null;
 
-    const audio_url = req.files?.audio_archivo?.[0]
-      ? `/uploads/broadcast/${req.files.audio_archivo[0].filename}`
+    const audio_url = req.files && req.files.audio_archivo && req.files.audio_archivo[0]
+      ? '/uploads/broadcast/' + req.files.audio_archivo[0].filename
       : audioUrlBody || null;
 
     const { rows } = await pool.query(`
@@ -210,20 +202,19 @@ router.post('/programar', uploadFields, async (req, res) => {
   }
 });
 
-// ── GET /api/broadcast/historial — últimos 50 mensajes ───────────────────────
+// GET /api/broadcast/historial
 router.get('/historial', async (req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT * FROM public.broadcast_mensajes
-      ORDER BY created_at DESC LIMIT 50
-    `);
+    const { rows } = await pool.query(
+      'SELECT * FROM public.broadcast_mensajes ORDER BY created_at DESC LIMIT 50'
+    );
     res.json({ success: true, data: rows });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// ── GET /api/broadcast/datos-vivos ───────────────────────────────────────────
+// GET /api/broadcast/datos-vivos
 router.get('/datos-vivos', async (req, res) => {
   try {
     const [topAsesores, sinVentas, gestionDiaria, topActivas, resumen] = await Promise.all([
@@ -239,7 +230,7 @@ router.get('/datos-vivos', async (req, res) => {
   }
 });
 
-// ── DELETE /api/broadcast/:id — cancelar programado ──────────────────────────
+// DELETE /api/broadcast/:id
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -251,7 +242,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Servir archivos subidos (imágenes + audio)
 router.use('/archivos', express.static(uploadDir));
 
 module.exports = router;

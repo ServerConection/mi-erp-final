@@ -239,13 +239,21 @@ export default function TVMode() {
   const audioRef                = useRef(null);
 
   useEffect(() => {
-    // 🔐 Conectar Socket.io — el server filtra por rooms según empresa/perfil del token
+    const token = localStorage.getItem('token');
+    // Con token → autenticado como usuario; sin token → modo pantalla TV
     socketRef.current = io(API, {
-      auth: { token: localStorage.getItem('token') },
-      transports: ["websocket"],
+      auth: token ? { token } : { tv: true },
+      transports: ["websocket", "polling"],   // polling como fallback si WS falla
       reconnection: true,
-      reconnectionAttempts: 20,
+      reconnectionAttempts: 50,
       reconnectionDelay: 3000,
+      reconnectionDelayMax: 10000,
+    });
+    socketRef.current.on("connect", () => {
+      console.log("[TVMode] Socket conectado:", socketRef.current.id);
+    });
+    socketRef.current.on("connect_error", (err) => {
+      console.warn("[TVMode] Error socket:", err.message);
     });
     socketRef.current.on("broadcast_mensaje", (data) => {
       mostrarMensaje(data);

@@ -341,52 +341,105 @@ const BITRIX_APIS = {
   VELSA:   (process.env.BITRIX_VELSA_URL   || 'https://aclopecuador.bitrix24.es/rest/34852/0sl0qc3ccg3agc9x').replace(/\/$/, ''),
 };
 
-// Campos que pedimos a la API
-const BITRIX_SELECT = ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'ASSIGNED_BY_NAME', 'OPPORTUNITY', 'CURRENCY_ID', 'DATE_MODIFY'];
+// Campos de deals que pedimos a la API
+const BITRIX_SELECT = ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'OPPORTUNITY', 'CURRENCY_ID', 'DATE_MODIFY'];
+
+// ── Caché de usuarios por cuenta (TTL 10 minutos) ────────────────────────────
+// Evita llamar user.get en cada request — los usuarios cambian poco
+const _userCache = {
+  NOVONET: { mapa: null, expira: 0 },
+  VELSA:   { mapa: null, expira: 0 },
+};
+const USER_CACHE_TTL = 10 * 60 * 1000; // 10 min en ms
 
 /**
- * Obtiene todos los deals de una cuenta Bitrix24 modificados desde `desde`.
- * Maneja paginación automáticamente (Bitrix devuelve max 50 por página).
- * Límite de seguridad: 600 deals (12 páginas) para evitar sobrecarga.
+ * Obtiene mapa { userId → "Nombre Apellido" } desde Bitrix24.
+ * Pagina hasta traer todos los usuarios activos.
  */
-async function fetchBitrixDeals(baseUrl, cuenta, desde) {
-  const deals  = [];
-  let   start  = 0;
-  const limit  = 600; // techo de seguridad
-  // Formato que acepta Bitrix: YYYY-MM-DDTHH:MM:SS
-  const filtroFecha = desde.toISOString().slice(0, 19);
+async function fetchUserMap(baseUrl, cuenta) {
+  const cache = _userCache[cuenta];
+  if (cache.mapa && Date.now() < cache.expira) return cache.mapa;
 
-  while (deals.length < limit) {
+  const mapa = new Map();
+  let start  = 0;
+
+  while (true) {
     const params = new URLSearchParams();
-    params.set('filter[>DATE_MODIFY]', filtroFecha);
-    params.set('order[DATE_MODIFY]', 'DESC');
-    BITRIX_SELECT.forEach((f, i) => params.set(`select[${i}]`, f));
+    params.set('ACTIVE', 'Y');
+    ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME'].forEach((f, i) => params.set(`select[${i}]`, f));
     params.set('start', start);
 
-    const url  = `${baseUrl}/crm.deal.list.json?${params.toString()}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-
-    if (!resp.ok) throw new Error(`Bitrix ${cuenta} HTTP ${resp.status}`);
+    const resp = await fetch(`${baseUrl}/user.get.json?${params.toString()}`,
+      { signal: AbortSignal.timeout(10_000) });
+    if (!resp.ok) break;
     const json = await resp.json();
-    if (json.error) throw new Error(`Bitrix ${cuenta}: ${json.error_description || json.error}`);
+    if (json.error || !json.result) break;
 
-    const page = json.result || [];
-    deals.push(...page);
+    for (const u of json.result) {
+      const nombre = [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `ID-${u.ID}`;
+      mapa.set(String(u.ID), nombre);
+    }
 
-    // Sin más páginas o página vacía → terminar
-    if (!json.next || page.length === 0) break;
+    if (!json.next) break;
     start = json.next;
   }
 
-  return deals.map(d => ({
-    asesor:     (d.ASSIGNED_BY_NAME || `ID-${d.ASSIGNED_BY_ID}` || 'Sin asignar').trim(),
-    negocio:    d.TITLE   || '—',
-    etapa:      d.STAGE_ID || '—',
-    monto:      parseFloat(d.OPPORTUNITY || 0),
-    moneda:     d.CURRENCY_ID || '',
-    dateModify: new Date(d.DATE_MODIFY),
-    cuenta,
-  }));
+  cache.mapa   = mapa;
+  cache.expira = Date.now() + USER_CACHE_TTL;
+  console.log(`[bitrix] Usuarios ${cuenta} cacheados: ${mapa.size}`);
+  return mapa;
+}
+
+/**
+ * Obtiene todos los deals modificados desde `desde` en una cuenta Bitrix24.
+ * Maneja paginación (Bitrix devuelve max 50 por página).
+ * Límite de seguridad: 600 deals para evitar sobrecarga.
+ */
+async function fetchBitrixDeals(baseUrl, cuenta, desde) {
+  // Cargar mapa de usuarios en paralelo con los deals
+  const [userMap, deals] = await Promise.all([
+    fetchUserMap(baseUrl, cuenta).catch(() => new Map()),
+    (async () => {
+      const list = [];
+      let   start = 0;
+      const filtroFecha = desde.toISOString().slice(0, 19); // YYYY-MM-DDTHH:MM:SS
+
+      while (list.length < 600) {
+        const params = new URLSearchParams();
+        params.set('filter[>DATE_MODIFY]', filtroFecha);
+        params.set('order[DATE_MODIFY]', 'DESC');
+        BITRIX_SELECT.forEach((f, i) => params.set(`select[${i}]`, f));
+        params.set('start', start);
+
+        const resp = await fetch(`${baseUrl}/crm.deal.list.json?${params.toString()}`,
+          { signal: AbortSignal.timeout(15_000) });
+        if (!resp.ok) throw new Error(`Bitrix ${cuenta} HTTP ${resp.status}`);
+        const json = await resp.json();
+        if (json.error) throw new Error(`Bitrix ${cuenta}: ${json.error_description || json.error}`);
+
+        const page = json.result || [];
+        list.push(...page);
+        if (!json.next || page.length === 0) break;
+        start = json.next;
+      }
+      return list;
+    })(),
+  ]);
+
+  return deals.map(d => {
+    // Nombre real desde el mapa de usuarios; fallback al ID si no está
+    const nombreAsesor = userMap.get(String(d.ASSIGNED_BY_ID))
+      || `Asesor ${d.ASSIGNED_BY_ID}`;
+    return {
+      asesor:     nombreAsesor,
+      negocio:    d.TITLE    || '—',
+      etapa:      d.STAGE_ID || '—',
+      monto:      parseFloat(d.OPPORTUNITY || 0),
+      moneda:     d.CURRENCY_ID || '',
+      dateModify: new Date(d.DATE_MODIFY),
+      cuenta,
+    };
+  });
 }
 
 // ── GET /api/bitrix/live-actividad ────────────────────────────────────────────

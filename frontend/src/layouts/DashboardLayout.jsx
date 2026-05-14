@@ -161,19 +161,27 @@ const TIPO_ICONOS = {
 };
 
 function BroadcastOverlay({ mensaje, onClose }) {
-  const [progreso, setProgreso] = useState(100);
+  const [progreso,      setProgreso]      = useState(100);
+  const [audioBlocked,  setAudioBlocked]  = useState(false);
   const intervalRef = useRef(null);
   const audioRef    = useRef(null);
+  const playTimerRef = useRef(null);
+
+  const tryPlay = () => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    audioRef.current.play()
+      .then(() => setAudioBlocked(false))
+      .catch(() => setAudioBlocked(true));
+  };
 
   useEffect(() => {
     if (!mensaje) return;
     setProgreso(100);
+    setAudioBlocked(false);
 
-    // Reproducir audio adjunto si existe
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
+    // Diferir play para dar tiempo al DOM + ref
+    playTimerRef.current = setTimeout(tryPlay, 150);
 
     const duracion = (parseInt(mensaje.duracion) || 30) * 1000;
     const paso = 100 / (duracion / 100);
@@ -189,6 +197,7 @@ function BroadcastOverlay({ mensaje, onClose }) {
       });
     }, 100);
     return () => {
+      clearTimeout(playTimerRef.current);
       clearInterval(intervalRef.current);
       if (audioRef.current) { audioRef.current.pause(); }
     };
@@ -255,9 +264,21 @@ function BroadcastOverlay({ mensaje, onClose }) {
           </div>
         )}
         <DatosVivos tipo={mensaje.datos_vivos} datos={mensaje.datosVivos} colorTexto={colorTexto} />
-        {/* Indicador de audio */}
-        {audioSrc && (
-          <div style={{ marginTop: 12, fontSize: 13, color: colorTexto, opacity: .55, fontWeight: 600 }}>
+        {/* Audio: botón manual si autoplay fue bloqueado */}
+        {audioSrc && audioBlocked && (
+          <button
+            onClick={tryPlay}
+            style={{
+              marginTop: 14, padding: "8px 20px", borderRadius: 10,
+              background: "rgba(255,255,255,.20)", border: "1px solid rgba(255,255,255,.35)",
+              color: colorTexto, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              backdropFilter: "blur(6px)",
+            }}>
+            🔊 Reproducir audio
+          </button>
+        )}
+        {audioSrc && !audioBlocked && (
+          <div style={{ marginTop: 10, fontSize: 12, color: colorTexto, opacity: .5, fontWeight: 600 }}>
             🎵 Audio en reproducción
           </div>
         )}
@@ -290,13 +311,20 @@ function BroadcastOverlay({ mensaje, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MENÚ
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Helpers de acceso por perfil/empresa ──────────────────────────────────────
+const isAdmin     = (p)    => p === 'ADMINISTRADOR';
+const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
+const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
+
 const ALL_MENU_ITEMS = [
   { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
-  { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null }, // ✅ FIX: era '/guia-comercial'
+  { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null },
   { name: "Indicadores",        path: "/indicadores",              icon: "📊", permiso: "Indicadores" },
   { name: "Comparativa Sup.",   path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores" },
   { name: "Indicadores VELSA",  path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa" },
-  { name: "🟢 Bitrix Live",       path: "/bitrix-live",              icon: "🟢", permiso: "IndicadoresVelsa" },
+  // BitrixLive: ADMINISTRADOR + ANALISTA + GERENCIA (cualquier empresa)
+  { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
+    accessCheck: (p) => isAdmin(p) || isAnalGer(p) },
   { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
   { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
   { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },
@@ -310,6 +338,11 @@ const ALL_MENU_ITEMS = [
   { name: "Resumen NOVONET",    path: "/resumen-novonet",     icon: "📊", permiso: "ResumenNovonet" },
   { name: "Resumen VELSA",      path: "/resumen-velsa",       icon: "🟣", permiso: "ResumenVelsa" },
   { name: "JOT Formulario",     path: "/jot-formulario",      icon: "📋", permiso: null },
+  // Broadcast por canal — acceso según empresa + perfil
+  { name: "📡 Broadcast NOVONET", path: "/broadcast-novonet", icon: "📡",
+    accessCheck: (p, e) => forEmpresa(p, e, 'NOVONET') },
+  { name: "📡 Broadcast VELSA",   path: "/broadcast-velsa",   icon: "📡",
+    accessCheck: (p, e) => forEmpresa(p, e, 'VELSA') },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,13 +400,20 @@ export default function DashboardLayout() {
 
   // ── Proteger rutas ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user || permisos.length === 0) return;
+    if (!user) return;
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
 
     const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
     if (!itemActual) return;
-    if (itemActual.permiso && !permisos.includes(itemActual.permiso)) {
-      navigate("/");
+
+    const p = (user.perfil  || '').toUpperCase();
+    const e = (user.empresa || '').toUpperCase();
+
+    if (itemActual.accessCheck) {
+      if (!itemActual.accessCheck(p, e)) navigate('/');
+    } else if (itemActual.permiso) {
+      if (permisos.length === 0) return; // permisos aún cargando
+      if (!permisos.includes(itemActual.permiso)) navigate('/');
     }
   }, [location.pathname, permisos, user, navigate]);
 
@@ -389,9 +429,14 @@ export default function DashboardLayout() {
 
   if (!user) return null;
 
-  const menuItems = ALL_MENU_ITEMS.filter(item =>
-    !item.permiso || permisos.includes(item.permiso)
-  );
+  const menuItems = ALL_MENU_ITEMS.filter(item => {
+    if (item.accessCheck) {
+      const p = (user?.perfil  || '').toUpperCase();
+      const e = (user?.empresa || '').toUpperCase();
+      return item.accessCheck(p, e);
+    }
+    return !item.permiso || permisos.includes(item.permiso);
+  });
 
   return (
     <>

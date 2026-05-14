@@ -7,8 +7,6 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
 import { RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
-import BitrixLive from './pages/BitrixLive';
-
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
@@ -33,6 +31,7 @@ const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
+const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -89,11 +88,11 @@ export default function App() {
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
+            <Route path="bitrix-live"              element={<BitrixLive />} />
           </Route>
 
-              <Route path="tv" element={<TVMode />} />
-        <Route path="bitrix-live" element={<ProtectedRoute><BitrixLive /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/login" />} />
+          <Route path="tv" element={<TVMode />} />
+          <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
       </Suspense>
     </BrowserRouter>

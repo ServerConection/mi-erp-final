@@ -236,12 +236,16 @@ export default function TVMode() {
   const timerRef                = useRef(null);
   const intervalRef             = useRef(null);
   const socketRef               = useRef(null);
+  const audioRef                = useRef(null);
 
   useEffect(() => {
-    // 🔐 Conectar Socket.io con autenticación JWT
+    // 🔐 Conectar Socket.io — el server filtra por rooms según empresa/perfil del token
     socketRef.current = io(API, {
-      auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
-      transports: ["websocket"]
+      auth: { token: localStorage.getItem('token') },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 3000,
     });
     socketRef.current.on("broadcast_mensaje", (data) => {
       mostrarMensaje(data);
@@ -251,13 +255,25 @@ export default function TVMode() {
 
   const mostrarMensaje = (data) => {
     // Limpiar timers anteriores
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (timerRef.current)   clearTimeout(timerRef.current);
     if (intervalRef.current) clearInterval(intervalRef.current);
+    if (audioRef.current)   { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
     setMensaje(data);
     setVisible(true);
     setProgreso(100);
+
+    // Sonido del sistema
     if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);
+
+    // Audio adjunto (archivo o URL)
+    const audioSrc = data.audio_url
+      ? (data.audio_url.startsWith('http') ? data.audio_url : `${API}${data.audio_url}`)
+      : null;
+    if (audioSrc && audioRef.current) {
+      audioRef.current.src = audioSrc;
+      audioRef.current.play().catch(() => {});
+    }
 
     const duracion = (parseInt(data.duracion) || 30) * 1000;
     const paso = 100 / (duracion / 100);
@@ -269,13 +285,15 @@ export default function TVMode() {
     timerRef.current = setTimeout(() => {
       setVisible(false);
       clearInterval(intervalRef.current);
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
     }, duracion);
   };
 
   const cerrar = () => {
     setVisible(false);
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (timerRef.current)    clearTimeout(timerRef.current);
     if (intervalRef.current) clearInterval(intervalRef.current);
+    if (audioRef.current)    { audioRef.current.pause(); audioRef.current.currentTime = 0; }
   };
 
   const TIPO_ICONOS = {
@@ -294,6 +312,9 @@ export default function TVMode() {
       overflow: "hidden", position: "relative",
       transition: "background 0.5s ease",
     }}>
+
+      {/* Audio oculto — src se asigna dinámicamente en mostrarMensaje() */}
+      <audio ref={audioRef} style={{ display: "none" }} />
 
       {/* CSS animations */}
       <style>{`

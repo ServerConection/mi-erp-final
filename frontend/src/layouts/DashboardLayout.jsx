@@ -163,25 +163,45 @@ const TIPO_ICONOS = {
 function BroadcastOverlay({ mensaje, onClose }) {
   const [progreso, setProgreso] = useState(100);
   const intervalRef = useRef(null);
+  const audioRef    = useRef(null);
 
   useEffect(() => {
     if (!mensaje) return;
     setProgreso(100);
+
+    // Reproducir audio adjunto si existe
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+
     const duracion = (parseInt(mensaje.duracion) || 30) * 1000;
     const paso = 100 / (duracion / 100);
     intervalRef.current = setInterval(() => {
       setProgreso(p => {
-        if (p - paso <= 0) { clearInterval(intervalRef.current); onClose(); return 0; }
+        if (p - paso <= 0) {
+          clearInterval(intervalRef.current);
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+          onClose();
+          return 0;
+        }
         return p - paso;
       });
     }, 100);
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      clearInterval(intervalRef.current);
+      if (audioRef.current) { audioRef.current.pause(); }
+    };
   }, [mensaje]);
 
   if (!mensaje) return null;
 
   const colorFondo = mensaje.color_fondo || "#0f172a";
   const colorTexto = mensaje.color_texto || "#ffffff";
+  // audio_url puede ser ruta relativa (/uploads/...) o URL externa
+  const audioSrc = mensaje.audio_url
+    ? (mensaje.audio_url.startsWith('http') ? mensaje.audio_url : `${API}${mensaje.audio_url}`)
+    : null;
 
   return (
     <div style={{
@@ -198,6 +218,11 @@ function BroadcastOverlay({ mensaje, onClose }) {
         @keyframes starTwinkle { 0%,100% { transform:scale(1); opacity:.8; } 50% { transform:scale(2.5); opacity:1; } }
         @keyframes pulseIcon { 0%,100% { transform:scale(1); } 50% { transform:scale(1.15); } }
       `}</style>
+
+      {/* Audio adjunto — se reproduce automáticamente */}
+      {audioSrc && (
+        <audio ref={audioRef} src={audioSrc} preload="auto" />
+      )}
 
       <Particulas efecto={mensaje.efecto} />
 
@@ -230,6 +255,12 @@ function BroadcastOverlay({ mensaje, onClose }) {
           </div>
         )}
         <DatosVivos tipo={mensaje.datos_vivos} datos={mensaje.datosVivos} colorTexto={colorTexto} />
+        {/* Indicador de audio */}
+        {audioSrc && (
+          <div style={{ marginTop: 12, fontSize: 13, color: colorTexto, opacity: .55, fontWeight: 600 }}>
+            🎵 Audio en reproducción
+          </div>
+        )}
       </div>
 
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,

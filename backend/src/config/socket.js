@@ -63,13 +63,14 @@ const initSocket = (httpServer) => {
 
       // Guardar datos del usuario EN el socket para usar después
       socket.user = {
-        id: decoded.id,
-        rol: decoded.rol,
-        empresa: decoded.empresa
+        id:      decoded.id,
+        rol:     decoded.rol,
+        perfil:  (decoded.perfil  || '').toUpperCase(),
+        empresa: (decoded.empresa || '').toUpperCase(),
       };
       socket.userId = decoded.id;
 
-      console.log(`[SOCKET] ✅ Usuario ${decoded.id} autenticado`);
+      console.log(`[SOCKET] ✅ Usuario ${decoded.id} (${socket.user.perfil}·${socket.user.empresa}) autenticado`);
       next(); // ✅ Permitir conexión
 
     } catch (error) {
@@ -83,13 +84,24 @@ const initSocket = (httpServer) => {
    * Solo usuarios con JWT válido llegan aquí
    */
   _io.on('connection', (socket) => {
-    console.log(`[SOCKET] Cliente conectado: ${socket.id} (Usuario: ${socket.userId})`);
+    const { perfil, empresa } = socket.user;
+
+    // ── Rooms de broadcast ──────────────────────────────────────────────────
+    // ADMINISTRADOR → recibe mensajes de TODOS los canales
+    // Resto        → recibe solo los de su empresa
+    if (perfil === 'ADMINISTRADOR') {
+      socket.join('broadcast:all');
+    } else {
+      socket.join(`empresa:${empresa}`);
+    }
+
+    console.log(`[SOCKET] Cliente conectado: ${socket.id} (${perfil}·${empresa}) → room ${perfil === 'ADMINISTRADOR' ? 'broadcast:all' : 'empresa:' + empresa}`);
 
     // Evento opcional: Confirmar conexión al cliente
     socket.emit('connected', {
-      userId: socket.userId,
-      role: socket.user.rol,
-      empresa: socket.user.empresa
+      userId:  socket.userId,
+      perfil:  socket.user.perfil,
+      empresa: socket.user.empresa,
     });
 
     /**

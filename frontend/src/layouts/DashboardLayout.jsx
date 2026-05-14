@@ -363,6 +363,10 @@ export default function DashboardLayout() {
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [broadcast, setBroadcast]                   = useState(null);
 
+  // Ref para acceder al user actualizado dentro del handler del socket
+  // (evita el problema de closure obsoleto con useEffect de [])
+  const userRef = useRef(null);
+
   const BG_IMAGE = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
   // ── Cargar usuario y permisos ───────────────────────────────────────────────
@@ -374,6 +378,7 @@ export default function DashboardLayout() {
     }
     try {
       const parsedUser = JSON.parse(userData);
+      userRef.current = parsedUser;   // ← siempre actualizado
       setUser(parsedUser);
 
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
@@ -393,10 +398,25 @@ export default function DashboardLayout() {
   // ── Socket.io para broadcasts ───────────────────────────────────────────────
   useEffect(() => {
     const socket = getSocket();
+
     const handleBroadcast = (data) => {
+      // Filtrar por empresa: el backend emite a todos, aquí decidimos si mostrar
+      const u      = userRef.current;
+      const perfil = (u?.perfil  || '').toUpperCase();
+      const emp    = (u?.empresa || '').toUpperCase();
+      const canal  = (data.canal || '').toLowerCase();
+
+      const debeVer =
+        perfil === 'ADMINISTRADOR'  ||   // admin ve todo
+        !canal                      ||   // sin canal = para todos
+        canal === emp.toLowerCase();     // canal coincide con empresa del usuario
+
+      if (!debeVer) return;
+
       setBroadcast(data);
       if (data.sonido && data.sonido !== "ninguno") playSound(data.sonido);
     };
+
     socket.off("broadcast_mensaje", handleBroadcast);
     socket.on("broadcast_mensaje", handleBroadcast);
     return () => {

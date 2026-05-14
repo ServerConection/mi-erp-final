@@ -89,16 +89,11 @@ const emitirBroadcast = async (mensaje) => {
   const payload = Object.assign({}, mensaje, { datosVivos: datosVivos, timestamp: new Date().toISOString() });
   const canal   = (mensaje.canal || '').toLowerCase().trim();
 
-  if (canal === 'novonet') {
-    io.to('empresa:NOVONET').to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
-    console.log('[BROADCAST] -> empresa:NOVONET + broadcast:all + tv:all');
-  } else if (canal === 'velsa') {
-    io.to('empresa:VELSA').to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
-    console.log('[BROADCAST] -> empresa:VELSA + broadcast:all + tv:all');
-  } else {
-    io.to('broadcast:all').to('tv:all').emit('broadcast_mensaje', payload);
-    console.log('[BROADCAST] -> broadcast:all + tv:all (sin canal especifico)');
-  }
+  // Emitir a TODOS los sockets conectados.
+  // El frontend filtra por empresa/perfil para decidir si mostrar el overlay.
+  // Esto garantiza entrega aunque los rooms fallen por tokens vencidos o reconexiones.
+  io.emit('broadcast_mensaje', payload);
+  console.log('[BROADCAST] canal=' + (canal || 'global') + ' -> emitido a todos los sockets (' + io.engine.clientsCount + ' conectados)');
 
   if (mensaje.id) {
     await pool.query(

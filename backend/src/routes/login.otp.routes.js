@@ -53,7 +53,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await pool.query(
-      "SELECT id, usuario, correo, contraseña, activo FROM usuarios WHERE LOWER(usuario) = LOWER($1)",
+      "SELECT id, usuario, correo, contraseña, activo, nombres, apellidos, perfil, empresa FROM usuarios WHERE LOWER(usuario) = LOWER($1)",
       [usuario]
     );
 

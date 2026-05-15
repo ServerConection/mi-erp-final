@@ -328,9 +328,9 @@ const ALL_MENU_ITEMS = [
   { name: "Indicadores",        path: "/indicadores",              icon: "📊", permiso: "Indicadores" },
   { name: "Comparativa Sup.",   path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores" },
   { name: "Indicadores VELSA",  path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa" },
-  // BitrixLive: ADMINISTRADOR + ANALISTA + GERENCIA (cualquier empresa)
+  // BitrixLive: todos los perfiles EXCEPTO ASESOR
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
-    accessCheck: (p) => isAdmin(p) || isAnalGer(p) },
+    accessCheck: (p) => p !== 'ASESOR' },
   { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
   { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
   { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },

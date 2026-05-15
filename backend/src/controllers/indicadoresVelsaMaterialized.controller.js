@@ -229,22 +229,25 @@ async function getIndicadoresDashboardVelsa(req, res) {
       WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
     `;
     const qNetlife = `
-      SELECT
-        mv.id_crm AS "ID_CRM",
-        mv.etapa_crm AS "ETAPA",
-        mv.fecha_creacion_crm AS "FECHA_CREACION",
-        mv.asesor AS "ASESOR",
-        mv.supervisor AS "SUPERVISOR",
-        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
-        mv.origen AS "ORIGEN",
-        mv.estado_venta AS "ESTADO_NETLIFE",
-        mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.forma_pago AS "FORMA_PAGO",
-        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-        mv.aplica_descuento AS "APLICA_DESCUENTO"
-      FROM ${MV}
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
-      LIMIT 6000
+     SELECT
+  mv.id_crm AS "ID_CRM",
+  mv.etapa_crm AS "ETAPA",
+  mv.fecha_creacion_crm AS "FECHA_CREACION",
+  mv.asesor AS "ASESOR",
+  mv.supervisor AS "SUPERVISOR",
+  mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
+  mv.origen AS "ORIGEN",
+  mv.estado_venta AS "ESTADO_NETLIFE",
+  mv.fecha_activacion AS "FECHA_ACTIVACION",
+  mv.forma_pago AS "FORMA_PAGO",
+  mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+  mv.aplica_descuento AS "APLICA_DESCUENTO",
+  mv.inicio_sesion_netlife AS "INICIO_SESION_NETLIFE",
+  mv.observacion_telcos AS "OBSERVACION_TELCOS",
+  mv.observacion AS "OBSERVACION"
+FROM public.mv_indicadores_velsa_completo mv
+WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+LIMIT 6000
     `;
 
     const [

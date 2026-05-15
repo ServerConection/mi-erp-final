@@ -231,25 +231,35 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const qNetlife = `
      SELECT
   mv.id_crm AS "ID_CRM",
+  mv.id_registro AS "ID_JOT",
   mv.etapa_crm AS "ETAPA",
   mv.fecha_creacion_crm AS "FECHA_CREACION",
   mv.asesor AS "ASESOR",
   mv.supervisor AS "SUPERVISOR",
-  mv.fecha_modificacion_crm AS "FECHA_MODIFICACION",
   mv.origen AS "ORIGEN",
+  mv.payload_created_at AS "FECHA_CREADO_JOT",
+  mv.codigo_asesor AS "COD_ASESOR_JOT",
+  mv.inicio_sesion_netlife AS "LOGIN",
   mv.estado_venta AS "ESTADO_NETLIFE",
-  mv.fecha_activacion AS "FECHA_ACTIVACION",
-  mv.forma_pago AS "FORMA_PAGO",
-  mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-  mv.aplica_descuento AS "APLICA_DESCUENTO",
-  mv.inicio_sesion_netlife AS "INICIO_SESION_NETLIFE",
   mv.observacion_telcos AS "OBSERVACION_TELCOS",
+  mv.fecha_ingresa_telcos AS "INGRESO_TELCOS",
+  mv.fecha_activacion AS "FECHA_ACTIVACION",
+  mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+  mv.detalle_regularizacion AS "OBSERV_REGULARIZACION",
+  mv.plan_casa AS "PLAN_CASA",
+  mv.plan_pyme AS "PLAN_PYME",
+  mv.plan_profesional AS "PLAN_PROFESIONAL",
+  mv.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
+  mv.plan_pyme_corp AS "PLAN_PYME_CORP",
+  mv.plan_centro_red_comercial AS "PLAN_CENTRO_RED_COMERCIAL",
+  mv.forma_pago AS "FORMA_PAGO",
+  mv.aplica_descuento AS "APLICA_DESCUENTO",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
-WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
-LIMIT 6000
-    `;
-
+WHERE mv.fecha_registro_jotform::date 
+BETWEEN $1::date AND $2::date
+${filters}
+LIMIT 6000;
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,

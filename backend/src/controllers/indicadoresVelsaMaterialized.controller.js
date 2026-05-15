@@ -246,7 +246,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
   mv.observacion_telcos AS "OBSERVACION_TELCOS",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
-WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
 LIMIT 6000
     `;
 

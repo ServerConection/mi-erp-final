@@ -34,6 +34,9 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
+// ⚠️ BYPASS TEMPORAL — desactivar OTP mientras se restablece el correo Gmail
+const OTP_BYPASS = true;
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
@@ -69,6 +72,36 @@ router.post('/login', async (req, res) => {
 
     if (user.activo !== 'SI') {
       return res.status(403).json({ success: false, error: 'Usuario desactivado' });
+    }
+
+    // ⚠️ BYPASS TEMPORAL: emitir token directo sin OTP mientras se restablece Gmail
+    if (OTP_BYPASS) {
+      const perfil  = user.perfil?.toUpperCase() || '';
+      const empresa = user.empresa?.toUpperCase() || '';
+      const permisos = obtenerPermisosUsuario(empresa, perfil);
+      const token = jwt.sign(
+        { id: user.id, usuario: user.usuario, empresa, perfil },
+        process.env.JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+      const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)
+        ? URL_REPORTES.especiales
+        : (URL_REPORTES[perfil] || '');
+      return res.json({
+        success: true,
+        bypass: true,
+        token,
+        user: {
+          id: user.id,
+          usuario: user.usuario,
+          nombre: `${user.nombres} ${user.apellidos}`,
+          perfil,
+          empresa,
+          correo: user.correo,
+          url_reporte: urlReporte,
+          permisos
+        }
+      });
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();

@@ -67,34 +67,8 @@ const procesarAlerta = async (alerta) => {
     console.error('[CRON] Error ERP socket:', e.message);
   }
 
-  // ── Canal 2: Email ──────────────────────────────────────────────────────────
-  if (contacto.email) {
-    try {
-      await correoSvc.enviarAlerta({
-        para:       contacto.email,
-        supervisor,
-        condicion,
-        asesores,
-        detalle:    `Se detectaron ${total} caso(s) que requieren atención inmediata.`,
-      });
-      await notifModel.registrar({
-        tipo: 'EMAIL', canal: 'EMAIL',
-        supervisor, condicion,
-        asesor: asesores.map(a => a.nombre).join(', '),
-        mensaje: `Email enviado a ${contacto.email}`,
-        enviado_ok: true,
-      });
-      console.log(`[CRON] Email enviado a ${supervisor} (${contacto.email})`);
-    } catch (e) {
-      console.error(`[CRON] Error email ${supervisor}:`, e.message);
-      await notifModel.registrar({
-        tipo: 'EMAIL', canal: 'EMAIL',
-        supervisor, condicion,
-        mensaje: `Error enviando email`,
-        enviado_ok: false, error_detalle: e.message,
-      });
-    }
-  }
+  // ── Canal 2: Email — DESACTIVADO TEMPORALMENTE (límite Gmail excedido) ───────
+  // if (contacto.email) { ... }
 
   // ── Canal 3: WhatsApp ───────────────────────────────────────────────────────
   if (contacto.whatsapp && waSvc.getEstado().estado === 'conectado') {

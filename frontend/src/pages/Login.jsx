@@ -36,6 +36,13 @@ export default function Login() {
       });
       const data = await res.json();
       if (!data.success) { setError(data.error || "Credenciales inválidas."); return; }
+      // Bypass temporal: el backend devuelve token directo sin OTP
+      if (data.bypass && data.token) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("userProfile", JSON.stringify(data.user));
+        navigate("/");
+        return;
+      }
       setUsuarioId(data.usuario_id);
       setUsuarioLogin(data.usuario || formData.usuario);
       setPaso(2);

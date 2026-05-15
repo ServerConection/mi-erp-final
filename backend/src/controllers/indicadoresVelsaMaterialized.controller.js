@@ -229,7 +229,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
       WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
     `;
     const qNetlife = `
-     SELECT
+SELECT
   mv.id_crm AS "ID_CRM",
   mv.id_registro AS "ID_JOT",
   mv.etapa_crm AS "ETAPA",
@@ -259,7 +259,9 @@ FROM public.mv_indicadores_velsa_completo mv
 WHERE mv.fecha_registro_jotform::date 
 BETWEEN $1::date AND $2::date
 ${filters}
-LIMIT 6000;
+LIMIT 6000
+    `;
+
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,

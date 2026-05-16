@@ -186,82 +186,157 @@ function FormEquipo({ inicial, onSave, onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PLANO — mapa visual de puestos
+// PLANO — layout real del call center (46 puestos)
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Layout del piso: cada elemento puede ser:
- *   número  → puesto clickeable
- *   null    → espacio vacío
- *   "GAP"   → separación vertical entre bloques
- *   "LABEL" → etiqueta especial (coordinadora, etc.)
- * Ajusta este array para reflejar el layout físico real.
- * Los números corresponden al orden (id) de los equipos.
- */
-const FLOOR_LAYOUT = [
-  // Fila superior
-  [1, 2, 3, 4],
-  // Fila inferior
-  [5, 6, 7, 8],
-];
+const SUPS_SET = new Set([10, 22, 27]); // puestos de supervisión
 
-function PuestoCell({ puesto, equipo, selected, onClick }) {
-  const asignado = equipo && equipo.asesor && equipo.asesor !== "Sin asignar";
+// Colores por tipo de celda
+const C_ASESOR  = { bg: "#E1F5EE", border: "#5DCAA5", color: "#085041", lbColor: "#1D9E75" };
+const C_SUP     = { bg: "#E6F1FB", border: "#85B7EB", color: "#042C53", lbColor: "#378ADD" };
+const C_SEL     = { bg: "#dbeafe", border: "#3b82f6", color: "#1e40af", lbColor: "#3b82f6" };
+const C_EMPTY   = { bg: "#f1f5f9", border: "#e2e8f0", color: "#b0b8c1" };
+const C_VACANT  = { bg: "#f8fafc", border: "#e2e8f0", color: "#b0b8c1", lbColor: "#b0b8c1" };
 
-  const bg      = selected  ? "#6366f1"
-                : asignado  ? "#eef2ff"
-                :             "#f8fafc";
-  const border  = selected  ? "#6366f1"
-                : asignado  ? "#a5b4fc"
-                :             "#e2e8f0";
-  const textCol = selected  ? "#fff"
-                : asignado  ? "#3730a3"
-                :             "#94a3b8";
-  const dotCol  = asignado  ? "#10b981" : "#cbd5e1";
+function PuestoCell({ num, equipo, selected, onSelect }) {
+  const isSup    = SUPS_SET.has(num);
+  const asignado = equipo?.asesor && equipo.asesor !== "Sin asignar";
+  const isSel    = selected === num;
+
+  const c = isSel ? C_SEL : isSup ? C_SUP : asignado ? C_ASESOR : C_VACANT;
 
   return (
-    <div onClick={onClick}
+    <div
+      onClick={() => onSelect(isSel ? null : num)}
       style={{
-        background: bg,
-        border: `2px solid ${border}`,
-        color: textCol,
-        width: 80,
-        height: 72,
-        borderRadius: 12,
+        width: 52, height: 46, borderRadius: 7, flexShrink: 0,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        fontSize: 13, fontWeight: 500,
         cursor: "pointer",
-        transition: "all .15s",
+        background: c.bg,
+        border: `1.5px solid ${c.border}`,
+        color: c.color,
+        outline: isSel ? "2px solid #378ADD" : "none",
+        outlineOffset: isSel ? 2 : 0,
         userSelect: "none",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        boxShadow: selected ? "0 0 0 3px #a5b4fc" : "0 1px 3px rgba(0,0,0,.06)",
-        position: "relative",
+        transition: "transform .1s",
       }}
-      className="hover:scale-105 active:scale-95">
-      {/* Punto de estado */}
-      <div style={{
-        position: "absolute", top: 7, right: 7,
-        width: 8, height: 8, borderRadius: "50%",
-        background: dotCol
-      }} />
-      {/* Número de puesto */}
-      <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{puesto}</span>
-      {/* Código o estado */}
-      <span style={{ fontSize: 9, fontWeight: 600, opacity: .8, letterSpacing: .5 }}>
-        {equipo?.codigo || "VACÍO"}
+      onMouseEnter={e => e.currentTarget.style.transform = "scale(1.1)"}
+      onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+    >
+      <span>{num}</span>
+      <span style={{ fontSize: 9, fontWeight: 400, marginTop: 1, color: c.lbColor }}>
+        {isSup ? "SUP" : asignado ? equipo.asesor.split(" ")[0].substring(0, 6) : "PC"}
       </span>
-      {/* Asesor (truncado) */}
-      {asignado && (
-        <span style={{
-          fontSize: 8, fontWeight: 500, opacity: .75,
-          maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          textAlign: "center"
-        }}>
-          {equipo.asesor.split(" ")[0]}
-        </span>
-      )}
+    </div>
+  );
+}
+
+function XCell() {
+  return (
+    <div style={{
+      width: 52, height: 46, borderRadius: 7, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 18, color: "#cbd5e1",
+      background: C_EMPTY.bg, border: `1.5px solid ${C_EMPTY.border}`,
+    }}>×</div>
+  );
+}
+
+function SpCell({ label, cls }) {
+  const s = {
+    COORD: { bg: "#FAEEDA", border: "#EF9F27", color: "#633806" },
+    ANA:   { bg: "#FBEAF0", border: "#ED93B1", color: "#72243E" },
+    GER:   { bg: "#EEEDFE", border: "#AFA9EC", color: "#3C3489" },
+  }[cls] || { bg: "#f1f5f9", border: "#e2e8f0", color: "#64748b" };
+  return (
+    <div style={{
+      height: 46, borderRadius: 7, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "0 10px", whiteSpace: "nowrap",
+      background: s.bg, border: `1.5px solid ${s.border}`, color: s.color,
+      fontSize: 10, fontWeight: 500,
+    }}>
+      {label}
+    </div>
+  );
+}
+
+function R({ children }) {
+  return <div style={{ display: "flex", gap: 6, alignItems: "center" }}>{children}</div>;
+}
+
+function FloorPlan({ equiposPorPuesto, selected, onSelect }) {
+  const P = (n) => (
+    <PuestoCell key={n} num={n} equipo={equiposPorPuesto[n]} selected={selected} onSelect={onSelect} />
+  );
+  return (
+    <div style={{ overflowX: "auto" }}>
+      {/* FILA TOP: x 14 15 16 17 x 18 19 x 20 x */}
+      <R>{[null,14,15,16,17,null,18,19,null,20,null].map((v,i) =>
+        v === null ? <XCell key={i}/> : P(v)
+      )}</R>
+
+      <div style={{ height: 10 }} />
+
+      {/* BLOQUE MEDIO */}
+      <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
+        {/* Bloque A */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <R>{[13,12,11,10].map(P)}</R>
+          <R>{[6,7,8,9].map(P)}</R>
+        </div>
+
+        <div style={{ width: 58, flexShrink: 0 }} />
+
+        {/* Bloque B */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <R>{[28,27,26,25,24,23,22,21].map(P)}</R>
+          <R>{[29,30,31,32,33,34,35,36].map(P)}</R>
+        </div>
+
+        <div style={{ width: 20, flexShrink: 0 }} />
+
+        {/* Gerencia */}
+        <SpCell label="Gerencia" cls="GER" />
+      </div>
+
+      <div style={{ height: 10 }} />
+
+      {/* BLOQUE C + Analista/Consulta */}
+      <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <R><XCell/><XCell/>{P(5)}{P(4)}<SpCell label="Coordinadora" cls="COORD"/></R>
+          <R>{P(1)}<XCell/>{P(2)}{P(3)}</R>
+        </div>
+
+        <div style={{ width: 58, flexShrink: 0 }} />
+
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <SpCell label="Analista" cls="ANA" />
+          <SpCell label="Consulta" cls="ANA" />
+        </div>
+      </div>
+
+      <div style={{ height: 10 }} />
+
+      {/* BLOQUE E + Bloque D (alineados abajo) */}
+      <div style={{ display: "flex", gap: 0, alignItems: "flex-end" }}>
+        {/* Bloque E */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ height: 46 }} />
+          {P(46)}{P(45)}{P(44)}
+          <R>{[43,42,41].map(P)}</R>
+        </div>
+
+        <div style={{ width: 58, flexShrink: 0 }} />
+
+        {/* Bloque D */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {P(37)}{P(38)}{P(39)}{P(40)}<XCell/>
+        </div>
+      </div>
     </div>
   );
 }
@@ -275,19 +350,21 @@ function PanelDetalle({ equipo, puesto, onClose, onEdit, onImgZoom }) {
     </div>
   );
 
+  const isSup    = SUPS_SET.has(puesto);
   const asignado = equipo.asesor && equipo.asesor !== "Sin asignar";
 
   return (
     <div className="h-full flex flex-col" style={{ animation: "fadeUp .18s ease" }}>
       {/* Header */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-2xl font-black text-slate-800">Puesto {puesto}</span>
+            <span className="text-xl font-black text-slate-800">Puesto {puesto}</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-              asignado ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-400"
+              isSup ? "bg-blue-100 text-blue-700" :
+              asignado ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
             }`}>
-              {asignado ? "Asignado" : "Vacío"}
+              {isSup ? "Supervisor" : asignado ? "Asesor" : "Vacío"}
             </span>
           </div>
           <p className="text-sm font-bold text-indigo-600">{equipo.codigo}</p>
@@ -299,53 +376,50 @@ function PanelDetalle({ equipo, puesto, onClose, onEdit, onImgZoom }) {
       </div>
 
       {/* Foto */}
-      <div className="mb-5 flex justify-center">
+      <div className="mb-4 flex justify-center">
         {equipo.imagen ? (
           <img src={`${IMG_URL}${equipo.imagen}`}
             onClick={() => onImgZoom(equipo.imagen)}
-            className="w-full max-h-44 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition" />
+            className="w-full max-h-36 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition" />
         ) : (
-          <div className="w-full h-28 rounded-xl bg-slate-100 flex items-center justify-center text-5xl">🖥️</div>
+          <div className="w-full h-24 rounded-xl bg-slate-100 flex items-center justify-center text-4xl">🖥️</div>
         )}
       </div>
 
       {/* Asesor */}
-      <div className="mb-4 px-4 py-3 rounded-xl"
+      <div className="mb-3 px-3 py-2.5 rounded-xl"
         style={{ background: asignado ? "#eef2ff" : "#f8fafc", border: "1px solid", borderColor: asignado ? "#c7d2fe" : "#e2e8f0" }}>
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Asesor asignado</p>
-        <p className={`text-base font-bold ${asignado ? "text-indigo-700" : "text-slate-400"}`}>
+        <p className={`text-sm font-bold ${asignado ? "text-indigo-700" : "text-slate-400"}`}>
           {asignado ? equipo.asesor : "Sin asignar"}
         </p>
       </div>
 
       {/* Series */}
-      <div className="space-y-2 flex-1 overflow-y-auto">
+      <div className="space-y-1.5 flex-1 overflow-y-auto">
         {SERIES_FIELDS.map(f => (
-          <div key={f.key} className="flex items-center justify-between py-2 border-b border-slate-50">
-            <span className="text-xs text-slate-500 flex items-center gap-1.5">
-              <span>{f.icon}</span> {f.label}
-            </span>
+          <div key={f.key} className="flex items-center justify-between py-1.5 border-b border-slate-50">
+            <span className="text-xs text-slate-500 flex items-center gap-1">{f.icon} {f.label}</span>
             <span className={`text-xs font-semibold font-mono ${equipo[f.key] ? "text-slate-700" : "text-slate-300"}`}>
               {equipo[f.key] || "—"}
             </span>
           </div>
         ))}
-
         {equipo.observacion && (
-          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">📝 Observación</p>
+          <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-0.5">📝 Observación</p>
             <p className="text-xs text-amber-800">{equipo.observacion}</p>
           </div>
         )}
       </div>
 
       {/* Acciones */}
-      <div className="mt-5 pt-4 border-t border-slate-100">
+      <div className="mt-4 pt-3 border-t border-slate-100">
         <button onClick={onEdit}
-          className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-sm">
+          className="w-full py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-sm">
           ✏️ Editar equipo
         </button>
-        <p className="text-center text-[10px] text-slate-300 mt-2">
+        <p className="text-center text-[10px] text-slate-300 mt-1.5">
           Registro: {new Date(equipo.fecharegistro).toLocaleDateString("es-EC")}
         </p>
       </div>
@@ -353,112 +427,56 @@ function PanelDetalle({ equipo, puesto, onClose, onEdit, onImgZoom }) {
   );
 }
 
-function PlanoTab({ equipos, onEditEquipo, onRefresh }) {
-  const [selected, setSelected] = useState(null); // número de puesto (1-based)
-  const [imgZoom, setImgZoom]   = useState(null);
+function PlanoTab({ equipos, onEditEquipo }) {
+  const [selected, setSelected] = useState(null);
+  const [imgZoom,  setImgZoom]  = useState(null);
 
-  // Mapear puestos → equipos (orden por id ASC = orden natural de la tabla)
+  // Puesto N → Nº equipo ordenado por id ASC
   const equiposPorPuesto = {};
   [...equipos].sort((a, b) => a.id - b.id).forEach((eq, i) => {
     equiposPorPuesto[i + 1] = eq;
   });
 
-  const totalPuestos = FLOOR_LAYOUT.flat().filter(Boolean).length;
-  const asignados    = Object.values(equiposPorPuesto).filter(e => e?.asesor && e.asesor !== "Sin asignar").length;
-
+  const totalPuestos = 46;
+  const asignados = Object.values(equiposPorPuesto)
+    .filter(e => e?.asesor && e.asesor !== "Sin asignar").length;
   const selectedEquipo = selected ? equiposPorPuesto[selected] : null;
 
   return (
-    <div className="flex gap-6 h-full" style={{ minHeight: 520 }}>
-      {/* ── Mapa de piso ── */}
+    <div className="flex gap-5" style={{ minHeight: 520 }}>
+      {/* ── Plano ── */}
       <div className="flex-1 min-w-0">
         {/* Leyenda */}
-        <div className="flex items-center gap-4 mb-6 flex-wrap">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-3 h-3 rounded-full bg-green-400" />
-            <span>Asignado ({asignados})</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-3 h-3 rounded-full bg-slate-300" />
-            <span>Vacío ({totalPuestos - asignados})</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-3 h-3 rounded-full bg-indigo-500" />
-            <span>Seleccionado</span>
-          </div>
-          <span className="ml-auto text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-semibold">
-            {totalPuestos} puestos · {equipos.length} equipos registrados
-          </span>
+        <div className="flex items-center gap-3 mb-4 flex-wrap bg-white rounded-xl border border-slate-200 px-4 py-2.5 shadow-sm w-fit">
+          {[
+            { dot: "#1D9E75", label: `Asesor (${asignados})` },
+            { dot: "#378ADD", label: "Supervisor" },
+            { dot: "#EF9F27", label: "Especial" },
+            { dot: "#b0b8c1", label: `Vacío (${totalPuestos - asignados})` },
+          ].map(l => (
+            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#64748b" }}>
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: l.dot }} />
+              {l.label}
+            </div>
+          ))}
         </div>
 
-        {/* Plano */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 overflow-x-auto">
-          {/* Indicador de norte/frente */}
-          <div className="flex items-center gap-2 mb-6">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs text-slate-400 font-semibold uppercase tracking-widest px-3">↑ Frente</span>
-            <div className="h-px flex-1 bg-slate-200" />
+        {/* Plano de piso */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-4 text-center">
+            Call Center — Inventario de Puestos
           </div>
-
-          <div className="flex flex-col gap-8 items-start">
-            {FLOOR_LAYOUT.map((fila, fi) => (
-              <div key={fi}>
-                {/* Etiqueta de fila */}
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-                  Fila {fi + 1}
-                </p>
-                <div className="flex gap-4 flex-wrap">
-                  {fila.map((puesto, ci) =>
-                    puesto === null ? (
-                      <div key={ci} style={{ width: 80, height: 72 }} />
-                    ) : (
-                      <PuestoCell
-                        key={puesto}
-                        puesto={puesto}
-                        equipo={equiposPorPuesto[puesto]}
-                        selected={selected === puesto}
-                        onClick={() => setSelected(selected === puesto ? null : puesto)}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 mt-6">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs text-slate-400 font-semibold uppercase tracking-widest px-3">↓ Entrada</span>
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
-        </div>
-
-        {/* Mini stats de puestos */}
-        <div className="mt-4 grid grid-cols-4 gap-3">
-          {Object.entries(equiposPorPuesto).slice(0, 8).map(([puesto, eq]) => {
-            const ok = eq?.asesor && eq.asesor !== "Sin asignar";
-            return (
-              <div key={puesto} onClick={() => setSelected(Number(puesto))}
-                className={`rounded-xl p-3 cursor-pointer transition border ${
-                  selected === Number(puesto)
-                    ? "border-indigo-400 bg-indigo-50"
-                    : "border-slate-200 bg-white hover:border-indigo-200"
-                }`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-black text-slate-600">P{puesto}</span>
-                  <div className={`w-2 h-2 rounded-full ${ok ? "bg-green-400" : "bg-slate-300"}`} />
-                </div>
-                <p className="text-[10px] text-slate-500 font-mono truncate">{eq?.codigo || "—"}</p>
-                <p className="text-[10px] text-slate-400 truncate">{ok ? eq.asesor.split(" ")[0] : "Vacío"}</p>
-              </div>
-            );
-          })}
+          <FloorPlan
+            equiposPorPuesto={equiposPorPuesto}
+            selected={selected}
+            onSelect={setSelected}
+          />
         </div>
       </div>
 
-      {/* ── Panel de detalle lateral ── */}
-      <div className="w-72 shrink-0">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 h-full">
+      {/* ── Panel detalle ── */}
+      <div className="w-64 shrink-0">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sticky top-4" style={{ minHeight: 400 }}>
           <PanelDetalle
             puesto={selected}
             equipo={selectedEquipo}
@@ -599,6 +617,7 @@ export default function Inventario() {
       {/* ── DASHBOARD ── */}
       {tab === "dashboard" && (
         <div className="space-y-6">
+          {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {kpis.map(k => (
               <div key={k.label} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"
@@ -612,6 +631,25 @@ export default function Inventario() {
             ))}
           </div>
 
+          {/* Plano de piso en dashboard */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-700">🗺️ Plano de piso</h3>
+              <button onClick={() => setTab("planos")}
+                className="text-xs text-indigo-600 font-semibold hover:underline">
+                Ver pantalla completa →
+              </button>
+            </div>
+            <div className="p-6">
+              <PlanoTab
+                equipos={equipos}
+                onEditEquipo={eq => setModal({ type: "form", data: eq })}
+                onRefresh={fetchEquipos}
+              />
+            </div>
+          </div>
+
+          {/* Equipos por asesor */}
           {!!dashboard?.porAsesor?.length && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100">

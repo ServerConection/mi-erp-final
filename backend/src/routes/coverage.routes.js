@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const coverageController = require('../controllers/coverage.controller');
-const { verificarToken } = require('../middleware/auth');
+const { verificarToken, soloAdmin } = require('../middleware/auth');
 
 // Configurar multer para subida de archivos
 const upload = multer({
@@ -20,7 +20,7 @@ const upload = multer({
  * Carga un archivo KML/KMZ
  * Requiere autenticación
  */
-router.post('/load', verificarToken, upload.single('file'), coverageController.loadCoverage);
+router.post('/load', verificarToken, soloAdmin, upload.single('file'), coverageController.loadCoverage);
 
 /**
  * GET /api/coverage/check

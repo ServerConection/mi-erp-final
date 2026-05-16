@@ -70,4 +70,18 @@ const verificarToken = async (req, res, next) => {
   }
 };
 
-module.exports = { verificarToken };
+/**
+ * Middleware: solo permite acceso a usuarios con perfil ADMINISTRADOR.
+ * Debe usarse DESPUÉS de verificarToken.
+ */
+const soloAdmin = (req, res, next) => {
+  if (!req.user || req.user.perfil !== 'ADMINISTRADOR') {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Solo los administradores pueden realizar esta acción.'
+    });
+  }
+  next();
+};
+
+module.exports = { verificarToken, soloAdmin };

@@ -20,6 +20,7 @@ const ventasRoutes                 = require('./routes/ventas.routes');
 const analistaRoutes               = require('./routes/analista.routes');
 const bitrixRoutes                 = require('./routes/bitrix.routes');
 const coverageRoutes               = require('./routes/coverage.routes');
+const inventarioRoutes             = require('./routes/inventario.routes');
 
 const app = express();
 
@@ -93,6 +94,9 @@ app.use('/api/bitrix',            bitrixRoutes);
 
 // Coverage — Consulta de cobertura de internet
 app.use('/api/coverage',          coverageRoutes);
+
+// Inventario — Solo ADMINISTRADOR
+app.use('/api/inventario',        inventarioRoutes);
 
 // Broadcast TV
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

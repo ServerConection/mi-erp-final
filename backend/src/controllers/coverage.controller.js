@@ -118,10 +118,11 @@ function loadZonesFromDisk() {
 }
 
 // Cargar desde disco al iniciar el servidor
-let _cache = loadZonesFromDisk();
+let _cache      = loadZonesFromDisk();
 let loadedZones = _cache ? _cache.zones : null;
 let loadedAt    = _cache ? _cache.savedAt : null;
 let loadedFile  = _cache ? _cache.fileName : null;
+let spatialIndex = loadedZones ? buildSpatialIndex(loadedZones) : null;
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Point in Polygon Algorithm
@@ -140,6 +141,78 @@ function pointInPolygon(point, polygon) {
   }
 
   return inside;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Índice espacial por grilla — O(1) lookup en vez de O(N) lineal
+// Cada celda de ~0.05° (~5km) guarda los índices de zonas que la solapan.
+// ════════════════════════════════════════════════════════════════════════════════
+
+const GRID_CELL = 0.05; // grados (~5.5 km) — ajusta según tamaño medio de zona
+
+function buildBBox(coords) {
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+  for (const [lon, lat] of coords) {
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  return { minLon, minLat, maxLon, maxLat };
+}
+
+function buildSpatialIndex(zones) {
+  const t0 = Date.now();
+
+  // 1. Pre-calcular bounding box de cada zona (en el objeto mismo)
+  for (const zone of zones) {
+    if (!zone.bbox) zone.bbox = buildBBox(zone.coordinates);
+  }
+
+  // 2. Asignar cada zona a todas las celdas que su bbox toca
+  const cells = new Map();
+  for (let i = 0; i < zones.length; i++) {
+    const { minLon, minLat, maxLon, maxLat } = zones[i].bbox;
+    const c0 = Math.floor(minLon / GRID_CELL);
+    const c1 = Math.floor(maxLon / GRID_CELL);
+    const r0 = Math.floor(minLat / GRID_CELL);
+    const r1 = Math.floor(maxLat / GRID_CELL);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const key = `${r},${c}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(i);
+      }
+    }
+  }
+
+  console.log(`[Coverage] Índice espacial listo: ${cells.size} celdas / ${zones.length} zonas (${Date.now() - t0}ms)`);
+  return cells;
+}
+
+/**
+ * Busca la primera zona que contiene el punto dado.
+ * 1. Lookup O(1) en la grilla → lista corta de candidatos
+ * 2. Filtro por bounding box (4 comparaciones)
+ * 3. Ray-casting solo si pasa el bbox
+ */
+function findZoneForPoint(longitude, latitude, zones, cells) {
+  const row = Math.floor(latitude  / GRID_CELL);
+  const col = Math.floor(longitude / GRID_CELL);
+  const key = `${row},${col}`;
+
+  const candidates = cells.get(key);
+  if (!candidates || candidates.length === 0) return null;
+
+  const point = [longitude, latitude];
+  for (const idx of candidates) {
+    const zone = zones[idx];
+    const { minLon, minLat, maxLon, maxLat } = zone.bbox;
+    if (longitude < minLon || longitude > maxLon ||
+        latitude  < minLat || latitude  > maxLat) continue;
+    if (pointInPolygon(point, zone.coordinates)) return zone;
+  }
+  return null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -337,9 +410,10 @@ exports.loadCoverage = async (req, res) => {
       });
     }
 
-    loadedZones = zones;
-    loadedAt    = new Date().toISOString();
-    loadedFile  = req.file.originalname;
+    loadedZones  = zones;
+    loadedAt     = new Date().toISOString();
+    loadedFile   = req.file.originalname;
+    spatialIndex = buildSpatialIndex(zones);   // ← O(1) lookup desde ahora
 
     // Guardar en disco para sobrevivir reinicios
     saveZonesToDisk(zones, req.file.originalname);
@@ -381,21 +455,19 @@ exports.checkCoverage = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No zones loaded. Upload KML/KMZ first' });
     }
 
-    const point = [longitude, latitude];
-    let hasCoverage = false;
-    let zoneName    = 'Unknown';
-
-    for (const zone of loadedZones) {
-      if (pointInPolygon(point, zone.coordinates)) {
-        hasCoverage = true;
-        zoneName    = zone.name;
-        break;
-      }
-    }
+    const zone = spatialIndex
+      ? findZoneForPoint(longitude, latitude, loadedZones, spatialIndex)
+      : (() => {
+          // fallback sin índice (no debería ocurrir)
+          const p = [longitude, latitude];
+          return loadedZones.find(z => pointInPolygon(p, z.coordinates)) || null;
+        })();
 
     return res.status(200).json({
-      latitude, longitude, hasCoverage, zoneName,
-      timestamp: new Date().toISOString()
+      latitude, longitude,
+      hasCoverage: !!zone,
+      zoneName:    zone ? zone.name : 'Sin cobertura',
+      timestamp:   new Date().toISOString()
     });
 
   } catch (error) {
@@ -419,20 +491,19 @@ exports.checkBatch = async (req, res) => {
     const results = points.map(p => {
       const latitude  = parseFloat(p.latitude);
       const longitude = parseFloat(p.longitude);
-      const point     = [longitude, latitude];
 
-      let hasCoverage = false;
-      let zoneName    = 'Unknown';
+      const zone = spatialIndex
+        ? findZoneForPoint(longitude, latitude, loadedZones, spatialIndex)
+        : (() => {
+            const pt = [longitude, latitude];
+            return loadedZones.find(z => pointInPolygon(pt, z.coordinates)) || null;
+          })();
 
-      for (const zone of loadedZones) {
-        if (pointInPolygon(point, zone.coordinates)) {
-          hasCoverage = true;
-          zoneName    = zone.name;
-          break;
-        }
-      }
-
-      return { latitude, longitude, hasCoverage, zoneName };
+      return {
+        latitude, longitude,
+        hasCoverage: !!zone,
+        zoneName:    zone ? zone.name : 'Sin cobertura'
+      };
     });
 
     const withCoverage = results.filter(r => r.hasCoverage).length;

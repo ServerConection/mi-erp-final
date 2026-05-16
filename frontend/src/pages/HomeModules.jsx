@@ -189,6 +189,14 @@ export default function HomeModules() {
       desc: "Proyecta mensajes, alertas y logros en las pantallas del equipo VELSA. Soporta audio.",
       rolesPermitidos: ['ANALISTA', 'COORDINADOR', 'ADMINISTRADOR'],
     },
+    {
+      title: "Inventario",
+      path: "/inventario",
+      icon: "📋",
+      color: "text-indigo-400",
+      desc: "Gestión de equipos, materiales y planos. Control de stock, movimientos y alertas de mínimos.",
+      rolesPermitidos: ['ADMINISTRADOR'],
+    },
   ];
 
   return (

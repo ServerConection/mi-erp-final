@@ -32,6 +32,7 @@ const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
+const Inventario           = lazy(() => import("./pages/Inventario"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -89,6 +90,7 @@ export default function App() {
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
             <Route path="bitrix-live"              element={<BitrixLive />} />
+            <Route path="inventario"               element={<Inventario />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

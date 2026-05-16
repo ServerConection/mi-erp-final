@@ -197,6 +197,14 @@ export default function HomeModules() {
       desc: "Gestión de equipos, materiales y planos. Control de stock, movimientos y alertas de mínimos.",
       rolesPermitidos: ['ADMINISTRADOR'],
     },
+    {
+      title: "Forecast Campañas",
+      path: "/forecast",
+      icon: "🎯",
+      color: "text-violet-400",
+      desc: "Seguimiento de objetivos vs. real por campaña: inversión, CPL, leads, ratios y reporte de ejecutivos.",
+      rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'],
+    },
   ];
 
   return (

@@ -161,9 +161,9 @@ export default function Backoffice() {
   const [hovRow, setHovRow]         = useState(null);
   const buscarRef = useRef(null);
 
-  // ── Admin guard ──────────────────────────────────────────────────────────────
+  // ── Guard: todos menos ASESOR ────────────────────────────────────────────────
   const isAdmin = (() => {
-    try { const u = JSON.parse(localStorage.getItem("user") || "{}"); return (u.perfil||"").toUpperCase()==="ADMINISTRADOR"; }
+    try { const u = JSON.parse(localStorage.getItem("user") || "{}"); return (u.perfil||"").toUpperCase() !== "ASESOR"; }
     catch(_){ return false; }
   })();
   const token = localStorage.getItem("token");
@@ -248,7 +248,7 @@ export default function Backoffice() {
       <div style={{ textAlign:"center" }}>
         <div style={{ fontSize:48, marginBottom:12 }}>🔒</div>
         <p style={{ fontSize:18, fontWeight:700, color:"#fca5a5" }}>Acceso restringido</p>
-        <p style={{ color:"#64748b" }}>Solo administradores.</p>
+        <p style={{ color:"#64748b" }}>Los asesores no tienen acceso a esta sección.</p>
       </div>
     </div>
   );
@@ -263,7 +263,7 @@ export default function Backoffice() {
           <h1 style={C.title}>Backoffice · Auditoría</h1>
           <p style={C.sub}>Revisión y auditoría de ventas registradas · envios_ventas</p>
         </div>
-        <div style={C.badge}>🔐 SOLO ADMINISTRADOR</div>
+        <div style={C.badge}>🔐 NO DISPONIBLE PARA ASESORES</div>
       </div>
 
       {/* ── Búsqueda ── */}

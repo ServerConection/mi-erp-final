@@ -4,15 +4,15 @@
 // GET  /api/backoffice        → listar registros
 // GET  /api/backoffice/:id    → detalle completo de un registro
 // PUT  /api/backoffice/:id    → editar solo campos de auditoría
-// Solo ADMINISTRADOR (por ahora)
+// Todos los perfiles excepto ASESOR
 // ============================================================
 
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../config/db');
-const { verificarToken, soloAdmin } = require('../middleware/auth');
+const { verificarToken, noAsesor } = require('../middleware/auth');
 
-router.use(verificarToken, soloAdmin);
+router.use(verificarToken, noAsesor);
 
 // ─── Helpers fecha Ecuador ────────────────────────────────────────────────────
 const MESES = {

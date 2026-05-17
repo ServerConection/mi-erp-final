@@ -84,4 +84,19 @@ const soloAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { verificarToken, soloAdmin };
+/**
+ * Middleware: bloquea únicamente a usuarios con perfil ASESOR.
+ * Todos los demás perfiles (ADMINISTRADOR, ANALISTA, GERENTE, SUPERVISOR…) pasan.
+ * Debe usarse DESPUÉS de verificarToken.
+ */
+const noAsesor = (req, res, next) => {
+  if (!req.user || req.user.perfil === 'ASESOR') {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Los asesores no tienen permiso para esta sección.'
+    });
+  }
+  next();
+};
+
+module.exports = { verificarToken, soloAdmin, noAsesor };

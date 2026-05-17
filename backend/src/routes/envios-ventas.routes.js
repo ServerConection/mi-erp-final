@@ -14,15 +14,6 @@ const { verificarToken, noAsesor } = require('../middleware/auth');
 // Todas las rutas requieren token válido — bloqueado solo para ASESOR
 router.use(verificarToken, noAsesor);
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-const MESES = {
-  0:'ENERO', 1:'FEBRERO', 2:'MARZO', 3:'ABRIL', 4:'MAYO', 5:'JUNIO',
-  6:'JULIO', 7:'AGOSTO', 8:'SEPTIEMBRE', 9:'OCTUBRE', 10:'NOVIEMBRE', 11:'DICIEMBRE'
-};
-const DIAS = {
-  0:'DOMINGO', 1:'LUNES', 2:'MARTES', 3:'MIÉRCOLES',
-  4:'JUEVES', 5:'VIERNES', 6:'SÁBADO'
-};
 
 // ─── GET /api/envios-ventas/opciones ────────────────────────────────────────
 // Devuelve listas únicas de distribuidores y supervisores de la tabla
@@ -88,23 +79,15 @@ router.post('/', async (req, res) => {
       (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
       req.socket?.remoteAddress || '0.0.0.0';
 
-    // Auto-computo de fecha (Ecuador UTC-5)
-    const ahora = new Date();
-    const fecha_registro_sistema   = ahora;
-    const año_registro_sistema     = ahora.getFullYear();
-    const mes_registro_sistema     = MESES[ahora.getMonth()];
-    const dia_num_registro_sistema = ahora.getDate();
-    const dia_abc_registro_sistema = DIAS[ahora.getDay()];
+    // fecha_registro_sistema — las columnas año/mes/dia son GENERATED ALWAYS AS
+    // en la tabla, por lo que Postgres las deriva solo; no se insertan manualmente
+    const fecha_registro_sistema = new Date();
 
     const { rows } = await pool.query(`
       INSERT INTO public.envios_ventas (
         estatus_envio,
         ip_origen,
         fecha_registro_sistema,
-        año_registro_sistema,
-        mes_registro_sistema,
-        dia_num_registro_sistema,
-        dia_abc_registro_sistema,
         codigo_asesor,
         id_bitrix,
         distribuidor_autorizado,
@@ -112,16 +95,12 @@ router.post('/', async (req, res) => {
         origen_venta,
         venta_nueva_o_reingreso,
         turno
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
     `, [
       estatus_envio?.trim()            || null,
       ip_origen,
       fecha_registro_sistema,
-      año_registro_sistema,
-      mes_registro_sistema,
-      dia_num_registro_sistema,
-      dia_abc_registro_sistema,
       codigo_asesor?.trim()            || null,
       id_bitrix?.trim()                || null,
       distribuidor_autorizado?.trim()  || null,

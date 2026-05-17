@@ -9,10 +9,10 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../config/db');
-const { verificarToken, soloAdmin } = require('../middleware/auth');
+const { verificarToken, noAsesor } = require('../middleware/auth');
 
-// Todas las rutas requieren token válido + perfil ADMINISTRADOR
-router.use(verificarToken, soloAdmin);
+// Todas las rutas requieren token válido — bloqueado solo para ASESOR
+router.use(verificarToken, noAsesor);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const MESES = {

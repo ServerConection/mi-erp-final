@@ -209,11 +209,11 @@ export default function NuevaVenta() {
   const [opciones, setOpciones]   = useState({ distribuidores: [], supervisores: [] });
   const [hovRow, setHovRow]       = useState(null);
 
-  // ── Verificar admin ────────────────────────────────────────────────────────
+  // ── Guard: todos menos ASESOR ────────────────────────────────────────────────
   const isAdmin = (() => {
     try {
       const u = JSON.parse(localStorage.getItem("user") || "{}");
-      return (u.perfil || "").toUpperCase() === "ADMINISTRADOR";
+      return (u.perfil || "").toUpperCase() !== "ASESOR";
     } catch (_) { return false; }
   })();
 
@@ -308,7 +308,7 @@ export default function NuevaVenta() {
           <h1 style={S.title}>Ingresar Nueva Venta</h1>
           <p style={S.subtitle}>Panel de registro manual · envios_ventas</p>
         </div>
-        <div style={S.badge}>🔐 SOLO ADMINISTRADOR</div>
+        <div style={S.badge}>🔐 NO DISPONIBLE PARA ASESORES</div>
       </div>
 
       {/* ── Alerta ── */}

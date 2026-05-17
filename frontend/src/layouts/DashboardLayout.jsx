@@ -338,7 +338,7 @@ const ALL_MENU_ITEMS = [
   { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
   { name: "Ventas Formulario",  path: "/ventas",              icon: "📝", permiso: "VentasFormulario" },
   { name: "🆕 Ingresar Venta", path: "/nueva-venta",         icon: "💼",
-    accessCheck: (p) => p === 'ADMINISTRADOR' },
+    accessCheck: (p) => p !== 'ASESOR' },
   { name: "🔍 Backoffice",    path: "/backoffice",           icon: "🔍",
     accessCheck: (p) => p !== 'ASESOR' },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },

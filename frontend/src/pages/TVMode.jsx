@@ -616,5 +616,3 @@ export default function TVMode() {
     </div>
   );
 }
-
-      case "glitch":     return "tvGlitchContent 0.6s steps(1) inf

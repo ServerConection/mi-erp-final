@@ -4,10 +4,11 @@
  * Pure JavaScript - Sin dependencias Python
  */
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const xml2js = require('xml2js');
+const pool = require('../config/db');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Location URL Parser  (WhatsApp, Google Maps, Apple Maps, coordenadas directas)
@@ -83,46 +84,77 @@ function isShortenedUrl(url) {
   }
 }
 
-const coverageDir = path.join(process.cwd(), 'coverage-data');
-const ZONES_CACHE_FILE = path.join(coverageDir, 'zones_cache.json');
+// ════════════════════════════════════════════════════════════════════════════════
+// Persistencia en PostgreSQL — sobrevive reinicios y deploys en Render
+// Render tiene filesystem efímero; la DB es la única persistencia confiable.
+// ════════════════════════════════════════════════════════════════════════════════
 
-if (!fs.existsSync(coverageDir)) {
-  fs.mkdirSync(coverageDir, { recursive: true });
+let loadedZones  = null;
+let loadedAt     = null;
+let loadedFile   = null;
+let spatialIndex = null;
+
+// Garantiza que la tabla existe antes de usarla
+async function ensureCoverageTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.coverage_cache (
+      id        INT  PRIMARY KEY DEFAULT 1,
+      file_name TEXT NOT NULL,
+      zones     JSONB NOT NULL,
+      saved_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
-// Persistencia en disco (sobrevive reinicios de Render)
-// ════════════════════════════════════════════════════════════════════════════════
-
-function saveZonesToDisk(zones, fileName) {
+async function saveZonesToDB(zones, fileName) {
   try {
-    const cache = { zones, fileName, savedAt: new Date().toISOString() };
-    fs.writeFileSync(ZONES_CACHE_FILE, JSON.stringify(cache), 'utf8');
-    console.log('[Coverage] Zonas guardadas en disco:', zones.length);
+    await ensureCoverageTable();
+    await pool.query(`
+      INSERT INTO public.coverage_cache (id, file_name, zones, saved_at)
+      VALUES (1, $1, $2::jsonb, NOW())
+      ON CONFLICT (id) DO UPDATE
+        SET file_name = EXCLUDED.file_name,
+            zones     = EXCLUDED.zones,
+            saved_at  = NOW()
+    `, [fileName, JSON.stringify(zones)]);
+    console.log('[Coverage] Zonas guardadas en DB:', zones.length);
   } catch (e) {
-    console.warn('[Coverage] No se pudo guardar en disco:', e.message);
+    console.error('[Coverage] Error guardando en DB:', e.message);
   }
 }
 
-function loadZonesFromDisk() {
+async function loadZonesFromDB() {
   try {
-    if (!fs.existsSync(ZONES_CACHE_FILE)) return null;
-    const raw = fs.readFileSync(ZONES_CACHE_FILE, 'utf8');
-    const cache = JSON.parse(raw);
-    console.log('[Coverage] Zonas cargadas desde disco:', cache.zones.length, '(guardadas el', cache.savedAt + ')');
-    return cache;
+    await ensureCoverageTable();
+    const { rows } = await pool.query(
+      'SELECT file_name, zones, saved_at FROM public.coverage_cache WHERE id = 1'
+    );
+    if (!rows.length) return null;
+    const row = rows[0];
+    console.log('[Coverage] Zonas cargadas desde DB:', row.zones.length, '(guardadas el', row.saved_at + ')');
+    return { zones: row.zones, fileName: row.file_name, savedAt: row.saved_at };
   } catch (e) {
-    console.warn('[Coverage] No se pudo leer cache del disco:', e.message);
+    console.warn('[Coverage] No se pudo leer desde DB:', e.message);
     return null;
   }
 }
 
-// Cargar desde disco al iniciar el servidor
-let _cache      = loadZonesFromDisk();
-let loadedZones = _cache ? _cache.zones : null;
-let loadedAt    = _cache ? _cache.savedAt : null;
-let loadedFile  = _cache ? _cache.fileName : null;
-let spatialIndex = loadedZones ? buildSpatialIndex(loadedZones) : null;
+// Inicialización asíncrona al arrancar el servidor
+(async () => {
+  try {
+    const cached = await loadZonesFromDB();
+    if (cached) {
+      loadedZones  = cached.zones;
+      loadedAt     = cached.savedAt;
+      loadedFile   = cached.fileName;
+      spatialIndex = buildSpatialIndex(loadedZones);
+    } else {
+      console.log('[Coverage] Sin zonas previas en DB — esperando carga de KMZ');
+    }
+  } catch (e) {
+    console.error('[Coverage] Error en inicialización:', e.message);
+  }
+})();
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Point in Polygon Algorithm
@@ -413,10 +445,10 @@ exports.loadCoverage = async (req, res) => {
     loadedZones  = zones;
     loadedAt     = new Date().toISOString();
     loadedFile   = req.file.originalname;
-    spatialIndex = buildSpatialIndex(zones);   // ← O(1) lookup desde ahora
+    spatialIndex = buildSpatialIndex(zones);
 
-    // Guardar en disco para sobrevivir reinicios
-    saveZonesToDisk(zones, req.file.originalname);
+    // Guardar en PostgreSQL — persiste aunque Render reinicie el servidor
+    await saveZonesToDB(zones, req.file.originalname);
 
     return res.status(200).json({
       status: 'ok',

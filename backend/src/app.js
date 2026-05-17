@@ -22,6 +22,8 @@ const bitrixRoutes                 = require('./routes/bitrix.routes');
 const coverageRoutes               = require('./routes/coverage.routes');
 const inventarioRoutes             = require('./routes/inventario.routes');
 const forecastRoutes               = require('./routes/forecast.routes');
+const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
+const backofficeRoutes             = require('./routes/backoffice.routes');
 
 const app = express();
 
@@ -101,6 +103,12 @@ app.use('/api/inventario',        inventarioRoutes);
 
 // Forecast — Campañas y objetivos
 app.use('/api/forecast',          forecastRoutes);
+
+// Envíos Ventas — Ingreso manual (solo ADMINISTRADOR)
+app.use('/api/envios-ventas',     enviosVentasRoutes);
+
+// Backoffice — Auditoría de registros (solo ADMINISTRADOR)
+app.use('/api/backoffice',        backofficeRoutes);
 
 // Broadcast TV
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

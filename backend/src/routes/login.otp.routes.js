@@ -34,8 +34,8 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
-// ⚠️ BYPASS TEMPORAL — desactivar OTP mientras se restablece el correo Gmail
-const OTP_BYPASS = true;
+// OTP activo — el email de alertas a supervisores fue desactivado en alertas.cron.js
+const OTP_BYPASS = false;
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {

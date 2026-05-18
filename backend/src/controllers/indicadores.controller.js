@@ -290,7 +290,7 @@ const getIndicadoresDashboard = async (req, res) => {
             'Whatsapp 593958993371'
         )
     )
-) AS leads_totales
+) AS leads_totales,
                 COUNT(*) FILTER (
                     WHERE (b_etapa_de_la_negociacion ILIKE '%ATC%' OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%')
                     AND _bc_date BETWEEN $1::date AND $2::date

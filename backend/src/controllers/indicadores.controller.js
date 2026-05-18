@@ -261,6 +261,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     mb.j_estatus_regularizacion,
                     mb.j_forma_pago,
                     mb.j_aplica_descuento_3ra_edad,
+                    mb.b_origen, 
                     e.supervisor,
                     -- Fechas pre-calculadas 1 vez por fila (evita CASE+regex repetido):
                     ${parseFecha('mb.b_creado_el_fecha')}        AS _bc_date,
@@ -281,7 +282,7 @@ const getIndicadoresDashboard = async (req, res) => {
     AND (
         b_etapa_de_la_negociacion = 'VENTA SUBIDA'
         OR
-        COALESCE(mb.b_origen, '') NOT IN (
+         COALESCE(b_origen, '') NOT IN (   -- ← mb.b_origen → b_origen
             'WAZZUP: WhatsApp - Ecuanet Regestion',
             'BASE 593-962881280',
             'BASE 593-958993371',
@@ -319,7 +320,7 @@ const getIndicadoresDashboard = async (req, res) => {
         b_etapa_de_la_negociacion = 'VENTA SUBIDA'
         OR
         -- Si NO es VENTA SUBIDA, excluir esos orígenes conflictivos
-        COALESCE(mb.b_origen, '') NOT IN (
+        COALESCE(b_origen, '') NOT IN (   -- ← mb.b_origen → b_origen
             'WAZZUP: WhatsApp - Ecuanet Regestion',
             'BASE 593-962881280',
             'BASE 593-958993371',

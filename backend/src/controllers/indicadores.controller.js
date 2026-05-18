@@ -415,6 +415,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
+                mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
                 mb.b_persona_responsable AS "ASESOR",
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb

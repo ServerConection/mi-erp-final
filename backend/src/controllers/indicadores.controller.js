@@ -276,7 +276,21 @@ const getIndicadoresDashboard = async (req, res) => {
             )
             SELECT
                 COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo,
-                COUNT(*) FILTER (WHERE _bc_date BETWEEN $1::date AND $2::date) AS leads_totales,
+                COUNT(*) FILTER (
+    WHERE _bc_date BETWEEN $1::date AND $2::date
+    AND (
+        b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+        OR
+        COALESCE(mb.b_origen, '') NOT IN (
+            'WAZZUP: WhatsApp - Ecuanet Regestion',
+            'BASE 593-962881280',
+            'BASE 593-958993371',
+            'BASE 593-999803743',
+            'Base 593-995967355',
+            'Whatsapp 593958993371'
+        )
+    )
+) AS leads_totales
                 COUNT(*) FILTER (
                     WHERE (b_etapa_de_la_negociacion ILIKE '%ATC%' OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%')
                     AND _bc_date BETWEEN $1::date AND $2::date
@@ -297,9 +311,24 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS por_regularizar,
                 COUNT(*) FILTER (
-                    WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
-                    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
-                ) AS gestionables,
+    WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date 
+           OR _bc_date BETWEEN $1::date AND $2::date)
+    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+    AND (
+        -- Si es VENTA SUBIDA, siempre cuenta sin importar origen
+        b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+        OR
+        -- Si NO es VENTA SUBIDA, excluir esos orígenes conflictivos
+        COALESCE(mb.b_origen, '') NOT IN (
+            'WAZZUP: WhatsApp - Ecuanet Regestion',
+            'BASE 593-962881280',
+            'BASE 593-958993371',
+            'BASE 593-999803743',
+            'Base 593-995967355',
+            'Whatsapp 593958993371'
+        )
+    )
+) AS gestionables,
                 COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date) AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'

@@ -285,27 +285,37 @@ export default function CoverageChecker() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Parser KML en el navegador (regex, sin cargar árbol XML)
+  // Parser KML en el navegador (regex global — captura TODOS los polígonos)
+  // Estrategia: escanear el KML completo buscando <coordinates> en cualquier
+  // nesting (Placemark, MultiGeometry, Folder, etc.) para no perder zonas.
   // ─────────────────────────────────────────────────────────────────────────
   function parseKMLFast(kmlString) {
     const zones    = [];
-    const pmReg    = /<Placemark>([\s\S]*?)<\/Placemark>/g;
-    const nameReg  = /<name>\s*([\s\S]*?)\s*<\/name>/;
     const coordReg = /<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/g;
-    let pm;
-    while ((pm = pmReg.exec(kmlString)) !== null) {
-      const block = pm[1];
-      const nm    = nameReg.exec(block);
-      const name  = nm ? nm[1].trim() : "Sin nombre";
-      coordReg.lastIndex = 0;
-      let cm;
-      while ((cm = coordReg.exec(block)) !== null) {
-        const coords = cm[1].trim().split(/\s+/).filter(Boolean).map(p => {
-          const pts = p.split(",");
-          return [parseFloat(pts[0]), parseFloat(pts[1])];
-        }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
-        if (coords.length > 2) zones.push({ name, coordinates: coords });
+    let cm;
+    while ((cm = coordReg.exec(kmlString)) !== null) {
+      // Parsear puntos lon,lat,alt separados por espacios/saltos
+      const coords = cm[1].trim().split(/\s+/).filter(Boolean).map(p => {
+        const pts = p.split(",");
+        return [parseFloat(pts[0]), parseFloat(pts[1])];
+      }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+
+      // Saltar puntos simples (<Point>) y líneas (<LineString>)
+      if (coords.length < 3) continue;
+
+      // Buscar el <name> más cercano ANTES de este bloque de coordenadas
+      // (ventana de 2000 chars es suficiente para cubrir cualquier Placemark)
+      const before      = kmlString.substring(Math.max(0, cm.index - 2000), cm.index);
+      const nameMatches = before.match(/<name>\s*([\s\S]*?)\s*<\/name>/g);
+      let name = "Sin nombre";
+      if (nameMatches && nameMatches.length > 0) {
+        name = nameMatches[nameMatches.length - 1]
+          .replace(/<!\[CDATA\[|\]\]>/g, "")
+          .replace(/<\/?name>/g, "")
+          .trim();
       }
+
+      zones.push({ name, coordinates: coords });
     }
     return zones;
   }
@@ -634,7 +644,9 @@ export default function CoverageChecker() {
                   className={`text-xs rounded-lg px-3 py-2 ${
                     uploadMsg.type === "ok"
                       ? "bg-green-50 text-green-700"
-                      : "bg-red-50 text-red-700"
+                      : uploadMsg.type === "err"
+                      ? "bg-red-50 text-red-700"
+                      : "bg-blue-50 text-blue-700"
                   }`}
                 >
                   {uploadMsg.text}

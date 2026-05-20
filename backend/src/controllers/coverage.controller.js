@@ -491,6 +491,78 @@ exports.checkCoverage = async (req, res) => {
   }
 };
 
+// ── POST /api/coverage/load-batch ────────────────────────────────────────────
+// Recibe zonas ya parseadas en el navegador, lote por lote.
+// El servidor nunca toca el archivo KMZ — cero riesgo de OOM.
+exports.loadBatch = async (req, res) => {
+  try {
+    const { zones, fileName, isFirst, isFinal, total } = req.body;
+
+    if (!Array.isArray(zones) || zones.length === 0)
+      return res.status(400).json({ status: 'error', message: 'zones vacías' });
+    if (!fileName)
+      return res.status(400).json({ status: 'error', message: 'fileName requerido' });
+
+    await ensureCoverageTable();
+
+    // En el primer lote, limpiar zonas anteriores
+    if (isFirst) {
+      await pool.query('DELETE FROM public.coverage_zones');
+      console.log('[Coverage] Zonas anteriores borradas — iniciando carga de:', fileName);
+    }
+
+    // Insertar este lote con sus bounding boxes
+    const values = [];
+    const params = [];
+    let   p      = 1;
+
+    for (const z of zones) {
+      if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) continue;
+      const bbox = buildBBox(z.coordinates);
+      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+      params.push(
+        fileName, z.name || 'Sin nombre',
+        JSON.stringify(z.coordinates),
+        bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
+      );
+    }
+
+    if (values.length > 0) {
+      await pool.query(
+        `INSERT INTO public.coverage_zones
+           (file_name, name, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+         VALUES ${values.join(',')}`,
+        params
+      );
+    }
+
+    console.log(`[Coverage] Lote guardado: ${zones.length} zonas | archivo: ${fileName}`);
+
+    // En el último lote, cargar todo en memoria y construir índice espacial
+    if (isFinal) {
+      const cached = await loadZonesFromDB();
+      if (cached) {
+        loadedZones  = cached.zones;
+        loadedFile   = cached.fileName;
+        loadedAt     = new Date().toISOString();
+        spatialIndex = buildSpatialIndex(loadedZones);
+        console.log('[Coverage] Índice espacial listo — zonas totales:', loadedZones.length);
+      }
+      return res.status(200).json({
+        status: 'ok',
+        zonesLoaded: loadedZones ? loadedZones.length : 0,
+        message: `${total} zonas cargadas y guardadas correctamente`
+      });
+    }
+
+    return res.status(200).json({ status: 'ok', message: `Lote guardado: ${zones.length} zonas` });
+
+  } catch (error) {
+    console.error('[Coverage] Error en loadBatch:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+};
+
 exports.checkBatch = async (req, res) => {
   try {
     const { points } = req.body;

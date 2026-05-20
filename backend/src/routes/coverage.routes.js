@@ -53,6 +53,14 @@ router.get('/zones', verificarToken, coverageController.getZones);
 router.get('/status', coverageController.getCoverageStatus);
 
 /**
+ * POST /api/coverage/load-batch
+ * Recibe zonas ya parseadas desde el navegador en lotes pequeños.
+ * El servidor nunca toca el archivo KMZ — solo recibe JSON liviano.
+ * Body: { zones, fileName, isFirst, isFinal, total }
+ */
+router.post('/load-batch', verificarToken, soloAdmin, coverageController.loadBatch);
+
+/**
  * POST /api/coverage/resolve-link
  * Parsea un enlace de WhatsApp / Google Maps / Apple Maps y extrae coordenadas.
  * Body: { "link": "https://maps.google.com/?q=LAT,LNG" }

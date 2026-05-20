@@ -9,7 +9,8 @@
  * Incluye historial de consultas y carga de archivo KML/KMZ.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef }  from "react";
+import JSZip from "jszip";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parser de URLs de ubicación (cliente — para formatos no acortados)
@@ -284,27 +285,90 @@ export default function CoverageChecker() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Cargar KML / KMZ
+  // Parser KML en el navegador (regex, sin cargar árbol XML)
+  // ─────────────────────────────────────────────────────────────────────────
+  function parseKMLFast(kmlString) {
+    const zones    = [];
+    const pmReg    = /<Placemark>([\s\S]*?)<\/Placemark>/g;
+    const nameReg  = /<name>\s*([\s\S]*?)\s*<\/name>/;
+    const coordReg = /<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/g;
+    let pm;
+    while ((pm = pmReg.exec(kmlString)) !== null) {
+      const block = pm[1];
+      const nm    = nameReg.exec(block);
+      const name  = nm ? nm[1].trim() : "Sin nombre";
+      coordReg.lastIndex = 0;
+      let cm;
+      while ((cm = coordReg.exec(block)) !== null) {
+        const coords = cm[1].trim().split(/\s+/).filter(Boolean).map(p => {
+          const pts = p.split(",");
+          return [parseFloat(pts[0]), parseFloat(pts[1])];
+        }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+        if (coords.length > 2) zones.push({ name, coordinates: coords });
+      }
+    }
+    return zones;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cargar KML / KMZ — procesa en el navegador, envía por lotes al servidor
+  // El servidor NUNCA recibe el archivo grande, solo JSON pequeño
   // ─────────────────────────────────────────────────────────────────────────
   async function handleUpload() {
     if (!selectedFile) return;
     setUploading(true);
     setUploadMsg(null);
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      const res = await fetch(`${API_URL}/load`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: formData,
-        signal: AbortSignal.timeout(180000), // 3 minutos para archivos grandes
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Error al cargar archivo");
-      setUploadMsg({ type: "ok", text: `✅ ${data.zonesLoaded} zonas cargadas — guardando en base de datos...` });
-      // Esperar 6 segundos para que el guardado en background complete antes de limpiar
-      await new Promise(r => setTimeout(r, 6000));
-      setUploadMsg({ type: "ok", text: `✅ ${data.zonesLoaded} zonas cargadas correctamente` });
+      // 1. Leer el archivo en el navegador
+      setUploadMsg({ type: "info", text: "📂 Leyendo archivo..." });
+      const arrayBuffer = await selectedFile.arrayBuffer();
+
+      // 2. Extraer KML del KMZ (o leer directo si es .kml)
+      let kmlText;
+      if (selectedFile.name.toLowerCase().endsWith(".kmz")) {
+        const zip      = await JSZip.loadAsync(arrayBuffer);
+        const kmlFile  = Object.values(zip.files).find(f => f.name.endsWith(".kml"));
+        if (!kmlFile) throw new Error("No se encontró doc.kml dentro del KMZ");
+        kmlText = await kmlFile.async("string");
+      } else {
+        kmlText = new TextDecoder().decode(arrayBuffer);
+      }
+
+      // 3. Parsear zonas en el navegador con regex
+      setUploadMsg({ type: "info", text: "🔍 Extrayendo zonas..." });
+      const zones = parseKMLFast(kmlText);
+      if (zones.length === 0) throw new Error("No se encontraron polígonos en el archivo.");
+
+      // 4. Enviar al servidor en lotes de 200 (sin saturar la memoria del servidor)
+      const BATCH   = 200;
+      const total   = Math.ceil(zones.length / BATCH);
+      let   enviadas = 0;
+
+      for (let i = 0; i < zones.length; i += BATCH) {
+        const lote      = zones.slice(i, i + BATCH);
+        const isFirst   = i === 0;
+        const isFinal   = i + BATCH >= zones.length;
+        enviadas += lote.length;
+
+        setUploadMsg({ type: "info", text: `📤 Enviando... ${enviadas}/${zones.length} zonas (lote ${Math.ceil((i+1)/BATCH)}/${total})` });
+
+        const res = await fetch(`${API_URL}/load-batch`, {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            zones:    lote,
+            fileName: selectedFile.name,
+            isFirst,
+            isFinal,
+            total:    zones.length,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Error al enviar lote");
+      }
+
+      setUploadMsg({ type: "ok", text: `✅ ${zones.length} zonas cargadas y guardadas correctamente` });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {

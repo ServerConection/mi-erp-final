@@ -83,6 +83,14 @@ function parseLocationUrl(text) {
   return null;
 }
 
+// Zonas marcadas como peligrosas
+const ZONAS_PELIGROSAS = ["AZ4", "OPU", "GIS"];
+function esZonaPeligrosa(zoneName) {
+  if (!zoneName) return false;
+  const upper = zoneName.toUpperCase();
+  return ZONAS_PELIGROSAS.some(z => upper.includes(z));
+}
+
 function isShortenedUrl(text) {
   const short = ["goo.gl", "maps.app.goo.gl", "bit.ly", "t.co", "tinyurl.com"];
   try {
@@ -681,16 +689,44 @@ export default function CoverageChecker() {
               >
                 {result.hasCoverage ? "✅ SÍ tiene cobertura" : "❌ NO tiene cobertura"}
               </h3>
+
+              {/* Alerta de zona peligrosa */}
+              {result.hasCoverage && esZonaPeligrosa(result.zoneName) && (
+                <div className="mb-4 flex items-start gap-3 bg-red-100 border border-red-400 text-red-800 rounded-xl px-4 py-3">
+                  <span className="text-2xl leading-none">⚠️</span>
+                  <div>
+                    <p className="font-bold text-sm">ZONA PELIGROSA</p>
+                    <p className="text-xs mt-0.5">
+                      La zona <strong>{result.zoneName}</strong> está clasificada como peligrosa.
+                      Proceder con precaución.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: "Latitud", val: result.lat?.toFixed(6) },
+                  { label: "Latitud",  val: result.lat?.toFixed(6) },
                   { label: "Longitud", val: result.lon?.toFixed(6) },
-                  { label: "Zona", val: result.zoneName },
-                  { label: "Hora", val: result.timestamp },
+                  { label: "Zona",     val: result.zoneName },
+                  { label: "Hora",     val: result.timestamp },
                 ].map(({ label, val }) => (
-                  <div key={label} className="bg-white rounded-xl p-3">
+                  <div
+                    key={label}
+                    className={`rounded-xl p-3 ${
+                      label === "Zona" && esZonaPeligrosa(val)
+                        ? "bg-red-200 border border-red-400"
+                        : "bg-white"
+                    }`}
+                  >
                     <p className="text-xs text-slate-500 mb-0.5">{label}</p>
-                    <p className="font-semibold text-slate-800 text-sm break-words">{val}</p>
+                    <p className={`font-semibold text-sm break-words ${
+                      label === "Zona" && esZonaPeligrosa(val)
+                        ? "text-red-800"
+                        : "text-slate-800"
+                    }`}>
+                      {label === "Zona" && esZonaPeligrosa(val) ? `⚠️ ${val}` : val}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -750,7 +786,11 @@ export default function CoverageChecker() {
                       <tr
                         key={item.id}
                         className={`border-t border-slate-100 hover:bg-slate-50 ${
-                          item.hasCoverage ? "bg-green-50/40" : ""
+                          item.hasCoverage && esZonaPeligrosa(item.zoneName)
+                            ? "bg-red-50/60"
+                            : item.hasCoverage
+                            ? "bg-green-50/40"
+                            : ""
                         }`}
                       >
                         <td className="px-4 py-2.5 font-mono text-xs">{item.lat?.toFixed(4)}</td>
@@ -766,7 +806,11 @@ export default function CoverageChecker() {
                             {item.hasCoverage ? "✅ Sí" : "❌ No"}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-slate-600">{item.zoneName}</td>
+                        <td className={`px-4 py-2.5 text-xs font-semibold ${
+                          esZonaPeligrosa(item.zoneName) ? "text-red-700" : "text-slate-600"
+                        }`}>
+                          {esZonaPeligrosa(item.zoneName) ? `⚠️ ${item.zoneName}` : item.zoneName}
+                        </td>
                         <td className="px-4 py-2.5 text-xs text-slate-500">{item.timestamp}</td>
                       </tr>
                     ))}

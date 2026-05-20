@@ -56,7 +56,7 @@ const corsOptions = {
 // Manejo explícito de preflight (OPTIONS) para todas las rutas
 app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Auth sin OTP (token directo)
 app.use('/api/auth',         authRoutes);

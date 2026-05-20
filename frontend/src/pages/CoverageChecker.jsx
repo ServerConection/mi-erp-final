@@ -297,9 +297,13 @@ export default function CoverageChecker() {
         method: "POST",
         headers: authHeaders(),
         body: formData,
+        signal: AbortSignal.timeout(180000), // 3 minutos para archivos grandes
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Error al cargar archivo");
+      setUploadMsg({ type: "ok", text: `✅ ${data.zonesLoaded} zonas cargadas — guardando en base de datos...` });
+      // Esperar 6 segundos para que el guardado en background complete antes de limpiar
+      await new Promise(r => setTimeout(r, 6000));
       setUploadMsg({ type: "ok", text: `✅ ${data.zonesLoaded} zonas cargadas correctamente` });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";

@@ -22,3 +22,24 @@ server.listen(process.env.PORT, async () => {
   // WhatsApp Baileys — genera QR, no bloquea el servidor
   iniciarWhatsApp();
 });
+
+// ── Apagado limpio (Render envía SIGTERM antes de reiniciar) ──────────────────
+// Espera hasta 25 segundos para que operaciones en background (ej: guardar
+// zonas de cobertura en DB) terminen antes de cerrar el proceso.
+const SHUTDOWN_TIMEOUT = 25000;
+
+function gracefulShutdown(signal) {
+  console.log(`[Server] ${signal} recibido — apagado limpio en curso...`);
+  server.close(() => {
+    console.log('[Server] HTTP cerrado correctamente');
+    process.exit(0);
+  });
+  // Forzar salida si tarda demasiado
+  setTimeout(() => {
+    console.warn('[Server] Timeout de apagado — forzando salida');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));

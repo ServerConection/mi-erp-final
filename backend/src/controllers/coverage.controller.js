@@ -102,79 +102,63 @@ let loadedFile   = null;
 let spatialIndex = null;
 let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
 
-// Garantiza que la tabla y la columna file_data existen
+// Garantiza que la tabla exista con el schema correcto
 async function ensureCoverageTable() {
+  // Tabla con kml_text TEXT — guarda solo el KML puro (sin imágenes PNG del KMZ)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.coverage_cache (
       id        INT  PRIMARY KEY DEFAULT 1,
       file_name TEXT NOT NULL,
-      zones     JSONB,
-      file_data BYTEA,
+      kml_text  TEXT,
       saved_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  // Migración automática: agrega file_data si la tabla ya existía sin ella
-  await pool.query(`
-    ALTER TABLE public.coverage_cache
-      ADD COLUMN IF NOT EXISTS file_data BYTEA
-  `).catch(() => {});
-  // Elimina la restricción zones NOT NULL si venía del schema anterior
-  await pool.query(`
-    ALTER TABLE public.coverage_cache
-      ALTER COLUMN zones DROP NOT NULL
-  `).catch(() => {});
+  // Migraciones automáticas si la tabla existía con schema anterior
+  await pool.query(`ALTER TABLE public.coverage_cache ADD COLUMN IF NOT EXISTS kml_text TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE public.coverage_cache ALTER COLUMN zones DROP NOT NULL`).catch(() => {});
 }
 
-// Guarda SOLO el archivo crudo como BYTEA (el KMZ ya viene comprimido).
-// NO guarda el JSONB de zonas para evitar el spike de memoria que
-// causaba el OOM kill en Render al hacer JSON.stringify de miles de polígonos.
-// Se llama en background (sin await) para no bloquear la respuesta al cliente.
-async function saveZonesToDB(zones, fileName, rawFileBuffer) {
+// Guarda SOLO el texto KML (sin imágenes, sin BYTEA, sin JSON.stringify).
+// El KML es XML puro de coordenadas — mucho más pequeño que el KMZ completo.
+// Se llama en background para no bloquear la respuesta al cliente.
+async function saveZonesToDB(zonesCount, fileName, kmlText) {
   try {
     await ensureCoverageTable();
     await pool.query(`
-      INSERT INTO public.coverage_cache (id, file_name, zones, file_data, saved_at)
-      VALUES (1, $1, NULL, $2, NOW())
+      INSERT INTO public.coverage_cache (id, file_name, kml_text, saved_at)
+      VALUES (1, $1, $2, NOW())
       ON CONFLICT (id) DO UPDATE
         SET file_name = EXCLUDED.file_name,
-            zones     = NULL,
-            file_data = EXCLUDED.file_data,
+            kml_text  = EXCLUDED.kml_text,
             saved_at  = NOW()
-    `, [fileName, rawFileBuffer]);
-    console.log('[Coverage] Archivo guardado en DB (BYTEA) — zonas en memoria:', zones.length, '| archivo:', fileName);
+    `, [fileName, kmlText]);
+    console.log('[Coverage] KML guardado en DB — zonas:', zonesCount, '| archivo:', fileName);
   } catch (e) {
     console.error('[Coverage] Error guardando en DB:', e.message);
   }
 }
 
-// Restaura zonas desde DB: primero intenta JSONB (rápido),
-// si falla o está vacío, re-parsea desde file_data (robusto)
+// Restaura zonas desde DB re-parseando el KML guardado
 async function loadZonesFromDB() {
   try {
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      'SELECT file_name, zones, file_data, saved_at FROM public.coverage_cache WHERE id = 1'
+      'SELECT file_name, kml_text, saved_at FROM public.coverage_cache WHERE id = 1'
     );
     if (!rows.length) return null;
     const row = rows[0];
 
-    // Intento 1: usar JSONB ya parseado (más rápido)
-    if (row.zones && Array.isArray(row.zones) && row.zones.length > 0) {
-      console.log('[Coverage] Restaurado desde JSONB — zonas:', row.zones.length);
-      return { zones: row.zones, fileName: row.file_name, savedAt: row.saved_at };
+    if (!row.kml_text) {
+      console.warn('[Coverage] Sin kml_text en DB — sube el KMZ de nuevo');
+      return null;
     }
 
-    // Intento 2: re-parsear desde el archivo original guardado como BYTEA
-    if (row.file_data) {
-      console.log('[Coverage] JSONB vacío — re-parseando desde file_data...');
-      const zones = await handleCoverageBuffer(row.file_data, row.file_name);
-      if (zones && zones.length > 0) {
-        console.log('[Coverage] Restaurado desde file_data — zonas:', zones.length);
-        return { zones, fileName: row.file_name, savedAt: row.saved_at };
-      }
-    }
+    console.log('[Coverage] Re-parseando KML desde DB...');
+    const zones = await handleKmlText(row.kml_text);
+    if (!zones || zones.length === 0) return null;
 
-    return null;
+    console.log('[Coverage] Restaurado desde DB — zonas:', zones.length);
+    return { zones, fileName: row.file_name, savedAt: row.saved_at };
   } catch (e) {
     console.warn('[Coverage] No se pudo restaurar desde DB:', e.message);
     return null;
@@ -471,52 +455,35 @@ async function parseKML(kmlContent) {
   }
 }
 
-// Parsea desde un Buffer (para restaurar desde BYTEA en DB)
-async function handleCoverageBuffer(buffer, originalName = '') {
+/**
+ * Extrae el texto KML desde un archivo en disco.
+ * Retorna { kmlContent, zones } — el texto KML se guarda en DB (sin imágenes PNG),
+ * las zonas se usan en memoria. Lee el archivo UNA sola vez.
+ */
+async function handleCoverageFile(filePath, originalName = '') {
+  const data = fs.readFileSync(filePath);
   let kmlContent;
-  if (originalName.toLowerCase().endsWith('.kmz')) {
-    try {
-      const zip = new AdmZip(buffer);
-      const entries = zip.getEntries();
-      const kmlEntry = entries.find(e => e.entryName.endsWith('.kml'));
-      if (!kmlEntry) throw new Error('No KML found in KMZ buffer');
-      kmlContent = kmlEntry.getData().toString('utf8');
-    } catch (e) {
-      throw new Error(`KMZ buffer extraction failed: ${e.message}`);
-    }
+
+  if (originalName.toLowerCase().endsWith('.kmz') || filePath.endsWith('.kmz')) {
+    const zip = new AdmZip(data);
+    const entries = zip.getEntries();
+    console.log('[KMZ] Archivos dentro del ZIP:', entries.map(e => e.entryName));
+    const kmlEntry = entries.find(e => e.entryName.endsWith('.kml'));
+    if (!kmlEntry) throw new Error('No KML found in KMZ');
+    console.log('[KMZ] Leyendo:', kmlEntry.entryName);
+    kmlContent = kmlEntry.getData().toString('utf8');
+    // data y zip quedan elegibles para GC (ya no los referenciamos)
   } else {
-    kmlContent = buffer.toString('utf8');
+    kmlContent = data.toString('utf8');
   }
-  return parseKML(kmlContent);
+
+  const zones = await parseKML(kmlContent);
+  return { zones, kmlContent };
 }
 
-async function handleCoverageFile(filePath, originalName = '') {
-  try {
-    const data = fs.readFileSync(filePath);
-    let kmlContent;
-
-    if (originalName.toLowerCase().endsWith('.kmz') || filePath.endsWith('.kmz')) {
-      try {
-        const zip = new AdmZip(data);
-        const entries = zip.getEntries();
-        console.log('[KMZ] Archivos dentro del ZIP:', entries.map(e => e.entryName));
-        const kmlEntry = entries.find(e => e.entryName.endsWith('.kml'));
-
-        if (!kmlEntry) throw new Error('No KML found in KMZ');
-
-        console.log('[KMZ] Leyendo:', kmlEntry.entryName);
-        kmlContent = kmlEntry.getData().toString('utf8');
-      } catch (e) {
-        throw new Error(`KMZ extraction failed: ${e.message}`);
-      }
-    } else {
-      kmlContent = data.toString('utf8');
-    }
-
-    return await parseKML(kmlContent);
-  } catch (error) {
-    throw new Error(`File processing error: ${error.message}`);
-  }
+/** Parsea zonas desde texto KML ya extraído (para restaurar desde DB) */
+async function handleKmlText(kmlContent) {
+  return parseKML(kmlContent);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -529,11 +496,8 @@ exports.loadCoverage = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No file uploaded' });
     }
 
-    // Leer el archivo original (para guardarlo como BYTEA en DB)
-    // KMZ está comprimido, ocupa mucho menos que el JSONB de zonas
-    const rawBuffer = fs.readFileSync(req.file.path);
-
-    const zones = await handleCoverageFile(req.file.path, req.file.originalname);
+    // Lee el archivo UNA sola vez y extrae el KML puro (sin imágenes PNG)
+    const { zones, kmlContent } = await handleCoverageFile(req.file.path, req.file.originalname);
 
     if (zones.length === 0) {
       return res.status(422).json({
@@ -557,10 +521,8 @@ exports.loadCoverage = async (req, res) => {
       loadedAt
     });
 
-    // Guardar en DB en background — solo el archivo BYTEA (no JSONB)
-    // Pasamos el buffer y luego lo soltamos para que el GC lo libere
-    const bufferToSave = rawBuffer;
-    saveZonesToDB(zones, req.file.originalname, bufferToSave)
+    // Guardar en DB en background — solo el KML texto (sin imágenes, sin BYTEA)
+    saveZonesToDB(zones.length, req.file.originalname, kmlContent)
       .catch(e => console.error('[Coverage] Guardado background fallido:', e.message));
 
   } catch (error) {

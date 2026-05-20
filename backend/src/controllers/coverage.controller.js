@@ -125,21 +125,23 @@ async function ensureCoverageTable() {
   `).catch(() => {});
 }
 
-// Guarda el archivo crudo (BYTEA, comprimido) + zonas JSONB
-// Se llama en background (sin await) para no bloquear la respuesta al cliente
+// Guarda SOLO el archivo crudo como BYTEA (el KMZ ya viene comprimido).
+// NO guarda el JSONB de zonas para evitar el spike de memoria que
+// causaba el OOM kill en Render al hacer JSON.stringify de miles de polígonos.
+// Se llama en background (sin await) para no bloquear la respuesta al cliente.
 async function saveZonesToDB(zones, fileName, rawFileBuffer) {
   try {
     await ensureCoverageTable();
     await pool.query(`
       INSERT INTO public.coverage_cache (id, file_name, zones, file_data, saved_at)
-      VALUES (1, $1, $2::jsonb, $3, NOW())
+      VALUES (1, $1, NULL, $2, NOW())
       ON CONFLICT (id) DO UPDATE
         SET file_name = EXCLUDED.file_name,
-            zones     = EXCLUDED.zones,
+            zones     = NULL,
             file_data = EXCLUDED.file_data,
             saved_at  = NOW()
-    `, [fileName, JSON.stringify(zones), rawFileBuffer || null]);
-    console.log('[Coverage] Guardado en DB — zonas:', zones.length, '| archivo:', fileName);
+    `, [fileName, rawFileBuffer]);
+    console.log('[Coverage] Archivo guardado en DB (BYTEA) — zonas en memoria:', zones.length, '| archivo:', fileName);
   } catch (e) {
     console.error('[Coverage] Error guardando en DB:', e.message);
   }
@@ -527,7 +529,8 @@ exports.loadCoverage = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No file uploaded' });
     }
 
-    // Leer el archivo ANTES de parsear (necesitamos el buffer para guardarlo en DB)
+    // Leer el archivo original (para guardarlo como BYTEA en DB)
+    // KMZ está comprimido, ocupa mucho menos que el JSONB de zonas
     const rawBuffer = fs.readFileSync(req.file.path);
 
     const zones = await handleCoverageFile(req.file.path, req.file.originalname);
@@ -541,7 +544,6 @@ exports.loadCoverage = async (req, res) => {
     }
 
     // Cargar en memoria y responder AL CLIENTE INMEDIATAMENTE
-    // (no esperar a que termine el guardado en DB — evita timeout de Render)
     loadedZones  = zones;
     loadedAt     = new Date().toISOString();
     loadedFile   = req.file.originalname;
@@ -555,9 +557,10 @@ exports.loadCoverage = async (req, res) => {
       loadedAt
     });
 
-    // Guardar en DB en background (sin bloquear la respuesta)
-    // Guarda tanto el archivo original (BYTEA) como las zonas (JSONB)
-    saveZonesToDB(zones, req.file.originalname, rawBuffer)
+    // Guardar en DB en background — solo el archivo BYTEA (no JSONB)
+    // Pasamos el buffer y luego lo soltamos para que el GC lo libere
+    const bufferToSave = rawBuffer;
+    saveZonesToDB(zones, req.file.originalname, bufferToSave)
       .catch(e => console.error('[Coverage] Guardado background fallido:', e.message));
 
   } catch (error) {

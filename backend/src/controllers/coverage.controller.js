@@ -87,72 +87,148 @@ function isShortenedUrl(url) {
 // ════════════════════════════════════════════════════════════════════════════════
 // Persistencia en PostgreSQL — sobrevive reinicios y deploys en Render
 // Render tiene filesystem efímero; la DB es la única persistencia confiable.
+// FIXES:
+//   1. file_data BYTEA — guarda el archivo original comprimido (mucho más pequeño
+//      que el JSONB de coordenadas). Se usa para restaurar en frío.
+//   2. saveZonesToDB es NO-AWAIT en loadCoverage — responde al cliente antes de
+//      guardar, evitando el timeout de 30s de Render en archivos grandes.
+//   3. ensureZonesLoaded — lazy-load en checkCoverage/checkBatch: si el servidor
+//      despertó de inactividad y perdió la memoria, recarga automáticamente.
 // ════════════════════════════════════════════════════════════════════════════════
 
 let loadedZones  = null;
 let loadedAt     = null;
 let loadedFile   = null;
 let spatialIndex = null;
+let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
 
-// Garantiza que la tabla existe antes de usarla
+// Garantiza que la tabla y la columna file_data existen
 async function ensureCoverageTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.coverage_cache (
       id        INT  PRIMARY KEY DEFAULT 1,
       file_name TEXT NOT NULL,
-      zones     JSONB NOT NULL,
+      zones     JSONB,
+      file_data BYTEA,
       saved_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Migración automática: agrega file_data si la tabla ya existía sin ella
+  await pool.query(`
+    ALTER TABLE public.coverage_cache
+      ADD COLUMN IF NOT EXISTS file_data BYTEA
+  `).catch(() => {});
+  // Elimina la restricción zones NOT NULL si venía del schema anterior
+  await pool.query(`
+    ALTER TABLE public.coverage_cache
+      ALTER COLUMN zones DROP NOT NULL
+  `).catch(() => {});
 }
 
-async function saveZonesToDB(zones, fileName) {
+// Guarda el archivo crudo (BYTEA, comprimido) + zonas JSONB
+// Se llama en background (sin await) para no bloquear la respuesta al cliente
+async function saveZonesToDB(zones, fileName, rawFileBuffer) {
   try {
     await ensureCoverageTable();
     await pool.query(`
-      INSERT INTO public.coverage_cache (id, file_name, zones, saved_at)
-      VALUES (1, $1, $2::jsonb, NOW())
+      INSERT INTO public.coverage_cache (id, file_name, zones, file_data, saved_at)
+      VALUES (1, $1, $2::jsonb, $3, NOW())
       ON CONFLICT (id) DO UPDATE
         SET file_name = EXCLUDED.file_name,
             zones     = EXCLUDED.zones,
+            file_data = EXCLUDED.file_data,
             saved_at  = NOW()
-    `, [fileName, JSON.stringify(zones)]);
-    console.log('[Coverage] Zonas guardadas en DB:', zones.length);
+    `, [fileName, JSON.stringify(zones), rawFileBuffer || null]);
+    console.log('[Coverage] Guardado en DB — zonas:', zones.length, '| archivo:', fileName);
   } catch (e) {
     console.error('[Coverage] Error guardando en DB:', e.message);
   }
 }
 
+// Restaura zonas desde DB: primero intenta JSONB (rápido),
+// si falla o está vacío, re-parsea desde file_data (robusto)
 async function loadZonesFromDB() {
   try {
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      'SELECT file_name, zones, saved_at FROM public.coverage_cache WHERE id = 1'
+      'SELECT file_name, zones, file_data, saved_at FROM public.coverage_cache WHERE id = 1'
     );
     if (!rows.length) return null;
     const row = rows[0];
-    console.log('[Coverage] Zonas cargadas desde DB:', row.zones.length, '(guardadas el', row.saved_at + ')');
-    return { zones: row.zones, fileName: row.file_name, savedAt: row.saved_at };
+
+    // Intento 1: usar JSONB ya parseado (más rápido)
+    if (row.zones && Array.isArray(row.zones) && row.zones.length > 0) {
+      console.log('[Coverage] Restaurado desde JSONB — zonas:', row.zones.length);
+      return { zones: row.zones, fileName: row.file_name, savedAt: row.saved_at };
+    }
+
+    // Intento 2: re-parsear desde el archivo original guardado como BYTEA
+    if (row.file_data) {
+      console.log('[Coverage] JSONB vacío — re-parseando desde file_data...');
+      const zones = await handleCoverageBuffer(row.file_data, row.file_name);
+      if (zones && zones.length > 0) {
+        console.log('[Coverage] Restaurado desde file_data — zonas:', zones.length);
+        return { zones, fileName: row.file_name, savedAt: row.saved_at };
+      }
+    }
+
+    return null;
   } catch (e) {
-    console.warn('[Coverage] No se pudo leer desde DB:', e.message);
+    console.warn('[Coverage] No se pudo restaurar desde DB:', e.message);
     return null;
   }
 }
 
-// Inicialización asíncrona al arrancar el servidor
-(async () => {
+// Lazy-load: si las zonas se perdieron de memoria (reinicio de Render),
+// las recarga desde DB automáticamente antes de responder al usuario
+async function ensureZonesLoaded() {
+  if (loadedZones && loadedZones.length > 0) return true;
+  if (dbRestoring) {
+    // Esperar hasta 8s a que termine otra restauración en curso
+    for (let i = 0; i < 16; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      if (loadedZones && loadedZones.length > 0) return true;
+    }
+    return false;
+  }
+  dbRestoring = true;
   try {
+    console.log('[Coverage] Zonas no en memoria — restaurando desde DB...');
     const cached = await loadZonesFromDB();
     if (cached) {
       loadedZones  = cached.zones;
       loadedAt     = cached.savedAt;
       loadedFile   = cached.fileName;
       spatialIndex = buildSpatialIndex(loadedZones);
-    } else {
-      console.log('[Coverage] Sin zonas previas en DB — esperando carga de KMZ');
+      console.log('[Coverage] Restauración lazy exitosa — zonas:', loadedZones.length);
+      return true;
     }
-  } catch (e) {
-    console.error('[Coverage] Error en inicialización:', e.message);
+    return false;
+  } finally {
+    dbRestoring = false;
+  }
+}
+
+// Inicialización al arrancar el servidor — con reintentos
+(async () => {
+  const intentos = 3;
+  for (let i = 1; i <= intentos; i++) {
+    try {
+      const cached = await loadZonesFromDB();
+      if (cached) {
+        loadedZones  = cached.zones;
+        loadedAt     = cached.savedAt;
+        loadedFile   = cached.fileName;
+        spatialIndex = buildSpatialIndex(loadedZones);
+        console.log('[Coverage] Inicialización exitosa — zonas:', loadedZones.length);
+      } else {
+        console.log('[Coverage] Sin zonas previas en DB — esperando carga de KMZ');
+      }
+      break; // éxito
+    } catch (e) {
+      console.error(`[Coverage] Error en inicialización (intento ${i}/${intentos}):`, e.message);
+      if (i < intentos) await new Promise(r => setTimeout(r, 3000 * i));
+    }
   }
 })();
 
@@ -393,6 +469,25 @@ async function parseKML(kmlContent) {
   }
 }
 
+// Parsea desde un Buffer (para restaurar desde BYTEA en DB)
+async function handleCoverageBuffer(buffer, originalName = '') {
+  let kmlContent;
+  if (originalName.toLowerCase().endsWith('.kmz')) {
+    try {
+      const zip = new AdmZip(buffer);
+      const entries = zip.getEntries();
+      const kmlEntry = entries.find(e => e.entryName.endsWith('.kml'));
+      if (!kmlEntry) throw new Error('No KML found in KMZ buffer');
+      kmlContent = kmlEntry.getData().toString('utf8');
+    } catch (e) {
+      throw new Error(`KMZ buffer extraction failed: ${e.message}`);
+    }
+  } else {
+    kmlContent = buffer.toString('utf8');
+  }
+  return parseKML(kmlContent);
+}
+
 async function handleCoverageFile(filePath, originalName = '') {
   try {
     const data = fs.readFileSync(filePath);
@@ -432,6 +527,9 @@ exports.loadCoverage = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No file uploaded' });
     }
 
+    // Leer el archivo ANTES de parsear (necesitamos el buffer para guardarlo en DB)
+    const rawBuffer = fs.readFileSync(req.file.path);
+
     const zones = await handleCoverageFile(req.file.path, req.file.originalname);
 
     if (zones.length === 0) {
@@ -442,15 +540,14 @@ exports.loadCoverage = async (req, res) => {
       });
     }
 
+    // Cargar en memoria y responder AL CLIENTE INMEDIATAMENTE
+    // (no esperar a que termine el guardado en DB — evita timeout de Render)
     loadedZones  = zones;
     loadedAt     = new Date().toISOString();
     loadedFile   = req.file.originalname;
     spatialIndex = buildSpatialIndex(zones);
 
-    // Guardar en PostgreSQL — persiste aunque Render reinicie el servidor
-    await saveZonesToDB(zones, req.file.originalname);
-
-    return res.status(200).json({
+    res.status(200).json({
       status: 'ok',
       fileName: req.file.originalname,
       zonesLoaded: zones.length,
@@ -458,9 +555,16 @@ exports.loadCoverage = async (req, res) => {
       loadedAt
     });
 
+    // Guardar en DB en background (sin bloquear la respuesta)
+    // Guarda tanto el archivo original (BYTEA) como las zonas (JSONB)
+    saveZonesToDB(zones, req.file.originalname, rawBuffer)
+      .catch(e => console.error('[Coverage] Guardado background fallido:', e.message));
+
   } catch (error) {
     console.error('[Coverage Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ status: 'error', message: error.message });
+    }
   }
 };
 
@@ -483,14 +587,17 @@ exports.checkCoverage = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Coordinates out of range' });
     }
 
+    // Lazy-load: si el servidor se reinició (Render inactividad), restaurar desde DB
     if (!loadedZones || loadedZones.length === 0) {
-      return res.status(400).json({ status: 'error', message: 'No zones loaded. Upload KML/KMZ first' });
+      const ok = await ensureZonesLoaded();
+      if (!ok) {
+        return res.status(503).json({ status: 'error', message: 'Zonas de cobertura no disponibles. Por favor recarga el archivo KMZ.' });
+      }
     }
 
     const zone = spatialIndex
       ? findZoneForPoint(longitude, latitude, loadedZones, spatialIndex)
       : (() => {
-          // fallback sin índice (no debería ocurrir)
           const p = [longitude, latitude];
           return loadedZones.find(z => pointInPolygon(p, z.coordinates)) || null;
         })();
@@ -516,8 +623,12 @@ exports.checkBatch = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Invalid points array' });
     }
 
+    // Lazy-load: restaurar desde DB si el servidor se reinició
     if (!loadedZones || loadedZones.length === 0) {
-      return res.status(400).json({ status: 'error', message: 'No zones loaded. Upload KML/KMZ first' });
+      const ok = await ensureZonesLoaded();
+      if (!ok) {
+        return res.status(503).json({ status: 'error', message: 'Zonas de cobertura no disponibles. Por favor recarga el archivo KMZ.' });
+      }
     }
 
     const results = points.map(p => {

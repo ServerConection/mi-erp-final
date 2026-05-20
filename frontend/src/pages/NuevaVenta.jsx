@@ -263,14 +263,8 @@ export default function NuevaVenta() {
     Object.entries(form).forEach(([k, v]) => {
       p[k] = (v === "" || v === null || v === undefined) ? null : String(v).trim();
     });
-    // Agregar fecha_registro_sistema como texto
-    const now = new Date();
-    p.fecha_registro_sistema     = now.toISOString().slice(0, 10); // YYYY-MM-DD
-    const d = derivarFecha(p.fecha_registro_sistema);
-    p.año_registro_sistema       = d.año;
-    p.mes_registro_sistema       = d.mes;
-    p.dia_num_registro_sistema   = d.dia_num;
-    p.dia_abc_registro_sistema   = d.dia_abc;
+    // fecha_registro_sistema la genera el backend al momento del INSERT
+    // año/mes/dia son GENERATED ALWAYS AS en PostgreSQL — no se envían
     // IP la genera el backend
     return p;
   };

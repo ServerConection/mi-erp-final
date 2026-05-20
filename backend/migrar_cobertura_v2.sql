@@ -1,24 +1,20 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- Persistencia de zonas de cobertura en PostgreSQL
--- v2: agrega file_data BYTEA para restauración confiable
+-- EJECUTA ESTO EN PGADMIN / RENDER una sola vez
+-- Actualiza la tabla coverage_cache para soportar archivos grandes
 -- ════════════════════════════════════════════════════════════════════════════
 
--- Tabla de una sola fila: siempre se hace UPSERT con id=1
-CREATE TABLE IF NOT EXISTS public.coverage_cache (
-  id          INT         PRIMARY KEY DEFAULT 1,
-  file_name   TEXT        NOT NULL,
-  zones       JSONB,
-  file_data   BYTEA,
-  saved_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Migración: si la tabla ya existe con el schema anterior, aplicar cambios
+-- 1. Agregar columna para guardar el archivo original comprimido
 ALTER TABLE public.coverage_cache
   ADD COLUMN IF NOT EXISTS file_data BYTEA;
 
+-- 2. Hacer zones opcional (antes era NOT NULL, ahora puede ser NULL temporalmente)
 ALTER TABLE public.coverage_cache
   ALTER COLUMN zones DROP NOT NULL;
 
--- Restricción: solo puede existir la fila id=1
-ALTER TABLE public.coverage_cache
-  ADD CONSTRAINT coverage_cache_single_row CHECK (id = 1);
+-- 3. Verificar resultado
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'coverage_cache'
+ORDER BY ordinal_position;
+-- Deberías ver: id, file_name, zones (nullable), file_data, saved_at

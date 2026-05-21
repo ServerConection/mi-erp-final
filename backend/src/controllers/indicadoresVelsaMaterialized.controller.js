@@ -254,6 +254,7 @@ SELECT
   mv.plan_centro_red_comercial AS "PLAN_CENTRO_RED_COMERCIAL",
   mv.forma_pago AS "FORMA_PAGO",
   mv.aplica_descuento AS "APLICA_DESCUENTO",
+  mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
 WHERE mv.fecha_registro_jotform::date 

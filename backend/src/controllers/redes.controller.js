@@ -230,7 +230,7 @@ const pool = require('../config/db');
         atc_soporte:          sum('atc_soporte'),
         fuera_cobertura:      sum('fuera_cobertura'),
         innegociable:         sum('innegociable'),
-        negociables,
+        negociables:         sum('negociables' ),
         venta_subida_bitrix:  sum('venta_subida_bitrix'),
         ingreso_jot,
         activo_backlog,

@@ -68,112 +68,191 @@ const pool = require('../config/db');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. MONITOREO REDES GENERAL
+  // FIX: Reescrito para usar mestra_bitrix directamente (datos siempre frescos).
+  //      mv_monitoreo_publicidad se consultaba antes pero puede estar desactualizada;
+  //      ahora solo se usa para obtener inversion_usd (dato externo).
   // ─────────────────────────────────────────────────────────────────────────────
   const getMonitoreoRedes = async (req, res) => {
     try {
       const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
       const gruposRaw = req.query.canales || '';
       const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-      const { canalesInversion } = resolverGrupos(gruposSel);
-      const { where: canalWhere, params: canalParams } = buildInWhere(canalesInversion, 2, 'SPLIT_PART(canal_inversion, \' -\', 1)');
+      const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-      // TOTALES globales
-      const totalesResult = await pool.query(`
-        WITH por_canal_dia AS (
-          SELECT SPLIT_PART(canal_inversion, ' -', 1) AS canal_inversion,
-            SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
-            SUM(fuera_cobertura) AS fuera_cobertura, SUM(zonas_peligrosas) AS zonas_peligrosas,
-            SUM(innegociable) AS innegociable, SUM(negociables) AS negociables,
-            SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-            SUM(seguimiento_negociacion) AS seguimiento_negociacion,
-            SUM(ingreso_jot) AS ingreso_jot, SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
-            SUM(activo_backlog) AS activo_backlog, SUM(activos_mes) AS activos_mes,
-            SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-            SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-            SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-            SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-            SUM(regularizados) AS regularizados, SUM(por_regularizar) AS por_regularizar,
-            SUM(total_ventas_jot) AS total_ventas_jot,
-            MAX(inversion_usd) AS inversion_usd
-          FROM public.mv_monitoreo_publicidad
-          WHERE fecha BETWEEN $1 AND $2
-            AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
-            ${canalWhere}
-          GROUP BY fecha, SPLIT_PART(canal_inversion, ' -', 1)
-        )
-        SELECT
-          SUM(n_leads) AS n_leads, SUM(atc_soporte) AS atc_soporte,
-          SUM(fuera_cobertura) AS fuera_cobertura, SUM(innegociable) AS innegociable,
-          SUM(negociables) AS negociables, SUM(venta_subida_bitrix) AS venta_subida_bitrix,
-          SUM(ingreso_jot) AS ingreso_jot, SUM(activo_backlog) AS activo_backlog,
-          SUM(activos_mes) AS activos_mes, SUM(inversion_usd) AS inversion_usd,
-          SUM(ciclo_0_dias) AS ciclo_0_dias, SUM(ciclo_1_dia) AS ciclo_1_dia,
-          SUM(ciclo_2_dias) AS ciclo_2_dias, SUM(ciclo_3_dias) AS ciclo_3_dias,
-          SUM(ciclo_4_dias) AS ciclo_4_dias, SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-          ROUND(CASE WHEN SUM(n_leads)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(n_leads) ELSE 0 END::numeric,2) AS cpl,
-          ROUND(CASE WHEN SUM(ingreso_jot)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(ingreso_jot) ELSE 0 END::numeric,2) AS costo_ingreso_jot,
-          ROUND(CASE WHEN SUM(activos_mes)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(activos_mes) ELSE 0 END::numeric,2) AS costo_activa,
-          ROUND(CASE WHEN SUM(activo_backlog)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(activo_backlog) ELSE 0 END::numeric,2) AS costo_activa_backlog,
-          ROUND(CASE WHEN SUM(negociables)>0 AND SUM(inversion_usd)>0 THEN SUM(inversion_usd)/SUM(negociables) ELSE 0 END::numeric,2) AS costo_por_negociable
-        FROM por_canal_dia
-      `, [fechaDesde, fechaHasta, ...canalParams]);
+      // Con canal → filtrar por origenesBitrix. Sin canal → usar TODOS los conocidos
+      // (así excluimos MAL INGRESO/SIN MAPEO que no están en TODOS_ORIGENES_CONOCIDOS)
+      const origParaWhere = gruposSel.length > 0 ? origenesBitrix : TODOS_ORIGENES_CONOCIDOS;
+      const { where: origWhere, params: origParams } = buildInWhere(origParaWhere, 2, 'mb.b_origen');
 
-      // DETALLE por fecha×canal — agrupado correctamente por canal_inversion
+      // Expresión CASE para derivar canal_inversion desde b_origen (igual que ORIGEN_A_CANAL_INV)
+      const canalExpr = `CASE mb.b_origen
+        WHEN 'BASE 593-979083368'    THEN 'ARTS'
+        WHEN 'BASE 593-995211968'    THEN 'ARTS FACEBOOK'
+        WHEN 'BASE 593-992827793'    THEN 'ARTS GOOGLE'
+        WHEN 'FORMULARIO LANDING 3'  THEN 'ARTS GOOGLE'
+        WHEN 'LLAMADA LANDING 3'     THEN 'ARTS GOOGLE'
+        WHEN 'POR RECOMENDACIÓN'     THEN 'POR RECOMENDACIÓN'
+        WHEN 'REFERIDO PERSONAL'     THEN 'POR RECOMENDACIÓN'
+        WHEN 'TIENDA ONLINE'         THEN 'POR RECOMENDACIÓN'
+        WHEN 'BASE 593-958993371'    THEN 'REMARKETING'
+        WHEN 'BASE 593-984414273'    THEN 'REMARKETING'
+        WHEN 'BASE 593-995967355'    THEN 'REMARKETING'
+        WHEN 'WHATSAPP 593958993371' THEN 'REMARKETING'
+        WHEN 'BASE 593-962881280'    THEN 'VIDIKA GOOGLE'
+        WHEN 'BASE 593-987133635'    THEN 'VIDIKA GOOGLE'
+        WHEN 'BASE API 593963463480' THEN 'VIDIKA GOOGLE'
+        WHEN 'FORMULARIO LANDING 4'  THEN 'VIDIKA GOOGLE'
+        WHEN 'LLAMADA'               THEN 'VIDIKA GOOGLE'
+        WHEN 'LLAMADA LANDING 4'     THEN 'VIDIKA GOOGLE'
+        ELSE NULL
+      END`;
+
+      // ── Detalle: leads y métricas desde mestra_bitrix (SIEMPRE datos frescos) ──
       const detalleResult = await pool.query(`
         SELECT
           fecha,
-          MIN(dia_semana) AS dia_semana,
-          SPLIT_PART(canal_inversion, ' -', 1) AS canal_inversion,
-          SPLIT_PART(canal_inversion, ' -', 1) AS canal_publicidad,
-          SUM(n_leads) AS n_leads,
-          SUM(atc_soporte) AS atc_soporte,
-          SUM(fuera_cobertura) AS fuera_cobertura,
-          SUM(zonas_peligrosas) AS zonas_peligrosas,
-          SUM(innegociable) AS innegociable,
-          SUM(negociables) AS negociables,
-          SUM(venta_subida_bitrix) AS venta_subida_bitrix,
+          dia_semana,
+          canal_inversion,
+          canal_inversion AS canal_publicidad,
+          SUM(n_leads)               AS n_leads,
+          SUM(atc_soporte)           AS atc_soporte,
+          SUM(fuera_cobertura)       AS fuera_cobertura,
+          SUM(zonas_peligrosas)      AS zonas_peligrosas,
+          SUM(innegociable)          AS innegociable,
+          SUM(negociables)           AS negociables,
+          SUM(venta_subida_bitrix)   AS venta_subida_bitrix,
           SUM(seguimiento_negociacion) AS seguimiento_negociacion,
-          SUM(otro_proveedor) AS otro_proveedor,
-          SUM(no_interesa_costo) AS no_interesa_costo,
-          SUM(desiste_compra) AS desiste_compra,
-          SUM(duplicado) AS duplicado,
-          SUM(cliente_discapacidad) AS cliente_discapacidad,
-          SUM(ingreso_jot) AS ingreso_jot,
-          SUM(ingreso_bitrix_mismo_dia) AS ingreso_bitrix_mismo_dia,
-          SUM(activo_backlog) AS activo_backlog,
-          SUM(activos_mes) AS activos_mes,
-          SUM(estado_activo_netlife) AS estado_activo_netlife,
-          SUM(desiste_servicio_jot) AS desiste_servicio_jot,
-          SUM(pago_cuenta) AS pago_cuenta,
-          SUM(pago_efectivo) AS pago_efectivo,
-          SUM(pago_tarjeta) AS pago_tarjeta,
-          SUM(pago_cuenta_activa) AS pago_cuenta_activa,
-          SUM(pago_efectivo_activa) AS pago_efectivo_activa,
-          SUM(pago_tarjeta_activa) AS pago_tarjeta_activa,
-          SUM(ciclo_0_dias) AS ciclo_0_dias,
-          SUM(ciclo_1_dia) AS ciclo_1_dia,
-          SUM(ciclo_2_dias) AS ciclo_2_dias,
-          SUM(ciclo_3_dias) AS ciclo_3_dias,
-          SUM(ciclo_4_dias) AS ciclo_4_dias,
-          SUM(ciclo_mas5_dias) AS ciclo_mas5_dias,
-          SUM(regularizados) AS regularizados,
-          SUM(por_regularizar) AS por_regularizar,
-          SUM(total_gestionables) AS total_gestionables,
-          SUM(total_ventas_jot) AS total_ventas_jot,
-          SUM(total_ventas_crm) AS total_ventas_crm,
-          SUM(inversion_usd) AS inversion_usd
-        FROM public.mv_monitoreo_publicidad
-        WHERE fecha BETWEEN $1 AND $2
-          AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
-          ${canalWhere}
-        GROUP BY fecha, SPLIT_PART(canal_inversion, ' -', 1)
-        ORDER BY fecha DESC, SPLIT_PART(canal_inversion, ' -', 1) ASC
-      `, [fechaDesde, fechaHasta, ...canalParams]);
+          0::bigint AS otro_proveedor,
+          0::bigint AS no_interesa_costo,
+          0::bigint AS desiste_compra,
+          0::bigint AS duplicado,
+          0::bigint AS cliente_discapacidad,
+          0::bigint AS ingreso_jot,
+          0::bigint AS ingreso_bitrix_mismo_dia,
+          0::bigint AS activo_backlog,
+          0::bigint AS activos_mes,
+          0::bigint AS estado_activo_netlife,
+          0::bigint AS desiste_servicio_jot,
+          0::bigint AS pago_cuenta,
+          0::bigint AS pago_efectivo,
+          0::bigint AS pago_tarjeta,
+          0::bigint AS pago_cuenta_activa,
+          0::bigint AS pago_efectivo_activa,
+          0::bigint AS pago_tarjeta_activa,
+          0::bigint AS ciclo_0_dias,
+          0::bigint AS ciclo_1_dia,
+          0::bigint AS ciclo_2_dias,
+          0::bigint AS ciclo_3_dias,
+          0::bigint AS ciclo_4_dias,
+          0::bigint AS ciclo_mas5_dias,
+          0::bigint AS regularizados,
+          0::bigint AS por_regularizar,
+          0::bigint AS total_gestionables,
+          0::bigint AS total_ventas_jot,
+          0::bigint AS total_ventas_crm,
+          0         AS inversion_usd
+        FROM (
+          SELECT
+            mb.b_creado_el_fecha::date AS fecha,
+            CASE EXTRACT(DOW FROM mb.b_creado_el_fecha::date)
+              WHEN 0 THEN 'Domingo' WHEN 1 THEN 'Lunes'   WHEN 2 THEN 'Martes'
+              WHEN 3 THEN 'Miércoles' WHEN 4 THEN 'Jueves' WHEN 5 THEN 'Viernes'
+              WHEN 6 THEN 'Sábado'
+            END AS dia_semana,
+            (${canalExpr}) AS canal_inversion,
+            COUNT(*)                                                                   AS n_leads,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
+              OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')                      AS atc_soporte,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
+              OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA PELIGROSA%')               AS zonas_peligrosas,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%') AS innegociable,
+            COUNT(*) FILTER (WHERE
+              (mb.b_etapa_de_la_negociacion NOT ILIKE '%ATC%')                AND
+              (mb.b_etapa_de_la_negociacion NOT ILIKE '%SOPORTE%')            AND
+              (mb.b_etapa_de_la_negociacion NOT ILIKE '%FUERA DE COBERTURA%') AND
+              (mb.b_etapa_de_la_negociacion NOT ILIKE '%INNEGOCIABLE%')
+            )                                                                          AS negociables,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%SEGUIMIENTO%')  AS seguimiento_negociacion
+          FROM public.mestra_bitrix mb
+          WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
+            AND mb.j_id_bitrix IS NULL
+            ${origWhere}
+          GROUP BY mb.b_creado_el_fecha::date, (${canalExpr})
+        ) sub
+        WHERE canal_inversion IS NOT NULL
+        GROUP BY fecha, dia_semana, canal_inversion
+        ORDER BY fecha DESC, canal_inversion ASC
+      `, [fechaDesde, fechaHasta, ...origParams]);
+
+      // ── Inversión desde MV (solo inversion_usd, dato externo a mestra_bitrix) ──
+      const { where: invCanalWhere, params: invCanalParams } = buildInWhere(
+        canalesInversion.length > 0 ? canalesInversion : [],
+        2,
+        "SPLIT_PART(mv.canal_inversion, ' -', 1)"
+      );
+      let inversionMap = {}; // clave: "YYYY-MM-DD__CANAL"
+      try {
+        const invResult = await pool.query(`
+          SELECT
+            fecha::date                                     AS fecha,
+            SPLIT_PART(canal_inversion, ' -', 1)           AS canal,
+            MAX(inversion_usd)                              AS inversion_usd
+          FROM public.mv_monitoreo_publicidad mv
+          WHERE fecha BETWEEN $1 AND $2
+            AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
+            ${invCanalWhere}
+          GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
+        `, [fechaDesde, fechaHasta, ...invCanalParams]);
+        invResult.rows.forEach(r => {
+          inversionMap[`${r.fecha}__${r.canal}`] = Number(r.inversion_usd || 0);
+        });
+      } catch (_) { /* MV puede fallar — inversión quedará en 0 */ }
+
+      // ── Merge: attach inversion_usd a cada fila del detalle ──────────────────
+      const data = detalleResult.rows.map(row => ({
+        ...row,
+        inversion_usd: inversionMap[`${row.fecha}__${row.canal_inversion}`] || 0,
+      }));
+
+      // ── Totales: agregar desde data (con inversion_usd ya mergeada) ──────────
+      const sum = (f) => data.reduce((s, r) => s + Number(r[f] || 0), 0);
+      const n_leads        = sum('n_leads');
+      const ingreso_jot    = sum('ingreso_jot');
+      const activos_mes    = sum('activos_mes');
+      const activo_backlog = sum('activo_backlog');
+      const negociables    = sum('negociables');
+      const inversion_usd  = sum('inversion_usd');
+
+      const totales = {
+        n_leads,
+        atc_soporte:          sum('atc_soporte'),
+        fuera_cobertura:      sum('fuera_cobertura'),
+        innegociable:         sum('innegociable'),
+        negociables,
+        venta_subida_bitrix:  sum('venta_subida_bitrix'),
+        ingreso_jot,
+        activo_backlog,
+        activos_mes,
+        inversion_usd,
+        ciclo_0_dias:         sum('ciclo_0_dias'),
+        ciclo_1_dia:          sum('ciclo_1_dia'),
+        ciclo_2_dias:         sum('ciclo_2_dias'),
+        ciclo_3_dias:         sum('ciclo_3_dias'),
+        ciclo_4_dias:         sum('ciclo_4_dias'),
+        ciclo_mas5_dias:      sum('ciclo_mas5_dias'),
+        cpl:                  n_leads > 0 && inversion_usd > 0 ? +(inversion_usd / n_leads).toFixed(2) : 0,
+        costo_ingreso_jot:    ingreso_jot > 0 && inversion_usd > 0 ? +(inversion_usd / ingreso_jot).toFixed(2) : 0,
+        costo_activa:         activos_mes > 0 && inversion_usd > 0 ? +(inversion_usd / activos_mes).toFixed(2) : 0,
+        costo_activa_backlog: activo_backlog > 0 && inversion_usd > 0 ? +(inversion_usd / activo_backlog).toFixed(2) : 0,
+        costo_por_negociable: negociables > 0 && inversion_usd > 0 ? +(inversion_usd / negociables).toFixed(2) : 0,
+      };
 
       res.json({
         success: true,
-        totales: totalesResult.rows[0],
-        data: detalleResult.rows,
+        totales,
+        data,
         canales_disponibles: GRUPOS_DISPONIBLES.map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g] })),
       });
     } catch (error) {

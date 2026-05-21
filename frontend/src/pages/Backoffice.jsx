@@ -176,8 +176,19 @@ export default function Backoffice() {
       const qs = q ? `?buscar=${encodeURIComponent(q)}` : "";
       const r  = await fetch(`${API}/api/backoffice${qs}`, { headers:{ Authorization:`Bearer ${token}` } });
       const d  = await r.json();
-      if (d.success) { setRegistros(d.data); setTotal(d.total); }
-    } catch(_){} finally { setLoading(false); }
+      if (d.success) {
+        setRegistros(d.data);
+        setTotal(d.total);
+      } else {
+        console.error('[Backoffice] Error API:', d.error);
+        setRegistros([]);
+        setTotal(0);
+      }
+    } catch(err) {
+      console.error('[Backoffice] Error fetch:', err);
+      setRegistros([]);
+      setTotal(0);
+    } finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { if (isAdmin) cargarLista(); }, [isAdmin, cargarLista]);

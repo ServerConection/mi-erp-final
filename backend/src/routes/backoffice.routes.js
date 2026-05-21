@@ -53,8 +53,11 @@ router.get('/', async (req, res) => {
     );
 
     params.push(parseInt(limit), offset);
-    const limitIdx  = params.length - 1;
-    const offsetIdx = params.length;
+    // params.length es 2 (sin buscar) o 3 (con buscar)
+    // El LIMIT es el penúltimo elemento → SQL param nº (length - 1)
+    // El OFFSET es el último elemento   → SQL param nº (length)
+    const limitParam  = params.length - 1;  // $1 o $2
+    const offsetParam = params.length;      // $2 o $3
 
     const { rows } = await pool.query(`
       SELECT
@@ -80,7 +83,7 @@ router.get('/', async (req, res) => {
       FROM public.envios_ventas
       ${whereClause}
       ORDER BY id DESC
-      LIMIT $${limitIdx + 1} OFFSET $${offsetIdx}
+      LIMIT $${limitParam} OFFSET $${offsetParam}
     `, params);
 
     res.json({ success: true, data: rows, total: countRows[0].total });

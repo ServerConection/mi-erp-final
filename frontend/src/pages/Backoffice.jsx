@@ -17,7 +17,7 @@ const INCONSISTENCIA_OPTS= ["SI","NO"];
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 const C = {
   // Layout
-  page:   { display:"flex", flexDirection:"column", height:"100%", fontFamily:"'Inter','Segoe UI',sans-serif", color:"#f1f5f9", background:"transparent", minHeight:0 },
+  page:   { display:"flex", flexDirection:"column", height:"100%", fontFamily:"'Inter','Segoe UI',sans-serif", color:"#f1f5f9", background:"#0f172a", minHeight:0, borderRadius:16, padding:20 },
   topBar: { display:"flex", alignItems:"center", gap:14, marginBottom:18, flexShrink:0 },
   iconBox:{ width:46, height:46, borderRadius:13, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0, boxShadow:"0 4px 16px rgba(99,102,241,.35)" },
   title:  { fontSize:22, fontWeight:800, color:"#f1f5f9", margin:0 },
@@ -162,8 +162,9 @@ export default function Backoffice() {
   const buscarRef = useRef(null);
 
   // ── Guard: todos menos ASESOR ────────────────────────────────────────────────
+  // IMPORTANTE: el layout guarda el usuario en "userProfile", no en "user"
   const isAdmin = (() => {
-    try { const u = JSON.parse(localStorage.getItem("user") || "{}"); return (u.perfil||"").toUpperCase() !== "ASESOR"; }
+    try { const u = JSON.parse(localStorage.getItem("userProfile") || "{}"); return (u.perfil||"").toUpperCase() !== "ASESOR"; }
     catch(_){ return false; }
   })();
   const token = localStorage.getItem("token");
@@ -244,7 +245,8 @@ export default function Backoffice() {
 
   // ── Guard ────────────────────────────────────────────────────────────────────
   if (!isAdmin) return (
-    <div style={{ ...C.page, alignItems:"center", justifyContent:"center", minHeight:"60vh" }}>
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"60vh",
+      background:"#0f172a", borderRadius:16, padding:20 }}>
       <div style={{ textAlign:"center" }}>
         <div style={{ fontSize:48, marginBottom:12 }}>🔒</div>
         <p style={{ fontSize:18, fontWeight:700, color:"#fca5a5" }}>Acceso restringido</p>
@@ -254,7 +256,7 @@ export default function Backoffice() {
   );
 
   return (
-    <div style={{ ...C.page, height:"calc(100vh - 100px)" }}>
+    <div style={{ ...C.page, height:"calc(100vh - 120px)" }}>
 
       {/* ── Top bar ── */}
       <div style={C.topBar}>

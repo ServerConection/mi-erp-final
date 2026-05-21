@@ -171,7 +171,7 @@ const pool = require('../config/db');
               (mb.b_etapa_de_la_negociacion NOT ILIKE '%ATC%')                AND
               (mb.b_etapa_de_la_negociacion NOT ILIKE '%SOPORTE%')            AND
               (mb.b_etapa_de_la_negociacion NOT ILIKE '%FUERA DE COBERTURA%') AND
-              (mb.b_etapa_de_la_negociacion NOT ILIKE '%INNEGOCIABLE%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADOS%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%REGULARIZA%')
+              (mb.b_etapa_de_la_negociacion NOT ILIKE '%INNEGOCIABLE%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADO%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%REGULARIZA%')
             )                                                                          AS negociables,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%SEGUIMIENTO%')  AS seguimiento_negociacion

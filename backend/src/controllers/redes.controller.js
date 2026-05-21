@@ -160,7 +160,7 @@ const pool = require('../config/db');
               WHEN 6 THEN 'Sábado'
             END AS dia_semana,
             (${canalExpr}) AS canal_inversion,
-            COUNT(*)                                                                   AS n_leads,
+            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADO%' AND mb.b_etapa_de_la_negociacion NOT ILIKE '%REGULARIZA%') AS n_leads,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
               OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')                      AS atc_soporte,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,

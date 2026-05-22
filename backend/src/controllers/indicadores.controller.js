@@ -1087,9 +1087,56 @@ const getConsultaDescargaNovonet = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVACIONES POR DÍA — endpoint liviano solo para el gráfico de activaciones
+// Filtros independientes: fechaDesde, fechaHasta, estadoVenta, asesor, supervisor
+// No impacta ningún KPI ni cálculo existente.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getActivacionesPorDia = async (req, res) => {
+    try {
+        const hoy   = getFechaEcuador();
+        const desde = req.query.fechaDesde || hoy;
+        const hasta = req.query.fechaHasta || hoy;
+        const values = [desde, hasta];
+        let filters = '';
+
+        if (req.query.asesor) {
+            values.push(`%${req.query.asesor}%`);
+            filters += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+        }
+        if (req.query.supervisor) {
+            values.push(`%${req.query.supervisor}%`);
+            filters += ` ${supervisorExistsFilter(values.length)}`;
+        }
+        if (req.query.estadoVenta) {
+            values.push(`%${req.query.estadoVenta}%`);
+            filters += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+
+        const result = await pool.query(`
+            SELECT
+                mb.j_fecha_activacion_netlife::date AS fecha,
+                COUNT(*)::int AS activaciones
+            FROM public.mestra_bitrix mb
+            WHERE mb.j_fecha_activacion_netlife IS NOT NULL
+              AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+              AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+              ${filters}
+            GROUP BY 1
+            ORDER BY fecha ASC
+        `, values);
+
+        res.json({ success: true, rows: result.rows });
+    } catch (error) {
+        console.error('[ACTIVACIONES-DIA-NOVONET]', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     getIndicadoresDashboard,
     getMonitoreoDiario,
     getReporte180,
-    getConsultaDescargaNovonet
+    getConsultaDescargaNovonet,
+    getActivacionesPorDia,
 };

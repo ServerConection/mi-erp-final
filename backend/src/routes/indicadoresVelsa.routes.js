@@ -10,6 +10,7 @@ const {
   getDetalleCRMData,
   getActivasVelsa,
   getBacklogVelsa,
+  getActivacionesPorDiaVelsa,
 } = require('../controllers/indicadoresVelsaMaterialized.controller');
 
 router.get('/dashboard', getIndicadoresDashboardVelsa);
@@ -20,5 +21,6 @@ router.get('/status-mv', getStatusMaterializedView);
 router.get('/detalle-crm-data', getDetalleCRMData);
 router.get('/activas', getActivasVelsa);
 router.get('/backlog', getBacklogVelsa);
+router.get('/activaciones-dia', getActivacionesPorDiaVelsa);
 
 module.exports = router;

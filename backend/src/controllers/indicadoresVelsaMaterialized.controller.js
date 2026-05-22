@@ -204,6 +204,19 @@ async function getIndicadoresDashboardVelsa(req, res) {
         AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.fecha_registro_jotform::date ORDER BY mv.fecha_registro_jotform::date ASC
     `;
+
+    // ── NUEVO: activaciones por día usando fecha_activacion_date ────────────────
+    // Indicador independiente — no modifica ningún KPI ni cálculo existente.
+    const qActivacionesPorDia = `
+      SELECT
+        mv.fecha_activacion_date::date::text AS fecha,
+        COUNT(*)::int AS activaciones
+      FROM ${MV}
+      WHERE mv.fecha_activacion_date IS NOT NULL
+        AND mv.fecha_activacion_date::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY mv.fecha_activacion_date::date
+      ORDER BY mv.fecha_activacion_date::date ASC
+    `;
     const qEtapasCRM = `
       SELECT DISTINCT mv.etapa_crm AS etapa FROM ${MV}
       WHERE mv.etapa_crm IS NOT NULL AND TRIM(mv.etapa_crm) <> ''
@@ -267,7 +280,7 @@ LIMIT 6000
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
-      resNetlife,
+      resNetlife, resActivacionesDia,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -281,6 +294,7 @@ LIMIT 6000
       pool.query(qTercera,   valuesMain),
       pool.query(qTarjeta,   valuesMain),
       pool.query(qNetlife,   valuesMain),
+      pool.query(qActivacionesPorDia, valuesMain), // NUEVO: activaciones por fecha_activacion_date
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -300,12 +314,13 @@ LIMIT 6000
       success: true,
       supervisores,
       asesores,
-      dataNetlife:      resNetlife.rows,
-      estadosNetlife:   resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
-      graficoEmbudo:    resEmbudo.rows,
-      graficoBarrasDia: resDia.rows,
-      etapasCRM:        resEtapasCRM.rows.map(r => r.etapa),
-      etapasJotform:    resEtapasJot.rows.map(r => r.estado_venta),
+      dataNetlife:           resNetlife.rows,
+      estadosNetlife:        resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
+      graficoEmbudo:         resEmbudo.rows,
+      graficoBarrasDia:      resDia.rows,
+      graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por fecha_activacion_date
+      etapasCRM:             resEtapasCRM.rows.map(r => r.etapa),
+      etapasJotform:         resEtapasJot.rows.map(r => r.estado_venta),
       porcentajeTerceraEdad,
       porcentajeTarjeta,
     });
@@ -570,6 +585,41 @@ async function getBacklogVelsa(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVACIONES POR DÍA (endpoint independiente — solo usa fecha_activacion_date)
+// No modifica ningún KPI ni cálculo existente del dashboard.
+// ─────────────────────────────────────────────────────────────────────────────
+async function getActivacionesPorDiaVelsa(req, res) {
+  try {
+    const hoy   = getFechaEcuador();
+    const desde = req.query.fechaDesde || hoy;
+    const hasta = req.query.fechaHasta || hoy;
+    const values = [desde, hasta];
+
+    let filters = '';
+    if (req.query.asesor)      { values.push(`%${req.query.asesor}%`);      filters += ` AND mv.asesor ILIKE $${values.length}`; }
+    if (req.query.supervisor)  { values.push(`%${req.query.supervisor}%`);  filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    if (req.query.estadoVenta) { values.push(`%${req.query.estadoVenta}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
+
+    const result = await pool.query(`
+      SELECT
+        mv.fecha_activacion_date::date::text AS fecha,
+        COUNT(*)::int AS activaciones
+      FROM public.mv_indicadores_velsa_completo mv
+      WHERE mv.fecha_activacion_date IS NOT NULL
+        AND mv.fecha_activacion_date::date BETWEEN $1::date AND $2::date
+        ${filters}
+      GROUP BY mv.fecha_activacion_date::date
+      ORDER BY mv.fecha_activacion_date::date ASC
+    `, values);
+
+    res.json({ success: true, rows: result.rows });
+  } catch (error) {
+    console.error('[ACTIVACIONES-DIA-VELSA]', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 module.exports = {
   getIndicadoresDashboardVelsa,
   getMonitoreoDiarioVelsa,
@@ -579,4 +629,5 @@ module.exports = {
   getDetalleCRMData,
   getActivasVelsa,
   getBacklogVelsa,
+  getActivacionesPorDiaVelsa,
 };

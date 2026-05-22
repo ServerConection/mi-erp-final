@@ -301,6 +301,7 @@ export default function ReporteVelsa() {
     estadosNetlife: [],
     graficoEmbudo: [],
     graficoBarrasDia: [],
+    graficoActivacionesDia: [],
     etapasCRM: [],
     etapasJotform: [],
     porcentajeTerceraEdad: 0,
@@ -360,6 +361,12 @@ export default function ReporteVelsa() {
     etapaCRM: "",
     etapaJotform: "",
   });
+
+  // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha_activacion_date ──
+  // No afectan ningún otro KPI ni el dashboard principal.
+  const [filtroActiv, setFiltroActiv]           = useState({ desde: getFechaHoyEcuador(), hasta: getFechaHoyEcuador(), estado: '' });
+  const [activacionesFiltradas, setActivacionesFiltradas] = useState(null); // null = usa datos del dashboard
+  const [loadingActiv, setLoadingActiv]         = useState(false);
 
   // ── Nombres de asesores para el dropdown ─────────────────────────────────
   const nombresAsesores = useMemo(
@@ -438,6 +445,7 @@ export default function ReporteVelsa() {
           etapasJotform: result.etapasJotform || [],
           graficoEmbudo: result.graficoEmbudo || [],
           graficoBarrasDia: result.graficoBarrasDia || [],
+          graficoActivacionesDia: result.graficoActivacionesDia || [],
           porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0)
         });
@@ -514,6 +522,22 @@ export default function ReporteVelsa() {
         console.error("Error al cargar detalle CRM:", e);
       }
     }
+  };
+
+  // ── Fetch independiente para el gráfico de activaciones ────────────────────
+  // Solo afecta al gráfico de activaciones; NO toca el dashboard principal.
+  const fetchActivacionesFiltradas = async (f) => {
+    setLoadingActiv(true);
+    try {
+      const p = new URLSearchParams();
+      if (f.desde)  p.set('fechaDesde', f.desde);
+      if (f.hasta)  p.set('fechaHasta', f.hasta);
+      if (f.estado) p.set('estadoVenta', f.estado);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/activaciones-dia?${p}`);
+      const result = await res.json();
+      if (result.success) setActivacionesFiltradas(result.rows || []);
+    } catch (e) { console.error('[ACTIV-FILTRO-VELSA]', e); }
+    finally { setLoadingActiv(false); }
   };
 
   // ── Helper: actualiza el estado visual de filtros; la consulta se ejecuta al presionar "APLICAR FILTROS" ─
@@ -834,6 +858,12 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   });
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
+  // ── NUEVO: activaciones por fecha_activacion_date ────────────────────────────
+  // Usa activacionesFiltradas cuando el usuario ha aplicado filtros independientes;
+  // si no hay filtro activo (null), toma los datos del dashboard.
+  const fuenteActivaciones = activacionesFiltradas !== null ? activacionesFiltradas : (data.graficoActivacionesDia || []);
+  const totalActivacionesDia = fuenteActivaciones.reduce((acc, d) => acc + Number(d.activaciones || 0), 0);
+
   const inputCls = "bg-white border border-stone-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none focus:border-orange-500 transition-colors uppercase";
   const selectCls = "bg-white border border-stone-300 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none appearance-none uppercase";
 
@@ -852,6 +882,34 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
         <Bar dataKey="total" stackId="a" fill="#f97316" radius={[0,0,0,0]} barSize={24}><LabelList dataKey="total" content={CustomBarLabel} /></Bar>
         <Bar dataKey="faltante" stackId="a" fill="rgba(239,68,68,0.35)" radius={[4,4,0,0]} barSize={24}><LabelList dataKey="faltante" content={CustomFaltanteLabel} /></Bar>
         <Bar dataKey="activos" fill="#fb923c" radius={[4,4,0,0]} barSize={14}><LabelList dataKey="activos" content={CustomActivosLabel} /></Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  // ── NUEVO: gráfico activaciones reales por fecha_activacion_date ────────────
+  const GraficoActivacionesDia = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={fuenteActivaciones.map(d => ({
+          ...d,
+          activaciones: Number(d.activaciones || 0),
+          dia: d.fecha ? parseInt(String(d.fecha).split('-')[2] || '0', 10) : 0,
+        }))}
+        margin={{ top: 30, right: 10, left: 0, bottom: 50 }}
+        barCategoryGap="20%"
+      >
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
+        <XAxis dataKey="dia" axisLine={false} tickLine={false} tickFormatter={(val) => `${val}`}
+          interval="preserveStartEnd" tick={{ fill: '#7c3aed', fontSize: 10, fontWeight: 700 }} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
+        <Tooltip
+          cursor={{ fill: '#1c1917' }}
+          contentStyle={{ backgroundColor: '#0c0a09', border: '1px solid #5b21b6', borderRadius: '8px', fontSize: '10px' }}
+          formatter={(value) => [value, 'ACTIVACIONES NETLIFE']}
+        />
+        <Bar dataKey="activaciones" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={24}>
+          <LabelList dataKey="activaciones" position="top" style={{ fill: '#7c3aed', fontSize: 9, fontWeight: 900 }} />
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -1171,6 +1229,74 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+            {/* ── NUEVO: activaciones por fecha_activacion_date ── */}
+            <ExpandableChart title={`ACTIVACIONES NETLIFE POR DÍA — TOTAL: ${totalActivacionesDia}`} className="bg-white p-6 rounded-2xl border border-violet-200 shadow-sm hover:shadow-md transition-shadow duration-300" modalHeight={580}>
+              <h3 className="text-[10px] font-black text-violet-600 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+                <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
+                ACTIVACIONES POR FECHA DE ACTIVACIÓN NETLIFE
+                <span className="ml-2 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalActivacionesDia}</span>
+                <span className="ml-auto flex items-center gap-2 text-[9px] text-stone-400 font-bold not-italic">
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> ACTIVACIONES</span>
+                </span>
+              </h3>
+              <p className="text-[8px] text-stone-400 font-bold mb-3 uppercase tracking-wider">
+                Fecha usada: <span className="text-violet-600">fecha_activacion_date</span> — independiente de los KPIs existentes
+              </p>
+
+              {/* ── Filtros exclusivos para este gráfico ── */}
+              <div className="flex flex-wrap gap-2 mb-3 items-end p-3 bg-violet-50 rounded-xl border border-violet-100">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">DESDE</label>
+                  <input
+                    type="date"
+                    value={filtroActiv.desde}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, desde: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">HASTA</label>
+                  <input
+                    type="date"
+                    value={filtroActiv.hasta}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, hasta: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[140px]">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">ESTADO ACTIVACIÓN</label>
+                  <select
+                    value={filtroActiv.estado}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, estado: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  >
+                    <option value="">TODOS LOS ESTADOS</option>
+                    {(data.etapasJotform || []).map((e, i) => (
+                      <option key={i} value={e}>{e}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => fetchActivacionesFiltradas(filtroActiv)}
+                  disabled={loadingActiv}
+                  className="px-3 py-[7px] bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                >
+                  {loadingActiv ? '...' : 'FILTRAR'}
+                </button>
+                {activacionesFiltradas !== null && (
+                  <button
+                    onClick={() => { setActivacionesFiltradas(null); setFiltroActiv({ desde: getFechaHoyEcuador(), hasta: getFechaHoyEcuador(), estado: '' }); }}
+                    className="px-3 py-[7px] bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                  >
+                    LIMPIAR
+                  </button>
+                )}
+              </div>
+
+              <ChartArea h={300}><GraficoActivacionesDia /></ChartArea>
+            </ExpandableChart>
+
             <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-300" modalHeight={580}>
               <h3 className="text-[10px] font-black text-orange-600 mb-8 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse shrink-0"></span>

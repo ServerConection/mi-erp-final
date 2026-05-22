@@ -385,6 +385,12 @@ export default function ReporteComercialCore() {
   const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [] });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
+  // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──
+  // No afectan ningún otro KPI ni el dashboard principal.
+  const [filtroActiv, setFiltroActiv]           = useState({ desde: getFechaHoyEcuador(), hasta: getFechaHoyEcuador(), estado: '' });
+  const [activacionesFiltradas, setActivacionesFiltradas] = useState(null); // null = usa datos del dashboard
+  const [loadingActiv, setLoadingActiv]         = useState(false);
+
   // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
   const abortRef = useRef(null);
   // Ref para el pre-fetch en background (no bloquea UI)
@@ -504,6 +510,22 @@ export default function ReporteComercialCore() {
     } catch (e) {
       if (e.name !== 'AbortError') console.error("Error Reporte180:", e);
     } finally { if (!ctrl.signal.aborted) setLoading(false); }
+  };
+
+  // ── Fetch independiente para el gráfico de activaciones ────────────────────
+  // Solo afecta al gráfico de activaciones; NO toca el dashboard principal.
+  const fetchActivacionesFiltradas = async (f) => {
+    setLoadingActiv(true);
+    try {
+      const p = new URLSearchParams();
+      if (f.desde)  p.set('fechaDesde', f.desde);
+      if (f.hasta)  p.set('fechaHasta', f.hasta);
+      if (f.estado) p.set('estadoVenta', f.estado);
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/activaciones-dia?${p}`);
+      const result = await res.json();
+      if (result.success) setActivacionesFiltradas(result.rows || []);
+    } catch (e) { console.error('[ACTIV-FILTRO-NOVONET]', e); }
+    finally { setLoadingActiv(false); }
   };
 
   // updateFiltro solo actualiza el estado visual; la consulta se ejecuta al presionar "APLICAR FILTROS"
@@ -1149,16 +1171,19 @@ ${asesoresPDF.length>0?`
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
   // ── NUEVO: total + datos para gráfico de activaciones por j_fecha_activacion_netlife ──
-  const totalActivacionesDia = (data.graficoActivacionesDia || []).reduce((acc, d) => acc + Number(d.activaciones || 0), 0);
+  // Usa activacionesFiltradas cuando el usuario ha aplicado filtros independientes;
+  // si no hay filtro activo (null), toma los datos del dashboard.
+  const fuenteActivaciones = activacionesFiltradas !== null ? activacionesFiltradas : (data.graficoActivacionesDia || []);
+  const totalActivacionesDia = fuenteActivaciones.reduce((acc, d) => acc + Number(d.activaciones || 0), 0);
   const dataActivacionesSemaforo = useMemo(() =>
-    (data.graficoActivacionesDia || []).map(d => {
+    fuenteActivaciones.map(d => {
       const fechaStr = d.fecha instanceof Date ? d.fecha.toISOString() : String(d.fecha || '');
       return {
         ...d,
         fechaDia:     formatFechaCorta(fechaStr),
         activaciones: Number(d.activaciones || 0),
       };
-    }), [data.graficoActivacionesDia]);
+    }), [fuenteActivaciones]);
 
   // FIX: formatFechaCorta normaliza tanto Date objects como strings ISO
   const dataBarrasConSemaforo = useMemo(() =>
@@ -1549,6 +1574,57 @@ ${asesoresPDF.length>0?`
               <p className="text-[8px] text-slate-400 font-bold mb-3 uppercase tracking-wider">
                 Fecha usada: <span className="text-violet-600">j_fecha_activacion_netlife</span> — independiente de los KPIs existentes
               </p>
+
+              {/* ── Filtros exclusivos para este gráfico ── */}
+              <div className="flex flex-wrap gap-2 mb-3 items-end p-3 bg-violet-50 rounded-xl border border-violet-100">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">DESDE</label>
+                  <input
+                    type="date"
+                    value={filtroActiv.desde}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, desde: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">HASTA</label>
+                  <input
+                    type="date"
+                    value={filtroActiv.hasta}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, hasta: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[140px]">
+                  <label className="text-[7px] font-black text-violet-600 uppercase tracking-wider">ESTADO ACTIVACIÓN</label>
+                  <select
+                    value={filtroActiv.estado}
+                    onChange={e => setFiltroActiv(prev => ({ ...prev, estado: e.target.value }))}
+                    className="text-[9px] font-bold border border-violet-200 rounded-lg px-2 py-[7px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  >
+                    <option value="">TODOS LOS ESTADOS</option>
+                    {(data.etapasJotform || []).map((e, i) => (
+                      <option key={i} value={e}>{e}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => fetchActivacionesFiltradas(filtroActiv)}
+                  disabled={loadingActiv}
+                  className="px-3 py-[7px] bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                >
+                  {loadingActiv ? '...' : 'FILTRAR'}
+                </button>
+                {activacionesFiltradas !== null && (
+                  <button
+                    onClick={() => { setActivacionesFiltradas(null); setFiltroActiv({ desde: getFechaHoyEcuador(), hasta: getFechaHoyEcuador(), estado: '' }); }}
+                    className="px-3 py-[7px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                  >
+                    LIMPIAR
+                  </button>
+                )}
+              </div>
+
               <ChartArea h={260}><GraficoActivacionesDia /></ChartArea>
             </ExpandableChart>
 

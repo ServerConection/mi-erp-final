@@ -1092,7 +1092,7 @@ const getConsultaDescargaNovonet = async (req, res) => {
 // Filtros independientes: fechaDesde, fechaHasta, estadoVenta, asesor, supervisor
 // No impacta ningún KPI ni cálculo existente.
 // ─────────────────────────────────────────────────────────────────────────────
-exports.getActivacionesPorDia = async (req, res) => {
+const getActivacionesPorDia = async (req, res) => {
     try {
         const hoy   = getFechaEcuador();
         const desde = req.query.fechaDesde || hoy;

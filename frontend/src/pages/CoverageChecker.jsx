@@ -162,9 +162,15 @@ export default function CoverageChecker() {
   const [dragover, setDragover] = useState(false);
   const fileInputRef = useRef(null);
 
+  // ── Estado de zonas activas en el servidor ──────────────────────────────────
+  // Persiste en PostgreSQL: sobrevive reinicios del servidor.
+  // Se muestra a TODOS los usuarios para que sepan si el sistema está listo.
+  const [coverageStatus, setCoverageStatus] = useState(null); // {zonesLoaded, fileName, loadedAt}
+
   // ── Verificar estado de la API ──────────────────────────────────────────────
   useEffect(() => {
     checkAPIStatus();
+    fetchCoverageStatus();
     const timer = setInterval(checkAPIStatus, 30_000);
     return () => clearInterval(timer);
   }, []);
@@ -175,6 +181,24 @@ export default function CoverageChecker() {
       setApiStatus(r.ok ? "online" : "offline");
     } catch {
       setApiStatus("offline");
+    }
+  }
+
+  // Consulta al servidor cuántas zonas hay cargadas y desde qué archivo.
+  // Se llama al montar y tras cada subida exitosa de KMZ/KML.
+  async function fetchCoverageStatus() {
+    try {
+      const r = await fetch(`${API_URL}/status`, { headers: authHeaders() });
+      if (r.ok) {
+        const data = await r.json();
+        setCoverageStatus({
+          zonesLoaded: data.zonesLoaded || 0,
+          fileName:    data.fileName   || null,
+          loadedAt:    data.loadedAt   || null,
+        });
+      }
+    } catch {
+      // silencioso — no crítico
     }
   }
 
@@ -389,6 +413,8 @@ export default function CoverageChecker() {
       setUploadMsg({ type: "ok", text: `✅ ${zones.length} zonas cargadas y guardadas correctamente` });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      // Actualizar el indicador de zonas activas para reflejar el nuevo archivo
+      await fetchCoverageStatus();
     } catch (err) {
       setUploadMsg({ type: "err", text: `❌ ${err.message}` });
     } finally {
@@ -454,6 +480,49 @@ export default function CoverageChecker() {
           {apiStatus === "online" ? "API activa" : apiStatus === "offline" ? "API inactiva" : "Verificando…"}
         </span>
       </div>
+
+      {/* ── Banner: estado de zonas activas ── */}
+      {coverageStatus !== null && (
+        <div
+          className={`mb-4 flex items-center gap-3 rounded-xl px-4 py-3 text-sm border ${
+            coverageStatus.zonesLoaded > 0
+              ? "bg-teal-50 border-teal-200 text-teal-800"
+              : "bg-amber-50 border-amber-200 text-amber-800"
+          }`}
+        >
+          {coverageStatus.zonesLoaded > 0 ? (
+            <>
+              <span className="text-xl">📡</span>
+              <div>
+                <span className="font-semibold">
+                  {coverageStatus.zonesLoaded.toLocaleString()} zonas activas
+                </span>
+                {coverageStatus.fileName && (
+                  <span className="ml-2 text-teal-600">
+                    — {coverageStatus.fileName}
+                  </span>
+                )}
+                {coverageStatus.loadedAt && (
+                  <span className="ml-2 opacity-60 text-xs">
+                    (cargadas el{" "}
+                    {new Date(coverageStatus.loadedAt).toLocaleString("es-EC")})
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-xl">⚠️</span>
+              <span>
+                <span className="font-semibold">Sin zonas cargadas.</span>{" "}
+                {isAdmin
+                  ? "Carga un archivo KML/KMZ en el panel de abajo."
+                  : "Pide al administrador que cargue el archivo de cobertura."}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Panel izquierdo: formulario ── */}
@@ -605,6 +674,24 @@ export default function CoverageChecker() {
               <p className="text-xs text-slate-400">
                 Carga el archivo con las zonas de cobertura. Máx. 200 MB.
               </p>
+
+              {/* Archivo actualmente activo en el servidor */}
+              {coverageStatus && coverageStatus.zonesLoaded > 0 && (
+                <div className="flex items-start gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-xs text-teal-800">
+                  <span>✅</span>
+                  <div>
+                    <span className="font-semibold">Activo:</span>{" "}
+                    {coverageStatus.fileName}{" "}
+                    <span className="opacity-70">
+                      ({coverageStatus.zonesLoaded.toLocaleString()} zonas)
+                    </span>
+                    <br />
+                    <span className="opacity-60">
+                      Subir un nuevo archivo reemplazará el actual.
+                    </span>
+                  </div>
+                </div>
+              )}
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
                 onDragLeave={() => setDragover(false)}

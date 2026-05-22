@@ -490,6 +490,22 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
+        // ── NUEVO: activaciones por día (j_fecha_activacion_netlife) ────────────
+        // Solo cuenta cuando Netlife activa al cliente. No toca los cálculos
+        // existentes ni cambia ningún KPI — es un indicador independiente.
+        const queryActivacionesPorDia = `
+            SELECT
+                mb.j_fecha_activacion_netlife::date AS fecha,
+                COUNT(*)::int AS activaciones
+            FROM public.mestra_bitrix mb
+            WHERE mb.j_fecha_activacion_netlife IS NOT NULL
+            AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+            AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            ${filtersNoJoin}
+            GROUP BY 1
+            ORDER BY fecha ASC
+        `;
+
         // ── Optimización: TerceraEdad + Tarjeta en un solo scan de tabla ──────────────
         // Antes eran 2 queries separadas con el mismo WHERE → ahora 1 sola query
         const queryMetasGlobales = `
@@ -525,12 +541,13 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        // Lote 2: tablas detalle + backlogs (espera al lote 1 para no saturar el pool)
-        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
+        // Lote 2: tablas detalle + backlogs + activaciones (espera al lote 1 para no saturar el pool)
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('mb.b_persona_responsable'), values),
+            pool.query(queryActivacionesPorDia, values),  // NUEVO: activaciones por j_fecha_activacion_netlife
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -579,6 +596,7 @@ const getIndicadoresDashboard = async (req, res) => {
             estadosNetlife,
             graficoEmbudo,
             graficoBarrasDia: resDia.rows,
+            graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por j_fecha_activacion_netlife
             etapasCRM: etapasCache.etapasCRM,
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,

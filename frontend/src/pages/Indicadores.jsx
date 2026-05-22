@@ -74,6 +74,21 @@ const TooltipBarrasDia = ({ active, payload, label, metaDia = 65 }) => {
   );
 };
 
+// ── Tooltip activaciones por día (j_fecha_activacion_netlife) ──────────────
+const TooltipActivaciones = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const act = payload.find(p => p.dataKey === 'activaciones')?.value || 0;
+  return (
+    <div className="bg-slate-950 border border-violet-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[160px]">
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">DÍA {label}</p>
+      <div className="flex justify-between gap-4">
+        <span className="text-slate-400">ACTIVACIONES NETLIFE</span>
+        <span className="font-black text-violet-400">{act}</span>
+      </div>
+    </div>
+  );
+};
+
 const TooltipAsesores = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   const gest = payload.find(p => p.dataKey === 'gestionables')?.value || 0;
@@ -362,7 +377,7 @@ export default function ReporteComercialCore() {
   const [loading, setLoading]           = useState(false);
   const [alertas, setAlertas]           = useState([]);
   const [diaFiltrado, setDiaFiltrado]   = useState(null);
-  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
+  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
   const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [] });
@@ -1133,6 +1148,18 @@ ${asesoresPDF.length>0?`
 
   const totalBarrasDia = (data.graficoBarrasDia || []).reduce((acc, d) => acc + Number(d.total || 0), 0);
 
+  // ── NUEVO: total + datos para gráfico de activaciones por j_fecha_activacion_netlife ──
+  const totalActivacionesDia = (data.graficoActivacionesDia || []).reduce((acc, d) => acc + Number(d.activaciones || 0), 0);
+  const dataActivacionesSemaforo = useMemo(() =>
+    (data.graficoActivacionesDia || []).map(d => {
+      const fechaStr = d.fecha instanceof Date ? d.fecha.toISOString() : String(d.fecha || '');
+      return {
+        ...d,
+        fechaDia:     formatFechaCorta(fechaStr),
+        activaciones: Number(d.activaciones || 0),
+      };
+    }), [data.graficoActivacionesDia]);
+
   // FIX: formatFechaCorta normaliza tanto Date objects como strings ISO
   const dataBarrasConSemaforo = useMemo(() =>
     (data.graficoBarrasDia || []).map(d => {
@@ -1204,6 +1231,32 @@ ${asesoresPDF.length>0?`
         </Bar>
         <Bar dataKey="activos" fill="#60a5fa" radius={[4,4,0,0]} barSize={12}>
           <LabelList dataKey="activos" content={CustomActivosLabel} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  // ── NUEVO: gráfico de activaciones reales por fecha de activación Netlife ──
+  const GraficoActivacionesDia = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={dataActivacionesSemaforo}
+        margin={{ top: 24, right: 10, left: 0, bottom: 50 }}
+        barCategoryGap="20%"
+      >
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+        <XAxis
+          dataKey="fecha"
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={formatFechaCorta}
+          interval="preserveStartEnd"
+          tick={{ fill: '#7c3aed', fontSize: 10, fontWeight: 700 }}
+        />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 9 }} />
+        <Tooltip content={<TooltipActivaciones />} />
+        <Bar dataKey="activaciones" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={22}>
+          <LabelList dataKey="activaciones" position="top" style={{ fill: '#7c3aed', fontSize: 9, fontWeight: 900 }} />
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -1483,6 +1536,22 @@ ${asesoresPDF.length>0?`
 
           {/* Gráficas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* ── NUEVO: activaciones reales por j_fecha_activacion_netlife ── */}
+            <ExpandableChart title={`ACTIVACIONES NETLIFE POR DÍA — TOTAL: ${totalActivacionesDia}`} className="bg-white p-6 rounded-2xl border border-violet-200 shadow-md" modalHeight={580}>
+              <h3 className="text-[10px] font-black text-violet-600 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
+                <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
+                ACTIVACIONES POR FECHA DE ACTIVACIÓN NETLIFE
+                <span className="ml-2 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalActivacionesDia}</span>
+                <span className="ml-auto flex items-center gap-2 text-[9px] text-slate-400 font-bold not-italic">
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-violet-500 rounded inline-block"></span> ACTIVACIONES</span>
+                </span>
+              </h3>
+              <p className="text-[8px] text-slate-400 font-bold mb-3 uppercase tracking-wider">
+                Fecha usada: <span className="text-violet-600">j_fecha_activacion_netlife</span> — independiente de los KPIs existentes
+              </p>
+              <ChartArea h={260}><GraficoActivacionesDia /></ChartArea>
+            </ExpandableChart>
+
             <ExpandableChart title={`PRODUCCIÓN POR DÍA (CERRADOS) — TOTAL: ${totalBarrasDia}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-emerald-600 mb-4 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>

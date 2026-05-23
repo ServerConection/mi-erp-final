@@ -1,0 +1,49 @@
+const http    = require('http');
+const app     = require('./app');
+const { initSocket }      = require('./config/socket');
+const { initAlertas }     = require('./jobs/alertas.cron');
+const { iniciarWhatsApp } = require('./services/whatsapp.service');
+const { refreshMaterializedView } = require('./jobs/refreshVelsaMaterialized.cron');
+const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
+
+const server = http.createServer(app);
+
+// Inicializar Socket.io sobre el mismo servidor HTTP
+initSocket(server);
+
+server.listen(process.env.PORT, async () => {
+  console.log(`🚀 Backend corriendo en http://localhost:${process.env.PORT}`);
+
+  // Tabla BD + cron de alertas (cada 15 min lun-sáb 7am-8pm)
+  await initAlertas();
+
+  // Refresco de vista materializada Velsa cada 15 minutos
+  await refreshMaterializedView();
+
+  // Refresco de vistas materializadas de Redes cada 30 minutos
+  await refreshRedesMVs();
+
+  // WhatsApp Baileys — genera QR, no bloquea el servidor
+  iniciarWhatsApp();
+});
+
+// ── Apagado limpio (Render envía SIGTERM antes de reiniciar) ──────────────────
+// Espera hasta 25 segundos para que operaciones en background (ej: guardar
+// zonas de cobertura en DB) terminen antes de cerrar el proceso.
+const SHUTDOWN_TIMEOUT = 25000;
+
+function gracefulShutdown(signal) {
+  console.log(`[Server] ${signal} recibido — apagado limpio en curso...`);
+  server.close(() => {
+    console.log('[Server] HTTP cerrado correctamente');
+    process.exit(0);
+  });
+  // Forzar salida si tarda demasiado
+  setTimeout(() => {
+    console.warn('[Server] Timeout de apagado — forzando salida');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));

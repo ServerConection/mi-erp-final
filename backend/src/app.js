@@ -24,11 +24,11 @@ const inventarioRoutes             = require('./routes/inventario.routes');
 const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
+const mundialitoRoutes             = require('./routes/mundialito.routes');
 
 const app = express();
 
 // SEGURIDAD: CORS CONFIGURADO
-// Restringe que dominios pueden acceder a la API
 const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -47,12 +47,10 @@ const corsOptions = {
   maxAge: 86400
 };
 
-// Manejo explicito de preflight (OPTIONS) para todas las rutas
 app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
 
 // SEGURIDAD: Headers de seguridad nativos (sin dependencia helmet)
-// No rompe ninguna funcionalidad existente.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -65,70 +63,36 @@ app.use((req, res, next) => {
   next();
 });
 
-// Confiar en proxy de Render para obtener IP real (req.ip)
 app.set('trust proxy', 1);
-
 app.use(express.json({ limit: '10mb' }));
 
-// PERFORMANCE: Endpoint de salud rapido y sin BD
 app.get('/health', (req, res) => {
   res.json({ ok: true, ts: Date.now(), uptime: process.uptime() });
 });
 
-// Auth sin OTP (token directo)
 app.use('/api/auth',         authRoutes);
-
-// Auth con OTP
 app.use('/api/otp',          loginOtpRoutes);
 app.use('/api/otp',          verifyOtpRoutes);
-
-// Gestion de usuarios (tabla: usuarios)
 app.use('/api/usuarios',     usuariosRoutes);
-
-// Password
 app.use('/api/auth',         passwordRoutes);
 app.use('/api/auth',         forgotRoutes);
-
-// Test email (solo dev)
 app.use('/api',              testEmailRoutes);
-
-// Indicadores
 app.use('/api/indicadores',             indicadoresRoutes);
 app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
-
-// Redes
 app.use('/api/redes',             redesRoutes);
-
-// Alertas y notificaciones
 app.use('/api/alertas',           alertasRoutes);
-
-// Ventas
 app.use('/api/ventas',            ventasRoutes);
-
-// Analista - Resumen NOVONET y VELSA
 app.use('/api/analista',          analistaRoutes);
-
-// Bitrix24 CRM - sync y dashboard VELSA
 app.use('/api/bitrix',            bitrixRoutes);
-
-// Coverage - Consulta de cobertura de internet
 app.use('/api/coverage',          coverageRoutes);
-
-// Inventario - Solo ADMINISTRADOR
 app.use('/api/inventario',        inventarioRoutes);
-
-// Forecast - Campanas y objetivos
 app.use('/api/forecast',          forecastRoutes);
-
-// Envios Ventas - Ingreso manual (solo ADMINISTRADOR)
 app.use('/api/envios-ventas',     enviosVentasRoutes);
-
-// Backoffice - Auditoria de registros (solo ADMINISTRADOR)
 app.use('/api/backoffice',        backofficeRoutes);
+app.use('/api/mundialito',        mundialitoRoutes);
 
-// Broadcast TV
-// FIX: usar __dirname + cache de archivos estaticos (mejor performance)
+// Broadcast TV - servir uploads con cache HTTP
 const uploadsPath = path.resolve(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(uploadsPath, {
   maxAge: '7d',
@@ -138,12 +102,12 @@ app.use('/uploads', express.static(uploadsPath, {
 }));
 app.use('/api/broadcast',         broadcastRoutes);
 
-// Handler 404 - responde JSON consistente
+// Handler 404
 app.use((req, res) => {
   res.status(404).json({ success: false, error: 'Endpoint no encontrado' });
 });
 
-// Handler global de errores - evita stacks expuestos al cliente
+// Handler global de errores
 app.use((err, req, res, next) => {
   console.error('[GlobalError]', err.stack || err);
   if (err && err.message && err.message.includes('CORS')) {

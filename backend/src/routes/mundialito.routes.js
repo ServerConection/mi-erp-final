@@ -1,15 +1,14 @@
 // =============================================================================
 // MUNDIALITO - Rutas
-// Todas requieren autenticacion + perfil ADMINISTRADOR
+// Habilitado para TODOS los perfiles autenticados.
 // =============================================================================
 const express = require('express');
 const router = express.Router();
-const { verificarToken, soloAdmin } = require('../middleware/auth');
+const { verificarToken } = require('../middleware/auth');
 const C = require('../controllers/mundialito.controller');
 
-// Aplicar guard a TODO el router
+// Solo requiere estar autenticado
 router.use(verificarToken);
-router.use(soloAdmin);
 
 // Torneos
 router.get('/torneos',                        C.listarTorneos);

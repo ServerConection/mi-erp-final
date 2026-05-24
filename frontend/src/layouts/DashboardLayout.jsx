@@ -342,7 +342,7 @@ const ALL_MENU_ITEMS = [
   { name: "🔍 Backoffice",    path: "/backoffice",           icon: "🔍",
     accessCheck: (p) => p !== 'ASESOR' },
   { name: "🏆 Mundialito",    path: "/mundialito",           icon: "🏆",
-    accessCheck: (p) => p === 'ADMINISTRADOR' },
+    accessCheck: () => true },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
   { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },

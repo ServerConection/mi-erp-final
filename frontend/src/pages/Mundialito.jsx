@@ -185,9 +185,8 @@ const Styles = () => (
 // COMPONENTE PRINCIPAL
 // =============================================================================
 export default function Mundialito() {
-  // Solo ADMINISTRADOR puede ver esto
-  const perfil = (JSON.parse(localStorage.getItem("user") || "{}").perfil || "").toUpperCase();
-  const isAdmin = perfil === "ADMINISTRADOR";
+  // Habilitado para todos los perfiles autenticados
+  const isAdmin = true;
 
   const [tab, setTab] = useState("posiciones");
   const [empresa, setEmpresa] = useState("NOVONET");

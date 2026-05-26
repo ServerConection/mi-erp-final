@@ -343,6 +343,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p !== 'ASESOR' },
   { name: "🏆 Mundialito",    path: "/mundialito",           icon: "🏆",
     accessCheck: () => true },
+  { name: "📊 Reporte Jefatura", path: "/reporte-jefatura",  icon: "📊",
+    accessCheck: (p) => p !== 'ASESOR' },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
   { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
   { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },

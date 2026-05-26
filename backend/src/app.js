@@ -25,6 +25,7 @@ const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
 const mundialitoRoutes             = require('./routes/mundialito.routes');
+const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/forecast',          forecastRoutes);
 app.use('/api/envios-ventas',     enviosVentasRoutes);
 app.use('/api/backoffice',        backofficeRoutes);
 app.use('/api/mundialito',        mundialitoRoutes);
+app.use('/api/reporte-jefatura',  reporteJefaturaRoutes);
 
 // Broadcast TV - servir uploads con cache HTTP
 const uploadsPath = path.resolve(__dirname, '..', 'uploads');

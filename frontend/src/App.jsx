@@ -37,6 +37,7 @@ const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const Backoffice           = lazy(() => import("./pages/Backoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
+const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -99,6 +100,7 @@ export default function App() {
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="mundialito"               element={<Mundialito />} />
+            <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

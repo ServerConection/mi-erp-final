@@ -12,7 +12,11 @@ const fetchJson = async (url) => {
       Authorization: `Bearer ${localStorage.getItem("token")}`,
     },
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.success === false) {
+    throw new Error(json.error || json.message || `Error ${res.status}`);
+  }
+  return json;
 };
 
 const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -31,15 +35,17 @@ export default function ReporteJefatura() {
   const [empresa, setEmpresa] = useState("NOVONET");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let activo = true;
     setLoading(true);
+    setError(null);
     const endpoint = empresa === "VELSA" ? "/api/reporte-jefatura/velsa" : "/api/reporte-jefatura/novonet";
     fetchJson(endpoint)
       .then(r => { if (activo) { setData(r); setLoading(false); } })
-      .catch(() => { if (activo) setLoading(false); });
+      .catch(err => { if (activo) { setError(err.message || "Error desconocido"); setLoading(false); } });
     return () => { activo = false; };
   }, [empresa, refreshKey]);
 
@@ -57,10 +63,46 @@ export default function ReporteJefatura() {
 
   const formatHora = (h) => `${String(h).padStart(2, "0")}:00`;
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>Cargando reporte jefatura...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <div style={{
+          display: "inline-block", background: "#fee2e2", border: "1px solid #fca5a5",
+          borderRadius: 12, padding: "20px 32px", maxWidth: 480,
+        }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>⚠️</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#991b1b", marginBottom: 4 }}>
+            Error al cargar el reporte
+          </div>
+          <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 16, wordBreak: "break-word" }}>
+            {error}
+          </div>
+          <button
+            onClick={() => setRefreshKey(k => k + 1)}
+            style={{
+              background: "#991b1b", color: "white", border: "none",
+              borderRadius: 8, padding: "8px 20px", fontWeight: 700,
+              fontSize: 12, cursor: "pointer",
+            }}>
+            🔄 Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !data.acumulado) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>Sin datos disponibles.</div>
       </div>
     );
   }

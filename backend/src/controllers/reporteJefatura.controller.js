@@ -28,18 +28,21 @@ function clasificarEstado(actual, promedio) {
 }
 
 // Constructor de query: parametriza la tabla y la columna timestamp
+// NOTA: se castea la columna a TIMESTAMPTZ para compatibilidad con AT TIME ZONE
+//       cuando el campo esta almacenado como text en la BD.
 function buildQuery(tabla, colFecha) {
+  const col = `(${colFecha}::timestamptz)`;
   return `
     WITH historico AS (
       SELECT
-        EXTRACT(HOUR FROM (${colFecha} AT TIME ZONE 'America/Guayaquil'))::int  AS hora,
-        EXTRACT(DOW  FROM (${colFecha} AT TIME ZONE 'America/Guayaquil'))::int  AS dow,
-        DATE(${colFecha} AT TIME ZONE 'America/Guayaquil')                       AS fecha_dia,
+        EXTRACT(HOUR FROM (${col} AT TIME ZONE 'America/Guayaquil'))::int  AS hora,
+        EXTRACT(DOW  FROM (${col} AT TIME ZONE 'America/Guayaquil'))::int  AS dow,
+        DATE(${col} AT TIME ZONE 'America/Guayaquil')                       AS fecha_dia,
         COUNT(*) AS n
       FROM ${tabla}
       WHERE ${colFecha} IS NOT NULL
-        AND (${colFecha} AT TIME ZONE 'America/Guayaquil') >= (NOW() AT TIME ZONE 'America/Guayaquil') - INTERVAL '${VENTANA_HISTORICA_DIAS} days'
-        AND (${colFecha} AT TIME ZONE 'America/Guayaquil') <  DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Guayaquil'))
+        AND (${col} AT TIME ZONE 'America/Guayaquil') >= (NOW() AT TIME ZONE 'America/Guayaquil') - INTERVAL '${VENTANA_HISTORICA_DIAS} days'
+        AND (${col} AT TIME ZONE 'America/Guayaquil') <  DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Guayaquil'))
       GROUP BY 1, 2, 3
     ),
     promedio AS (
@@ -52,10 +55,10 @@ function buildQuery(tabla, colFecha) {
       GROUP BY hora, dow
     ),
     hoy AS (
-      SELECT EXTRACT(HOUR FROM (${colFecha} AT TIME ZONE 'America/Guayaquil'))::int AS hora,
+      SELECT EXTRACT(HOUR FROM (${col} AT TIME ZONE 'America/Guayaquil'))::int AS hora,
              COUNT(*) AS ingresos_hoy
       FROM ${tabla}
-      WHERE DATE(${colFecha} AT TIME ZONE 'America/Guayaquil') = DATE(NOW() AT TIME ZONE 'America/Guayaquil')
+      WHERE DATE(${col} AT TIME ZONE 'America/Guayaquil') = DATE(NOW() AT TIME ZONE 'America/Guayaquil')
       GROUP BY 1
     ),
     serie_horas AS (

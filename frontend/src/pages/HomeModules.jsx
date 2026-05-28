@@ -90,7 +90,8 @@ export default function HomeModules() {
       path: "/redes",
       icon: "🚩",
       color: "text-yellow-400",
-      desc: "Monitoreo y gestión de redes."
+      desc: "Monitoreo y gestión de redes.",
+      rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'],
     },
     {
       title: "Vista Asesor",
@@ -216,7 +217,11 @@ export default function HomeModules() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {modules
-          .filter(mod => !mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol))
+          .filter(mod => {
+            // CONSULTOR solo ve módulos donde está explícitamente permitido
+            if (userRol === 'CONSULTOR') return mod.rolesPermitidos?.includes('CONSULTOR');
+            return !mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol);
+          })
           .map((mod, index) => (
           <div
             key={index}

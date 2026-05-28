@@ -516,13 +516,22 @@ export default function VistaAsesorVelsa() {
   // ── Totales strip ─────────────────────────────────────────────────────────
   const totales = useMemo(() => {
     const base = asesoresEnriquecidos;
+    const n = base.length || 1;
     return {
-      gestionables:   base.reduce((a, r) => a + Number(r.gestionables || 0), 0),
-      ingresos_crm:   base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
-      ingresos_jot:   base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
-      activas_mes:    base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
-      activas_tot:    base.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
-      regularizacion: base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
+      gestionables:    base.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+      ingresos_crm:    base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+      ingresos_jot:    base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
+      activas_mes:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
+      activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
+      regularizacion:  base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
+      pct_descarte:    (base.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
+      pct_efectividad: (base.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+      pct_instalacion: (base.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
+      pct_tarjeta:     (() => {
+        const totalJot = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
+        const totalTarj = base.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
+        return totalJot > 0 ? ((totalTarj / totalJot) * 100).toFixed(1) : "0.0";
+      })(),
     };
   }, [asesoresEnriquecidos]);
 
@@ -647,7 +656,7 @@ export default function VistaAsesorVelsa() {
       </div>
 
       {/* ── STRIP TOTALES ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
         <StripCard label="Leads gestionables" value={totales.gestionables}  color="#a855f7"
           meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
         <StripCard label="Ingresos CRM"       value={totales.ingresos_crm}   color="#6366f1"
@@ -658,6 +667,22 @@ export default function VistaAsesorVelsa() {
           meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
         <StripCard label="Activas + backlog"  value={totales.activas_tot}    color="#64748b" />
         <StripCard label="Regularización"     value={totales.regularizacion} color="#f97316" />
+      </div>
+
+      {/* ── KPIs PORCENTUALES ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "% Descarte",        value: totales.pct_descarte,    color: Number(totales.pct_descarte) <= 25 ? "#059669" : Number(totales.pct_descarte) <= 35 ? "#d97706" : "#dc2626", bg: "#fef2f2", hint: "≤25% óptimo" },
+          { label: "% Efectividad",     value: totales.pct_efectividad, color: Number(totales.pct_efectividad) >= 40 ? "#059669" : Number(totales.pct_efectividad) >= 25 ? "#d97706" : "#dc2626", bg: "#f0fdf4", hint: "≥40% meta" },
+          { label: "% Tasa Instalación",value: totales.pct_instalacion, color: Number(totales.pct_instalacion) >= 80 ? "#059669" : Number(totales.pct_instalacion) >= 50 ? "#d97706" : "#dc2626", bg: "#eff6ff", hint: "≥80% meta" },
+          { label: "% Tarjeta Crédito", value: totales.pct_tarjeta,     color: Number(totales.pct_tarjeta) >= 50 ? "#059669" : Number(totales.pct_tarjeta) >= 30 ? "#d97706" : "#dc2626", bg: "#faf5ff", hint: "≥50% meta" },
+        ].map(({ label, value, color, bg, hint }) => (
+          <div key={label} className="rounded-2xl border p-4 flex flex-col gap-1 shadow-sm" style={{ background: bg, borderColor: color + "44" }}>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+            <span className="text-3xl font-black" style={{ color }}>{value}%</span>
+            <span className="text-[9px] text-slate-400 font-semibold">promedio asesores · {hint}</span>
+          </div>
+        ))}
       </div>
 
       {/* ── ETAPAS JOTFORM GLOBALES — clickeables ── */}

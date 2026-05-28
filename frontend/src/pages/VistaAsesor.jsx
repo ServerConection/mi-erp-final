@@ -558,6 +558,7 @@ export default function VistaAsesor() {
     estadoRegularizacion: "",
     etapaCRM:             "",
     etapaJotform:         "",
+    idBitrix:             "",
   });
 
   const fetchData = async (overrideFiltros) => {
@@ -740,13 +741,25 @@ export default function VistaAsesor() {
             </select>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <label className={labelCls}>ID Bitrix</label>
+            <input
+              type="text"
+              placeholder="Ej: 12345"
+              className={inputCls}
+              value={filtros.idBitrix}
+              onChange={(e) => handleFiltroChange("idBitrix", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAplicar()}
+            />
+          </div>
+
           <button onClick={handleAplicar}
             className="bg-sky-500 hover:bg-sky-400 text-white h-[42px] rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-sky-200 transition-all active:scale-95">
             {loading ? "CARGANDO..." : "APLICAR"}
           </button>
         </div>
 
-        {(filtros.supervisor || filtros.asesor) && (
+        {(filtros.supervisor || filtros.asesor || filtros.idBitrix) && (
           <div className="mt-3 flex items-center gap-2 flex-wrap">
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtros activos:</span>
             {filtros.supervisor && (
@@ -761,6 +774,13 @@ export default function VistaAsesor() {
                 Asesor: {filtros.asesor}
                 <button onClick={() => { const f = { ...filtros, asesor: "" }; setFiltros(f); fetchData(f); }}
                   className="text-violet-400 hover:text-red-500 font-black transition-colors">✕</button>
+              </span>
+            )}
+            {filtros.idBitrix && (
+              <span className="bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1 rounded-full text-[9px] font-black flex items-center gap-2">
+                ID Bitrix: {filtros.idBitrix}
+                <button onClick={() => { const f = { ...filtros, idBitrix: "" }; setFiltros(f); fetchData(f); }}
+                  className="text-orange-400 hover:text-red-500 font-black transition-colors">✕</button>
               </span>
             )}
           </div>

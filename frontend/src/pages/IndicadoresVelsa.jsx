@@ -334,6 +334,7 @@ export default function ReporteVelsa() {
     etapaCRM: "",
     etapaJotform: "",
     canal: [],
+    idBitrix: "",
   });
 
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
@@ -347,6 +348,7 @@ export default function ReporteVelsa() {
     etapaCRM: "",
     etapaJotform: "",
     canal: [],
+    idBitrix: "",
   });
 
   const [apiError, setApiError] = useState(null);
@@ -1156,6 +1158,19 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   onChange={vals => updateFiltro('canal', vals)}
                   options={data.canales || []}
                   accentColor="orange"
+                />
+              </div>
+
+              {/* ID BITRIX */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-orange-400 italic uppercase">🔎 ID BITRIX</label>
+                <input
+                  type="text"
+                  placeholder="Ej: 12345"
+                  className="bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-orange-400 transition-colors w-full"
+                  value={filtros.idBitrix}
+                  onChange={(e) => updateFiltro("idBitrix", e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { setFiltrosAplicados(filtros); fetchDashboard(filtros); fetchDetalleCRMData(filtros); } }}
                 />
               </div>
 

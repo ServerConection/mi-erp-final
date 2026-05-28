@@ -119,14 +119,14 @@ const CANALES_DISPONIBLES = Object.keys(CANAL_ORIGENES_MAP);
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
-        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal });
+        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix });
         const cached = getDashboardCache(cacheKey);
         if (cached) {
             console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
@@ -166,6 +166,12 @@ const getIndicadoresDashboard = async (req, res) => {
             values.push(`%${etapaJotform}%`);
             filtersJoin   += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+        if (idBitrix) {
+            values.push(idBitrix.toString());
+            const bitrixFilter = `(mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
+            filtersJoin   += ` AND ${bitrixFilter}`;
+            filtersNoJoin += ` AND ${bitrixFilter}`;
         }
         // Filtro por canal de pauta → convierte a lista de b_origen
         // También incluye filas JOT cuyo j_id_bitrix apunta a un deal con ese b_origen,
@@ -803,7 +809,7 @@ LEFT JOIN LATERAL (
 
 const getReporte180 = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -849,6 +855,10 @@ const getReporte180 = async (req, res) => {
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
             filtersNoJoin += ` AND mb.j_netlife_estatus_real ILIKE $${values.length}`;
+        }
+        if (idBitrix) {
+            values.push(idBitrix.toString());
+            filtersNoJoin += ` AND (mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
         }
 
         // ─────────────────────────────────────────────────────────────────────

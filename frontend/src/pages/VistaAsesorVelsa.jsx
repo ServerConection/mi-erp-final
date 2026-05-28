@@ -460,6 +460,7 @@ export default function VistaAsesorVelsa() {
     estadoRegularizacion: "",
     etapaCRM:             "",
     etapaJotform:         "",
+    idBitrix:             "",
   });
 
   // ── Fetch — endpoint Velsa ────────────────────────────────────────────────
@@ -646,6 +647,18 @@ export default function VistaAsesorVelsa() {
               <option value="POR REGULARIZAR">POR REGULARIZAR</option>
               <option value="REGULARIZADO">REGULARIZADO</option>
             </select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className={labelCls}>ID Bitrix</label>
+            <input
+              type="text"
+              placeholder="Ej: 12345"
+              className={inputCls}
+              value={filtros.idBitrix}
+              onChange={(e) => setFiltros({ ...filtros, idBitrix: e.target.value })}
+              onKeyDown={(e) => e.key === "Enter" && fetchData()}
+            />
           </div>
 
           <button onClick={() => fetchData()}

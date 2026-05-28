@@ -1517,20 +1517,20 @@ ${asesoresPDF.length>0?`
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini index={0}  label="Leads Totales"   meta={metaDinamica(6122, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}           color="border-l-emerald-500" />
-            <KpiMini index={1}  label="Gestionables"    meta={metaDinamica(3061, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                color="border-l-violet-500" />
-            <KpiMini index={2}  label="Ingresos CRM"    meta={metaDinamica(1364, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                 color="border-l-blue-500" />
-            <KpiMini index={3}  label="Ingresos JOT"    meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}             color="border-l-emerald-500" />
-            <KpiMini index={4}  label="Efectividad"     meta="45%"      real={`${stats.efectividad}%`}              color="border-l-purple-500" />
-            <KpiMini index={5}  label="Tasa Inst."      meta="90%"      real={`${stats.tasaInstalacion}%`}          color="border-l-cyan-500" />
-            <KpiMini index={6}  label="Tarjeta %"       meta="30%"      real={`${stats.tarjetaCredito}%`}           color="border-l-amber-500" />
-            <KpiMini index={7}  label="Descarte %"      meta="30%"      real={`${stats.descartePorc}%`}             color="border-l-rose-500" />
-            <KpiMini index={8}  label="Efic. Pauta"     meta="20%"      real={`${stats.efectividadActivasPauta}%`}  color="border-l-indigo-600" />
-            <KpiMini index={9}  label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}              color="border-l-pink-500" />
-            <KpiMini index={10} label="Activas Mes"     meta={metaDinamica(1156, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}     color="border-l-emerald-500" />
-            <KpiMini index={11} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                     color="border-l-cyan-500" />
-            <KpiMini index={12} label="Activas Total"   meta={metaDinamica(1300, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                     color="border-l-teal-500" />
-            <KpiMini index={13} label="Por Regularizar" value={stats.regularizar}                                          color="border-l-pink-500" />
+            <KpiMini index={0} label="Leads Totales"   meta={metaDinamica(6122,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}             color="border-l-emerald-500" />
+            <KpiMini index={1} label="Gestionables"    meta={metaDinamica(3061,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                  color="border-l-violet-500" />
+            <KpiMini index={2} label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
+            <KpiMini index={3} label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
+            <KpiMini index={4} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
+            <KpiMini index={5} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
+            <KpiMini index={6} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
+            <KpiMini index={7} label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
+            <KpiMini index={8} label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+            <KpiMini index={9} label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
+            <KpiMini index={10} label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
+            <KpiMini index={11} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
+            <KpiMini index={12} label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
+            <KpiMini index={13} label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}
@@ -2147,9 +2147,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 }
 // KpiCard180, KpiMini → importados desde components/kpi
 
-// ======================================================
-// HORIZONTAL TABLE
-// ======================================================
 function HorizontalTable({ title, data, hasScroll }) {
   const safeData = data || [];
   const n = safeData.length || 1;
@@ -2255,4 +2252,16 @@ function HorizontalTable({ title, data, hasScroll }) {
                 <td className={`${tdDB} font-black text-blue-700`}>{row.ingresos_reales || '—'}</td>
                 <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
                 <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
-  
+                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
+                <td className={`${tdDB} bg-slate-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
+                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

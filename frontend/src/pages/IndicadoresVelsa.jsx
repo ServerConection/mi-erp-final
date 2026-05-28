@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
-import {
+import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
@@ -1199,20 +1199,20 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini index={0}  variant="stone" label="Leads Totales"   meta={metaDinamica(7050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}       color="border-l-orange-500" />
-            <KpiMini index={1}  variant="stone" label="Gestionables"    meta={metaDinamica(4230, filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}            color="border-l-amber-500" />
-            <KpiMini index={2}  variant="stone" label="Ingresos CRM"    meta={metaDinamica(1200, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}             color="border-l-orange-600" />
-            <KpiMini index={3}  variant="stone" label="Ingresos JOT"    meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}         color="border-l-amber-600" />
-            <KpiMini index={4}  variant="stone" label="Efectividad"     meta="90%"  real={`${stats.efectividad}%`}              color="border-l-orange-400" />
-            <KpiMini index={5}  variant="stone" label="Tasa Inst."      meta="80%"  real={`${stats.tasaInstalacion}%`}          color="border-l-yellow-500" />
-            <KpiMini index={6}  variant="stone" label="Tarjeta %"       meta="30%"  real={`${stats.tarjetaCredito}%`}           color="border-l-amber-400" />
-            <KpiMini index={7}  variant="stone" label="Descarte %"      meta="25%"  real={`${stats.descartePorc}%`}             color="border-l-red-500" />
-            <KpiMini index={8}  variant="stone" label="Efic. Pauta"     meta="20%"  real={`${stats.efectividadActivasPauta}%`}  color="border-l-orange-700" />
-            <KpiMini index={9}  variant="stone" label="3ra Edad %"      meta="15%"  real={`${stats.terceraEdad}%`}              color="border-l-rose-500" />
-            <KpiMini index={10} variant="stone" label="Activas Mes"     meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog} color="border-l-orange-500" />
-            <KpiMini index={11} variant="stone" label="Activas Backlog" meta={metaDinamica(200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                 color="border-l-amber-500" />
-            <KpiMini index={12} variant="stone" label="Activas Total"   meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                 color="border-l-yellow-600" />
-            <KpiMini index={13} variant="stone" label="Por Regularizar" value={stats.regularizar}                                         color="border-l-rose-500" />
+            <KpiMini index={0} variant="stone" label="Leads Totales"   meta={metaDinamica(7050,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}          color="border-l-orange-500" />
+            <KpiMini index={1} variant="stone" label="Gestionables"    meta={metaDinamica(4230,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}               color="border-l-amber-500" />
+            <KpiMini index={2} variant="stone" label="Ingresos CRM"    meta={metaDinamica(1200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                color="border-l-orange-600" />
+            <KpiMini index={3} variant="stone" label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}            color="border-l-amber-600" />
+            <KpiMini index={4} variant="stone" label="Efectividad"     meta="90%"  real={`${stats.efectividad}%`}             color="border-l-orange-400" />
+            <KpiMini index={5} variant="stone" label="Tasa Inst."      meta="80%"  real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
+            <KpiMini index={6} variant="stone" label="Tarjeta %"       meta="30%"  real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
+            <KpiMini index={7} variant="stone" label="Descarte %"      meta="25%"  real={`${stats.descartePorc}%`}            color="border-l-red-500" />
+            <KpiMini index={8} variant="stone" label="Efic. Pauta"     meta="20%"  real={`${stats.efectividadActivasPauta}%`} color="border-l-orange-700" />
+            <KpiMini index={9} variant="stone" label="3ra Edad %"      meta="15%"  real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
+            <KpiMini index={10} variant="stone" label="Activas Mes"     meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog}    color="border-l-orange-500" />
+            <KpiMini index={11} variant="stone" label="Activas Backlog" meta={metaDinamica(200,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                    color="border-l-amber-500" />
+            <KpiMini index={12} variant="stone" label="Activas Total"   meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                    color="border-l-yellow-600" />
+            <KpiMini index={13} variant="stone" label="Por Regularizar" value={stats.regularizar}                                          color="border-l-rose-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}
@@ -1784,8 +1784,6 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     </div>
   );
 }
-
-// ======================================================
 // KpiCard180, KpiMini → importados desde components/kpi
 
 function HorizontalTable({ title, data, hasScroll }) {
@@ -1892,4 +1890,17 @@ function HorizontalTable({ title, data, hasScroll }) {
                 <td className={tdD}>{row.ventas_crm || '—'}</td>
                 <td className={`${tdDB} font-black text-orange-700`}>{row.ingresos_reales || '—'}</td>
                 <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.
+                <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
+                <td className={`${tdDB} bg-stone-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
+                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
+                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

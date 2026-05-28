@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
+import { KpiCard180, KpiMini } from "../components/kpi";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -1516,20 +1517,20 @@ ${asesoresPDF.length>0?`
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini label="Leads Totales"   meta={metaDinamica(6122,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}             color="border-l-emerald-500" />
-            <KpiMini label="Gestionables"    meta={metaDinamica(3061,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                  color="border-l-violet-500" />
-            <KpiMini label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
-            <KpiMini label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
-            <KpiMini label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
-            <KpiMini label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
-            <KpiMini label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
-            <KpiMini label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
-            <KpiMini label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
-            <KpiMini label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
-            <KpiMini label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
-            <KpiMini label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
-            <KpiMini label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
+            <KpiMini index={0}  label="Leads Totales"   meta={metaDinamica(6122, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.leadsGestionables}           color="border-l-emerald-500" />
+            <KpiMini index={1}  label="Gestionables"    meta={metaDinamica(3061, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                color="border-l-violet-500" />
+            <KpiMini index={2}  label="Ingresos CRM"    meta={metaDinamica(1364, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                 color="border-l-blue-500" />
+            <KpiMini index={3}  label="Ingresos JOT"    meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}             color="border-l-emerald-500" />
+            <KpiMini index={4}  label="Efectividad"     meta="45%"      real={`${stats.efectividad}%`}              color="border-l-purple-500" />
+            <KpiMini index={5}  label="Tasa Inst."      meta="90%"      real={`${stats.tasaInstalacion}%`}          color="border-l-cyan-500" />
+            <KpiMini index={6}  label="Tarjeta %"       meta="30%"      real={`${stats.tarjetaCredito}%`}           color="border-l-amber-500" />
+            <KpiMini index={7}  label="Descarte %"      meta="30%"      real={`${stats.descartePorc}%`}             color="border-l-rose-500" />
+            <KpiMini index={8}  label="Efic. Pauta"     meta="20%"      real={`${stats.efectividadActivasPauta}%`}  color="border-l-indigo-600" />
+            <KpiMini index={9}  label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}              color="border-l-pink-500" />
+            <KpiMini index={10} label="Activas Mes"     meta={metaDinamica(1156, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}     color="border-l-emerald-500" />
+            <KpiMini index={11} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                     color="border-l-cyan-500" />
+            <KpiMini index={12} label="Activas Total"   meta={metaDinamica(1300, filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                     color="border-l-teal-500" />
+            <KpiMini index={13} label="Por Regularizar" value={stats.regularizar}                                          color="border-l-pink-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}
@@ -2081,11 +2082,11 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard180 label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot}     real={kpis.ingresos_jot}             tipo="numero"     color="indigo" />
-        <KpiCard180 label="VENTAS ACTIVAS"       meta={METAS.ventas_activas}   real={kpis.ventas_activas}           tipo="numero"     color="teal" />
-        <KpiCard180 label="DESCARTE"             meta={METAS.pct_descarte}     real={Number(kpis.pct_descarte)}     tipo="porcentaje" color="amber"  invertido={true} />
-        <KpiCard180 label="EFECTIVIDAD"          meta={METAS.pct_efectividad}  real={Number(kpis.pct_efectividad)}  tipo="porcentaje" color="sky" />
-        <KpiCard180 label="TERCERA EDAD"         meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="rose" />
+        <KpiCard180 index={0} label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot}     real={kpis.ingresos_jot}             tipo="numero"     color="indigo" />
+        <KpiCard180 index={1} label="VENTAS ACTIVAS"       meta={METAS.ventas_activas}   real={kpis.ventas_activas}           tipo="numero"     color="teal" />
+        <KpiCard180 index={2} label="DESCARTE"             meta={METAS.pct_descarte}     real={Number(kpis.pct_descarte)}     tipo="porcentaje" color="amber"  invertido={true} />
+        <KpiCard180 index={3} label="EFECTIVIDAD"          meta={METAS.pct_efectividad}  real={Number(kpis.pct_efectividad)}  tipo="porcentaje" color="sky" />
+        <KpiCard180 index={4} label="TERCERA EDAD"         meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="rose" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2144,109 +2145,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     </div>
   );
 }
-
-// ======================================================
-// KPI CARD 180°
-// ======================================================
-function KpiCard180({ label, meta, real, tipo, color, invertido }) {
-  const pct    = meta > 0 ? Math.min((real / meta) * 100, 100) : 0;
-  const cumple = invertido ? real <= meta : real >= meta;
-  const colores = {
-    indigo: { accent: '#4f46e5', accentBg: '#eef2ff', accentText: '#4338ca', bar: '#4f46e5', icon: '📥' },
-    teal:   { accent: '#0d9488', accentBg: '#f0fdfa', accentText: '#0f766e', bar: '#0d9488', icon: '✅' },
-    amber:  { accent: '#d97706', accentBg: '#fffbeb', accentText: '#b45309', bar: '#d97706', icon: '⚠️' },
-    sky:    { accent: '#0284c7', accentBg: '#f0f9ff', accentText: '#0369a1', bar: '#0284c7', icon: '🎯' },
-    rose:   { accent: '#e11d48', accentBg: '#fff1f2', accentText: '#be123c', bar: '#e11d48', icon: '👴' },
-  };
-  const c        = colores[color] || colores.indigo;
-  const barColor = cumple ? c.bar : '#94a3b8';
-  const pctLabel = cumple ? `✓ ${pct.toFixed(1)}%` : `✗ ${pct.toFixed(1)}%`;
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col" style={{ borderTop: `3px solid ${c.accent}` }}>
-      <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-        <span className="text-[10px] font-black tracking-widest uppercase flex-1 leading-tight" style={{ color: c.accentText }}>{label}</span>
-        <span className="text-[18px] w-8 h-8 flex items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: c.accentBg }}>{c.icon}</span>
-      </div>
-      <div className="px-4 pb-3 flex justify-between items-end gap-2">
-        <div>
-          <p className="text-[8px] font-bold text-slate-400 mb-0.5 uppercase">REAL</p>
-          <p className="text-3xl font-black text-slate-900 leading-none">{tipo === 'porcentaje' ? `${real}%` : real.toLocaleString()}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[8px] font-bold text-slate-400 mb-0.5 uppercase">META</p>
-          <p className="text-base font-black text-slate-400">{tipo === 'porcentaje' ? `${meta}%` : meta.toLocaleString()}</p>
-        </div>
-      </div>
-      <div className="px-4 pb-2">
-        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-          <div className="h-2 rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-        </div>
-      </div>
-      <div className="px-4 py-2 flex justify-between items-center mt-auto" style={{ backgroundColor: c.accentBg }}>
-        <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider">AVANCE</span>
-        <span className="text-[9px] font-black" style={{ color: cumple ? c.accent : '#94a3b8' }}>{pctLabel} DE META</span>
-      </div>
-    </div>
-  );
-}
-
-// ======================================================
-// KPI MINI
-// ======================================================
-const COLOR_MAP_MINI = {
-  'border-l-blue-600':    { from:'#2563eb', to:'#60a5fa' },
-  'border-l-indigo-600':  { from:'#4f46e5', to:'#818cf8' },
-  'border-l-orange-600':  { from:'#ea580c', to:'#fb923c' },
-  'border-l-amber-500':   { from:'#d97706', to:'#fbbf24' },
-  'border-l-emerald-600': { from:'#059669', to:'#34d399' },
-  'border-l-rose-500':    { from:'#e11d48', to:'#fb7185' },
-  'border-l-violet-600':  { from:'#7c3aed', to:'#a78bfa' },
-  'border-l-slate-600':   { from:'#475569', to:'#94a3b8' },
-  'border-l-teal-600':    { from:'#0d9488', to:'#2dd4bf' },
-};
-const KpiMini = ({ label, value, meta, real, color }) => {
-  const metaNum = meta !== undefined ? parseFloat(String(meta).replace('%','')) : null;
-  const realNum = real !== undefined ? parseFloat(String(real).replace('%','')) : null;
-  const pct     = metaNum > 0 && realNum !== null ? Math.min((realNum / metaNum) * 100, 100) : 0;
-  const cumple  = metaNum !== null && realNum !== null && pct >= 97;
-  const c       = COLOR_MAP_MINI[color] || COLOR_MAP_MINI['border-l-blue-600'];
-  const barGrad = cumple
-    ? `linear-gradient(90deg,${c.from},${c.to})`
-    : 'linear-gradient(90deg,#fbbf24,#f97316)';
-  return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-      style={{ borderTop:`3px solid ${c.from}` }}>
-      <div className="px-3 pt-2.5 pb-1 flex-1">
-        <span className="text-[8px] font-black text-slate-400 tracking-widest leading-tight uppercase block mb-2">{label}</span>
-        {meta !== undefined ? (
-          <div className="flex justify-between items-end gap-1">
-            <div>
-              <div className="text-[7px] font-bold text-slate-300 uppercase tracking-wider">REAL</div>
-              <div className="text-[15px] font-black leading-none" style={{ color: cumple ? c.from : '#f59e0b' }}>{real}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[7px] font-bold text-slate-300 uppercase tracking-wider">META</div>
-              <div className="text-[11px] font-black text-slate-400 leading-none">{meta}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-xl font-black leading-none mt-1" style={{ color: c.from }}>{value}</div>
-        )}
-      </div>
-      {meta !== undefined && (
-        <div className="px-3 pb-2.5 mt-1">
-          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div className="h-1.5 rounded-full transition-all duration-700" style={{ width:`${pct}%`, background: barGrad }} />
-          </div>
-          <div className="flex justify-between items-center mt-1">
-            <span className="text-[7px] text-slate-300 font-bold tracking-wide">{pct.toFixed(0)}% de meta</span>
-            <span className="text-[8px] font-black" style={{ color: cumple ? c.from : '#f59e0b' }}>{cumple ? '✓ OK' : '↑ Falta'}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+// KpiCard180, KpiMini → importados desde components/kpi
 
 // ======================================================
 // HORIZONTAL TABLE
@@ -2356,16 +2255,4 @@ function HorizontalTable({ title, data, hasScroll }) {
                 <td className={`${tdDB} font-black text-blue-700`}>{row.ingresos_reales || '—'}</td>
                 <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
                 <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
-                <td className={`${tdDB} bg-slate-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
-                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+  

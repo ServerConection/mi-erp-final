@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import * as XLSX from "xlsx";
+import { StripCard, BarProgress } from "../components/kpi";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -245,31 +246,7 @@ function RankBadge({ pos }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BARRA DE PROGRESO
-// ─────────────────────────────────────────────────────────────────────────────
-function BarProgress({ label, value, meta, color }) {
-  const p      = pct(value, meta);
-  const cumple = p >= 97;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-          textTransform: "uppercase", letterSpacing: ".06em" }}>{label}</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#cbd5e1" }}>
-          <span style={{ color: cumple ? "#16a34a" : "#0f172a", fontWeight: 900 }}>{value}</span>
-          {" / "}{meta}
-        </span>
-      </div>
-      <div style={{ height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{
-          height: "100%", width: `${p}%`, background: color,
-          borderRadius: 3, transition: "width .7s cubic-bezier(.4,0,.2,1)",
-        }} />
-      </div>
-    </div>
-  );
-}
+// BarProgress → importado desde components/kpi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TARJETA ASESOR — ahora incluye los 4 nuevos indicadores
@@ -494,50 +471,7 @@ function AsesorCard({ row, rank }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STRIP CARD — totales globales (ahora incluye 4 nuevas)
-// ─────────────────────────────────────────────────────────────────────────────
-function StripCard({ label, value, color, meta, isPct = false, invertSemaforo = false }) {
-  const numVal = Number(value || 0);
-  const p = meta && !isPct ? pct(numVal, meta) : null;
-
-  // Semáforo para los cards de porcentaje
-  let semColor = color;
-  if (isPct && meta) {
-    const cumple = invertSemaforo ? numVal <= meta : numVal >= meta;
-    const medio  = invertSemaforo ? numVal <= meta * 1.5 : numVal >= meta * 0.5;
-    semColor = cumple ? "#16a34a" : medio ? "#d97706" : "#dc2626";
-  }
-
-  return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-        textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 900, color: semColor, lineHeight: 1 }}>
-        {isPct ? `${numVal.toFixed(1)}%` : numVal.toLocaleString()}
-      </div>
-      {p !== null && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between",
-            fontSize: 9, color: "#94a3b8", marginBottom: 4 }}>
-            <span>META</span><span>{p}%</span>
-          </div>
-          <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${p}%`, background: color,
-              borderRadius: 2, transition: "width .7s" }} />
-          </div>
-        </div>
-      )}
-      {isPct && meta && (
-        <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 6 }}>
-          meta {invertSemaforo ? "<" : "≥"} {meta}%
-        </div>
-      )}
-    </div>
-  );
-}
+// StripCard → importado desde components/kpi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -789,45 +723,20 @@ export default function VistaAsesor() {
 
       {/* ── STRIP TOTALES — fila 1: conteos ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-        <StripCard label="Leads gestionables" value={totales.gestionables}  color="#0ea5e9" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Ingresos CRM"       value={totales.ingresos_crm}  color="#8b5cf6" meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Activas + backlog"  value={totales.activas_tot}   color="#64748b" />
-        <StripCard label="Regularización"     value={totales.regularizacion} color="#f97316" />
+        <StripCard index={0} label="Leads gestionables" value={totales.gestionables}  color="#0ea5e9" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={1} label="Ingresos CRM"       value={totales.ingresos_crm}  color="#8b5cf6" meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={2} label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={3} label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={4} label="Activas + backlog"  value={totales.activas_tot}   color="#64748b" />
+        <StripCard index={5} label="Regularización"     value={totales.regularizacion} color="#f97316" />
       </div>
 
       {/* ── STRIP TOTALES — fila 2: indicadores de calidad (nuevos) ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StripCard
-          label="% Descarte (promedio)"
-          value={totales.pct_descarte}
-          color="#ef4444"
-          isPct={true}
-          meta={METAS.descarte}
-          invertSemaforo={true}
-        />
-        <StripCard
-          label="% Efectividad (promedio)"
-          value={totales.pct_efectividad}
-          color="#10b981"
-          isPct={true}
-          meta={METAS.efectividad}
-        />
-        <StripCard
-          label="% Tasa Instalación"
-          value={totales.pct_tasa_inst}
-          color="#0ea5e9"
-          isPct={true}
-          meta={METAS.tasa_instalacion}
-        />
-        <StripCard
-          label="% Tarjeta Crédito"
-          value={totales.pct_tarjeta}
-          color="#8b5cf6"
-          isPct={true}
-          meta={METAS.tarjeta}
-        />
+        <StripCard index={0} label="% Descarte (promedio)"   value={totales.pct_descarte}    color="#ef4444" isPct={true} meta={METAS.descarte}        invertSemaforo={true} />
+        <StripCard index={1} label="% Efectividad (promedio)" value={totales.pct_efectividad} color="#10b981" isPct={true} meta={METAS.efectividad} />
+        <StripCard index={2} label="% Tasa Instalación"      value={totales.pct_tasa_inst}   color="#0ea5e9" isPct={true} meta={METAS.tasa_instalacion} />
+        <StripCard index={3} label="% Tarjeta Crédito"       value={totales.pct_tarjeta}     color="#8b5cf6" isPct={true} meta={METAS.tarjeta} />
       </div>
 
       {/* ── ETAPAS JOTFORM ── */}

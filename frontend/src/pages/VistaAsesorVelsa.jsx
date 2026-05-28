@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import * as XLSX from "xlsx";
+import { StripCard, BarProgress, PctKpiCard } from "../components/kpi";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -265,33 +266,7 @@ function RankBadge({ pos }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BARRA DE PROGRESO
-// ─────────────────────────────────────────────────────────────────────────────
-function BarProgress({ label, value, meta, color }) {
-  const p      = pct(value, meta);
-  const cumple = p >= 97;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-          textTransform: "uppercase", letterSpacing: ".06em" }}>
-          {label}
-        </span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#cbd5e1" }}>
-          <span style={{ color: cumple ? "#16a34a" : "#0f172a", fontWeight: 900 }}>{value}</span>
-          {" / "}{meta}
-        </span>
-      </div>
-      <div style={{ height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{
-          height: "100%", width: `${p}%`, background: color,
-          borderRadius: 3, transition: "width .7s cubic-bezier(.4,0,.2,1)",
-        }} />
-      </div>
-    </div>
-  );
-}
+// BarProgress → importado desde components/kpi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TARJETA ASESOR VELSA
@@ -411,35 +386,7 @@ function AsesorCard({ row, rank }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STRIP CARD
-// ─────────────────────────────────────────────────────────────────────────────
-function StripCard({ label, value, color, meta }) {
-  const p = meta ? pct(value, meta) : null;
-  return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-        textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 900, color, lineHeight: 1 }}>
-        {value.toLocaleString()}
-      </div>
-      {p !== null && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between",
-            fontSize: 9, color: "#94a3b8", marginBottom: 4 }}>
-            <span>META</span><span>{p}%</span>
-          </div>
-          <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${p}%`, background: color,
-              borderRadius: 2, transition: "width .7s" }} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// StripCard → importado desde components/kpi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -670,32 +617,20 @@ export default function VistaAsesorVelsa() {
 
       {/* ── STRIP TOTALES ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-        <StripCard label="Leads gestionables" value={totales.gestionables}  color="#a855f7"
-          meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Ingresos CRM"       value={totales.ingresos_crm}   color="#6366f1"
-          meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Ingresos Jotform"   value={totales.ingresos_jot}   color="#10b981"
-          meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Activas mes"        value={totales.activas_mes}    color="#f59e0b"
-          meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
-        <StripCard label="Activas + backlog"  value={totales.activas_tot}    color="#64748b" />
-        <StripCard label="Regularización"     value={totales.regularizacion} color="#f97316" />
+        <StripCard index={0} variant="stone" label="Leads gestionables" value={totales.gestionables}  color="#a855f7" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={1} variant="stone" label="Ingresos CRM"       value={totales.ingresos_crm}  color="#6366f1" meta={METAS.ingresos_crm  * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={2} variant="stone" label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot  * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={3} variant="stone" label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas        * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={4} variant="stone" label="Activas + backlog"  value={totales.activas_tot}   color="#64748b" />
+        <StripCard index={5} variant="stone" label="Regularización"     value={totales.regularizacion} color="#f97316" />
       </div>
 
       {/* ── KPIs PORCENTUALES ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: "% Descarte",        value: totales.pct_descarte,    color: Number(totales.pct_descarte) <= 25 ? "#059669" : Number(totales.pct_descarte) <= 35 ? "#d97706" : "#dc2626", bg: "#fef2f2", hint: "≤25% óptimo" },
-          { label: "% Efectividad",     value: totales.pct_efectividad, color: Number(totales.pct_efectividad) >= 40 ? "#059669" : Number(totales.pct_efectividad) >= 25 ? "#d97706" : "#dc2626", bg: "#f0fdf4", hint: "≥40% meta" },
-          { label: "% Tasa Instalación",value: totales.pct_instalacion, color: Number(totales.pct_instalacion) >= 80 ? "#059669" : Number(totales.pct_instalacion) >= 50 ? "#d97706" : "#dc2626", bg: "#eff6ff", hint: "≥80% meta" },
-          { label: "% Tarjeta Crédito", value: totales.pct_tarjeta,     color: Number(totales.pct_tarjeta) >= 50 ? "#059669" : Number(totales.pct_tarjeta) >= 30 ? "#d97706" : "#dc2626", bg: "#faf5ff", hint: "≥50% meta" },
-        ].map(({ label, value, color, bg, hint }) => (
-          <div key={label} className="rounded-2xl border p-4 flex flex-col gap-1 shadow-sm" style={{ background: bg, borderColor: color + "44" }}>
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
-            <span className="text-3xl font-black" style={{ color }}>{value}%</span>
-            <span className="text-[9px] text-slate-400 font-semibold">promedio asesores · {hint}</span>
-          </div>
-        ))}
+        <PctKpiCard index={0} variant="stone" label="% Descarte"         value={totales.pct_descarte}    hint="≤25% óptimo" okThreshold={25}  warnThreshold={35}  invert={true} />
+        <PctKpiCard index={1} variant="stone" label="% Efectividad"      value={totales.pct_efectividad} hint="≥40% meta"   okThreshold={40}  warnThreshold={25} />
+        <PctKpiCard index={2} variant="stone" label="% Tasa Instalación" value={totales.pct_instalacion} hint="≥80% meta"   okThreshold={80}  warnThreshold={50} />
+        <PctKpiCard index={3} variant="stone" label="% Tarjeta Crédito"  value={totales.pct_tarjeta}     hint="≥50% meta"   okThreshold={50}  warnThreshold={30} />
       </div>
 
       {/* ── ETAPAS JOTFORM GLOBALES — clickeables ── */}

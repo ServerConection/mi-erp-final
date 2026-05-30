@@ -38,6 +38,7 @@ const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const Backoffice           = lazy(() => import("./pages/Backoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
 const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
+const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="comisiones"                element={<Comisiones />} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
+            <Route path="redes-wintracker"          element={<RedesWinTracker />} />
             <Route path="vista-asesor"              element={<VistaAsesor />} />
             <Route path="vista-asesor-velsa"        element={<VistaAsesorVelsa />} />
             <Route path="seguimiento-velsa"         element={<Seguimientovelsa />} />

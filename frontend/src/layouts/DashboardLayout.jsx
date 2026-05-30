@@ -336,6 +336,7 @@ const ALL_MENU_ITEMS = [
   { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },
   { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",   icon: "✔️", permiso: "SeguimientoVelsa" },
   { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
+  { name: "WinTracker",         path: "/redes-wintracker",    icon: "📺", permiso: "Redes", isChild: true },
   { name: "Ventas Formulario",  path: "/ventas",              icon: "📝", permiso: "VentasFormulario" },
   { name: "🆕 Ingresar Venta", path: "/nueva-venta",         icon: "💼",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
@@ -586,6 +587,7 @@ export default function DashboardLayout() {
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {menuItems.map((item) => {
                 const isActive = location.pathname === item.path;
+                const isChild  = item.isChild && !isDesktopCollapsed;
                 return (
                   <button
                     key={item.name}
@@ -593,22 +595,26 @@ export default function DashboardLayout() {
                     className={`w-full flex items-center dl-nav-btn ${isActive ? "dl-active" : ""}`}
                     style={{
                       borderRadius: 10,
-                      padding: isDesktopCollapsed ? "0.6rem 0" : "0.52rem 0.75rem",
+                      padding: isDesktopCollapsed ? "0.6rem 0" : isChild ? "0.42rem 0.75rem 0.42rem 1.75rem" : "0.52rem 0.75rem",
                       justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                       gap: isDesktopCollapsed ? 0 : 10,
                       border: isActive ? "none" : "none",
                       borderLeft: isActive ? "3px solid #2563eb" : "3px solid transparent",
-                      color: isActive ? "#2563eb" : "#64748b",
+                      color: isActive ? "#2563eb" : isChild ? "#7c8fa6" : "#64748b",
                       fontWeight: isActive ? 700 : 500,
                       cursor: "pointer",
                       background: isActive ? "linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.03))" : "transparent",
+                      fontSize: isChild ? "0.75rem" : undefined,
                     }}
                   >
-                    <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : "1.05rem", lineHeight: 1, flexShrink: 0, filter: isActive ? "none" : "saturate(.8)" }}>
+                    {isChild && !isDesktopCollapsed && (
+                      <span style={{ color: "#94a3b8", fontSize: "0.65rem", flexShrink: 0, marginRight: -4 }}>└</span>
+                    )}
+                    <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : isChild ? "0.9rem" : "1.05rem", lineHeight: 1, flexShrink: 0, filter: isActive ? "none" : "saturate(.8)" }}>
                       {item.icon}
                     </span>
                     {!isDesktopCollapsed && (
-                      <span className="dl-nav-label truncate" style={{ fontSize: "0.8rem", letterSpacing: ".01em" }}>
+                      <span className="dl-nav-label truncate" style={{ fontSize: isChild ? "0.75rem" : "0.8rem", letterSpacing: ".01em" }}>
                         {item.name}
                       </span>
                     )}

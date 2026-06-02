@@ -1103,6 +1103,7 @@ ${asesoresPDF.length>0?`
       gestionables:             totalGestionables,
       regularizar:              s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform:          totalJotform,
+      ventasDelDia:             s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
       descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       // Efectividad = Ingresos JOT / Gestionables
@@ -1521,16 +1522,17 @@ ${asesoresPDF.length>0?`
             <KpiMini index={1} label="Gestionables"    meta={metaDinamica(3061,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.gestionables}                  color="border-l-violet-500" />
             <KpiMini index={2} label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
             <KpiMini index={3} label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
-            <KpiMini index={4} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
-            <KpiMini index={5} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
-            <KpiMini index={6} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
-            <KpiMini index={7} label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
-            <KpiMini index={8} label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini index={9} label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
-            <KpiMini index={10} label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
-            <KpiMini index={11} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
-            <KpiMini index={12} label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
-            <KpiMini index={13} label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
+            <KpiMini index={4} label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDelDia}                  color="border-l-green-600" />
+            <KpiMini index={5} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
+            <KpiMini index={6} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
+            <KpiMini index={7} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
+            <KpiMini index={8} label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
+            <KpiMini index={9} label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
+            <KpiMini index={10} label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
+            <KpiMini index={11} label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
+            <KpiMini index={12} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
+            <KpiMini index={13} label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
+            <KpiMini index={14} label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

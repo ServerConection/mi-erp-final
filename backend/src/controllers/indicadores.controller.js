@@ -306,6 +306,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _bcerrado_date BETWEEN $1::date AND $2::date
                     AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
+                COUNT(*) FILTER (
+                    WHERE _bcerrado_date BETWEEN $1::date AND $2::date
+                    AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+                    AND _bcerrado_date = _bc_date
+                ) AS ventas_del_dia,
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (

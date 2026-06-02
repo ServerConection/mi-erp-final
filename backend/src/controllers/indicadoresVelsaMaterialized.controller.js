@@ -98,6 +98,11 @@ const queryKPI = (columna, filters) => `
       WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
       AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
     ) AS ventas_crm,
+    COUNT(*) FILTER (
+      WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
+      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      AND mv.fecha_creacion_crm::date = mv.fecha_modificacion_crm::date
+    ) AS ventas_del_dia,
     COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
     COUNT(*) FILTER (
       WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date

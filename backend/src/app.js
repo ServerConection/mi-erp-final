@@ -137,10 +137,3 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
-    error: process.env.NODE_ENV === 'production'
-      ? 'Error interno del servidor'
-      : (err.message || 'Error interno')
-  });
-});
-
-module.exports = app;

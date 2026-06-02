@@ -66,6 +66,11 @@ app.use((req, res, next) => {
 });
 
 app.set('trust proxy', 1);
+
+// SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
+const rateLimit = require('./middleware/rateLimit');
+app.use(rateLimit);
+
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/health', (req, res) => {
@@ -125,6 +130,13 @@ app.use((err, req, res, next) => {
   }
   res.status(err.status || 500).json({
     success: false,
+    error: process.env.NODE_ENV === 'production'
+      ? 'Error interno del servidor'
+      : (err.message || 'Error interno')
+  });
+});
+
+module.exports = app;
     error: process.env.NODE_ENV === 'production'
       ? 'Error interno del servidor'
       : (err.message || 'Error interno')

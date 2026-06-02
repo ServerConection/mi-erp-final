@@ -10,6 +10,16 @@
  *   Agrega en tu .env:  CONSULTOR_API_KEY=clave_secreta_aqui
  */
 
+const crypto = require('crypto');
+
+// SEGURIDAD: comparación en tiempo constante para evitar timing attacks
+function comparaSegura(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 const validarApiKey = (req, res, next) => {
   const apiKey =
     req.headers['x-api-key'] ||
@@ -25,7 +35,7 @@ const validarApiKey = (req, res, next) => {
     });
   }
 
-  if (!apiKey || apiKey !== claveEsperada) {
+  if (!apiKey || !comparaSegura(apiKey, claveEsperada)) {
     return res.status(401).json({
       success: false,
       error: 'API Key inválida o ausente'

@@ -86,7 +86,7 @@ const crearVenta = async (req, res) => {
         plan?.trim()                   || null,
         valor_plan?.trim()             || null,
         login?.trim()                  || null,
-        ingreso_telcos != null && ingreso_telcos !== "" ? Number(ingreso_telcos) : null,
+        ingreso_telcos != null && ingreso_telcos !== "" ? ingreso_telcos : null,
         fecha_ingreso                  || null,
         estado,
         pago,
@@ -151,14 +151,16 @@ const editarVenta = async (req, res) => {
         check_resumen     = $13
        WHERE id = $14 RETURNING *`,
       [
-        id_bitrix?.trim()     || registro.id_bitrix,
-        plan?.trim()          || registro.plan,
-        valor_plan?.trim()    || registro.valor_plan,
-        login?.trim()         || registro.login,
-        ingreso_telcos != null && ingreso_telcos !== "" ? Number(ingreso_telcos) : registro.ingreso_telcos,
-        fecha_ingreso         || registro.fecha_ingreso,
-        estado                || registro.estado,
-        pago                  || registro.pago,
+        id_bitrix    !== undefined ? (id_bitrix?.trim()    || null) : registro.id_bitrix,
+        plan         !== undefined ? (plan?.trim()         || null) : registro.plan,
+        valor_plan   !== undefined ? (valor_plan?.trim()   || null) : registro.valor_plan,
+        login        !== undefined ? (login?.trim()        || null) : registro.login,
+        ingreso_telcos !== undefined
+          ? (ingreso_telcos !== "" && ingreso_telcos !== null ? ingreso_telcos : null)
+          : registro.ingreso_telcos,
+        fecha_ingreso !== undefined ? (fecha_ingreso || null) : registro.fecha_ingreso,
+        estado        || registro.estado,
+        pago          || registro.pago,
         tercerdad !== undefined
           ? (tercerdad === true || tercerdad === "SI")
           : registro.tercerdad,

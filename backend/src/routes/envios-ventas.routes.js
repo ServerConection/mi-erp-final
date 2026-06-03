@@ -1,8 +1,8 @@
 // src/routes/envios-ventas.routes.js
 // ============================================================
 // POST /api/envios-ventas  — Ingreso de nueva venta
-// Solo ADMINISTRADOR puede acceder
-// Inserta las 15 primeras columnas de public.envios_ventas
+// GET  /api/envios-ventas  — Solo admin/supervisor (noAsesor)
+// POST acepta ASESORES: estatus_envio se fuerza a PENDIENTE
 // Las columnas de fecha e IP se auto-computan en el servidor
 // ============================================================
 
@@ -11,13 +11,13 @@ const router  = express.Router();
 const pool    = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 
-// Todas las rutas requieren token válido — bloqueado solo para ASESOR
-router.use(verificarToken, noAsesor);
+// Todas las rutas requieren token válido
+router.use(verificarToken);
 
 
 // ─── GET /api/envios-ventas/opciones ────────────────────────────────────────
 // Devuelve listas únicas de distribuidores y supervisores de la tabla
-router.get('/opciones', async (req, res) => {
+router.get('/opciones', noAsesor, async (req, res) => {
   try {
     const [dist, sup] = await Promise.all([
       pool.query(`SELECT DISTINCT distribuidor_autorizado FROM public.envios_ventas WHERE distribuidor_autorizado IS NOT NULL ORDER BY 1`),
@@ -35,8 +35,8 @@ router.get('/opciones', async (req, res) => {
 });
 
 // ─── GET /api/envios-ventas ──────────────────────────────────────────────────
-// Listado paginado, solo admin
-router.get('/', async (req, res) => {
+// Listado paginado, solo admin/supervisor
+router.get('/', noAsesor, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id, estatus_envio, ip_origen, fecha_registro_sistema,
@@ -60,9 +60,19 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body;
 
+    // Determinar si quien envía es asesor
+    const esAsesor = (req.user?.perfil || '').toUpperCase() === 'ASESOR';
+
+    // Asesores siempre ingresan en PENDIENTE; admins pueden especificar otro estatus
+    if (esAsesor) {
+      b.estatus_envio = 'PENDIENTE';
+      // Auto-completar codigo_asesor y nombre_atc desde el token si no vienen
+      if (!b.codigo_asesor) b.codigo_asesor = req.user.usuario || req.user.nombre || '';
+      if (!b.nombre_atc)    b.nombre_atc    = req.user.nombre  || req.user.usuario || '';
+    }
+
     // Validaciones básicas
     if (!b.estatus_envio)           return res.status(400).json({ success: false, error: 'estatus_envio es requerido' });
-    if (!b.codigo_asesor)           return res.status(400).json({ success: false, error: 'codigo_asesor es requerido' });
     if (!b.origen_venta)            return res.status(400).json({ success: false, error: 'origen_venta es requerido' });
     if (!b.venta_nueva_o_reingreso) return res.status(400).json({ success: false, error: 'venta_nueva_o_reingreso es requerido' });
     if (!b.turno)                   return res.status(400).json({ success: false, error: 'turno es requerido' });
@@ -164,7 +174,7 @@ router.post('/', async (req, res) => {
       t(b.turno_agendado), t(b.fecha_agenda),
     ]);
 
-    console.log(`[ENVIOS-VENTAS] Nueva venta registrada id=${rows[0].id} por ${req.user.usuario}`);
+    console.log(`[ENVIOS-VENTAS] Nueva venta id=${rows[0].id} por ${req.user.usuario} (${esAsesor ? 'ASESOR' : 'ADMIN'})`);
     res.status(201).json({ success: true, data: rows[0], mensaje: 'Venta registrada correctamente' });
 
   } catch (e) {

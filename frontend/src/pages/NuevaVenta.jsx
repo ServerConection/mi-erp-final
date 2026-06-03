@@ -1,704 +1,675 @@
 // src/pages/NuevaVenta.jsx
-// Panel exclusivo ADMINISTRADOR — Ingreso manual de nueva venta
-// Todas las columnas son TEXT en BD; el frontend usa inputs tipados
-// y convierte todo a string antes de enviar.
+// Formulario de ingreso de venta — vista ASESOR
+// Estilo: lista vertical tipo formulario · Branding Netlife naranja
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const API = import.meta.env.VITE_API_URL;
 
-// ─── Catálogos ───────────────────────────────────────────────────────────────
-const ESTATUSES   = ["PENDIENTE","ENVIADO","PROCESADO","RECHAZADO","EN REVISIÓN","APROBADO","ANULADO","DUPLICADO"];
-const ORIGENES    = ["CAMPO","CALL CENTER","DIGITAL","REFERIDO","PUERTA A PUERTA","EVENTO","REINGRESO DIRECTO","OTRO"];
-const TIPOS_VENTA = ["NUEVA","REINGRESO"];
-const TURNOS      = ["MAÑANA","TARDE","NOCHE","PARTIDO"];
-const TIPOS_DOC   = ["CÉDULA","PASAPORTE","RUC"];
-const ESTADOS_CIV = ["SOLTERO/A","CASADO/A","DIVORCIADO/A","VIUDO/A","UNIÓN LIBRE"];
-const GENEROS     = ["MASCULINO","FEMENINO","OTRO"];
-const TIPOS_CLI   = ["NATURAL","JURÍDICO"];
-const TIPOS_VIV   = ["PROPIA","ARRENDADA","FAMILIAR","OTRO"];
-const REG_VIV     = ["URBANO","RURAL","SUBURBANO"];
-const FORMAS_PAGO = ["EFECTIVO","TRANSFERENCIA","DÉBITO AUTOMÁTICO","CHEQUE","TARJETA"];
-const TIPOS_CONT  = ["PREPAGO","POSTPAGO","CORPORATIVO"];
-const SI_NO       = ["SÍ","NO"];
-
-// ─── Helper: convierte fecha input (YYYY-MM-DD) → string ────────────────────
-const fechaTexto = (v) => v || "";
-
-// ─── Helper: deriva año, mes, dia de una fecha string YYYY-MM-DD ─────────────
-const derivarFecha = (fechaStr) => {
-  if (!fechaStr) return { año: "", mes: "", dia: "" };
-  const [y, m, d] = fechaStr.split("-");
-  const meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-  const dias  = ["","Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-  const date  = new Date(`${fechaStr}T12:00:00`);
-  return {
-    año:     y  || "",
-    mes:     meses[parseInt(m, 10)] || "",
-    dia_num: d  || "",
-    dia_abc: dias[date.getDay()] || "",
-  };
-};
+// ─── Catálogos exactos del proceso comercial ─────────────────────────────────
+const DISTRIBUIDORES  = ["NOVONET", "VELSA"];
+const BIOMETRICO      = ["FALTA BIOMÉTRICO", "FIRMÓ BIOMÉTRICO"];
+const TIPOS_CLI       = ["NATURAL", "JURÍDICO"];
+const TIPOS_DOC       = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"];
+const GENEROS         = ["HOMBRE", "MUJER"];
+const ESTADOS_CIV     = ["SOLTERO/A", "CASADO/A", "DIVORCIADO/A", "VIUDO/A", "UNIÓN LIBRE"];
+const TIPO_INMUEBLE   = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA"];
+const DESCUENTO_3ERA  = ["NO", "SÍ — POR 3RA EDAD", "SÍ — POR DISCAPACIDAD"];
+const TIPO_VIV        = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
+const FORMAS_PAGO     = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
+const TIPOS_PLAN      = ["CASA", "PROFESIONAL", "PYMES", "GAMER", "ADULTO MAYOR"];
+const ORIGENES        = ["CAMPO", "CALL CENTER", "DIGITAL", "REFERIDO", "PUERTA A PUERTA", "EVENTO", "REINGRESO DIRECTO", "OTRO"];
+const TURNOS          = ["MAÑANA", "TARDE", "NOCHE", "PARTIDO"];
 
 // ─── Estado inicial ──────────────────────────────────────────────────────────
 const INIT = {
-  // Bloque 1 — Venta
-  estatus_envio: "", codigo_asesor: "", id_bitrix: "",
-  distribuidor_autorizado: "", supervisor: "",
-  origen_venta: "", venta_nueva_o_reingreso: "", turno: "",
-  nombre_atc: "", clausulas: "", lider_comercial: "",
-
-  // Bloque 2 — Cliente
-  tipo_cliente: "", genero_cliente: "", tipo_documento: "",
-  numero_identificacion: "", nombre_cliente_completo: "",
-  estado_civil: "", fecha_nacimiento: "",
-  email_cliente: "", aplica_descuento_3ra_edad: "",
-  telf_celular_pin: "", telf_celular_2: "", telf_fijo: "",
-
-  // Bloque 3 — Dirección
+  codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
+  biometrico: "", supervisor: "",
+  tipo_cliente: "", tipo_documento: "", numero_identificacion: "",
+  apellidos_cliente: "", nombres_cliente: "",
+  genero_cliente: "", estado_civil: "", fecha_nacimiento: "",
+  tipo_inmueble: "", aplica_descuento_3ra_edad: "", regimen_vivienda: "",
+  calle_principal: "", calle_secundaria: "",
   provincia: "", ciudad: "", parroquia_barrio: "",
-  direccion_calles: "", direccion_manzana_villa: "",
-  referencia_ubicacion: "", coordenadas_gps: "",
-  tipo_vivienda: "", regimen_vivienda: "",
-
-  // Bloque 4 — Plan / Pago
-  plan_contratado_final: "", servicios_digitales: "",
-  forma_pago: "", detalle_bancario_ahorros: "",
-  valor_pago: "", tipo_contrato: "", links_documentos: "",
-
-  // Bloque 5 — Recaudación
-  estado_recaudacion: "", fecha_recaudada: "",
-
-  // Bloque 6 — Netlife
-  netlife_login: "", netlife_estatus_real: "",
-  fecha_activacion_netlife: "",
-
-  // Bloque 7 — Auditoría
-  calidad_venta_analista: "", novedades_atc: "",
-  venta_efectiva: "", auditoria_documentos: "",
-  auditado_por: "", inconsistencia_documental: "",
-  observacion_auditoria: "", errores_telcos: "",
-
-  // Bloque 8 — Regularización
-  estatus_regularizacion: "", detalle_regularizacion: "",
-  fecha_regularizacion_atc: "", mes_regularizacion: "",
-  observacion_venta_original: "", observacion_gestion_cobranza: "",
-
-  // Bloque 9 — Agenda
-  turno_agendado: "", fecha_agenda: "",
+  manzana_villa: "", referencia_ubicacion: "", coordenadas_gps: "",
+  telf_celular_pin: "", telf_instalacion: "", email_cliente: "",
+  forma_pago: "",
+  tipo_plan: "", plan_contratado_final: "",
+  servicios_digitales: "", servicio_adicional: "",
+  origen_venta: "", turno: "",
+  observacion_venta: "",
 };
+
+// ─── Colores Netlife ──────────────────────────────────────────────────────────
+const O  = "#FF6B00";
+const OL = "#FF8533";
+const OP = "#FFF3E8";
+const OB = "#FFCBA0";
+
+// ─── Secciones del formulario ────────────────────────────────────────────────
+const SECCIONES = [
+  { id: "asesor",    label: "Datos del asesor",     icon: "🧑‍💼", color: "#FF6B00" },
+  { id: "cliente",   label: "Datos del cliente",    icon: "👤",  color: "#FF8533" },
+  { id: "direccion", label: "Dirección",            icon: "📍",  color: "#E85D00" },
+  { id: "contacto",  label: "Contacto",             icon: "📞",  color: "#FF6B00" },
+  { id: "plan",      label: "Plan y pago",          icon: "📡",  color: "#FF8533" },
+  { id: "cierre",    label: "Cierre y origen",      icon: "✅",  color: "#E85D00" },
+];
 
 // ─── Estilos ─────────────────────────────────────────────────────────────────
-const S = {
-  page: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#0f172a 100%)",
-    padding: "32px 24px 64px",
-    fontFamily: "'Inter','Segoe UI',sans-serif",
-    color: "#f1f5f9",
-  },
-  header: { display:"flex", alignItems:"center", gap:16, marginBottom:36 },
-  iconBox: {
-    width:52, height:52, borderRadius:14,
-    background:"linear-gradient(135deg,#3b82f6,#6366f1)",
-    display:"flex", alignItems:"center", justifyContent:"center",
-    fontSize:24, flexShrink:0, boxShadow:"0 4px 20px rgba(99,102,241,.4)",
-  },
-  title:    { fontSize:26, fontWeight:800, color:"#f1f5f9", margin:0 },
-  subtitle: { fontSize:13, color:"#64748b", marginTop:2 },
-  badge: {
-    display:"inline-flex", alignItems:"center", gap:6,
-    background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.35)",
-    color:"#fca5a5", borderRadius:8, padding:"4px 12px",
-    fontSize:11, fontWeight:700, letterSpacing:".06em", marginLeft:"auto",
-  },
-  card: {
-    background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.09)",
-    borderRadius:18, padding:"28px 32px", marginBottom:20,
-    backdropFilter:"blur(8px)",
-  },
-  sectionTitle: {
-    fontSize:11, fontWeight:800, color:"#64748b",
-    textTransform:"uppercase", letterSpacing:".14em",
-    marginBottom:20, display:"flex", alignItems:"center", gap:8,
-  },
-  grid2: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:18 },
-  grid3: { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:18 },
-  grid4: { display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:18 },
-  field: { display:"flex", flexDirection:"column", gap:6 },
-  label: { fontSize:11, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:".1em" },
-  req:   { color:"#ef4444", marginLeft:3 },
-  input: {
-    background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)",
-    borderRadius:10, padding:"11px 14px", fontSize:14, fontWeight:500,
-    color:"#f1f5f9", outline:"none", width:"100%", boxSizing:"border-box",
-    transition:"border .15s,box-shadow .15s",
-  },
-  inputFocus: { border:"1px solid #6366f1", boxShadow:"0 0 0 3px rgba(99,102,241,.15)" },
-  select: {
-    background:"rgba(30,41,59,.9)", border:"1px solid rgba(255,255,255,.12)",
-    borderRadius:10, padding:"11px 14px", fontSize:14, fontWeight:500,
-    color:"#f1f5f9", outline:"none", width:"100%", boxSizing:"border-box",
-    cursor:"pointer", appearance:"none",
-    backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E\")",
-    backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center",
-    backgroundSize:18, paddingRight:40,
-  },
-  autoRow:  { display:"flex", gap:12, flexWrap:"wrap" },
-  autoChip: {
-    display:"flex", alignItems:"center", gap:6,
-    background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.25)",
-    borderRadius:8, padding:"6px 14px", fontSize:12, color:"#a5b4fc",
-  },
-  autoLabel: { color:"#64748b", fontSize:11 },
-  btnRow: { display:"flex", gap:12, justifyContent:"flex-end", marginTop:8 },
-  btnReset: {
-    background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)",
-    borderRadius:10, padding:"12px 24px", fontSize:14, fontWeight:600,
-    color:"#94a3b8", cursor:"pointer",
-  },
-  btnSubmit: {
-    background:"linear-gradient(135deg,#3b82f6,#6366f1)", border:"none",
-    borderRadius:10, padding:"12px 32px", fontSize:14, fontWeight:700,
-    color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", gap:8,
-    boxShadow:"0 4px 20px rgba(99,102,241,.35)",
-  },
-  alertBase:    { borderRadius:12, padding:"14px 18px", marginBottom:20, fontSize:13, fontWeight:600, display:"flex", alignItems:"center", gap:10 },
-  alertSuccess: { background:"rgba(16,185,129,.12)", border:"1px solid rgba(16,185,129,.3)", color:"#34d399" },
-  alertError:   { background:"rgba(239,68,68,.12)",  border:"1px solid rgba(239,68,68,.3)",  color:"#fca5a5" },
-  tableWrap: { overflowX:"auto", marginTop:4 },
-  table: { width:"100%", borderCollapse:"collapse", fontSize:13 },
-  th: { textAlign:"left", padding:"10px 14px", borderBottom:"1px solid rgba(255,255,255,.08)", color:"#64748b", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".1em", whiteSpace:"nowrap" },
-  td: { padding:"12px 14px", borderBottom:"1px solid rgba(255,255,255,.05)", color:"#cbd5e1", whiteSpace:"nowrap" },
-};
+const css = `
+  * { box-sizing: border-box; }
+  .nv-page {
+    min-height: 100vh;
+    background: #FFF8F3;
+    font-family: 'Inter','Segoe UI',sans-serif;
+    color: #1C1C2E;
+    padding-bottom: 80px;
+  }
+  /* Header */
+  .nv-header {
+    background: linear-gradient(135deg, #1C1C2E 0%, #2D1200 60%, #1C1C2E 100%);
+    border-bottom: 3px solid ${O};
+    padding: 20px 28px;
+    display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  }
+  .nv-logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: ${O}; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 14px rgba(255,107,0,.45);
+  }
+  .nv-title { font-size: 20px; font-weight: 900; color: #fff; margin: 0; }
+  .nv-sub   { font-size: 11px; color: #FFB347; margin-top: 2px; font-weight: 600; letter-spacing:.05em; }
+  .nv-badge {
+    margin-left: auto; background: rgba(255,107,0,.15); border: 1px solid rgba(255,107,0,.4);
+    color: #FFB347; border-radius: 20px; padding: 5px 14px; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+  }
+  /* Progreso lateral */
+  .nv-body { max-width: 760px; margin: 0 auto; padding: 28px 20px 0; }
+  /* Sección */
+  .nv-section {
+    background: #fff; border: 1.5px solid #F0E6DD;
+    border-radius: 18px; margin-bottom: 16px; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(255,107,0,.06);
+    transition: box-shadow .2s;
+  }
+  .nv-section:focus-within { box-shadow: 0 4px 24px rgba(255,107,0,.14); border-color: ${OB}; }
+  .nv-sec-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 22px; background: ${OP};
+    border-bottom: 1.5px solid ${OB};
+  }
+  .nv-sec-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: ${O}; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .nv-sec-label { font-size: 13px; font-weight: 800; color: #7C3A00; text-transform: uppercase; letter-spacing:.1em; }
+  .nv-sec-num {
+    margin-left: auto; width: 26px; height: 26px; border-radius: 50%;
+    background: ${O}; color: #fff; font-size: 11px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Filas de campos */
+  .nv-rows { padding: 6px 0 10px; }
+  .nv-row {
+    display: flex; align-items: flex-start; gap: 0;
+    padding: 0; border-bottom: 1px solid #FEF0E6;
+    transition: background .12s;
+  }
+  .nv-row:last-child { border-bottom: none; }
+  .nv-row:focus-within { background: #FFFAF7; }
+  .nv-row-label {
+    flex-shrink: 0; width: 220px; min-height: 52px;
+    display: flex; align-items: center;
+    padding: 14px 16px 14px 22px;
+    font-size: 12.5px; font-weight: 700; color: #6B3A1F;
+    line-height: 1.3;
+  }
+  .nv-row-label .req { color: ${O}; margin-left: 3px; }
+  .nv-row-input {
+    flex: 1; padding: 10px 18px 10px 0;
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  }
+  /* Inputs */
+  .nv-input {
+    width: 100%; border: 1.5px solid #E8D5C8;
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13.5px; font-weight: 500; color: #1C1C2E;
+    background: #FDFAF8; outline: none;
+    transition: border .15s, box-shadow .15s;
+    font-family: inherit;
+  }
+  .nv-input:focus {
+    border-color: ${O}; background: #fff;
+    box-shadow: 0 0 0 3px rgba(255,107,0,.13);
+  }
+  .nv-input::placeholder { color: #C4A898; }
+  .nv-select {
+    width: 100%; border: 1.5px solid #E8D5C8;
+    border-radius: 10px; padding: 10px 36px 10px 14px;
+    font-size: 13.5px; font-weight: 500; color: #1C1C2E;
+    background: #FDFAF8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23C4A898' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E") no-repeat right 10px center / 18px;
+    outline: none; appearance: none; cursor: pointer;
+    transition: border .15s, box-shadow .15s;
+    font-family: inherit;
+  }
+  .nv-select:focus {
+    border-color: ${O}; background-color: #fff;
+    box-shadow: 0 0 0 3px rgba(255,107,0,.13);
+  }
+  .nv-textarea {
+    width: 100%; border: 1.5px solid #E8D5C8; border-radius: 10px;
+    padding: 10px 14px; font-size: 13.5px; font-weight: 500;
+    color: #1C1C2E; background: #FDFAF8; outline: none; resize: vertical;
+    min-height: 70px; font-family: inherit;
+    transition: border .15s, box-shadow .15s;
+  }
+  .nv-textarea:focus {
+    border-color: ${O}; background: #fff;
+    box-shadow: 0 0 0 3px rgba(255,107,0,.13);
+  }
+  .nv-err { font-size: 11px; color: #DC2626; font-weight: 600; margin-top: 2px; }
+  /* Chips de plan */
+  .nv-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .nv-chip {
+    padding: 7px 16px; border-radius: 20px; font-size: 12px; font-weight: 700;
+    cursor: pointer; border: 1.5px solid #E8D5C8; background: #FDFAF8; color: #8B5E3C;
+    transition: all .15s;
+  }
+  .nv-chip.sel {
+    background: ${O}; border-color: ${O}; color: #fff;
+    box-shadow: 0 2px 8px rgba(255,107,0,.35);
+  }
+  /* Botón enviar */
+  .nv-submit-wrap {
+    background: #fff; border: 1.5px solid #F0E6DD; border-radius: 18px;
+    padding: 24px 22px; margin-top: 8px;
+    box-shadow: 0 2px 12px rgba(255,107,0,.06);
+  }
+  .nv-btn-submit {
+    width: 100%; padding: 15px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, ${O}, ${OL});
+    color: #fff; font-size: 15px; font-weight: 900;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 6px 24px rgba(255,107,0,.4);
+    transition: opacity .15s, transform .1s;
+    font-family: inherit; letter-spacing: .02em;
+  }
+  .nv-btn-submit:active { transform: scale(.99); }
+  .nv-btn-submit:disabled { opacity: .65; cursor: not-allowed; }
+  .nv-btn-reset {
+    width: 100%; padding: 11px; border: 1.5px solid #E8D5C8; border-radius: 12px;
+    background: transparent; color: #8B5E3C; font-size: 13px; font-weight: 700;
+    cursor: pointer; margin-top: 10px; font-family: inherit;
+    transition: background .15s;
+  }
+  .nv-btn-reset:hover { background: ${OP}; }
+  /* Alert */
+  .nv-alert {
+    border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
+    font-size: 13px; font-weight: 600; display: flex; align-items: flex-start; gap: 10px;
+  }
+  .nv-alert.ok  { background: #ECFDF5; border: 1px solid #6EE7B7; color: #065F46; }
+  .nv-alert.err { background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; }
+  /* Success */
+  .nv-success {
+    background: #fff; border: 1.5px solid ${OB}; border-radius: 20px;
+    padding: 48px 24px; text-align: center; margin-top: 16px;
+  }
+  .nv-success-icon {
+    width: 76px; height: 76px; border-radius: 50%;
+    background: linear-gradient(135deg, ${O}, ${OL});
+    display: flex; align-items: center; justify-content: center;
+    font-size: 34px; margin: 0 auto 20px;
+    box-shadow: 0 8px 28px rgba(255,107,0,.35);
+  }
+  /* Auto-chip */
+  .nv-auto { display: inline-flex; align-items: center; gap: 6px; background: ${OP}; border: 1px solid ${OB}; border-radius: 8px; padding: 5px 12px; font-size: 11px; color: ${O}; font-weight: 700; }
+  /* Spinner */
+  .nv-spin { width:18px; height:18px; border:2.5px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Divisor doble columna */
+  .nv-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) {
+    .nv-row-label { width: 100%; min-height: unset; padding: 12px 18px 4px; }
+    .nv-row { flex-direction: column; }
+    .nv-row-input { padding: 4px 18px 12px; }
+    .nv-row-2 { grid-template-columns: 1fr; }
+    .nv-badge { display: none; }
+  }
+`;
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
-function FInput({ value, onChange, placeholder, type = "text", readOnly = false }) {
-  const [focused, setFocused] = useState(false);
+function Row({ label, required, children }) {
+  return (
+    <div className="nv-row">
+      <div className="nv-row-label">
+        {label}{required && <span className="req"> *</span>}
+      </div>
+      <div className="nv-row-input">{children}</div>
+    </div>
+  );
+}
+
+function FIn({ value, onChange, placeholder, type = "text", readOnly = false }) {
   return (
     <input
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      style={{ ...S.input, ...(focused ? S.inputFocus : {}), ...(readOnly ? { opacity:.5, cursor:"not-allowed" } : {}) }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      className="nv-input" type={type}
+      value={value} onChange={onChange}
+      placeholder={placeholder} readOnly={readOnly}
+      style={readOnly ? { background: "#F5EDE6", color: "#B07A5A", cursor: "not-allowed" } : {}}
     />
   );
 }
 
-function FSelect({ value, onChange, options, placeholder = "Seleccionar…" }) {
+function FSel({ value, onChange, options, placeholder = "Seleccionar…" }) {
   return (
-    <select value={value} onChange={onChange} style={S.select}>
+    <select className="nv-select" value={value} onChange={onChange}>
       <option value="">{placeholder}</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
 }
 
-function Field({ label, required, children }) {
+function Chips({ value, onChange, options }) {
   return (
-    <div style={S.field}>
-      <label style={S.label}>{label}{required && <span style={S.req}>*</span>}</label>
-      {children}
+    <div className="nv-chips">
+      {options.map(o => (
+        <button
+          key={o} type="button"
+          className={`nv-chip${value === o ? " sel" : ""}`}
+          onClick={() => onChange(o === value ? "" : o)}
+        >
+          {value === o && "✓ "}{o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Seccion({ num, icon, label, children }) {
+  return (
+    <div className="nv-section">
+      <div className="nv-sec-header">
+        <div className="nv-sec-icon">{icon}</div>
+        <span className="nv-sec-label">{label}</span>
+        <div className="nv-sec-num">{num}</div>
+      </div>
+      <div className="nv-rows">{children}</div>
     </div>
   );
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function NuevaVenta() {
-  const [form, setForm]           = useState(INIT);
-  const [loading, setLoading]     = useState(false);
-  const [alert, setAlert]         = useState(null);
-  const [historial, setHistorial] = useState([]);
-  const [loadingHist, setLoadingHist] = useState(true);
-  const [opciones, setOpciones]   = useState({ distribuidores:[], supervisores:[] });
-  const [hovRow, setHovRow]       = useState(null);
+  const [form, setForm]     = useState(INIT);
+  const [errs, setErrs]     = useState({});
+  const [loading, setLoad]  = useState(false);
+  const [alert, setAlert]   = useState(null);
+  const [success, setSucc]  = useState(null);
 
-  const isAdmin = (() => {
-    try { const u = JSON.parse(localStorage.getItem("user") || "{}"); return (u.perfil || "").toUpperCase() !== "ASESOR"; }
-    catch (_) { return false; }
-  })();
-  const token = localStorage.getItem("token");
+  const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
+  const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
+  const token   = localStorage.getItem("token");
 
-  // ── Helpers de cambio ────────────────────────────────────────────────────
-  const set = (campo) => (e) => setForm(f => ({ ...f, [campo]: e.target.value }));
-
-  // Cuando cambia una fecha, también actualiza año/mes/dia derivados
-  const setFecha = (campoFecha, campoAño, campoMes, campoDiaN, campoDiaA) => (e) => {
-    const v = e.target.value; // YYYY-MM-DD
-    const d = derivarFecha(v);
+  // Pre-llenar código asesor desde el usuario logueado
+  useEffect(() => {
     setForm(f => ({
       ...f,
-      [campoFecha]: fechaTexto(v),
-      ...(campoAño  ? { [campoAño]:  d.año     } : {}),
-      ...(campoMes  ? { [campoMes]:  d.mes     } : {}),
-      ...(campoDiaN ? { [campoDiaN]: d.dia_num } : {}),
-      ...(campoDiaA ? { [campoDiaA]: d.dia_abc } : {}),
+      codigo_asesor: f.codigo_asesor || user.usuario || user.codigo || "",
+      nombre_atc:    f.nombre_atc    || user.nombre  || user.usuario || "",
     }));
+  }, []);
+
+  const set = k => e => {
+    const v = e?.target ? e.target.value : e;
+    setForm(f => ({ ...f, [k]: v }));
+    setErrs(e => { const n = { ...e }; delete n[k]; return n; });
   };
 
-  // ── Cargar historial ─────────────────────────────────────────────────────
-  const cargarHistorial = useCallback(async () => {
-    try {
-      setLoadingHist(true);
-      const r = await fetch(`${API}/api/envios-ventas`, { headers:{ Authorization:`Bearer ${token}` } });
-      const d = await r.json();
-      if (d.success) setHistorial(d.data);
-    } catch (_) {} finally { setLoadingHist(false); }
-  }, [token]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    fetch(`${API}/api/envios-ventas/opciones`, { headers:{ Authorization:`Bearer ${token}` } })
-      .then(r => r.json()).then(d => { if (d.success) setOpciones(d); }).catch(() => {});
-    cargarHistorial();
-  }, [isAdmin, token, cargarHistorial]);
-
-  // ── Preparar payload: todo como string, nunca vacío → null ───────────────
-  const buildPayload = () => {
-    const p = {};
-    Object.entries(form).forEach(([k, v]) => {
-      p[k] = (v === "" || v === null || v === undefined) ? null : String(v).trim();
-    });
-    // fecha_registro_sistema la genera el backend al momento del INSERT
-    // año/mes/dia son GENERATED ALWAYS AS en PostgreSQL — no se envían
-    // IP la genera el backend
-    return p;
+  // ── Validación ─────────────────────────────────────────────────────────────
+  const validar = () => {
+    const e = {};
+    if (!form.distribuidor_autorizado)   e.distribuidor_autorizado = "Requerido";
+    if (!form.tipo_cliente)              e.tipo_cliente = "Requerido";
+    if (!form.tipo_documento)            e.tipo_documento = "Requerido";
+    if (!form.numero_identificacion.trim()) e.numero_identificacion = "Requerido";
+    if (!form.apellidos_cliente.trim())  e.apellidos_cliente = "Requerido";
+    if (!form.nombres_cliente.trim())    e.nombres_cliente = "Requerido";
+    if (!form.calle_principal.trim())    e.calle_principal = "Requerido";
+    if (!form.ciudad.trim())             e.ciudad = "Requerido";
+    if (!form.telf_celular_pin.trim())   e.telf_celular_pin = "Requerido";
+    if (!form.forma_pago)                e.forma_pago = "Requerido";
+    if (!form.tipo_plan)                 e.tipo_plan = "Requerido";
+    if (!form.origen_venta)              e.origen_venta = "Requerido";
+    setErrs(e);
+    if (Object.keys(e).length > 0) {
+      // Scroll al primer error
+      const firstErrEl = document.querySelector(".nv-err");
+      firstErrEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return Object.keys(e).length === 0;
   };
 
-  // ── Envío ────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // ── Envío ──────────────────────────────────────────────────────────────────
+  const handleSubmit = async () => {
     setAlert(null);
-    if (!form.estatus_envio)           return setAlert({ tipo:"error", msg:"Selecciona el estatus de envío." });
-    if (!form.codigo_asesor.trim())    return setAlert({ tipo:"error", msg:"Ingresa el código de asesor." });
-    if (!form.origen_venta)            return setAlert({ tipo:"error", msg:"Selecciona el origen de venta." });
-    if (!form.venta_nueva_o_reingreso) return setAlert({ tipo:"error", msg:"Indica si es NUEVA o REINGRESO." });
-    if (!form.turno)                   return setAlert({ tipo:"error", msg:"Selecciona el turno." });
-
-    setLoading(true);
+    if (!validar()) {
+      setAlert({ tipo: "err", msg: "Corrige los campos marcados antes de continuar." });
+      return;
+    }
+    setLoad(true);
     try {
+      // Construir payload mapeado a columnas de envios_ventas
+      const nombre_cliente_completo = `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
+      const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
+
+      const payload = {
+        // sistema
+        estatus_envio:              "PENDIENTE",
+        // asesor
+        codigo_asesor:              form.codigo_asesor    || null,
+        id_bitrix:                  form.id_bitrix        || null,
+        distribuidor_autorizado:    form.distribuidor_autorizado || null,
+        supervisor:                 form.supervisor       || null,
+        clausulas:                  form.biometrico       || null,  // biométrico → clausulas
+        nombre_atc:                 user.nombre || user.usuario || null,
+        // cliente
+        tipo_cliente:               form.tipo_cliente     || null,
+        tipo_documento:             form.tipo_documento   || null,
+        numero_identificacion:      form.numero_identificacion || null,
+        nombre_cliente_completo,
+        genero_cliente:             form.genero_cliente   || null,
+        estado_civil:               form.estado_civil     || null,
+        fecha_nacimiento:           form.fecha_nacimiento || null,
+        aplica_descuento_3ra_edad:  form.aplica_descuento_3ra_edad || null,
+        tipo_vivienda:              form.regimen_vivienda || null,
+        regimen_vivienda:           form.tipo_inmueble    || null,
+        // dirección
+        direccion_calles,
+        provincia:                  form.provincia        || null,
+        ciudad:                     form.ciudad           || null,
+        parroquia_barrio:           form.parroquia_barrio || null,
+        direccion_manzana_villa:    form.manzana_villa    || null,
+        referencia_ubicacion:       form.referencia_ubicacion || null,
+        coordenadas_gps:            form.coordenadas_gps  || null,
+        // contacto
+        telf_celular_pin:           form.telf_celular_pin || null,
+        telf_celular_2:             form.telf_instalacion || null,
+        email_cliente:              form.email_cliente    || null,
+        // plan
+        forma_pago:                 form.forma_pago       || null,
+        plan_contratado_final:      [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
+        servicios_digitales:        form.servicios_digitales || null,
+        tipo_contrato:              form.servicio_adicional || null,
+        // cierre
+        origen_venta:               form.origen_venta     || null,
+        turno:                      form.turno            || null,
+        venta_nueva_o_reingreso:    "NUEVA",
+        novedades_atc:              form.observacion_venta || null,
+      };
+
       const r = await fetch(`${API}/api/envios-ventas`, {
         method: "POST",
-        headers: { "Content-Type":"application/json", Authorization:`Bearer ${token}` },
-        body: JSON.stringify(buildPayload()),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
       });
       const d = await r.json();
       if (d.success) {
-        setAlert({ tipo:"success", msg:`Venta registrada correctamente (ID: ${d.data.id})` });
+        setSucc({
+          id:     d.data.id,
+          nombre: nombre_cliente_completo,
+          plan:   payload.plan_contratado_final,
+        });
         setForm(INIT);
-        cargarHistorial();
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
-        setAlert({ tipo:"error", msg: d.error || "Error al registrar la venta." });
+        setAlert({ tipo: "err", msg: d.error || "Error al registrar la venta." });
       }
-    } catch (_) {
-      setAlert({ tipo:"error", msg:"Error de conexión con el servidor." });
-    } finally { setLoading(false); }
+    } catch {
+      setAlert({ tipo: "err", msg: "Error de conexión con el servidor." });
+    } finally { setLoad(false); }
   };
 
-  if (!isAdmin) return (
-    <div style={{ ...S.page, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>🔒</div>
-        <p style={{ fontSize:20, fontWeight:700, color:"#fca5a5" }}>Acceso restringido</p>
-        <p style={{ color:"#64748b", marginTop:8 }}>Este módulo solo está disponible para administradores.</p>
+  const err = k => errs[k]
+    ? <span className="nv-err">⚠ {errs[k]}</span>
+    : null;
+
+  // ── Success screen ────────────────────────────────────────────────────────
+  if (success) return (
+    <>
+      <style>{css}</style>
+      <div className="nv-page">
+        <div className="nv-header">
+          <div className="nv-logo">📡</div>
+          <div>
+            <p className="nv-title">Ingreso de Venta · Netlife</p>
+            <p className="nv-sub">Distribuidor autorizado</p>
+          </div>
+        </div>
+        <div className="nv-body">
+          <div className="nv-success">
+            <div className="nv-success-icon">✅</div>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: "#1C1C2E", margin: "0 0 8px" }}>
+              ¡Venta registrada!
+            </h2>
+            <p style={{ color: "#8B5E3C", marginBottom: 4, fontWeight: 700 }}>{success.nombre}</p>
+            <p style={{ color: O, fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{success.plan}</p>
+            <p style={{ color: "#A07850", fontSize: 13, marginBottom: 28 }}>ID interno #{success.id} · Estado: <strong>PENDIENTE</strong></p>
+            <p style={{ fontSize: 13, color: "#8B5E3C", marginBottom: 28, maxWidth: 340, margin: "0 auto 28px" }}>
+              La venta quedará en revisión del equipo de backoffice. ¡Bien hecho! 🎉
+            </p>
+            <button className="nv-btn-submit" style={{ maxWidth: 280, margin: "0 auto" }} onClick={() => setSucc(null)}>
+              ➕ Ingresar otra venta
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 
-  const fechaStr = new Date().toLocaleString("es-EC", { timeZone:"America/Guayaquil" });
-
+  // ── Formulario ────────────────────────────────────────────────────────────
   return (
-    <div style={S.page}>
+    <>
+      <style>{css}</style>
+      <div className="nv-page">
 
-      {/* Encabezado */}
-      <div style={S.header}>
-        <div style={S.iconBox}>💼</div>
-        <div>
-          <h1 style={S.title}>Ingresar Nueva Venta</h1>
-          <p style={S.subtitle}>Panel de registro manual · envios_ventas</p>
-        </div>
-        <div style={S.badge}>🔐 SOLO ADMINISTRADORES</div>
-      </div>
-
-      {alert && (
-        <div style={{ ...S.alertBase, ...(alert.tipo === "success" ? S.alertSuccess : S.alertError) }}>
-          <span style={{ fontSize:18 }}>{alert.tipo === "success" ? "✅" : "❌"}</span>
-          {alert.msg}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit}>
-
-        {/* ── Bloque 0: Datos automáticos ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>⚙️</span> Datos automáticos del sistema</div>
-          <div style={S.autoRow}>
-            <div style={S.autoChip}><span style={S.autoLabel}>Fecha:</span> {fechaStr}</div>
-            <div style={S.autoChip}><span style={S.autoLabel}>Año / Mes / Día:</span> Se calculan automáticamente</div>
-            <div style={S.autoChip}><span style={S.autoLabel}>IP:</span> Detectada por el servidor</div>
+        {/* Header */}
+        <div className="nv-header">
+          <div className="nv-logo">📡</div>
+          <div>
+            <p className="nv-title">Ingreso de Venta · Netlife</p>
+            <p className="nv-sub">Distribuidor autorizado · {user.nombre || user.usuario || "Asesor"}</p>
           </div>
+          <div className="nv-badge">🟠 NUEVA VENTA</div>
         </div>
 
-        {/* ── Bloque 1: Información de la venta ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>📋</span> Información de la venta</div>
-          <div style={S.grid3}>
-            <Field label="Estatus envío" required>
-              <FSelect value={form.estatus_envio} onChange={set("estatus_envio")} options={ESTATUSES} />
-            </Field>
-            <Field label="Tipo de venta" required>
-              <FSelect value={form.venta_nueva_o_reingreso} onChange={set("venta_nueva_o_reingreso")} options={TIPOS_VENTA} />
-            </Field>
-            <Field label="Origen de venta" required>
-              <FSelect value={form.origen_venta} onChange={set("origen_venta")} options={ORIGENES} />
-            </Field>
-            <Field label="Turno" required>
-              <FSelect value={form.turno} onChange={set("turno")} options={TURNOS} />
-            </Field>
-            <Field label="Código asesor" required>
-              <FInput value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
-            </Field>
-            <Field label="ID Bitrix">
-              <FInput value={form.id_bitrix} onChange={set("id_bitrix")} placeholder="Ej: 12345" type="number" />
-            </Field>
-            <Field label="Nombre ATC">
-              <FInput value={form.nombre_atc} onChange={set("nombre_atc")} placeholder="Nombre del agente" />
-            </Field>
-            <Field label="Líder comercial">
-              <FInput value={form.lider_comercial} onChange={set("lider_comercial")} placeholder="Nombre del líder" />
-            </Field>
-            <Field label="Cláusulas">
-              <FInput value={form.clausulas} onChange={set("clausulas")} placeholder="Ej: C1, C2" />
-            </Field>
-          </div>
-        </div>
+        <div className="nv-body">
 
-        {/* ── Bloque 2: Estructura comercial ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>🏢</span> Estructura comercial</div>
-          <div style={S.grid2}>
-            <Field label="Distribuidor autorizado">
-              {opciones.distribuidores.length > 0
-                ? <FSelect value={form.distribuidor_autorizado} onChange={set("distribuidor_autorizado")} options={opciones.distribuidores} placeholder="Sin distribuidor…" />
-                : <FInput value={form.distribuidor_autorizado} onChange={set("distribuidor_autorizado")} placeholder="Nombre del distribuidor" />
+          {alert && (
+            <div className={`nv-alert ${alert.tipo}`}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{alert.tipo === "ok" ? "✅" : "❌"}</span>
+              {alert.msg}
+            </div>
+          )}
+
+          {/* ── 1. Datos del asesor ── */}
+          <Seccion num={1} icon="🧑‍💼" label="Datos del asesor">
+            <Row label="Código de asesor">
+              <FIn value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
+            </Row>
+            <Row label="ID Bitrix">
+              <FIn value={form.id_bitrix} onChange={set("id_bitrix")} placeholder="Ej: 12345" />
+            </Row>
+            <Row label="Distribuidor" required>
+              <Chips value={form.distribuidor_autorizado} onChange={set("distribuidor_autorizado")} options={DISTRIBUIDORES} />
+              {err("distribuidor_autorizado")}
+            </Row>
+            <Row label="Supervisor">
+              <FIn value={form.supervisor} onChange={set("supervisor")} placeholder="Nombre del supervisor" />
+            </Row>
+          </Seccion>
+
+          {/* ── 2. Datos del cliente ── */}
+          <Seccion num={2} icon="👤" label="Datos del cliente">
+            <Row label="Biométrico">
+              <Chips value={form.biometrico} onChange={set("biometrico")} options={BIOMETRICO} />
+            </Row>
+            <Row label="Tipo de cliente" required>
+              <Chips value={form.tipo_cliente} onChange={set("tipo_cliente")} options={TIPOS_CLI} />
+              {err("tipo_cliente")}
+            </Row>
+            <Row label="Documento de identidad" required>
+              <FSel value={form.tipo_documento} onChange={set("tipo_documento")} options={TIPOS_DOC} />
+              {err("tipo_documento")}
+            </Row>
+            <Row label="Número de identificación" required>
+              <FIn value={form.numero_identificacion} onChange={set("numero_identificacion")} placeholder="Ej: 1712345678" />
+              {err("numero_identificacion")}
+            </Row>
+            <Row label="Apellidos completos" required>
+              <FIn value={form.apellidos_cliente} onChange={set("apellidos_cliente")} placeholder="Primer y segundo apellido" />
+              {err("apellidos_cliente")}
+            </Row>
+            <Row label="Nombres completos" required>
+              <FIn value={form.nombres_cliente} onChange={set("nombres_cliente")} placeholder="Primer y segundo nombre" />
+              {err("nombres_cliente")}
+            </Row>
+            <Row label="Género">
+              <Chips value={form.genero_cliente} onChange={set("genero_cliente")} options={GENEROS} />
+            </Row>
+            <Row label="Estado civil">
+              <FSel value={form.estado_civil} onChange={set("estado_civil")} options={ESTADOS_CIV} />
+            </Row>
+            <Row label="Fecha de nacimiento">
+              <FIn type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+            </Row>
+            <Row label="El cliente vive en">
+              <FSel value={form.tipo_inmueble} onChange={set("tipo_inmueble")} options={TIPO_INMUEBLE} />
+            </Row>
+            <Row label="Descuento 3ra edad / discapacidad">
+              <Chips value={form.aplica_descuento_3ra_edad} onChange={set("aplica_descuento_3ra_edad")} options={DESCUENTO_3ERA} />
+            </Row>
+            <Row label="Tipo de vivienda">
+              <Chips value={form.regimen_vivienda} onChange={set("regimen_vivienda")} options={TIPO_VIV} />
+            </Row>
+          </Seccion>
+
+          {/* ── 3. Dirección ── */}
+          <Seccion num={3} icon="📍" label="Dirección de instalación">
+            <Row label="Calle principal" required>
+              <FIn value={form.calle_principal} onChange={set("calle_principal")} placeholder="Ej: Av. 10 de Agosto" />
+              {err("calle_principal")}
+            </Row>
+            <Row label="Calle secundaria">
+              <FIn value={form.calle_secundaria} onChange={set("calle_secundaria")} placeholder="Ej: Calle Colón" />
+            </Row>
+            <Row label="Provincia">
+              <FIn value={form.provincia} onChange={set("provincia")} placeholder="Ej: Pichincha" />
+            </Row>
+            <Row label="Ciudad" required>
+              <FIn value={form.ciudad} onChange={set("ciudad")} placeholder="Ej: Quito" />
+              {err("ciudad")}
+            </Row>
+            <Row label="Parroquia / Barrio">
+              <FIn value={form.parroquia_barrio} onChange={set("parroquia_barrio")} placeholder="Ej: La Mariscal" />
+            </Row>
+            <Row label="Manzana / Villa / Lote / Bloque">
+              <FIn value={form.manzana_villa} onChange={set("manzana_villa")} placeholder="Ej: Mz. 4 Villa 12" />
+            </Row>
+            <Row label="Referencia de cómo llegar">
+              <textarea
+                className="nv-textarea"
+                value={form.referencia_ubicacion}
+                onChange={set("referencia_ubicacion")}
+                placeholder="Ej: Frente al parque, casa amarilla con reja negra…"
+                rows={2}
+              />
+            </Row>
+            <Row label="Coordenadas GPS">
+              <FIn value={form.coordenadas_gps} onChange={set("coordenadas_gps")} placeholder="-0.1807, -78.4678" />
+            </Row>
+          </Seccion>
+
+          {/* ── 4. Contacto ── */}
+          <Seccion num={4} icon="📞" label="Contacto">
+            <Row label="Teléfono celular" required>
+              <FIn type="tel" value={form.telf_celular_pin} onChange={set("telf_celular_pin")} placeholder="09XXXXXXXX" />
+              {err("telf_celular_pin")}
+            </Row>
+            <Row label="Celular para instalación">
+              <FIn type="tel" value={form.telf_instalacion} onChange={set("telf_instalacion")} placeholder="09XXXXXXXX (puede ser diferente)" />
+            </Row>
+            <Row label="Correo electrónico">
+              <FIn type="email" value={form.email_cliente} onChange={set("email_cliente")} placeholder="correo@ejemplo.com" />
+            </Row>
+          </Seccion>
+
+          {/* ── 5. Plan y pago ── */}
+          <Seccion num={5} icon="📡" label="Plan y forma de pago">
+            <Row label="Forma de pago" required>
+              <FSel value={form.forma_pago} onChange={set("forma_pago")} options={FORMAS_PAGO} />
+              {err("forma_pago")}
+            </Row>
+            <Row label="Tipo de plan" required>
+              <Chips value={form.tipo_plan} onChange={set("tipo_plan")} options={TIPOS_PLAN} />
+              {err("tipo_plan")}
+            </Row>
+            <Row label="Plan contratado (detalle)">
+              <FIn value={form.plan_contratado_final} onChange={set("plan_contratado_final")} placeholder="Ej: 1300 Mbps · $16.96 · Promo 50%" />
+            </Row>
+            <Row label="Servicio empaquetado">
+              <FIn value={form.servicios_digitales} onChange={set("servicios_digitales")} placeholder="Ej: Paramount+, Netlife Play, Extender…" />
+            </Row>
+            <Row label="Servicio adicional">
+              <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")} placeholder="Ej: Netlife Defense, Assistance PRO…" />
+            </Row>
+          </Seccion>
+
+          {/* ── 6. Cierre y origen ── */}
+          <Seccion num={6} icon="✅" label="Cierre y origen de la venta">
+            <Row label="Origen de la venta" required>
+              <FSel value={form.origen_venta} onChange={set("origen_venta")} options={ORIGENES} />
+              {err("origen_venta")}
+            </Row>
+            <Row label="Turno">
+              <Chips value={form.turno} onChange={set("turno")} options={TURNOS} />
+            </Row>
+            <Row label="Observación de la venta">
+              <textarea
+                className="nv-textarea"
+                value={form.observacion_venta}
+                onChange={set("observacion_venta")}
+                placeholder="Notas importantes sobre esta venta, acuerdos especiales, pendientes…"
+                rows={3}
+              />
+            </Row>
+          </Seccion>
+
+          {/* ── Botón enviar ── */}
+          <div className="nv-submit-wrap">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 14px", background: OP, borderRadius: 10, border: `1px solid ${OB}` }}>
+              <span style={{ fontSize: 18 }}>⚡</span>
+              <span style={{ fontSize: 12, color: "#7C3A00", fontWeight: 700 }}>
+                Al enviar, la venta queda en estado <strong>PENDIENTE</strong> para revisión del equipo de backoffice.
+              </span>
+            </div>
+            <button className="nv-btn-submit" onClick={handleSubmit} disabled={loading}>
+              {loading
+                ? <><div className="nv-spin" /> Registrando venta…</>
+                : <><span>📤</span> Registrar venta</>
               }
-            </Field>
-            <Field label="Supervisor">
-              {opciones.supervisores.length > 0
-                ? <FSelect value={form.supervisor} onChange={set("supervisor")} options={opciones.supervisores} placeholder="Sin supervisor…" />
-                : <FInput value={form.supervisor} onChange={set("supervisor")} placeholder="Nombre del supervisor" />
-              }
-            </Field>
+            </button>
+            <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              🗑️ Limpiar formulario
+            </button>
           </div>
-        </div>
 
-        {/* ── Bloque 3: Datos del cliente ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>👤</span> Datos del cliente</div>
-          <div style={S.grid3}>
-            <Field label="Tipo de cliente">
-              <FSelect value={form.tipo_cliente} onChange={set("tipo_cliente")} options={TIPOS_CLI} />
-            </Field>
-            <Field label="Género">
-              <FSelect value={form.genero_cliente} onChange={set("genero_cliente")} options={GENEROS} />
-            </Field>
-            <Field label="Estado civil">
-              <FSelect value={form.estado_civil} onChange={set("estado_civil")} options={ESTADOS_CIV} />
-            </Field>
-            <Field label="Tipo de documento">
-              <FSelect value={form.tipo_documento} onChange={set("tipo_documento")} options={TIPOS_DOC} />
-            </Field>
-            <Field label="Número de identificación">
-              <FInput value={form.numero_identificacion} onChange={set("numero_identificacion")} placeholder="Ej: 1712345678" />
-            </Field>
-            <Field label="Nombre completo del cliente">
-              <FInput value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo")} placeholder="Apellidos y nombres" />
-            </Field>
-            {/* Fecha de nacimiento — input tipo date, se guarda como YYYY-MM-DD texto */}
-            <Field label="Fecha de nacimiento">
-              <FInput
-                type="date"
-                value={form.fecha_nacimiento}
-                onChange={setFecha("fecha_nacimiento","año_nacimiento","mes_nacimiento","dia_num_nacimiento","dia_abc_nacimiento")}
-              />
-            </Field>
-            <Field label="Email">
-              <FInput value={form.email_cliente} onChange={set("email_cliente")} placeholder="correo@ejemplo.com" type="email" />
-            </Field>
-            <Field label="¿Aplica descuento 3ra edad?">
-              <FSelect value={form.aplica_descuento_3ra_edad} onChange={set("aplica_descuento_3ra_edad")} options={SI_NO} />
-            </Field>
-          </div>
         </div>
-
-        {/* ── Bloque 4: Contacto ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>📞</span> Contacto</div>
-          <div style={S.grid3}>
-            <Field label="Teléfono celular (PIN)">
-              <FInput value={form.telf_celular_pin} onChange={set("telf_celular_pin")} placeholder="09XXXXXXXX" type="tel" />
-            </Field>
-            <Field label="Teléfono celular 2">
-              <FInput value={form.telf_celular_2} onChange={set("telf_celular_2")} placeholder="09XXXXXXXX" type="tel" />
-            </Field>
-            <Field label="Teléfono fijo">
-              <FInput value={form.telf_fijo} onChange={set("telf_fijo")} placeholder="02XXXXXXX" type="tel" />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 5: Dirección ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>📍</span> Dirección</div>
-          <div style={S.grid3}>
-            <Field label="Provincia">
-              <FInput value={form.provincia} onChange={set("provincia")} placeholder="Ej: Pichincha" />
-            </Field>
-            <Field label="Ciudad">
-              <FInput value={form.ciudad} onChange={set("ciudad")} placeholder="Ej: Quito" />
-            </Field>
-            <Field label="Parroquia / Barrio">
-              <FInput value={form.parroquia_barrio} onChange={set("parroquia_barrio")} placeholder="Ej: La Mariscal" />
-            </Field>
-            <Field label="Dirección (calles)">
-              <FInput value={form.direccion_calles} onChange={set("direccion_calles")} placeholder="Ej: Av. 10 de Agosto y Colón" />
-            </Field>
-            <Field label="Manzana / Villa">
-              <FInput value={form.direccion_manzana_villa} onChange={set("direccion_manzana_villa")} placeholder="Ej: Mz. 4 Villa 12" />
-            </Field>
-            <Field label="Referencia">
-              <FInput value={form.referencia_ubicacion} onChange={set("referencia_ubicacion")} placeholder="Ej: Frente al parque" />
-            </Field>
-            <Field label="Coordenadas GPS">
-              <FInput value={form.coordenadas_gps} onChange={set("coordenadas_gps")} placeholder="Lat, Lng" />
-            </Field>
-            <Field label="Tipo de vivienda">
-              <FSelect value={form.tipo_vivienda} onChange={set("tipo_vivienda")} options={TIPOS_VIV} />
-            </Field>
-            <Field label="Régimen de vivienda">
-              <FSelect value={form.regimen_vivienda} onChange={set("regimen_vivienda")} options={REG_VIV} />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 6: Plan y pago ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>💳</span> Plan y pago</div>
-          <div style={S.grid3}>
-            <Field label="Plan contratado">
-              <FInput value={form.plan_contratado_final} onChange={set("plan_contratado_final")} placeholder="Ej: Plan 200 Mbps" />
-            </Field>
-            <Field label="Servicios digitales">
-              <FInput value={form.servicios_digitales} onChange={set("servicios_digitales")} placeholder="Ej: Netflix, Disney+" />
-            </Field>
-            <Field label="Forma de pago">
-              <FSelect value={form.forma_pago} onChange={set("forma_pago")} options={FORMAS_PAGO} />
-            </Field>
-            <Field label="Detalle bancario / Ahorros">
-              <FInput value={form.detalle_bancario_ahorros} onChange={set("detalle_bancario_ahorros")} placeholder="Banco, cuenta, etc." />
-            </Field>
-            <Field label="Valor de pago">
-              {/* type number en UI, pero se guarda como texto */}
-              <FInput value={form.valor_pago} onChange={set("valor_pago")} placeholder="Ej: 29.99" type="number" />
-            </Field>
-            <Field label="Tipo de contrato">
-              <FSelect value={form.tipo_contrato} onChange={set("tipo_contrato")} options={TIPOS_CONT} />
-            </Field>
-            <Field label="Links de documentos">
-              <FInput value={form.links_documentos} onChange={set("links_documentos")} placeholder="https://..." type="url" />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 7: Recaudación ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>💰</span> Recaudación</div>
-          <div style={S.grid3}>
-            <Field label="Estado recaudación">
-              <FInput value={form.estado_recaudacion} onChange={set("estado_recaudacion")} placeholder="Ej: COBRADO" />
-            </Field>
-            <Field label="Fecha recaudada">
-              <FInput
-                type="date"
-                value={form.fecha_recaudada}
-                onChange={setFecha("fecha_recaudada","año_recaudada","mes_recaudada","dia_num_recaudada","dia_abc_recaudada")}
-              />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 8: Netlife ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>🌐</span> Netlife</div>
-          <div style={S.grid3}>
-            <Field label="Login Netlife">
-              <FInput value={form.netlife_login} onChange={set("netlife_login")} placeholder="usuario@netlife" />
-            </Field>
-            <Field label="Estatus real Netlife">
-              <FInput value={form.netlife_estatus_real} onChange={set("netlife_estatus_real")} placeholder="Ej: ACTIVO" />
-            </Field>
-            <Field label="Fecha activación Netlife">
-              <FInput
-                type="date"
-                value={form.fecha_activacion_netlife}
-                onChange={setFecha("fecha_activacion_netlife","año_activacion_netlife","mes_activacion_netlife","dia_num_activacion_netlife","dia_abc_activacion_netlife")}
-              />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 9: Auditoría ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>🔍</span> Auditoría</div>
-          <div style={S.grid3}>
-            <Field label="Calidad venta (analista)">
-              <FInput value={form.calidad_venta_analista} onChange={set("calidad_venta_analista")} placeholder="Ej: BUENA" />
-            </Field>
-            <Field label="Novedades ATC">
-              <FInput value={form.novedades_atc} onChange={set("novedades_atc")} placeholder="Observaciones" />
-            </Field>
-            <Field label="Venta efectiva">
-              <FSelect value={form.venta_efectiva} onChange={set("venta_efectiva")} options={SI_NO} />
-            </Field>
-            <Field label="Auditoría documentos">
-              <FInput value={form.auditoria_documentos} onChange={set("auditoria_documentos")} placeholder="Ej: COMPLETO" />
-            </Field>
-            <Field label="Auditado por">
-              <FInput value={form.auditado_por} onChange={set("auditado_por")} placeholder="Nombre del auditor" />
-            </Field>
-            <Field label="Inconsistencia documental">
-              <FInput value={form.inconsistencia_documental} onChange={set("inconsistencia_documental")} placeholder="Descripción" />
-            </Field>
-            <Field label="Observación auditoría">
-              <FInput value={form.observacion_auditoria} onChange={set("observacion_auditoria")} placeholder="Observaciones" />
-            </Field>
-            <Field label="Errores Telcos">
-              <FInput value={form.errores_telcos} onChange={set("errores_telcos")} placeholder="Descripción de errores" />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 10: Regularización ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>🔧</span> Regularización</div>
-          <div style={S.grid3}>
-            <Field label="Estatus regularización">
-              <FInput value={form.estatus_regularizacion} onChange={set("estatus_regularizacion")} placeholder="Ej: REGULARIZADO" />
-            </Field>
-            <Field label="Detalle regularización">
-              <FInput value={form.detalle_regularizacion} onChange={set("detalle_regularizacion")} placeholder="Descripción" />
-            </Field>
-            <Field label="Fecha regularización ATC">
-              <FInput
-                type="date"
-                value={form.fecha_regularizacion_atc}
-                onChange={setFecha("fecha_regularizacion_atc","año_regularizacion_atc","mes_regularizacion_atc","dia_num_regularizacion_atc","dia_abc_regularizacion_atc")}
-              />
-            </Field>
-            <Field label="Mes regularización">
-              <FInput value={form.mes_regularizacion} onChange={set("mes_regularizacion")} placeholder="Ej: Enero" />
-            </Field>
-            <Field label="Observación venta original">
-              <FInput value={form.observacion_venta_original} onChange={set("observacion_venta_original")} placeholder="Observaciones" />
-            </Field>
-            <Field label="Observación gestión cobranza">
-              <FInput value={form.observacion_gestion_cobranza} onChange={set("observacion_gestion_cobranza")} placeholder="Observaciones" />
-            </Field>
-          </div>
-        </div>
-
-        {/* ── Bloque 11: Agenda ── */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}><span>📅</span> Agenda</div>
-          <div style={S.grid2}>
-            <Field label="Turno agendado">
-              <FSelect value={form.turno_agendado} onChange={set("turno_agendado")} options={TURNOS} />
-            </Field>
-            <Field label="Fecha agenda">
-              <FInput
-                type="date"
-                value={form.fecha_agenda}
-                onChange={setFecha("fecha_agenda","año_agenda","mes_agenda","dia_num_agenda","dia_abc_agenda")}
-              />
-            </Field>
-          </div>
-        </div>
-
-        {/* Botones */}
-        <div style={S.btnRow}>
-          <button type="button" style={S.btnReset} onClick={() => { setForm(INIT); setAlert(null); }} disabled={loading}>
-            Limpiar
-          </button>
-          <button type="submit" style={{ ...S.btnSubmit, opacity: loading ? .7 : 1 }} disabled={loading}>
-            {loading
-              ? <><span style={{ display:"inline-block", width:16, height:16, border:"2px solid #fff", borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.7s linear infinite" }} /> Registrando…</>
-              : <><span style={{ fontSize:18 }}>💾</span> Registrar venta</>
-            }
-          </button>
-        </div>
-
-      </form>
-
-      {/* ── Historial reciente ── */}
-      <div style={{ ...S.card, marginTop:28 }}>
-        <div style={{ ...S.sectionTitle, marginBottom:16 }}>
-          <span>📑</span> Últimas ventas registradas
-          <button onClick={cargarHistorial} style={{ marginLeft:"auto", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"4px 12px", fontSize:11, color:"#94a3b8", cursor:"pointer" }}>
-            ↻ Actualizar
-          </button>
-        </div>
-        {loadingHist ? (
-          <p style={{ color:"#64748b", textAlign:"center", padding:24 }}>Cargando historial…</p>
-        ) : historial.length === 0 ? (
-          <p style={{ color:"#64748b", textAlign:"center", padding:24 }}>No hay registros aún.</p>
-        ) : (
-          <div style={S.tableWrap}>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  {["ID","Estatus","Fecha registro","Cód. Asesor","ID Bitrix","Distribuidor","Supervisor","Origen","Tipo","Turno"].map(h => (
-                    <th key={h} style={S.th}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {historial.map((r, i) => (
-                  <tr key={r.id} style={hovRow === i ? { background:"rgba(255,255,255,.025)" } : {}} onMouseEnter={() => setHovRow(i)} onMouseLeave={() => setHovRow(null)}>
-                    <td style={{ ...S.td, color:"#6366f1", fontWeight:700 }}>#{r.id}</td>
-                    <td style={S.td}>
-                      <span style={{
-                        background: r.estatus_envio === "APROBADO" ? "rgba(16,185,129,.2)" : r.estatus_envio === "RECHAZADO" ? "rgba(239,68,68,.2)" : r.estatus_envio === "PENDIENTE" ? "rgba(234,179,8,.2)" : "rgba(99,102,241,.15)",
-                        color: r.estatus_envio === "APROBADO" ? "#34d399" : r.estatus_envio === "RECHAZADO" ? "#fca5a5" : r.estatus_envio === "PENDIENTE" ? "#fde047" : "#a5b4fc",
-                        borderRadius:6, padding:"3px 10px", fontSize:11, fontWeight:700,
-                      }}>
-                        {r.estatus_envio}
-                      </span>
-                    </td>
-                    <td style={S.td}>{r.fecha_registro_sistema || "—"}</td>
-                    <td style={S.td}>{r.codigo_asesor || "—"}</td>
-                    <td style={S.td}>{r.id_bitrix || "—"}</td>
-                    <td style={S.td}>{r.distribuidor_autorizado || "—"}</td>
-                    <td style={S.td}>{r.supervisor || "—"}</td>
-                    <td style={S.td}>{r.origen_venta || "—"}</td>
-                    <td style={S.td}>
-                      <span style={{ background: r.venta_nueva_o_reingreso === "NUEVA" ? "rgba(59,130,246,.2)" : "rgba(168,85,247,.2)", color: r.venta_nueva_o_reingreso === "NUEVA" ? "#60a5fa" : "#c084fc", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:700 }}>
-                        {r.venta_nueva_o_reingreso || "—"}
-                      </span>
-                    </td>
-                    <td style={S.td}>{r.turno || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
-
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
+    </>
   );
 }

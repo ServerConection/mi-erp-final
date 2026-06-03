@@ -91,7 +91,7 @@ const queryKPI = (columna, filters) => `
     COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS leads_totales,
     COUNT(*) FILTER (
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-          OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+          OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)
       AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}
     ) AS gestionables,
     COUNT(*) FILTER (
@@ -103,9 +103,9 @@ const queryKPI = (columna, filters) => `
       AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
       AND mv.fecha_creacion_crm::date = mv.fecha_modificacion_crm::date
     ) AS ventas_del_dia,
-    COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
+    COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
     COUNT(*) FILTER (
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND mv.estado_venta = ${ESTADO_ACTIVO}
     ) AS real_mes,
     COUNT(*) FILTER (
@@ -114,21 +114,21 @@ const queryKPI = (columna, filters) => `
     ) AS descarte_count,
     COUNT(*) FILTER (
       WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%'
-      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS tarjeta_credito,
     COUNT(*) FILTER (
       WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%'
       AND mv.estado_venta = ${ESTADO_ACTIVO}
-      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS tercera_edad,
     COUNT(*) FILTER (
       WHERE mv.estado_regularizacion ILIKE '%REGULARIZAR%'
-      AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS regularizacion
   FROM ${MV}
   WHERE (
     mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-    OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
+    OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
   ) ${filters}
   GROUP BY 1 ORDER BY ingresos_reales DESC, ventas_crm DESC
 `;
@@ -141,7 +141,7 @@ const queryBacklog = (columna, filters) => `
   FROM ${MV}
   WHERE mv.id_jotform IS NOT NULL
     AND mv.fecha_activacion IS NOT NULL
-    AND mv.fecha_registro_jotform::date < $1::date
+    AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < $1::date
     AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
     AND mv.estado_venta = ${ESTADO_ACTIVO}
     ${filters}
@@ -190,7 +190,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const qEstados = `
       SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total
       FROM ${MV}
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY 1 ORDER BY total DESC
     `;
     const qEmbudo = `
@@ -201,14 +201,14 @@ async function getIndicadoresDashboardVelsa(req, res) {
     `;
     const qPorDia = `
       SELECT
-        mv.fecha_registro_jotform::date::text AS fecha,
-        EXTRACT(DAY FROM mv.fecha_registro_jotform::date)::int AS dia,
+        (mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text AS fecha,
+        EXTRACT(DAY FROM (mv.fecha_registro_jotform - INTERVAL '5 hours')::date)::int AS dia,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos
       FROM ${MV}
       WHERE mv.fecha_registro_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.fecha_registro_jotform::date ORDER BY mv.fecha_registro_jotform::date ASC
+        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY (mv.fecha_registro_jotform - INTERVAL '5 hours')::date ORDER BY (mv.fecha_registro_jotform - INTERVAL '5 hours')::date ASC
     `;
 
     // ── NUEVO: activaciones por día usando fecha_activacion_date ────────────────
@@ -238,14 +238,14 @@ async function getIndicadoresDashboardVelsa(req, res) {
         COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO}) AS total_tercera,
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO}) AS total_activos
       FROM ${MV}
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
     const qTarjeta = `
       SELECT
         COUNT(*) FILTER (WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%') AS total_tarjeta,
         COUNT(*) AS total_jotform
       FROM ${MV}
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
     const qNetlife = `
 SELECT
@@ -276,7 +276,7 @@ SELECT
   mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
-WHERE mv.fecha_registro_jotform::date 
+WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date 
 BETWEEN $1::date AND $2::date
 ${filters}
 LIMIT 6000
@@ -364,7 +364,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos_jot_hoy
       FROM ${MV}
       WHERE mv.fecha_registro_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform::date = $1::date
+        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date = $1::date
       GROUP BY 1
     `;
 
@@ -400,22 +400,22 @@ async function getReporte180Velsa(req, res) {
 
     const qKPIs = `
       SELECT
-        COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
-        COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
+        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
+          COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO} AND mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date),0)
+          COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date),0)
         ,0)*100,2) AS pct_tercera_edad
       FROM ${MV}
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) ${filters}
+      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) ${filters}
     `;
     const qEmbudoCRM = `
       SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
@@ -424,7 +424,7 @@ async function getReporte180Velsa(req, res) {
     `;
     const qEmbudoJot = `
       SELECT COALESCE(mv.estado_venta,'SIN ESTADO') AS etapa, COUNT(*)::int AS total
-      FROM ${MV} WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      FROM ${MV} WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.estado_venta ORDER BY total DESC
     `;
 
@@ -473,7 +473,7 @@ async function getConsultaDescargaVelsa(req, res) {
         mv.forma_pago, mv.aplica_descuento, mv.ciudad, mv.origen
       FROM ${MV}
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-          OR mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date)
+          OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)
       ${filters}
       ORDER BY mv.fecha_creacion_crm DESC LIMIT 10000
     `, values);
@@ -550,7 +550,7 @@ async function getActivasVelsa(req, res) {
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activas,
         COUNT(*)::int AS total_jotform
       FROM ${MV}
-      WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date ${filters}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY 1,2 ORDER BY activas DESC
     `, values);
 
@@ -578,7 +578,7 @@ async function getBacklogVelsa(req, res) {
       FROM ${MV}
       WHERE mv.id_jotform IS NOT NULL
         AND mv.fecha_registro_jotform IS NOT NULL
-        AND mv.fecha_registro_jotform::date < $1::date
+        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < $1::date
         AND mv.estado_venta = ${ESTADO_ACTIVO}
         ${filters}
       GROUP BY 1,2 ORDER BY backlog DESC

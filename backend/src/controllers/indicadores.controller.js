@@ -273,7 +273,8 @@ const getIndicadoresDashboard = async (req, res) => {
                     ${parseFecha('mb.b_creado_el_fecha')}        AS _bc_date,
                     mb.b_cerrado::date                           AS _bcerrado_date,
                     mb.j_fecha_registro_sistema::date            AS _jf_date,
-                    ${parseFecha('mb.j_fecha_registro_sistema')} AS _jf_parsed_date
+                    ${parseFecha('mb.j_fecha_registro_sistema')} AS _jf_parsed_date,
+                    ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date
                 FROM mestra_bitrix mb
                 ${joinEmpleadosDedup}
                 WHERE (
@@ -309,7 +310,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _bcerrado_date BETWEEN $1::date AND $2::date
                     AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-                    AND _bcerrado_date = _bc_date
+                    AND _bc_date = _bmod_date
                 ) AS ventas_del_dia,
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric

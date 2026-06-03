@@ -2,6 +2,21 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+// Fecha de hoy en formato YYYY-MM-DD (local)
+const hoy = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+// Mes actual en formato YYYY-MM
+const mesActual = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
 const API = import.meta.env.VITE_API_URL;
 
 const ESTADOS = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICADO", "ASIGNADO"];
@@ -30,7 +45,7 @@ const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-wide
 function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
   const inicial = {
     id_bitrix: "", plan: "", valor_plan: "", login: "", ingreso_telcos: "",
-    fecha_ingreso: "", estado: "ACTIVO", pago: "EFEC", tercerdad: false,
+    fecha_ingreso: hoy(), estado: "ACTIVO", pago: "EFEC", tercerdad: false,
     observacion: "", check_cedula: false, check_foto_cartel: false, check_resumen: false,
   };
   const [form, setForm] = useState(registro ? {
@@ -227,6 +242,8 @@ export default function Ventas() {
   const [error, setError]                 = useState(null);
   const [modal, setModal]                 = useState(null);
   const [filtroEstado, setFiltroEstado]   = useState("TODOS");
+  const [filtroMes, setFiltroMes]         = useState(mesActual());
+  const [verTodosMeses, setVerTodosMeses] = useState(false);
   const [toast, setToast]                 = useState(null);
 
   const userRaw = localStorage.getItem("userProfile");
@@ -270,17 +287,19 @@ export default function Ventas() {
     try {
       const esEditar = modal.modo === "editar";
       const payload = {
-        ...form,
-        id_bitrix:        form.id_bitrix?.trim()        || null,
-        plan:             form.plan?.trim()              || null,
-        valor_plan:       form.valor_plan?.trim()        || null,
-        login:            form.login?.trim()             || null,
-        ingreso_telcos:   form.ingreso_telcos || null,
-        fecha_ingreso:    form.fecha_ingreso             || null,
-        observacion:      form.observacion?.trim()       || null,
-        check_cedula:     form.check_cedula,
-        check_foto_cartel:form.check_foto_cartel,
-        check_resumen:    form.check_resumen,
+        id_bitrix:         form.id_bitrix?.trim()        || null,
+        plan:              form.plan?.trim()             || null,
+        valor_plan:        form.valor_plan?.trim()       || null,
+        login:             form.login?.trim()            || null,
+        ingreso_telcos:    form.ingreso_telcos           || null,
+        fecha_ingreso:     form.fecha_ingreso            || null,
+        estado:            form.estado,
+        pago:              form.pago,
+        observacion:       form.observacion?.trim()      || null,
+        tercerdad:         Boolean(form.tercerdad),
+        check_cedula:      Boolean(form.check_cedula),
+        check_foto_cartel: Boolean(form.check_foto_cartel),
+        check_resumen:     Boolean(form.check_resumen),
       };
 
       const url    = esEditar ? `${API}/api/ventas/${modal.registro.id}` : `${API}/api/ventas`;
@@ -342,14 +361,22 @@ export default function Ventas() {
     }
   };
 
+  // Ventas del mes seleccionado (o todas si verTodosMeses)
+  const ventasDelMes = verTodosMeses
+    ? ventas
+    : ventas.filter(v => {
+        const fecha = v.fecha_ingreso ? String(v.fecha_ingreso).substring(0, 7) : null;
+        return fecha === filtroMes;
+      });
+
   const contadores = ESTADOS.reduce((acc, e) => {
-    acc[e] = ventas.filter(v => v.estado === e).length;
+    acc[e] = ventasDelMes.filter(v => v.estado === e).length;
     return acc;
   }, {});
 
   const ventasFiltradas = filtroEstado === "TODOS"
-    ? ventas
-    : ventas.filter(v => v.estado === filtroEstado);
+    ? ventasDelMes
+    : ventasDelMes.filter(v => v.estado === filtroEstado);
 
   // Columnas de la tabla (header dinámico)
   const colsHeader = ["#", "ID BITRIX", "LOGIN", "PLAN", "VALOR PLAN", "ING. TELCOS",
@@ -414,9 +441,36 @@ export default function Ventas() {
         </div>
       </div>
 
+      {/* FILTRO MES */}
+      <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">📅 Período</span>
+        <input
+          type="month"
+          value={filtroMes}
+          onChange={e => { setFiltroMes(e.target.value); setVerTodosMeses(false); }}
+          disabled={verTodosMeses}
+          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-slate-700 text-sm font-bold focus:outline-none focus:border-blue-500 transition disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:light]"
+        />
+        <button
+          onClick={() => setVerTodosMeses(v => !v)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${
+            verTodosMeses
+              ? "bg-blue-600 border-blue-600 text-white shadow shadow-blue-900/30"
+              : "bg-slate-50 border-slate-300 text-slate-500 hover:bg-slate-100"
+          }`}
+        >
+          {verTodosMeses ? "✅ Todos los meses" : "Ver todos los meses"}
+        </button>
+        {!verTodosMeses && (
+          <span className="text-xs text-slate-400 font-bold">
+            {ventasDelMes.length} registro{ventasDelMes.length !== 1 ? "s" : ""} en {filtroMes}
+          </span>
+        )}
+      </div>
+
       {/* CONTADORES */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[{ label: "TODOS", val: ventas.length, icon: "📋" },
+        {[{ label: "TODOS", val: ventasDelMes.length, icon: "📋" },
           ...ESTADOS.map(e => ({
             label: e, val: contadores[e] || 0,
             icon: { ACTIVO:"✅", DETENIDO:"🔴", "RE-PLANIFICADO":"🔄",

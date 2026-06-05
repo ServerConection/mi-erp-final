@@ -1895,7 +1895,6 @@ function HorizontalTable({ title, data, hasScroll, isAsesor = false }) {
       <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
       <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
       <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
-              </tr>
     </tr>
   );
 

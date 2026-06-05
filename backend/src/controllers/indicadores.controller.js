@@ -286,6 +286,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*) FILTER (
     WHERE _bc_date BETWEEN $1::date AND $2::date
+    AND b_etapa_de_la_negociacion <> 'DUPLICADO'   -- ← línea nueva
     AND (
         b_etapa_de_la_negociacion = 'VENTA SUBIDA'
         OR

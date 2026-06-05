@@ -257,7 +257,11 @@ const getIndicadoresDashboard = async (req, res) => {
         // exactamente 1 vez al construir _base; el SELECT exterior usa aliases.
         // Ahorro estimado: ~10x menos evaluaciones CASE por fila.
         const queryKPI = (columna) => {
-            const groupCol = columna === 'e.supervisor' ? 'supervisor' : 'b_persona_responsable';
+            const groupCol     = columna === 'e.supervisor' ? 'supervisor' : 'b_persona_responsable';
+            const esSupervisor = columna === 'e.supervisor';
+            // Para asesores también devolvemos su supervisor (para agrupar en el frontend)
+            const extraSelect  = esSupervisor ? '' : ", COALESCE(supervisor, 'SIN ASIGNAR') AS sup_nombre";
+            const extraGroup   = esSupervisor ? '' : ', 2';
             return `
             WITH _base AS MATERIALIZED (
                 SELECT
@@ -283,7 +287,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
+                ${extraSelect},
                 COUNT(*) FILTER (
     WHERE _bc_date BETWEEN $1::date AND $2::date
     AND b_etapa_de_la_negociacion <> 'DUPLICADO'   -- ← línea nueva
@@ -336,10 +341,9 @@ const getIndicadoresDashboard = async (req, res) => {
         COALESCE(b_origen, '') NOT IN (   -- ← mb.b_origen → b_origen
             'WAZZUP: WhatsApp - Ecuanet Regestion',
             'BASE 593-962881280',
-            'BASE 593-958993371',
             'BASE 593-999803743',
-            'Base 593-995967355',
-            'Whatsapp 593958993371'
+            'Base 593-995967355'
+          
         )
     )
 ) AS gestionables,
@@ -405,10 +409,32 @@ const getIndicadoresDashboard = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
-            GROUP BY 1
+            GROUP BY 1${extraGroup}
             ORDER BY gestionables DESC
             `;
         };
+
+        // ── Ventas del día desde el formulario de ingreso (envios_ventas) ─────────
+        // Novonet filtra por distribuidor_autorizado ILIKE '%NOVONET%'
+        const queryVentasDiaFormAsesor = `
+            SELECT LOWER(TRIM(ev.nombre_atc)) AS asesor_key, COUNT(*)::int AS ventas_dia_form
+            FROM public.envios_ventas ev
+            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'NOVONET'
+            GROUP BY 1
+        `;
+        const queryVentasDiaFormSup = `
+            SELECT COALESCE(e.supervisor, 'SIN ASIGNAR') AS sup_key, COUNT(*)::int AS ventas_dia_form
+            FROM public.envios_ventas ev
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE LOWER(TRIM(e2.nombre_completo)) = LOWER(TRIM(ev.nombre_atc))
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
+            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'NOVONET'
+            GROUP BY 1
+        `;
 
         // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
         // PERO cuya orden fue registrada en JotForm ANTES del inicio del período (fecha_desde).
@@ -554,13 +580,15 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        // Lote 2: tablas detalle + backlogs + activaciones (espera al lote 1 para no saturar el pool)
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia] = await Promise.all([
+        // Lote 2: tablas detalle + backlogs + activaciones + ventas form
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDFormAsesor, resVDFormSup] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('mb.b_persona_responsable'), values),
-            pool.query(queryActivacionesPorDia, values),  // NUEVO: activaciones por j_fecha_activacion_netlife
+            pool.query(queryActivacionesPorDia, values),
+            pool.query(queryVentasDiaFormAsesor, values),
+            pool.query(queryVentasDiaFormSup, values),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -570,8 +598,25 @@ const getIndicadoresDashboard = async (req, res) => {
             });
         };
 
-        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
-        const asesoresConBacklog = mergeBacklog(resAses.rows, resBacklogAses.rows);
+        // Merge ventas del día desde formulario de ingreso (envios_ventas)
+        const mergeVentasDiaForm = (filas, evRows, keyField) => {
+            return filas.map(row => {
+                const key = (row.nombre_grupo || '').toLowerCase();
+                const ev  = evRows.find(v => v[keyField] === key);
+                const ventas_dia_form   = ev ? Number(ev.ventas_dia_form) : 0;
+                const venta_seguimiento = Math.max(0, Number(row.ventas_crm || 0) - ventas_dia_form);
+                return { ...row, ventas_dia_form, venta_seguimiento };
+            });
+        };
+
+        const supervisoresConBacklog = mergeVentasDiaForm(
+            mergeBacklog(resSup.rows, resBacklogSup.rows),
+            resVDFormSup.rows, 'sup_key'
+        );
+        const asesoresConBacklog = mergeVentasDiaForm(
+            mergeBacklog(resAses.rows, resBacklogAses.rows),
+            resVDFormAsesor.rows, 'asesor_key'
+        );
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

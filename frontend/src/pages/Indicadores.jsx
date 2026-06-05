@@ -1104,6 +1104,8 @@ ${asesoresPDF.length>0?`
       regularizar:              s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform:          totalJotform,
       ventasDelDia:             s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
+      ventasDiaForm:            s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0),
+      ventaSeguimiento:         Math.max(0, s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0) - s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0)),
       descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       // Efectividad = Ingresos JOT / Gestionables
@@ -1523,6 +1525,8 @@ ${asesoresPDF.length>0?`
             <KpiMini index={2} label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
             <KpiMini index={3} label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
             <KpiMini index={4} label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDelDia}                  color="border-l-green-600" />
+            <KpiMini index={4} label="V. Día (Form.)" meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDiaForm}                 color="border-l-orange-500" />
+            <KpiMini index={4} label="V. Seguimiento" meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaSeguimiento}              color="border-l-amber-500" />
             <KpiMini index={5} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
             <KpiMini index={6} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
             <KpiMini index={7} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
@@ -1680,7 +1684,7 @@ ${asesoresPDF.length>0?`
 
           {/* Tablas */}
           <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
-          <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} /></div>
+          <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} isAsesor={true} /></div>
 
           <div className="grid grid-cols-1 gap-4">
             <DataVisor
@@ -2149,7 +2153,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
 }
 // KpiCard180, KpiMini → importados desde components/kpi
 
-function HorizontalTable({ title, data, hasScroll }) {
+function HorizontalTable({ title, data, hasScroll, isAsesor = false }) {
   const safeData = data || [];
   const n = safeData.length || 1;
 
@@ -2162,17 +2166,19 @@ function HorizontalTable({ title, data, hasScroll }) {
   };
 
   const totals = {
-    real_mes: safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0),
-    backlog: safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
-    total_activas_calculada: safeData.reduce((a, r) => a + Number(r.total_activas_calculada || 0), 0),
-    gestionables: safeData.reduce((a, r) => a + Number(r.gestionables || 0), 0),
-    ventas_crm: safeData.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
-    ingresos_reales: safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
-    regularizacion: safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
-    efectividad_real: (safeData.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
-    descarte: (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
-    tasa_instalacion: (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
-    eficiencia: (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
+    real_mes:               safeData.reduce((a, r) => a + Number(r.real_mes || 0), 0),
+    backlog:                safeData.reduce((a, r) => a + Number(r.backlog || 0), 0),
+    total_activas_calculada:safeData.reduce((a, r) => a + Number(r.total_activas_calculada || 0), 0),
+    gestionables:           safeData.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+    ventas_crm:             safeData.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+    ingresos_reales:        safeData.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
+    ventas_dia_form:        safeData.reduce((a, r) => a + Number(r.ventas_dia_form || 0), 0),
+    venta_seguimiento:      safeData.reduce((a, r) => a + Number(r.venta_seguimiento || 0), 0),
+    regularizacion:         safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
+    efectividad_real:       (safeData.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+    descarte:               (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
+    tasa_instalacion:       (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
+    eficiencia:             (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
   };
   const totalTarjetaCredito = safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
   const totalTerceraEdad    = safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0);
@@ -2183,7 +2189,80 @@ function HorizontalTable({ title, data, hasScroll }) {
   const tdDB = "text-center px-3 py-2 border-r border-slate-400 w-16 whitespace-nowrap font-black";
   const thD  = "px-3 py-2 border-r border-slate-100 w-16 text-center whitespace-nowrap";
   const thDB = "px-3 py-2 border-r border-slate-400 w-16 text-center whitespace-nowrap";
-  const NW   = 110;
+  const NW   = 130;
+
+  // Para KPI POR ASESOR: agrupar por supervisor
+  const renderRows = () => {
+    if (!isAsesor) {
+      return safeData.map((row, i) => renderDataRow(row, i));
+    }
+    // Agrupar asesores por su supervisor
+    const grupos = {};
+    safeData.forEach(row => {
+      const sup = row.sup_nombre || 'SIN SUPERVISOR';
+      if (!grupos[sup]) grupos[sup] = [];
+      grupos[sup].push(row);
+    });
+    const supKeys = Object.keys(grupos).sort();
+    let globalIdx = 0;
+    return supKeys.flatMap(sup => {
+      const rows = grupos[sup];
+      const supTotal = {
+        ventas_crm: rows.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+        ingresos_reales: rows.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
+        ventas_dia_form: rows.reduce((a, r) => a + Number(r.ventas_dia_form || 0), 0),
+        venta_seguimiento: rows.reduce((a, r) => a + Number(r.venta_seguimiento || 0), 0),
+        gestionables: rows.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+      };
+      const headerRow = (
+        <tr key={`sup-${sup}`} className="bg-blue-900/90 text-white text-[8px] font-black border-b border-blue-700">
+          <td className="px-2 py-1 border-r border-blue-700 sticky left-0 bg-blue-900 z-10 whitespace-nowrap"
+            style={{ width: NW, minWidth: NW, maxWidth: NW }} colSpan={1}>
+            👥 {sup}
+          </td>
+          <td className="text-center border-r border-blue-700 px-2 text-blue-200" colSpan={5}>
+            Gest: {supTotal.gestionables}
+          </td>
+          <td className="text-center border-r border-blue-700 px-2">{supTotal.ventas_crm}</td>
+          <td className="text-center border-r border-blue-700 px-2">{supTotal.ingresos_reales}</td>
+          <td className="text-center border-r border-blue-700 px-2 text-orange-300 font-black">{supTotal.ventas_dia_form}</td>
+          <td className="text-center border-r border-blue-700 px-2 text-yellow-300">{supTotal.venta_seguimiento}</td>
+          <td colSpan={6} className="px-2 text-blue-300">{rows.length} asesor{rows.length !== 1 ? 'es' : ''}</td>
+        </tr>
+      );
+      const dataRows = rows.map((row, i) => renderDataRow(row, globalIdx++, true));
+      return [headerRow, ...dataRows];
+    });
+  };
+
+  const renderDataRow = (row, i, indented = false) => (
+    <tr key={i} className={`border-b border-slate-200 hover:bg-blue-50/40 transition-colors text-[8px] ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+      <td className="px-2 py-1.5 border-r border-slate-300 sticky left-0 font-black text-slate-800 whitespace-nowrap truncate"
+        style={{ background: i % 2 === 0 ? 'white' : '#f8fafc', width: NW, minWidth: NW, maxWidth: NW, paddingLeft: indented ? 20 : 8 }}>
+        {indented && <span className="text-slate-400 mr-1">↳</span>}{row.nombre_grupo}
+      </td>
+      <td className={tdD}>{row.real_mes || '—'}</td>
+      <td className={tdD}>{row.backlog ?? '—'}</td>
+      <td className={`${tdD} bg-slate-50 font-black`}>{row.total_activas_calculada || '—'}</td>
+      <td className={`${tdDB} text-slate-400`}>—</td>
+      <td className={tdDB}>{row.gestionables || '—'}</td>
+      <td className={tdD}>{row.ventas_crm || '—'}</td>
+      <td className={`${tdDB} font-black text-blue-700`}>{row.ingresos_reales || '—'}</td>
+      <td className="text-center px-3 py-2 border-r border-orange-300 w-16 whitespace-nowrap font-black text-orange-600 bg-orange-50">
+        {row.ventas_dia_form > 0 ? row.ventas_dia_form : '—'}
+      </td>
+      <td className={`text-center px-3 py-2 border-r border-slate-400 w-16 whitespace-nowrap font-black ${Number(row.venta_seguimiento) > 0 ? 'text-amber-700 bg-amber-50' : 'text-slate-400'}`}>
+        {row.venta_seguimiento > 0 ? row.venta_seguimiento : '—'}
+      </td>
+      <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
+      <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
+      <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
+      <td className={`${tdDB} bg-slate-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
+      <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
+      <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
+      <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
+    </tr>
+  );
 
   return (
     <div className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden">
@@ -2194,14 +2273,14 @@ function HorizontalTable({ title, data, hasScroll }) {
         </h2>
         <button onClick={descargarExcel} className="text-[9px] bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-full font-black transition-all flex items-center gap-2 text-white uppercase">⬇️ EXCEL</button>
       </div>
-      <div className={`overflow-auto ${hasScroll ? 'max-h-[380px]' : ''}`}>
+      <div className={`overflow-auto ${hasScroll ? 'max-h-[420px]' : ''}`}>
         <table className="text-[9px] border-collapse uppercase" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead>
             <tr className="bg-slate-200 border-b border-slate-400 font-black text-[8px]">
               <th className="p-2 border-r border-slate-400 sticky left-0 bg-slate-200 z-10 text-left whitespace-nowrap" style={{ width: NW, minWidth: NW, maxWidth: NW }}>ENTIDAD</th>
               <th colSpan="4" className="border-r border-slate-400 text-center bg-slate-100 py-1">PRES. VENTAS ACTIVAS</th>
               <th className="border-r border-slate-400 text-center px-3">GEST.</th>
-              <th colSpan="2" className="border-r border-slate-400 text-center bg-slate-100">VENTAS SUBIDAS</th>
+              <th colSpan="4" className="border-r border-slate-400 text-center bg-orange-50 py-1 text-orange-800">VENTAS SUBIDAS</th>
               <th className="border-r border-slate-400 text-center px-3">EFECT. %</th>
               <th className="border-r border-slate-400 text-center px-3">DESC. %</th>
               <th className="border-r border-slate-400 text-center px-3">INST. %</th>
@@ -2214,7 +2293,11 @@ function HorizontalTable({ title, data, hasScroll }) {
               <th className="p-2 border-r border-slate-400 sticky left-0 bg-white z-10 text-left" style={{ width: NW, minWidth: NW, maxWidth: NW }}>NOMBRE</th>
               <th className={thD}>REAL</th><th className={thD}>BACK</th>
               <th className="px-3 py-2 border-r border-slate-100 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">TOT</th>
-              <th className={thDB}>CREC</th><th className={thDB}>TOT</th><th className={thD}>CRM</th><th className={thDB}>JOTF</th>
+              <th className={thDB}>CREC</th><th className={thDB}>TOT</th>
+              <th className={thD}>CRM</th>
+              <th className={thDB}>JOTF</th>
+              <th className="px-3 py-2 border-r border-orange-300 w-16 text-center bg-orange-50 font-black whitespace-nowrap text-orange-700">DÍA</th>
+              <th className="px-3 py-2 border-r border-slate-400 w-16 text-center bg-amber-50 font-black whitespace-nowrap text-amber-700">SEGUIM.</th>
               <th className={thDB}>REAL</th><th className={thDB}>REAL</th><th className={thDB}>REAL</th>
               <th className="px-3 py-2 border-r border-slate-400 w-16 text-center bg-slate-50 font-bold whitespace-nowrap">REAL</th>
               <th className={thDB}>REAL</th><th className={thDB}>REAL</th>
@@ -2229,6 +2312,8 @@ function HorizontalTable({ title, data, hasScroll }) {
               <td className="text-center border-r border-slate-600 px-3">{totals.gestionables}</td>
               <td className="text-center border-r border-slate-700 px-3">{totals.ventas_crm}</td>
               <td className="text-center border-r border-slate-600 px-3 font-black">{totals.ingresos_reales}</td>
+              <td className="text-center border-r border-orange-300 px-3 font-black text-orange-700 bg-orange-50">{totals.ventas_dia_form}</td>
+              <td className="text-center border-r border-slate-600 px-3 font-black text-amber-700 bg-amber-50">{totals.venta_seguimiento}</td>
               <td className="text-center border-r border-slate-600 px-3">{totals.efectividad_real}%</td>
               <td className="text-center border-r border-slate-600 px-3">{totals.descarte}%</td>
               <td className="text-center border-r border-slate-600 px-3">{totals.tasa_instalacion}%</td>
@@ -2239,28 +2324,7 @@ function HorizontalTable({ title, data, hasScroll }) {
             </tr>
           </thead>
           <tbody>
-            {safeData.map((row, i) => (
-              <tr key={i} className={`border-b border-slate-200 hover:bg-blue-50/40 transition-colors text-[8px] ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
-                <td className="px-2 py-1.5 border-r border-slate-300 sticky left-0 font-black text-slate-800 whitespace-nowrap truncate"
-                  style={{ background: i % 2 === 0 ? 'white' : '#f8fafc', width: NW, minWidth: NW, maxWidth: NW }}>
-                  {row.nombre_grupo}
-                </td>
-                <td className={tdD}>{row.real_mes || '—'}</td>
-                <td className={tdD}>{row.backlog ?? '—'}</td>
-                <td className={`${tdD} bg-slate-50 font-black`}>{row.total_activas_calculada || '—'}</td>
-                <td className={`${tdDB} text-slate-400`}>—</td>
-                <td className={tdDB}>{row.gestionables || '—'}</td>
-                <td className={tdD}>{row.ventas_crm || '—'}</td>
-                <td className={`${tdDB} font-black text-blue-700`}>{row.ingresos_reales || '—'}</td>
-                <td className={tdDB}>{row.efectividad_real != null ? `${Number(row.efectividad_real).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.descarte != null ? `${Number(row.descarte).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tasa_instalacion != null ? `${Number(row.tasa_instalacion).toFixed(1)}%` : '—'}</td>
-                <td className={`${tdDB} bg-slate-50`}>{row.eficiencia != null ? `${Number(row.eficiencia).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tarjeta_credito && row.ingresos_reales ? `${((Number(row.tarjeta_credito)/Number(row.ingresos_reales))*100).toFixed(1)}%` : '—'}</td>
-                <td className={tdDB}>{row.tercera_edad && row.real_mes ? `${((Number(row.tercera_edad)/Number(row.real_mes))*100).toFixed(1)}%` : '—'}</td>
-                <td className="text-center px-3 py-2 w-16 whitespace-nowrap">{row.regularizacion || '—'}</td>
-              </tr>
-            ))}
+            {renderRows()}
           </tbody>
         </table>
       </div>

@@ -227,7 +227,10 @@ const getIndicadoresDashboard = async (req, res) => {
         )`;
 
         const queryKPI = (columna) => {
-            const groupCol = columna === 'e.supervisor' ? 'supervisor' : 'responsable_nombre';
+            const groupCol     = columna === 'e.supervisor' ? 'supervisor' : 'responsable_nombre';
+            const esSupervisor = columna === 'e.supervisor';
+            const extraSelect  = esSupervisor ? '' : ", COALESCE(supervisor, 'SIN ASIGNAR') AS sup_nombre";
+            const extraGroup   = esSupervisor ? '' : ', 2';
             return `
             WITH _base AS MATERIALIZED (
                 SELECT
@@ -252,7 +255,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
+                ${extraSelect},
                 COUNT(*) FILTER (WHERE _bc_date BETWEEN $1::date AND $2::date) AS leads_totales,
                 COUNT(*) FILTER (
                     WHERE (etapa ILIKE '%ATC%' OR etapa ILIKE '%SOPORTE%')
@@ -339,10 +343,31 @@ const getIndicadoresDashboard = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
-            GROUP BY 1
+            GROUP BY 1${extraGroup}
             ORDER BY gestionables DESC
             `;
         };
+
+        // ── Ventas del día desde formulario de ingreso (envios_ventas) — VELSA ──
+        const queryVentasDiaFormAsesor = `
+            SELECT LOWER(TRIM(ev.nombre_atc)) AS asesor_key, COUNT(*)::int AS ventas_dia_form
+            FROM public.envios_ventas ev
+            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'VELSA'
+            GROUP BY 1
+        `;
+        const queryVentasDiaFormSup = `
+            SELECT COALESCE(e.supervisor, 'SIN ASIGNAR') AS sup_key, COUNT(*)::int AS ventas_dia_form
+            FROM public.envios_ventas ev
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE LOWER(TRIM(e2.nombre_completo)) = LOWER(TRIM(ev.nombre_atc))
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
+            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'VELSA'
+            GROUP BY 1
+        `;
 
         const queryBacklog = (columna) => `
             SELECT
@@ -467,11 +492,13 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resVDFormAsesor, resVDFormSup] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('nr.responsable_nombre'), values),
+            pool.query(queryVentasDiaFormAsesor, values),
+            pool.query(queryVentasDiaFormSup, values),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -481,8 +508,24 @@ const getIndicadoresDashboard = async (req, res) => {
             });
         };
 
-        const supervisoresConBacklog = mergeBacklog(resSup.rows, resBacklogSup.rows);
-        const asesoresConBacklog = mergeBacklog(resAses.rows, resBacklogAses.rows);
+        const mergeVentasDiaForm = (filas, evRows, keyField) => {
+            return filas.map(row => {
+                const key = (row.nombre_grupo || '').toLowerCase();
+                const ev  = evRows.find(v => v[keyField] === key);
+                const ventas_dia_form   = ev ? Number(ev.ventas_dia_form) : 0;
+                const venta_seguimiento = Math.max(0, Number(row.ventas_crm || 0) - ventas_dia_form);
+                return { ...row, ventas_dia_form, venta_seguimiento };
+            });
+        };
+
+        const supervisoresConBacklog = mergeVentasDiaForm(
+            mergeBacklog(resSup.rows, resBacklogSup.rows),
+            resVDFormSup.rows, 'sup_key'
+        );
+        const asesoresConBacklog = mergeVentasDiaForm(
+            mergeBacklog(resAses.rows, resBacklogAses.rows),
+            resVDFormAsesor.rows, 'asesor_key'
+        );
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

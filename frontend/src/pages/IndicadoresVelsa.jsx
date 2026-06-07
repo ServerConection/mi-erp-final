@@ -1207,8 +1207,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={2} variant="stone" label="Ingresos CRM"    meta={metaDinamica(1200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                color="border-l-orange-600" />
             <KpiMini index={3} variant="stone" label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}            color="border-l-amber-600" />
             <KpiMini index={4} variant="stone" label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}               color="border-l-green-600" />
-            <KpiMini index={4} variant="stone" label="V. Día (Form.)" meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}              color="border-l-orange-500" />
-            <KpiMini index={4} variant="stone" label="V. Seguimiento" meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}           color="border-l-amber-500" />
+            <KpiMini index={4} variant="stone" label="V. Día (CRM+JOT)" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}              color="border-l-orange-500" />
+            <KpiMini index={4} variant="stone" label="V. Seguimiento"  meta={metaDinamica(0,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}           color="border-l-amber-500" />
             <KpiMini index={5} variant="stone" label="Efectividad"     meta="90%"  real={`${stats.efectividad}%`}             color="border-l-orange-400" />
             <KpiMini index={6} variant="stone" label="Tasa Inst."      meta="80%"  real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
             <KpiMini index={7} variant="stone" label="Tarjeta %"       meta="30%"  real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />

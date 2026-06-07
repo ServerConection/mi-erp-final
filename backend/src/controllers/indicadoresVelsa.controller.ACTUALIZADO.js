@@ -266,6 +266,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _bcerrado_date BETWEEN $1::date AND $2::date
                     AND etapa = 'VENTA SUBIDA'
                 ) AS ventas_crm,
+                COUNT(*) FILTER (
+                    WHERE _bc_date BETWEEN $1::date AND $2::date
+                    AND etapa = 'VENTA SUBIDA'
+                    AND _jf_date = _bc_date
+                ) AS ventas_del_dia,
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
@@ -347,27 +352,6 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY gestionables DESC
             `;
         };
-
-        // ── Ventas del día desde formulario de ingreso (envios_ventas) — VELSA ──
-        const queryVentasDiaFormAsesor = `
-            SELECT LOWER(TRIM(ev.nombre_atc)) AS asesor_key, COUNT(*)::int AS ventas_dia_form
-            FROM public.envios_ventas ev
-            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'VELSA'
-            GROUP BY 1
-        `;
-        const queryVentasDiaFormSup = `
-            SELECT COALESCE(e.supervisor, 'SIN ASIGNAR') AS sup_key, COUNT(*)::int AS ventas_dia_form
-            FROM public.envios_ventas ev
-            LEFT JOIN LATERAL (
-                SELECT e2.supervisor FROM public.empleados e2
-                WHERE LOWER(TRIM(e2.nombre_completo)) = LOWER(TRIM(ev.nombre_atc))
-                ORDER BY e2.codigo::int DESC LIMIT 1
-            ) e ON true
-            WHERE ev.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            AND UPPER(TRIM(COALESCE(ev.distribuidor_autorizado,''))) = 'VELSA'
-            GROUP BY 1
-        `;
 
         const queryBacklog = (columna) => `
             SELECT
@@ -492,13 +476,11 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resVDFormAsesor, resVDFormSup] = await Promise.all([
+        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('nr.responsable_nombre'), values),
-            pool.query(queryVentasDiaFormAsesor, values),
-            pool.query(queryVentasDiaFormSup, values),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -508,24 +490,14 @@ const getIndicadoresDashboard = async (req, res) => {
             });
         };
 
-        const mergeVentasDiaForm = (filas, evRows, keyField) => {
-            return filas.map(row => {
-                const key = (row.nombre_grupo || '').toLowerCase();
-                const ev  = evRows.find(v => v[keyField] === key);
-                const ventas_dia_form   = ev ? Number(ev.ventas_dia_form) : 0;
-                const venta_seguimiento = Math.max(0, Number(row.ventas_crm || 0) - ventas_dia_form);
-                return { ...row, ventas_dia_form, venta_seguimiento };
-            });
-        };
+        const addSeguimiento = (filas) => filas.map(row => ({
+            ...row,
+            ventas_dia_form:   Number(row.ventas_del_dia || 0),
+            venta_seguimiento: Math.max(0, Number(row.ventas_crm || 0) - Number(row.ventas_del_dia || 0)),
+        }));
 
-        const supervisoresConBacklog = mergeVentasDiaForm(
-            mergeBacklog(resSup.rows, resBacklogSup.rows),
-            resVDFormSup.rows, 'sup_key'
-        );
-        const asesoresConBacklog = mergeVentasDiaForm(
-            mergeBacklog(resAses.rows, resBacklogAses.rows),
-            resVDFormAsesor.rows, 'asesor_key'
-        );
+        const supervisoresConBacklog = addSeguimiento(mergeBacklog(resSup.rows, resBacklogSup.rows));
+        const asesoresConBacklog     = addSeguimiento(mergeBacklog(resAses.rows, resBacklogAses.rows));
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

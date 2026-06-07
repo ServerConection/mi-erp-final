@@ -1525,8 +1525,8 @@ ${asesoresPDF.length>0?`
             <KpiMini index={2} label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
             <KpiMini index={3} label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
             <KpiMini index={4} label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDelDia}                  color="border-l-green-600" />
-            <KpiMini index={4} label="V. Día (Form.)" meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDiaForm}                 color="border-l-orange-500" />
-            <KpiMini index={4} label="V. Seguimiento" meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaSeguimiento}              color="border-l-amber-500" />
+            <KpiMini index={4} label="V. Día (CRM+JOT)" meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDiaForm}                 color="border-l-orange-500" />
+            <KpiMini index={4} label="V. Seguimiento"  meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaSeguimiento}              color="border-l-amber-500" />
             <KpiMini index={5} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
             <KpiMini index={6} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
             <KpiMini index={7} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />

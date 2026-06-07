@@ -266,11 +266,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _bcerrado_date BETWEEN $1::date AND $2::date
                     AND etapa = 'VENTA SUBIDA'
                 ) AS ventas_crm,
-                COUNT(*) FILTER (
-                    WHERE _bc_date BETWEEN $1::date AND $2::date
-                    AND etapa = 'VENTA SUBIDA'
-                    AND _jf_date = _bc_date
-                ) AS ventas_del_dia,
+                0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
@@ -352,6 +348,36 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY gestionables DESC
             `;
         };
+
+        // ── VENTAS DEL DÍA VELSA: nr.creado_en + VENTA SUBIDA + JOT mismo día ──
+        const queryVentasDiaAsesor = `
+            SELECT
+                nr.responsable_nombre AS nombre_grupo,
+                COUNT(DISTINCT jf.id_bitrix)::int AS ventas_del_dia
+            FROM public.vw_jotform_velsa_netlife_completo jf
+            JOIN public.negociaciones_reporteria nr ON nr.id = jf.id_bitrix
+            WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND nr.etapa = 'VENTA SUBIDA'
+            AND nr.creado_en::date = jf.fecha_registro_sistema::date
+            AND nr.responsable_nombre IS NOT NULL
+            GROUP BY 1
+        `;
+        const queryVentasDiaSup = `
+            SELECT
+                COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(DISTINCT jf.id_bitrix)::int AS ventas_del_dia
+            FROM public.vw_jotform_velsa_netlife_completo jf
+            JOIN public.negociaciones_reporteria nr ON nr.id = jf.id_bitrix
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE e2.nombre_completo = nr.responsable_nombre
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
+            WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND nr.etapa = 'VENTA SUBIDA'
+            AND nr.creado_en::date = jf.fecha_registro_sistema::date
+            GROUP BY 1
+        `;
 
         const queryBacklog = (columna) => `
             SELECT
@@ -476,11 +502,14 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses] = await Promise.all([
+        const dateValues = [desde, hasta];
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resVDASup, resVDAsesor] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('nr.responsable_nombre'), values),
+            pool.query(queryVentasDiaSup, dateValues),
+            pool.query(queryVentasDiaAsesor, dateValues),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -490,14 +519,19 @@ const getIndicadoresDashboard = async (req, res) => {
             });
         };
 
-        const addSeguimiento = (filas) => filas.map(row => ({
-            ...row,
-            ventas_dia_form:   Number(row.ventas_del_dia || 0),
-            venta_seguimiento: Math.max(0, Number(row.ventas_crm || 0) - Number(row.ventas_del_dia || 0)),
-        }));
+        const mergeVentasDia = (filas, vdRows) => filas.map(row => {
+            const vd = vdRows.find(v => v.nombre_grupo === row.nombre_grupo);
+            const ventas_del_dia_real = vd ? Number(vd.ventas_del_dia) : 0;
+            return {
+                ...row,
+                ventas_del_dia:    ventas_del_dia_real,
+                ventas_dia_form:   ventas_del_dia_real,
+                venta_seguimiento: Math.max(0, Number(row.ventas_crm || 0) - ventas_del_dia_real),
+            };
+        });
 
-        const supervisoresConBacklog = addSeguimiento(mergeBacklog(resSup.rows, resBacklogSup.rows));
-        const asesoresConBacklog     = addSeguimiento(mergeBacklog(resAses.rows, resBacklogAses.rows));
+        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows, resBacklogSup.rows), resVDASup.rows);
+        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows, resBacklogAses.rows), resVDAsesor.rows);
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

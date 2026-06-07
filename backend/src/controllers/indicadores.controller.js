@@ -313,11 +313,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _bcerrado_date BETWEEN $1::date AND $2::date
                     AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
-                COUNT(*) FILTER (
-                    WHERE _bc_date BETWEEN $1::date AND $2::date
-                    AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-                    AND _jf_date = _bc_date
-                ) AS ventas_del_dia,
+                0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
@@ -413,6 +409,40 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY gestionables DESC
             `;
         };
+
+        // ── VENTAS DEL DÍA: lead creado en Bitrix + VENTA SUBIDA + Jotform mismo día ──
+        // Self-join sobre mestra_bitrix: filas CRM (b_*) + filas JOT (j_*)
+        // Solo usa $1 y $2 (fecha_desde, fecha_hasta)
+        const queryVentasDiaAsesor = `
+            SELECT
+                mb_crm.b_persona_responsable AS nombre_grupo,
+                COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
+            FROM public.mestra_bitrix mb_jot
+            JOIN public.mestra_bitrix mb_crm
+                ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            AND mb_crm.b_persona_responsable IS NOT NULL
+            GROUP BY 1
+        `;
+        const queryVentasDiaSup = `
+            SELECT
+                COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
+            FROM public.mestra_bitrix mb_jot
+            JOIN public.mestra_bitrix mb_crm
+                ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE e2.nombre_completo = mb_crm.b_persona_responsable
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
+            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            GROUP BY 1
+        `;
 
         // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
         // PERO cuya orden fue registrada en JotForm ANTES del inicio del período (fecha_desde).
@@ -558,13 +588,16 @@ const getIndicadoresDashboard = async (req, res) => {
             ]),
         ]);
 
-        // Lote 2: tablas detalle + backlogs + activaciones
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia] = await Promise.all([
+        // Lote 2: tablas + backlogs + activaciones + ventas del día (self-join)
+        const dateValues = [desde, hasta]; // solo $1 y $2 para queries de ventas del día
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('mb.b_persona_responsable'), values),
             pool.query(queryActivacionesPorDia, values),
+            pool.query(queryVentasDiaSup, dateValues),
+            pool.query(queryVentasDiaAsesor, dateValues),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -574,15 +607,20 @@ const getIndicadoresDashboard = async (req, res) => {
             });
         };
 
-        // venta_seguimiento = ventas_crm - ventas_del_dia (ambas vienen del queryKPI)
-        const addSeguimiento = (filas) => filas.map(row => ({
-            ...row,
-            ventas_dia_form:    Number(row.ventas_del_dia || 0),  // alias para el frontend
-            venta_seguimiento:  Math.max(0, Number(row.ventas_crm || 0) - Number(row.ventas_del_dia || 0)),
-        }));
+        // Merge ventas del día (self-join) + calcular venta_seguimiento
+        const mergeVentasDia = (filas, vdRows) => filas.map(row => {
+            const vd = vdRows.find(v => v.nombre_grupo === row.nombre_grupo);
+            const ventas_del_dia_real = vd ? Number(vd.ventas_del_dia) : 0;
+            return {
+                ...row,
+                ventas_del_dia:    ventas_del_dia_real,
+                ventas_dia_form:   ventas_del_dia_real,
+                venta_seguimiento: Math.max(0, Number(row.ventas_crm || 0) - ventas_del_dia_real),
+            };
+        });
 
-        const supervisoresConBacklog = addSeguimiento(mergeBacklog(resSup.rows, resBacklogSup.rows));
-        const asesoresConBacklog     = addSeguimiento(mergeBacklog(resAses.rows, resBacklogAses.rows));
+        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows, resBacklogSup.rows), resVDASup.rows);
+        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows, resBacklogAses.rows), resVDAsesor.rows);
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

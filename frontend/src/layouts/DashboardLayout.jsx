@@ -487,11 +487,15 @@ export default function DashboardLayout() {
         .dl-sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
         @keyframes dl-fadein { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
         .dl-nav-label { animation: dl-fadein .22s cubic-bezier(.16,1,.3,1) both; }
-        .dl-nav-btn { transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
-        .dl-nav-btn:hover:not(.dl-active) { background: rgba(37,99,235,.05) !important; color: #1e40af !important; }
-        .dl-active { background: linear-gradient(90deg,rgba(37,99,235,.12),rgba(37,99,235,.04)) !important; color: #2563eb !important; border-left: 3px solid #2563eb !important; }
-        .dl-logout:hover { background: #fef2f2 !important; }
+        .dl-nav-btn { transition: background .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
+        .dl-nav-btn:hover:not(.dl-active) { background: rgba(37,99,235,.05) !important; color: #1e40af !important; transform: translateX(2px); }
+        .dl-active { background: linear-gradient(90deg,rgba(37,99,235,.12),rgba(37,99,235,.04)) !important; color: #2563eb !important; border-left: 3px solid #2563eb !important; box-shadow: 0 2px 10px -2px rgba(37,99,235,.18) !important; }
+        .dl-logout { transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+        .dl-logout:hover { background: #fef2f2 !important; border-color: #fca5a5 !important; transform: translateY(-1px); }
         @keyframes dl-logoshine { 0%,100%{opacity:.7} 50%{opacity:1} }
+        .dl-header-shadow { box-shadow: 0 1px 0 #e8edf5, 0 4px 16px -4px rgba(15,23,42,.06) !important; }
+        .dl-status-dot { animation: dl-pulse 2.4s ease-in-out infinite; }
+        @keyframes dl-pulse { 0%,100% { box-shadow: 0 0 0 2.5px rgba(34,197,94,.22); } 50% { box-shadow: 0 0 0 4.5px rgba(34,197,94,.14); } }
       `}</style>
 
       {/* ── Fondo general claro ── */}
@@ -689,13 +693,12 @@ export default function DashboardLayout() {
 
           {/* Header */}
           <header
-            className="shrink-0 flex items-center justify-between"
+            className="shrink-0 flex items-center justify-between dl-header-shadow"
             style={{
               height: 60,
               padding: "0 1.5rem",
               background: "white",
               borderBottom: "1px solid #e8edf5",
-              boxShadow: "0 1px 0 #e8edf5, 0 2px 12px rgba(15,23,42,.04)",
             }}
           >
             <div className="flex items-center gap-3">
@@ -738,7 +741,7 @@ export default function DashboardLayout() {
                 background: "#f8fafc", border: "1px solid #e2e8f0",
                 borderRadius: 99, padding: "4px 12px 4px 8px",
               }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 0 2.5px rgba(34,197,94,.22)", flexShrink: 0 }} />
+                <div className="dl-status-dot" style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
                 <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#334155", letterSpacing: ".02em" }}>
                   {user.usuario}
                 </span>

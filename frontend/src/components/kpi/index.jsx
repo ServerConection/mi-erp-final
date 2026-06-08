@@ -38,10 +38,11 @@ if (typeof document !== "undefined" && !document.getElementById(STYLES_ID)) {
     }
     .kpi-card {
       animation: kpiFadeUp .38s cubic-bezier(.4,0,.2,1) both;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04);
     }
     .kpi-card:hover {
       transform: translateY(-3px) !important;
-      box-shadow: 0 8px 28px rgba(0,0,0,.09) !important;
+      box-shadow: 0 12px 32px -6px rgba(15,23,42,.14), 0 4px 10px rgba(15,23,42,.06) !important;
     }
     .kpi-bar-fill {
       animation: kpiBarGrow .75s cubic-bezier(.4,0,.2,1) both;

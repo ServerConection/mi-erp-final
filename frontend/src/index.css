@@ -183,6 +183,53 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   RECHARTS — ENTRADA SUAVE Y PULIDO GENERAL
+═══════════════════════════════════════════════════════════════════════ */
+@keyframes erpChartFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.recharts-wrapper {
+  animation: erpChartFadeIn .4s cubic-bezier(.4,0,.2,1) both;
+}
+
+/* Líneas más suaves, con sombra leve para destacar sobre el grid */
+.recharts-line-curve {
+  filter: drop-shadow(0 2px 4px rgba(15,23,42,.08));
+}
+
+/* Active dot con halo sutil para resaltar el punto activo */
+.recharts-active-dot circle {
+  filter: drop-shadow(0 0 0 3px rgba(37,99,235,.15));
+}
+
+/* Sectores de pastel/dona con separación visual más limpia */
+.recharts-pie-sector path,
+.recharts-sector path {
+  stroke: #ffffff !important;
+  stroke-width: 2px !important;
+  transition: filter .18s ease, transform .18s ease !important;
+  transform-origin: center;
+}
+.recharts-pie-sector:hover path {
+  filter: brightness(1.08) !important;
+}
+
+/* Leyenda — viñetas redondeadas y mejor espaciado */
+.recharts-legend-item {
+  margin-right: 16px !important;
+}
+.recharts-legend-icon {
+  border-radius: 3px !important;
+}
+
+/* Grid radial (gráficas radar/polar) más discreto */
+.recharts-polar-grid-concentric path,
+.recharts-polar-grid-angle line {
+  stroke: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    CARDS — HOVER LIFT
 ═══════════════════════════════════════════════════════════════════════ */
 .erp-card {

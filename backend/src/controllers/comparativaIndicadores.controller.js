@@ -1,5 +1,17 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
+// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
+// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// ─────────────────────────────────────────────────────────────────────────────
+const esGestionableExpr = (col) => `(
+    ${col} NOT ILIKE '%ATC%'
+    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
+    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
+    AND ${col} NOT ILIKE '%DUPLICADO%'
+)`;
+
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
@@ -101,7 +113,7 @@ const getComparativaSupervisores = async (req, res) => {
         ) AS leads_totales,
         COUNT(DISTINCT mb.b_id) FILTER (
           WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-          AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+          AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
         ) AS gestionables,
         COUNT(DISTINCT mb.j_id_bitrix) FILTER (
           WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -163,7 +175,7 @@ const getComparativaSupervisores = async (req, res) => {
           END AS num_semana,
           COUNT(DISTINCT mb.b_id) AS leads_totales,
           COUNT(DISTINCT mb.b_id) FILTER (
-            WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+            WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
           ) AS gestionables
         FROM mestra_bitrix mb
         ${joinEmpleados}

@@ -1,5 +1,17 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
+// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
+// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// ─────────────────────────────────────────────────────────────────────────────
+const esGestionableExpr = (col) => `(
+    ${col} NOT ILIKE '%ATC%'
+    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
+    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
+    AND ${col} NOT ILIKE '%DUPLICADO%'
+)`;
+
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
 const getPrimerDiaMesEcuador = () => {
@@ -92,7 +104,7 @@ const queryKPI = (columna, filters) => `
     COUNT(*) FILTER (
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
           OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)
-      AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}
+      AND ${esGestionableExpr('mv.etapa_crm')}
     ) AS gestionables,
     COUNT(*) FILTER (
       WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
@@ -348,11 +360,11 @@ async function getMonitoreoDiarioVelsa(req, res) {
       SELECT
         COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}) AS real_dia_leads,
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS real_dia_leads,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
         COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) = 'VENTA SUBIDA') AS v_subida_crm_hoy,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}) AS gestionables
+        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS gestionables
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY real_mes_leads DESC
@@ -404,11 +416,11 @@ async function getReporte180Velsa(req, res) {
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND UPPER(mv.etapa_crm) IN ${ETAPAS_GESTIONABLES}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric

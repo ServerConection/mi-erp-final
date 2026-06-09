@@ -1,5 +1,17 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
+// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
+// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// ─────────────────────────────────────────────────────────────────────────────
+const esGestionableExpr = (col) => `(
+    ${col} NOT ILIKE '%ATC%'
+    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
+    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
+    AND ${col} NOT ILIKE '%DUPLICADO%'
+)`;
+
 // ─── helpers de fecha ───────────────────────────────────────────────────────
 const getFechaEcuador = () => {
     const ahora = new Date();
@@ -79,7 +91,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
                         COUNT(*) FILTER (WHERE ${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date)::numeric
                         / NULLIF(COUNT(*) FILTER (
                             WHERE ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date
-                            AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                            AND ${esGestionableExpr('mv.etapa_crm')}
                         ), 0)
                     , 0) * 100, 2) AS efectividad_realz,
                     COUNT(*) FILTER (
@@ -89,7 +101,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
                     COUNT(*) FILTER (
                         WHERE (${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date
                             OR ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date)
-                        AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mv.etapa_crm')}
                     ) AS gestionables,
                     COUNT(*) FILTER (WHERE ${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date) AS ingresos_reales,
                     COUNT(*) FILTER (
@@ -117,14 +129,14 @@ async function getIndicadoresDashboardNuevo(req, res) {
                     NULLIF(COUNT(*) FILTER (
                         WHERE (${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date
                             OR ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date)
-                        AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mv.etapa_crm')}
                     ), 0) * 100)::numeric(10,2) AS descarte,
                     ROUND( COALESCE(
                         COUNT(*) FILTER (WHERE ${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date)::numeric
                         / NULLIF(COUNT(*) FILTER (
                             WHERE (${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date
                                 OR ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date)
-                            AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                            AND ${esGestionableExpr('mv.etapa_crm')}
                         ), 0)
                     , 0) * 100, 2) AS efectividad_real,
                     ROUND(COALESCE(
@@ -136,7 +148,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
                         / NULLIF(COUNT(*) FILTER (
                             WHERE (${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date
                                 OR ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date)
-                            AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                            AND ${esGestionableExpr('mv.etapa_crm')}
                         ), 0)
                     , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                     ROUND( COALESCE(
@@ -146,7 +158,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
                         )::numeric
                         / NULLIF(COUNT(*) FILTER (
                             WHERE ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date
-                            AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                            AND ${esGestionableExpr('mv.etapa_crm')}
                         ), 0)
                     , 0) * 100, 2) AS eficiencia
                 FROM ${MV}
@@ -340,7 +352,7 @@ async function getMonitoreoDiarioNuevo(req, res) {
                 COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
                 COUNT(*) FILTER (
                     WHERE mv.fecha_creacion_crm::date = $2::date
-                    AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('mv.etapa_crm')}
                 ) AS real_dia_leads,
                 COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
                 COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
@@ -355,7 +367,7 @@ async function getMonitoreoDiarioNuevo(req, res) {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-                        AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mv.etapa_crm')}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
                 ROUND(COALESCE(
@@ -448,7 +460,7 @@ async function getReporte180Nuevo(req, res) {
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
                             OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)
-                        AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mv.etapa_crm')}
                     ), 0)
                 , 0) * 100, 2) AS pct_descarte,
                 ROUND(COALESCE(
@@ -456,7 +468,7 @@ async function getReporte180Nuevo(req, res) {
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
                             OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)
-                        AND mv.etapa_crm IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mv.etapa_crm')}
                     ), 0)
                 , 0) * 100, 2) AS pct_efectividad,
                 ROUND(COALESCE(

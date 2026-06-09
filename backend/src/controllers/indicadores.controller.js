@@ -31,6 +31,18 @@ const setDashboardCache = (key, data) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
+// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
+// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// ─────────────────────────────────────────────────────────────────────────────
+const esGestionableExpr = (col) => `(
+    ${col} NOT ILIKE '%ATC%'
+    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
+    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
+    AND ${col} NOT ILIKE '%DUPLICADO%'
+)`;
+
 const getEtapasCache = async () => {
   const ahora = Date.now();
   if (_cacheEtapas && ahora < _cacheEtapasTTL) return _cacheEtapas;
@@ -318,7 +330,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _bcerrado_date BETWEEN $1::date AND $2::date
-                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
@@ -328,7 +340,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
     WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date 
            OR _bc_date BETWEEN $1::date AND $2::date)
-    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+    AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
     AND (
         -- Si es VENTA SUBIDA, siempre cuenta sin importar origen
         b_etapa_de_la_negociacion = 'VENTA SUBIDA'
@@ -369,7 +381,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 )::numeric /
                 NULLIF(COUNT(*) FILTER (
                     WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
-                    AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                 ), 0) * 100)::numeric(10,2) AS descarte,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
@@ -380,7 +392,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
-                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
@@ -391,7 +403,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
-                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND( COALESCE(
@@ -401,7 +413,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
-                        AND b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
@@ -749,7 +761,7 @@ LEFT JOIN LATERAL (
                 ) AS real_mes_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
-                    AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                 ) AS real_dia_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -768,7 +780,7 @@ LEFT JOIN LATERAL (
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
                 ROUND(COALESCE(
@@ -994,7 +1006,7 @@ const getReporte180 = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS pct_descarte,
                 ROUND(COALESCE(
@@ -1003,7 +1015,7 @@ const getReporte180 = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS pct_efectividad,
                 ROUND(COALESCE(

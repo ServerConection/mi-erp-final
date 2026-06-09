@@ -58,6 +58,18 @@ const setDashboardCache = (key, data) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
+// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
+// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// ─────────────────────────────────────────────────────────────────────────────
+const esGestionableExpr = (col) => `(
+    ${col} NOT ILIKE '%ATC%'
+    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
+    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
+    AND ${col} NOT ILIKE '%DUPLICADO%'
+)`;
+
 const getEtapasCache = async () => {
   const ahora = Date.now();
   if (_cacheEtapas && ahora < _cacheEtapasTTL) return _cacheEtapas;
@@ -271,7 +283,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _bcerrado_date BETWEEN $1::date AND $2::date
-                        AND etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('etapa')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
@@ -280,7 +292,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS por_regularizar,
                 COUNT(*) FILTER (
                     WHERE (_bc_date BETWEEN $1::date AND $2::date OR _bcerrado_date BETWEEN $1::date AND $2::date)
-                    AND etapa IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('etapa')}
                 ) AS gestionables,
                 COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date) AS ingresos_reales,
                 COUNT(*) FILTER (
@@ -308,7 +320,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 )::numeric /
                 NULLIF(COUNT(*) FILTER (
                     WHERE (_bc_date BETWEEN $1::date AND $2::date OR _bcerrado_date BETWEEN $1::date AND $2::date)
-                    AND etapa IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('etapa')}
                 ), 0) * 100)::numeric(10,2) AS descarte,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
@@ -319,7 +331,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_bc_date BETWEEN $1::date AND $2::date OR _bcerrado_date BETWEEN $1::date AND $2::date)
-                        AND etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('etapa')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
@@ -330,7 +342,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND estado_venta_netlife = 'ACTIVO')::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_bc_date BETWEEN $1::date AND $2::date OR _bcerrado_date BETWEEN $1::date AND $2::date)
-                        AND etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('etapa')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND( COALESCE(
@@ -340,7 +352,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
-                        AND etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('etapa')}
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
@@ -659,7 +671,7 @@ LEFT JOIN LATERAL (
                 ) AS real_mes_leads,
                 COUNT(DISTINCT nr.id) FILTER (
                     WHERE nr.modificado_en::date = $2::date
-                    AND nr.etapa IN ${ETAPAS_GESTIONABLES}
+                    AND ${esGestionableExpr('nr.etapa')}
                 ) AS real_dia_leads,
                 COUNT(DISTINCT nr.id) FILTER (
                     WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
@@ -678,7 +690,7 @@ LEFT JOIN LATERAL (
                     )::numeric
                     / NULLIF(COUNT(DISTINCT nr.id) FILTER (
                         WHERE nr.creado_en::date BETWEEN $1::date AND $2::date
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('nr.etapa')}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
                 ROUND(COALESCE(
@@ -850,7 +862,7 @@ const getReporte180 = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('nr.etapa')}
                     ), 0)
                 , 0) * 100, 2) AS pct_descarte,
                 ROUND(COALESCE(
@@ -859,7 +871,7 @@ const getReporte180 = async (req, res) => {
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date OR nr.creado_en::date BETWEEN $1::date AND $2::date)
-                        AND nr.etapa IN ${ETAPAS_GESTIONABLES}
+                        AND ${esGestionableExpr('nr.etapa')}
                     ), 0)
                 , 0) * 100, 2) AS pct_efectividad,
                 ROUND(COALESCE(

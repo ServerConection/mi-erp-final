@@ -27,6 +27,7 @@ const backofficeRoutes             = require('./routes/backoffice.routes');
 const mundialitoRoutes             = require('./routes/mundialito.routes');
 const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
+const whatsappRoutes               = require('./routes/whatsapp.routes');
 
 const app = express();
 
@@ -110,6 +111,12 @@ app.use('/uploads', express.static(uploadsPath, {
   fallthrough: true,
 }));
 app.use('/api/broadcast',         broadcastRoutes);
+
+// ── Módulo WhatsApp ───────────────────────────────────────────
+// WA_UPLOADS_DIR: en Render apunta al disco persistente (/var/data/wa_uploads)
+const waUploadsPath = process.env.WA_UPLOADS_DIR || path.resolve(__dirname, '..', 'wa_uploads');
+app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
+app.use('/api/wa', whatsappRoutes);
 
 // Handler 404
 app.use((req, res) => {

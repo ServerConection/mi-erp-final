@@ -36,4 +36,18 @@ async function enviarOTP(correo, otp) {
   }
 }
 
-module.exports = { enviarOTP };
+// Envío genérico — usado por FlowEngine (emailNode). No afecta el flujo OTP.
+async function send({ to, subject, body, html }) {
+  if (!to) throw new Error('email.send: destinatario requerido');
+  const info = await transporter.sendMail({
+    from: process.env.MAIL_FROM || process.env.MAIL_USER,
+    to,
+    subject: subject || '(sin asunto)',
+    text: body || '',
+    html: html || undefined,
+  });
+  console.log('EMAIL enviado:', info.messageId, '→', to);
+  return true;
+}
+
+module.exports = { enviarOTP, send };

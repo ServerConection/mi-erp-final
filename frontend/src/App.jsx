@@ -39,6 +39,12 @@ const Backoffice           = lazy(() => import("./pages/Backoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
 const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
+// ── Módulo WhatsApp ──────────────────────────────────────────────────────────
+const WaLineas             = lazy(() => import("./pages/WaLineas"));
+const WaCampanas           = lazy(() => import("./pages/WaCampanas"));
+const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
+const WaContactos          = lazy(() => import("./pages/WaContactos"));
+const WaInbox              = lazy(() => import("./pages/WaInbox"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -103,6 +109,13 @@ export default function App() {
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
+
+            {/* ── Módulo WhatsApp ──────────────────────────────── */}
+            <Route path="whatsapp/lineas"           element={<WaLineas />} />
+            <Route path="whatsapp/campanas"         element={<WaCampanas />} />
+            <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
+            <Route path="whatsapp/contactos"        element={<WaContactos />} />
+            <Route path="whatsapp/inbox"            element={<WaInbox />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

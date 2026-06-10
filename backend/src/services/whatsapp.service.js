@@ -1,31 +1,86 @@
-// whatsapp.service.js
+/**
+ * WhatsApp Service — ERP
+ * Reemplaza el stub. Usa BaileysManager + CampaignEngine.
+ */
+const { getIO } = require('../config/socket');
+const BaileysManager     = require('./BaileysManager');
+const CampaignEngine     = require('./CampaignEngine');
+const WaTimeoutService   = require('./wa_timeout.service');
+const WaSchedulerService = require('./wa_scheduler.service');
+const pool = require('../config/db');
+const path = require('path');
+const fs   = require('fs');
 
-let estado = 'desconectado';
+let baileysManager = null;
+let campaignEngine = null;
+let timeoutService = null;
+let scheduler      = null;
 
 const iniciarWhatsApp = async () => {
-  console.log('[WhatsApp] Servicio no configurado — omitiendo inicio');
-  estado = 'desconectado';
+  try {
+    const io = getIO();
+
+    const authDir = process.env.WA_AUTH_DIR || path.join(__dirname, '../../auth_sessions');
+    fs.mkdirSync(authDir, { recursive: true });
+
+    baileysManager = new BaileysManager(io);
+    campaignEngine = new CampaignEngine(baileysManager, io);
+    timeoutService = new WaTimeoutService(baileysManager, io);
+    scheduler      = new WaSchedulerService({ baileysManager, campaignEngine, io });
+
+    // Registrar en la app Express para que los controladores accedan vía req.app.get(...)
+    const app = require('../app');
+    app.set('baileysManager', baileysManager);
+    app.set('campaignEngine', campaignEngine);
+
+    timeoutService.start();
+    scheduler.start();
+
+    await campaignEngine.resumePendingOnBoot();
+
+    const { rows } = await pool.query(
+      "SELECT id, name FROM lines WHERE status = 'connected'"
+    );
+    if (rows.length) {
+      console.log('[WA] Reconectando', rows.length, 'línea(s)...');
+      for (const line of rows) {
+        try { await baileysManager.connect(line.id); }
+        catch (e) { console.warn('[WA] Error reconectando', line.name, ':', e.message); }
+      }
+    }
+    console.log('[WA] Módulo WhatsApp iniciado');
+  } catch (err) {
+    console.error('[WA] Error al iniciar:', err.message);
+  }
 };
 
-const getEstado = () => {
-  return { estado };
+const getBaileysManager = () => baileysManager;
+const getCampaignEngine = () => campaignEngine;
+
+const getEstado = () => ({
+  estado: baileysManager ? 'activo' : 'desconectado',
+  lineas: baileysManager ? Object.keys(baileysManager.instances).length : 0,
+});
+
+const enviarMensaje = async (lineId, numero, mensaje) => {
+  if (!baileysManager) return { success: false, message: 'WhatsApp no inicializado' };
+  try {
+    await baileysManager.sendText(lineId, numero, mensaje);
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
 };
 
-const formatearAlerta = ({ supervisor, condicion, asesores }) => {
-  return `🚨 ALERTA
-Supervisor: ${supervisor}
-Condición: ${condicion}
-Asesores: ${asesores.map(a => a.nombre).join(', ')}`;
-};
-
-const enviarMensaje = async (numero, mensaje) => {
-  console.log(`[WhatsApp] ${numero}: ${mensaje}`);
-  return { success: false, message: 'Servicio no configurado' };
-};
+// Mantiene compatibilidad con el código existente del ERP
+const formatearAlerta = ({ supervisor, condicion, asesores }) =>
+  `🚨 ALERTA\nSupervisor: ${supervisor}\nCondición: ${condicion}\nAsesores: ${asesores.map(a => a.nombre).join(', ')}`;
 
 module.exports = {
   iniciarWhatsApp,
-  enviarMensaje,
+  getBaileysManager,
+  getCampaignEngine,
   getEstado,
-  formatearAlerta
+  enviarMensaje,
+  formatearAlerta,
 };

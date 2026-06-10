@@ -358,6 +358,13 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p, e) => forEmpresa(p, e, 'NOVONET') },
   { name: "📡 Broadcast VELSA",   path: "/broadcast-velsa",   icon: "📡",
     accessCheck: (p, e) => forEmpresa(p, e, 'VELSA') },
+  // ── WhatsApp ────────────────────────────────────────────────────────────────
+  { name: "─── WhatsApp ───", path: null, icon: "", accessCheck: (p) => p !== 'CONSULTOR', isSeparator: true },
+  { name: "📱 Líneas",      path: "/whatsapp/lineas",    icon: "📱", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "💬 Inbox",       path: "/whatsapp/inbox",     icon: "💬", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "📣 Campañas",    path: "/whatsapp/campanas",  icon: "📣", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "🤖 Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "👥 Contactos",   path: "/whatsapp/contactos", icon: "👥", accessCheck: (p) => p !== 'CONSULTOR' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -438,7 +445,7 @@ export default function DashboardLayout() {
     if (!user) return;
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
 
-    const itemActual = ALL_MENU_ITEMS.find(m => m.path === location.pathname);
+    const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
 
     const p = (user.perfil  || '').toUpperCase();
@@ -472,6 +479,9 @@ export default function DashboardLayout() {
     }
     return !item.permiso || permisos.includes(item.permiso);
   });
+
+  // Solo ítems navegables (sin separadores) para búsqueda de título/icono
+  const navItems = menuItems.filter(item => !item.isSeparator);
 
   return (
     <>
@@ -590,6 +600,22 @@ export default function DashboardLayout() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {menuItems.map((item) => {
+                // Separador de sección
+                if (item.isSeparator) {
+                  if (isDesktopCollapsed) return (
+                    <div key={item.name} style={{ height: 1, background: "#e2e8f0", margin: "6px 4px" }} />
+                  );
+                  return (
+                    <div key={item.name} style={{
+                      fontSize: "0.58rem", fontWeight: 800, color: "#c1c9d4",
+                      textTransform: "uppercase", letterSpacing: "0.14em",
+                      padding: "0.6rem 0.5rem 0.2rem",
+                    }}>
+                      WhatsApp
+                    </div>
+                  );
+                }
+
                 const isActive = location.pathname === item.path;
                 const isChild  = item.isChild && !isDesktopCollapsed;
                 return (
@@ -721,11 +747,11 @@ export default function DashboardLayout() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: "0.9rem",
                 }}>
-                  {menuItems.find(m => m.path === location.pathname)?.icon || "🏠"}
+                  {navItems.find(m => m.path === location.pathname)?.icon || "🏠"}
                 </div>
                 <div>
                   <h2 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: ".01em", lineHeight: 1.2 }}>
-                    {menuItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
+                    {navItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
                   </h2>
                   <p style={{ fontSize: "0.62rem", color: "#94a3b8", margin: 0, letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600 }}>
                     {new Date().toLocaleDateString("es-GT", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}

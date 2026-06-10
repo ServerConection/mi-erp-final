@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
   "keywords": [],
@@ -34,3 +35,4 @@
     "nodemon": "^3.1.11"
   }
 }
+

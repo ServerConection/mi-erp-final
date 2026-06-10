@@ -34,4 +34,27 @@ pool.on('error', (err) => {
   console.error('[DB] Error en pool de conexiones:', err.message);
 });
 
+// ── Helpers para el módulo WhatsApp (aditivo, no cambia el uso existente) ──
+// Permiten `const { query, transaction } = require('../config/db')` con bind correcto.
+// El código existente que hace `pool.query(...)` sigue funcionando igual.
+const _query = pool.query.bind(pool);
+pool.query = _query; // propiedad propia ya enlazada → destructurar es seguro
+
+pool.transaction = async (fn) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+pool.pool = pool; // compatibilidad con `const { pool } = require(...)`
+
 module.exports = pool;

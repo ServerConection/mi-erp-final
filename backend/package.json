@@ -12,6 +12,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@sendgrid/mail": "^8.1.6",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",

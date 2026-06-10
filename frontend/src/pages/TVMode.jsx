@@ -435,7 +435,7 @@ export default function TVMode() {
       auth: token ? { token } : { tv: true },
       transports: ["websocket","polling"],
       reconnection: true,
-      reconnectionAttempts: 60,
+      reconnectionAttempts: Infinity,  // una TV nunca debe rendirse de reconectar
       reconnectionDelay: 3000,
       reconnectionDelayMax: 12000,
     });

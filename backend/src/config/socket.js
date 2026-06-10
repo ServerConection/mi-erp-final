@@ -50,8 +50,12 @@ const initSocket = (httpServer) => {
       next();
 
     } catch (error) {
-      console.error('[SOCKET] Error de autenticacion:', error.message);
-      next(new Error('Token invalido o expirado'));
+      // Token vencido/inválido → NO rechazar: conectar como invitado.
+      // Así los broadcasts siempre llegan (el frontend filtra por empresa/perfil).
+      // Mismo nivel de acceso que el modo TV sin token, ya permitido arriba.
+      console.warn('[SOCKET] Token invalido/expirado → conexion como invitado:', error.message);
+      socket.user = { id: null, rol: 'TV', perfil: 'TV', empresa: '' };
+      next();
     }
   });
 

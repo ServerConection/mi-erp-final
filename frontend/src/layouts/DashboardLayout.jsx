@@ -20,9 +20,13 @@ const getSocket = () => {
       auth: { token: localStorage.getItem('token') },
       transports: ["websocket", "polling"],   // polling como fallback si WS falla
       reconnection: true,
-      reconnectionAttempts: 15,
+      reconnectionAttempts: Infinity,         // nunca dejar de reintentar (broadcasts)
       reconnectionDelay: 2000,
       reconnectionDelayMax: 10000,
+    });
+    // Refrescar el token en cada reintento (si venció, el nuevo login lo repone)
+    socketSingleton.io.on("reconnect_attempt", () => {
+      socketSingleton.auth = { token: localStorage.getItem("token") };
     });
     socketSingleton.on("connect", () => {
       console.log("[Socket] Conectado:", socketSingleton.id);

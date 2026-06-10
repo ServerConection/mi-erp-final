@@ -106,7 +106,7 @@ router.post  ('/scheduled/:id/cancel',   scheduledCtrl.cancel);
 router.delete('/scheduled/:id',          scheduledCtrl.remove);
 
 // ── DASHBOARD Y ESTADÍSTICAS ──────────────────────────────────
-router.get('/dashboard',                    dashboardCtrl.getSummary);
+router.get('/dashboard',                    dashboardCtrl.getOverview);
 router.get('/stats/lines',                  statsCtrl.getAllLines);
 router.get('/stats/lines/:lineId',          statsCtrl.getByLine);
 

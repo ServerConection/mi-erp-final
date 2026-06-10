@@ -22,6 +22,31 @@ async function getAll(req, res) {
   }
 }
 
+// Obtener una línea por id
+async function getOne(req, res) {
+  try {
+    const result = await query(
+      `SELECT l.*, b.name AS bot_name
+       FROM lines l LEFT JOIN bots b ON l.bot_id = b.id
+       WHERE l.id = $1`,
+      [req.params.id]
+    )
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
+    const bm = req.app.get('baileysManager')
+    const line = result.rows[0]
+    res.json({
+      success: true,
+      data: {
+        ...line,
+        rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
+        has_qr: bm ? !!bm.getQR(line.id) : false,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
 // Crear nueva línea
 async function create(req, res) {
   try {
@@ -113,4 +138,4 @@ async function getQR(req, res) {
   }
 }
 
-module.exports = { getAll, create, update, remove, connect, disconnect, getQR }
+module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR }

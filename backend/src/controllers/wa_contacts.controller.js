@@ -43,6 +43,17 @@ async function getAll(req, res) {
   }
 }
 
+// ── Obtener un contacto por id ───────────────────────────────
+async function getOne(req, res) {
+  try {
+    const result = await query('SELECT * FROM contacts WHERE id = $1', [req.params.id])
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
+    res.json({ success: true, data: result.rows[0] })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
 // ── CREAR contacto manualmente ───────────────────────────────
 async function create(req, res) {
   try {
@@ -202,4 +213,4 @@ function parseCSV(text) {
   })
 }
 
-module.exports = { getAll, create, update, remove, importFile, normalizeNumber }
+module.exports = { getAll, getOne, create, update, remove, importFile, normalizeNumber }

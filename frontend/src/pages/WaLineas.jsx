@@ -49,7 +49,8 @@ export default function WaLineas() {
     try {
       const r = await fetch(`${API}/lines`, { headers: authH(false) });
       const d = await r.json();
-      setLines(d.data || d || []);
+      setLines(Array.isArray(d?.data) ? d.data : []);
+      if (d && d.success === false) setError(d.error || "Error cargando líneas");
     } catch { setError("Error cargando líneas"); }
     finally { setLoading(false); }
   }, []);

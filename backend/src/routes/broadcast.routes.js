@@ -2,6 +2,7 @@
 
 const router       = require('express').Router();
 const express      = require('express');
+const { verificarToken } = require('../middleware/auth');
 const { getIO }    = require('../config/socket');
 const broadcastSvc = require('../services/broadcast.service');
 const pool         = require('../config/db');
@@ -113,6 +114,11 @@ const emitirBroadcast = async (mensaje) => {
     );
   }
 };
+
+// SEGURIDAD: los archivos estáticos quedan públicos (los usan TVs sin login),
+// pero enviar/programar/historial/datos/eliminar requieren token.
+router.use('/archivos', express.static(uploadDir));
+router.use(verificarToken);
 
 // POST /api/broadcast/enviar
 router.post('/enviar', uploadFields, async (req, res) => {
@@ -247,7 +253,5 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ success: false, error: e.message });
   }
 });
-
-router.use('/archivos', express.static(uploadDir));
 
 module.exports = router;

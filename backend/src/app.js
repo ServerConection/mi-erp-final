@@ -28,6 +28,7 @@ const mundialitoRoutes             = require('./routes/mundialito.routes');
 const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
+const asistenteRoutes              = require('./routes/asistente.routes');
 
 const app = express();
 
@@ -117,6 +118,7 @@ app.use('/api/broadcast',         broadcastRoutes);
 const waUploadsPath = process.env.WA_UPLOADS_DIR || path.resolve(__dirname, '..', 'wa_uploads');
 app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
 app.use('/api/wa', whatsappRoutes);
+app.use('/api/asistente', asistenteRoutes);
 
 // Handler 404
 app.use((req, res) => {

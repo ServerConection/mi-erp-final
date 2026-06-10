@@ -198,7 +198,9 @@ class BaileysManager {
         this.instances[lineId].qr = qrImage
         this.instances[lineId].status = 'qr_ready'
         this._updateLineStatus(lineId, 'qr_ready')
+        this.io.emit('line:qr', { lineId, qr: qrImage })
         this.io.emit(`line:qr:${lineId}`, { lineId, qr: qrImage })
+        this.io.emit('line:status', { lineId, status: 'qr_ready' })
         console.log(`[Line ${lineId}] QR generado`)
       }
 
@@ -206,6 +208,7 @@ class BaileysManager {
         this.instances[lineId].status = 'connected'
         this.instances[lineId].qr = null
         this._updateLineStatus(lineId, 'connected')
+        this.io.emit('line:status', { lineId, status: 'connected' })
         this.io.emit(`line:status:${lineId}`, { lineId, status: 'connected' })
         console.log(`[Line ${lineId}] ✅ Conectada`)
         const phoneNumber = sock.user?.id?.split(':')[0]
@@ -224,10 +227,9 @@ class BaileysManager {
         console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`)
         delete this.instances[lineId]
         this._updateLineStatus(lineId, shouldReconnect ? 'disconnected' : 'logged_out')
-        this.io.emit(`line:status:${lineId}`, {
-          lineId,
-          status: shouldReconnect ? 'disconnected' : 'logged_out',
-        })
+        const closePayload = { lineId, status: shouldReconnect ? 'disconnected' : 'logged_out' }
+        this.io.emit('line:status', closePayload)
+        this.io.emit(`line:status:${lineId}`, closePayload)
         if (shouldReconnect) {
           setTimeout(() => this.connect(lineId), 5000)
         }
@@ -376,6 +378,7 @@ class BaileysManager {
     try { await inst.sock.logout() } catch (e) {}
     delete this.instances[lineId]
     this._updateLineStatus(lineId, 'disconnected')
+    this.io.emit('line:status', { lineId, status: 'disconnected' })
     this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
   }
 

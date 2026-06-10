@@ -358,9 +358,11 @@ export default function BroadcastPanelCanal({ canal, config }) {
   const audioRef = useRef();
   const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
 
+  const authH = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
+
   const fetchHistorial = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/api/broadcast/historial`);
+      const r = await fetch(`${API}/api/broadcast/historial`, { headers: authH() });
       const d = await r.json();
       if (!d.success) return;
       if (isAdmin) {
@@ -375,7 +377,7 @@ export default function BroadcastPanelCanal({ canal, config }) {
 
   const fetchDatosVivos = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/api/broadcast/datos-vivos`);
+      const r = await fetch(`${API}/api/broadcast/datos-vivos`, { headers: authH() });
       const d = await r.json();
       if (d.success) setDatosVivos(d);
     } catch (_) {}
@@ -403,7 +405,7 @@ export default function BroadcastPanelCanal({ canal, config }) {
       if (audioMode === "url" && audioUrl.trim()) fd.append("audio_url", audioUrl.trim());
 
       const endpoint = form.programado ? "/api/broadcast/programar" : "/api/broadcast/enviar";
-      const r = await fetch(`${API}${endpoint}`, { method:"POST", body:fd });
+      const r = await fetch(`${API}${endpoint}`, { method:"POST", headers: authH(), body:fd });
       const d = await r.json();
       if (d.success) {
         showToast("ok", form.programado ? "⏰ Mensaje programado" : "✅ Enviado a todas las pantallas");
@@ -437,7 +439,7 @@ export default function BroadcastPanelCanal({ canal, config }) {
         canal: row.canal || canal,
       };
       Object.entries(datos).forEach(([k,v]) => fd.append(k, v));
-      const r = await fetch(`${API}/api/broadcast/enviar`, { method:"POST", body:fd });
+      const r = await fetch(`${API}/api/broadcast/enviar`, { method:"POST", headers: authH(), body:fd });
       const d = await r.json();
       if (d.success) { showToast("ok", "✅ Mensaje reenviado"); fetchHistorial(); }
       else showToast("err", d.message || "Error");

@@ -362,13 +362,16 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p, e) => forEmpresa(p, e, 'NOVONET') },
   { name: "📡 Broadcast VELSA",   path: "/broadcast-velsa",   icon: "📡",
     accessCheck: (p, e) => forEmpresa(p, e, 'VELSA') },
-  // ── WhatsApp ────────────────────────────────────────────────────────────────
-  { name: "─── WhatsApp ───", path: null, icon: "", accessCheck: (p) => p !== 'CONSULTOR', isSeparator: true },
-  { name: "📱 Líneas",      path: "/whatsapp/lineas",    icon: "📱", accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "💬 Inbox",       path: "/whatsapp/inbox",     icon: "💬", accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "📣 Campañas",    path: "/whatsapp/campanas",  icon: "📣", accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "🤖 Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "👥 Contactos",   path: "/whatsapp/contactos", icon: "👥", accessCheck: (p) => p !== 'CONSULTOR' },
+  // ── WaBot Masivos (grupo colapsable) ───────────────────────────────────────
+  { name: "WaBot Masivos",  path: null, icon: "🤖", isGroup: true, groupId: "wabot",
+    accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Líneas",      path: "/whatsapp/lineas",    icon: "📱", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Inbox",       path: "/whatsapp/inbox",     icon: "💬", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // ── Asistente de datos del ERP ──────────────────────────────────────────────
+  { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -382,6 +385,11 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen]               = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [broadcast, setBroadcast]                   = useState(null);
+  // Grupos colapsables del menú (abierto si la ruta actual pertenece al grupo)
+  const [openGroups, setOpenGroups] = useState(() => ({
+    wabot: window.location.pathname.startsWith("/whatsapp"),
+  }));
+  const toggleGroup = (id) => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }));
 
   // Ref para acceder al user actualizado dentro del handler del socket
   // (evita el problema de closure obsoleto con useEffect de [])
@@ -619,6 +627,47 @@ export default function DashboardLayout() {
                     </div>
                   );
                 }
+
+                // ── Cabecera de grupo colapsable (ej. WaBot Masivos) ──
+                if (item.isGroup) {
+                  const groupOpen   = !!openGroups[item.groupId];
+                  const groupActive = location.pathname.startsWith("/whatsapp");
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => toggleGroup(item.groupId)}
+                      className="w-full flex items-center dl-nav-btn"
+                      style={{
+                        borderRadius: 10,
+                        padding: isDesktopCollapsed ? "0.6rem 0" : "0.52rem 0.75rem",
+                        justifyContent: isDesktopCollapsed ? "center" : "flex-start",
+                        gap: isDesktopCollapsed ? 0 : 10,
+                        borderLeft: groupActive ? "3px solid #2563eb" : "3px solid transparent",
+                        color: groupActive ? "#2563eb" : "#64748b",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        background: groupActive ? "linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.03))" : "transparent",
+                      }}
+                    >
+                      <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : "1.05rem", lineHeight: 1, flexShrink: 0 }}>
+                        {item.icon}
+                      </span>
+                      {!isDesktopCollapsed && (
+                        <>
+                          <span className="dl-nav-label truncate" style={{ fontSize: "0.8rem", letterSpacing: ".01em" }}>
+                            {item.name}
+                          </span>
+                          <span style={{ marginLeft: "auto", fontSize: "0.6rem", color: "#94a3b8", flexShrink: 0 }}>
+                            {groupOpen ? "▼" : "▶"}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  );
+                }
+
+                // Hijos de un grupo cerrado: ocultos (salvo sidebar colapsado, donde se muestran como iconos)
+                if (item.group && !openGroups[item.group] && !isDesktopCollapsed) return null;
 
                 const isActive = location.pathname === item.path;
                 const isChild  = item.isChild && !isDesktopCollapsed;

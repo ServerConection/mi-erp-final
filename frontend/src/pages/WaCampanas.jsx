@@ -42,17 +42,25 @@ export default function WaCampanas() {
   const [detail, setDetail]         = useState(null); // campaign con variantes
   const [search, setSearch]         = useState("");
 
+  // Normaliza la respuesta de la API: SIEMPRE devuelve un array
+  const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
+
   const load = useCallback(async () => {
-    const [rC, rL, rLists] = await Promise.all([
-      fetch(`${API}/campaigns`, { headers: authH(false) }),
-      fetch(`${API}/lines`,    { headers: authH(false) }),
-      fetch(`${API}/lists`,    { headers: authH(false) }),
-    ]);
-    const [dC, dL, dLists] = await Promise.all([rC.json(), rL.json(), rLists.json()]);
-    setCampaigns(dC.data || dC || []);
-    setLines((dL.data || dL || []).filter(l => l.status === "connected"));
-    setLists(dLists.data || dLists || []);
-    setLoading(false);
+    try {
+      const [rC, rL, rLists] = await Promise.all([
+        fetch(`${API}/campaigns`, { headers: authH(false) }),
+        fetch(`${API}/lines`,    { headers: authH(false) }),
+        fetch(`${API}/lists`,    { headers: authH(false) }),
+      ]);
+      const [dC, dL, dLists] = await Promise.all([rC.json(), rL.json(), rLists.json()]);
+      setCampaigns(asArray(dC));
+      setLines(asArray(dL).filter(l => l.status === "connected"));
+      setLists(asArray(dLists));
+    } catch (e) {
+      console.error("[WaCampanas] Error cargando:", e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, []);
@@ -100,11 +108,11 @@ export default function WaCampanas() {
   const openDetail = async (camp) => {
     const r = await fetch(`${API}/campaigns/${camp.id}/messages`, { headers: authH(false) });
     const d = await r.json();
-    setDetail({ ...camp, messages: d.data || d || [] });
+    setDetail({ ...camp, messages: Array.isArray(d?.data) ? d.data : [] });
   };
 
-  const filtered = campaigns.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = (Array.isArray(campaigns) ? campaigns : []).filter(c =>
+    (c.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) return (

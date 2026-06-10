@@ -65,9 +65,11 @@ export default function BroadcastPanel() {
   const [tab, setTab]               = useState("crear"); // 'crear' | 'historial'
   const fileRef                     = useRef();
 
+  const authH = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
+
   const fetchHistorial = async () => {
     try {
-      const r = await fetch(`${API}/api/broadcast/historial`);
+      const r = await fetch(`${API}/api/broadcast/historial`, { headers: authH() });
       const d = await r.json();
       if (d.success) setHistorial(d.data);
     } catch (_) {}
@@ -75,7 +77,7 @@ export default function BroadcastPanel() {
 
   const fetchDatosVivos = async () => {
     try {
-      const r = await fetch(`${API}/api/broadcast/datos-vivos`);
+      const r = await fetch(`${API}/api/broadcast/datos-vivos`, { headers: authH() });
       const d = await r.json();
       if (d.success) setDatosVivos(d);
     } catch (_) {}
@@ -96,7 +98,7 @@ export default function BroadcastPanel() {
       if (imagen) fd.append("imagen", imagen);
 
       const endpoint = form.programado ? "/api/broadcast/programar" : "/api/broadcast/enviar";
-      const r = await fetch(`${API}${endpoint}`, { method: "POST", body: fd });
+      const r = await fetch(`${API}${endpoint}`, { method: "POST", headers: authH(), body: fd });
       const d = await r.json();
       if (d.success) {
         alert(form.programado ? "✅ Mensaje programado correctamente" : "✅ Mensaje enviado a todas las pantallas");

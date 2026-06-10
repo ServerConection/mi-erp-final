@@ -16,9 +16,25 @@ let campaignEngine = null;
 let timeoutService = null;
 let scheduler      = null;
 
+// Ejecuta la migración del módulo (idempotente: CREATE TABLE IF NOT EXISTS)
+// Así no depende de correrla manualmente desde una PC local.
+const ejecutarMigracion = async () => {
+  try {
+    const sqlPath = path.join(__dirname, '../migrations/whatsapp_schema.sql');
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    await pool.query(sql);
+    console.log('[WA] Migración verificada/aplicada (tablas OK)');
+  } catch (err) {
+    console.error('[WA] Error en migración automática:', err.message);
+    throw err;
+  }
+};
+
 const iniciarWhatsApp = async () => {
   try {
     const io = getIO();
+
+    await ejecutarMigracion();
 
     const authDir = process.env.WA_AUTH_DIR || path.join(__dirname, '../../auth_sessions');
     fs.mkdirSync(authDir, { recursive: true });

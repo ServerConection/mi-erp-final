@@ -49,18 +49,29 @@ export default function WaInbox() {
   const [search, setSearch]               = useState("");
   const messagesEndRef = useRef(null);
 
+  const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
+
   const loadConvs = useCallback(async () => {
-    const r = await fetch(`${API}/conversations`, { headers: authH(false) });
-    const d = await r.json();
-    setConversations(d.data || d || []);
-    setLoading(false);
+    try {
+      const r = await fetch(`${API}/conversations`, { headers: authH(false) });
+      const d = await r.json();
+      setConversations(asArray(d));
+    } catch (e) {
+      console.error("[WaInbox] Error cargando:", e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const loadMessages = useCallback(async (convId) => {
-    const r = await fetch(`${API}/conversations/${convId}/messages`, { headers: authH(false) });
-    const d = await r.json();
-    setMessages(d.data || d || []);
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    try {
+      const r = await fetch(`${API}/conversations/${convId}/messages`, { headers: authH(false) });
+      const d = await r.json();
+      setMessages(asArray(d));
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (e) {
+      console.error("[WaInbox] Error cargando mensajes:", e);
+    }
   }, []);
 
   useEffect(() => {

@@ -23,15 +23,22 @@ export default function WaContactos() {
   const [listItems, setListItems] = useState([]);
   const [bulkText, setBulkText] = useState("");
 
+  const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
+
   const load = useCallback(async () => {
-    const [rL, rC] = await Promise.all([
-      fetch(`${API}/lists`,    { headers: authH(false) }),
-      fetch(`${API}/contacts`, { headers: authH(false) }),
-    ]);
-    const [dL, dC] = await Promise.all([rL.json(), rC.json()]);
-    setLists(dL.data || dL || []);
-    setContacts(dC.data || dC || []);
-    setLoading(false);
+    try {
+      const [rL, rC] = await Promise.all([
+        fetch(`${API}/lists`,    { headers: authH(false) }),
+        fetch(`${API}/contacts`, { headers: authH(false) }),
+      ]);
+      const [dL, dC] = await Promise.all([rL.json(), rC.json()]);
+      setLists(asArray(dL));
+      setContacts(asArray(dC));
+    } catch (e) {
+      console.error("[WaContactos] Error cargando:", e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, []);
@@ -40,7 +47,8 @@ export default function WaContactos() {
     setDetail(lst);
     const r = await fetch(`${API}/lists/${lst.id}`, { headers: authH(false) });
     const d = await r.json();
-    setListItems(d.data?.items || d.items || []);
+    const items = d?.data?.items ?? d?.items;
+    setListItems(Array.isArray(items) ? items : []);
   };
 
   const createList = async () => {

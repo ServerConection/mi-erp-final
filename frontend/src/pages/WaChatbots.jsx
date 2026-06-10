@@ -35,15 +35,22 @@ export default function WaChatbots() {
   const [saving, setSaving]   = useState(false);
   const [tab, setTab]         = useState("list"); // "list" | "editor"
 
+  const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
+
   const load = useCallback(async () => {
-    const [rB, rL] = await Promise.all([
-      fetch(`${API}/bots`,  { headers: authH(false) }),
-      fetch(`${API}/lines`, { headers: authH(false) }),
-    ]);
-    const [dB, dL] = await Promise.all([rB.json(), rL.json()]);
-    setBots(dB.data || dB || []);
-    setLines(dL.data || dL || []);
-    setLoading(false);
+    try {
+      const [rB, rL] = await Promise.all([
+        fetch(`${API}/bots`,  { headers: authH(false) }),
+        fetch(`${API}/lines`, { headers: authH(false) }),
+      ]);
+      const [dB, dL] = await Promise.all([rB.json(), rL.json()]);
+      setBots(asArray(dB));
+      setLines(asArray(dL));
+    } catch (e) {
+      console.error("[WaChatbots] Error cargando:", e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, []);

@@ -2,6 +2,20 @@ const jwt = require('jsonwebtoken');
 
 let _io = null;
 
+// ── Replay de broadcasts ──────────────────────────────────────
+// Guarda los últimos broadcasts vigentes para reenviarlos a cada
+// socket que se conecte/reconecte: así TODOS lo ven sí o sí,
+// aunque su conexión estuviera caída cuando se emitió.
+let _broadcastsVigentes = [];
+
+const registrarBroadcast = (payload, ttlMs) => {
+  const ahora = Date.now();
+  _broadcastsVigentes = _broadcastsVigentes
+    .filter(b => b.expiraEn > ahora)
+    .slice(-4); // máximo 5 vigentes con el nuevo
+  _broadcastsVigentes.push({ payload, expiraEn: ahora + ttlMs });
+};
+
 const initSocket = (httpServer) => {
   const { Server } = require('socket.io');
 
@@ -80,6 +94,12 @@ const initSocket = (httpServer) => {
       empresa: socket.user.empresa,
     });
 
+    // Replay: reenviar broadcasts aún vigentes a este socket recién conectado
+    const ahora = Date.now();
+    for (const b of _broadcastsVigentes) {
+      if (b.expiraEn > ahora) socket.emit('broadcast_mensaje', b.payload);
+    }
+
     socket.on('disconnect', () => {
       console.log('[SOCKET] Desconectado:', socket.id);
     });
@@ -97,4 +117,4 @@ const getIO = () => {
   return _io;
 };
 
-module.exports = { initSocket, getIO };
+module.exports = { initSocket, getIO, registrarBroadcast };

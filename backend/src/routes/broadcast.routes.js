@@ -3,7 +3,7 @@
 const router       = require('express').Router();
 const express      = require('express');
 const { verificarToken } = require('../middleware/auth');
-const { getIO }    = require('../config/socket');
+const { getIO, registrarBroadcast } = require('../config/socket');
 const broadcastSvc = require('../services/broadcast.service');
 const pool         = require('../config/db');
 const multer       = require('multer');
@@ -105,6 +105,9 @@ const emitirBroadcast = async (mensaje) => {
   // El frontend filtra por empresa/perfil para decidir si mostrar el overlay.
   // Esto garantiza entrega aunque los rooms fallen por tokens vencidos o reconexiones.
   io.emit('broadcast_mensaje', payload);
+  // Replay: quien se conecte mientras el mensaje siga vigente también lo verá
+  const ttl = ((parseInt(mensaje.duracion) || 30) + 15) * 1000;
+  registrarBroadcast(payload, ttl);
   console.log('[BROADCAST] canal=' + (canal || 'global') + ' -> emitido a todos los sockets (' + io.engine.clientsCount + ' conectados)');
 
   if (mensaje.id) {

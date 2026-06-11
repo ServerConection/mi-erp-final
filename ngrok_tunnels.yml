@@ -1,0 +1,9 @@
+version: "3"
+tunnels:
+  app3000:
+    proto: http
+    addr: 3000
+    domain: granddad-important-scoop.ngrok-free.dev
+  ollama:
+    proto: tcp
+    addr: 11434

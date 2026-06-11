@@ -1,17 +1,16 @@
 /**
- * Asistente ERP — responde preguntas en lenguaje natural SOLO con datos del ERP.
+ * Asistente ERP — IA primero.
  *
- * Motor de intenciones (keywords → SQL): determinista, rápido y gratis.
- * Detecta en la pregunta:
- *   • EMPRESA: "novonet" | "velsa" | (nada = ambas)
- *   • PERÍODO: "hoy" (default) | "ayer" | "semana" | "mes"
+ * Flujo:
+ *  1. Si OLLAMA_URL está configurado → se arma un SNAPSHOT con datos reales
+ *     del ERP (Novonet + Velsa: resumen, tops por asesor, descartes, leads,
+ *     activas, gestión diaria, etc.) y el modelo (llama3) responde LIBREMENTE
+ *     cualquier pregunta usando SOLO esos datos.
+ *  2. Si Ollama no está disponible → motor de reglas como respaldo.
  *
- * Fuentes (las MISMAS de los dashboards de indicadores):
- *   • Novonet: public.mestra_bitrix (+ public.empleados para supervisores)
+ * Fuentes (las mismas de los dashboards):
+ *   • Novonet: public.mestra_bitrix (+ public.empleados)
  *   • Velsa:   public.mv_indicadores_velsa_completo
- *
- * Si defines OLLAMA_URL, las preguntas sin intención se redactan con el LLM
- * usando únicamente datos del ERP como contexto.
  */
 const pool = require('../config/db');
 const broadcastSvc = require('./broadcast.service');
@@ -20,31 +19,28 @@ const broadcastSvc = require('./broadcast.service');
 const fechaEc = (d = new Date()) =>
   d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
+const PERIODOS = {
+  hoy:    () => ({ desde: fechaEc(), hasta: fechaEc(), label: 'HOY' }),
+  ayer:   () => { const d = new Date(Date.now() - 24 * 3600 * 1000); return { desde: fechaEc(d), hasta: fechaEc(d), label: 'AYER' }; },
+  semana: () => { const d = new Date(Date.now() - 6 * 24 * 3600 * 1000); return { desde: fechaEc(d), hasta: fechaEc(), label: 'ULTIMOS_7_DIAS' }; },
+  mes:    () => ({ desde: fechaEc().slice(0, 7) + '-01', hasta: fechaEc(), label: 'MES_ACTUAL' }),
+};
+
 const detectarPeriodo = (q) => {
-  const hoy = fechaEc();
-  if (/\bayer\b/i.test(q)) {
-    const d = new Date(Date.now() - 24 * 3600 * 1000);
-    return { desde: fechaEc(d), hasta: fechaEc(d), label: 'AYER' };
-  }
-  if (/semana/i.test(q)) {
-    const d = new Date(Date.now() - 6 * 24 * 3600 * 1000);
-    return { desde: fechaEc(d), hasta: hoy, label: 'ÚLTIMOS 7 DÍAS' };
-  }
-  if (/\bmes\b|mensual|del mes/i.test(q)) {
-    return { desde: hoy.slice(0, 7) + '-01', hasta: hoy, label: 'MES ACTUAL' };
-  }
-  return { desde: hoy, hasta: hoy, label: 'HOY' };
+  if (/\bayer\b/i.test(q)) return PERIODOS.ayer();
+  if (/semana/i.test(q))   return PERIODOS.semana();
+  if (/\bmes\b|mensual|del mes/i.test(q)) return PERIODOS.mes();
+  return PERIODOS.hoy();
 };
 
 const detectarEmpresa = (q) => {
   const v = /velsa/i.test(q), n = /novonet/i.test(q);
   if (v && !n) return ['velsa'];
   if (n && !v) return ['novonet'];
-  return ['novonet', 'velsa']; // sin especificar → ambas
+  return ['novonet', 'velsa'];
 };
 
 // ── Expresiones SQL por empresa ───────────────────────────────
-// Novonet: b_creado_el_fecha es texto con formatos mixtos
 const parseFecha = (col) =>
   `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL ` +
   `WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ` +
@@ -77,8 +73,8 @@ const SRC = {
   },
 };
 
-// ── Consultas genéricas (parametrizadas por empresa) ──────────
-async function topPorAsesor(emp, rango, condicion, fechaCol, limit = 10) {
+// ── Consultas genéricas ───────────────────────────────────────
+async function topPorAsesor(emp, rango, condicion, fechaCol, limit = 12) {
   const s = SRC[emp];
   const { rows } = await pool.query(`
     SELECT COALESCE(${s.asesor}, 'SIN ASIGNAR') AS nombre, COUNT(*)::int AS cantidad
@@ -99,7 +95,6 @@ async function totalCon(emp, rango, condicion, fechaCol) {
   return rows[0]?.total ?? 0;
 }
 
-// Ventas del día (misma definición que los dashboards)
 async function ventasDelDia(emp, rango) {
   if (emp === 'velsa') {
     const { rows } = await pool.query(`
@@ -111,7 +106,6 @@ async function ventasDelDia(emp, rango) {
     `, [rango.desde, rango.hasta]);
     return rows[0]?.total ?? 0;
   }
-  // Novonet: self-join Jot ↔ CRM (igual que monitoreo-diario)
   const { rows } = await pool.query(`
     SELECT COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS total
     FROM public.mestra_bitrix mb_jot
@@ -134,13 +128,163 @@ async function resumenEmpresa(emp, rango) {
     totalCon(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead),
     ventasDelDia(emp, rango),
   ]);
-  const seguimiento = Math.max(0, jot - vdia);
-  const pctDesc = leads > 0 ? ((descartes / leads) * 100).toFixed(1) : '0.0';
-  const pctInst = jot > 0 ? ((activas / jot) * 100).toFixed(1) : '0.0';
-  return { leads, ventasCrm, jot, activas, descartes, vdia, seguimiento, pctDesc, pctInst };
+  return {
+    leads_creados: leads,
+    ventas_crm_subidas: ventasCrm,
+    ingresos_jotform: jot,
+    ventas_del_dia: vdia,
+    venta_seguimiento: Math.max(0, jot - vdia),
+    activas,
+    descartes,
+    pct_descarte_sobre_leads: leads > 0 ? +((descartes / leads) * 100).toFixed(1) : 0,
+    pct_instalacion: jot > 0 ? +((activas / jot) * 100).toFixed(1) : 0,
+  };
 }
 
-// ── Formato ───────────────────────────────────────────────────
+// ── Detección de nombres propios en la pregunta ──────────────
+const STOPWORDS = new Set([
+  'QUIEN','QUIÉN','CUANTAS','CUÁNTAS','CUANTOS','CUÁNTOS','VENTAS','VENTA','HOY','AYER','MES','SEMANA',
+  'NOVONET','VELSA','TIENE','COMO','CÓMO','DAME','TOTAL','LEADS','LEAD','DESCARTE','DESCARTES','ACTIVAS',
+  'JOT','JOTFORM','RESUMEN','ASESOR','ASESORES','SUPERVISOR','DIA','DÍA','GESTION','GESTIÓN','DIARIA',
+  'TARJETA','CREDITO','CRÉDITO','TERCERA','EDAD','CIUDAD','CIUDADES','MEJOR','PEOR','MAS','MÁS','MENOS',
+  'PARA','DESDE','HASTA','SOBRE','ENTRE','ESTE','ESTA','HACE','SEGUIMIENTO','SUBIDAS','CUAL','CUÁL','LISTA',
+]);
+
+function extraerNombres(q) {
+  const tokens = q.toUpperCase().replace(/[¿?¡!.,;:]/g, ' ').split(/\s+/);
+  return tokens.filter(t => t.length >= 4 && /^[A-ZÁÉÍÓÚÑ]+$/.test(t) && !STOPWORDS.has(t)).slice(0, 3);
+}
+
+async function consultaAsesor(nombre, rango) {
+  const out = {};
+  for (const emp of ['novonet', 'velsa']) {
+    const s = SRC[emp];
+    try {
+      const { rows } = await pool.query(`
+        SELECT COALESCE(${s.asesor},'') AS asesor,
+          COUNT(*) FILTER (WHERE ${s.fLead} BETWEEN $2::date AND $3::date)::int AS leads,
+          COUNT(*) FILTER (WHERE UPPER(${s.etapa})='VENTA SUBIDA' AND ${s.fLead} BETWEEN $2::date AND $3::date)::int AS ventas_subidas,
+          COUNT(*) FILTER (WHERE ${s.fJot} BETWEEN $2::date AND $3::date)::int AS ingresos_jot,
+          COUNT(*) FILTER (WHERE ${s.activo} AND ${s.fJot} BETWEEN $2::date AND $3::date)::int AS activas,
+          COUNT(*) FILTER (WHERE UPPER(${s.etapa}) LIKE 'DESCARTE%' AND ${s.fLead} BETWEEN $2::date AND $3::date)::int AS descartes
+        FROM ${s.tabla}
+        WHERE ${s.asesor} ILIKE $1
+        GROUP BY 1 LIMIT 5
+      `, [`%${nombre}%`, rango.desde, rango.hasta]);
+      if (rows.length) out[emp] = rows;
+    } catch (e) {}
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// ── SNAPSHOT completo para la IA ──────────────────────────────
+async function construirSnapshot(q) {
+  const rangoPrincipal = detectarPeriodo(q);
+  const rangos = [rangoPrincipal];
+  // Siempre incluir HOY y MES para que la IA pueda comparar
+  if (rangoPrincipal.label !== 'HOY') rangos.push(PERIODOS.hoy());
+  if (rangoPrincipal.label !== 'MES_ACTUAL') rangos.push(PERIODOS.mes());
+
+  const snapshot = { fecha_actual_ecuador: fechaEc(), periodos: {} };
+
+  await Promise.all(rangos.map(async (rango) => {
+    const bloque = {};
+    await Promise.all(['novonet', 'velsa'].map(async (emp) => {
+      const s = SRC[emp];
+      const [resumen, topVentas, topJot, topActivas, topDescartes, topLeads] = await Promise.all([
+        resumenEmpresa(emp, rango),
+        topPorAsesor(emp, rango, `UPPER(${s.etapa}) = 'VENTA SUBIDA'`, s.fLead),
+        topPorAsesor(emp, rango, null, s.fJot),
+        topPorAsesor(emp, rango, s.activo, s.fJot),
+        topPorAsesor(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead),
+        topPorAsesor(emp, rango, null, s.fLead),
+      ]);
+      bloque[s.nombre] = {
+        resumen,
+        top_ventas_subidas_por_asesor: topVentas,
+        top_ingresos_jotform_por_asesor: topJot,
+        top_activas_por_asesor: topActivas,
+        top_descartes_por_asesor: topDescartes,
+        top_leads_creados_por_asesor: topLeads,
+      };
+    }));
+    snapshot.periodos[rango.label] = { desde: rango.desde, hasta: rango.hasta, ...bloque };
+  }));
+
+  // Extras de HOY (Novonet)
+  try { snapshot.gestion_diaria_hoy = (await broadcastSvc.getAsesoresGestionDiaria()).slice(0, 10); } catch (e) {}
+  try { snapshot.asesores_sin_ventas_hoy = (await broadcastSvc.getAsesoresSinVentas()).slice(0, 20); } catch (e) {}
+  try {
+    const hoy = PERIODOS.hoy();
+    const { rows } = await pool.query(`
+      SELECT COALESCE(UPPER(TRIM(mb.j_ciudad)),'SIN DATO') AS ciudad, COUNT(*)::int AS cantidad
+      FROM public.mestra_bitrix mb
+      WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+      GROUP BY 1 ORDER BY cantidad DESC LIMIT 8
+    `, [hoy.desde, hoy.hasta]);
+    snapshot.ciudades_novonet_hoy = rows;
+  } catch (e) {}
+
+  // Si la pregunta menciona un nombre propio → datos puntuales de ese asesor
+  const nombres = extraerNombres(q);
+  if (nombres.length) {
+    snapshot.busqueda_asesor = {};
+    for (const n of nombres) {
+      const r = await consultaAsesor(n, detectarPeriodo(q));
+      if (r) snapshot.busqueda_asesor[n] = r;
+    }
+    if (!Object.keys(snapshot.busqueda_asesor).length) delete snapshot.busqueda_asesor;
+  }
+
+  return snapshot;
+}
+
+// ── Llamada a Ollama (IA principal) ───────────────────────────
+const SYSTEM_PROMPT =
+  `Eres el Asistente del ERP de Novonet y Velsa (ventas de internet en Ecuador). ` +
+  `Responde SIEMPRE en español, de forma clara, breve y directa. ` +
+  `Usa ÚNICAMENTE los DATOS JSON que te entrego: son cifras reales del ERP en este momento. ` +
+  `NUNCA inventes cifras, nombres ni porcentajes que no estén en los datos. ` +
+  `Si la pregunta no se puede responder con los datos disponibles, di exactamente qué dato falta. ` +
+  `Glosario: "ventas subidas"=ventas registradas en CRM; "ingresos jotform"=ventas ingresadas en Jot; ` +
+  `"venta seguimiento"=ingresos jotform menos ventas del día; "activas"=instalaciones activadas; ` +
+  `"descartes"=leads descartados. ` +
+  `Formato: usa *negritas* para títulos y listas numeradas cuando muestres rankings.`;
+
+async function llamarOllama(pregunta, snapshot) {
+  const base = process.env.OLLAMA_URL;
+  if (!base) return null;
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 90000);
+    const resp = await fetch(`${base.replace(/\/$/, '')}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'llama3',
+        stream: false,
+        options: { temperature: 0.2, num_ctx: 8192 },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `DATOS DEL ERP (JSON):\n${JSON.stringify(snapshot)}\n\nPREGUNTA: ${pregunta}` },
+        ],
+      }),
+    });
+    clearTimeout(t);
+    if (!resp.ok) {
+      console.warn('[Asistente] Ollama HTTP', resp.status);
+      return null;
+    }
+    const d = await resp.json();
+    return d?.message?.content?.trim() || null;
+  } catch (err) {
+    console.warn('[Asistente] Ollama no disponible:', err.message);
+    return null;
+  }
+}
+
+// ── Motor de reglas (SOLO respaldo si Ollama no responde) ─────
 const lista = (rows, unidad = '') =>
   rows.length
     ? rows.map((r, i) => `${i + 1}. ${r.nombre || 'Sin nombre'} — ${r.cantidad}${unidad}`).join('\n')
@@ -152,49 +296,32 @@ const porEmpresas = async (empresas, fn) => {
   return partes.join('\n\n');
 };
 
-// ── Intenciones ───────────────────────────────────────────────
-// El orden importa: la primera que matchee gana.
 const INTENCIONES = [
   {
     id: 'top_descartes',
-    ejemplos: '¿Quién tiene más descartes hoy? (Novonet / Velsa, hoy/mes)',
+    ejemplos: '¿Quién tiene más descartes hoy en Novonet?',
     patron: /descart/i,
     run: async (q) => {
       const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
       return porEmpresas(emps, async (emp) => {
         const s = SRC[emp];
         const rows = await topPorAsesor(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead);
-        const total = rows.reduce((a, r) => a + r.cantidad, 0);
-        return `🗑️ *${s.nombre} — Descartes ${rango.label}* (total visible: ${total})\n\n${lista(rows)}`;
+        return `🗑️ *${s.nombre} — Descartes ${rango.label}*\n\n${lista(rows)}`;
       });
     },
   },
   {
     id: 'venta_seguimiento',
-    ejemplos: '¿Cuántas ventas seguimiento hay hoy? (Jot − ventas del día)',
+    ejemplos: '¿Cuántas ventas seguimiento hay hoy?',
     patron: /seguimiento/i,
     run: async (q) => {
       const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
       return porEmpresas(emps, async (emp) => {
-        const s = SRC[emp];
-        const [jot, vdia] = await Promise.all([
-          totalCon(emp, rango, null, s.fJot),
-          ventasDelDia(emp, rango),
-        ]);
-        return `🔁 *${s.nombre} — Venta Seguimiento ${rango.label}*\n\n` +
-          `• Ingresos Jot: ${jot}\n• Ventas del día: ${vdia}\n` +
-          `• *Seguimiento (Jot − día): ${Math.max(0, jot - vdia)}*`;
+        const r = await resumenEmpresa(emp, rango);
+        return `🔁 *${SRC[emp].nombre} — Venta Seguimiento ${rango.label}*\n\n` +
+          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ventas del día: ${r.ventas_del_dia}\n` +
+          `• *Seguimiento: ${r.venta_seguimiento}*`;
       });
-    },
-  },
-  {
-    id: 'ventas_del_dia',
-    ejemplos: '¿Cuántas ventas del día tiene Velsa?',
-    patron: /ventas? del d(i|í)a/i,
-    run: async (q) => {
-      const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
-      return porEmpresas(emps, async (emp) =>
-        `📆 *${SRC[emp].nombre} — Ventas del día ${rango.label}*: ${await ventasDelDia(emp, rango)}`);
     },
   },
   {
@@ -206,204 +333,94 @@ const INTENCIONES = [
       return porEmpresas(emps, async (emp) => {
         const s = SRC[emp];
         const rows = await topPorAsesor(emp, rango, s.activo, s.fJot);
-        const total = await totalCon(emp, rango, s.activo, s.fJot);
-        return `✅ *${s.nombre} — Activas ${rango.label}* (total: ${total})\n\n${lista(rows, ' activas')}`;
+        return `✅ *${s.nombre} — Activas ${rango.label}*\n\n${lista(rows, ' activas')}`;
       });
     },
   },
   {
     id: 'leads',
-    ejemplos: '¿Cuántos leads se crearon hoy en Novonet?',
-    patron: /lead|prospecto|oportunidad/i,
+    ejemplos: '¿Cuántos leads se crearon hoy?',
+    patron: /lead|prospecto/i,
     run: async (q) => {
       const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
       return porEmpresas(emps, async (emp) => {
         const s = SRC[emp];
         const total = await totalCon(emp, rango, null, s.fLead);
         const rows = await topPorAsesor(emp, rango, null, s.fLead);
-        return `📋 *${s.nombre} — Leads creados ${rango.label}*: ${total}\n\nPor responsable:\n${lista(rows)}`;
+        return `📋 *${s.nombre} — Leads ${rango.label}*: ${total}\n\n${lista(rows)}`;
       });
-    },
-  },
-  {
-    id: 'tarjeta',
-    ejemplos: '¿Cuántas ventas con tarjeta de crédito hay este mes?',
-    patron: /tarjeta/i,
-    run: async (q) => {
-      const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
-      return porEmpresas(emps, async (emp) => {
-        const s = SRC[emp];
-        const total = await totalCon(emp, rango, s.tarjeta, s.fJot);
-        const jot = await totalCon(emp, rango, null, s.fJot);
-        const pct = jot > 0 ? ((total / jot) * 100).toFixed(1) : '0.0';
-        return `💳 *${s.nombre} — Tarjeta de crédito ${rango.label}*: ${total} de ${jot} ingresos (${pct}%)`;
-      });
-    },
-  },
-  {
-    id: 'tercera_edad',
-    ejemplos: '¿Cuántas ventas de tercera edad hay hoy?',
-    patron: /tercera( edad)?|3ra/i,
-    run: async (q) => {
-      const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
-      return porEmpresas(emps, async (emp) => {
-        const s = SRC[emp];
-        const total = await totalCon(emp, rango, `${s.tercera} AND ${s.activo}`, s.fJot);
-        return `👴 *${s.nombre} — Tercera edad (activas) ${rango.label}*: ${total}`;
-      });
-    },
-  },
-  {
-    id: 'ciudades',
-    ejemplos: '¿Cuáles son las ciudades con más ventas hoy?',
-    patron: /ciudad|provincia/i,
-    run: async (q) => {
-      const rango = detectarPeriodo(q);
-      const { rows } = await pool.query(`
-        SELECT COALESCE(UPPER(TRIM(mb.j_ciudad)), 'SIN DATO') AS nombre, COUNT(*)::int AS cantidad
-        FROM public.mestra_bitrix mb
-        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-        GROUP BY 1 ORDER BY cantidad DESC LIMIT 10
-      `, [rango.desde, rango.hasta]);
-      return `🏙️ *NOVONET — Ciudades con más ingresos ${rango.label}*\n\n${lista(rows)}`;
-    },
-  },
-  {
-    id: 'gestion_diaria',
-    ejemplos: '¿Cómo va la gestión diaria?',
-    patron: /gesti(o|ó)n/i,
-    run: async () => {
-      const rows = await broadcastSvc.getAsesoresGestionDiaria();
-      if (!rows.length) return 'Hoy no hay registros en Gestión Diaria.';
-      return `📞 *Gestión Diaria de HOY*\n\n${rows.map((r, i) => `${i + 1}. ${r.nombre || 'Sin nombre'} — ${r.cantidad}`).join('\n')}`;
-    },
-  },
-  {
-    id: 'sin_ventas',
-    ejemplos: '¿Quiénes no han vendido hoy?',
-    patron: /sin venta|no.*(vendido|venta)|quien(es)? falta/i,
-    run: async () => {
-      const nombres = await broadcastSvc.getAsesoresSinVentas();
-      if (!nombres.length) return '🎉 Todos los asesores tienen al menos una venta hoy.';
-      return `⚠️ *Asesores SIN ventas hoy (${nombres.length})*\n\n${nombres.map((n, i) => `${i + 1}. ${n}`).join('\n')}`;
     },
   },
   {
     id: 'resumen',
-    ejemplos: 'Dame el resumen de Novonet de hoy / resumen del mes de Velsa',
-    patron: /resumen|como vamos|cómo vamos|estado general|panorama|indicador/i,
+    ejemplos: 'Dame el resumen de Novonet de hoy',
+    patron: /resumen|como vamos|cómo vamos|indicador/i,
     run: async (q) => {
       const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
       return porEmpresas(emps, async (emp) => {
         const r = await resumenEmpresa(emp, rango);
         return `📊 *${SRC[emp].nombre} — Resumen ${rango.label}*\n\n` +
-          `• Leads creados: ${r.leads}\n` +
-          `• Ventas CRM (subidas): ${r.ventasCrm}\n` +
-          `• Ingresos Jot: ${r.jot}\n` +
-          `• Ventas del día: ${r.vdia}\n` +
-          `• Venta seguimiento: ${r.seguimiento}\n` +
-          `• Activas: ${r.activas} (instalación ${r.pctInst}%)\n` +
-          `• Descartes: ${r.descartes} (${r.pctDesc}% de leads)`;
+          `• Leads creados: ${r.leads_creados}\n• Ventas CRM: ${r.ventas_crm_subidas}\n` +
+          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ventas del día: ${r.ventas_del_dia}\n` +
+          `• Venta seguimiento: ${r.venta_seguimiento}\n• Activas: ${r.activas} (${r.pct_instalacion}%)\n` +
+          `• Descartes: ${r.descartes} (${r.pct_descarte_sobre_leads}%)`;
       });
     },
   },
   {
-    id: 'top_jot',
-    ejemplos: '¿Quién ha ingresado más ventas en Jot hoy?',
-    patron: /jot|ingres/i,
+    id: 'top_ventas',
+    ejemplos: '¿Quién ha hecho más ventas hoy?',
+    patron: /(quien|quién|top|mejor|mas|más).*(vend|venta|ingres)|venta|jot/i,
     run: async (q) => {
       const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
       return porEmpresas(emps, async (emp) => {
         const s = SRC[emp];
         const rows = await topPorAsesor(emp, rango, null, s.fJot);
-        const total = await totalCon(emp, rango, null, s.fJot);
-        return `🏆 *${s.nombre} — Top ingresos Jot ${rango.label}* (total: ${total})\n\n${lista(rows, ' ingresos')}`;
-      });
-    },
-  },
-  {
-    // Genérico al final: "quién tiene más ventas" → ventas CRM subidas
-    id: 'top_ventas',
-    ejemplos: '¿Quién tiene más ventas hoy? / ¿quién más vendió este mes en Velsa?',
-    patron: /(quien|quién|top|mejor|mas|más).*(vend|venta)|venta.*(top|mejor|quien|quién)/i,
-    run: async (q) => {
-      const rango = detectarPeriodo(q), emps = detectarEmpresa(q);
-      return porEmpresas(emps, async (emp) => {
-        const s = SRC[emp];
-        const rows = await topPorAsesor(emp, rango, `UPPER(${s.etapa}) = 'VENTA SUBIDA'`, s.fLead);
-        const total = rows.reduce((a, r) => a + r.cantidad, 0);
-        return `🏆 *${s.nombre} — Top VENTAS SUBIDAS ${rango.label}* (total visible: ${total})\n\n${lista(rows, ' ventas')}`;
+        return `🏆 *${s.nombre} — Top ingresos Jot ${rango.label}*\n\n${lista(rows, ' ingresos')}`;
       });
     },
   },
 ];
 
 const AYUDA =
-  `Puedo responder con datos del ERP (Novonet y Velsa). Di la empresa y el período ` +
-  `("hoy", "ayer", "semana", "mes") en tu pregunta. Ejemplos:\n\n` +
+  `Pregúntame lo que quieras sobre los datos del ERP (Novonet y Velsa): ventas, leads, descartes, ` +
+  `activas, seguimiento, gestión diaria, por asesor, por día/mes... Ejemplos:\n\n` +
   INTENCIONES.map(i => `• ${i.ejemplos}`).join('\n');
 
-// ── Ollama opcional ───────────────────────────────────────────
-async function preguntarOllama(pregunta, contexto) {
-  const base = process.env.OLLAMA_URL;
-  if (!base) return null;
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 25000);
-    const resp = await fetch(`${base.replace(/\/$/, '')}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || 'llama3.2',
-        stream: false,
-        prompt:
-          `Eres el asistente del ERP. Responde en español, breve y SOLO con base en estos datos ` +
-          `(no inventes nada; si no está en los datos, dilo):\n${JSON.stringify(contexto)}\n\nPregunta: ${pregunta}\nRespuesta:`,
-      }),
-    });
-    clearTimeout(t);
-    if (!resp.ok) return null;
-    const d = await resp.json();
-    return d.response?.trim() || null;
-  } catch {
-    return null;
+async function responderConReglas(q) {
+  for (const intent of INTENCIONES) {
+    if (intent.patron.test(q)) {
+      try {
+        return { intent: intent.id, respuesta: await intent.run(q) };
+      } catch (err) {
+        console.error(`[Asistente] Error en ${intent.id}:`, err.message);
+        return { intent: intent.id, respuesta: 'Ocurrió un error consultando los datos.' };
+      }
+    }
   }
+  return { intent: 'desconocido', respuesta: `No entendí la pregunta. ${AYUDA}` };
 }
 
 // ── Punto de entrada ──────────────────────────────────────────
 async function responder(pregunta) {
   const q = (pregunta || '').trim();
   if (!q) return { intent: 'ayuda', respuesta: AYUDA };
+  if (/^(ayuda|help|opciones|menu|menú)$/i.test(q)) return { intent: 'ayuda', respuesta: AYUDA };
 
-  if (/^(ayuda|help|que puedes|qué puedes|opciones|menu|menú)/i.test(q)) {
-    return { intent: 'ayuda', respuesta: AYUDA };
-  }
-
-  for (const intent of INTENCIONES) {
-    if (intent.patron.test(q)) {
-      try {
-        const respuesta = await intent.run(q);
-        return { intent: intent.id, respuesta };
-      } catch (err) {
-        console.error(`[Asistente] Error en intención ${intent.id}:`, err.message);
-        return { intent: intent.id, respuesta: 'Ocurrió un error consultando los datos. Intenta de nuevo.' };
-      }
+  // 1) IA PRIMERO: snapshot de datos reales + llama3 responde libre
+  if (process.env.OLLAMA_URL) {
+    try {
+      const snapshot = await construirSnapshot(q);
+      const respuesta = await llamarOllama(q, snapshot);
+      if (respuesta) return { intent: 'ia', respuesta };
+      console.warn('[Asistente] Ollama sin respuesta → usando reglas de respaldo');
+    } catch (err) {
+      console.error('[Asistente] Error construyendo snapshot:', err.message);
     }
   }
 
-  // Sin intención → contexto del día + Ollama (si está configurado)
-  try {
-    const rangoHoy = detectarPeriodo('hoy');
-    const [nov, vel] = await Promise.all([
-      resumenEmpresa('novonet', rangoHoy),
-      resumenEmpresa('velsa', rangoHoy),
-    ]);
-    const conLLM = await preguntarOllama(q, { novonet: nov, velsa: vel });
-    if (conLLM) return { intent: 'ollama', respuesta: conLLM };
-  } catch {}
-
-  return { intent: 'desconocido', respuesta: `No entendí la pregunta. ${AYUDA}` };
+  // 2) Respaldo: motor de reglas
+  return responderConReglas(q);
 }
 
 module.exports = { responder, INTENCIONES };

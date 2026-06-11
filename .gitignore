@@ -4,3 +4,6 @@ node_modules/
 **/.env
 dist/
 .DS_Store
+tunnel_log.txt
+ollama_url.txt
+prueba_ia.txt

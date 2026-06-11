@@ -664,7 +664,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ventas_del_dia:    ventas_del_dia_real,
                 ventas_dia_form:   ventas_del_dia_real,
                 ingresos_del_dia,
-                venta_seguimiento: Math.max(0, Number(row.ingresos_jot || 0) - ingresos_del_dia),
+                venta_seguimiento: Math.max(0, Number(row.ingresos_reales ?? row.ingresos_jot ?? 0) - ingresos_del_dia),
             };
         });
 

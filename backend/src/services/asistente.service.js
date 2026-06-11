@@ -95,14 +95,15 @@ async function totalCon(emp, rango, condicion, fechaCol) {
   return rows[0]?.total ?? 0;
 }
 
-async function ventasDelDia(emp, rango) {
+// INGRESOS DEL DÍA: jot registrado el MISMO día en que se creó el lead.
+// VENTA SEGUIMIENTO = ingresos jot − ingresos del día.
+async function ingresosDelDia(emp, rango) {
   if (emp === 'velsa') {
     const { rows } = await pool.query(`
       SELECT COUNT(*)::int AS total
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
-        AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-        AND mv.fecha_creacion_crm::date = mv.fecha_modificacion_crm::date
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+        AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
     `, [rango.desde, rango.hasta]);
     return rows[0]?.total ?? 0;
   }
@@ -112,7 +113,6 @@ async function ventasDelDia(emp, rango) {
     JOIN public.mestra_bitrix mb_crm
       ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
     WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-      AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
       AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
   `, [rango.desde, rango.hasta]);
   return rows[0]?.total ?? 0;
@@ -120,20 +120,20 @@ async function ventasDelDia(emp, rango) {
 
 async function resumenEmpresa(emp, rango) {
   const s = SRC[emp];
-  const [leads, ventasCrm, jot, activas, descartes, vdia] = await Promise.all([
+  const [leads, ventasCrm, jot, activas, descartes, ingDia] = await Promise.all([
     totalCon(emp, rango, null, s.fLead),
     totalCon(emp, rango, `UPPER(${s.etapa}) = 'VENTA SUBIDA'`, s.fLead),
     totalCon(emp, rango, null, s.fJot),
     totalCon(emp, rango, s.activo, s.fJot),
     totalCon(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead),
-    ventasDelDia(emp, rango),
+    ingresosDelDia(emp, rango),
   ]);
   return {
     leads_creados: leads,
     ventas_crm_subidas: ventasCrm,
     ingresos_jotform: jot,
-    ventas_del_dia: vdia,
-    venta_seguimiento: Math.max(0, jot - vdia),
+    ingresos_del_dia: ingDia,
+    venta_seguimiento: Math.max(0, jot - ingDia),
     activas,
     descartes,
     pct_descarte_sobre_leads: leads > 0 ? +((descartes / leads) * 100).toFixed(1) : 0,
@@ -247,7 +247,7 @@ const SYSTEM_PROMPT =
   `NUNCA inventes cifras, nombres ni porcentajes que no estén en los datos. ` +
   `Si la pregunta no se puede responder con los datos disponibles, di exactamente qué dato falta. ` +
   `Glosario: "ventas subidas"=ventas registradas en CRM; "ingresos jotform"=ventas ingresadas en Jot; ` +
-  `"venta seguimiento"=ingresos jotform menos ventas del día; "activas"=instalaciones activadas; ` +
+  `"venta seguimiento"=ingresos jotform menos ingresos del día (jot cuyo lead se creó el mismo día); "activas"=instalaciones activadas; ` +
   `"descartes"=leads descartados. ` +
   `Formato: usa *negritas* para títulos y listas numeradas cuando muestres rankings.`;
 
@@ -319,7 +319,7 @@ const INTENCIONES = [
       return porEmpresas(emps, async (emp) => {
         const r = await resumenEmpresa(emp, rango);
         return `🔁 *${SRC[emp].nombre} — Venta Seguimiento ${rango.label}*\n\n` +
-          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ventas del día: ${r.ventas_del_dia}\n` +
+          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ingresos del día: ${r.ingresos_del_dia}\n` +
           `• *Seguimiento: ${r.venta_seguimiento}*`;
       });
     },
@@ -361,7 +361,7 @@ const INTENCIONES = [
         const r = await resumenEmpresa(emp, rango);
         return `📊 *${SRC[emp].nombre} — Resumen ${rango.label}*\n\n` +
           `• Leads creados: ${r.leads_creados}\n• Ventas CRM: ${r.ventas_crm_subidas}\n` +
-          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ventas del día: ${r.ventas_del_dia}\n` +
+          `• Ingresos Jot: ${r.ingresos_jotform}\n• Ingresos del día: ${r.ingresos_del_dia}\n` +
           `• Venta seguimiento: ${r.venta_seguimiento}\n• Activas: ${r.activas} (${r.pct_instalacion}%)\n` +
           `• Descartes: ${r.descartes} (${r.pct_descarte_sobre_leads}%)`;
       });

@@ -46,6 +46,7 @@ const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
 const WaContactos          = lazy(() => import("./pages/WaContactos"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
+const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -118,6 +119,8 @@ export default function App() {
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
             <Route path="asistente"                 element={<AsistenteERP />} />
+            <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
+            <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

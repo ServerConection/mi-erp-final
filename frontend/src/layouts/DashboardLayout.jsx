@@ -330,8 +330,10 @@ const ALL_MENU_ITEMS = [
   { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
   { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null },
   { name: "Indicadores",        path: "/indicadores",              icon: "📊", permiso: "Indicadores" },
+  { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet", icon: "🔬", permiso: "Indicadores" },
   { name: "Comparativa Sup.",   path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores" },
   { name: "Indicadores VELSA",  path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa" },
+  { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",   icon: "🔬", permiso: "IndicadoresVelsa" },
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },

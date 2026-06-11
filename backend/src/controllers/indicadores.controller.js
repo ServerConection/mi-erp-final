@@ -456,6 +456,37 @@ const getIndicadoresDashboard = async (req, res) => {
             GROUP BY 1
         `;
 
+        // ── INGRESOS DEL DÍA: Jot registrado el MISMO día en que se creó el lead ──
+        // (sin condición de etapa). VENTA SEGUIMIENTO = ingresos_reales − ingresos_del_dia
+        const queryIngresosDiaAsesor = `
+            SELECT
+                mb_crm.b_persona_responsable AS nombre_grupo,
+                COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
+            FROM public.mestra_bitrix mb_jot
+            JOIN public.mestra_bitrix mb_crm
+                ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            AND mb_crm.b_persona_responsable IS NOT NULL
+            GROUP BY 1
+        `;
+        const queryIngresosDiaSup = `
+            SELECT
+                COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
+                COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
+            FROM public.mestra_bitrix mb_jot
+            JOIN public.mestra_bitrix mb_crm
+                ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE e2.nombre_completo = mb_crm.b_persona_responsable
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
+            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            GROUP BY 1
+        `;
+
         // Backlog = activaciones ACTIVO dentro del rango de fechas seleccionado,
         // PERO cuya orden fue registrada en JotForm ANTES del inicio del período (fecha_desde).
         // Esto garantiza que solo se cuentan órdenes pendientes pre-período que se activaron
@@ -602,7 +633,7 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // Lote 2: tablas + backlogs + activaciones + ventas del día (self-join)
         const dateValues = [desde, hasta]; // solo $1 y $2 para queries de ventas del día
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor] = await Promise.all([
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -610,6 +641,8 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryActivacionesPorDia, values),
             pool.query(queryVentasDiaSup, dateValues),
             pool.query(queryVentasDiaAsesor, dateValues),
+            pool.query(queryIngresosDiaSup, dateValues),
+            pool.query(queryIngresosDiaAsesor, dateValues),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -620,19 +653,23 @@ const getIndicadoresDashboard = async (req, res) => {
         };
 
         // Merge ventas del día (self-join) + calcular venta_seguimiento
-        const mergeVentasDia = (filas, vdRows) => filas.map(row => {
-            const vd = vdRows.find(v => v.nombre_grupo === row.nombre_grupo);
-            const ventas_del_dia_real = vd ? Number(vd.ventas_del_dia) : 0;
+        // VENTA SEGUIMIENTO = ingresos Jot − INGRESOS DEL DÍA (jot cuyo lead se creó el mismo día)
+        const mergeVentasDia = (filas, vdRows, ingRows) => filas.map(row => {
+            const vd  = vdRows.find(v => v.nombre_grupo === row.nombre_grupo);
+            const ing = (ingRows || []).find(v => v.nombre_grupo === row.nombre_grupo);
+            const ventas_del_dia_real = vd  ? Number(vd.ventas_del_dia)    : 0;
+            const ingresos_del_dia    = ing ? Number(ing.ingresos_del_dia) : 0;
             return {
                 ...row,
                 ventas_del_dia:    ventas_del_dia_real,
                 ventas_dia_form:   ventas_del_dia_real,
-                venta_seguimiento: Math.max(0, Number(row.ingresos_jot || 0) - ventas_del_dia_real),
+                ingresos_del_dia,
+                venta_seguimiento: Math.max(0, Number(row.ingresos_jot || 0) - ingresos_del_dia),
             };
         });
 
-        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows, resBacklogSup.rows), resVDASup.rows);
-        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows, resBacklogAses.rows), resVDAsesor.rows);
+        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows, resBacklogSup.rows), resVDASup.rows, resIngDiaSup.rows);
+        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows, resBacklogAses.rows), resVDAsesor.rows, resIngDiaAsesor.rows);
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

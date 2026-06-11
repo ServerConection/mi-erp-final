@@ -29,6 +29,7 @@ const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
+const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 
 const app = express();
 
@@ -119,6 +120,7 @@ const waUploadsPath = process.env.WA_UPLOADS_DIR || path.resolve(__dirname, '..'
 app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
 app.use('/api/wa', whatsappRoutes);
 app.use('/api/asistente', asistenteRoutes);
+app.use('/api/reporte-detalle', reporteDetalleRoutes);
 
 // Handler 404
 app.use((req, res) => {

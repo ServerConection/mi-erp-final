@@ -51,7 +51,7 @@ const CUBO_SQL = {
     UNION ALL
     SELECT 'jot',
            mb.j_fecha_registro_sistema::date::text,
-           COALESCE(EXTRACT(HOUR FROM mb.j_fecha_registro_sistema)::int, -1),
+           COALESCE(EXTRACT(HOUR FROM mb.j_fecha_registro_sistema::timestamp)::int, -1),
            COALESCE(NULLIF(TRIM(mb.b_persona_responsable), ''), 'SIN ASIGNAR'),
            COALESCE(NULLIF(TRIM(UPPER(mb.j_netlife_estatus_real)), ''), 'SIN ESTADO'),
            COUNT(*)::int
@@ -62,7 +62,7 @@ const CUBO_SQL = {
   velsa: `
     SELECT 'lead' AS t,
            mv.fecha_creacion_crm::date::text AS f,
-           COALESCE(EXTRACT(HOUR FROM mv.fecha_creacion_crm)::int, -1) AS h,
+           COALESCE(EXTRACT(HOUR FROM mv.fecha_creacion_crm::timestamp)::int, -1) AS h,
            COALESCE(NULLIF(TRIM(mv.asesor), ''), 'SIN ASIGNAR') AS a,
            COALESCE(NULLIF(TRIM(UPPER(mv.etapa_crm)), ''), 'SIN ETAPA') AS e,
            COUNT(*)::int AS c
@@ -72,7 +72,7 @@ const CUBO_SQL = {
     UNION ALL
     SELECT 'mod',
            mv.fecha_modificacion_crm::date::text,
-           COALESCE(EXTRACT(HOUR FROM mv.fecha_modificacion_crm)::int, -1),
+           COALESCE(EXTRACT(HOUR FROM mv.fecha_modificacion_crm::timestamp)::int, -1),
            COALESCE(NULLIF(TRIM(mv.asesor), ''), 'SIN ASIGNAR'),
            COALESCE(NULLIF(TRIM(UPPER(mv.etapa_crm)), ''), 'SIN ETAPA'),
            COUNT(*)::int
@@ -82,7 +82,7 @@ const CUBO_SQL = {
     UNION ALL
     SELECT 'jot',
            (mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text,
-           COALESCE(EXTRACT(HOUR FROM (mv.fecha_registro_jotform - INTERVAL '5 hours'))::int, -1),
+           COALESCE(EXTRACT(HOUR FROM (mv.fecha_registro_jotform::timestamp - INTERVAL '5 hours'))::int, -1),
            COALESCE(NULLIF(TRIM(mv.asesor), ''), 'SIN ASIGNAR'),
            COALESCE(NULLIF(TRIM(UPPER(mv.estado_venta)), ''), 'SIN ESTADO'),
            COUNT(*)::int

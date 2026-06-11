@@ -174,14 +174,14 @@ function mergeBacklog(kpiRows, backlogRows) {
     const activ = Number(r.real_mes       || 0);
     const desc  = Number(r.descarte_count || 0);
     const leads = Number(r.leads_totales  || 0);
-    const ingDia = Number(r.ingresos_del_dia || 0);
+    const vdia  = Number(r.ventas_del_dia || 0);
     const bk    = map[r.nombre_grupo] || 0;
     return {
       ...r,
       backlog:                    bk,
       total_activas_calculada:    activ + bk,
-      // VENTA SEGUIMIENTO = ingresos Jotform − INGRESOS DEL DÍA (jot con lead creado el mismo día)
-      venta_seguimiento:          Math.max(0, jot - ingDia),
+      // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
+      venta_seguimiento:          Math.max(0, jot - vdia),
       descarte:                   gest  > 0 ? parseFloat(((desc  / gest)  * 100).toFixed(1)) : 0,
       efectividad_real:           gest  > 0 ? parseFloat(((jot   / gest)  * 100).toFixed(1)) : 0,
       tasa_instalacion:           jot   > 0 ? parseFloat(((activ / jot)   * 100).toFixed(1)) : 0,

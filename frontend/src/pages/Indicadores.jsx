@@ -1105,7 +1105,8 @@ ${asesoresPDF.length>0?`
       ingresosJotform:          totalJotform,
       ventasDelDia:             s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
       ventasDiaForm:            s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0),
-      ventaSeguimiento:         Math.max(0, s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0) - s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0)),
+      // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
+      ventaSeguimiento:         Math.max(0, totalJotform - s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0)),
       descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
       leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
       // Efectividad = Ingresos JOT / Gestionables

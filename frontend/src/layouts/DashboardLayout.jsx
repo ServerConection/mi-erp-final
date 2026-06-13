@@ -350,6 +350,7 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
   { name: "🏆 Mundialito",    path: "/mundialito",           icon: "🏆",
     accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null },
   { name: "📊 Reporte Jefatura", path: "/reporte-jefatura",  icon: "📊",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
   { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },

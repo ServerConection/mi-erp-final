@@ -25,6 +25,7 @@ const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
 const mundialitoRoutes             = require('./routes/mundialito.routes');
+const pollaMundialistaRoutes       = require('./routes/pollaMundialista.routes');
 const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
@@ -101,6 +102,7 @@ app.use('/api/forecast',          forecastRoutes);
 app.use('/api/envios-ventas',     enviosVentasRoutes);
 app.use('/api/backoffice',        backofficeRoutes);
 app.use('/api/mundialito',        mundialitoRoutes);
+app.use('/api/polla',             pollaMundialistaRoutes);
 app.use('/api/reporte-jefatura',  reporteJefaturaRoutes);
 app.use('/api/consultor',         consultorRoutes);
 

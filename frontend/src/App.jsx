@@ -37,6 +37,7 @@ const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const Backoffice           = lazy(() => import("./pages/Backoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
+const PollaMundialista     = lazy(() => import("./pages/PollaMundialista"));
 const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="mundialito"               element={<Mundialito />} />
+            <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
 
             {/* ── Módulo WhatsApp ──────────────────────────────── */}

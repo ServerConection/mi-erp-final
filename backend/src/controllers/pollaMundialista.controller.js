@@ -365,7 +365,7 @@ exports.listarPartidos = async (req, res) => {
     const [partidos, pron, reales, config] = await Promise.all([
       pool.query(`
         SELECT p.id, p.numero, p.fase, p.grupo, p.kickoff, p.sede, p.ciudad,
-               p.home_label, p.away_label,
+               p.home_label, p.away_label, p.home_ref, p.away_ref,
                he.nombre AS home_nombre, he.codigo AS home_codigo,
                ae.nombre AS away_nombre, ae.codigo AS away_codigo
           FROM polla_partidos p

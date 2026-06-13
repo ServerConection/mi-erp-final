@@ -97,41 +97,55 @@ const G = [
  ['J','Jordania','Argentina','2026-06-27','21:00','DAL'],
 ];
 
-// [fase, fecha, hora, sedeKey, homeLabel, awayLabel]
+// Eliminatorias — numeración y cruces OFICIALES FIFA 2026 (match 73-104).
+// [fase, fecha, hora, sedeKey, homeRef, awayRef]
+// Refs: 1:E=ganador grupo E · 2:C=2º grupo C · 3:A/B/C/D/F=mejor 3º del clúster
+//       W:74=ganador del partido 74 · L:101=perdedor del partido 101
 const K = [
- ['R32','2026-06-28','12:00','LA','1º A','Mejor 3º (1)'],
- ['R32','2026-06-29','12:00','HOU','1º C','Mejor 3º (2)'],
- ['R32','2026-06-29','16:30','BOS','1º E','Mejor 3º (3)'],
- ['R32','2026-06-29','19:00','MTY','1º G','Mejor 3º (4)'],
- ['R32','2026-06-30','12:00','DAL','1º I','Mejor 3º (5)'],
- ['R32','2026-06-30','17:00','NJ','1º K','Mejor 3º (6)'],
- ['R32','2026-06-30','19:00','MEX','1º B','Mejor 3º (7)'],
- ['R32','2026-07-01','12:00','ATL','1º D','Mejor 3º (8)'],
- ['R32','2026-07-01','13:00','SEA','1º F','2º J'],
- ['R32','2026-07-01','17:00','SF','1º H','2º L'],
- ['R32','2026-07-02','12:00','LA','1º J','2º B'],
- ['R32','2026-07-02','19:00','TOR','1º L','2º D'],
- ['R32','2026-07-02','20:00','VAN','2º A','2º C'],
- ['R32','2026-07-03','13:00','DAL','2º E','2º G'],
- ['R32','2026-07-03','18:00','MIA','2º I','2º K'],
- ['R32','2026-07-03','20:30','KC','2º F','2º H'],
- ['R16','2026-07-04','12:00','HOU','Ganador #73','Ganador #74'],
- ['R16','2026-07-04','17:00','PHI','Ganador #75','Ganador #76'],
- ['R16','2026-07-05','16:00','NJ','Ganador #77','Ganador #78'],
- ['R16','2026-07-05','18:00','MEX','Ganador #79','Ganador #80'],
- ['R16','2026-07-06','14:00','DAL','Ganador #81','Ganador #82'],
- ['R16','2026-07-06','17:00','SEA','Ganador #83','Ganador #84'],
- ['R16','2026-07-07','12:00','ATL','Ganador #85','Ganador #86'],
- ['R16','2026-07-07','13:00','VAN','Ganador #87','Ganador #88'],
- ['CUARTOS','2026-07-09','16:00','BOS','Ganador #89','Ganador #90'],
- ['CUARTOS','2026-07-10','12:00','LA','Ganador #91','Ganador #92'],
- ['CUARTOS','2026-07-11','17:00','MIA','Ganador #93','Ganador #94'],
- ['CUARTOS','2026-07-11','20:00','KC','Ganador #95','Ganador #96'],
- ['SEMIS','2026-07-14','14:00','DAL','Ganador #97','Ganador #98'],
- ['SEMIS','2026-07-15','15:00','ATL','Ganador #99','Ganador #100'],
- ['TERCER','2026-07-18','17:00','MIA','Perdedor #101','Perdedor #102'],
- ['FINAL','2026-07-19','15:00','NJ','Ganador #101','Ganador #102'],
+ ['R32','2026-06-28','12:00','LA','2:A','2:B'],
+ ['R32','2026-06-29','16:30','BOS','1:E','3:A/B/C/D/F'],
+ ['R32','2026-06-29','19:00','MTY','1:F','2:C'],
+ ['R32','2026-06-29','12:00','HOU','1:C','2:F'],
+ ['R32','2026-06-30','17:00','NJ','1:I','3:C/D/F/G/H'],
+ ['R32','2026-06-30','12:00','DAL','2:E','2:I'],
+ ['R32','2026-06-30','19:00','MEX','1:A','3:C/E/F/H/I'],
+ ['R32','2026-07-01','12:00','ATL','1:L','3:E/H/I/J/K'],
+ ['R32','2026-07-01','17:00','SF','1:D','3:B/E/F/I/J'],
+ ['R32','2026-07-01','13:00','SEA','1:G','3:A/E/H/I/J'],
+ ['R32','2026-07-02','19:00','TOR','2:K','2:L'],
+ ['R32','2026-07-02','12:00','LA','1:H','2:J'],
+ ['R32','2026-07-02','20:00','VAN','1:B','3:E/F/G/I/J'],
+ ['R32','2026-07-03','18:00','MIA','1:J','2:H'],
+ ['R32','2026-07-03','20:30','KC','1:K','3:D/E/I/J/L'],
+ ['R32','2026-07-03','13:00','DAL','2:D','2:G'],
+ ['R16','2026-07-04','17:00','PHI','W:74','W:77'],
+ ['R16','2026-07-04','12:00','HOU','W:73','W:75'],
+ ['R16','2026-07-05','16:00','NJ','W:76','W:78'],
+ ['R16','2026-07-05','18:00','MEX','W:79','W:80'],
+ ['R16','2026-07-06','14:00','DAL','W:83','W:84'],
+ ['R16','2026-07-06','17:00','SEA','W:81','W:82'],
+ ['R16','2026-07-07','12:00','ATL','W:86','W:88'],
+ ['R16','2026-07-07','13:00','VAN','W:85','W:87'],
+ ['CUARTOS','2026-07-09','16:00','BOS','W:89','W:90'],
+ ['CUARTOS','2026-07-10','12:00','LA','W:93','W:94'],
+ ['CUARTOS','2026-07-11','17:00','MIA','W:91','W:92'],
+ ['CUARTOS','2026-07-11','20:00','KC','W:95','W:96'],
+ ['SEMIS','2026-07-14','14:00','DAL','W:97','W:98'],
+ ['SEMIS','2026-07-15','15:00','ATL','W:99','W:100'],
+ ['TERCER','2026-07-18','17:00','MIA','L:101','L:102'],
+ ['FINAL','2026-07-19','15:00','NJ','W:101','W:102'],
 ];
+
+// Etiqueta legible a partir del ref
+const labelFromRef = (ref) => {
+  const [t, v] = ref.split(":");
+  if (t === "1") return `1º ${v}`;
+  if (t === "2") return `2º ${v}`;
+  if (t === "3") return `3º (${v})`;
+  if (t === "W") return `Ganador #${v}`;
+  if (t === "L") return `Perdedor #${v}`;
+  return ref;
+};
 
 const q = (s) => s.replace(/'/g, "''");
 const ts = (fecha, hora, off) => `${fecha} ${hora}:00${off}`;
@@ -145,15 +159,15 @@ for (const [grupo, home, away, fecha, hora, vk] of G) {
     `(${n},'GRUPOS','${grupo}','${ts(fecha,hora,off)}','${q(sede)}','${q(ciudad)}',` +
     `(SELECT id FROM polla_equipos WHERE grupo='${grupo}' AND nombre='${q(home)}'),` +
     `(SELECT id FROM polla_equipos WHERE grupo='${grupo}' AND nombre='${q(away)}'),` +
-    `'${q(home)}','${q(away)}')`
+    `'${q(home)}','${q(away)}',NULL,NULL)`
   );
 }
-for (const [fase, fecha, hora, vk, hl, al] of K) {
+for (const [fase, fecha, hora, vk, hr, ar] of K) {
   n++;
   const [sede, ciudad, off] = V[vk];
   rows.push(
     `(${n},'${fase}',NULL,'${ts(fecha,hora,off)}','${q(sede)}','${q(ciudad)}',` +
-    `NULL,NULL,'${q(hl)}','${q(al)}')`
+    `NULL,NULL,'${q(labelFromRef(hr))}','${q(labelFromRef(ar))}','${q(hr)}','${q(ar)}')`
   );
 }
 
@@ -177,7 +191,9 @@ CREATE TABLE IF NOT EXISTS polla_partidos (
   home_equipo_id INT REFERENCES polla_equipos(id),
   away_equipo_id INT REFERENCES polla_equipos(id),
   home_label     VARCHAR(60) NOT NULL,
-  away_label     VARCHAR(60) NOT NULL
+  away_label     VARCHAR(60) NOT NULL,
+  home_ref       VARCHAR(20),   -- ref de bracket (1:E, 2:C, 3:A/B/.., W:74, L:101) o NULL en grupos
+  away_ref       VARCHAR(20)
 );
 CREATE INDEX IF NOT EXISTS idx_polla_partidos_kickoff ON polla_partidos(kickoff);
 
@@ -200,7 +216,10 @@ CREATE TABLE IF NOT EXISTS polla_res_partidos (
   updated_at  TIMESTAMPTZ DEFAULT now()
 );
 
--- Puntos por pronóstico de marcador (configurable)
+-- Columnas de bracket (para instalaciones que ya tenían la tabla sin ellas)
+ALTER TABLE polla_partidos ADD COLUMN IF NOT EXISTS home_ref VARCHAR(20);
+ALTER TABLE polla_partidos ADD COLUMN IF NOT EXISTS away_ref VARCHAR(20);
+
 ALTER TABLE polla_config ADD COLUMN IF NOT EXISTS pts_marcador_exacto SMALLINT NOT NULL DEFAULT 5;
 ALTER TABLE polla_config ADD COLUMN IF NOT EXISTS pts_resultado       SMALLINT NOT NULL DEFAULT 2;
 
@@ -208,7 +227,7 @@ ALTER TABLE polla_config ADD COLUMN IF NOT EXISTS pts_resultado       SMALLINT N
 TRUNCATE polla_partidos RESTART IDENTITY CASCADE;
 
 INSERT INTO polla_partidos
-  (numero,fase,grupo,kickoff,sede,ciudad,home_equipo_id,away_equipo_id,home_label,away_label)
+  (numero,fase,grupo,kickoff,sede,ciudad,home_equipo_id,away_equipo_id,home_label,away_label,home_ref,away_ref)
 VALUES
 `;
 

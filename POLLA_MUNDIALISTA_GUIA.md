@@ -81,7 +81,12 @@ El marcador exacto y el resultado no se acumulan entre sí: cada partido otorga 
 ## 5. Calendario y eliminatorias
 
 - **Fase de grupos (72 partidos)**: equipos, sedes y horas exactas del calendario oficial FIFA, convertidas a zona Ecuador.
-- **Eliminatorias (32 partidos)**: fechas/sedes/horas oficiales con **placeholders** por posición (`1º A`, `2º B`, `Mejor 3º (n)`, `Ganador #73`, etc.). Como los cruces dependen de los 8 mejores terceros, son etiquetas editables: el admin asigna los equipos reales y registra los marcadores conforme avanza el torneo. Para fijar un cruce real puede actualizarse `home_equipo_id`/`away_equipo_id` en `polla_partidos`.
+- **Eliminatorias (32 partidos)**: numeración, fechas, sedes, horas **y cruces oficiales FIFA 2026**. Cada partido guarda además un `home_ref`/`away_ref` legible por máquina para construir el bracket:
+  - `1:E` = ganador del Grupo E · `2:C` = 2º del Grupo C
+  - `3:A/B/C/D/F` = mejor tercero del clúster de grupos indicado (regla FIFA de los 8 mejores terceros)
+  - `W:74` = ganador del partido 74 · `L:101` = perdedor del partido 101
+  
+  Ejemplos reales de dieciseisavos: `2ºA vs 2ºB` (#73), `1ºE vs 3º(A/B/C/D/F)` (#74), `1ºF vs 2ºC` (#75)… hasta la final `Ganador #101 vs Ganador #102` (#104). El admin asigna los equipos reales y registra los marcadores conforme avanza el torneo.
 
 ---
 

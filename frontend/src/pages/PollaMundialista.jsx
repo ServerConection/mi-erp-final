@@ -211,7 +211,7 @@ function GrupoBoard({ grupo, equipos, slots, setSlots, disabled, titulo }) {
             onDrop={dropEnPool}
             className={`rounded-xl border border-white/10 p-2 min-h-[52px] transition-colors ${overPool ? "bg-rose-400/10 border-rose-300/40" : "bg-black/20"}`}
           >
-            <div className="text-[10px] uppercase tracking-wider text-white/35 mb-1.5 px-1">Equipos {pool.length > 0 ? "· arrastra a una posición" : "· todos ubicados"}</div>
+            <div className="text-[10px] uppercase tracking-wider text-white/35 mb-1.5 px-1">{pool.length > 0 ? "Equipos sin ubicar · arrástralos a una posición" : "Arrastra entre posiciones para reordenar ↕"}</div>
             <div className="flex flex-wrap gap-1.5">
               {pool.map((e) => (
                 <div
@@ -224,7 +224,7 @@ function GrupoBoard({ grupo, equipos, slots, setSlots, disabled, titulo }) {
                   {e.nombre}
                 </div>
               ))}
-              {pool.length === 0 && <span className="text-xs text-emerald-300/70 px-1 py-0.5">✓ Clasificación completa</span>}
+              {pool.length === 0 && <span className="text-xs text-emerald-300/60 px-1 py-0.5">✓ Los 4 equipos están ubicados — arrastra para cambiar el orden</span>}
             </div>
           </div>
         )}
@@ -432,8 +432,22 @@ export default function PollaMundialista() {
         setEsAdmin(eq.esAdmin);
       }
       if (mi.success) {
+        // Equipos por grupo en orden de sorteo (para pre-llenar)
+        const teamsByGroup = {};
+        for (const e of (eq.equipos || [])) (teamsByGroup[e.grupo] ||= []).push(e.id);
+        // Posiciones ya guardadas por el usuario
+        const saved = {};
+        for (const row of mi.grupos) (saved[row.grupo] ||= emptySlots())[row.posicion - 1] = row.equipo_id;
+        // Pre-llenar TODOS los grupos: lo guardado se respeta, lo vacío se llena en orden
         const g = {};
-        for (const row of mi.grupos) (g[row.grupo] ||= emptySlots())[row.posicion - 1] = row.equipo_id;
+        for (const grp of GRUPOS) {
+          const slots = saved[grp] ? [...saved[grp]] : emptySlots();
+          const usados = new Set(slots.filter(Boolean));
+          const resto = (teamsByGroup[grp] || []).filter((id) => !usados.has(id));
+          let ri = 0;
+          for (let i = 0; i < 4; i++) if (!slots[i]) slots[i] = resto[ri++] ?? null;
+          g[grp] = slots;
+        }
         setPredGrupos(g);
         const f = {};
         for (const row of mi.fases) (f[row.fase] ||= []).push(row.equipo_id);
@@ -670,7 +684,7 @@ export default function PollaMundialista() {
               </div>
               {config && subTab === "grupos" && (
                 <span className="text-xs text-white/40">
-                  Posición exacta = <b className="text-amber-300">{config.pts_posicion_exacta} pts</b> · <b>Arrastra</b> cada selección a su posición 1º-4º
+                  Ya puse los 4 equipos de cada grupo — <b className="text-white/70">arrástralos</b> para ordenar cómo crees que quedarán (1º-4º). Posición exacta = <b className="text-amber-300">{config.pts_posicion_exacta} pts</b>
                 </span>
               )}
             </div>

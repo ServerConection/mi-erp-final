@@ -18,10 +18,15 @@ router.get('/mi-polla',           C.miPolla);
 router.put('/mi-polla/grupos',    C.guardarPredGrupos);
 router.put('/mi-polla/fases',     C.guardarPredFases);
 
+// Partidos (calendario) + pronósticos de marcador
+router.get('/partidos',           C.listarPartidos);
+router.put('/mi-polla/partidos',  C.guardarPredPartidos);
+
 // Resultados reales
 router.get('/resultados',         C.resultados);
-router.put('/resultados/grupos',  C.guardarResGrupo);   // admin
-router.put('/resultados/fases',   C.guardarResFase);    // admin
+router.put('/resultados/grupos',  C.guardarResGrupo);    // admin
+router.put('/resultados/fases',   C.guardarResFase);     // admin
+router.put('/resultados/partidos', C.guardarResPartido); // admin
 
 // Config (abrir/cerrar predicciones)
 router.put('/config',             C.actualizarConfig);  // admin

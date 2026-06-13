@@ -85,7 +85,7 @@ const ETAPAS_DESCARTE = `('DESCARTE')`;
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
   let f = '';
-  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix } = q;
+  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables } = q;
   if (asesor)               { values.push(`%${asesor}%`);               f += ` AND mv.asesor ILIKE $${values.length}`; }
   if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
@@ -93,6 +93,9 @@ function buildFilters(q, values) {
   if (etapaCRM)             { values.push(`%${etapaCRM}%`);             f += ` AND mv.etapa_crm ILIKE $${values.length}`; }
   if (etapaJotform)         { values.push(`%${etapaJotform}%`);         f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (idBitrix)             { values.push(idBitrix.toString());         f += ` AND (mv.id_crm::text = $${values.length} OR mv.id_jotform::text = $${values.length})`; }
+  // Filtro GESTIONABLES: 'si' = solo gestionables, 'no' = solo NO gestionables
+  if (gestionables === 'si')      f += ` AND ${esGestionableExpr('mv.etapa_crm')}`;
+  else if (gestionables === 'no') f += ` AND NOT ${esGestionableExpr('mv.etapa_crm')}`;
   return f;
 }
 

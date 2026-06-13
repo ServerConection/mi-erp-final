@@ -37,6 +37,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
   const [fEtapas, setFEtapas]     = useState(new Set());
   const [fDias, setFDias]         = useState(new Set());
   const [fHoras, setFHoras]       = useState(new Set());
+  const [fGest, setFGest]         = useState(""); // "" todos | "si" solo gestionables | "no" no gestionables
   const [pivotModo, setPivotModo] = useState("jot"); // jot | crm
 
   const toggle = (setter) => (valor) => setter(prev => {
@@ -46,8 +47,8 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
   });
   const togAsesor = toggle(setFAsesores), togEtapa = toggle(setFEtapas);
   const togDia = toggle(setFDias), togHora = toggle(setFHoras);
-  const limpiar = () => { setFAsesores(new Set()); setFEtapas(new Set()); setFDias(new Set()); setFHoras(new Set()); };
-  const hayFiltros = fAsesores.size || fEtapas.size || fDias.size || fHoras.size;
+  const limpiar = () => { setFAsesores(new Set()); setFEtapas(new Set()); setFDias(new Set()); setFHoras(new Set()); setFGest(""); };
+  const hayFiltros = fAsesores.size || fEtapas.size || fDias.size || fHoras.size || fGest;
 
   // ── Carga del cubo ─────────────────────────────────────────
   const cargar = useCallback(async () => {
@@ -75,8 +76,9 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
     (!fAsesores.size || fAsesores.has(ev.a)) &&
     (!fEtapas.size   || fEtapas.has(ev.e)) &&
     (!fDias.size     || fDias.has(ev.f)) &&
-    (!fHoras.size    || fHoras.has(ev.h))
-  ), [eventos, fAsesores, fEtapas, fDias, fHoras]);
+    (!fHoras.size    || fHoras.has(ev.h)) &&
+    (!fGest || (fGest === "si" ? esGestionable(ev.e) : !esGestionable(ev.e)))
+  ), [eventos, fAsesores, fEtapas, fDias, fHoras, fGest, esGestionable]);
 
   const suma = (arr, cond) => arr.reduce((acc, ev) => acc + (cond(ev) ? ev.c : 0), 0);
 
@@ -185,6 +187,16 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
           style={{ padding: ".45rem .6rem", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: ".8rem" }} />
         <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
           style={{ padding: ".45rem .6rem", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: ".8rem" }} />
+        <select value={fGest} onChange={e => setFGest(e.target.value)}
+          title="Gestionables = toda etapa excepto DUPLICADO, ATC, FUERA DE COBERTURA y ZONA PELIGROSA"
+          style={{
+            padding: ".45rem .6rem", borderRadius: 10, fontSize: ".75rem", fontWeight: 700, cursor: "pointer",
+            border: `1px solid ${fGest ? accent : "#cbd5e1"}`, color: fGest ? accent : "#475569", background: "#fff",
+          }}>
+          <option value="">⚙️ Gestionables: TODOS</option>
+          <option value="si">⚙️ SOLO GESTIONABLES</option>
+          <option value="no">⚙️ NO GESTIONABLES</option>
+        </select>
         <button onClick={cargar}
           style={{ padding: ".5rem 1.1rem", borderRadius: 10, border: "none", background: accent, color: "#fff", fontWeight: 700, fontSize: ".8rem", cursor: "pointer" }}>
           Aplicar
@@ -201,6 +213,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
           {[...fEtapas].map(v => <Chip key={"e" + v} onClick={() => togEtapa(v)} color={accent}>🏷️ {v}</Chip>)}
           {[...fDias].map(v => <Chip key={"d" + v} onClick={() => togDia(v)} color={accent}>📅 {v}</Chip>)}
           {[...fHoras].map(v => <Chip key={"h" + v} onClick={() => togHora(v)} color={accent}>🕐 {v}:00</Chip>)}
+          {fGest && <Chip onClick={() => setFGest("")} color={accent}>⚙️ {fGest === "si" ? "Solo gestionables" : "No gestionables"}</Chip>}
           <button onClick={limpiar}
             style={{ fontSize: ".7rem", padding: ".25rem .7rem", borderRadius: 999, border: "1px solid #ef4444", color: "#ef4444", background: "#fff", cursor: "pointer", fontWeight: 700 }}>
             ✕ Limpiar todo

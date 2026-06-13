@@ -381,9 +381,9 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "" });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──
@@ -1490,6 +1490,14 @@ ${asesoresPDF.length>0?`
                   <option value="">TODOS</option>
                   <option value="POR REGULARIZAR">POR REGULARIZAR</option>
                   <option value="REGULARIZADO">REGULARIZADO</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-cyan-400 italic uppercase">⚙️ GESTIONABLES</label>
+                <select className={selectCls} value={filtros.gestionables || ''} onChange={e => updateFiltro('gestionables', e.target.value)}>
+                  <option value="">TODOS</option>
+                  <option value="si">SOLO GESTIONABLES</option>
+                  <option value="no">NO GESTIONABLES</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2">

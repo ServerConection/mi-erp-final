@@ -131,14 +131,14 @@ const CANALES_DISPONIBLES = Object.keys(CANAL_ORIGENES_MAP);
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
-        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix });
+        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables });
         const cached = getDashboardCache(cacheKey);
         if (cached) {
             console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
@@ -184,6 +184,16 @@ const getIndicadoresDashboard = async (req, res) => {
             const bitrixFilter = `(mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
             filtersJoin   += ` AND ${bitrixFilter}`;
             filtersNoJoin += ` AND ${bitrixFilter}`;
+        }
+        // Filtro GESTIONABLES: 'si' = solo gestionables, 'no' = solo NO gestionables
+        if (gestionables === 'si') {
+            const g = ` AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}`;
+            filtersJoin   += g;
+            filtersNoJoin += g;
+        } else if (gestionables === 'no') {
+            const g = ` AND NOT ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}`;
+            filtersJoin   += g;
+            filtersNoJoin += g;
         }
         // Filtro por canal de pauta → convierte a lista de b_origen
         // También incluye filas JOT cuyo j_id_bitrix apunta a un deal con ese b_origen,

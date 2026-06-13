@@ -336,6 +336,7 @@ export default function ReporteVelsa() {
     etapaJotform: "",
     canal: [],
     idBitrix: "",
+    gestionables: "",
   });
 
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
@@ -350,6 +351,7 @@ export default function ReporteVelsa() {
     etapaJotform: "",
     canal: [],
     idBitrix: "",
+    gestionables: "",
   });
 
   const [apiError, setApiError] = useState(null);
@@ -1152,6 +1154,17 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   <option value="">TODOS</option>
                   <option value="POR REGULARIZAR">POR REGULARIZAR</option>
                   <option value="REGULARIZADO">REGULARIZADO</option>
+                </select>
+              </div>
+
+              {/* GESTIONABLES */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[9px] font-black text-cyan-500 italic uppercase">⚙️ GESTIONABLES</label>
+                <select className={selectCls} value={filtros.gestionables || ''}
+                  onChange={e => updateFiltro('gestionables', e.target.value)}>
+                  <option value="">TODOS</option>
+                  <option value="si">SOLO GESTIONABLES</option>
+                  <option value="no">NO GESTIONABLES</option>
                 </select>
               </div>
 

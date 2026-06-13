@@ -19,8 +19,10 @@ const fetchJson = async (url, opts = {}) => {
   return res.json();
 };
 
-const flag = (code, size = 40) => `https://flagcdn.com/w${size}/${code}.png`;
-const flag2x = (code, size = 40) => `https://flagcdn.com/w${size * 2}/${code}.png 2x`;
+// flagcdn solo sirve anchos fijos (w20, w40, w80, w160...). Pedimos uno válido
+// y dejamos que el CSS (style width/height) escale al tamaño deseado.
+const flag = (code) => `https://flagcdn.com/w80/${code}.png`;
+const flag2x = (code) => `https://flagcdn.com/w160/${code}.png 2x`;
 
 const GRUPOS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
@@ -81,8 +83,8 @@ const Toast = ({ toast }) =>
 const Bandera = ({ codigo, nombre, size = 40, className = "" }) =>
   codigo ? (
     <img
-      src={flag(codigo, size)}
-      srcSet={flag2x(codigo, size)}
+      src={flag(codigo)}
+      srcSet={flag2x(codigo)}
       alt={nombre}
       loading="lazy"
       className={`rounded-[4px] object-cover shadow-md shadow-black/40 ring-1 ring-white/20 ${className}`}

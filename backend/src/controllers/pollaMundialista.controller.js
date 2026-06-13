@@ -362,16 +362,26 @@ exports.ranking = async (_req, res) => {
 exports.listarPartidos = async (req, res) => {
   try {
     const uid = req.user.id;
-    const [partidos, pron, reales, config] = await Promise.all([
-      pool.query(`
-        SELECT p.id, p.numero, p.fase, p.grupo, p.kickoff, p.sede, p.ciudad,
-               p.home_label, p.away_label, p.home_ref, p.away_ref,
-               he.nombre AS home_nombre, he.codigo AS home_codigo,
-               ae.nombre AS away_nombre, ae.codigo AS away_codigo
-          FROM polla_partidos p
-          LEFT JOIN polla_equipos he ON he.id = p.home_equipo_id
-          LEFT JOIN polla_equipos ae ON ae.id = p.away_equipo_id
-         ORDER BY p.kickoff, p.numero`),
+    // El SELECT de partidos tolera bases sin las columnas de bracket (home_ref/away_ref):
+    // si no existen, se devuelven como NULL en lugar de fallar.
+    const queryPartidos = (conRefs) => pool.query(`
+      SELECT p.id, p.numero, p.fase, p.grupo, p.kickoff, p.sede, p.ciudad,
+             p.home_label, p.away_label,
+             ${conRefs ? 'p.home_ref, p.away_ref,' : 'NULL AS home_ref, NULL AS away_ref,'}
+             he.nombre AS home_nombre, he.codigo AS home_codigo,
+             ae.nombre AS away_nombre, ae.codigo AS away_codigo
+        FROM polla_partidos p
+        LEFT JOIN polla_equipos he ON he.id = p.home_equipo_id
+        LEFT JOIN polla_equipos ae ON ae.id = p.away_equipo_id
+       ORDER BY p.kickoff, p.numero`);
+    let partidos;
+    try {
+      partidos = await queryPartidos(true);
+    } catch (e) {
+      console.warn('[polla.listarPartidos] sin columnas de bracket, usando fallback:', e.code || e.message);
+      partidos = await queryPartidos(false);
+    }
+    const [pron, reales, config] = await Promise.all([
       pool.query('SELECT partido_id, home_goles, away_goles FROM polla_pred_partidos WHERE usuario_id = $1', [uid]),
       pool.query('SELECT partido_id, home_goles, away_goles FROM polla_res_partidos'),
       getConfig(),

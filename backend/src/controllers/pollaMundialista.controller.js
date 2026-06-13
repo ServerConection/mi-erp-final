@@ -466,3 +466,45 @@ exports.guardarResPartido = async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 };
+
+// =============================================================================
+// BRACKET (diagrama de flujo) — persistencia del armado del usuario
+// El scoring sigue en polla_pred_fases; el frontend deriva las fases del bracket
+// y las guarda con /mi-polla/fases. Aquí solo persistimos el estado del bracket
+// (terceros asignados + ganador elegido por partido) para poder restaurarlo.
+// =============================================================================
+
+// GET /mi-polla/bracket
+exports.miBracket = async (req, res) => {
+  try {
+    const r = await pool.query('SELECT data FROM polla_pred_bracket WHERE usuario_id = $1', [req.user.id]);
+    res.json({ success: true, data: r.rows[0]?.data || {} });
+  } catch (err) {
+    console.error('[polla.miBracket]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// PUT /mi-polla/bracket — body: { data: { thirds: {...}, winners: {...} } }
+exports.guardarBracket = async (req, res) => {
+  try {
+    const config = await getConfig();
+    if (!config.predicciones_abiertas) {
+      return res.status(403).json({ success: false, error: 'Las predicciones están cerradas.' });
+    }
+    const data = req.body?.data;
+    if (data == null || typeof data !== 'object' || Array.isArray(data)) {
+      return res.status(400).json({ success: false, error: 'Bracket inválido.' });
+    }
+    await pool.query(
+      `INSERT INTO polla_pred_bracket (usuario_id, data, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (usuario_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [req.user.id, JSON.stringify(data)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[polla.guardarBracket]', err);
+    res.status(400).json({ success: false, error: err.message });
+  }
+};

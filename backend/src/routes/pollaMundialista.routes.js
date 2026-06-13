@@ -22,6 +22,10 @@ router.put('/mi-polla/fases',     C.guardarPredFases);
 router.get('/partidos',           C.listarPartidos);
 router.put('/mi-polla/partidos',  C.guardarPredPartidos);
 
+// Bracket (diagrama de flujo) del usuario
+router.get('/mi-polla/bracket',   C.miBracket);
+router.put('/mi-polla/bracket',   C.guardarBracket);
+
 // Resultados reales
 router.get('/resultados',         C.resultados);
 router.put('/resultados/grupos',  C.guardarResGrupo);    // admin

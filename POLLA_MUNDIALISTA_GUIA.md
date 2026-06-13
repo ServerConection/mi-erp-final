@@ -14,6 +14,9 @@ psql $DATABASE_URL -f backend/src/migrations/polla_mundialista.sql
 
 # 2) Calendario oficial + pronósticos de marcador (104 partidos)
 psql $DATABASE_URL -f backend/src/migrations/polla_partidos.sql
+
+# 3) Persistencia del bracket (diagrama de flujo)
+psql $DATABASE_URL -f backend/src/migrations/polla_bracket.sql
 ```
 
 La migración 1 crea 6 tablas con las 48 selecciones del sorteo real. La migración 2 agrega `polla_partidos` (104 partidos del calendario oficial FIFA), `polla_pred_partidos` (marcadores que pronostica cada usuario) y `polla_res_partidos` (marcadores reales del admin), más dos columnas de puntaje en `polla_config`. **No toca tablas existentes.**
@@ -29,7 +32,7 @@ El calendario se genera con `gen_partidos.js` (en la raíz, fuera del build): co
 ### Usuario (cualquier perfil)
 
 1. **🎯 Mi Polla → Fase de Grupos**: en cada grupo **arrastra** las 4 selecciones desde la zona de equipos a las posiciones 1º, 2º, 3º, 4º. Puedes reordenar arrastrando entre posiciones o devolver un equipo a la zona de equipos. Completa los grupos y pulsa **Guardar Grupos**.
-2. **🎯 Mi Polla → Fases Finales**: marca con chips qué selecciones llegarán a Dieciseisavos (32), Octavos (16), Cuartos (8), Semis (4), Final (2) y el Campeón (1). Pulsa **Guardar Fases**.
+2. **🎯 Mi Polla → 🏆 Bracket**: diagrama de flujo de eliminatorias. La izquierda sale de tu Fase de Grupos (1º y 2º de cada grupo). **Arrastra** los 8 mejores terceros a su clúster FIFA y haz **click en el equipo que pasa** de cada cruce, ronda por ronda, hasta coronar al campeón. Al guardar se derivan las fases (Dieciseisavos→Campeón) para el ranking. Pulsa **Guardar Bracket**.
 3. **📅 Pronósticos**: el calendario oficial agrupado **por fecha** (zona Ecuador), filtrable por fase. En cada partido coloca el marcador de cada equipo con los steppers y pulsa **Guardar Pronósticos**. Los partidos que ya comenzaron quedan bloqueados automáticamente (🔒).
 4. **🏆 Ranking**: podio top 3 + tabla con aciertos de grupos, marcadores y puntos totales.
 
@@ -69,6 +72,8 @@ El marcador exacto y el resultado no se acumulan entre sí: cada partido otorga 
 | PUT | `/mi-polla/fases` | Guardar clasificados por fase |
 | GET | `/partidos` | Calendario + pronósticos del usuario + marcadores reales |
 | PUT | `/mi-polla/partidos` | Guardar pronósticos de marcador (solo partidos por jugar) |
+| GET | `/mi-polla/bracket` | Estado guardado del bracket del usuario |
+| PUT | `/mi-polla/bracket` | Guardar bracket (terceros + ganadores por partido) |
 | GET | `/resultados` | Resultados reales de grupos/fases |
 | PUT | `/resultados/grupos` | (admin) Clasificación real de un grupo |
 | PUT | `/resultados/fases` | (admin) Clasificados reales de una fase |

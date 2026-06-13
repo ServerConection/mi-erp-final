@@ -374,6 +374,204 @@ function PartidoCard({ partido, pred, setPred, real, setReal, esAdmin, abierta, 
   );
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// BRACKET — diagrama de flujo de eliminatorias (Dieciseisavos → Final)
+// Izquierda: 1º/2º de cada grupo (de la predicción de grupos) + arrastrar los 8
+// mejores terceros a su clúster FIFA. Click en el equipo que pasa para avanzar.
+// ═════════════════════════════════════════════════════════════════════════════
+const BRACKET_COLS = [
+  { fase: "R32", label: "Dieciseisavos" },
+  { fase: "R16", label: "Octavos" },
+  { fase: "CUARTOS", label: "Cuartos" },
+  { fase: "SEMIS", label: "Semis" },
+  { fase: "FINAL", label: "Final" },
+];
+
+const clusterDe = (ref) => (!ref || !ref.startsWith("3:") ? [] : ref.slice(2).split("/"));
+const labelRef = (ref) => {
+  if (!ref) return "";
+  const i = ref.indexOf(":");
+  const t = ref.slice(0, i), v = ref.slice(i + 1);
+  if (t === "1") return `1º ${v}`;
+  if (t === "2") return `2º ${v}`;
+  if (t === "3") return `3º (${v})`;
+  if (t === "W") return `Ganador #${v}`;
+  if (t === "L") return `Perdedor #${v}`;
+  return ref;
+};
+
+// Resuelve un lado (ref) de un partido a un equipo (o null). Autovalida ganadores.
+function resolveSideRaw(m, ref, ctx, depth = 0) {
+  if (!ref || depth > 14) return null;
+  const i = ref.indexOf(":");
+  const t = ref.slice(0, i), v = ref.slice(i + 1);
+  const { equipoById, predGrupos, thirds, winners, byNumero } = ctx;
+  if (t === "1") return equipoById.get(predGrupos[v]?.[0]) || null;
+  if (t === "2") return equipoById.get(predGrupos[v]?.[1]) || null;
+  if (t === "3") return equipoById.get(thirds[m.numero]) || null;
+  if (t === "W" || t === "L") {
+    const mv = byNumero.get(Number(v));
+    const w = winners[Number(v)];
+    if (!mv || !w) return null;
+    const h = resolveSideRaw(mv, mv.home_ref, ctx, depth + 1);
+    const a = resolveSideRaw(mv, mv.away_ref, ctx, depth + 1);
+    if (w !== h?.id && w !== a?.id) return null; // ganador obsoleto
+    if (t === "W") return w === h?.id ? h : a;
+    return w === h?.id ? a : h; // perdedor
+  }
+  return null;
+}
+
+function Bracket({ knockout, equipoById, predGrupos, thirds, setThirds, winners, setWinners, disabled, notify }) {
+  const byNumero = useMemo(() => new Map(knockout.map((m) => [m.numero, m])), [knockout]);
+  const ctx = { equipoById, predGrupos, thirds, winners, byNumero };
+  const lados = (m) => ({ home: resolveSideRaw(m, m.home_ref, ctx), away: resolveSideRaw(m, m.away_ref, ctx) });
+
+  const asignados = new Set(Object.values(thirds).filter(Boolean));
+  const poolTerceros = GRUPOS
+    .map((g) => ({ g, id: predGrupos[g]?.[2] }))
+    .filter((x) => x.id && !asignados.has(x.id))
+    .map((x) => ({ ...x, eq: equipoById.get(x.id) }))
+    .filter((x) => x.eq);
+
+  const onDropTercero = (m, e) => {
+    e.preventDefault();
+    if (disabled) return;
+    const id = Number(e.dataTransfer.getData("text/plain"));
+    const eq = equipoById.get(id);
+    if (!eq) return;
+    const cl = clusterDe(m.away_ref);
+    if (!cl.includes(eq.grupo)) {
+      notify?.(`Ese 3º (Grupo ${eq.grupo}) no entra en este cruce: ${cl.join("/")}`, false);
+      return;
+    }
+    const next = { ...thirds };
+    for (const k of Object.keys(next)) if (next[k] === id) delete next[k];
+    next[m.numero] = id;
+    setThirds(next);
+  };
+
+  const pick = (m, team) => {
+    if (disabled || !team) return;
+    setWinners({ ...winners, [m.numero]: team.id });
+  };
+
+  const Row = (m, team, ref, isThird) => {
+    const isWin = team && winners[m.numero] === team.id;
+    if (!team) {
+      if (isThird) {
+        return (
+          <div
+            onDragOver={(e) => !disabled && e.preventDefault()}
+            onDrop={(e) => onDropTercero(m, e)}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-amber-400/40 bg-amber-400/5 text-amber-200/70 text-[10px] font-semibold"
+          >
+            ⬇ 3º ({clusterDe(ref).join("/")})
+          </div>
+        );
+      }
+      return <div className="px-2 py-1 text-[10px] text-white/30 truncate">{labelRef(ref)}</div>;
+    }
+    return (
+      <button
+        onClick={() => pick(m, team)}
+        disabled={disabled}
+        title={team.nombre}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded text-left w-full transition ${
+          isWin ? "bg-emerald-500/25 ring-1 ring-emerald-400/50" : "hover:bg-white/10"
+        } ${disabled ? "cursor-default" : "cursor-pointer"}`}
+      >
+        <Bandera codigo={team.codigo} nombre={team.nombre} size={18} />
+        <span className={`text-[11px] font-semibold truncate ${isWin ? "text-emerald-200" : "text-white/80"}`}>{team.nombre}</span>
+        {isWin && <span className="ml-auto text-[10px]">✓</span>}
+      </button>
+    );
+  };
+
+  const MatchCard = (m) => {
+    const { home, away } = lados(m);
+    return (
+      <div key={m.numero} className="rounded-lg bg-white/[0.05] border border-white/10 p-1">
+        <div className="text-[9px] text-white/30 px-1">#{m.numero}</div>
+        {Row(m, home, m.home_ref, m.home_ref?.startsWith("3:"))}
+        <div className="h-px bg-white/10 my-0.5" />
+        {Row(m, away, m.away_ref, m.away_ref?.startsWith("3:"))}
+      </div>
+    );
+  };
+
+  const fin = byNumero.get(104);
+  const champion = fin ? (() => {
+    const { home, away } = lados(fin);
+    const w = winners[104];
+    return w === home?.id ? home : w === away?.id ? away : null;
+  })() : null;
+  const tercer = byNumero.get(103);
+
+  return (
+    <div className="space-y-3">
+      {!disabled && (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-amber-200/70 mb-1.5">
+            Mejores terceros — arrastra cada uno a un cruce de su grupo · {poolTerceros.length} sin ubicar
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {poolTerceros.map(({ id, eq, g }) => (
+              <div
+                key={id}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/plain", String(id))}
+                className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full bg-white/[0.08] border border-white/10 text-[11px] text-white/80 cursor-grab active:cursor-grabbing hover:bg-white/15"
+              >
+                <Bandera codigo={eq.codigo} nombre={eq.nombre} size={16} />
+                {eq.nombre}
+                <span className="text-amber-300/60 font-bold">3ºG{g}</span>
+              </div>
+            ))}
+            {poolTerceros.length === 0 && <span className="text-[11px] text-emerald-300/60">✓ Los 8 terceros están ubicados</span>}
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto pb-2">
+        <div className="flex gap-3 min-w-max" style={{ minHeight: 520 }}>
+          {BRACKET_COLS.map((col) => {
+            const ms = knockout.filter((m) => m.fase === col.fase).sort((a, b) => a.numero - b.numero);
+            return (
+              <div key={col.fase} className="flex flex-col" style={{ width: 168 }}>
+                <div className="text-[11px] font-black text-white/70 mb-2 text-center uppercase tracking-wide">{col.label}</div>
+                <div className="flex-1 flex flex-col justify-around gap-2">{ms.map(MatchCard)}</div>
+              </div>
+            );
+          })}
+
+          <div className="flex flex-col justify-center gap-4" style={{ width: 158 }}>
+            <div>
+              <div className="text-[11px] font-black text-amber-300 mb-1 text-center uppercase tracking-wide">Campeón 👑</div>
+              <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-center grid place-items-center min-h-[84px]">
+                {champion ? (
+                  <div className="flex flex-col items-center gap-1">
+                    <Bandera codigo={champion.codigo} nombre={champion.nombre} size={40} />
+                    <span className="text-sm font-black text-amber-200">{champion.nombre}</span>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-white/40">Elige al ganador de la final</span>
+                )}
+              </div>
+            </div>
+            {tercer && (
+              <div>
+                <div className="text-[10px] font-black text-orange-300/80 mb-1 text-center uppercase tracking-wide">🥉 3er puesto</div>
+                {MatchCard(tercer)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function PollaMundialista() {
   const [equipos, setEquipos] = useState([]);
@@ -401,6 +599,11 @@ export default function PollaMundialista() {
   const [partidosCargados, setPartidosCargados] = useState(false);
   const [faseFiltro, setFaseFiltro] = useState("GRUPOS");
 
+  // Bracket (diagrama de flujo)
+  const [bracketThirds, setBracketThirds] = useState({}); // { numeroPartido: equipoId }
+  const [bracketWinners, setBracketWinners] = useState({}); // { numeroPartido: equipoId }
+  const [bracketCargado, setBracketCargado] = useState(false);
+
   // Ranking
   const [ranking, setRanking] = useState([]);
 
@@ -415,6 +618,12 @@ export default function PollaMundialista() {
     for (const e of equipos) (m[e.grupo] ||= []).push(e);
     return m;
   }, [equipos]);
+
+  const equipoById = useMemo(() => new Map(equipos.map((e) => [e.id, e])), [equipos]);
+  const knockout = useMemo(
+    () => partidos.filter((p) => p.fase !== "GRUPOS").sort((a, b) => a.numero - b.numero),
+    [partidos]
+  );
 
   const emptySlots = () => [null, null, null, null];
 
@@ -487,11 +696,24 @@ export default function PollaMundialista() {
     if (r.success) setRanking(r.ranking);
   };
 
+  const cargarBracket = async () => {
+    const r = await fetchJson("/api/polla/mi-polla/bracket");
+    if (r.success) {
+      setBracketThirds(r.data?.thirds || {});
+      setBracketWinners(r.data?.winners || {});
+    }
+    setBracketCargado(true);
+  };
+
   useEffect(() => { cargarTodo(); }, []);
   useEffect(() => {
     if (tab === "ranking") cargarRanking();
     if (tab === "pronosticos" && !partidosCargados) cargarPartidos();
-  }, [tab]); // eslint-disable-line
+    if (tab === "polla" && subTab === "bracket") {
+      if (!partidosCargados) cargarPartidos();
+      if (!bracketCargado) cargarBracket();
+    }
+  }, [tab, subTab]); // eslint-disable-line
 
   const slotsCompletos = (s) => Array.isArray(s) && s.filter(Boolean).length === 4;
   const gruposCompletos = GRUPOS.filter((g) => slotsCompletos(predGrupos[g]));
@@ -506,11 +728,41 @@ export default function PollaMundialista() {
     r.success ? notify(`✅ Predicción guardada (${gruposCompletos.length} grupos)`) : notify(r.error || "Error", false);
   };
 
-  const guardarFases = async () => {
+  // Guardar bracket: deriva las fases (para el ranking) y persiste el armado
+  const guardarBracketAll = async () => {
+    const byNumero = new Map(knockout.map((m) => [m.numero, m]));
+    const ctx = { equipoById, predGrupos, thirds: bracketThirds, winners: bracketWinners, byNumero };
+    const winsDe = (fase) => [
+      ...new Set(knockout.filter((m) => m.fase === fase).map((m) => bracketWinners[m.numero]).filter(Boolean)),
+    ];
+    // Dieciseisavos = los 32 participantes resueltos del R32
+    const dieci = [];
+    for (const m of knockout.filter((m) => m.fase === "R32")) {
+      const h = resolveSideRaw(m, m.home_ref, ctx);
+      const a = resolveSideRaw(m, m.away_ref, ctx);
+      if (h) dieci.push(h.id);
+      if (a) dieci.push(a.id);
+    }
+    const fases = {
+      DIECISEISAVOS: [...new Set(dieci)],
+      OCTAVOS: winsDe("R32"),
+      CUARTOS: winsDe("R16"),
+      SEMIS: winsDe("CUARTOS"),
+      FINAL: winsDe("SEMIS"),
+      CAMPEON: [bracketWinners[104]].filter(Boolean),
+    };
     setGuardando(true);
-    const r = await fetchJson("/api/polla/mi-polla/fases", { method: "PUT", body: JSON.stringify({ fases: predFases }) });
+    const [rf, rb] = await Promise.all([
+      fetchJson("/api/polla/mi-polla/fases", { method: "PUT", body: JSON.stringify({ fases }) }),
+      fetchJson("/api/polla/mi-polla/bracket", {
+        method: "PUT",
+        body: JSON.stringify({ data: { thirds: bracketThirds, winners: bracketWinners } }),
+      }),
+    ]);
     setGuardando(false);
-    r.success ? notify("✅ Fases guardadas") : notify(r.error || "Error", false);
+    rf.success && rb.success
+      ? notify(`✅ Bracket guardado — ${fases.OCTAVOS.length} a octavos, campeón ${fases.CAMPEON.length ? "elegido" : "pendiente"}`)
+      : notify(rf.error || rb.error || "Error", false);
   };
 
   // Guardar todos los pronósticos de marcador completos y no comenzados
@@ -678,13 +930,18 @@ export default function PollaMundialista() {
                   Fase de Grupos
                   <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">{gruposCompletos.length}/12</span>
                 </button>
-                <button onClick={() => setSubTab("fases")} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${subTab === "fases" ? "bg-white/15 text-white" : "bg-white/[0.04] text-white/50 hover:text-white"}`}>
-                  Fases Finales
+                <button onClick={() => setSubTab("bracket")} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${subTab === "bracket" ? "bg-white/15 text-white" : "bg-white/[0.04] text-white/50 hover:text-white"}`}>
+                  🏆 Bracket
                 </button>
               </div>
               {config && subTab === "grupos" && (
                 <span className="text-xs text-white/40">
                   Ya puse los 4 equipos de cada grupo — <b className="text-white/70">arrástralos</b> para ordenar cómo crees que quedarán (1º-4º). Posición exacta = <b className="text-amber-300">{config.pts_posicion_exacta} pts</b>
+                </span>
+              )}
+              {config && subTab === "bracket" && (
+                <span className="text-xs text-white/40">
+                  Arrastra los 8 mejores terceros y haz <b className="text-white/70">click en el que pasa</b> de cada cruce hasta la final
                 </span>
               )}
             </div>
@@ -704,22 +961,34 @@ export default function PollaMundialista() {
               </div>
             )}
 
-            {subTab === "fases" && (
+            {subTab === "bracket" && (
               <div className="space-y-4">
                 <div className="rounded-2xl bg-blue-500/10 border border-blue-400/20 px-4 py-3 text-blue-200 text-xs font-semibold">
-                  💡 Elige qué selecciones llegarán a cada fase. Puntos por acierto: {FASES_DEF.map((f) => `${f.corto} ${ptsFase[f.key] ?? "-"}pts`).join(" · ")}
+                  💡 La izquierda sale de tu <b>Fase de Grupos</b> (1º y 2º). Arrastra los 8 mejores terceros a su clúster y elige al ganador de cada cruce. Puntos: {FASES_DEF.map((f) => `${f.corto} ${ptsFase[f.key] ?? "-"}pts`).join(" · ")}
                 </div>
-                {FASES_DEF.map((f) => (
-                  <FaseSelector key={f.key} fase={f} equipos={equipos} seleccion={predFases[f.key] || []} setSeleccion={(s) => setPredFases((prev) => ({ ...prev, [f.key]: s }))} disabled={!abierta} />
-                ))}
+                {!partidosCargados || !bracketCargado ? (
+                  <div className="text-center py-16 text-white/40"><div className="text-4xl mb-2 animate-bounce">🏆</div>Cargando bracket…</div>
+                ) : (
+                  <Bracket
+                    knockout={knockout}
+                    equipoById={equipoById}
+                    predGrupos={predGrupos}
+                    thirds={bracketThirds}
+                    setThirds={setBracketThirds}
+                    winners={bracketWinners}
+                    setWinners={setBracketWinners}
+                    disabled={!abierta}
+                    notify={notify}
+                  />
+                )}
               </div>
             )}
 
             {abierta && (
               <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-[#0b1120] via-[#0b1120ee] to-transparent pt-8 pb-4">
                 <div className="max-w-7xl mx-auto px-4 flex justify-end">
-                  <button onClick={subTab === "grupos" ? guardarGrupos : guardarFases} disabled={guardando} className="px-8 py-3 rounded-2xl font-black text-amber-950 bg-gradient-to-r from-amber-300 to-yellow-500 shadow-xl shadow-amber-500/30 hover:scale-[1.03] active:scale-[0.98] transition disabled:opacity-50">
-                    {guardando ? "Guardando…" : subTab === "grupos" ? "💾 Guardar Grupos" : "💾 Guardar Fases"}
+                  <button onClick={subTab === "grupos" ? guardarGrupos : guardarBracketAll} disabled={guardando} className="px-8 py-3 rounded-2xl font-black text-amber-950 bg-gradient-to-r from-amber-300 to-yellow-500 shadow-xl shadow-amber-500/30 hover:scale-[1.03] active:scale-[0.98] transition disabled:opacity-50">
+                    {guardando ? "Guardando…" : subTab === "grupos" ? "💾 Guardar Grupos" : "💾 Guardar Bracket"}
                   </button>
                 </div>
               </div>

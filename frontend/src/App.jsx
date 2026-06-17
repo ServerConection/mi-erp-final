@@ -14,6 +14,7 @@ const IndicadoresVelsa     = lazy(() => import("./pages/IndicadoresVelsa"));
 const ComparativaSupervisores = lazy(() => import("./pages/ComparativaSupervisores"));
 const Seguimientoventas    = lazy(() => import("./pages/Seguimientoventas"));
 const Redes                = lazy(() => import("./pages/Redes"));
+const RedesVelsa           = lazy(() => import("./pages/RedesVelsa"));
 const VistaAsesor          = lazy(() => import("./pages/VistaAsesor"));
 const Seguimientovelsa     = lazy(() => import("./pages/Seguimientovelsa"));
 const VistaAsesorVelsa     = lazy(() => import("./pages/VistaAsesorVelsa"));
@@ -48,6 +49,7 @@ const WaContactos          = lazy(() => import("./pages/WaContactos"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
+const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -86,6 +88,7 @@ export default function App() {
             <Route path="comisiones"                element={<Comisiones />} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
+            <Route path="redes-velsa"               element={<RedesVelsa />} />
             <Route path="redes-wintracker"          element={<RedesWinTracker />} />
             <Route path="vista-asesor"              element={<VistaAsesor />} />
             <Route path="vista-asesor-velsa"        element={<VistaAsesorVelsa />} />
@@ -110,6 +113,7 @@ export default function App() {
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="backoffice"               element={<Backoffice />} />
+            <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />

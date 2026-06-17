@@ -5,6 +5,7 @@ const cors = require('cors');
 
 const authRoutes                   = require('./routes/auth.routes');
 const redesRoutes                  = require('./routes/redes.routes');
+const redesVelsaRoutes             = require('./routes/redesVelsa.routes');
 const usuariosRoutes               = require('./routes/usuarios.routes');
 const loginOtpRoutes               = require('./routes/login.otp.routes');
 const passwordRoutes               = require('./routes/password.routes');
@@ -31,6 +32,7 @@ const consultorRoutes              = require('./routes/consultor.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
+const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
 
 const app = express();
 
@@ -92,6 +94,7 @@ app.use('/api/indicadores',             indicadoresRoutes);
 app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 app.use('/api/redes',             redesRoutes);
+app.use('/api/redes-velsa',       redesVelsaRoutes);
 app.use('/api/alertas',           alertasRoutes);
 app.use('/api/ventas',            ventasRoutes);
 app.use('/api/analista',          analistaRoutes);
@@ -123,6 +126,7 @@ app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
 app.use('/api/wa', whatsappRoutes);
 app.use('/api/asistente', asistenteRoutes);
 app.use('/api/reporte-detalle', reporteDetalleRoutes);
+app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 
 // Handler 404
 app.use((req, res) => {

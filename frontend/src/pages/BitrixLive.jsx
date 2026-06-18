@@ -41,6 +41,21 @@ const ESTADO = {
 const TIPO_ICON  = { 'Llamada':'📞','Email':'✉️','Tarea':'📋','Reunion':'🤝','WhatsApp':'💬','Notificacion':'🔔' };
 const TIPO_COLOR = { 'Llamada':'#10b981','Email':'#3b82f6','Tarea':'#8b5cf6','Reunion':'#f59e0b','WhatsApp':'#25d366','Notificacion':'#94a3b8' };
 
+// Enlace directo a la negociación dentro de Bitrix24 (por cuenta)
+const BITRIX_DEAL_URL = {
+  NOVONET: 'https://novonet.bitrix24.es/crm/deal/details/',
+  VELSA:   'https://aclopecuador.bitrix24.es/crm/deal/details/',
+};
+
+const fmtMonto = (m, moneda) =>
+  m > 0 ? `${moneda || '$'} ${Number(m).toLocaleString('es-EC', { maximumFractionDigits: 2 })}` : '—';
+
+const fmtFechaHora = (f) => {
+  const d = new Date(f);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('es-EC', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const tiempoAtras = (min) => {
   if (min < 1)    return 'Ahora';
@@ -146,6 +161,86 @@ function KpiCard({ label, value, icon, color, small=false }) {
   );
 }
 
+// ── Lista de negociaciones individuales (detalle por lead/negocio) ─────────────
+function ListaNegociaciones({ movimientos, emp, cfg }) {
+  const [q, setQ] = useState('');
+  const [soloConActividad, setSoloConActividad] = useState(false);
+
+  const filtradas = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return (movimientos || []).filter(m => {
+      if (soloConActividad && !m.actividad) return false;
+      if (!term) return true;
+      return (m.negocio || '').toLowerCase().includes(term) || (m.etapa || '').toLowerCase().includes(term);
+    });
+  }, [movimientos, q, soloConActividad]);
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: cfg.dark }}>
+          🗂️ Negociaciones ({filtradas.length}/{movimientos.length})
+        </div>
+        <input
+          value={q} onChange={e=>setQ(e.target.value)}
+          placeholder="🔍 Buscar por negocio o etapa..."
+          className="ml-auto text-[9px] border rounded-lg px-2 py-1 bg-white focus:outline-none"
+          style={{ borderColor: cfg.border, width: 180 }}
+        />
+        <button
+          onClick={()=>setSoloConActividad(v=>!v)}
+          className="text-[8px] font-bold px-2 py-1 rounded-lg border"
+          style={{
+            borderColor: soloConActividad ? cfg.color : cfg.border,
+            background: soloConActividad ? cfg.color : '#fff',
+            color: soloConActividad ? '#fff' : '#64748b',
+          }}>
+          Con actividad
+        </button>
+      </div>
+      <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+        {filtradas.length === 0 && (
+          <p className="text-[9px] text-slate-400 font-bold py-2">Sin negociaciones para este filtro.</p>
+        )}
+        {filtradas.map(m => {
+          const url = BITRIX_DEAL_URL[emp] ? `${BITRIX_DEAL_URL[emp]}${m.dealId}/` : null;
+          return (
+            <div key={m.dealId} className="bg-white rounded-lg border px-3 py-2 text-[9px]" style={{ borderColor: cfg.border }}>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-800 truncate flex-1" title={m.negocio}>{m.negocio}</span>
+                <span className="font-bold px-1.5 py-0.5 rounded-full text-white shrink-0" style={{ background: cfg.color, fontSize: 8 }}>
+                  {m.etapa}
+                </span>
+                {url && (
+                  <a href={url} target="_blank" rel="noopener noreferrer"
+                    className="text-[8px] font-bold shrink-0" style={{ color: cfg.dark }}
+                    title="Abrir en Bitrix24">↗ Bitrix</a>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-slate-500 font-bold">
+                <span>💰 {fmtMonto(m.monto, m.moneda)}</span>
+                <span>🕐 {fmtFechaHora(m.fecha)}</span>
+                {m.actividad && (
+                  <span className="ml-auto flex items-center gap-1 text-white font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: TIPO_COLOR[m.actividad.tipo] || '#64748b', fontSize: 8 }}
+                    title={m.actividad.descripcion || ''}>
+                    {TIPO_ICON[m.actividad.tipo] || '📌'} {m.actividad.tipo}
+                    {m.actividad.direccion ? ` · ${m.actividad.direccion}` : ''}
+                    {m.actividad.durMinutos ? ` · ${m.actividad.durMinutos}` : ''}
+                  </span>
+                )}
+              </div>
+              {m.actividad?.asunto && (
+                <div className="mt-1 text-slate-400 truncate" title={m.actividad.asunto}>📝 {m.actividad.asunto}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Detalle horario del asesor ─────────────────────────────────────────────────
 function DetalleHorario({ asesor, emp, horas }) {
   const hourly = useMemo(() => compAsesorHourly(asesor.movimientos, horas).filter(b=>b.leads>0), [asesor, horas]);
@@ -188,6 +283,7 @@ function DetalleHorario({ asesor, emp, horas }) {
           </div>
         </>
       )}
+      <ListaNegociaciones movimientos={asesor.movimientos} emp={emp} cfg={cfg} />
     </div>
   );
 }

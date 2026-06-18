@@ -40,6 +40,9 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
   const [fGest, setFGest]         = useState(""); // "" todos | "si" solo gestionables | "no" no gestionables
   const [pivotModo, setPivotModo] = useState("jot"); // jot | crm
 
+  // ── Drill-down: detalle de leads (modal estilo "mostrar detalle" de Excel) ──
+  const [drill, setDrill] = useState({ open: false, loading: false, error: "", titulo: "", filas: [] });
+
   const toggle = (setter) => (valor) => setter(prev => {
     const next = new Set(prev);
     next.has(valor) ? next.delete(valor) : next.add(valor);
@@ -143,6 +146,28 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
       .sort((x, y) => y.__total - x.__total);
     return { columnas, filas: filasArr, totales: cols };
   }, [filtrados, pivotModo]);
+
+  // ── Abrir modal de detalle (leads individuales) para un asesor [y opcionalmente una etapa] ──
+  const abrirDetalle = useCallback(async (asesor, etapa) => {
+    const tipo = pivotModo === "jot" ? "jot" : "lead";
+    const titulo = etapa ? `${asesor} — ${etapa}` : asesor;
+    setDrill({ open: true, loading: true, error: "", titulo, filas: [] });
+    try {
+      const params = new URLSearchParams({ tipo, fechaDesde: desde, fechaHasta: hasta, asesor, limit: "500" });
+      if (etapa) params.set("etapa", etapa);
+      if (fGest) params.set("gestionable", fGest);
+      if (fDias.size === 1) params.set("dia", [...fDias][0]);
+      if (fHoras.size === 1) params.set("hora", String([...fHoras][0]));
+      const r = await fetch(`${API}/api/reporte-detalle/${empresa}/detalle?${params}`, { headers: authH() });
+      const d = await r.json();
+      if (!d.success) setDrill(p => ({ ...p, loading: false, error: d.error || "Error cargando detalle" }));
+      else setDrill(p => ({ ...p, loading: false, filas: Array.isArray(d.filas) ? d.filas : [] }));
+    } catch (e) {
+      setDrill(p => ({ ...p, loading: false, error: "Error de conexión" }));
+    }
+  }, [empresa, pivotModo, desde, hasta, fGest, fDias, fHoras]);
+
+  const cerrarDrill = () => setDrill(p => ({ ...p, open: false }));
 
   const descargarCSV = () => {
     const { columnas, filas } = pivot;
@@ -342,6 +367,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                   </th>
                 ))}
                 <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>TOTAL</th>
+                <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>VER LEADS</th>
               </tr>
             </thead>
             <tbody>
@@ -353,20 +379,33 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                     {fAsesores.has(r.asesor) ? "✓ " : ""}{r.asesor}
                   </td>
                   {pivot.columnas.map(c => (
-                    <td key={c} style={{ padding: ".4rem .5rem", textAlign: "center", color: r[c] ? "#1e293b" : "#cbd5e1", fontWeight: r[c] ? 700 : 400 }}>
+                    <td key={c}
+                      onClick={(ev) => { if (r[c]) { ev.stopPropagation(); abrirDetalle(r.asesor, c); } }}
+                      title={r[c] ? "Clic para ver los leads de esta celda" : ""}
+                      style={{ padding: ".4rem .5rem", textAlign: "center", color: r[c] ? "#1e293b" : "#cbd5e1", fontWeight: r[c] ? 700 : 400, cursor: r[c] ? "pointer" : "default" }}>
                       {r[c] || "—"}
                     </td>
                   ))}
                   <td style={{ padding: ".4rem .6rem", textAlign: "center", fontWeight: 900, color: accent }}>{r.__total}</td>
+                  <td style={{ padding: ".4rem .6rem", textAlign: "center" }}>
+                    <button
+                      onClick={(ev) => { ev.stopPropagation(); abrirDetalle(r.asesor); }}
+                      title="Ver leads individuales de este asesor"
+                      style={{ border: `1px solid ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: ".25rem .55rem", fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}>
+                      🔍 Ver
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p style={{ fontSize: ".68rem", color: "#94a3b8", margin: "6px 0 0" }}>
-          {pivot.filas.length} asesores · columnas = top 12 etapas por volumen · los totales respetan los filtros activos
+          {pivot.filas.length} asesores · columnas = top 12 etapas por volumen · los totales respetan los filtros activos · clic en una celda o en "Ver" para ver los leads individuales
         </p>
       </Card>
+
+      <DrillModal drill={drill} onClose={cerrarDrill} accent={accent} />
     </div>
   );
 }
@@ -390,6 +429,72 @@ const KPI = ({ titulo, valor, sub, color }) => (
     {sub && <p style={{ fontSize: ".68rem", color, margin: 0, fontWeight: 700 }}>{sub}</p>}
   </div>
 );
+
+// ── Modal de drill-down: leads individuales de un asesor [+ etapa] ──
+const COL_LABELS = {
+  fecha: "Fecha", hora: "Hora", asesor: "Asesor", etapa: "Etapa",
+  id_crm: "ID CRM", id_jotform: "ID Jotform", login: "Login",
+  estado_jotform: "Estado Jotform", etapa_crm: "Etapa CRM",
+  forma_pago: "Forma pago", supervisor: "Supervisor", fecha_activacion: "Fecha activación",
+};
+const COL_ORDEN = ["fecha", "hora", "asesor", "etapa", "id_crm", "id_jotform", "login", "estado_jotform", "etapa_crm", "forma_pago", "supervisor", "fecha_activacion"];
+
+const DrillModal = ({ drill, onClose, accent }) => {
+  if (!drill.open) return null;
+  const columnas = drill.filas.length
+    ? COL_ORDEN.filter(c => drill.filas.some(f => f[c] !== undefined && f[c] !== null && f[c] !== ""))
+    : [];
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 16, width: "min(1100px, 100%)", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "1rem 1.2rem", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: ".68rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em", margin: 0 }}>Leads individuales</p>
+            <h2 style={{ fontSize: "1.05rem", fontWeight: 900, color: "#1e293b", margin: "2px 0 0" }}>{drill.titulo}</h2>
+          </div>
+          {!drill.loading && !drill.error && (
+            <span style={{ fontSize: ".75rem", fontWeight: 700, color: accent, background: `${accent}15`, borderRadius: 999, padding: ".3rem .8rem" }}>
+              {drill.filas.length} registro{drill.filas.length === 1 ? "" : "s"}
+            </span>
+          )}
+          <button onClick={onClose}
+            style={{ border: "none", background: "#f1f5f9", color: "#64748b", borderRadius: 8, width: 32, height: 32, fontSize: "1rem", fontWeight: 700, cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ overflow: "auto", padding: "0.6rem 1.2rem 1.2rem" }}>
+          {drill.loading && <p style={{ color: "#64748b", fontSize: ".85rem", padding: "2rem 0", textAlign: "center" }}>Cargando leads…</p>}
+          {drill.error && <p style={{ color: "#b91c1c", fontSize: ".85rem", padding: "2rem 0", textAlign: "center" }}>{drill.error}</p>}
+          {!drill.loading && !drill.error && drill.filas.length === 0 && (
+            <p style={{ color: "#94a3b8", fontSize: ".85rem", padding: "2rem 0", textAlign: "center" }}>Sin leads para este filtro.</p>
+          )}
+          {!drill.loading && !drill.error && drill.filas.length > 0 && (
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: ".72rem" }}>
+              <thead style={{ position: "sticky", top: 0 }}>
+                <tr style={{ background: "#1e293b", color: "#fff" }}>
+                  {columnas.map(c => (
+                    <th key={c} style={{ padding: ".5rem .6rem", textAlign: "left", whiteSpace: "nowrap" }}>{COL_LABELS[c] || c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {drill.filas.map((f, idx) => (
+                  <tr key={f.id || idx} style={{ background: idx % 2 ? "#f8fafc" : "#fff" }}>
+                    {columnas.map(c => (
+                      <td key={c} style={{ padding: ".4rem .6rem", color: "#334155", whiteSpace: "nowrap" }}>
+                        {c === "hora" ? `${f[c]}:00` : (f[c] ?? "—")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ListaEtapas = ({ datos, seleccion, onClick, accent, esGestionable }) => {
   const max = datos[0]?.total || 1;

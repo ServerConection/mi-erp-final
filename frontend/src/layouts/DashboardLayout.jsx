@@ -326,50 +326,88 @@ const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 
+// Lista de IDs de grupos colapsables — se usa para inicializar openGroups
+const GROUP_IDS = [
+  "indicadores", "vista-asesor", "seguimiento", "redes", "ventas",
+  "backoffice", "reportes", "resumenes", "administracion", "formularios",
+  "broadcast", "wabot", "diversion",
+];
+
 const ALL_MENU_ITEMS = [
-  { name: "Inicio",             path: "/",                    icon: "🏠", permiso: null },
-  { name: "Guía Comercial",     path: "/guia-planes-marzo",   icon: "📖", permiso: null },
-  { name: "Indicadores",        path: "/indicadores",              icon: "📊", permiso: "Indicadores" },
-  { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet", icon: "🔬", permiso: "Indicadores" },
-  { name: "Comparativa Sup.",   path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores" },
-  { name: "Indicadores VELSA",  path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa" },
-  { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",   icon: "🔬", permiso: "IndicadoresVelsa" },
-  // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR
+  { name: "Inicio", path: "/", icon: "🏠", permiso: null },
+
+  // ── Indicadores ──────────────────────────────────────────────────────────
+  { name: "Indicadores", path: null, icon: "📊", isGroup: true, groupId: "indicadores" },
+  { name: "Indicadores NOVONET",        path: "/indicadores",              icon: "📊", permiso: "Indicadores",      isChild: true, group: "indicadores" },
+  { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet",  icon: "🔬", permiso: "Indicadores",      isChild: true, group: "indicadores" },
+  { name: "Comparativa Sup.",           path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores",      isChild: true, group: "indicadores" },
+  { name: "Indicadores VELSA",          path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
+  { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",    icon: "🔬", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
+
+  // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
-  { name: "Vista Asesor",       path: "/vista-asesor",        icon: "👤", permiso: "VistaAsesor" },
-  { name: "Vista Asesor VELSA", path: "/vista-asesor-velsa",  icon: "👤", permiso: "VistaAsesorVelsa" },
-  { name: "Seguimiento Venta",  path: "/seguimiento-ventas",  icon: "✔️", permiso: "SeguimientoVentas" },
-  { name: "Seguimiento VELSA",  path: "/seguimiento-velsa",   icon: "✔️", permiso: "SeguimientoVelsa" },
-  { name: "Redes VELSA",        path: "/redes-velsa",         icon: "🚩", permiso: "RedesVelsa" },
-  { name: "Redes",              path: "/redes",               icon: "🚩", permiso: "Redes" },
-  { name: "WinTracker",         path: "/redes-wintracker",    icon: "📺", permiso: "Redes", isChild: true },
-  { name: "Ventas Formulario",  path: "/ventas",              icon: "📝", permiso: "VentasFormulario" },
-  { name: "🆕 Ingresar Venta", path: "/nueva-venta",         icon: "💼",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
-  { name: "🔍 Backoffice",    path: "/backoffice",           icon: "🔍",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
+
+  // ── Vista Asesor ─────────────────────────────────────────────────────────
+  { name: "Vista Asesor", path: null, icon: "👤", isGroup: true, groupId: "vista-asesor" },
+  { name: "Vista Asesor NOVONET", path: "/vista-asesor",       icon: "👤", permiso: "VistaAsesor",      isChild: true, group: "vista-asesor" },
+  { name: "Vista Asesor VELSA",   path: "/vista-asesor-velsa", icon: "👤", permiso: "VistaAsesorVelsa", isChild: true, group: "vista-asesor" },
+
+  // ── Seguimiento de venta ─────────────────────────────────────────────────
+  { name: "Seguimiento", path: null, icon: "✔️", isGroup: true, groupId: "seguimiento" },
+  { name: "Seguimiento NOVONET", path: "/seguimiento-ventas", icon: "✔️", permiso: "SeguimientoVentas", isChild: true, group: "seguimiento" },
+  { name: "Seguimiento VELSA",   path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa",  isChild: true, group: "seguimiento" },
+
+  // ── Redes ────────────────────────────────────────────────────────────────
+  { name: "Redes", path: null, icon: "🚩", isGroup: true, groupId: "redes" },
+  { name: "Redes NOVONET", path: "/redes",            icon: "🚩", permiso: "Redes",      isChild: true, group: "redes" },
+  { name: "Redes VELSA",   path: "/redes-velsa",       icon: "🚩", permiso: "RedesVelsa", isChild: true, group: "redes" },
+  { name: "WinTracker",    path: "/redes-wintracker",  icon: "📺", permiso: "Redes",      isChild: true, group: "redes" },
+
+  // ── Ventas ───────────────────────────────────────────────────────────────
+  { name: "Ventas", path: null, icon: "📝", isGroup: true, groupId: "ventas" },
+  { name: "Ventas Formulario", path: "/ventas",      icon: "📝", permiso: "VentasFormulario", isChild: true, group: "ventas" },
+  { name: "🆕 Ingresar Venta", path: "/nueva-venta",  icon: "💼",
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "ventas" },
+
+  // ── Backoffice ───────────────────────────────────────────────────────────
+  { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
+  { name: "🔍 Backoffice",         path: "/backoffice",         icon: "🔍",
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
   { name: "📋 Backoffice Jotform", path: "/backoffice-jotform", icon: "📋",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
+
+  // ── Reportes ─────────────────────────────────────────────────────────────
+  { name: "Reportes", path: null, icon: "📈", isGroup: true, groupId: "reportes" },
   { name: "📊 Cumplimiento de Leads", path: "/cumplimiento-leads", icon: "📊",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
-  { name: "🏆 Mundialito",    path: "/mundialito",           icon: "🏆",
-    accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null },
-  { name: "📊 Reporte Jefatura", path: "/reporte-jefatura",  icon: "📊",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
-  { name: "RRHH",               path: "/rrhh",                icon: "👥", permiso: "RRHH" },
-  { name: "Horarios",           path: "/horarios",            icon: "⏰", permiso: "Horarios" },
-  { name: "Billetera",          path: "/billetera",           icon: "💳", permiso: "Billetera" },
-  { name: "Comisiones",         path: "/comisiones",          icon: "💰", permiso: "Comisiones" },
-  { name: "Resumen NOVONET",    path: "/resumen-novonet",     icon: "📊", permiso: "ResumenNovonet" },
-  { name: "Resumen VELSA",      path: "/resumen-velsa",       icon: "🟣", permiso: "ResumenVelsa" },
-  { name: "JOT Formulario",     path: "/jot-formulario",      icon: "📋", permiso: null },
-  // Broadcast por canal — acceso según empresa + perfil
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },
+  { name: "📊 Reporte Jefatura",      path: "/reporte-jefatura",   icon: "📊",
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },
+
+  // ── Resumenes ────────────────────────────────────────────────────────────
+  { name: "Resumenes", path: null, icon: "📦", isGroup: true, groupId: "resumenes" },
+  { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
+  { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
+
+  // ── Administración ───────────────────────────────────────────────────────
+  { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },
+  { name: "RRHH",       path: "/rrhh",       icon: "👥", permiso: "RRHH",       isChild: true, group: "administracion" },
+  { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
+  { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
+  { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },
+
+  // ── Formularios y guías ──────────────────────────────────────────────────
+  { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },
+  { name: "Guía Comercial", path: "/guia-planes-marzo", icon: "📖", permiso: null, isChild: true, group: "formularios" },
+  { name: "JOT Formulario", path: "/jot-formulario",    icon: "📋", permiso: null, isChild: true, group: "formularios" },
+
+  // ── Broadcast por canal — acceso según empresa + perfil ─────────────────
+  { name: "Broadcast", path: null, icon: "📡", isGroup: true, groupId: "broadcast" },
   { name: "📡 Broadcast NOVONET", path: "/broadcast-novonet", icon: "📡",
-    accessCheck: (p, e) => forEmpresa(p, e, 'NOVONET') },
+    accessCheck: (p, e) => forEmpresa(p, e, 'NOVONET'), isChild: true, group: "broadcast" },
   { name: "📡 Broadcast VELSA",   path: "/broadcast-velsa",   icon: "📡",
-    accessCheck: (p, e) => forEmpresa(p, e, 'VELSA') },
+    accessCheck: (p, e) => forEmpresa(p, e, 'VELSA'), isChild: true, group: "broadcast" },
+
   // ── WaBot Masivos (grupo colapsable) ───────────────────────────────────────
   { name: "WaBot Masivos",  path: null, icon: "🤖", isGroup: true, groupId: "wabot",
     accessCheck: (p) => p !== 'CONSULTOR' },
@@ -378,6 +416,12 @@ const ALL_MENU_ITEMS = [
   { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+
+  // ── Diversión / actividades internas ────────────────────────────────────
+  { name: "Diversión", path: null, icon: "🎮", isGroup: true, groupId: "diversion" },
+  { name: "🏆 Mundialito",        path: "/mundialito",        icon: "🏆", accessCheck: (p) => p !== 'CONSULTOR', isChild: true, group: "diversion" },
+  { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null,                         isChild: true, group: "diversion" },
+
   // ── Asistente de datos del ERP ──────────────────────────────────────────────
   { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },
 ];
@@ -394,9 +438,14 @@ export default function DashboardLayout() {
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [broadcast, setBroadcast]                   = useState(null);
   // Grupos colapsables del menú (abierto si la ruta actual pertenece al grupo)
-  const [openGroups, setOpenGroups] = useState(() => ({
-    wabot: window.location.pathname.startsWith("/whatsapp"),
-  }));
+  const [openGroups, setOpenGroups] = useState(() => {
+    const initial = {};
+    GROUP_IDS.forEach(g => { initial[g] = false; });
+    const actual = ALL_MENU_ITEMS.find(i => i.isChild && i.path === window.location.pathname);
+    if (actual) initial[actual.group] = true;
+    if (window.location.pathname.startsWith("/whatsapp")) initial.wabot = true;
+    return initial;
+  });
   const toggleGroup = (id) => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }));
 
   // Ref para acceder al user actualizado dentro del handler del socket
@@ -491,13 +540,30 @@ export default function DashboardLayout() {
 
   if (!user) return null;
 
-  const menuItems = ALL_MENU_ITEMS.filter(item => {
+  const passaAcceso = (item) => {
     if (item.accessCheck) {
       const p = (user?.perfil  || '').toUpperCase();
       const e = (user?.empresa || '').toUpperCase();
       return item.accessCheck(p, e);
     }
     return !item.permiso || permisos.includes(item.permiso);
+  };
+
+  // Hijos visibles (para saber qué cabeceras de grupo deben mostrarse)
+  const gruposConHijosVisibles = new Set(
+    ALL_MENU_ITEMS.filter(i => i.isChild && passaAcceso(i)).map(i => i.group)
+  );
+
+  const menuItems = ALL_MENU_ITEMS.filter(item => {
+    if (item.isGroup) {
+      if (item.accessCheck) {
+        const p = (user?.perfil  || '').toUpperCase();
+        const e = (user?.empresa || '').toUpperCase();
+        if (!item.accessCheck(p, e)) return false;
+      }
+      return gruposConHijosVisibles.has(item.groupId);
+    }
+    return passaAcceso(item);
   });
 
   // Solo ítems navegables (sin separadores) para búsqueda de título/icono
@@ -639,7 +705,9 @@ export default function DashboardLayout() {
                 // ── Cabecera de grupo colapsable (ej. WaBot Masivos) ──
                 if (item.isGroup) {
                   const groupOpen   = !!openGroups[item.groupId];
-                  const groupActive = location.pathname.startsWith("/whatsapp");
+                  const groupActive = ALL_MENU_ITEMS.some(
+                    i => i.group === item.groupId && i.path === location.pathname
+                  );
                   return (
                     <button
                       key={item.name}

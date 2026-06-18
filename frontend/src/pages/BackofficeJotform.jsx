@@ -3,10 +3,11 @@
 // para NOVONET y VELSA (cuentas Jotform separadas, mismo backoffice).
 // Disponible para todos los perfiles excepto ASESOR / CONSULTOR.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ResponsiveContainer, FunnelChart, Funnel, LabelList, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, Legend,
+  PieChart, Pie,
 } from "recharts";
 
 const API = import.meta.env.VITE_API_URL;
@@ -29,15 +30,21 @@ const C = {
   btn:    { background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:9, padding:"9px 16px", fontSize:13, fontWeight:700, color:"#a5b4fc", cursor:"pointer" },
   btnExport: { background:"linear-gradient(135deg,#10b981,#059669)", border:"none", borderRadius:9, padding:"9px 16px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
 
-  kpiRow: { display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12, flexShrink:0 },
-  kpiCard:{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, padding:"14px 16px" },
+  kpiRow: { display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, flexShrink:0 },
+  kpiCard:(accent) => ({ background:"linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,.015))", border:"1px solid rgba(255,255,255,.08)", borderTop:`2.5px solid ${accent || "rgba(255,255,255,.15)"}`, borderRadius:14, padding:"14px 16px", position:"relative", overflow:"hidden", transition:"transform .15s" }),
+  kpiIcon: { position:"absolute", top:10, right:12, fontSize:18, opacity:.5 },
   kpiLabel:{ fontSize:10, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:".08em", marginBottom:6 },
-  kpiVal: { fontSize:24, fontWeight:800, color:"#f1f5f9", lineHeight:1.1 },
+  kpiVal: { fontSize:25, fontWeight:800, color:"#f1f5f9", lineHeight:1.1 },
   kpiSub: { fontSize:11, color:"#64748b", marginTop:4 },
 
   panelsRow: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, flexShrink:0 },
+  panelsRow3: { display:"grid", gridTemplateColumns:"1.3fr 1fr 1fr", gap:16, flexShrink:0 },
   panel:  { background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:16, padding:18 },
   panelTitle: { fontSize:13, fontWeight:800, color:"#f1f5f9", marginBottom:14, display:"flex", alignItems:"center", gap:8 },
+  panelEmpty: { color:"#64748b", fontSize:13, textAlign:"center", padding:"40px 0" },
+  rankRow: { display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,.04)" },
+  rankBarBg: { flex:1, height:8, background:"rgba(255,255,255,.06)", borderRadius:6, overflow:"hidden" },
+  rankBarFill: (pct, color) => ({ height:"100%", width:`${pct}%`, background:color, borderRadius:6 }),
 
   bottleneckBadge:{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(239,68,68,.13)", border:"1px solid rgba(239,68,68,.3)", color:"#fca5a5", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, marginTop:10 },
 
@@ -56,9 +63,10 @@ const C = {
 const REV_COLOR = { PENDIENTE:"#fbbf24", APROBADO:"#34d399", RECHAZADO:"#f87171" };
 const HORAS = Array.from({ length: 24 }, (_, i) => i);
 
-function Kpi({ label, value, color, sub }) {
+function Kpi({ label, value, color, sub, icon }) {
   return (
-    <div style={C.kpiCard}>
+    <div style={C.kpiCard(color)}>
+      {icon && <span style={C.kpiIcon}>{icon}</span>}
       <div style={C.kpiLabel}>{label}</div>
       <div style={{ ...C.kpiVal, color: color || "#f1f5f9" }}>{value ?? "—"}</div>
       {sub && <div style={C.kpiSub}>{sub}</div>}
@@ -199,6 +207,29 @@ export default function BackofficeJotform() {
 
   const horaPorAsesorBar = embudo ? embudo.por_hora.map(h => ({ hora: `${h.hora}h`, ingresados: h.ingresados, activos: h.activos })) : [];
 
+  // Ranking de asesores (top 8 por ingresados) — usa embudo.por_asesor, ya calculado en backend pero antes no se mostraba.
+  const rankingAsesores = useMemo(() => {
+    const lista = embudo?.por_asesor || [];
+    const max = Math.max(1, ...lista.map(a => a.ingresados));
+    return lista.slice(0, 8).map(a => ({ ...a, pct: Math.round((a.ingresados / max) * 100) }));
+  }, [embudo]);
+
+  // Top etapas CRM (top 8 por cantidad) — usa embudo.por_etapa, antes calculado pero no graficado.
+  const topEtapas = useMemo(() => {
+    const lista = embudo?.por_etapa || [];
+    return lista.slice(0, 8).map(e => ({
+      ...e,
+      noGestionable: ["DUPLICADO", "ATC", "FUERA DE COBERTURA", "ZONA PELIGROSA"].some(p => (e.etapa || "").includes(p)),
+    }));
+  }, [embudo]);
+
+  // Distribución del estado de revisión (Pendiente/Aprobado/Rechazado) — usa kpis ya calculados.
+  const revisionDonut = useMemo(() => [
+    { name: "Pendiente", value: kpis?.pendientes_revision || 0, color: "#fbbf24" },
+    { name: "Aprobado", value: kpis?.aprobados || 0, color: "#34d399" },
+    { name: "Rechazado", value: kpis?.rechazados || 0, color: "#f87171" },
+  ], [kpis]);
+
   return (
     <div style={C.page}>
       {/* Top bar */}
@@ -248,28 +279,29 @@ export default function BackofficeJotform() {
 
       {/* KPIs */}
       <div style={C.kpiRow}>
-        <Kpi label="Ingresados" value={kpis?.ingresados} />
+        <Kpi label="Ingresados" value={kpis?.ingresados} color="#6366f1" icon="📥" />
         <Kpi label="Gestionables" value={kpis?.gestionables}
-          color="#a5b4fc"
+          color="#a5b4fc" icon="🗂️"
           sub={kpis?.ingresados ? `${Math.round((kpis.gestionables / kpis.ingresados) * 100)}% del total` : null} />
         <Kpi label="Activos" value={kpis?.activos}
-          color="#34d399"
+          color="#34d399" icon="✅"
           sub={kpis?.ingresados ? `${Math.round((kpis.activos / kpis.ingresados) * 100)}% conversión` : null} />
         <Kpi label="Venta Servicio" value={kpis?.venta_servicio}
-          color="#14b8a6"
+          color="#14b8a6" icon="🛠️"
           sub={kpis?.activos ? `${Math.round((kpis.venta_servicio / kpis.activos) * 100)}% de activos` : null} />
-        <Kpi label="Pendientes revisión" value={kpis?.pendientes_revision} color="#fbbf24" />
-        <Kpi label="Aprobados" value={kpis?.aprobados} color="#34d399" />
-        <Kpi label="Rechazados" value={kpis?.rechazados} color="#f87171" />
+        <Kpi label="Asesores activos" value={kpis?.asesores_activos} color="#38bdf8" icon="🧑‍💼" />
+        <Kpi label="Pendientes revisión" value={kpis?.pendientes_revision} color="#fbbf24" icon="⏳" />
+        <Kpi label="Aprobados" value={kpis?.aprobados} color="#34d399" icon="✓" />
+        <Kpi label="Rechazados" value={kpis?.rechazados} color="#f87171" icon="✕" />
       </div>
 
       {/* Embudo + Hora */}
       <div style={C.panelsRow}>
         <div style={C.panel}>
-          <div style={C.panelTitle}><span>🪣</span> Embudo (Ingresados → Gestionables → Activos)</div>
+          <div style={C.panelTitle}><span>🪣</span> Embudo (Ingresados → Gestionables → Activos → Venta Servicio)</div>
           <ResponsiveContainer width="100%" height={220}>
             <FunnelChart>
-              <Tooltip />
+              <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
               <Funnel dataKey="value" data={funnelData} isAnimationActive>
                 <LabelList position="right" fill="#f1f5f9" stroke="none" dataKey="name" />
                 <LabelList position="center" fill="#0f172a" stroke="none" dataKey="value" fontWeight={800} />
@@ -292,10 +324,71 @@ export default function BackofficeJotform() {
               <XAxis dataKey="hora" tick={{ fill: "#64748b", fontSize: 11 }} />
               <YAxis tick={{ fill: "#64748b", fontSize: 11 }} />
               <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
-              <Bar dataKey="ingresados" fill="#6366f1" radius={[4,4,0,0]} />
-              <Bar dataKey="activos" fill="#34d399" radius={[4,4,0,0]} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              <Bar dataKey="ingresados" name="Ingresados" fill="#6366f1" radius={[4,4,0,0]} />
+              <Bar dataKey="activos" name="Activos" fill="#34d399" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Ranking asesores + Top etapas + Estado de revisión */}
+      <div style={C.panelsRow3}>
+        <div style={C.panel}>
+          <div style={C.panelTitle}><span>🏆</span> Ranking de asesores (top 8 por ingresados)</div>
+          {rankingAsesores.length === 0 ? (
+            <p style={C.panelEmpty}>Sin datos en el rango seleccionado.</p>
+          ) : (
+            <div>
+              {rankingAsesores.map(a => (
+                <div key={a.asesor} style={C.rankRow}>
+                  <span style={{ fontSize: 11, color: "#cbd5e1", width: 120, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.asesor}>{a.asesor}</span>
+                  <div style={C.rankBarBg}><div style={C.rankBarFill(a.pct, "#6366f1")} /></div>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#f1f5f9", width: 30, textAlign: "right" }}>{a.ingresados}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", width: 70, textAlign: "right" }} title="Activos / % conversión a activo">
+                    {a.activos} act. ({a.conversion_activo_pct}%)
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={C.panel}>
+          <div style={C.panelTitle}><span>📊</span> Top etapas CRM</div>
+          {topEtapas.length === 0 ? (
+            <p style={C.panelEmpty}>Sin datos en el rango seleccionado.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={topEtapas} layout="vertical" margin={{ left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: "#64748b", fontSize: 10 }} />
+                <YAxis type="category" dataKey="etapa" width={110} tick={{ fill: "#94a3b8", fontSize: 9 }} />
+                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
+                <Bar dataKey="cantidad" radius={[0,4,4,0]}>
+                  {topEtapas.map((e, i) => <Cell key={i} fill={e.noGestionable ? "#f87171" : "#8b5cf6"} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div style={C.panel}>
+          <div style={C.panelTitle}><span>🗳️</span> Estado de revisión</div>
+          {revisionDonut.every(d => d.value === 0) ? (
+            <p style={C.panelEmpty}>Sin datos en el rango seleccionado.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={230}>
+              <PieChart>
+                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+                <Pie data={revisionDonut} dataKey="value" nameKey="name" innerRadius={50} outerRadius={78} paddingAngle={3}>
+                  {revisionDonut.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <LabelList dataKey="value" position="inside" fill="#0f172a" fontWeight={800} fontSize={12} />
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 

@@ -29,10 +29,11 @@ const C = {
   btn:    { background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:9, padding:"9px 16px", fontSize:13, fontWeight:700, color:"#a5b4fc", cursor:"pointer" },
   btnExport: { background:"linear-gradient(135deg,#10b981,#059669)", border:"none", borderRadius:9, padding:"9px 16px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
 
-  kpiRow: { display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:12, flexShrink:0 },
+  kpiRow: { display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12, flexShrink:0 },
   kpiCard:{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, padding:"14px 16px" },
   kpiLabel:{ fontSize:10, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:".08em", marginBottom:6 },
-  kpiVal: { fontSize:24, fontWeight:800, color:"#f1f5f9" },
+  kpiVal: { fontSize:24, fontWeight:800, color:"#f1f5f9", lineHeight:1.1 },
+  kpiSub: { fontSize:11, color:"#64748b", marginTop:4 },
 
   panelsRow: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, flexShrink:0 },
   panel:  { background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:16, padding:18 },
@@ -55,11 +56,12 @@ const C = {
 const REV_COLOR = { PENDIENTE:"#fbbf24", APROBADO:"#34d399", RECHAZADO:"#f87171" };
 const HORAS = Array.from({ length: 24 }, (_, i) => i);
 
-function Kpi({ label, value, color }) {
+function Kpi({ label, value, color, sub }) {
   return (
     <div style={C.kpiCard}>
       <div style={C.kpiLabel}>{label}</div>
       <div style={{ ...C.kpiVal, color: color || "#f1f5f9" }}>{value ?? "—"}</div>
+      {sub && <div style={C.kpiSub}>{sub}</div>}
     </div>
   );
 }
@@ -247,8 +249,12 @@ export default function BackofficeJotform() {
       {/* KPIs */}
       <div style={C.kpiRow}>
         <Kpi label="Ingresados" value={kpis?.ingresados} />
-        <Kpi label="Gestionables" value={kpis?.gestionables} color="#a5b4fc" />
-        <Kpi label="Activos" value={kpis?.activos} color="#34d399" />
+        <Kpi label="Gestionables" value={kpis?.gestionables}
+          color="#a5b4fc"
+          sub={kpis?.ingresados ? `${Math.round((kpis.gestionables / kpis.ingresados) * 100)}% del total` : null} />
+        <Kpi label="Activos" value={kpis?.activos}
+          color="#34d399"
+          sub={kpis?.ingresados ? `${Math.round((kpis.activos / kpis.ingresados) * 100)}% conversión` : null} />
         <Kpi label="Pendientes revisión" value={kpis?.pendientes_revision} color="#fbbf24" />
         <Kpi label="Aprobados" value={kpis?.aprobados} color="#34d399" />
         <Kpi label="Rechazados" value={kpis?.rechazados} color="#f87171" />
@@ -362,12 +368,12 @@ export default function BackofficeJotform() {
                   <td style={C.td}>
                     {editRow === row.id_externo ? (
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button style={C.smallBtn("rgba(16,185,129,.18)", "#34d399")} onClick={() => guardarRevision(row.id_externo, "APROBADO", obsTexto)}>✓ Aprobar</button>
-                        <button style={C.smallBtn("rgba(239,68,68,.18)", "#f87171")} onClick={() => guardarRevision(row.id_externo, "RECHAZADO", obsTexto)}>✕ Rechazar</button>
-                        <button style={C.smallBtn("rgba(255,255,255,.08)", "#94a3b8")} onClick={() => { setEditRow(null); setObsTexto(""); }}>Cancelar</button>
+                        <button aria-label={`Aprobar registro ${row.id_externo}`} style={C.smallBtn("rgba(16,185,129,.18)", "#34d399")} onClick={() => guardarRevision(row.id_externo, "APROBADO", obsTexto)}>✓ Aprobar</button>
+                        <button aria-label={`Rechazar registro ${row.id_externo}`} style={C.smallBtn("rgba(239,68,68,.18)", "#f87171")} onClick={() => guardarRevision(row.id_externo, "RECHAZADO", obsTexto)}>✕ Rechazar</button>
+                        <button aria-label="Cancelar revisión" style={C.smallBtn("rgba(255,255,255,.08)", "#94a3b8")} onClick={() => { setEditRow(null); setObsTexto(""); }}>Cancelar</button>
                       </div>
                     ) : (
-                      <button style={C.smallBtn("rgba(99,102,241,.15)", "#a5b4fc")} onClick={() => { setEditRow(row.id_externo); setObsTexto(row.observacion || ""); }}>
+                      <button aria-label={`Revisar registro ${row.id_externo}`} style={C.smallBtn("rgba(99,102,241,.15)", "#a5b4fc")} onClick={() => { setEditRow(row.id_externo); setObsTexto(row.observacion || ""); }}>
                         ✏️ Revisar
                       </button>
                     )}

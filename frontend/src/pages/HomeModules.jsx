@@ -4,7 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
-  MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid,
+  MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -67,6 +67,9 @@ export default function HomeModules() {
     { title: "Forecast Campañas", path: "/forecast", icon: Target, accent: "morado", cat: "analitica",
       desc: "Seguimiento de objetivos vs. real por campaña: inversión, CPL, leads, ratios y reporte de ejecutivos.",
       rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
+    { title: "BotAuditor", path: "/bot-auditor", icon: ShieldCheck, accent: "rosa", cat: "analitica",
+      desc: "Auditorías automáticas (IA) de conversaciones WhatsApp por lead en etapa ATC, NOVONET y VELSA.",
+      rolesPermitidos: ['GERENCIA', 'ADMINISTRADOR'] },
 
     { title: "Ventas CRM", path: "/ventas", icon: TrendingUp, accent: "verde", cat: "ventas",
       desc: "Pipeline comercial, seguimiento de leads y cierre de negocios." },

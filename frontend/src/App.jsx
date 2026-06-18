@@ -50,6 +50,7 @@ const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
+const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -117,6 +118,7 @@ export default function App() {
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
+            <Route path="bot-auditor"              element={<BotAuditor />} />
 
             {/* ── Módulo WhatsApp ──────────────────────────────── */}
             <Route path="whatsapp/lineas"           element={<WaLineas />} />

@@ -351,6 +351,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
   { name: "📋 Backoffice Jotform", path: "/backoffice-jotform", icon: "📋",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
+  { name: "📊 Cumplimiento de Leads", path: "/cumplimiento-leads", icon: "📊",
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
   { name: "🏆 Mundialito",    path: "/mundialito",           icon: "🏆",
     accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null },

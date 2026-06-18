@@ -69,7 +69,7 @@ export default function HomeModules() {
       rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
     { title: "BotAuditor", path: "/bot-auditor", icon: ShieldCheck, accent: "rosa", cat: "analitica",
       desc: "Auditorías automáticas (IA) de conversaciones WhatsApp por lead en etapa ATC, NOVONET y VELSA.",
-      rolesPermitidos: ['GERENCIA', 'ADMINISTRADOR'] },
+      rolesPermitidos: ['CONSULTOR', 'SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
 
     { title: "Ventas CRM", path: "/ventas", icon: TrendingUp, accent: "verde", cat: "ventas",
       desc: "Pipeline comercial, seguimiento de leads y cierre de negocios." },

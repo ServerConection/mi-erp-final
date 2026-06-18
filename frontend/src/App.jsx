@@ -51,6 +51,7 @@ const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
+const CumplimientoLeads    = lazy(() => import("./pages/CumplimientoLeads"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -115,6 +116,7 @@ export default function App() {
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
+            <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />

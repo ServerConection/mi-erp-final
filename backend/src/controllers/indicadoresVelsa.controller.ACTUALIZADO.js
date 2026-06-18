@@ -32,6 +32,22 @@
 const pool = require('../config/db');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// VENTA DE SERVICIO: misma condición de "venta activa" (estado_venta_netlife =
+// ACTIVO) PERO solo cuenta si al menos uno de los campos de "plan" (jf.*) tiene
+// datos reales. Si ninguna columna de plan tiene dato, es un servicio adicional
+// (no una venta de producto) y por lo tanto NO se cuenta como venta_servicio.
+// ─────────────────────────────────────────────────────────────────────────────
+const HAS_PLAN_VELSA_JF = `(
+    (jf.plan_casa IS NOT NULL AND TRIM(jf.plan_casa::text) <> '') OR
+    (jf.plan_pyme IS NOT NULL AND TRIM(jf.plan_pyme::text) <> '') OR
+    (jf.plan_profesional IS NOT NULL AND TRIM(jf.plan_profesional::text) <> '') OR
+    (jf.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf.plan_hogar_adulto_mayor::text) <> '') OR
+    (jf.plan_pyme_corp IS NOT NULL AND TRIM(jf.plan_pyme_corp::text) <> '') OR
+    (jf.plan_centro_red_comercial IS NOT NULL AND TRIM(jf.plan_centro_red_comercial::text) <> '')
+)`;
+const VENTA_SERVICIO_VELSA_JF = `(UPPER(TRIM(jf.estado_venta_netlife)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_JF})`;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Caché de nivel módulo para consultas estáticas (etapas CRM)
 // ─────────────────────────────────────────────────────────────────────────────
 let _cacheEtapas    = null;
@@ -243,6 +259,15 @@ const getIndicadoresDashboard = async (req, res) => {
             const esSupervisor = columna === 'e.supervisor';
             const extraSelect  = esSupervisor ? '' : ", COALESCE(supervisor, 'SIN ASIGNAR') AS sup_nombre";
             const extraGroup   = esSupervisor ? '' : ', 2';
+            const HAS_PLAN_BASE = `(
+                (plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '') OR
+                (plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '') OR
+                (plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '') OR
+                (plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '') OR
+                (plan_pyme_corp IS NOT NULL AND TRIM(plan_pyme_corp::text) <> '') OR
+                (plan_centro_red_comercial IS NOT NULL AND TRIM(plan_centro_red_comercial::text) <> '')
+            )`;
+            const VENTA_SERVICIO_BASE = `(UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO' AND ${HAS_PLAN_BASE})`;
             return `
             WITH _base AS MATERIALIZED (
                 SELECT
@@ -256,7 +281,13 @@ const getIndicadoresDashboard = async (req, res) => {
                     jf.estado_venta_netlife,
                     jf.estado_regularizacion,
                     jf.forma_pago,
-                    jf.descuento_3era_edad
+                    jf.descuento_3era_edad,
+                    jf.plan_casa,
+                    jf.plan_pyme,
+                    jf.plan_profesional,
+                    jf.plan_hogar_adulto_mayor,
+                    jf.plan_pyme_corp,
+                    jf.plan_centro_red_comercial
                 FROM negociaciones_reporteria nr
                 ${joinEmpleadosDedup}
                 LEFT JOIN vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
@@ -298,6 +329,9 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND estado_venta_netlife = 'ACTIVO'
                 ) AS activas,
+                COUNT(*) FILTER (
+                    WHERE _jf_date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_BASE}
+                ) AS venta_servicio,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND estado_venta_netlife = 'ACTIVO'
                 ) AS real_mes,
@@ -702,6 +736,11 @@ LEFT JOIN LATERAL (
                         WHERE jf.fecha_registro_sistema::date = $2::date
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta
+                ,
+                COUNT(DISTINCT jf.id_bitrix) FILTER (
+                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND ${VENTA_SERVICIO_VELSA_JF}
+                ) AS real_venta_servicio
             FROM public.negociaciones_reporteria nr
             ${joinMonitoreo}
             LEFT JOIN vw_jotform_velsa_netlife_completo jf ON nr.id = jf.id_bitrix
@@ -733,6 +772,7 @@ LEFT JOIN LATERAL (
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
                 COUNT(*) FILTER (WHERE jf.estado_venta_netlife = 'ACTIVO')::int AS activos_jot_hoy,
+                COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_JF})::int AS venta_servicio_jot_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE jf.forma_pago = 'TARJETA DE CREDITO.')::numeric
                     / NULLIF(COUNT(*), 0)
@@ -763,9 +803,10 @@ LEFT JOIN LATERAL (
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
                 return {
                     ...row,
-                    v_subida_jot_hoy:  jot ? Number(jot.v_subida_jot_hoy)  : 0,
-                    activos_jot_hoy:   jot ? Number(jot.activos_jot_hoy)   : 0,
-                    real_efectividad:  jot ? Number(jot.real_efectividad)   : 0,
+                    v_subida_jot_hoy:      jot ? Number(jot.v_subida_jot_hoy)      : 0,
+                    activos_jot_hoy:       jot ? Number(jot.activos_jot_hoy)       : 0,
+                    venta_servicio_jot_hoy: jot ? Number(jot.venta_servicio_jot_hoy) : 0,
+                    real_efectividad:      jot ? Number(jot.real_efectividad)      : 0,
                 };
             });
         };
@@ -855,6 +896,10 @@ const getReporte180 = async (req, res) => {
                     WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND jf.estado_venta_netlife = 'ACTIVO'
                 ) AS ventas_activas,
+                COUNT(*) FILTER (
+                    WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND ${VENTA_SERVICIO_VELSA_JF}
+                ) AS ventas_servicio,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE nr.etapa IN ${ETAPAS_DESCARTE}
@@ -939,6 +984,7 @@ const getReporte180 = async (req, res) => {
             kpis: {
                 ingresos_jot:     Number(kpis.ingresos_jot || 0),
                 ventas_activas:   Number(kpis.ventas_activas || 0),
+                ventas_servicio:  Number(kpis.ventas_servicio || 0),
                 pct_descarte:     Number(kpis.pct_descarte || 0),
                 pct_efectividad:  Number(kpis.pct_efectividad || 0),
                 pct_tercera_edad: Number(kpis.pct_tercera_edad || 0),
@@ -973,6 +1019,8 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 jf.plan_profesional,
                 jf.plan_pyme,
                 jf.plan_hogar_adulto_mayor,
+                jf.plan_pyme_corp,
+                jf.plan_centro_red_comercial,
                 jf.descuento_3era_edad,
                 jf.servicio_empaquetado,
                 jf.login_netlife,
@@ -984,7 +1032,8 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 jf.ciudad,
                 jf.nombre_empresa,
                 jf.estado_regularizacion,
-                jf.novedades_atc
+                jf.novedades_atc,
+                ${VENTA_SERVICIO_VELSA_JF} AS es_venta_servicio
             FROM vw_jotform_velsa_netlife_completo jf
             WHERE jf.fecha_registro_sistema::date BETWEEN $1::date AND $2::date
             ORDER BY jf.fecha_registro_sistema ASC

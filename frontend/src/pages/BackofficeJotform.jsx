@@ -255,6 +255,9 @@ export default function BackofficeJotform() {
         <Kpi label="Activos" value={kpis?.activos}
           color="#34d399"
           sub={kpis?.ingresados ? `${Math.round((kpis.activos / kpis.ingresados) * 100)}% conversión` : null} />
+        <Kpi label="Venta Servicio" value={kpis?.venta_servicio}
+          color="#14b8a6"
+          sub={kpis?.activos ? `${Math.round((kpis.venta_servicio / kpis.activos) * 100)}% de activos` : null} />
         <Kpi label="Pendientes revisión" value={kpis?.pendientes_revision} color="#fbbf24" />
         <Kpi label="Aprobados" value={kpis?.aprobados} color="#34d399" />
         <Kpi label="Rechazados" value={kpis?.rechazados} color="#f87171" />
@@ -354,7 +357,12 @@ export default function BackofficeJotform() {
                   <td style={C.td}>{row.hora >= 0 ? `${row.hora}h` : "—"}</td>
                   <td style={C.td}>{row.asesor}</td>
                   <td style={C.td}>{row.etapa_crm || "—"}</td>
-                  <td style={C.td}>{row.estado_jot}</td>
+                  <td style={C.td}>
+                    {row.estado_jot}
+                    {row.es_venta_servicio ? (
+                      <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#14b8a6" }} title="Venta de servicio">🛠️</span>
+                    ) : null}
+                  </td>
                   <td style={C.td}><span style={C.badge(REV_COLOR[row.estado_revision] || "#94a3b8")}>{row.estado_revision}</span></td>
                   <td style={C.td}>
                     {editRow === row.id_externo ? (

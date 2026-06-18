@@ -299,7 +299,9 @@ export default function ResumenNovonet() {
     const porReg        = safe(data.estadoRegularizacion?.find(c=>c.name==="POR REGULARIZAR")?.value);
     const pctActivos    = data.total>0 ? ((activos/data.total)*100).toFixed(1) : "0.0";
     const pctReg        = data.total>0 ? ((regularizados/data.total)*100).toFixed(1) : "0.0";
-    return {activos,regularizados,porReg,pctActivos,pctReg};
+    const ventaServicio = safe(data.totalVentaServicio);
+    const pctVentaServicio = data.total>0 ? ((ventaServicio/data.total)*100).toFixed(1) : "0.0";
+    return {activos,regularizados,porReg,pctActivos,pctReg,ventaServicio,pctVentaServicio};
   },[data]);
 
   const scatter = useMemo(() => {
@@ -381,9 +383,10 @@ export default function ResumenNovonet() {
       {data && !loading && (<>
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard icon="📋" label="Total Ventas"     value={data.total}           color="#0f172a"   accent="#e2e8f0" />
           <KpiCard icon="✅" label="Activos"           value={kpis.activos}         color="#10b981"   accent="#10b981" sub={`${kpis.pctActivos}% del total`} />
+          <KpiCard icon="🛠️" label="Venta Servicio"   value={kpis.ventaServicio}   color="#14b8a6"   accent="#14b8a6" sub={`${kpis.pctVentaServicio}% del total`} />
           <KpiCard icon="📁" label="Regularizados"    value={kpis.regularizados}   color="#3b82f6"   accent="#3b82f6" sub={`${kpis.pctReg}% del total`} />
           <KpiCard icon="⏳" label="Por Regularizar"  value={kpis.porReg}          color="#f59e0b"   accent="#f59e0b" />
           <KpiCard icon="👤" label="Asesores"          value={data.asesores.length} color="#8b5cf6"   accent="#8b5cf6" />

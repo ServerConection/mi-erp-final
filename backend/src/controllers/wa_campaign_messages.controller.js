@@ -11,10 +11,24 @@ const { query } = require('../config/db')
 const path = require('path')
 const fs   = require('fs')
 
+const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+
+// Verifica que la campaña exista y pertenezca al usuario (o que sea admin).
+async function findOwnedCampaign(req, campaignId) {
+  const result = await query('SELECT * FROM campaigns WHERE id=$1', [campaignId])
+  if (!result.rows.length) return null
+  const camp = result.rows[0]
+  if (!isAdmin(req) && camp.created_by !== req.user.id) return null
+  return camp
+}
+
 // ── Listar variantes de una campaña ──────────────────────────
 async function getAll(req, res) {
   try {
     const { campaignId } = req.params
+    const owned = await findOwnedCampaign(req, campaignId)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const { rows } = await query(
       `SELECT * FROM campaign_messages
        WHERE campaign_id = $1
@@ -31,6 +45,9 @@ async function getAll(req, res) {
 async function create(req, res) {
   try {
     const { campaignId } = req.params
+    const owned = await findOwnedCampaign(req, campaignId)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const { label, message_text, media_url, media_type, media_caption, sort_order } = req.body
 
     if (!message_text && !media_url) {
@@ -62,6 +79,9 @@ async function create(req, res) {
 async function update(req, res) {
   try {
     const { campaignId, messageId } = req.params
+    const owned = await findOwnedCampaign(req, campaignId)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const { label, message_text, media_url, media_type, media_caption, sort_order } = req.body
 
     const { rows } = await query(
@@ -97,6 +117,8 @@ async function update(req, res) {
 async function remove(req, res) {
   try {
     const { campaignId, messageId } = req.params
+    const owned = await findOwnedCampaign(req, campaignId)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
 
     const existing = await query(
       `SELECT media_url FROM campaign_messages WHERE id=$1 AND campaign_id=$2`,
@@ -126,6 +148,9 @@ async function remove(req, res) {
 async function reorder(req, res) {
   try {
     const { campaignId } = req.params
+    const owned = await findOwnedCampaign(req, campaignId)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const { order } = req.body  // [{ id, sort_order }]
     if (!Array.isArray(order)) return res.status(400).json({ success: false, error: 'order debe ser un array' })
 

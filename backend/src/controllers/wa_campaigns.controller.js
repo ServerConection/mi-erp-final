@@ -1,12 +1,26 @@
 const { query, transaction } = require('../config/db')
 const { normalizeNumber } = require('./wa_contacts.controller')
 
+const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+
+// Verifica que la campaña exista y pertenezca al usuario (o que sea admin).
+async function findOwnedCampaign(req, id) {
+  const result = await query('SELECT * FROM campaigns WHERE id=$1', [id])
+  if (!result.rows.length) return null
+  const camp = result.rows[0]
+  if (!isAdmin(req) && camp.created_by !== req.user.id) return null
+  return camp
+}
+
 // ── LISTAR todas las campañas con stats ──────────────────────
 async function getAll(req, res) {
   try {
     const { status } = req.query
-    const where = status ? 'WHERE c.status = $1' : ''
-    const params = status ? [status] : []
+    const conditions = []
+    const params = []
+    if (status) { params.push(status); conditions.push(`c.status = $${params.length}`) }
+    if (!isAdmin(req)) { params.push(req.user.id); conditions.push(`c.created_by = $${params.length}`) }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const result = await query(`
       SELECT c.*,
              l.name AS line_name,
@@ -30,6 +44,9 @@ async function getAll(req, res) {
 async function getOne(req, res) {
   try {
     const { id } = req.params
+    const owned = await findOwnedCampaign(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const camp = await query(`
       SELECT c.*, l.name AS line_name, t.name AS template_name, cl.name AS list_name
       FROM campaigns c
@@ -152,13 +169,13 @@ async function create(req, res) {
         `INSERT INTO campaigns
           (name, line_id, template_id, list_id, body, media_url, media_type, media_filename,
            min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
-           total_recipients, status, scheduled_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+           total_recipients, status, scheduled_at, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
           name, line_id, template_id || null, list_id || null,
           finalBody, finalMediaUrl, finalMediaType, finalMediaFilename,
           min_delay_secs ?? 8, max_delay_secs ?? 20, batch_size ?? 50, batch_pause_secs ?? 120,
-          allRecipients.length, status, scheduled_at || null,
+          allRecipients.length, status, scheduled_at || null, req.user.id,
         ]
       )
       const campaign = c.rows[0]
@@ -187,9 +204,9 @@ async function create(req, res) {
 async function update(req, res) {
   try {
     const { id } = req.params
-    const current = await query('SELECT status FROM campaigns WHERE id=$1', [id])
-    if (!current.rows.length) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
-    if (!['draft', 'scheduled', 'paused'].includes(current.rows[0].status)) {
+    const current = await findOwnedCampaign(req, id)
+    if (!current) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+    if (!['draft', 'scheduled', 'paused'].includes(current.status)) {
       return res.status(400).json({ success: false, error: 'Solo se pueden editar campañas en borrador / programadas / pausadas' })
     }
 
@@ -224,6 +241,9 @@ async function update(req, res) {
 // ── ELIMINAR (cualquier estado) ──────────────────────────────
 async function remove(req, res) {
   try {
+    const owned = await findOwnedCampaign(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const engine = req.app.get('campaignEngine')
     try { await engine.cancel(req.params.id) } catch (e) {}
     await query('DELETE FROM campaigns WHERE id=$1', [req.params.id])
@@ -236,6 +256,9 @@ async function remove(req, res) {
 // ── INICIAR campaña ──────────────────────────────────────────
 async function start(req, res) {
   try {
+    const owned = await findOwnedCampaign(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const engine = req.app.get('campaignEngine')
     const r = await engine.start(req.params.id)
     res.json({ success: true, ...r })
@@ -246,6 +269,9 @@ async function start(req, res) {
 
 async function pause(req, res) {
   try {
+    const owned = await findOwnedCampaign(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const engine = req.app.get('campaignEngine')
     const r = await engine.pause(req.params.id)
     res.json({ success: true, ...r })
@@ -256,6 +282,9 @@ async function pause(req, res) {
 
 async function resume(req, res) {
   try {
+    const owned = await findOwnedCampaign(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const engine = req.app.get('campaignEngine')
     const r = await engine.resume(req.params.id)
     res.json({ success: true, ...r })
@@ -266,6 +295,9 @@ async function resume(req, res) {
 
 async function cancel(req, res) {
   try {
+    const owned = await findOwnedCampaign(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const engine = req.app.get('campaignEngine')
     const r = await engine.cancel(req.params.id)
     res.json({ success: true, ...r })
@@ -278,6 +310,9 @@ async function cancel(req, res) {
 async function retryFailed(req, res) {
   try {
     const { id } = req.params
+    const owned = await findOwnedCampaign(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Campaña no encontrada' })
+
     const r = await query(
       `UPDATE campaign_recipients SET status='pending', error=NULL
        WHERE campaign_id=$1 AND status='failed'`,

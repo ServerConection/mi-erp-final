@@ -1,5 +1,22 @@
 const { query } = require('../config/db')
 
+const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+
+// Verifica que la conversación exista y que su línea pertenezca al usuario (o que sea admin).
+async function findOwnedConversation(req, id) {
+  const result = await query(
+    `SELECT c.*, l.created_by AS line_created_by
+     FROM conversations c
+     LEFT JOIN lines l ON c.line_id = l.id
+     WHERE c.id=$1`,
+    [id]
+  )
+  if (!result.rows.length) return null
+  const conv = result.rows[0]
+  if (!isAdmin(req) && conv.line_created_by !== req.user.id) return null
+  return conv
+}
+
 // ── LISTAR conversaciones (inbox) ────────────────────────────
 async function getAll(req, res) {
   try {
@@ -13,6 +30,7 @@ async function getAll(req, res) {
       params.push(`%${search}%`)
       where.push(`(c.wa_number ILIKE $${params.length} OR ct.name ILIKE $${params.length})`)
     }
+    if (!isAdmin(req)) { params.push(req.user.id); where.push(`l.created_by = $${params.length}`) }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     params.push(parseInt(limit))
@@ -45,6 +63,9 @@ async function getAll(req, res) {
 async function getMessages(req, res) {
   try {
     const { id } = req.params
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
     const result = await query(
       `SELECT id, direction, type, content, media_url, status, timestamp, node_type
        FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC LIMIT 500`,
@@ -65,10 +86,10 @@ async function sendMessage(req, res) {
     const { text, takeover } = req.body
     if (!text) return res.status(400).json({ success: false, error: 'text requerido' })
 
-    const conv = await query('SELECT * FROM conversations WHERE id=$1', [id])
-    if (!conv.rows.length) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
 
-    const c = conv.rows[0]
+    const c = owned
     const bm = req.app.get('baileysManager')
     await bm.sendText(c.line_id, c.wa_number, text)
 
@@ -92,6 +113,9 @@ async function sendMessage(req, res) {
 // ── Cerrar conversación ──────────────────────────────────────
 async function close(req, res) {
   try {
+    const owned = await findOwnedConversation(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
     await query(
       `UPDATE conversations SET status='closed', closed_at=NOW(), current_node_id=NULL WHERE id=$1`,
       [req.params.id]
@@ -106,12 +130,13 @@ async function close(req, res) {
 async function returnToBot(req, res) {
   try {
     const { id } = req.params
-    const c = await query('SELECT line_id, wa_number FROM conversations WHERE id=$1', [id])
-    if (!c.rows.length) return res.status(404).json({ success: false, error: 'No encontrada' })
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'No encontrada' })
+
     await query(
       `UPDATE contacts SET metadata = metadata - 'human_agent' - 'bot_reactivate_at'
        WHERE wa_number=$1 AND line_id=$2`,
-      [c.rows[0].wa_number, c.rows[0].line_id]
+      [owned.wa_number, owned.line_id]
     )
     await query(`UPDATE conversations SET status='active' WHERE id=$1`, [id])
     res.json({ success: true })

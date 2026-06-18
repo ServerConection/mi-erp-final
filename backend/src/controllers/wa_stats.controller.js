@@ -1,8 +1,21 @@
 const { query } = require('../config/db')
 
+const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+
+// Verifica que la línea exista y pertenezca al usuario (o que sea admin).
+async function checkLineOwnership(req, lineId) {
+  const result = await query('SELECT created_by FROM lines WHERE id=$1', [lineId])
+  if (!result.rows.length) return false
+  if (isAdmin(req)) return true
+  return result.rows[0].created_by === req.user.id
+}
+
 async function getByLine(req, res) {
   try {
     const { lineId } = req.params
+    const allowed = await checkLineOwnership(req, lineId)
+    if (!allowed) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
+
     const { from, to } = req.query
     const dateFrom = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const dateTo = to || new Date().toISOString()
@@ -51,6 +64,12 @@ async function getByLine(req, res) {
 
 async function getAllLines(req, res) {
   try {
+    const params = []
+    let where = ''
+    if (!isAdmin(req)) {
+      params.push(req.user.id)
+      where = `WHERE l.created_by = $${params.length}`
+    }
     const result = await query(`
       SELECT l.id, l.name, l.phone_number, l.status,
              COUNT(DISTINCT c.id) AS total_conversations,
@@ -60,8 +79,9 @@ async function getAllLines(req, res) {
       FROM lines l
       LEFT JOIN conversations c ON c.line_id = l.id
       LEFT JOIN messages m ON m.line_id = l.id
+      ${where}
       GROUP BY l.id ORDER BY l.created_at ASC
-    `)
+    `, params)
     res.json({ success: true, data: result.rows })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
@@ -84,6 +104,9 @@ function resolvePhoneNumber(waNumber, metadata) {
 async function exportCSV(req, res) {
   try {
     const { lineId } = req.params
+    const allowed = await checkLineOwnership(req, lineId)
+    if (!allowed) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
+
     const { from, to } = req.query
     const { Parser } = require('json2csv')
 
@@ -167,6 +190,9 @@ async function exportCSV(req, res) {
 async function exportExcel(req, res) {
   try {
     const { lineId } = req.params
+    const allowed = await checkLineOwnership(req, lineId)
+    if (!allowed) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
+
     const { from, to } = req.query
     const XLSX = require('xlsx')
 

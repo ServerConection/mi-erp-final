@@ -1098,6 +1098,7 @@ ${asesoresPDF.length>0?`
     const totalBacklog      = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalIngresosCRM  = s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0);
+    const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
     return {
       ingresosCRM:              totalIngresosCRM,
       gestionables:             totalGestionables,
@@ -1117,6 +1118,7 @@ ${asesoresPDF.length>0?`
       efectividadActivasPauta:  (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       activas:                  totalActivos,
       backlog:                  totalBacklog,
+      ventaServicio:            totalVentaServicio,
     };
   }, [data]);
 
@@ -1545,6 +1547,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={11} label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
             <KpiMini index={12} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
             <KpiMini index={13} label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
+            <KpiMini index={15} label="Venta Servicio"  meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaServicio}                 color="border-l-teal-600" />
             <KpiMini index={14} label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
           </div>
 
@@ -1939,10 +1942,11 @@ function ConsultaDescargaNovonet() {
 // ======================================================
 function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
   const { kpis, embudoCRM, embudoJotform, mapaCalor } = data;
-  const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
+  const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, ventas_servicio: 0, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
   const METAS = {
     ingresos_jot:     metaDinamica(METAS_BASE.ingresos_jot,     filtros.fechaDesde, filtros.fechaHasta),
     ventas_activas:   metaDinamica(METAS_BASE.ventas_activas,   filtros.fechaDesde, filtros.fechaHasta),
+    ventas_servicio:  metaDinamica(METAS_BASE.ventas_servicio,  filtros.fechaDesde, filtros.fechaHasta),
     pct_descarte:     METAS_BASE.pct_descarte,
     pct_efectividad:  METAS_BASE.pct_efectividad,
     pct_tercera_edad: METAS_BASE.pct_tercera_edad,
@@ -2096,9 +2100,10 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <KpiCard180 index={0} label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot}     real={kpis.ingresos_jot}             tipo="numero"     color="indigo" />
         <KpiCard180 index={1} label="VENTAS ACTIVAS"       meta={METAS.ventas_activas}   real={kpis.ventas_activas}           tipo="numero"     color="teal" />
+        <KpiCard180 index={5} label="VENTA SERVICIO"       meta={METAS.ventas_servicio}  real={kpis.ventas_servicio}          tipo="numero"     color="emerald" />
         <KpiCard180 index={2} label="DESCARTE"             meta={METAS.pct_descarte}     real={Number(kpis.pct_descarte)}     tipo="porcentaje" color="amber"  invertido={true} />
         <KpiCard180 index={3} label="EFECTIVIDAD"          meta={METAS.pct_efectividad}  real={Number(kpis.pct_efectividad)}  tipo="porcentaje" color="sky" />
         <KpiCard180 index={4} label="TERCERA EDAD"         meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="rose" />

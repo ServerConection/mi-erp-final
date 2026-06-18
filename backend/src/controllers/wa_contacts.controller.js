@@ -11,6 +11,17 @@ function normalizeNumber(raw) {
   return digits
 }
 
+const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+
+// Verifica que el contacto exista y pertenezca al usuario (o que sea admin).
+async function findOwnedContact(req, id) {
+  const result = await query('SELECT * FROM contacts WHERE id=$1', [id])
+  if (!result.rows.length) return null
+  const contact = result.rows[0]
+  if (!isAdmin(req) && contact.created_by !== req.user.id) return null
+  return contact
+}
+
 // ── LISTAR todos los contactos ───────────────────────────────
 async function getAll(req, res) {
   try {
@@ -21,6 +32,7 @@ async function getAll(req, res) {
     if (line_id) { params.push(line_id); where.push(`line_id = $${params.length}`) }
     if (search)  { params.push(`%${search}%`); where.push(`(name ILIKE $${params.length} OR wa_number ILIKE $${params.length})`) }
     if (tag)     { params.push(tag); where.push(`$${params.length} = ANY(tags)`) }
+    if (!isAdmin(req)) { params.push(req.user.id); where.push(`created_by = $${params.length}`) }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     params.push(parseInt(limit))
@@ -46,9 +58,9 @@ async function getAll(req, res) {
 // ── Obtener un contacto por id ───────────────────────────────
 async function getOne(req, res) {
   try {
-    const result = await query('SELECT * FROM contacts WHERE id = $1', [req.params.id])
-    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
-    res.json({ success: true, data: result.rows[0] })
+    const contact = await findOwnedContact(req, req.params.id)
+    if (!contact) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
+    res.json({ success: true, data: contact })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }
@@ -62,15 +74,15 @@ async function create(req, res) {
     if (!num) return res.status(400).json({ success: false, error: 'wa_number requerido' })
 
     const result = await query(
-      `INSERT INTO contacts (wa_number, name, email, line_id, tags)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO contacts (wa_number, name, email, line_id, tags, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (wa_number, line_id)
        DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name),
                      email = COALESCE(EXCLUDED.email, contacts.email),
                      tags = COALESCE(EXCLUDED.tags, contacts.tags),
                      last_seen = NOW()
        RETURNING *`,
-      [num, name || null, email || null, line_id || null, tags || []]
+      [num, name || null, email || null, line_id || null, tags || [], req.user.id]
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {
@@ -82,6 +94,9 @@ async function create(req, res) {
 async function update(req, res) {
   try {
     const { id } = req.params
+    const owned = await findOwnedContact(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
+
     const { name, email, tags, is_blocked, metadata } = req.body
     const result = await query(
       `UPDATE contacts SET
@@ -93,7 +108,6 @@ async function update(req, res) {
        WHERE id=$6 RETURNING *`,
       [name, email, tags, is_blocked, metadata ? JSON.stringify(metadata) : null, id]
     )
-    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
@@ -103,6 +117,9 @@ async function update(req, res) {
 // ── ELIMINAR contacto ────────────────────────────────────────
 async function remove(req, res) {
   try {
+    const owned = await findOwnedContact(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
+
     await query('DELETE FROM contacts WHERE id=$1', [req.params.id])
     res.json({ success: true })
   } catch (err) {
@@ -115,6 +132,14 @@ async function importFile(req, res) {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'Sin archivo' })
     const { line_id, list_id } = req.body
+
+    if (list_id) {
+      const listCheck = await query('SELECT created_by FROM contact_lists WHERE id=$1', [list_id])
+      if (!listCheck.rows.length || (!isAdmin(req) && listCheck.rows[0].created_by !== req.user.id)) {
+        return res.status(404).json({ success: false, error: 'Lista no encontrada' })
+      }
+    }
+
     const filePath = req.file.path
     const ext = path.extname(req.file.originalname).toLowerCase()
 
@@ -159,13 +184,13 @@ async function importFile(req, res) {
 
       try {
         await query(
-          `INSERT INTO contacts (wa_number, name, line_id, metadata)
-           VALUES ($1,$2,$3,$4::jsonb)
+          `INSERT INTO contacts (wa_number, name, line_id, metadata, created_by)
+           VALUES ($1,$2,$3,$4::jsonb,$5)
            ON CONFLICT (wa_number, line_id)
            DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name),
                          metadata = contacts.metadata || EXCLUDED.metadata,
                          last_seen = NOW()`,
-          [num, name || null, line_id || null, JSON.stringify(variables)]
+          [num, name || null, line_id || null, JSON.stringify(variables), req.user.id]
         )
         imported++
 

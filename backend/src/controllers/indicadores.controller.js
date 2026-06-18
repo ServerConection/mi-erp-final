@@ -1,6 +1,28 @@
 const pool = require('../config/db');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// VENTA DE SERVICIO: misma condición de "venta activa" (estatus = ACTIVO) PERO
+// solo cuenta si al menos uno de los campos de "plan" tiene datos reales. Si
+// ninguna columna de plan tiene dato, es un servicio adicional (no una venta de
+// producto) y por lo tanto NO se cuenta como venta_servicio.
+//
+// `mestra_bitrix` (mb) NO tiene las columnas plan_*, así que se hace un LEFT
+// JOIN hacia `vista_analisis_novonet` (van) usando mb.j_id_bitrix = van.id_bitrix
+// para poder evaluarlas, sin tocar el esquema de mestra_bitrix.
+// ─────────────────────────────────────────────────────────────────────────────
+const JOIN_VAN_NOVONET = `LEFT JOIN public.vista_analisis_novonet van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
+
+const HAS_PLAN_VAN = `(
+    (van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> '') OR
+    (van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> '') OR
+    (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> '') OR
+    (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> '') OR
+    (van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> '') OR
+    (van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> '')
+)`;
+const VENTA_SERVICIO_VAN = `(UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO' AND ${HAS_PLAN_VAN})`;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Caché de nivel módulo para consultas estáticas (etapas CRM / Jotform)
 // Se refresca cada 5 minutos para no saturar el pool con queries repetitivas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,9 +322,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     mb.b_cerrado::date                           AS _bcerrado_date,
                     mb.j_fecha_registro_sistema::date            AS _jf_date,
                     ${parseFecha('mb.j_fecha_registro_sistema')} AS _jf_parsed_date,
-                    ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date
+                    ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date,
+                    ${VENTA_SERVICIO_VAN}                        AS _venta_servicio
                 FROM mestra_bitrix mb
                 ${joinEmpleadosDedup}
+                ${JOIN_VAN_NOVONET}
                 WHERE (
                     ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                     OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -369,6 +393,9 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS activas,
+                COUNT(*) FILTER (
+                    WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
+                ) AS venta_servicio,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
@@ -839,9 +866,14 @@ LEFT JOIN LATERAL (
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     ), 0)
-                , 0) * 100, 2) AS real_tarjeta
+                , 0) * 100, 2) AS real_tarjeta,
+                COUNT(DISTINCT mb.b_id) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND ${VENTA_SERVICIO_VAN}
+                ) AS real_venta_servicio
             FROM public.mestra_bitrix mb
             ${joinMonitoreo}
+            ${JOIN_VAN_NOVONET}
             WHERE (
                 mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
                 OR ${parseFecha('mb.b_cerrado')} BETWEEN $1::date AND $2::date
@@ -870,12 +902,14 @@ LEFT JOIN LATERAL (
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
                 COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')::int AS activos_jot_hoy,
+                COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VAN})::int AS venta_servicio_jot_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.')::numeric
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
             FROM public.mestra_bitrix mb
             ${joinMonitoreo}
+            ${JOIN_VAN_NOVONET}
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
             AND TRIM(mb.j_fecha_registro_sistema) = $1
@@ -895,9 +929,10 @@ LEFT JOIN LATERAL (
                 const jot = jotRows.find(j => j.nombre_grupo === row.nombre_grupo);
                 return {
                     ...row,
-                    v_subida_jot_hoy:  jot ? Number(jot.v_subida_jot_hoy)  : 0,
-                    activos_jot_hoy:   jot ? Number(jot.activos_jot_hoy)   : 0,
-                    real_efectividad:  jot ? Number(jot.real_efectividad)   : 0,
+                    v_subida_jot_hoy:      jot ? Number(jot.v_subida_jot_hoy)      : 0,
+                    activos_jot_hoy:       jot ? Number(jot.activos_jot_hoy)       : 0,
+                    venta_servicio_jot_hoy: jot ? Number(jot.venta_servicio_jot_hoy) : 0,
+                    real_efectividad:      jot ? Number(jot.real_efectividad)      : 0,
                 };
             });
         };
@@ -1047,6 +1082,10 @@ const getReporte180 = async (req, res) => {
                     WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS ventas_activas,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND ${VENTA_SERVICIO_VAN}
+                ) AS ventas_servicio,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
@@ -1078,6 +1117,7 @@ const getReporte180 = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
             FROM public.mestra_bitrix mb
+            ${JOIN_VAN_NOVONET}
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                 OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -1150,6 +1190,7 @@ const getReporte180 = async (req, res) => {
             kpis: {
                 ingresos_jot:     Number(kpis.ingresos_jot || 0),
                 ventas_activas:   Number(kpis.ventas_activas || 0),
+                ventas_servicio:  Number(kpis.ventas_servicio || 0),
                 pct_descarte:     Number(kpis.pct_descarte || 0),
                 pct_efectividad:  Number(kpis.pct_efectividad || 0),
                 pct_tercera_edad: Number(kpis.pct_tercera_edad || 0),
@@ -1183,7 +1224,9 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 plan_casa,
                 plan_profesional,
                 plan_pyme,
+                plan_pyme_corp,
                 plan_hogar_adulto_mayor,
+                plan_centro_comercial,
                 descuento_3era_edad,
                 servicio_empaquetado,
                 login_netlife,
@@ -1195,7 +1238,17 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 ciudad,
                 nombre_empresa,
                 estado_regularizacion,
-                novedades_atc
+                novedades_atc,
+                (
+                    UPPER(TRIM(estatus_netlife)) = 'ACTIVO' AND (
+                        (plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '') OR
+                        (plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '') OR
+                        (plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '') OR
+                        (plan_pyme_corp IS NOT NULL AND TRIM(plan_pyme_corp::text) <> '') OR
+                        (plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '') OR
+                        (plan_centro_comercial IS NOT NULL AND TRIM(plan_centro_comercial::text) <> '')
+                    )
+                ) AS es_venta_servicio
             FROM vista_analisis_novonet
             WHERE created_at::date BETWEEN $1 AND $2
             ORDER BY created_at ASC

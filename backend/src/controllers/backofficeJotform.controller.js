@@ -61,6 +61,34 @@ function rangoFechas(req, res, maxDias = 92) {
   return { desde, hasta };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// VENTA DE SERVICIO: igual condición base que "activo" (estado = ACTIVO) más
+// la exigencia de que al menos una columna plan_* tenga datos reales — si no,
+// el registro es solo un servicio adicional, no una venta de producto.
+// Ninguna fuente (mestra_bitrix / mv_indicadores_velsa_completo) expone las
+// columnas plan_*, por lo que se obtienen vía LEFT JOIN en el controller,
+// sin modificar ningún esquema/vista/MV existente.
+// ─────────────────────────────────────────────────────────────────────────
+const JOIN_PLAN_NOVONET = `LEFT JOIN public.vista_analisis_novonet van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
+const HAS_PLAN_NOVONET = `(
+    (van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> '') OR
+    (van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> '') OR
+    (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> '') OR
+    (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> '') OR
+    (van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> '') OR
+    (van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> '')
+)`;
+
+const JOIN_PLAN_VELSA = `LEFT JOIN public.vw_jotform_velsa_netlife_completo jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
+const HAS_PLAN_VELSA = `(
+    (jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> '') OR
+    (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
+    (jf2.plan_profesional IS NOT NULL AND TRIM(jf2.plan_profesional::text) <> '') OR
+    (jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> '') OR
+    (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '') OR
+    (jf2.plan_centro_red_comercial IS NOT NULL AND TRIM(jf2.plan_centro_red_comercial::text) <> '')
+)`;
+
 // ── Definición de campos por empresa (fuente, id, fecha, hora, asesor, etapa-crm, estado-jot) ──
 const CFG = {
   novonet: {
@@ -72,6 +100,8 @@ const CFG = {
     etapaCrm: `mb.b_etapa_de_la_negociacion`,
     estadoJot: `COALESCE(NULLIF(TRIM(UPPER(mb.j_netlife_estatus_real)), ''), 'SIN ESTADO')`,
     whereJot: `mb.j_id_bitrix IS NOT NULL`,
+    joinPlan: JOIN_PLAN_NOVONET,
+    esVentaServicio: `(UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO' AND ${HAS_PLAN_NOVONET})`,
     selectExtra: `
       mb.b_id              AS id_crm,
       mb.j_id_bitrix       AS id_jotform,
@@ -92,6 +122,8 @@ const CFG = {
     etapaCrm: `mv.etapa_crm`,
     estadoJot: `COALESCE(NULLIF(TRIM(UPPER(mv.estado_venta)), ''), 'SIN ESTADO')`,
     whereJot: `mv.id_jotform IS NOT NULL`,
+    joinPlan: JOIN_PLAN_VELSA,
+    esVentaServicio: `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA})`,
     selectExtra: `
       mv.id_crm            AS id_crm,
       mv.id_jotform         AS id_jotform,
@@ -146,12 +178,14 @@ async function getListado(req, res) {
         UPPER(TRIM(${c.etapaCrm})) AS etapa_crm,
         ${c.estadoJot}        AS estado_jot,
         ${esGestionableExpr(c.etapaCrm)} AS gestionable,
+        ${c.esVentaServicio} AS es_venta_servicio,
         ${c.selectExtra},
         COALESCE(r.estado_revision, 'PENDIENTE') AS estado_revision,
         r.observacion         AS observacion,
         r.revisado_por        AS revisado_por,
         r.revisado_en         AS revisado_en
       FROM ${c.from}
+      ${c.joinPlan}
       LEFT JOIN public.backoffice_jotform_revision r
         ON r.empresa = '${empresa.toUpperCase()}' AND r.id_externo = ${c.idExterno}
       WHERE ${where.join(' AND ')}
@@ -202,11 +236,13 @@ async function getKpis(req, res) {
         COUNT(*)::int AS ingresados,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(c.etapaCrm)})::int AS gestionables,
         COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos,
+        COUNT(*) FILTER (WHERE ${c.esVentaServicio})::int AS venta_servicio,
         COUNT(*) FILTER (WHERE COALESCE(r.estado_revision,'PENDIENTE') = 'PENDIENTE')::int AS pendientes_revision,
         COUNT(*) FILTER (WHERE r.estado_revision = 'APROBADO')::int AS aprobados,
         COUNT(*) FILTER (WHERE r.estado_revision = 'RECHAZADO')::int AS rechazados,
         COUNT(DISTINCT ${c.asesor})::int AS asesores_activos
       FROM ${c.from}
+      ${c.joinPlan}
       LEFT JOIN public.backoffice_jotform_revision r
         ON r.empresa = '${empresa.toUpperCase()}' AND r.id_externo = ${c.idExterno}
       WHERE ${c.fechaJot} BETWEEN $1::date AND $2::date AND ${c.whereJot}
@@ -244,8 +280,10 @@ async function getEmbudo(req, res) {
       SELECT
         COUNT(*)::int AS ingresados,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(c.etapaCrm)})::int AS gestionables,
-        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos
+        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos,
+        COUNT(*) FILTER (WHERE ${c.esVentaServicio})::int AS venta_servicio
       FROM ${c.from}
+      ${c.joinPlan}
       WHERE ${whereSql}
     `;
 
@@ -255,8 +293,10 @@ async function getEmbudo(req, res) {
         ${c.asesor} AS asesor,
         COUNT(*)::int AS ingresados,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(c.etapaCrm)})::int AS gestionables,
-        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos
+        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos,
+        COUNT(*) FILTER (WHERE ${c.esVentaServicio})::int AS venta_servicio
       FROM ${c.from}
+      ${c.joinPlan}
       WHERE ${whereSql}
       GROUP BY 1
       ORDER BY ingresados DESC
@@ -268,8 +308,10 @@ async function getEmbudo(req, res) {
         ${c.horaJot} AS hora,
         COUNT(*)::int AS ingresados,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(c.etapaCrm)})::int AS gestionables,
-        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos
+        COUNT(*) FILTER (WHERE ${c.estadoJot} = 'ACTIVO')::int AS activos,
+        COUNT(*) FILTER (WHERE ${c.esVentaServicio})::int AS venta_servicio
       FROM ${c.from}
+      ${c.joinPlan}
       WHERE ${whereSql}
       GROUP BY 1
       ORDER BY 1
@@ -296,9 +338,10 @@ async function getEmbudo(req, res) {
 
     const t = totalRows[0];
     const etapas = [
-      { etapa: 'Ingresados',   cantidad: t.ingresados },
-      { etapa: 'Gestionables', cantidad: t.gestionables },
-      { etapa: 'Activos',      cantidad: t.activos },
+      { etapa: 'Ingresados',        cantidad: t.ingresados },
+      { etapa: 'Gestionables',      cantidad: t.gestionables },
+      { etapa: 'Activos',           cantidad: t.activos },
+      { etapa: 'Venta de Servicio', cantidad: t.venta_servicio },
     ];
     // % conversión entre etapas consecutivas + detección de cuello de botella
     let cuelloDeBottella = null;
@@ -318,7 +361,13 @@ async function getEmbudo(req, res) {
     const conConversion = (row) => {
       const g = row.ingresados > 0 ? (row.gestionables / row.ingresados) * 100 : 0;
       const a = row.gestionables > 0 ? (row.activos / row.gestionables) * 100 : 0;
-      return { ...row, conversion_gestionable_pct: Math.round(g * 10) / 10, conversion_activo_pct: Math.round(a * 10) / 10 };
+      const vs = row.activos > 0 ? (row.venta_servicio / row.activos) * 100 : 0;
+      return {
+        ...row,
+        conversion_gestionable_pct: Math.round(g * 10) / 10,
+        conversion_activo_pct: Math.round(a * 10) / 10,
+        conversion_venta_servicio_pct: Math.round(vs * 10) / 10,
+      };
     };
 
     res.json({
@@ -440,10 +489,12 @@ async function exportExcel(req, res) {
         ${c.asesor}           AS asesor,
         UPPER(TRIM(${c.etapaCrm})) AS etapa_crm,
         ${c.estadoJot}        AS estado_jot,
+        ${c.esVentaServicio} AS es_venta_servicio,
         COALESCE(r.estado_revision, 'PENDIENTE') AS estado_revision,
         r.observacion         AS observacion,
         r.revisado_por        AS revisado_por
       FROM ${c.from}
+      ${c.joinPlan}
       LEFT JOIN public.backoffice_jotform_revision r
         ON r.empresa = '${empresa.toUpperCase()}' AND r.id_externo = ${c.idExterno}
       WHERE ${where.join(' AND ')}

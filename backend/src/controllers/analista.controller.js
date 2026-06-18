@@ -1,5 +1,31 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VENTA DE SERVICIO: misma condición de "venta activa" (estatus = ACTIVO) PERO
+// solo cuenta si al menos uno de los campos de "plan" tiene datos reales.
+// Si ninguna columna de plan tiene dato, es un servicio adicional (no una venta
+// de producto como tal) y por lo tanto NO se cuenta como venta_servicio.
+// ─────────────────────────────────────────────────────────────────────────────
+const HAS_PLAN_NOVONET = `(
+  (plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '') OR
+  (plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '') OR
+  (plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '') OR
+  (plan_pyme_corp IS NOT NULL AND TRIM(plan_pyme_corp::text) <> '') OR
+  (plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '') OR
+  (plan_centro_comercial IS NOT NULL AND TRIM(plan_centro_comercial::text) <> '')
+)`;
+const VENTA_SERVICIO_NOVONET = `(UPPER(TRIM(estatus_netlife)) = 'ACTIVO' AND ${HAS_PLAN_NOVONET})`;
+
+const HAS_PLAN_VELSA = `(
+  (plan_casa IS NOT NULL AND TRIM(plan_casa::text) <> '') OR
+  (plan_pyme IS NOT NULL AND TRIM(plan_pyme::text) <> '') OR
+  (plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '') OR
+  (plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '') OR
+  (plan_pyme_corp IS NOT NULL AND TRIM(plan_pyme_corp::text) <> '') OR
+  (plan_centro_red_comercial IS NOT NULL AND TRIM(plan_centro_red_comercial::text) <> '')
+)`;
+const VENTA_SERVICIO_VELSA = `(UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO' AND ${HAS_PLAN_VELSA})`;
+
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
@@ -28,7 +54,10 @@ const getResumenNovonet = async (req, res) => {
 
       // 1. Total
       pool.query(
-        `SELECT COUNT(*) AS total FROM vista_analisis_novonet
+        `SELECT
+           COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET}) AS total_venta_servicio
+         FROM vista_analisis_novonet
          WHERE created_at::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
@@ -81,11 +110,16 @@ const getResumenNovonet = async (req, res) => {
            COALESCE(codigo_asesor, 'Sin código') AS asesor,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET})::int AS venta_servicio,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estado_regularizacion)) = 'REGULARIZADO')::int AS regularizados,
            ROUND(
              COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO') * 100.0
              / NULLIF(COUNT(*), 0), 1
-           ) AS pct_activo
+           ) AS pct_activo,
+           ROUND(
+             COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET}) * 100.0
+             / NULLIF(COUNT(*), 0), 1
+           ) AS pct_venta_servicio
          FROM vista_analisis_novonet
          WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY codigo_asesor
@@ -99,7 +133,8 @@ const getResumenNovonet = async (req, res) => {
         `SELECT
            created_at::date AS fecha,
            COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET})::int AS venta_servicio
          FROM vista_analisis_novonet
          WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY created_at::date
@@ -133,21 +168,25 @@ const getResumenNovonet = async (req, res) => {
     return res.json({
       success: true, desde, hasta,
       total: parseInt(totalRes.rows[0]?.total) || 0,
+      totalVentaServicio: parseInt(totalRes.rows[0]?.total_venta_servicio) || 0,
       calidadVenta:        estatusRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       estadoRegularizacion: regularizRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       formasPago:          formasPagoRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       planes,
       asesores: asesoresRes.rows.map(r => ({
-        asesor:        r.asesor,
-        total:         r.total,
-        activos:       r.activos,
-        regularizados: r.regularizados,
-        pctActivo:     parseFloat(r.pct_activo) || 0,
+        asesor:          r.asesor,
+        total:           r.total,
+        activos:         r.activos,
+        ventaServicio:   r.venta_servicio,
+        regularizados:   r.regularizados,
+        pctActivo:       parseFloat(r.pct_activo) || 0,
+        pctVentaServicio: parseFloat(r.pct_venta_servicio) || 0,
       })),
       tendencia: tendenciaRes.rows.map(r => ({
-        fecha:   String(r.fecha).substring(5, 10),
-        total:   r.total,
-        activos: r.activos,
+        fecha:         String(r.fecha).substring(5, 10),
+        total:         r.total,
+        activos:       r.activos,
+        ventaServicio: r.venta_servicio,
       })),
       provincias: provinciaRes.rows.map(r => ({ name: r.provincia, value: r.total })),
     });
@@ -177,7 +216,10 @@ const getResumenVelsa = async (req, res) => {
 
       // 1. Total
       pool.query(
-        `SELECT COUNT(*) AS total FROM vw_jotform_velsa_netlife_completo
+        `SELECT
+           COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA}) AS total_venta_servicio
+         FROM vw_jotform_velsa_netlife_completo
          WHERE created_at::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
@@ -230,10 +272,15 @@ const getResumenVelsa = async (req, res) => {
            COALESCE(codigo_asesor, 'Sin código') AS asesor,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA})::int AS venta_servicio,
            ROUND(
              COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO') * 100.0
              / NULLIF(COUNT(*), 0), 1
-           ) AS pct_activo
+           ) AS pct_activo,
+           ROUND(
+             COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA}) * 100.0
+             / NULLIF(COUNT(*), 0), 1
+           ) AS pct_venta_servicio
          FROM vw_jotform_velsa_netlife_completo
          WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY codigo_asesor
@@ -247,7 +294,8 @@ const getResumenVelsa = async (req, res) => {
         `SELECT
            created_at::date AS fecha,
            COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos
+           COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos,
+           COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA})::int AS venta_servicio
          FROM vw_jotform_velsa_netlife_completo
          WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY created_at::date
@@ -281,20 +329,24 @@ const getResumenVelsa = async (req, res) => {
     return res.json({
       success: true, desde, hasta,
       total: parseInt(totalRes.rows[0]?.total) || 0,
+      totalVentaServicio: parseInt(totalRes.rows[0]?.total_venta_servicio) || 0,
       calidadVenta:         estatusRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       estadoRegularizacion: regularizRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       formasPago:           formasPagoRes.rows.map(r => ({ name: r.categoria, value: parseInt(r.cantidad) })),
       planes,
       asesores: asesoresRes.rows.map(r => ({
-        asesor:    r.asesor,
-        total:     r.total,
-        activos:   r.activos,
-        pctActivo: parseFloat(r.pct_activo) || 0,
+        asesor:           r.asesor,
+        total:            r.total,
+        activos:          r.activos,
+        ventaServicio:    r.venta_servicio,
+        pctActivo:        parseFloat(r.pct_activo) || 0,
+        pctVentaServicio: parseFloat(r.pct_venta_servicio) || 0,
       })),
       tendencia: tendenciaRes.rows.map(r => ({
-        fecha:   String(r.fecha).substring(5, 10),
-        total:   r.total,
-        activos: r.activos,
+        fecha:         String(r.fecha).substring(5, 10),
+        total:         r.total,
+        activos:       r.activos,
+        ventaServicio: r.venta_servicio,
       })),
       provincias: provinciaRes.rows.map(r => ({ name: r.provincia, value: r.total })),
     });

@@ -807,6 +807,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
+    const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: totalGestionables,
@@ -825,6 +826,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
       activas: totalActivos,
       backlog: totalBacklog,
+      ventaServicio: totalVentaServicio,
     };
   }, [data]);
 
@@ -1232,6 +1234,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog}    color="border-l-orange-500" />
             <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(200,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                    color="border-l-amber-500" />
             <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                    color="border-l-yellow-600" />
+            <KpiMini index={15} variant="stone" label="Venta Servicio"  meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaServicio}              color="border-l-emerald-600" />
             <KpiMini index={14} variant="stone" label="Por Regularizar" value={stats.regularizar}                                          color="border-l-rose-500" />
           </div>
 
@@ -1602,10 +1605,11 @@ function ConsultaDescargaVelsa() {
 // ======================================================
 function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
   const { kpis, embudoCRM, embudoJotform, mapaCalor } = data;
-  const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
+  const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, ventas_servicio: 0, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
   const METAS = {
     ingresos_jot:     metaDinamica(METAS_BASE.ingresos_jot,     filtros.fechaDesde, filtros.fechaHasta),
     ventas_activas:   metaDinamica(METAS_BASE.ventas_activas,   filtros.fechaDesde, filtros.fechaHasta),
+    ventas_servicio:  metaDinamica(METAS_BASE.ventas_servicio,  filtros.fechaDesde, filtros.fechaHasta),
     pct_descarte:     METAS_BASE.pct_descarte,
     pct_efectividad:  METAS_BASE.pct_efectividad,
     pct_tercera_edad: METAS_BASE.pct_tercera_edad,
@@ -1740,9 +1744,10 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <KpiCard180 index={0} variant="stone" label="VENTAS INGRESOS JOT" meta={METAS.ingresos_jot}     real={kpis.ingresos_jot}             tipo="numero"     color="orange" />
         <KpiCard180 index={1} variant="stone" label="VENTAS ACTIVAS"       meta={METAS.ventas_activas}   real={kpis.ventas_activas}           tipo="numero"     color="amber" />
+        <KpiCard180 index={5} variant="stone" label="VENTA SERVICIO"       meta={METAS.ventas_servicio}  real={kpis.ventas_servicio}          tipo="numero"     color="emerald" />
         <KpiCard180 index={2} variant="stone" label="DESCARTE"             meta={METAS.pct_descarte}     real={Number(kpis.pct_descarte)}     tipo="porcentaje" color="red"   invertido={true} />
         <KpiCard180 index={3} variant="stone" label="EFECTIVIDAD"          meta={METAS.pct_efectividad}  real={Number(kpis.pct_efectividad)}  tipo="porcentaje" color="yellow" />
         <KpiCard180 index={4} variant="stone" label="TERCERA EDAD"         meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="rose" />

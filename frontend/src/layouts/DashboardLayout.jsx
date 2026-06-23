@@ -369,6 +369,8 @@ const ALL_MENU_ITEMS = [
   { name: "Ventas Formulario", path: "/ventas",      icon: "📝", permiso: "VentasFormulario", isChild: true, group: "ventas" },
   { name: "🆕 Ingresar Venta", path: "/nueva-venta",  icon: "💼",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "ventas" },
+  { name: "📋 Mis ventas pendientes", path: "/mis-ventas-pendientes", icon: "📋",
+    accessCheck: (p) => p !== 'CONSULTOR', isChild: true, group: "ventas" },
 
   // ── Backoffice ───────────────────────────────────────────────────────────
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },

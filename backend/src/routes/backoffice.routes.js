@@ -31,12 +31,12 @@ router.get('/', async (req, res) => {
     const { buscar = '', page = 1, limit = 100 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    let whereClause = '';
+    let whereClause = "WHERE estatus_envio != 'BORRADOR'";
     const params = [];
 
     if (buscar.trim()) {
       params.push(`%${buscar.trim()}%`);
-      whereClause = `WHERE (
+      whereClause += ` AND (
         codigo_asesor            ILIKE $1 OR
         id_bitrix                ILIKE $1 OR
         nombre_cliente_completo  ILIKE $1 OR

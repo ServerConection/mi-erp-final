@@ -14,12 +14,42 @@ const TIPOS_DOC       = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PE
 const GENEROS         = ["HOMBRE", "MUJER"];
 const ESTADOS_CIV     = ["SOLTERO/A", "CASADO/A", "DIVORCIADO/A", "VIUDO/A", "UNIÓN LIBRE"];
 const TIPO_INMUEBLE   = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA"];
-const DESCUENTO_3ERA  = ["NO", "SÍ — POR 3RA EDAD", "SÍ — POR DISCAPACIDAD"];
+// Ya no se vende con motivo "discapacidad" — única opción afirmativa es 3ra edad (>=65 años)
+const DESCUENTO_3ERA  = ["NO", "SÍ — POR 3RA EDAD"];
 const TIPO_VIV        = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
 const FORMAS_PAGO     = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 const TIPOS_PLAN      = ["CASA", "PROFESIONAL", "PYMES", "GAMER", "ADULTO MAYOR"];
-const ORIGENES        = ["CAMPO", "CALL CENTER", "DIGITAL", "REFERIDO", "PUERTA A PUERTA", "EVENTO", "REINGRESO DIRECTO", "OTRO"];
+const ORIGENES        = [
+  "BASE 593-995211968", "API 484", "Base 593-979083368", "BASE 593-992827793",
+  "FORMULARIO LANDING 3", "LLAMADA LANDING 3", "WHATSAPP - ECUANET REGISTRO",
+  "BASE 593-962881280", "POR RECOMENDACIÓN", "REFERIDO PERSONAL",
+  "BASE 593-958993371", "BASE 593-999803743", "BASE 593-995967355",
+  "WHATSAPP 593958993371", "BASE 593-987133635", "FORMULARIO LANDING 4",
+  "BASE API 593963463480", "LLAMADA LANDING 4", "LLAMADA REMARKETING",
+];
 const TURNOS          = ["MAÑANA", "TARDE", "NOCHE", "PARTIDO"];
+const CICLOS_FACT     = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
+const BENEFICIOS_LEY  = ["SI", "NO"];
+
+// Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
+const SUPERVISORES = {
+  NOVONET: ["RICARDO ECHEVERRÍA", "ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA"],
+  VELSA:   ["ALEXANDRA PACHECO", "DARIANA"],
+};
+
+// Edad mínima para aplicar descuento de 3ra edad
+const EDAD_MINIMA_3RA_EDAD = 65;
+function calcularEdad(fechaISO) {
+  if (!fechaISO) return null;
+  const nac = new Date(fechaISO);
+  if (Number.isNaN(nac.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  const noHaCumplido = (hoy.getMonth() < nac.getMonth()) ||
+    (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate());
+  if (noHaCumplido) edad--;
+  return edad;
+}
 
 // ─── Estado inicial ──────────────────────────────────────────────────────────
 const INIT = {
@@ -38,7 +68,49 @@ const INIT = {
   servicios_digitales: "", servicio_adicional: "",
   origen_venta: "", turno: "",
   observacion_venta: "",
+  // ── Datos para el resumen de venta auto-generado ──
+  precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
+  banco: "", ciclo_facturacion: "", costo_instalacion: "", descuento_instalacion: "",
+  beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
+  resumen_venta: "",
+  // ── Documentos ──
+  foto_cedula_frontal: "", foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "",
 };
+
+// ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
+function generarResumenVenta(form, user) {
+  const trato = form.genero_cliente === "MUJER" ? "Sra" : "Sr";
+  const nombreCliente = `${form.apellidos_cliente} ${form.nombres_cliente}`.trim() || "—";
+  const asesor = user.nombre || user.usuario || form.codigo_asesor || "—";
+  const plan = [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" ") || "—";
+  const servicios = (form.servicios_digitales || "")
+    .split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  const serviciosTxt = servicios.length
+    ? servicios.map(s => `-    ${s}`).join("\n")
+    : "-    —";
+  const leySi = form.beneficios_de_ley === "SI" ? "X" : " ";
+  const leyNo = form.beneficios_de_ley === "SI" ? " " : "X";
+  const plazo = form.plazo_contrato_meses || "36";
+
+  return [
+    `👤 Cliente: ${trato} ${nombreCliente}`,
+    `💻 Asesor: ${asesor}`,
+    `⏳Plan contratado: ${plan}`,
+    `✅Servicios Empaquetados incluidos:`,
+    serviciosTxt,
+    `✅Precio regular (con impuestos): $${form.precio_regular || "—"}`,
+    `✅Precio con promoción: $${form.precio_promocion || "—"}${form.meses_promocion ? ` durante ${form.meses_promocion} facturas` : ""}`,
+    `✅Promoción aplicada: ${form.porcentaje_descuento ? `${form.porcentaje_descuento}% de descuento` : "—"}${form.meses_promocion ? ` por ${form.meses_promocion} facturas` : ""}`,
+    `⏳Método de pago y Banco: ${[form.forma_pago, form.banco].filter(Boolean).join(" - ") || "—"}`,
+    `⏳Ciclo de facturación: ${form.ciclo_facturacion || "—"}`,
+    `⏳Costo de instalación: ${form.costo_instalacion ? `$${form.costo_instalacion} + IVA` : "—"}`,
+    `⏳Descuento en instalación: ${form.descuento_instalacion || "—"}`,
+    `✅Beneficios adicionales:`,
+    (form.beneficios_adicionales || "—").split(/\n/).map(s => `•    ${s}`).join("\n"),
+    `•    ✍🏼Beneficios de Ley: SI (    ${leySi}    ) NO (    ${leyNo}    )`,
+    `⚠️Importante: En caso de cancelación anticipada, se cobrará el proporcional de todas las promociones recibidas por el tiempo que faltase para los ${plazo} meses de su contrato`,
+  ].join("\n");
+}
 
 // ─── Colores Netlife ──────────────────────────────────────────────────────────
 const O  = "#FF6B00";
@@ -274,18 +346,50 @@ function FSel({ value, onChange, options, placeholder = "Seleccionar…" }) {
   );
 }
 
-function Chips({ value, onChange, options }) {
+function Chips({ value, onChange, options, disabledOptions = [] }) {
   return (
     <div className="nv-chips">
-      {options.map(o => (
-        <button
-          key={o} type="button"
-          className={`nv-chip${value === o ? " sel" : ""}`}
-          onClick={() => onChange(o === value ? "" : o)}
-        >
-          {value === o && "✓ "}{o}
-        </button>
-      ))}
+      {options.map(o => {
+        const isDisabled = disabledOptions.includes(o);
+        return (
+          <button
+            key={o} type="button"
+            className={`nv-chip${value === o ? " sel" : ""}`}
+            disabled={isDisabled}
+            style={isDisabled ? { opacity: 0.4, cursor: "not-allowed" } : {}}
+            onClick={() => !isDisabled && onChange(o === value ? "" : o)}
+          >
+            {value === o && "✓ "}{o}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileUpload({ label, value, uploading, onPick }) {
+  const inputRef = useRef(null);
+  return (
+    <div>
+      <input
+        ref={inputRef} type="file" accept="image/*,application/pdf"
+        style={{ display: "none" }}
+        onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ""; }}
+      />
+      <button
+        type="button"
+        className="nv-btn-reset"
+        style={{ marginTop: 0, width: "auto", padding: "9px 18px" }}
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+      >
+        {uploading ? "Subiendo…" : value ? "✅ Reemplazar archivo" : `📎 Subir ${label}`}
+      </button>
+      {value && !uploading && (
+        <a href={`${API}${value}`} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, color: "#FF6B00", fontWeight: 700 }}>
+          Ver archivo subido
+        </a>
+      )}
     </div>
   );
 }
@@ -307,31 +411,136 @@ function Seccion({ num, icon, label, children }) {
 export default function NuevaVenta() {
   const [form, setForm]     = useState(INIT);
   const [errs, setErrs]     = useState({});
-  const [loading, setLoad]  = useState(false);
+  const [loading, setLoad]  = useState(null); // null | "CARGAR" | "BORRADOR"
   const [alert, setAlert]   = useState(null);
   const [success, setSucc]  = useState(null);
+  const [uploading, setUploading] = useState({}); // { campo: true }
+  const [resumenEditado, setResumenEditado] = useState(false);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
   const token   = localStorage.getItem("token");
 
-  // Pre-llenar código asesor desde el usuario logueado
+  // Si la URL trae ?id=123, estamos continuando un borrador propio
+  const borradorId = new URLSearchParams(window.location.search).get("id");
+
+  useEffect(() => {
+    if (!borradorId) return;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/envios-ventas/borrador/${borradorId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        if (d.success) {
+          const data = d.data;
+          setForm(f => {
+            const next = { ...f };
+            Object.keys(INIT).forEach(k => {
+              if (data[k] !== undefined && data[k] !== null) next[k] = String(data[k]);
+            });
+            // El nombre se guarda combinado en la BD; al recuperar el borrador lo
+            // dejamos completo en "nombres" para que el asesor lo separe si hace falta.
+            if (data.nombre_cliente_completo && !next.apellidos_cliente && !next.nombres_cliente) {
+              next.nombres_cliente = data.nombre_cliente_completo;
+            }
+            // direccion_calles también se guarda combinada
+            if (data.direccion_calles && !next.calle_principal) {
+              next.calle_principal = data.direccion_calles;
+            }
+            return next;
+          });
+          setResumenEditado(true); // ya tiene resumen guardado, no lo pisamos automáticamente
+          setAlert({ tipo: "ok", msg: `Continuando borrador #${borradorId}. Completa los campos faltantes.` });
+        } else {
+          setAlert({ tipo: "err", msg: d.error || "No se pudo cargar el borrador." });
+        }
+      } catch {
+        setAlert({ tipo: "err", msg: "Error de conexión al cargar el borrador." });
+      }
+    })();
+  }, [borradorId]);
+
+  // Distribuidor se deriva del usuario logueado (empresa con la que se le creó la cuenta)
+  const distribuidorDelUsuario = (user.empresa || "").toUpperCase();
+  const distribuidorLocked = DISTRIBUIDORES.includes(distribuidorDelUsuario);
+
+  // Pre-llenar código asesor + distribuidor desde el usuario logueado
   useEffect(() => {
     setForm(f => ({
       ...f,
       codigo_asesor: f.codigo_asesor || user.usuario || user.codigo || "",
       nombre_atc:    f.nombre_atc    || user.nombre  || user.usuario || "",
+      distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : f.distribuidor_autorizado,
     }));
   }, []);
 
   const set = k => e => {
     const v = e?.target ? e.target.value : e;
-    setForm(f => ({ ...f, [k]: v }));
+    setForm(f => {
+      const next = { ...f, [k]: v };
+      // Si cambia el distribuidor (caso admin sin lock), limpiar supervisor para evitar mezclas
+      if (k === "distribuidor_autorizado" && v !== f.distribuidor_autorizado) {
+        next.supervisor = "";
+      }
+      return next;
+    });
     setErrs(e => { const n = { ...e }; delete n[k]; return n; });
   };
 
+  // Edad del cliente y regla de descuento 3ra edad: solo aplica con >=65 años,
+  // ya no se vende por motivo de discapacidad
+  const edadCliente = calcularEdad(form.fecha_nacimiento);
+  const calificaPara3raEdad = edadCliente != null && edadCliente >= EDAD_MINIMA_3RA_EDAD;
+
+  useEffect(() => {
+    if (!calificaPara3raEdad && form.aplica_descuento_3ra_edad !== "NO" && form.aplica_descuento_3ra_edad !== "") {
+      setForm(f => ({ ...f, aplica_descuento_3ra_edad: "NO" }));
+    }
+  }, [calificaPara3raEdad]);
+
+  // El resumen se regenera automáticamente mientras el asesor no lo edite a mano
+  useEffect(() => {
+    if (resumenEditado) return;
+    setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) }));
+  }, [
+    form.apellidos_cliente, form.nombres_cliente, form.genero_cliente,
+    form.plan_contratado_final, form.tipo_plan, form.servicios_digitales,
+    form.precio_regular, form.precio_promocion, form.meses_promocion, form.porcentaje_descuento,
+    form.forma_pago, form.banco, form.ciclo_facturacion, form.costo_instalacion,
+    form.descuento_instalacion, form.beneficios_adicionales, form.beneficios_de_ley,
+    form.plazo_contrato_meses, resumenEditado,
+  ]);
+
+  // ── Subida de documentos (cédula frontal/trasera, carnet, resumen firmado) ──
+  const subirArchivo = async (campo, file) => {
+    if (!file) return;
+    setUploading(u => ({ ...u, [campo]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("archivo", file);
+      const r = await fetch(`${API}/api/envios-ventas/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const d = await r.json();
+      if (d.success) {
+        setForm(f => ({ ...f, [campo]: d.url }));
+      } else {
+        setAlert({ tipo: "err", msg: d.error || `No se pudo subir el archivo (${campo}).` });
+      }
+    } catch {
+      setAlert({ tipo: "err", msg: "Error de conexión al subir el archivo." });
+    } finally {
+      setUploading(u => ({ ...u, [campo]: false }));
+    }
+  };
+
   // ── Validación ─────────────────────────────────────────────────────────────
-  const validar = () => {
+  // accion: "CARGAR" exige todos los obligatorios; "BORRADOR" permite guardar a medias
+  const validar = (accion) => {
+    if (accion === "BORRADOR") { setErrs({}); return true; }
     const e = {};
     if (!form.distribuidor_autorizado)   e.distribuidor_autorizado = "Requerido";
     if (!form.tipo_cliente)              e.tipo_cliente = "Requerido";
@@ -355,21 +564,22 @@ export default function NuevaVenta() {
   };
 
   // ── Envío ──────────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  // accion: "CARGAR" (venta final, ya no editable) o "BORRADOR" (REGISTRAR VENTA, se puede retomar)
+  const handleSubmit = async (accion) => {
     setAlert(null);
-    if (!validar()) {
+    if (!validar(accion)) {
       setAlert({ tipo: "err", msg: "Corrige los campos marcados antes de continuar." });
       return;
     }
-    setLoad(true);
+    setLoad(accion);
     try {
       // Construir payload mapeado a columnas de envios_ventas
       const nombre_cliente_completo = `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
       const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
+      const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user);
 
       const payload = {
-        // sistema
-        estatus_envio:              "PENDIENTE",
+        accion,
         // asesor
         codigo_asesor:              form.codigo_asesor    || null,
         id_bitrix:                  form.id_bitrix        || null,
@@ -405,6 +615,19 @@ export default function NuevaVenta() {
         plan_contratado_final:      [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
         servicios_digitales:        form.servicios_digitales || null,
         tipo_contrato:              form.servicio_adicional || null,
+        // resumen de venta
+        banco:                      form.banco || null,
+        ciclo_facturacion:          form.ciclo_facturacion || null,
+        costo_instalacion:          form.costo_instalacion || null,
+        descuento_instalacion:      form.descuento_instalacion || null,
+        beneficios_adicionales:     form.beneficios_adicionales || null,
+        beneficios_de_ley:          form.beneficios_de_ley || null,
+        plazo_contrato_meses:       form.plazo_contrato_meses || null,
+        resumen_venta:              resumenFinal || null,
+        foto_cedula_frontal:        form.foto_cedula_frontal || null,
+        foto_cedula_trasera:        form.foto_cedula_trasera || null,
+        foto_carnet:                form.foto_carnet || null,
+        archivo_resumen:            form.archivo_resumen || null,
         // cierre
         origen_venta:               form.origen_venta     || null,
         turno:                      form.turno            || null,
@@ -412,26 +635,35 @@ export default function NuevaVenta() {
         novedades_atc:              form.observacion_venta || null,
       };
 
-      const r = await fetch(`${API}/api/envios-ventas`, {
-        method: "POST",
+      const url    = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;
+      const method = borradorId ? "PUT" : "POST";
+
+      const r = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
       const d = await r.json();
       if (d.success) {
-        setSucc({
-          id:     d.data.id,
-          nombre: nombre_cliente_completo,
-          plan:   payload.plan_contratado_final,
-        });
-        setForm(INIT);
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (accion === "BORRADOR") {
+          setAlert({ tipo: "ok", msg: `Borrador guardado (#${d.data.id}). Lo encontrarás en "Mis ventas pendientes" para continuarlo.` });
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          setSucc({
+            id:     d.data.id,
+            nombre: nombre_cliente_completo,
+            plan:   payload.plan_contratado_final,
+          });
+          setForm(INIT);
+          setResumenEditado(false);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
       } else {
         setAlert({ tipo: "err", msg: d.error || "Error al registrar la venta." });
       }
     } catch {
       setAlert({ tipo: "err", msg: "Error de conexión con el servidor." });
-    } finally { setLoad(false); }
+    } finally { setLoad(null); }
   };
 
   const err = k => errs[k]
@@ -505,11 +737,23 @@ export default function NuevaVenta() {
               <FIn value={form.id_bitrix} onChange={set("id_bitrix")} placeholder="Ej: 12345" />
             </Row>
             <Row label="Distribuidor" required>
-              <Chips value={form.distribuidor_autorizado} onChange={set("distribuidor_autorizado")} options={DISTRIBUIDORES} />
+              {distribuidorLocked ? (
+                <div className="nv-auto">
+                  🔒 {form.distribuidor_autorizado}
+                  <span style={{ fontWeight: 400, marginLeft: 4 }}>(según tu usuario)</span>
+                </div>
+              ) : (
+                <Chips value={form.distribuidor_autorizado} onChange={set("distribuidor_autorizado")} options={DISTRIBUIDORES} />
+              )}
               {err("distribuidor_autorizado")}
             </Row>
             <Row label="Supervisor">
-              <FIn value={form.supervisor} onChange={set("supervisor")} placeholder="Nombre del supervisor" />
+              <FSel
+                value={form.supervisor}
+                onChange={set("supervisor")}
+                options={SUPERVISORES[form.distribuidor_autorizado] || []}
+                placeholder={form.distribuidor_autorizado ? "Selecciona supervisor…" : "Primero selecciona el distribuidor"}
+              />
             </Row>
           </Seccion>
 
@@ -546,12 +790,27 @@ export default function NuevaVenta() {
             </Row>
             <Row label="Fecha de nacimiento">
               <FIn type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+              {edadCliente != null && (
+                <span style={{ fontSize: 11, color: calificaPara3raEdad ? "#15803d" : "#7C3A00", marginLeft: 8 }}>
+                  {edadCliente} años{calificaPara3raEdad ? " · califica para 3ra edad" : ""}
+                </span>
+              )}
             </Row>
             <Row label="El cliente vive en">
               <FSel value={form.tipo_inmueble} onChange={set("tipo_inmueble")} options={TIPO_INMUEBLE} />
             </Row>
-            <Row label="Descuento 3ra edad / discapacidad">
-              <Chips value={form.aplica_descuento_3ra_edad} onChange={set("aplica_descuento_3ra_edad")} options={DESCUENTO_3ERA} />
+            <Row label="Descuento 3ra edad">
+              <Chips
+                value={form.aplica_descuento_3ra_edad}
+                onChange={set("aplica_descuento_3ra_edad")}
+                options={DESCUENTO_3ERA}
+                disabledOptions={calificaPara3raEdad ? [] : ["SÍ — POR 3RA EDAD"]}
+              />
+              {!calificaPara3raEdad && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Solo se habilita con fecha de nacimiento que indique 65 años o más.
+                </div>
+              )}
             </Row>
             <Row label="Tipo de vivienda">
               <Chips value={form.regimen_vivienda} onChange={set("regimen_vivienda")} options={TIPO_VIV} />
@@ -627,6 +886,18 @@ export default function NuevaVenta() {
             <Row label="Servicio adicional">
               <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")} placeholder="Ej: Netlife Defense, Assistance PRO…" />
             </Row>
+            <Row label="Precio regular (con impuestos)">
+              <FIn value={form.precio_regular} onChange={set("precio_regular")} placeholder="Ej: 29,61" />
+            </Row>
+            <Row label="Precio con promoción">
+              <FIn value={form.precio_promocion} onChange={set("precio_promocion")} placeholder="Ej: 26,65" />
+            </Row>
+            <Row label="Meses con promoción">
+              <FIn value={form.meses_promocion} onChange={set("meses_promocion")} placeholder="Ej: 6" />
+            </Row>
+            <Row label="% Descuento aplicado">
+              <FIn value={form.porcentaje_descuento} onChange={set("porcentaje_descuento")} placeholder="Ej: 10" />
+            </Row>
           </Seccion>
 
           {/* ── 6. Cierre y origen ── */}
@@ -649,21 +920,100 @@ export default function NuevaVenta() {
             </Row>
           </Seccion>
 
-          {/* ── Botón enviar ── */}
+          {/* ── 7. Resumen de venta (se genera automáticamente, antes de subir documentos) ── */}
+          <Seccion num={7} icon="📝" label="Banco, facturación y resumen de venta">
+            <Row label="Banco">
+              <FIn value={form.banco} onChange={set("banco")} placeholder="Ej: Banco Pichincha" />
+            </Row>
+            <Row label="Ciclo de facturación">
+              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion")} options={CICLOS_FACT} />
+            </Row>
+            <Row label="Costo de instalación">
+              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="Ej: 145" />
+            </Row>
+            <Row label="Descuento en instalación">
+              <FIn value={form.descuento_instalacion} onChange={set("descuento_instalacion")} placeholder="Ej: 100% por contratar con Tarjeta de Crédito" />
+            </Row>
+            <Row label="Beneficios adicionales">
+              <textarea
+                className="nv-textarea"
+                value={form.beneficios_adicionales}
+                onChange={set("beneficios_adicionales")}
+                placeholder={"Un beneficio por línea, ej:\n3 dispositivos con Licencia Kaspersky sin costo"}
+                rows={2}
+              />
+            </Row>
+            <Row label="Beneficios de Ley">
+              <Chips value={form.beneficios_de_ley} onChange={set("beneficios_de_ley")} options={BENEFICIOS_LEY} />
+            </Row>
+            <Row label="Plazo del contrato (meses)">
+              <FIn value={form.plazo_contrato_meses} onChange={set("plazo_contrato_meses")} placeholder="36" />
+            </Row>
+            <Row label="Resumen de venta (auto-generado)">
+              <textarea
+                className="nv-textarea"
+                value={form.resumen_venta}
+                onChange={(e) => { setResumenEditado(true); set("resumen_venta")(e); }}
+                rows={10}
+                style={{ fontFamily: "monospace", fontSize: 12 }}
+              />
+              <button
+                type="button"
+                className="nv-btn-reset"
+                style={{ marginTop: 8, width: "auto", padding: "8px 16px" }}
+                onClick={() => { setResumenEditado(false); setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) })); }}
+              >
+                🔄 Regenerar automáticamente
+              </button>
+            </Row>
+          </Seccion>
+
+          {/* ── 8. Documentos ── */}
+          <Seccion num={8} icon="📎" label="Documentos de respaldo">
+            <Row label="Cédula (frontal)">
+              <FileUpload label="cédula frontal" value={form.foto_cedula_frontal} uploading={uploading.foto_cedula_frontal}
+                onPick={(file) => subirArchivo("foto_cedula_frontal", file)} />
+            </Row>
+            <Row label="Cédula (trasera)">
+              <FileUpload label="cédula trasera" value={form.foto_cedula_trasera} uploading={uploading.foto_cedula_trasera}
+                onPick={(file) => subirArchivo("foto_cedula_trasera", file)} />
+            </Row>
+            <Row label="Foto carnet">
+              <FileUpload label="foto carnet" value={form.foto_carnet} uploading={uploading.foto_carnet}
+                onPick={(file) => subirArchivo("foto_carnet", file)} />
+            </Row>
+            <Row label="Resumen firmado / foto resumen">
+              <FileUpload label="resumen" value={form.archivo_resumen} uploading={uploading.archivo_resumen}
+                onPick={(file) => subirArchivo("archivo_resumen", file)} />
+            </Row>
+          </Seccion>
+
+          {/* ── Botones de envío ── */}
           <div className="nv-submit-wrap">
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 14px", background: OP, borderRadius: 10, border: `1px solid ${OB}` }}>
               <span style={{ fontSize: 18 }}>⚡</span>
               <span style={{ fontSize: 12, color: "#7C3A00", fontWeight: 700 }}>
-                Al enviar, la venta queda en estado <strong>PENDIENTE</strong> para revisión del equipo de backoffice.
+                <strong>CARGAR VENTA</strong> la envía como definitiva (PENDIENTE para backoffice, ya no editable).
+                <strong> REGISTRAR VENTA</strong> la guarda como borrador en "Mis ventas pendientes" para completarla luego.
               </span>
             </div>
-            <button className="nv-btn-submit" onClick={handleSubmit} disabled={loading}>
-              {loading
-                ? <><div className="nv-spin" /> Registrando venta…</>
-                : <><span>📤</span> Registrar venta</>
+            <button className="nv-btn-submit" onClick={() => handleSubmit("CARGAR")} disabled={!!loading}>
+              {loading === "CARGAR"
+                ? <><div className="nv-spin" /> Cargando venta…</>
+                : <><span>📤</span> Cargar venta</>
               }
             </button>
-            <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <button
+              className="nv-btn-submit"
+              style={{ marginTop: 10, background: "linear-gradient(135deg, #6B7280, #9CA3AF)", boxShadow: "0 6px 24px rgba(107,114,128,.35)" }}
+              onClick={() => handleSubmit("BORRADOR")} disabled={!!loading}
+            >
+              {loading === "BORRADOR"
+                ? <><div className="nv-spin" /> Guardando borrador…</>
+                : <><span>💾</span> Registrar venta (guardar como borrador)</>
+              }
+            </button>
+            <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); setResumenEditado(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
             </button>
           </div>

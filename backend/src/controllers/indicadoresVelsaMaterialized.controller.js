@@ -350,43 +350,47 @@ LIMIT 6000
     // Mismo criterio que en Reporte180Velsa: Hogar=plan_casa | Pymes=plan_pyme+plan_pyme_corp
     // | Adulto Mayor=plan_hogar_adulto_mayor. Fecha base = ingresos_jot (fecha_registro_jotform - 5h).
     // ─────────────────────────────────────────────────────────────────────
+    // PERF FIX (2026-06-23): la MV ya expone plan_casa/plan_pyme/plan_pyme_corp/
+    // plan_hogar_adulto_mayor directamente (ver qNetlife). El JOIN_JF_VELSA_MV
+    // (subquery sin filtro de fecha sobre toda vw_jotform_velsa_netlife_completo)
+    // era innecesario aqui y sobrecargaba cada fetch del dashboard, causando
+    // "Connection terminated unexpectedly" al filtrar rangos amplios.
     const qPlanesDash = `
       SELECT
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+          AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
-          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+          AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_activos,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND (
-            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
-            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+            (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
+            (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
           )
         ) AS pymes_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
           AND (
-            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
-            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+            (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
+            (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
           )
         ) AS pymes_activos,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+          AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
-          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+          AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_activos
       FROM ${MV}
-      ${JOIN_JF_VELSA_MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
 
@@ -560,43 +564,45 @@ async function getReporte180Velsa(req, res) {
     // Usa la misma columna de fecha que "ingresos_jot" (fecha_registro_jotform - 5h)
     // y la misma definicion de "activo" que VENTA_SERVICIO_VELSA_MV (estado_venta ACTIVO).
     // ─────────────────────────────────────────────────────────────────────
+    // PERF FIX (2026-06-23): igual que en el dashboard, la MV ya expone las
+    // columnas plan_* directamente; se quita JOIN_JF_VELSA_MV (subquery sin
+    // filtro de fecha) que sobrecargaba el pool de conexiones.
     const qPlanes = `
       SELECT
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+          AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
-          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+          AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_activos,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND (
-            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
-            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+            (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
+            (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
           )
         ) AS pymes_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
           AND (
-            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
-            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+            (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
+            (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
           )
         ) AS pymes_activos,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+          AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND mv.estado_venta = ${ESTADO_ACTIVO}
-          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+          AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_activos
       FROM ${MV}
-      ${JOIN_JF_VELSA_MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
 

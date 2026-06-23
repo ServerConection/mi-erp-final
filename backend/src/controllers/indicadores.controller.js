@@ -696,7 +696,52 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // Lote 2: tablas + backlogs + activaciones + ventas del día (self-join)
         const dateValues = [desde, hasta]; // solo $1 y $2 para queries de ventas del día
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor] = await Promise.all([
+        // ─────────────────────────────────────────────────────────────────────
+        // PLANES POR CATEGORIA (Hogar / Pymes / Adulto Mayor) - ingresados vs activos
+        // Misma definicion usada en Reporte180: Hogar=plan_casa, Pymes=plan_pyme/plan_pyme_corp,
+        // Adulto Mayor=plan_hogar_adulto_mayor. "Activo" = estatus ACTIVO.
+        // ─────────────────────────────────────────────────────────────────────
+        const queryPlanesPorCategoria = `
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
+                ) AS hogar_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
+                ) AS hogar_activos,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND (
+                        (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
+                        (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
+                    )
+                ) AS pymes_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND (
+                        (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
+                        (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
+                    )
+                ) AS pymes_activos,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
+                ) AS adulto_mayor_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
+                ) AS adulto_mayor_activos
+            FROM public.mestra_bitrix mb
+            ${JOIN_VAN_NOVONET}
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
+        `;
+
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -706,6 +751,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryVentasDiaAsesor, dateValues),
             pool.query(queryIngresosDiaSup, dateValues),
             pool.query(queryIngresosDiaAsesor, dateValues),
+            pool.query(queryPlanesPorCategoria, values),
         ]);
 
         const mergeBacklog = (filas, backlogRows) => {
@@ -777,6 +823,14 @@ const getIndicadoresDashboard = async (req, res) => {
             porcentajeTerceraEdad,
             porcentajeTarjeta,
             canales: CANALES_DISPONIBLES,
+            planesPorCategoria: (() => {
+                const p = resPlanesDash.rows[0] || {};
+                return {
+                    hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
+                    pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
+                    adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+                };
+            })(),
         };
 
         // Guardar en caché para solicitudes idénticas en los próximos 2 minutos

@@ -1136,6 +1136,39 @@ ${asesoresPDF.length>0?`
 
   const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
+  // Planes por categoría (Hogar / Pymes / Adulto Mayor) — pestaña REPORTE D-1
+  const PLANES_CAT_DASH = data.planesPorCategoria || {};
+  const FILAS_PLANES_DASH = [
+    { key: 'hogar',        label: 'HOGAR',         velocidad: '400 - 2000 Mbps' },
+    { key: 'pymes',        label: 'PYMES',         velocidad: '600 - 2000 Mbps' },
+    { key: 'adulto_mayor', label: 'ADULTO MAYOR',  velocidad: '400 - 2000 Mbps' },
+  ];
+  const TablaPlanesPorCategoriaDash = () => (
+    <table className="w-full text-left border-collapse">
+      <thead>
+        <tr className="border-b border-slate-200">
+          <th className="py-2 px-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">PLAN</th>
+          <th className="py-2 px-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">VELOCIDAD REF.</th>
+          <th className="py-2 px-2 text-[8px] font-black text-slate-400 uppercase tracking-widest text-right">INGRESADOS</th>
+          <th className="py-2 px-2 text-[8px] font-black text-slate-400 uppercase tracking-widest text-right">ACTIVOS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {FILAS_PLANES_DASH.map((fila) => {
+          const d = PLANES_CAT_DASH[fila.key] || { ingresados: 0, activos: 0 };
+          return (
+            <tr key={fila.key} className="border-b border-slate-100 last:border-0">
+              <td className="py-2.5 px-2 text-[10px] font-black text-slate-700 uppercase">{fila.label}</td>
+              <td className="py-2.5 px-2 text-[9px] font-bold text-slate-400">{fila.velocidad}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-violet-600 text-right">{d.ingresados}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-emerald-600 text-right">{d.activos}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
   // FIX: label del funnel usa los campos correctos (etapa y total del payload)
   const CustomFunnelLabel = ({ x, y, width, height, index }) => {
     if (height < 22) return null;
@@ -1691,6 +1724,15 @@ ${asesoresPDF.length>0?`
                 <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudo}</span>
               </h3>
               <ChartArea h={300}><GraficoEmbudo /></ChartArea>
+            </ExpandableChart>
+
+            <ExpandableChart title="PLANES POR CATEGORÍA — NOVONET" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
+              <h3 className="text-[10px] font-black text-violet-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+                <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse"></span>
+                PLANES POR CATEGORÍA — INGRESADOS / ACTIVOS
+              </h3>
+              <p className="text-[8px] font-bold text-slate-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. EXCLUYE "GAMER" (SIN DATO EN BASE).</p>
+              <TablaPlanesPorCategoriaDash />
             </ExpandableChart>
           </div>
 

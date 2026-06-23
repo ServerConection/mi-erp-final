@@ -345,11 +345,56 @@ ${filters}
 LIMIT 6000
     `;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // PLANES POR CATEGORIA (Hogar / Pymes / Adulto Mayor) - ingresados vs activos
+    // Mismo criterio que en Reporte180Velsa: Hogar=plan_casa | Pymes=plan_pyme+plan_pyme_corp
+    // | Adulto Mayor=plan_hogar_adulto_mayor. Fecha base = ingresos_jot (fecha_registro_jotform - 5h).
+    // ─────────────────────────────────────────────────────────────────────
+    const qPlanesDash = `
+      SELECT
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+        ) AS hogar_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+        ) AS hogar_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND (
+            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
+            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+          )
+        ) AS pymes_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND (
+            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
+            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+          )
+        ) AS pymes_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+        ) AS adulto_mayor_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+        ) AS adulto_mayor_activos
+      FROM ${MV}
+      ${JOIN_JF_VELSA_MV}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
+    `;
+
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
-      resNetlife, resActivacionesDia,
+      resNetlife, resActivacionesDia, resPlanesDash,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -364,6 +409,7 @@ LIMIT 6000
       pool.query(qTarjeta,   valuesMain),
       pool.query(qNetlife,   valuesMain),
       pool.query(qActivacionesPorDia, valuesMain), // NUEVO: activaciones por fecha_activacion_date
+      pool.query(qPlanesDash, valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -392,6 +438,14 @@ LIMIT 6000
       etapasJotform:         resEtapasJot.rows.map(r => r.estado_venta),
       porcentajeTerceraEdad,
       porcentajeTarjeta,
+      planesPorCategoria: (() => {
+        const p = resPlanesDash.rows[0] || {};
+        return {
+          hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
+          pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
+          adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+        };
+      })(),
     });
   } catch (error) {
     console.error('[DASHBOARD-VELSA] Error:', error);

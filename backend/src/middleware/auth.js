@@ -152,7 +152,7 @@ const noAsesor = (req, res, next) => {
  * Debe usarse DESPUES de verificarToken.
  */
 const soloTTHH = (req, res, next) => {
-  if (!req.user || req.user.perfil !== 'TTHH') {
+  if (!req.user || (req.user.perfil !== 'TTHH' && req.user.perfil !== 'ADMINISTRADOR')) {
     return res.status(403).json({
       success: false,
       error: 'Acceso denegado. Solo Talento Humano puede acceder a este módulo.'

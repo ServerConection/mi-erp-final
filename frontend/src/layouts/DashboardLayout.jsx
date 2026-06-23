@@ -429,7 +429,7 @@ const ALL_MENU_ITEMS = [
 
   // ── Talento Humano (TTHH) — exclusivo perfil TTHH, ve Novonet + Velsa ──────
   { name: "🧑‍💼 Talento Humano", path: "/talento-humano", icon: "🧑‍💼",
-    accessCheck: (p) => p === 'TTHH' },
+    accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

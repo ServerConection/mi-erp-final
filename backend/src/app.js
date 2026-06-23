@@ -113,7 +113,16 @@ app.use('/api/polla',             pollaMundialistaRoutes);
 app.use('/api/reporte-jefatura',  reporteJefaturaRoutes);
 app.use('/api/consultor',         consultorRoutes);
 
-// Broadcast TV - servir uploads con cache HTTP
+// Broadcast TV / Inventario - servir uploads con cache HTTP.
+// SEGURIDAD: las carpetas envios_ventas y tthh_documentos contienen PII
+// (cédulas, carnets, documentos de asesores) y ya NO se escriben aquí —
+// esos archivos viven en el servidor de almacenamiento local y se sirven
+// solo a través de rutas autenticadas (/api/envios-ventas/archivo/...,
+// /api/tthh/archivo/...). Se bloquean explícitamente por si quedan archivos
+// antiguos de antes de la migración.
+app.use('/uploads/envios_ventas', (req, res) => res.status(404).json({ success: false, error: 'No encontrado' }));
+app.use('/uploads/tthh_documentos', (req, res) => res.status(404).json({ success: false, error: 'No encontrado' }));
+
 const uploadsPath = path.resolve(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(uploadsPath, {
   maxAge: '7d',

@@ -21,36 +21,27 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
 const pool    = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
+const { subirArchivo, obtenerArchivo, rutaInterna, configurado } = require('../utils/storageClient');
 
 // Todas las rutas requieren token válido
 router.use(verificarToken);
 
 // ─── Almacenamiento de documentos (cédula frontal/trasera, carnet, resumen) ──
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(process.cwd(), 'uploads', 'envios_ventas');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname) || '';
-    const name = `${Date.now()}_${Math.round(Math.random() * 1e6)}${ext}`;
-    cb(null, name);
-  }
-});
-
+// Los archivos ya NO se guardan en disco del backend: se reciben en memoria y
+// se reenvían al servidor de almacenamiento local del cliente (carpeta por
+// cédula). Esto evita exponer PII vía una ruta estática pública.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') cb(null, true);
     else cb(new Error('Solo se permiten imágenes o PDF'));
   }
 });
+
+const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
 
 // Campos obligatorios solo cuando la acción es "CARGAR" (venta final, no borrador)
 const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso', 'turno'];
@@ -81,16 +72,54 @@ const COLUMNAS_VENTA = [
 const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
 
 // ─── POST /api/envios-ventas/upload ──────────────────────────────────────────
-// Sube un documento (cédula frontal/trasera, carnet o resumen) y devuelve su URL.
-// Campo esperado en el form-data: "archivo"
-router.post('/upload', upload.single('archivo'), (req, res) => {
+// Sube un documento (cédula frontal/trasera, carnet o resumen) al servidor de
+// almacenamiento local, dentro de una carpeta nombrada con la cédula del
+// cliente. Devuelve una "url" interna (no pública) que se guarda en la BD y
+// que solo se puede resolver a bytes reales a través de GET /archivo/:ruta,
+// que sí exige token + rol.
+// Campos esperados en el form-data: "archivo" (file), "numero_identificacion" (cédula)
+router.post('/upload', upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
-    const url = `/uploads/envios_ventas/${req.file.filename}`;
+    if (!configurado()) {
+      return res.status(503).json({ success: false, error: 'El servidor de almacenamiento local no está configurado todavía.' });
+    }
+
+    const cedula = soloDigitos(req.body.numero_identificacion);
+    const carpeta = cedula || `temp_${req.user.id}`;
+
+    const resultado = await subirArchivo({
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      carpeta,
+    });
+
+    const url = `/api/envios-ventas/archivo/${resultado.carpeta}/${resultado.archivo}`;
     res.json({ success: true, url, nombre: req.file.originalname });
   } catch (e) {
     console.error('[ENVIOS-VENTAS] upload:', e.message);
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── GET /api/envios-ventas/archivo/:carpeta/:archivo ────────────────────────
+// Proxy autenticado (requiere token válido, vía router.use arriba). Cualquier
+// usuario logueado puede ver un archivo si conoce su carpeta+nombre exactos
+// (el asesor necesita previsualizar su propia carga antes de enviar la venta;
+// Backoffice/admin/supervisor necesitan ver todo). Esto sigue siendo mucho más
+// seguro que la exposición pública anterior: ya no es accesible sin sesión, y
+// los nombres de archivo son aleatorios (no enumerables).
+router.get('/archivo/:carpeta/:archivo', async (req, res) => {
+  try {
+    const { carpeta, archivo } = req.params;
+    const { buffer, contentType } = await obtenerArchivo(carpeta, archivo);
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=0, no-store');
+    res.send(buffer);
+  } catch (e) {
+    console.error('[ENVIOS-VENTAS] archivo:', e.message);
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 });
 

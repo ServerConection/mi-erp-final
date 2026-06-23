@@ -13,6 +13,21 @@ const authHeaders = (json = true) => ({
   ...(json ? { "Content-Type": "application/json" } : {}),
 });
 
+// Los archivos viven detrás de una ruta autenticada en el servidor de
+// almacenamiento local — hay que pedirlos con fetch()+Authorization y
+// abrirlos como blob (un <a href> normal no manda el token).
+const verArchivo = async (url, e) => {
+  e?.preventDefault();
+  try {
+    const r = await fetch(`${API}${url}`, { headers: { Authorization: `Bearer ${token()}` } });
+    if (!r.ok) { alert("No se pudo abrir el archivo."); return; }
+    const blob = await r.blob();
+    window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+  } catch {
+    alert("Error de conexión al abrir el archivo.");
+  }
+};
+
 const card = { background: "#fff", border: "1.5px solid #F0E6DD", borderRadius: 16, padding: 20 };
 const btn  = { background: O, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" };
 const btnGhost = { ...btn, background: "#fff", color: O, border: `1.5px solid ${O}` };
@@ -248,6 +263,9 @@ function Documentos() {
     try {
       const fd = new FormData();
       fd.append("archivo", file);
+      // tipo + codigo_asesor deciden la carpeta en el servidor de almacenamiento local
+      fd.append("tipo", form.tipo);
+      fd.append("codigo_asesor", form.codigo_asesor || "");
       const r = await fetch(`${API}/api/tthh/documentos/upload`, { method: "POST", headers: authHeaders(false), body: fd });
       const d = await r.json();
       if (d.success) setForm(f => ({ ...f, archivo_url: d.url }));
@@ -370,7 +388,7 @@ function Documentos() {
                 {docs.length === 0 && <tr><td style={td} colSpan={8}>No hay documentos cargados.</td></tr>}
                 {docs.map(d => (
                   <tr key={d.id}>
-                    <td style={td}><a href={`${API}${d.archivo_url}`} target="_blank" rel="noreferrer">{d.titulo}</a></td>
+                    <td style={td}><a href="#" onClick={(e) => verArchivo(d.archivo_url, e)}>{d.titulo}</a></td>
                     <td style={td}>{d.tipo}</td>
                     <td style={td}>{d.empresa || "—"}</td>
                     <td style={td}>{d.nombre_asesor || d.codigo_asesor || "—"}</td>

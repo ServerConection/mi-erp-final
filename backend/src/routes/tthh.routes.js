@@ -31,28 +31,17 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
 const pool    = require('../config/db');
 const { verificarToken, soloTTHH } = require('../middleware/auth');
+const { subirArchivo, obtenerArchivo, configurado } = require('../utils/storageClient');
 
 router.use(verificarToken, soloTTHH);
 
 // ─── Almacenamiento de documentos de control ─────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(process.cwd(), 'uploads', 'tthh_documentos');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname) || '';
-    const name = `${Date.now()}_${Math.round(Math.random() * 1e6)}${ext}`;
-    cb(null, name);
-  }
-});
+// En memoria — se reenvían al servidor de almacenamiento local (carpeta =
+// código de asesor, o "generales" para documentos tipo GENERAL).
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
@@ -60,6 +49,8 @@ const upload = multer({
     else cb(new Error('Formato no permitido. Usa imagen, PDF, Word o Excel.'));
   }
 });
+
+const soloCarpeta = (s) => String(s || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_');
 
 const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
 
@@ -172,14 +163,45 @@ router.post('/metas', async (req, res) => {
 // DOCUMENTOS DE CONTROL
 // ════════════════════════════════════════════════════════════════
 
-router.post('/documentos/upload', upload.single('archivo'), (req, res) => {
+router.post('/documentos/upload', upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
-    const url = `/uploads/tthh_documentos/${req.file.filename}`;
+    if (!configurado()) {
+      return res.status(503).json({ success: false, error: 'El servidor de almacenamiento local no está configurado todavía.' });
+    }
+
+    const tipo = (req.body.tipo || '').toUpperCase();
+    const carpeta = tipo === 'ASESOR'
+      ? soloCarpeta(req.body.codigo_asesor) || 'sin_asesor'
+      : 'generales';
+
+    const resultado = await subirArchivo({
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      carpeta,
+    });
+
+    const url = `/api/tthh/archivo/${resultado.carpeta}/${resultado.archivo}`;
     res.json({ success: true, url, nombre: req.file.originalname });
   } catch (e) {
     console.error('[TTHH] documentos upload:', e.message);
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── GET /api/tthh/archivo/:carpeta/:archivo ─────────────────────────────────
+// Proxy autenticado (solo perfil TTHH, ya forzado por router.use arriba).
+router.get('/archivo/:carpeta/:archivo', async (req, res) => {
+  try {
+    const { carpeta, archivo } = req.params;
+    const { buffer, contentType } = await obtenerArchivo(carpeta, archivo);
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=0, no-store');
+    res.send(buffer);
+  } catch (e) {
+    console.error('[TTHH] archivo:', e.message);
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 });
 

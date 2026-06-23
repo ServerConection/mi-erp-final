@@ -367,6 +367,22 @@ function Chips({ value, onChange, options, disabledOptions = [] }) {
   );
 }
 
+// El archivo ahora vive en el servidor de almacenamiento local, detrás de una
+// ruta autenticada — un <a href> normal no envía el token, así que hay que
+// pedirlo con fetch() + Authorization y abrir el resultado como blob.
+async function verArchivoAutenticado(url) {
+  try {
+    const token = localStorage.getItem("token");
+    const r = await fetch(`${API}${url}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) { alert("No se pudo abrir el archivo."); return; }
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, "_blank", "noopener,noreferrer");
+  } catch {
+    alert("Error de conexión al abrir el archivo.");
+  }
+}
+
 function FileUpload({ label, value, uploading, onPick }) {
   const inputRef = useRef(null);
   return (
@@ -386,9 +402,13 @@ function FileUpload({ label, value, uploading, onPick }) {
         {uploading ? "Subiendo…" : value ? "✅ Reemplazar archivo" : `📎 Subir ${label}`}
       </button>
       {value && !uploading && (
-        <a href={`${API}${value}`} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, color: "#FF6B00", fontWeight: 700 }}>
+        <button
+          type="button"
+          onClick={() => verArchivoAutenticado(value)}
+          style={{ marginLeft: 10, fontSize: 12, color: "#FF6B00", fontWeight: 700, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+        >
           Ver archivo subido
-        </a>
+        </button>
       )}
     </div>
   );
@@ -519,6 +539,10 @@ export default function NuevaVenta() {
     try {
       const fd = new FormData();
       fd.append("archivo", file);
+      // La cédula del cliente decide en qué carpeta queda el archivo en el
+      // servidor de almacenamiento local. Si todavía no se llenó ese campo,
+      // el backend usa una carpeta temporal por usuario.
+      fd.append("numero_identificacion", form.numero_identificacion || "");
       const r = await fetch(`${API}/api/envios-ventas/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

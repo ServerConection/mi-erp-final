@@ -426,6 +426,10 @@ const ALL_MENU_ITEMS = [
 
   // ── Asistente de datos del ERP ──────────────────────────────────────────────
   { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },
+
+  // ── Talento Humano (TTHH) — exclusivo perfil TTHH, ve Novonet + Velsa ──────
+  { name: "🧑‍💼 Talento Humano", path: "/talento-humano", icon: "🧑‍💼",
+    accessCheck: (p) => p === 'TTHH' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

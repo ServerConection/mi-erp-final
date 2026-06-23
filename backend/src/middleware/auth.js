@@ -145,4 +145,20 @@ const noAsesor = (req, res, next) => {
   next();
 };
 
-module.exports = { verificarToken, soloAdmin, noAsesor, invalidarUsuarioCache };
+/**
+ * Middleware: solo permite acceso a usuarios con perfil TTHH (Talento Humano).
+ * TTHH es transversal: ve datos de Novonet y Velsa sin importar su propia
+ * empresa asignada (eso se maneja en los controladores, no aquí).
+ * Debe usarse DESPUES de verificarToken.
+ */
+const soloTTHH = (req, res, next) => {
+  if (!req.user || req.user.perfil !== 'TTHH') {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Solo Talento Humano puede acceder a este módulo.'
+    });
+  }
+  next();
+};
+
+module.exports = { verificarToken, soloAdmin, noAsesor, soloTTHH, invalidarUsuarioCache };

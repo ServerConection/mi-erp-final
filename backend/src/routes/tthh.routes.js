@@ -1,0 +1,353 @@
+// src/routes/tthh.routes.js
+// ============================================================
+// Módulo TALENTO HUMANO (TTHH)
+//
+// GET  /api/tthh/productividad         — Rendimiento de asesores (datos de Backoffice/envios_ventas)
+// GET  /api/tthh/metas                 — Metas mensuales configuradas
+// POST /api/tthh/metas                 — Crear/actualizar meta (empresa + asesor opcional)
+//
+// GET    /api/tthh/documentos          — Listar documentos de control (filtros: tipo, empresa, codigo_asesor)
+// POST   /api/tthh/documentos/upload   — Subir archivo, devuelve url
+// POST   /api/tthh/documentos          — Crear registro de documento
+// DELETE /api/tthh/documentos/:id      — Eliminar documento
+//
+// GET    /api/tthh/tabla/columnas      — Columnas de la "hoja compartida"
+// POST   /api/tthh/tabla/columnas      — Nueva columna
+// PUT    /api/tthh/tabla/columnas/:id  — Renombrar/reordenar columna
+// DELETE /api/tthh/tabla/columnas/:id  — Eliminar columna
+// GET    /api/tthh/tabla/filas         — Filas de la hoja
+// POST   /api/tthh/tabla/filas         — Nueva fila
+// PUT    /api/tthh/tabla/filas/:id     — Editar datos de una fila
+// DELETE /api/tthh/tabla/filas/:id     — Eliminar fila
+//
+// Acceso: exclusivo perfil TTHH (soloTTHH). TTHH es transversal: ignora su
+// propia empresa y siempre puede ver/filtrar Novonet y Velsa.
+//
+// NOTA productividad: por ahora se calcula solo sobre public.envios_ventas
+// (tabla que también audita Backoffice para Novonet/Netlife). Si Velsa
+// registra sus ventas en otra tabla, avisar para sumar esa fuente aquí.
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const multer  = require('multer');
+const path    = require('path');
+const fs      = require('fs');
+const pool    = require('../config/db');
+const { verificarToken, soloTTHH } = require('../middleware/auth');
+
+router.use(verificarToken, soloTTHH);
+
+// ─── Almacenamiento de documentos de control ─────────────────────────────────
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(process.cwd(), 'uploads', 'tthh_documentos');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname) || '';
+    const name = `${Date.now()}_${Math.round(Math.random() * 1e6)}${ext}`;
+    cb(null, name);
+  }
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
+      || file.mimetype.includes('word') || file.mimetype.includes('sheet')) cb(null, true);
+    else cb(new Error('Formato no permitido. Usa imagen, PDF, Word o Excel.'));
+  }
+});
+
+const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
+
+// ════════════════════════════════════════════════════════════════
+// PRODUCTIVIDAD
+// ════════════════════════════════════════════════════════════════
+
+// ─── GET /api/tthh/productividad ─────────────────────────────────────────────
+router.get('/productividad', async (req, res) => {
+  try {
+    const hoy = new Date();
+    const anio = parseInt(req.query.anio) || hoy.getFullYear();
+    const mes  = parseInt(req.query.mes)  || (hoy.getMonth() + 1);
+    const empresaFiltro = (req.query.empresa || '').toUpperCase().trim(); // '' = todas (TTHH ve ambas)
+
+    const { rows: ventas } = await pool.query(`
+      SELECT
+        codigo_asesor,
+        distribuidor_autorizado,
+        supervisor,
+        COUNT(*)::int AS total_ventas,
+        COUNT(*) FILTER (WHERE UPPER(venta_efectiva) IN ('SI','SÍ','EFECTIVA'))::int AS ventas_efectivas,
+        COUNT(*) FILTER (WHERE UPPER(calidad_venta_analista) IN ('BUENA','EXCELENTE'))::int AS ventas_calidad_buena,
+        COUNT(*) FILTER (WHERE UPPER(calidad_venta_analista) IN ('MALA','DEFICIENTE'))::int AS ventas_calidad_mala
+      FROM public.envios_ventas
+      WHERE estatus_envio != 'BORRADOR'
+        AND EXTRACT(YEAR  FROM fecha_registro_sistema) = $1
+        AND EXTRACT(MONTH FROM fecha_registro_sistema) = $2
+        AND codigo_asesor IS NOT NULL
+      GROUP BY codigo_asesor, distribuidor_autorizado, supervisor
+      ORDER BY ventas_efectivas DESC
+    `, [anio, mes]);
+
+    const { rows: metas } = await pool.query(`SELECT empresa, codigo_asesor, meta_mensual FROM public.tthh_metas`);
+    const metaDefault = { NOVONET: 10, VELSA: 10 };
+    const metaPorAsesor = {};
+    metas.forEach(m => {
+      if (m.codigo_asesor) metaPorAsesor[`${m.empresa}__${m.codigo_asesor}`] = m.meta_mensual;
+      else metaDefault[m.empresa] = m.meta_mensual;
+    });
+
+    // No tenemos un campo "empresa" directo en envios_ventas; se infiere por
+    // distribuidor (igual que el resto del ERP) — si se necesita más precisión,
+    // se puede ajustar este mapeo.
+    const inferirEmpresa = (dist) => {
+      const d = (dist || '').toUpperCase();
+      if (d.includes('VELSA')) return 'VELSA';
+      return 'NOVONET';
+    };
+
+    let data = ventas.map(v => {
+      const empresa = inferirEmpresa(v.distribuidor_autorizado);
+      const meta = metaPorAsesor[`${empresa}__${v.codigo_asesor}`] ?? metaDefault[empresa] ?? 10;
+      return {
+        ...v,
+        empresa,
+        meta_mensual: meta,
+        productivo: v.ventas_efectivas >= meta,
+      };
+    });
+
+    if (empresaFiltro) data = data.filter(d => d.empresa === empresaFiltro);
+
+    res.json({ success: true, anio, mes, data });
+  } catch (e) {
+    console.error('[TTHH] productividad:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── GET /api/tthh/metas ─────────────────────────────────────────────────────
+router.get('/metas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM public.tthh_metas ORDER BY empresa, codigo_asesor NULLS FIRST`);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    console.error('[TTHH] metas GET:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── POST /api/tthh/metas ────────────────────────────────────────────────────
+// Crea o actualiza (upsert) la meta para una empresa (+ asesor opcional)
+router.post('/metas', async (req, res) => {
+  try {
+    const { empresa, codigo_asesor, meta_mensual } = req.body;
+    if (!empresa || !['NOVONET', 'VELSA'].includes(empresa.toUpperCase()))
+      return res.status(400).json({ success: false, error: 'empresa debe ser NOVONET o VELSA' });
+    if (!meta_mensual || isNaN(parseInt(meta_mensual)))
+      return res.status(400).json({ success: false, error: 'meta_mensual es requerido y debe ser numérico' });
+
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_metas (empresa, codigo_asesor, meta_mensual, actualizado_por, actualizado_en)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (empresa, codigo_asesor) DO UPDATE SET
+        meta_mensual = EXCLUDED.meta_mensual,
+        actualizado_por = EXCLUDED.actualizado_por,
+        actualizado_en = NOW()
+      RETURNING *
+    `, [empresa.toUpperCase(), t(codigo_asesor), parseInt(meta_mensual), req.user.usuario]);
+
+    res.json({ success: true, data: rows[0] });
+  } catch (e) {
+    console.error('[TTHH] metas POST:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// DOCUMENTOS DE CONTROL
+// ════════════════════════════════════════════════════════════════
+
+router.post('/documentos/upload', upload.single('archivo'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
+    const url = `/uploads/tthh_documentos/${req.file.filename}`;
+    res.json({ success: true, url, nombre: req.file.originalname });
+  } catch (e) {
+    console.error('[TTHH] documentos upload:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.get('/documentos', async (req, res) => {
+  try {
+    const { tipo, empresa, codigo_asesor } = req.query;
+    const where = [];
+    const params = [];
+    if (tipo) { params.push(tipo.toUpperCase()); where.push(`tipo = $${params.length}`); }
+    if (empresa) { params.push(empresa.toUpperCase()); where.push(`(empresa = $${params.length} OR empresa IS NULL)`); }
+    if (codigo_asesor) { params.push(codigo_asesor); where.push(`codigo_asesor = $${params.length}`); }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const { rows } = await pool.query(`
+      SELECT * FROM public.tthh_documentos
+      ${whereClause}
+      ORDER BY fecha_subida DESC
+      LIMIT 500
+    `, params);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    console.error('[TTHH] documentos GET:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/documentos', async (req, res) => {
+  try {
+    const { tipo, empresa, codigo_asesor, nombre_asesor, categoria, titulo, descripcion, archivo_url } = req.body;
+    if (!tipo || !['ASESOR', 'GENERAL'].includes(tipo.toUpperCase()))
+      return res.status(400).json({ success: false, error: 'tipo debe ser ASESOR o GENERAL' });
+    if (!titulo || !archivo_url)
+      return res.status(400).json({ success: false, error: 'titulo y archivo_url son requeridos' });
+
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_documentos
+        (tipo, empresa, codigo_asesor, nombre_asesor, categoria, titulo, descripcion, archivo_url, subido_por)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING *
+    `, [
+      tipo.toUpperCase(), t(empresa), t(codigo_asesor), t(nombre_asesor),
+      t(categoria), titulo.trim(), t(descripcion), archivo_url, req.user.usuario,
+    ]);
+
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    console.error('[TTHH] documentos POST:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.delete('/documentos/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`DELETE FROM public.tthh_documentos WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Documento no encontrado' });
+    res.json({ success: true, mensaje: 'Documento eliminado' });
+  } catch (e) {
+    console.error('[TTHH] documentos DELETE:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// TABLA COMPARTIDA (mini hoja de cálculo en SQL)
+// ════════════════════════════════════════════════════════════════
+
+router.get('/tabla/columnas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM public.tthh_tabla_columnas ORDER BY orden, id`);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/tabla/columnas', async (req, res) => {
+  try {
+    const { nombre, ancho } = req.body;
+    if (!nombre || !nombre.trim()) return res.status(400).json({ success: false, error: 'nombre es requerido' });
+    const { rows: maxOrden } = await pool.query(`SELECT COALESCE(MAX(orden), 0) + 1 AS siguiente FROM public.tthh_tabla_columnas`);
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_tabla_columnas (nombre, orden, ancho) VALUES ($1, $2, $3) RETURNING *
+    `, [nombre.trim(), maxOrden[0].siguiente, ancho || 160]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.put('/tabla/columnas/:id', async (req, res) => {
+  try {
+    const { nombre, orden, ancho } = req.body;
+    const { rows } = await pool.query(`
+      UPDATE public.tthh_tabla_columnas SET
+        nombre = COALESCE($1, nombre),
+        orden  = COALESCE($2, orden),
+        ancho  = COALESCE($3, ancho)
+      WHERE id = $4
+      RETURNING *
+    `, [t(nombre), orden ?? null, ancho ?? null, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Columna no encontrada' });
+    res.json({ success: true, data: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.delete('/tabla/columnas/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`DELETE FROM public.tthh_tabla_columnas WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Columna no encontrada' });
+    res.json({ success: true, mensaje: 'Columna eliminada' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.get('/tabla/filas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM public.tthh_tabla_filas ORDER BY orden, id`);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/tabla/filas', async (req, res) => {
+  try {
+    const { datos } = req.body;
+    const { rows: maxOrden } = await pool.query(`SELECT COALESCE(MAX(orden), 0) + 1 AS siguiente FROM public.tthh_tabla_filas`);
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_tabla_filas (datos, orden, creado_por, actualizado_por)
+      VALUES ($1, $2, $3, $3)
+      RETURNING *
+    `, [JSON.stringify(datos || {}), maxOrden[0].siguiente, req.user.usuario]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.put('/tabla/filas/:id', async (req, res) => {
+  try {
+    const { datos, orden } = req.body;
+    const { rows } = await pool.query(`
+      UPDATE public.tthh_tabla_filas SET
+        datos = COALESCE($1, datos),
+        orden = COALESCE($2, orden),
+        actualizado_por = $3,
+        actualizado_en = NOW()
+      WHERE id = $4
+      RETURNING *
+    `, [datos ? JSON.stringify(datos) : null, orden ?? null, req.user.usuario, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Fila no encontrada' });
+    res.json({ success: true, data: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.delete('/tabla/filas/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`DELETE FROM public.tthh_tabla_filas WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Fila no encontrada' });
+    res.json({ success: true, mensaje: 'Fila eliminada' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+module.exports = router;

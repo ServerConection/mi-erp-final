@@ -53,6 +53,7 @@ const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const CumplimientoLeads    = lazy(() => import("./pages/CumplimientoLeads"));
+const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -119,6 +120,7 @@ export default function App() {
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
             <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
+            <Route path="talento-humano"           element={<TalentoHumano />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />

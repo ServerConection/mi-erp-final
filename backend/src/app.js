@@ -36,6 +36,7 @@ const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes'
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const cumplimientoLeadsRoutes      = require('./routes/cumplimientoLeads.routes');
 const datosAdicionalesRoutes       = require('./routes/datosAdicionales.routes');
+const tthhRoutes                   = require('./routes/tthh.routes');
 
 const app = express();
 
@@ -133,6 +134,7 @@ app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/cumplimiento-leads', cumplimientoLeadsRoutes);
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
+app.use('/api/tthh', tthhRoutes);
 
 // Handler 404
 app.use((req, res) => {

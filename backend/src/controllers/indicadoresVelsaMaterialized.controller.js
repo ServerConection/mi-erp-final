@@ -136,9 +136,13 @@ const queryKPI = (columna, filters) => `
   SELECT
     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
     COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS leads_totales,
+    -- FIX (2026-06-23): antes este FILTER tenia una ventana de fecha MAS AMPLIA
+    -- (fecha_creacion_crm OR fecha_registro_jotform) que la de "leads_totales"
+    -- (que solo usa fecha_creacion_crm), permitiendo gestionables > leads_totales
+    -- (imposible, ya que gestionables debe ser subconjunto de leads_totales).
+    -- Ahora usa la MISMA base de fecha que leads_totales.
     COUNT(*) FILTER (
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-          OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
       AND ${esGestionableExpr('mv.etapa_crm')}
     ) AS gestionables,
     COUNT(*) FILTER (
@@ -496,10 +500,57 @@ async function getReporte180Velsa(req, res) {
       GROUP BY mv.estado_venta ORDER BY total DESC
     `;
 
-    const [resKPIs, resEmbCRM, resEmbJot] = await Promise.all([
+    // ─────────────────────────────────────────────────────────────────────
+    // PLANES POR CATEGORIA (Hogar / Pymes / Adulto Mayor) - ingresados vs activos
+    // Hogar = plan_casa | Pymes = plan_pyme + plan_pyme_corp | Adulto Mayor = plan_hogar_adulto_mayor
+    // Usa la misma columna de fecha que "ingresos_jot" (fecha_registro_jotform - 5h)
+    // y la misma definicion de "activo" que VENTA_SERVICIO_VELSA_MV (estado_venta ACTIVO).
+    // ─────────────────────────────────────────────────────────────────────
+    const qPlanes = `
+      SELECT
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+        ) AS hogar_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> ''
+        ) AS hogar_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND (
+            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
+            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+          )
+        ) AS pymes_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND (
+            (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
+            (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '')
+          )
+        ) AS pymes_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+        ) AS adulto_mayor_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> ''
+        ) AS adulto_mayor_activos
+      FROM ${MV}
+      ${JOIN_JF_VELSA_MV}
+      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
+    `;
+
+    const [resKPIs, resEmbCRM, resEmbJot, resPlanes] = await Promise.all([
       pool.query(qKPIs,      values),
       pool.query(qEmbudoCRM, values),
       pool.query(qEmbudoJot, values),
+      pool.query(qPlanes,    values),
     ]);
 
     const k = resKPIs.rows[0] || {};
@@ -516,6 +567,14 @@ async function getReporte180Velsa(req, res) {
       embudoCRM:     resEmbCRM.rows,
       embudoJotform: resEmbJot.rows,
       mapaCalor:     [],
+      planesPorCategoria: (() => {
+        const p = resPlanes.rows[0] || {};
+        return {
+          hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
+          pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
+          adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+        };
+      })(),
     });
   } catch (error) {
     console.error('[REPORTE180-VELSA] Error:', error);

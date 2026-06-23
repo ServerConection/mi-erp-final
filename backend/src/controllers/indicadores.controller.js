@@ -390,20 +390,28 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS por_regularizar,
                 COUNT(*) FILTER (
-    WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date 
-           OR _bc_date BETWEEN $1::date AND $2::date)
+    -- FIX (2026-06-23): antes este FILTER usaba (_jf_parsed_date OR _bc_date) BETWEEN ...,
+    -- una ventana de fecha MAS AMPLIA que la de "leads_totales" (que solo usa _bc_date).
+    -- Eso permitia que "gestionables" contara leads cuyo registro Jotform cae en el rango
+    -- pero cuya fecha de creacion CRM (_bc_date) NO cae en el rango, esos leads no
+    -- entraban en leads_totales, y entonces gestionables > leads_totales (imposible).
+    -- Ahora usa la MISMA base de fecha que leads_totales (_bc_date) para garantizar
+    -- que gestionables sea siempre un subconjunto de leads_totales.
+    WHERE _bc_date BETWEEN $1::date AND $2::date
     AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
     AND (
         -- Si es VENTA SUBIDA, siempre cuenta sin importar origen
         b_etapa_de_la_negociacion = 'VENTA SUBIDA'
         OR
-        -- Si NO es VENTA SUBIDA, excluir esos orígenes conflictivos
-        COALESCE(b_origen, '') NOT IN (   -- ← mb.b_origen → b_origen
+        -- Si NO es VENTA SUBIDA, excluir esos origenes conflictivos
+        -- (misma lista que leads_totales, para consistencia)
+        COALESCE(b_origen, '') NOT IN (
             'WAZZUP: WhatsApp - Ecuanet Regestion',
             'BASE 593-962881280',
+            'BASE 593-958993371',
             'BASE 593-999803743',
-            'Base 593-995967355'
-          
+            'Base 593-995967355',
+            'Whatsapp 593958993371'
         )
     )
 ) AS gestionables,
@@ -1178,11 +1186,58 @@ const getReporte180 = async (req, res) => {
             ORDER BY 1 ASC, 3 DESC
         `;
 
-        const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor] = await Promise.all([
+        // ─────────────────────────────────────────────────────────────────────
+        // PLANES POR CATEGORIA (Hogar / Pymes / Adulto Mayor) - ingresados vs activos
+        // Hogar = plan_casa | Pymes = plan_pyme + plan_pyme_corp | Adulto Mayor = plan_hogar_adulto_mayor
+        // Usa la misma columna de fecha que "ingresos_jot" (j_fecha_registro_sistema)
+        // y la misma definicion de "activo" que VENTA_SERVICIO_VAN (estatus ACTIVO).
+        // ─────────────────────────────────────────────────────────────────────
+        const queryPlanesPorCategoria = `
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
+                ) AS hogar_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
+                ) AS hogar_activos,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND (
+                        (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
+                        (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
+                    )
+                ) AS pymes_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND (
+                        (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
+                        (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
+                    )
+                ) AS pymes_activos,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
+                ) AS adulto_mayor_ingresados,
+                COUNT(*) FILTER (
+                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
+                    AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
+                ) AS adulto_mayor_activos
+            FROM public.mestra_bitrix mb
+            ${JOIN_VAN_NOVONET}
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
+        `;
+
+        const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor, resPlanes] = await Promise.all([
             pool.query(queryKPIs, values),
             pool.query(queryEmbudoCRM, values),
             pool.query(queryEmbudoJotform, values),
             pool.query(queryMapaCalor, values),
+            pool.query(queryPlanesPorCategoria, values),
         ]);
 
         const kpis = resKPIs.rows[0] || {};
@@ -1216,6 +1271,14 @@ const getReporte180 = async (req, res) => {
             embudoCRM,
             embudoJotform,
             mapaCalor: resMapaCalor.rows,
+            planesPorCategoria: (() => {
+                const p = resPlanes.rows[0] || {};
+                return {
+                    hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
+                    pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
+                    adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+                };
+            })(),
         });
 
     } catch (error) {

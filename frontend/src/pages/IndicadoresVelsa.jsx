@@ -1604,7 +1604,7 @@ function ConsultaDescargaVelsa() {
 // REPORTE 180°
 // ======================================================
 function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
-  const { kpis, embudoCRM, embudoJotform, mapaCalor } = data;
+  const { kpis, embudoCRM, embudoJotform, mapaCalor, planesPorCategoria } = data;
   const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, ventas_servicio: 0, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
   const METAS = {
     ingresos_jot:     metaDinamica(METAS_BASE.ingresos_jot,     filtros.fechaDesde, filtros.fechaHasta),
@@ -1680,6 +1680,41 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     </div>
   );
 
+  // Velocidades de referencia (fijas, informativas) — tomadas de la guía de planes vigente.
+  // No están asociadas a una venta individual; representan el rango de Mbps disponible por categoría.
+  const PLANES_CAT = planesPorCategoria || {};
+  const FILAS_PLANES = [
+    { key: 'hogar',        label: 'HOGAR',         velocidad: '400 - 2000 Mbps' },
+    { key: 'pymes',        label: 'PYMES',         velocidad: '600 - 2000 Mbps' },
+    { key: 'adulto_mayor', label: 'ADULTO MAYOR',  velocidad: '400 - 2000 Mbps' },
+  ];
+
+  const TablaPlanesPorCategoria = () => (
+    <table className="w-full text-left border-collapse">
+      <thead>
+        <tr className="border-b border-stone-200">
+          <th className="py-2 px-2 text-[8px] font-black text-stone-400 uppercase tracking-widest">PLAN</th>
+          <th className="py-2 px-2 text-[8px] font-black text-stone-400 uppercase tracking-widest">VELOCIDAD REF.</th>
+          <th className="py-2 px-2 text-[8px] font-black text-stone-400 uppercase tracking-widest text-right">INGRESADOS</th>
+          <th className="py-2 px-2 text-[8px] font-black text-stone-400 uppercase tracking-widest text-right">ACTIVOS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {FILAS_PLANES.map((fila) => {
+          const d = PLANES_CAT[fila.key] || { ingresados: 0, activos: 0 };
+          return (
+            <tr key={fila.key} className="border-b border-stone-100 last:border-0">
+              <td className="py-2.5 px-2 text-[10px] font-black text-slate-700 uppercase">{fila.label}</td>
+              <td className="py-2.5 px-2 text-[9px] font-bold text-stone-400">{fila.velocidad}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-amber-600 text-right">{d.ingresados}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-emerald-600 text-right">{d.activos}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
   return (
     <div className="animate-in slide-in-from-right-5 duration-500 space-y-6">
       <div className="bg-amber-600 text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-amber-700">
@@ -1753,7 +1788,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         <KpiCard180 index={4} variant="stone" label="TERCERA EDAD"         meta={METAS.pct_tercera_edad} real={Number(kpis.pct_tercera_edad)} tipo="porcentaje" color="rose" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ExpandableChart title={`EMBUDO CRM — ETAPAS DE NEGOCIACIÓN — TOTAL: ${totalBaseEmbudoCRM}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={620}>
           <h3 className="text-[10px] font-black text-amber-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
             <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
@@ -1770,6 +1805,15 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[8px] font-black">TOTAL: {totalBaseEmbudoJOT}</span>
           </h3>
           <ChartArea h={340}><GraficoEmbudoJOT /></ChartArea>
+        </ExpandableChart>
+
+        <ExpandableChart title="PLANES POR CATEGORÍA — VELSA" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={620}>
+          <h3 className="text-[10px] font-black text-amber-700 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
+            <span className="w-2 h-2 bg-amber-600 rounded-full animate-pulse"></span>
+            PLANES POR CATEGORÍA — INGRESADOS / ACTIVOS
+          </h3>
+          <p className="text-[8px] font-bold text-stone-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. EXCLUYE "GAMER" (SIN DATO EN BASE).</p>
+          <TablaPlanesPorCategoria />
         </ExpandableChart>
       </div>
 

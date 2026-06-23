@@ -9,7 +9,9 @@ async function findOwnedLine(req, id) {
   const result = await query('SELECT * FROM lines WHERE id=$1', [id])
   if (!result.rows.length) return null
   const line = result.rows[0]
-  if (!isAdmin(req) && line.created_by !== req.user.id) return null
+  // Líneas creadas antes de la migración de ownership tienen created_by = NULL.
+  // Se tratan como accesibles para cualquier usuario autenticado (no quedan huérfanas).
+  if (!isAdmin(req) && line.created_by !== null && line.created_by !== req.user.id) return null
   return line
 }
 
@@ -20,7 +22,8 @@ async function getAll(req, res) {
     let where = ''
     if (!isAdmin(req)) {
       params.push(req.user.id)
-      where = `WHERE l.created_by = $${params.length}`
+      // Incluye también las líneas huérfanas (created_by IS NULL, de antes de la migración)
+      where = `WHERE (l.created_by = $${params.length} OR l.created_by IS NULL)`
     }
     const result = await query(`
       SELECT l.*, b.name AS bot_name

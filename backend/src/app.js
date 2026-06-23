@@ -35,6 +35,7 @@ const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const cumplimientoLeadsRoutes      = require('./routes/cumplimientoLeads.routes');
+const datosAdicionalesRoutes       = require('./routes/datosAdicionales.routes');
 
 const app = express();
 
@@ -131,6 +132,7 @@ app.use('/api/reporte-detalle', reporteDetalleRoutes);
 app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/cumplimiento-leads', cumplimientoLeadsRoutes);
+app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 
 // Handler 404
 app.use((req, res) => {

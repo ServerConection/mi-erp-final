@@ -9,8 +9,26 @@ const pool = require('../config/db');
 // `mestra_bitrix` (mb) NO tiene las columnas plan_*, así que se hace un LEFT
 // JOIN hacia `vista_analisis_novonet` (van) usando mb.j_id_bitrix = van.id_bitrix
 // para poder evaluarlas, sin tocar el esquema de mestra_bitrix.
+//
+// FIX (2026-06-23): `vista_analisis_novonet` puede tener MÁS DE UNA fila por
+// id_bitrix. Un LEFT JOIN directo multiplica las filas de mb que matchean,
+// inflando todos los COUNT(*) de las queries que usan este JOIN (se detectó
+// con "ingresos jotform" mostrando 910 cuando la descarga real de Jotform
+// daba 858). Se deduplica primero con GROUP BY antes de unir, garantizando
+// 1 fila de van por cada id_bitrix.
 // ─────────────────────────────────────────────────────────────────────────────
-const JOIN_VAN_NOVONET = `LEFT JOIN public.vista_analisis_novonet van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
+const JOIN_VAN_NOVONET = `LEFT JOIN (
+    SELECT
+        id_bitrix,
+        MAX(plan_casa)               AS plan_casa,
+        MAX(plan_profesional)        AS plan_profesional,
+        MAX(plan_pyme)                AS plan_pyme,
+        MAX(plan_pyme_corp)          AS plan_pyme_corp,
+        MAX(plan_hogar_adulto_mayor) AS plan_hogar_adulto_mayor,
+        MAX(plan_centro_comercial)   AS plan_centro_comercial
+    FROM public.vista_analisis_novonet
+    GROUP BY id_bitrix
+) van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
 
 const HAS_PLAN_VAN = `(
     (van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> '') OR

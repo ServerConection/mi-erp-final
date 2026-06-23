@@ -71,6 +71,7 @@ export default function WaLineas() {
   const create = async () => {
     if (!newName.trim()) return;
     setSaving(true);
+    setError("");
     try {
       const r = await fetch(`${API}/lines`, {
         method: "POST",
@@ -79,23 +80,40 @@ export default function WaLineas() {
       });
       const d = await r.json();
       if (d.success) { setNewName(""); load(); }
-    } finally { setSaving(false); }
+      else setError(d.error || "No se pudo crear la línea");
+    } catch { setError("No se pudo crear la línea"); }
+    finally { setSaving(false); }
   };
 
   const connect = async (id) => {
-    await fetch(`${API}/lines/${id}/connect`, { method: "POST", headers: authH(false) });
+    setError("");
+    try {
+      const r = await fetch(`${API}/lines/${id}/connect`, { method: "POST", headers: authH(false) });
+      const d = await r.json();
+      if (!d.success) setError(d.error || "No se pudo conectar la línea");
+    } catch { setError("No se pudo conectar la línea"); }
   };
 
   const disconnect = async (id) => {
     if (!confirm("¿Desconectar esta línea?")) return;
-    await fetch(`${API}/lines/${id}/disconnect`, { method: "POST", headers: authH(false) });
-    setLines(prev => prev.map(l => l.id === id ? { ...l, status: "disconnected" } : l));
+    setError("");
+    try {
+      const r = await fetch(`${API}/lines/${id}/disconnect`, { method: "POST", headers: authH(false) });
+      const d = await r.json();
+      if (d.success) setLines(prev => prev.map(l => l.id === id ? { ...l, status: "disconnected" } : l));
+      else setError(d.error || "No se pudo desconectar la línea");
+    } catch { setError("No se pudo desconectar la línea"); }
   };
 
   const remove = async (id) => {
     if (!confirm("¿Eliminar esta línea? Se perderá la sesión de WhatsApp.")) return;
-    await fetch(`${API}/lines/${id}`, { method: "DELETE", headers: authH(false) });
-    setLines(prev => prev.filter(l => l.id !== id));
+    setError("");
+    try {
+      const r = await fetch(`${API}/lines/${id}`, { method: "DELETE", headers: authH(false) });
+      const d = await r.json();
+      if (d.success) setLines(prev => prev.filter(l => l.id !== id));
+      else setError(d.error || "No se pudo eliminar la línea");
+    } catch { setError("No se pudo eliminar la línea"); }
   };
 
   if (loading) return (
@@ -114,6 +132,13 @@ export default function WaLineas() {
           Cada línea es un número de WhatsApp conectado. Escanea el QR desde tu teléfono.
         </p>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="text-red-400 hover:text-red-600 ml-3">✕</button>
+        </div>
+      )}
 
       {/* Agregar línea */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex gap-3">

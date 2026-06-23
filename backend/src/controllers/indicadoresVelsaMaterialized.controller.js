@@ -27,7 +27,22 @@ const ESTADO_ACTIVO = `'ACTIVO'`;
 // por decisión del usuario — "Solo JOIN en el controller, sin tocar la MV").
 // Se obtienen vía LEFT JOIN directo a la vista base de Jotform Velsa.
 // ─────────────────────────────────────────────────────────────────────────────
-const JOIN_JF_VELSA_MV = `LEFT JOIN public.vw_jotform_velsa_netlife_completo jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
+// FIX (2026-06-23): vw_jotform_velsa_netlife_completo puede tener varias
+// filas por id_negociacion_bitrix. Sin deduplicar, el LEFT JOIN multiplica
+// las filas de la MV y todos los COUNT(*) que lo usan (ingresos_jot, KPIs de
+// monitoreo diario, reporte180, consulta-descarga) quedan inflados.
+const JOIN_JF_VELSA_MV = `LEFT JOIN (
+    SELECT
+        id_negociacion_bitrix,
+        MAX(plan_casa)                  AS plan_casa,
+        MAX(plan_pyme)                   AS plan_pyme,
+        MAX(plan_profesional)            AS plan_profesional,
+        MAX(plan_hogar_adulto_mayor)     AS plan_hogar_adulto_mayor,
+        MAX(plan_pyme_corp)              AS plan_pyme_corp,
+        MAX(plan_centro_red_comercial)   AS plan_centro_red_comercial
+    FROM public.vw_jotform_velsa_netlife_completo
+    GROUP BY id_negociacion_bitrix
+) jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
 
 const HAS_PLAN_VELSA_MV = `(
     (jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> '') OR

@@ -69,7 +69,21 @@ function rangoFechas(req, res, maxDias = 92) {
 // columnas plan_*, por lo que se obtienen vía LEFT JOIN en el controller,
 // sin modificar ningún esquema/vista/MV existente.
 // ─────────────────────────────────────────────────────────────────────────
-const JOIN_PLAN_NOVONET = `LEFT JOIN public.vista_analisis_novonet van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
+// FIX (2026-06-23): vista_analisis_novonet puede tener varias filas por
+// id_bitrix; se dedupea con GROUP BY antes del JOIN para que no multiplique
+// las filas de mb (causaba KPIs de "ingresados" inflados).
+const JOIN_PLAN_NOVONET = `LEFT JOIN (
+    SELECT
+        id_bitrix,
+        MAX(plan_casa)               AS plan_casa,
+        MAX(plan_profesional)        AS plan_profesional,
+        MAX(plan_pyme)                AS plan_pyme,
+        MAX(plan_pyme_corp)          AS plan_pyme_corp,
+        MAX(plan_hogar_adulto_mayor) AS plan_hogar_adulto_mayor,
+        MAX(plan_centro_comercial)   AS plan_centro_comercial
+    FROM public.vista_analisis_novonet
+    GROUP BY id_bitrix
+) van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
 const HAS_PLAN_NOVONET = `(
     (van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> '') OR
     (van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> '') OR
@@ -79,7 +93,20 @@ const HAS_PLAN_NOVONET = `(
     (van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> '')
 )`;
 
-const JOIN_PLAN_VELSA = `LEFT JOIN public.vw_jotform_velsa_netlife_completo jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
+// FIX (2026-06-23): misma deduplicación que JOIN_PLAN_NOVONET, aplicada a la
+// vista de Jotform Velsa (también puede tener varias filas por negociación).
+const JOIN_PLAN_VELSA = `LEFT JOIN (
+    SELECT
+        id_negociacion_bitrix,
+        MAX(plan_casa)                  AS plan_casa,
+        MAX(plan_pyme)                   AS plan_pyme,
+        MAX(plan_profesional)            AS plan_profesional,
+        MAX(plan_hogar_adulto_mayor)     AS plan_hogar_adulto_mayor,
+        MAX(plan_pyme_corp)              AS plan_pyme_corp,
+        MAX(plan_centro_red_comercial)   AS plan_centro_red_comercial
+    FROM public.vw_jotform_velsa_netlife_completo
+    GROUP BY id_negociacion_bitrix
+) jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
 const HAS_PLAN_VELSA = `(
     (jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> '') OR
     (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR

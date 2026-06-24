@@ -3,6 +3,7 @@
 // Estilo: lista vertical tipo formulario · Branding Netlife naranja
 
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -429,6 +430,7 @@ function Seccion({ num, icon, label, children }) {
 
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function NuevaVenta() {
+  const navigate = useNavigate();
   const [form, setForm]     = useState(INIT);
   const [errs, setErrs]     = useState({});
   const [loading, setLoad]  = useState(null); // null | "CARGAR" | "BORRADOR"
@@ -458,6 +460,21 @@ export default function NuevaVenta() {
             const next = { ...f };
             Object.keys(INIT).forEach(k => {
               if (data[k] !== undefined && data[k] !== null) next[k] = String(data[k]);
+            });
+            // Campos cuya columna en la BD tiene un nombre distinto al campo del
+            // formulario (por el mapeo hecho en handleSubmit). Sin este segundo
+            // paso, estos campos siempre volvían vacíos al continuar un borrador.
+            const RENOMBRADOS_DB_A_FORM = {
+              clausulas:               'biometrico',
+              tipo_vivienda:           'regimen_vivienda',
+              regimen_vivienda:        'tipo_inmueble',
+              direccion_manzana_villa: 'manzana_villa',
+              telf_celular_2:          'telf_instalacion',
+              tipo_contrato:           'servicio_adicional',
+              novedades_atc:           'observacion_venta',
+            };
+            Object.entries(RENOMBRADOS_DB_A_FORM).forEach(([dbCol, formKey]) => {
+              if (data[dbCol] !== undefined && data[dbCol] !== null) next[formKey] = String(data[dbCol]);
             });
             // El nombre se guarda combinado en la BD; al recuperar el borrador lo
             // dejamos completo en "nombres" para que el asesor lo separe si hace falta.
@@ -670,8 +687,8 @@ export default function NuevaVenta() {
       const d = await r.json();
       if (d.success) {
         if (accion === "BORRADOR") {
-          setAlert({ tipo: "ok", msg: `Borrador guardado (#${d.data.id}). Lo encontrarás en "Mis ventas pendientes" para continuarlo.` });
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          setAlert({ tipo: "ok", msg: `Borrador guardado (#${d.data.id}). Te llevamos a "Mis ventas pendientes".` });
+          setTimeout(() => navigate("/mis-ventas-pendientes"), 900);
         } else {
           setSucc({
             id:     d.data.id,

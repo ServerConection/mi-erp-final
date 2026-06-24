@@ -393,7 +393,8 @@ const ALL_MENU_ITEMS = [
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },
-  { name: "RRHH",       path: "/rrhh",       icon: "👥", permiso: "RRHH",       isChild: true, group: "administracion" },
+  { name: "RRHH",       path: "/rrhh",       icon: "👥",
+    accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },
@@ -426,10 +427,6 @@ const ALL_MENU_ITEMS = [
 
   // ── Asistente de datos del ERP ──────────────────────────────────────────────
   { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },
-
-  // ── Talento Humano (TTHH) — exclusivo perfil TTHH, ve Novonet + Velsa ──────
-  { name: "🧑‍💼 Talento Humano", path: "/talento-humano", icon: "🧑‍💼",
-    accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

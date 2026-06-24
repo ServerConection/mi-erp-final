@@ -6,7 +6,7 @@ import Login          from "./pages/Login";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
-import { RRHH, Horarios, Billetera, Comisiones } from "./pages/Modules";
+import { Horarios, Billetera, Comisiones } from "./pages/Modules";
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
@@ -86,7 +86,7 @@ export default function App() {
             <Route path="indicadores-velsa"         element={<IndicadoresVelsa />} />
             <Route path="comparativa-supervisores"  element={<ComparativaSupervisores />} />
             <Route path="ventas"                    element={<Ventas />} />
-            <Route path="rrhh"                      element={<RRHH />} />
+            <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<Horarios />} />
             <Route path="billetera"                 element={<Billetera />} />
             <Route path="comisiones"                element={<Comisiones />} />
@@ -120,7 +120,6 @@ export default function App() {
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
             <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
-            <Route path="talento-humano"           element={<TalentoHumano />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />

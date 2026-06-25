@@ -51,6 +51,7 @@ export default function TalentoHumano() {
             ["productividad", "📈 Productividad de asesores"],
             ["documentos", "📁 Documentos de control"],
             ["tabla", "🗂️ Tabla compartida"],
+            ["drive", "💾 Drive"],
           ].map(([id, label]) => (
             <button
               key={id}
@@ -65,6 +66,7 @@ export default function TalentoHumano() {
         {tab === "productividad" && <Productividad />}
         {tab === "documentos" && <Documentos />}
         {tab === "tabla" && <TablaCompartida />}
+        {tab === "drive" && <Drive />}
       </div>
     </div>
   );
@@ -527,6 +529,180 @@ function TablaCompartida() {
                   ))}
                   <td style={td}>
                     <button style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }} onClick={() => eliminarFila(f.id)}>🗑️</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// PESTAÑA 4 — DRIVE (carpetas libres, tipo Google Drive)
+// Compartido entre TTHH y ADMINISTRADOR. Navegación por carpetas con
+// breadcrumb; crear carpeta; subir/ver/eliminar archivos dentro de la
+// carpeta actual.
+// ════════════════════════════════════════════════════════════════
+function Drive() {
+  const [ruta, setRuta] = useState([]); // [{id, nombre}, ...] — vacío = raíz
+  const [carpetas, setCarpetas] = useState([]);
+  const [archivos, setArchivos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [subiendo, setSubiendo] = useState(false);
+
+  const carpetaActualId = ruta.length ? ruta[ruta.length - 1].id : null;
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = carpetaActualId ? `?padre_id=${carpetaActualId}` : "";
+      const qsArch = carpetaActualId ? `?carpeta_id=${carpetaActualId}` : "";
+      const [rc, ra] = await Promise.all([
+        fetch(`${API}/api/tthh/drive/carpetas${qs}`, { headers: authHeaders() }),
+        fetch(`${API}/api/tthh/drive/archivos${qsArch}`, { headers: authHeaders() }),
+      ]);
+      const [dc, da] = await Promise.all([rc.json(), ra.json()]);
+      if (dc.success) setCarpetas(dc.data);
+      if (da.success) setArchivos(da.data);
+    } finally {
+      setLoading(false);
+    }
+  }, [carpetaActualId]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const abrirCarpeta = (c) => setRuta(r => [...r, { id: c.id, nombre: c.nombre }]);
+  const irAMiga = (idx) => setRuta(r => r.slice(0, idx + 1));
+  const irARaiz = () => setRuta([]);
+
+  const crearCarpeta = async () => {
+    const nombre = prompt("Nombre de la nueva carpeta:");
+    if (!nombre || !nombre.trim()) return;
+    const r = await fetch(`${API}/api/tthh/drive/carpetas`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ nombre, carpeta_padre_id: carpetaActualId }),
+    });
+    const d = await r.json();
+    if (d.success) cargar();
+    else alert(`❌ ${d.error}`);
+  };
+
+  const eliminarCarpeta = async (c, e) => {
+    e.stopPropagation();
+    if (!confirm(`¿Eliminar la carpeta "${c.nombre}" y todo su contenido?`)) return;
+    const r = await fetch(`${API}/api/tthh/drive/carpetas/${c.id}`, { method: "DELETE", headers: authHeaders() });
+    const d = await r.json();
+    if (d.success) cargar();
+    else alert(`❌ ${d.error}`);
+  };
+
+  const subirArchivos = async (files) => {
+    if (!files || files.length === 0) return;
+    setSubiendo(true);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("archivo", file);
+        if (carpetaActualId) fd.append("carpeta_id", carpetaActualId);
+        const r = await fetch(`${API}/api/tthh/drive/archivos/upload`, { method: "POST", headers: authHeaders(false), body: fd });
+        const d = await r.json();
+        if (!d.success) alert(`❌ ${file.name}: ${d.error}`);
+      }
+      cargar();
+    } catch {
+      alert("❌ Error subiendo el archivo.");
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const eliminarArchivo = async (a) => {
+    if (!confirm(`¿Eliminar "${a.nombre_original}"?`)) return;
+    const r = await fetch(`${API}/api/tthh/drive/archivos/${a.id}`, { method: "DELETE", headers: authHeaders() });
+    const d = await r.json();
+    if (d.success) cargar();
+    else alert(`❌ ${d.error}`);
+  };
+
+  return (
+    <div style={card}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 10 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 800, color: "#1C1C2E", margin: 0 }}>💾 Drive compartido — TTHH y Administración</h3>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={btnGhost} onClick={crearCarpeta}>📂 Nueva carpeta</button>
+          <label style={{ ...btn, display: "inline-block" }}>
+            {subiendo ? "Subiendo…" : "⬆️ Subir archivo"}
+            <input
+              type="file"
+              multiple
+              style={{ display: "none" }}
+              disabled={subiendo}
+              onChange={e => { subirArchivos(e.target.files); e.target.value = ""; }}
+            />
+          </label>
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: "#A07850", marginTop: 0, marginBottom: 14 }}>
+        Crea carpetas libres y comparte archivos entre asesores de Talento Humano y personal administrativo.
+      </p>
+
+      {/* Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, color: "#8B5E3C", marginBottom: 14, flexWrap: "wrap" }}>
+        <span style={{ cursor: "pointer", fontWeight: ruta.length === 0 ? 800 : 600, color: ruta.length === 0 ? "#1C1C2E" : O }} onClick={irARaiz}>
+          🏠 Raíz
+        </span>
+        {ruta.map((r, i) => (
+          <span key={r.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span>/</span>
+            <span
+              style={{ cursor: "pointer", fontWeight: i === ruta.length - 1 ? 800 : 600, color: i === ruta.length - 1 ? "#1C1C2E" : O }}
+              onClick={() => irAMiga(i)}
+            >
+              {r.nombre}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      {loading ? <p>Cargando…</p> : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Nombre</th>
+                <th style={th}>Tipo</th>
+                <th style={th}>Subido/creado por</th>
+                <th style={th}>Fecha</th>
+                <th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {carpetas.length === 0 && archivos.length === 0 && (
+                <tr><td style={td} colSpan={5}>Carpeta vacía. Crea una subcarpeta o sube un archivo.</td></tr>
+              )}
+              {carpetas.map(c => (
+                <tr key={`c-${c.id}`} style={{ cursor: "pointer" }} onClick={() => abrirCarpeta(c)}>
+                  <td style={td}>📂 {c.nombre}</td>
+                  <td style={td}>Carpeta</td>
+                  <td style={td}>{c.creado_por || "—"}</td>
+                  <td style={td}>{new Date(c.creado_en).toLocaleDateString("es-EC")}</td>
+                  <td style={td}>
+                    <button style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }} onClick={(e) => eliminarCarpeta(c, e)}>🗑️</button>
+                  </td>
+                </tr>
+              ))}
+              {archivos.map(a => (
+                <tr key={`a-${a.id}`}>
+                  <td style={td}><a href="#" onClick={(e) => verArchivo(a.archivo_url, e)}>📄 {a.nombre_original}</a></td>
+                  <td style={td}>Archivo</td>
+                  <td style={td}>{a.subido_por}</td>
+                  <td style={td}>{new Date(a.fecha_subida).toLocaleDateString("es-EC")}</td>
+                  <td style={td}>
+                    <button style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }} onClick={() => eliminarArchivo(a)}>🗑️</button>
                   </td>
                 </tr>
               ))}

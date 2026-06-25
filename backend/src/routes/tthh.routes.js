@@ -372,4 +372,134 @@ router.delete('/tabla/filas/:id', async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// DRIVE COMPARTIDO (carpetas libres, tipo Google Drive)
+// Acceso: TTHH + ADMINISTRADOR (ya forzado por soloTTHH en router.use arriba).
+// Todos los binarios se guardan físicamente en una sola carpeta del
+// servidor de almacenamiento local ("drive"); la jerarquía de carpetas
+// que ve el usuario vive solo en estas dos tablas de la BD.
+// ════════════════════════════════════════════════════════════════
+
+// ─── GET /api/tthh/drive/carpetas?padre_id= ──────────────────────────────────
+// Subcarpetas de una carpeta dada. Sin padre_id (o vacío) = carpetas raíz.
+router.get('/drive/carpetas', async (req, res) => {
+  try {
+    const padreId = req.query.padre_id ? parseInt(req.query.padre_id) : null;
+    const { rows } = await pool.query(
+      padreId
+        ? `SELECT * FROM public.tthh_drive_carpetas WHERE carpeta_padre_id = $1 ORDER BY nombre`
+        : `SELECT * FROM public.tthh_drive_carpetas WHERE carpeta_padre_id IS NULL ORDER BY nombre`,
+      padreId ? [padreId] : []
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    console.error('[TTHH] drive carpetas GET:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── GET /api/tthh/drive/carpetas/:id ────────────────────────────────────────
+// Detalle de una carpeta puntual (para armar el breadcrumb / "migas de pan")
+router.get('/drive/carpetas/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM public.tthh_drive_carpetas WHERE id = $1`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Carpeta no encontrada' });
+    res.json({ success: true, data: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/drive/carpetas', async (req, res) => {
+  try {
+    const { nombre, carpeta_padre_id } = req.body;
+    if (!nombre || !nombre.trim()) return res.status(400).json({ success: false, error: 'nombre es requerido' });
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_drive_carpetas (nombre, carpeta_padre_id, creado_por)
+      VALUES ($1, $2, $3) RETURNING *
+    `, [nombre.trim(), carpeta_padre_id || null, req.user.usuario]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    console.error('[TTHH] drive carpetas POST:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.delete('/drive/carpetas/:id', async (req, res) => {
+  try {
+    // ON DELETE CASCADE se encarga de subcarpetas y archivos asociados en la BD
+    // (los binarios quedan en el servidor de almacenamiento, ya inaccesibles sin el registro).
+    const { rows } = await pool.query(`DELETE FROM public.tthh_drive_carpetas WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Carpeta no encontrada' });
+    res.json({ success: true, mensaje: 'Carpeta eliminada' });
+  } catch (e) {
+    console.error('[TTHH] drive carpetas DELETE:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── GET /api/tthh/drive/archivos?carpeta_id= ────────────────────────────────
+// Archivos dentro de una carpeta. Sin carpeta_id = archivos en la raíz del Drive.
+router.get('/drive/archivos', async (req, res) => {
+  try {
+    const carpetaId = req.query.carpeta_id ? parseInt(req.query.carpeta_id) : null;
+    const { rows } = await pool.query(
+      carpetaId
+        ? `SELECT * FROM public.tthh_drive_archivos WHERE carpeta_id = $1 ORDER BY fecha_subida DESC`
+        : `SELECT * FROM public.tthh_drive_archivos WHERE carpeta_id IS NULL ORDER BY fecha_subida DESC`,
+      carpetaId ? [carpetaId] : []
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    console.error('[TTHH] drive archivos GET:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── POST /api/tthh/drive/archivos/upload ────────────────────────────────────
+// Sube el archivo al servidor de almacenamiento local y crea el registro en
+// un solo paso (a diferencia de "documentos de control", aquí no hace falta
+// un formulario intermedio: arrastrar/seleccionar un archivo ya lo guarda).
+router.post('/drive/archivos/upload', upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
+    if (!configurado()) {
+      return res.status(503).json({ success: false, error: 'El servidor de almacenamiento local no está configurado todavía.' });
+    }
+
+    const carpetaId = req.body.carpeta_id ? parseInt(req.body.carpeta_id) : null;
+
+    const resultado = await subirArchivo({
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      carpeta: 'drive',
+    });
+
+    const url = `/api/tthh/archivo/${resultado.carpeta}/${resultado.archivo}`;
+    const { rows } = await pool.query(`
+      INSERT INTO public.tthh_drive_archivos
+        (carpeta_id, nombre_original, archivo_url, tipo_mime, tamano_bytes, subido_por)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [carpetaId, req.file.originalname, url, req.file.mimetype, req.file.size, req.user.usuario]);
+
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    console.error('[TTHH] drive archivos upload:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.delete('/drive/archivos/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`DELETE FROM public.tthh_drive_archivos WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
+    res.json({ success: true, mensaje: 'Archivo eliminado' });
+  } catch (e) {
+    console.error('[TTHH] drive archivos DELETE:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

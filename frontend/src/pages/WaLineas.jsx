@@ -177,6 +177,10 @@ export default function WaLineas() {
                 )}
               </div>
 
+              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
+                👤 {line.owner_username || "—"}
+              </span>
+
               <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[line.status] || STATUS_COLORS.disconnected}`}>
                 {STATUS_LABEL[line.status] || line.status}
               </span>

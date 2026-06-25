@@ -8,7 +8,7 @@ async function findOwnedCampaign(req, id) {
   const result = await query('SELECT * FROM campaigns WHERE id=$1', [id])
   if (!result.rows.length) return null
   const camp = result.rows[0]
-  if (!isAdmin(req) && camp.created_by !== req.user.id) return null
+  if (!isAdmin(req) && camp.created_by !== null && camp.created_by !== req.user.id) return null
   return camp
 }
 
@@ -19,18 +19,20 @@ async function getAll(req, res) {
     const conditions = []
     const params = []
     if (status) { params.push(status); conditions.push(`c.status = $${params.length}`) }
-    if (!isAdmin(req)) { params.push(req.user.id); conditions.push(`c.created_by = $${params.length}`) }
+    if (!isAdmin(req)) { params.push(req.user.id); conditions.push(`(c.created_by = $${params.length} OR c.created_by IS NULL)`) }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const result = await query(`
       SELECT c.*,
              l.name AS line_name,
              l.phone_number AS line_phone,
              t.name AS template_name,
-             cl.name AS list_name
+             cl.name AS list_name,
+             u.usuario AS owner_username
       FROM campaigns c
       LEFT JOIN lines l ON c.line_id = l.id
       LEFT JOIN templates t ON c.template_id = t.id
       LEFT JOIN contact_lists cl ON c.list_id = cl.id
+      LEFT JOIN usuarios u ON c.created_by = u.id
       ${where}
       ORDER BY c.created_at DESC
     `, params)

@@ -2,7 +2,7 @@
 // ============================================================
 // Módulo TALENTO HUMANO (TTHH)
 //
-// GET  /api/tthh/productividad         — Rendimiento de asesores (datos de Backoffice/envios_ventas)
+// GET  /api/tthh/productividad         — Rendimiento de asesores (en vivo desde Jotform: Novonet/Velsa)
 // GET  /api/tthh/metas                 — Metas mensuales configuradas
 // POST /api/tthh/metas                 — Crear/actualizar meta (empresa + asesor opcional)
 //
@@ -23,9 +23,8 @@
 // Acceso: exclusivo perfil TTHH (soloTTHH). TTHH es transversal: ignora su
 // propia empresa y siempre puede ver/filtrar Novonet y Velsa.
 //
-// NOTA productividad: por ahora se calcula solo sobre public.envios_ventas
-// (tabla que también audita Backoffice para Novonet/Netlife). Si Velsa
-// registra sus ventas en otra tabla, avisar para sumar esa fuente aquí.
+// NOTA productividad: se calcula en vivo desde las fuentes Jotform de cada
+// empresa (mismas que usa Backoffice Jotform) — no depende de envios_ventas.
 // ============================================================
 
 const express = require('express');
@@ -34,6 +33,7 @@ const multer  = require('multer');
 const pool    = require('../config/db');
 const { verificarToken, soloTTHH } = require('../middleware/auth');
 const { subirArchivo, obtenerArchivo, configurado } = require('../utils/storageClient');
+const { CFG: JF_CFG, esGestionableExpr: jfEsGestionableExpr } = require('../controllers/backofficeJotform.controller');
 
 router.use(verificarToken, soloTTHH);
 
@@ -59,30 +59,51 @@ const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? nu
 // ════════════════════════════════════════════════════════════════
 
 // ─── GET /api/tthh/productividad ─────────────────────────────────────────────
+// Fuente: las mismas vistas Jotform que usa Backoffice Jotform —
+// NOVONET → public.mestra_bitrix · VELSA → public.mv_indicadores_velsa_completo
+// (ver CFG en backofficeJotform.controller.js). Filtros automáticos: rango de
+// fechas (por defecto el mes en curso), nombre de asesor (ILIKE) y empresa.
 router.get('/productividad', async (req, res) => {
   try {
     const hoy = new Date();
-    const anio = parseInt(req.query.anio) || hoy.getFullYear();
-    const mes  = parseInt(req.query.mes)  || (hoy.getMonth() + 1);
-    const empresaFiltro = (req.query.empresa || '').toUpperCase().trim(); // '' = todas (TTHH ve ambas)
+    const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
+    const fechaDesde = req.query.fechaDesde || inicioMes;
+    const fechaHasta = req.query.fechaHasta || hoy.toISOString().slice(0, 10);
+    const asesorFiltro = (req.query.asesor || '').trim();
+    const empresaFiltro = (req.query.empresa || '').toUpperCase().trim(); // '' = ambas (TTHH ve Novonet + Velsa)
 
-    const { rows: ventas } = await pool.query(`
-      SELECT
-        codigo_asesor,
-        distribuidor_autorizado,
-        supervisor,
-        COUNT(*)::int AS total_ventas,
-        COUNT(*) FILTER (WHERE UPPER(venta_efectiva) IN ('SI','SÍ','EFECTIVA'))::int AS ventas_efectivas,
-        COUNT(*) FILTER (WHERE UPPER(calidad_venta_analista) IN ('BUENA','EXCELENTE'))::int AS ventas_calidad_buena,
-        COUNT(*) FILTER (WHERE UPPER(calidad_venta_analista) IN ('MALA','DEFICIENTE'))::int AS ventas_calidad_mala
-      FROM public.envios_ventas
-      WHERE estatus_envio != 'BORRADOR'
-        AND EXTRACT(YEAR  FROM fecha_registro_sistema) = $1
-        AND EXTRACT(MONTH FROM fecha_registro_sistema) = $2
-        AND codigo_asesor IS NOT NULL
-      GROUP BY codigo_asesor, distribuidor_autorizado, supervisor
-      ORDER BY ventas_efectivas DESC
-    `, [anio, mes]);
+    const empresasAConsultar = empresaFiltro
+      ? [empresaFiltro.toLowerCase()]
+      : ['novonet', 'velsa'];
+
+    const consultas = empresasAConsultar.map(async (empresaKey) => {
+      const c = JF_CFG[empresaKey];
+      if (!c) return [];
+
+      const where = [`${c.fechaJot} BETWEEN $1::date AND $2::date`, c.whereJot];
+      const values = [fechaDesde, fechaHasta];
+      if (asesorFiltro) {
+        values.push(`%${asesorFiltro}%`);
+        where.push(`${c.asesor} ILIKE $${values.length}`);
+      }
+
+      const sql = `
+        SELECT
+          ${c.asesor} AS codigo_asesor,
+          COUNT(*)::int AS total_ventas,
+          COUNT(*) FILTER (WHERE ${jfEsGestionableExpr(c.etapaCrm)})::int AS gestionables,
+          COUNT(*) FILTER (WHERE ${c.esVentaServicio})::int AS ventas_efectivas
+        FROM ${c.from}
+        ${c.joinPlan}
+        WHERE ${where.join(' AND ')}
+        GROUP BY 1
+        ORDER BY ventas_efectivas DESC
+      `;
+      const { rows } = await pool.query(sql, values);
+      return rows.map(r => ({ ...r, empresa: empresaKey.toUpperCase() }));
+    });
+
+    const resultados = (await Promise.all(consultas)).flat();
 
     const { rows: metas } = await pool.query(`SELECT empresa, codigo_asesor, meta_mensual FROM public.tthh_metas`);
     const metaDefault = { NOVONET: 10, VELSA: 10 };
@@ -92,29 +113,16 @@ router.get('/productividad', async (req, res) => {
       else metaDefault[m.empresa] = m.meta_mensual;
     });
 
-    // No tenemos un campo "empresa" directo en envios_ventas; se infiere por
-    // distribuidor (igual que el resto del ERP) — si se necesita más precisión,
-    // se puede ajustar este mapeo.
-    const inferirEmpresa = (dist) => {
-      const d = (dist || '').toUpperCase();
-      if (d.includes('VELSA')) return 'VELSA';
-      return 'NOVONET';
-    };
-
-    let data = ventas.map(v => {
-      const empresa = inferirEmpresa(v.distribuidor_autorizado);
-      const meta = metaPorAsesor[`${empresa}__${v.codigo_asesor}`] ?? metaDefault[empresa] ?? 10;
+    const data = resultados.map(v => {
+      const meta = metaPorAsesor[`${v.empresa}__${v.codigo_asesor}`] ?? metaDefault[v.empresa] ?? 10;
       return {
         ...v,
-        empresa,
         meta_mensual: meta,
         productivo: v.ventas_efectivas >= meta,
       };
-    });
+    }).sort((a, b) => b.ventas_efectivas - a.ventas_efectivas);
 
-    if (empresaFiltro) data = data.filter(d => d.empresa === empresaFiltro);
-
-    res.json({ success: true, anio, mes, data });
+    res.json({ success: true, fechaDesde, fechaHasta, data });
   } catch (e) {
     console.error('[TTHH] productividad:', e.message);
     res.status(500).json({ success: false, error: e.message });

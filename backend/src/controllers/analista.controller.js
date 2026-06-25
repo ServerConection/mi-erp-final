@@ -37,9 +37,12 @@ const getPrimerDiaMes = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESUMEN NOVONET — vista_analisis_novonet
 // Columnas confirmadas:
-//   created_at, codigo_asesor, estatus_netlife, estado_regularizacion,
+//   fecha_activacion, codigo_asesor, estatus_netlife, estado_regularizacion,
 //   forma_pago, plan_casa, plan_profesional, plan_pyme, plan_hogar_adulto_mayor,
 //   novedades_atc, provincia, ciudad
+// NOTA: el filtro de fechas usa fecha_activacion (fecha activación Telcos), NO
+// created_at (fecha de creación del registro). Registros sin fecha_activacion
+// (aún no activados) quedan excluidos del rango.
 // ─────────────────────────────────────────────────────────────────────────────
 const getResumenNovonet = async (req, res) => {
   try {
@@ -58,7 +61,8 @@ const getResumenNovonet = async (req, res) => {
            COUNT(*) AS total,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET}) AS total_venta_servicio
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -67,7 +71,8 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estatus_netlife)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -77,7 +82,8 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estado_regularizacion)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -87,7 +93,8 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -100,7 +107,8 @@ const getResumenNovonet = async (req, res) => {
            SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END)::int AS plan_hogar,
            SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END)::int AS plan_profesional
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -121,7 +129,8 @@ const getResumenNovonet = async (req, res) => {
              / NULLIF(COUNT(*), 0), 1
            ) AS pct_venta_servicio
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY codigo_asesor
          ORDER BY total DESC
          LIMIT 20`,
@@ -131,13 +140,14 @@ const getResumenNovonet = async (req, res) => {
       // 7. Tendencia diaria
       pool.query(
         `SELECT
-           created_at::date AS fecha,
+           fecha_activacion::date AS fecha,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET})::int AS venta_servicio
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
-         GROUP BY created_at::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         GROUP BY fecha_activacion::date
          ORDER BY fecha ASC`,
         [desde, hasta]
       ),
@@ -148,7 +158,8 @@ const getResumenNovonet = async (req, res) => {
            COALESCE(UPPER(TRIM(provincia)), 'SIN DATO') AS provincia,
            COUNT(*)::int AS total
          FROM vista_analisis_novonet
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
            AND provincia IS NOT NULL AND TRIM(provincia) <> ''
          GROUP BY provincia
          ORDER BY total DESC
@@ -199,9 +210,12 @@ const getResumenNovonet = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESUMEN VELSA — vw_jotform_velsa_netlife_completo
 // Columnas confirmadas:
-//   created_at, codigo_asesor, estado_venta_netlife, estado_regularizacion_novo,
+//   fecha_activacion, codigo_asesor, estado_venta_netlife, estado_regularizacion_novo,
 //   forma_pago, plan_casa, plan_profesional, plan_pyme, plan_hogar_adulto_mayor,
 //   provincia, ciudad
+// NOTA: el filtro de fechas usa fecha_activacion (fecha activación Telcos), NO
+// created_at (fecha de creación del registro). Registros sin fecha_activacion
+// (aún no activados) quedan excluidos del rango.
 // ─────────────────────────────────────────────────────────────────────────────
 const getResumenVelsa = async (req, res) => {
   try {
@@ -220,7 +234,8 @@ const getResumenVelsa = async (req, res) => {
            COUNT(*) AS total,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA}) AS total_venta_servicio
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -229,7 +244,8 @@ const getResumenVelsa = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estado_venta_netlife)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -239,7 +255,8 @@ const getResumenVelsa = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estado_regularizacion_novo)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -249,7 +266,8 @@ const getResumenVelsa = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -262,7 +280,8 @@ const getResumenVelsa = async (req, res) => {
            SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END)::int AS plan_hogar,
            SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END)::int AS plan_profesional
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date`,
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -282,7 +301,8 @@ const getResumenVelsa = async (req, res) => {
              / NULLIF(COUNT(*), 0), 1
            ) AS pct_venta_servicio
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
          GROUP BY codigo_asesor
          ORDER BY total DESC
          LIMIT 20`,
@@ -292,13 +312,14 @@ const getResumenVelsa = async (req, res) => {
       // 7. Tendencia diaria
       pool.query(
         `SELECT
-           created_at::date AS fecha,
+           fecha_activacion::date AS fecha,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estado_venta_netlife)) = 'ACTIVO')::int AS activos,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA})::int AS venta_servicio
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
-         GROUP BY created_at::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         GROUP BY fecha_activacion::date
          ORDER BY fecha ASC`,
         [desde, hasta]
       ),
@@ -309,7 +330,8 @@ const getResumenVelsa = async (req, res) => {
            COALESCE(UPPER(TRIM(provincia)), 'SIN DATO') AS provincia,
            COUNT(*)::int AS total
          FROM vw_jotform_velsa_netlife_completo
-         WHERE created_at::date BETWEEN $1::date AND $2::date
+         WHERE fecha_activacion IS NOT NULL
+           AND fecha_activacion::date BETWEEN $1::date AND $2::date
            AND provincia IS NOT NULL AND TRIM(provincia) <> ''
          GROUP BY provincia
          ORDER BY total DESC

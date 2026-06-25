@@ -189,6 +189,9 @@ export default function WaChatbots() {
                           📱 {usedInLine.name}
                         </span>
                       )}
+                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                        👤 {bot.owner_username || "—"}
+                      </span>
                     </div>
                     {bot.description && (
                       <p className="text-xs text-slate-500 mt-0.5 truncate">{bot.description}</p>

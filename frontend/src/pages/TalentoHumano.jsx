@@ -77,8 +77,11 @@ export default function TalentoHumano() {
 // ════════════════════════════════════════════════════════════════
 function Productividad() {
   const hoy = new Date();
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes]   = useState(hoy.getMonth() + 1);
+  const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+  const hoyStr = hoy.toISOString().slice(0, 10);
+  const [fechaDesde, setFechaDesde] = useState(inicioMes);
+  const [fechaHasta, setFechaHasta] = useState(hoyStr);
+  const [asesor, setAsesor] = useState("");
   const [empresa, setEmpresa] = useState("");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,11 +89,18 @@ function Productividad() {
   const [metaForm, setMetaForm] = useState({ empresa: "NOVONET", codigo_asesor: "", meta_mensual: 10 });
   const [guardandoMeta, setGuardandoMeta] = useState(false);
 
+  // Filtros automáticos: fecha (rango), nombre de asesor y empresa — directo
+  // desde las tablas Jotform de Novonet (mestra_bitrix) y Velsa
+  // (mv_indicadores_velsa_completo), igual fuente que usa Backoffice Jotform.
   const cargar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ anio, mes, ...(empresa ? { empresa } : {}) });
+      const qs = new URLSearchParams({
+        fechaDesde, fechaHasta,
+        ...(asesor ? { asesor } : {}),
+        ...(empresa ? { empresa } : {}),
+      });
       const r = await fetch(`${API}/api/tthh/productividad?${qs}`, { headers: authHeaders() });
       const d = await r.json();
       if (d.success) setData(d.data);
@@ -100,7 +110,7 @@ function Productividad() {
     } finally {
       setLoading(false);
     }
-  }, [anio, mes, empresa]);
+  }, [fechaDesde, fechaHasta, asesor, empresa]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -131,14 +141,16 @@ function Productividad() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...card, display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
         <div>
-          <label style={labelStyle}>Año</label>
-          <input style={{ ...input, width: 90 }} type="number" value={anio} onChange={e => setAnio(e.target.value)} />
+          <label style={labelStyle}>Desde</label>
+          <input style={{ ...input, width: 150 }} type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} />
         </div>
         <div>
-          <label style={labelStyle}>Mes</label>
-          <select style={{ ...input, width: 140 }} value={mes} onChange={e => setMes(e.target.value)}>
-            {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
+          <label style={labelStyle}>Hasta</label>
+          <input style={{ ...input, width: 150 }} type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} />
+        </div>
+        <div>
+          <label style={labelStyle}>Asesor</label>
+          <input style={{ ...input, width: 180 }} placeholder="Buscar por nombre…" value={asesor} onChange={e => setAsesor(e.target.value)} />
         </div>
         <div>
           <label style={labelStyle}>Empresa</label>
@@ -153,7 +165,7 @@ function Productividad() {
 
       <div style={card}>
         <p style={{ fontSize: 12, color: "#A07850", marginTop: 0, marginBottom: 10 }}>
-          Productividad calculada sobre ventas efectivas registradas en Backoffice (envios_ventas). Si un asesor no aparece, no tiene ventas registradas en ese periodo.
+          Productividad calculada en vivo desde Jotform (Novonet: mestra_bitrix · Velsa: mv_indicadores_velsa_completo), filtrada automáticamente por fecha, asesor y empresa. Si un asesor no aparece, no tiene registros en ese rango.
         </p>
         {loading && <p>Cargando…</p>}
         {error && <p style={{ color: "#991B1B" }}>❌ {error}</p>}
@@ -164,30 +176,24 @@ function Productividad() {
                 <tr>
                   <th style={th}>Asesor</th>
                   <th style={th}>Empresa</th>
-                  <th style={th}>Distribuidor</th>
-                  <th style={th}>Supervisor</th>
-                  <th style={th}>Total ventas</th>
+                  <th style={th}>Total ingresados</th>
+                  <th style={th}>Gestionables</th>
                   <th style={th}>Ventas efectivas</th>
-                  <th style={th}>Calidad buena</th>
-                  <th style={th}>Calidad mala</th>
                   <th style={th}>Meta</th>
                   <th style={th}>Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {data.length === 0 && (
-                  <tr><td style={td} colSpan={10}>Sin datos para este periodo.</td></tr>
+                  <tr><td style={td} colSpan={7}>Sin datos para este rango.</td></tr>
                 )}
                 {data.map((r, i) => (
                   <tr key={i}>
                     <td style={td}>{r.codigo_asesor}</td>
                     <td style={td}>{r.empresa}</td>
-                    <td style={td}>{r.distribuidor_autorizado || "—"}</td>
-                    <td style={td}>{r.supervisor || "—"}</td>
                     <td style={td}>{r.total_ventas}</td>
+                    <td style={td}>{r.gestionables}</td>
                     <td style={td}>{r.ventas_efectivas}</td>
-                    <td style={td}>{r.ventas_calidad_buena}</td>
-                    <td style={td}>{r.ventas_calidad_mala}</td>
                     <td style={td}>{r.meta_mensual}</td>
                     <td style={td}>
                       <span style={{
@@ -231,7 +237,6 @@ function Productividad() {
   );
 }
 
-const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const labelStyle = { display: "block", fontSize: 11, fontWeight: 700, color: "#8B5E3C", marginBottom: 4 };
 
 // ════════════════════════════════════════════════════════════════

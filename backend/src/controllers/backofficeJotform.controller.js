@@ -545,4 +545,10 @@ async function exportExcel(req, res) {
   }
 }
 
-module.exports = { getListado, getKpis, getEmbudo, getHeatmap, setRevision, exportExcel };
+module.exports = {
+  getListado, getKpis, getEmbudo, getHeatmap, setRevision, exportExcel,
+  // Exportados para reutilizar la misma fuente/columnas Jotform (Novonet/Velsa)
+  // desde otros módulos (p.ej. Productividad de asesores en TTHH), sin duplicar
+  // la definición de columnas por empresa.
+  CFG, EMPRESAS, esGestionableExpr, rangoFechas, validarEmpresa,
+};

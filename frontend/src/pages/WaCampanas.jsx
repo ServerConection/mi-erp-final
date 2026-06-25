@@ -159,6 +159,9 @@ export default function WaCampanas() {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[camp.status] || STATUS_BADGE.draft}`}>
                       {STATUS_LABEL[camp.status] || camp.status}
                     </span>
+                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                      👤 {camp.owner_username || "—"}
+                    </span>
                   </div>
                   <div className="flex gap-4 mt-1 text-xs text-slate-500">
                     <span>📤 {camp.sent_count}/{camp.total_recipients}</span>

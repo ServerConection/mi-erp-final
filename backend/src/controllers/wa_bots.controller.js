@@ -7,7 +7,7 @@ async function findOwnedBot(req, id) {
   const result = await query('SELECT * FROM bots WHERE id=$1', [id])
   if (!result.rows.length) return null
   const bot = result.rows[0]
-  if (!isAdmin(req) && bot.created_by !== req.user.id) return null
+  if (!isAdmin(req) && bot.created_by !== null && bot.created_by !== req.user.id) return null
   return bot
 }
 
@@ -17,9 +17,15 @@ async function getAll(req, res) {
     let where = ''
     if (!isAdmin(req)) {
       params.push(req.user.id)
-      where = `WHERE created_by = $${params.length}`
+      where = `WHERE (created_by = $${params.length} OR created_by IS NULL)`
     }
-    const result = await query(`SELECT * FROM bots ${where} ORDER BY created_at DESC`, params)
+    const result = await query(`
+      SELECT b.*, u.usuario AS owner_username
+      FROM bots b
+      LEFT JOIN usuarios u ON b.created_by = u.id
+      ${where}
+      ORDER BY b.created_at DESC
+    `, params)
     res.json({ success: true, data: result.rows })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })

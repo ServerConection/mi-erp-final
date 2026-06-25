@@ -26,9 +26,10 @@ async function getAll(req, res) {
       where = `WHERE (l.created_by = $${params.length} OR l.created_by IS NULL)`
     }
     const result = await query(`
-      SELECT l.*, b.name AS bot_name
+      SELECT l.*, b.name AS bot_name, u.usuario AS owner_username
       FROM lines l
       LEFT JOIN bots b ON l.bot_id = b.id
+      LEFT JOIN usuarios u ON l.created_by = u.id
       ${where}
       ORDER BY l.created_at ASC
     `, params)

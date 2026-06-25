@@ -40,9 +40,12 @@ const getPrimerDiaMes = () => {
 //   fecha_activacion, codigo_asesor, estatus_netlife, estado_regularizacion,
 //   forma_pago, plan_casa, plan_profesional, plan_pyme, plan_hogar_adulto_mayor,
 //   novedades_atc, provincia, ciudad
-// NOTA: el filtro de fechas usa fecha_activacion (fecha activación Telcos), NO
-// created_at (fecha de creación del registro). Registros sin fecha_activacion
-// (aún no activados) quedan excluidos del rango.
+// NOTA: el filtro de fechas usa created_at (fecha de creación del registro).
+// Se intentó cambiar a fecha_activacion (fecha activación Telcos) pero esa
+// columna está NULL/vacía en la gran mayoría de registros de producción,
+// lo que dejaba todos los KPIs en cero — por eso se revirtió a created_at.
+// (El filtro por fecha de activación sí se aplicó en la vista de asesor real:
+// ver indicadores.controller.js).
 // ─────────────────────────────────────────────────────────────────────────────
 const getResumenNovonet = async (req, res) => {
   try {
@@ -61,8 +64,7 @@ const getResumenNovonet = async (req, res) => {
            COUNT(*) AS total,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET}) AS total_venta_servicio
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -71,8 +73,7 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estatus_netlife)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -82,8 +83,7 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(estado_regularizacion)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -93,8 +93,7 @@ const getResumenNovonet = async (req, res) => {
         `SELECT COALESCE(UPPER(TRIM(forma_pago)), 'SIN DATO') AS categoria,
                 COUNT(*) AS cantidad
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY categoria ORDER BY cantidad DESC`,
         [desde, hasta]
       ),
@@ -107,8 +106,7 @@ const getResumenNovonet = async (req, res) => {
            SUM(CASE WHEN plan_hogar_adulto_mayor IS NOT NULL AND TRIM(plan_hogar_adulto_mayor::text) <> '' THEN 1 ELSE 0 END)::int AS plan_hogar,
            SUM(CASE WHEN plan_profesional IS NOT NULL AND TRIM(plan_profesional::text) <> '' THEN 1 ELSE 0 END)::int AS plan_profesional
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date`,
+         WHERE created_at::date BETWEEN $1::date AND $2::date`,
         [desde, hasta]
       ),
 
@@ -129,8 +127,7 @@ const getResumenNovonet = async (req, res) => {
              / NULLIF(COUNT(*), 0), 1
            ) AS pct_venta_servicio
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
          GROUP BY codigo_asesor
          ORDER BY total DESC
          LIMIT 20`,
@@ -140,14 +137,13 @@ const getResumenNovonet = async (req, res) => {
       // 7. Tendencia diaria
       pool.query(
         `SELECT
-           fecha_activacion::date AS fecha,
+           created_at::date AS fecha,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE UPPER(TRIM(estatus_netlife)) = 'ACTIVO')::int AS activos,
            COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_NOVONET})::int AS venta_servicio
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
-         GROUP BY fecha_activacion::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
+         GROUP BY created_at::date
          ORDER BY fecha ASC`,
         [desde, hasta]
       ),
@@ -158,8 +154,7 @@ const getResumenNovonet = async (req, res) => {
            COALESCE(UPPER(TRIM(provincia)), 'SIN DATO') AS provincia,
            COUNT(*)::int AS total
          FROM vista_analisis_novonet
-         WHERE fecha_activacion IS NOT NULL
-           AND fecha_activacion::date BETWEEN $1::date AND $2::date
+         WHERE created_at::date BETWEEN $1::date AND $2::date
            AND provincia IS NOT NULL AND TRIM(provincia) <> ''
          GROUP BY provincia
          ORDER BY total DESC

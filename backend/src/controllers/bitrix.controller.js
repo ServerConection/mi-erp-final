@@ -7,7 +7,7 @@
  */
 
 const pool = require('../config/db');
-const { syncBitrix } = require('../services/bitrix.service');
+const { syncBitrix, syncNovonet } = require('../services/bitrix.service');
 
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -26,6 +26,10 @@ const triggerSync = async (req, res) => {
     // No await — corre en background
     syncBitrix({ desde, hasta }).catch(e =>
       console.error('[bitrix sync error]', e.message)
+    );
+    // Sync NOVONET (cuenta separada, tablas _novonet) — para el módulo de llamadas
+    syncNovonet({ desde, hasta }).catch(e =>
+      console.error('[bitrix sync novonet error]', e.message)
     );
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -581,7 +585,7 @@ const getLiveActividad = async (req, res) => {
       data:    resultado,
     });
   } catch (err) {
-    console.error("[live-actividad error]", err.message);
+    console.error('[live-actividad error]', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 };

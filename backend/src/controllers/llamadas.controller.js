@@ -7,8 +7,14 @@
  * cargarla en el panel del Automarcador (Campañas > Cargar lista de números).
  *
  * Fuentes de datos:
- *   - bitrix_deals / bitrix_etapas / bitrix_usuarios -> pool (Render, bddgeneral)
- *   - bitrix_contacts (teléfono)                     -> poolLocal (Postgres LOCAL)
+ *   - bitrix_deals_novonet / bitrix_etapas_novonet / bitrix_usuarios_novonet -> pool (Render, bddgeneral)
+ *   - bitrix_contacts (teléfono)                                            -> poolLocal (Postgres LOCAL)
+ *
+ * IMPORTANTE: el Automarcador opera SOLO sobre la cuenta Bitrix NOVONET
+ * (no VELSA/ACLOPECUADOR). Por eso este controller usa las tablas con
+ * sufijo "_novonet" (pobladas por syncNovonet() en bitrix.service.js),
+ * NUNCA bitrix_deals/bitrix_usuarios/bitrix_etapas (esas son SOLO VELSA
+ * y las usan otros módulos del ERP — no tocar).
  *
  * IMPORTANTE: bitrix_contacts vive SOLO en la Postgres local (ver
  * config/dbLocal.js). El teléfono solo se podrá resolver cuando este
@@ -25,12 +31,12 @@ const getCatalogosFiltro = async (req, res) => {
   try {
     const [asesoresRes, etapasRes] = await Promise.all([
       pool.query(
-        `SELECT id, nombre_completo FROM bitrix_usuarios WHERE activo = true ORDER BY nombre_completo`
+        `SELECT id, nombre_completo FROM bitrix_usuarios_novonet WHERE activo = true ORDER BY nombre_completo`
       ),
       pool.query(
         `SELECT e.status_id, e.nombre, e.category_id, c.nombre AS categoria
-         FROM bitrix_etapas e
-         JOIN bitrix_categorias c ON c.id = e.category_id
+         FROM bitrix_etapas_novonet e
+         JOIN bitrix_categorias_novonet c ON c.id = e.category_id
          ORDER BY c.sort, e.sort`
       ),
     ]);
@@ -76,9 +82,9 @@ const filtrarNegociaciones = async (req, res) => {
          d.fecha_creacion,
          d.monto,
          d.moneda
-       FROM bitrix_deals d
-       LEFT JOIN bitrix_etapas e   ON e.status_id = d.stage_id
-       LEFT JOIN bitrix_usuarios u ON u.id        = d.asesor_id
+       FROM bitrix_deals_novonet d
+       LEFT JOIN bitrix_etapas_novonet e   ON e.status_id = d.stage_id
+       LEFT JOIN bitrix_usuarios_novonet u ON u.id        = d.asesor_id
        ${where}
        ORDER BY d.fecha_creacion DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -219,7 +225,7 @@ const exportarLoteCsv = async (req, res) => {
       `SELECT i.deal_id, i.nombre_cliente, i.telefono, i.etapa,
               COALESCE(u.nombre_completo, '') AS asesor
        FROM llamadas_lote_items i
-       LEFT JOIN bitrix_usuarios u ON u.id = i.asesor_id
+       LEFT JOIN bitrix_usuarios_novonet u ON u.id = i.asesor_id
        WHERE i.lote_id = $1
        ORDER BY i.id`,
       [loteId]

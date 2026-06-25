@@ -341,6 +341,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     mb.j_fecha_registro_sistema::date            AS _jf_date,
                     ${parseFecha('mb.j_fecha_registro_sistema')} AS _jf_parsed_date,
                     ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date,
+                    mb.j_fecha_activacion_netlife::date          AS _jfact_date,
                     ${VENTA_SERVICIO_VAN}                        AS _venta_servicio
                 FROM mestra_bitrix mb
                 ${joinEmpleadosDedup}
@@ -348,6 +349,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 WHERE (
                     ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                     OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    OR mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
                 ) ${filtersJoin}
             )
             SELECT
@@ -422,8 +424,15 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS venta_servicio,
+                -- "Activas mes" (real_mes): se cuenta por FECHA DE ACTIVACION TELCOS
+                -- (j_fecha_activacion_netlife), no por fecha de registro/creacion.
+                -- Esto incluye registros "backlog" (creados antes del periodo pero
+                -- activados dentro del periodo), porque _base ahora tambien incluye
+                -- filas cuya _jfact_date cae en [$1,$2] aunque su _jf_date/_bc_date no.
                 COUNT(*) FILTER (
-                    WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
+                    WHERE _jfact_date IS NOT NULL
+                    AND _jfact_date BETWEEN $1::date AND $2::date
+                    AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
@@ -603,7 +612,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersJoin}
+            WHERE mb.j_fecha_activacion_netlife IS NOT NULL
+            AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+            AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            ${filtersJoin}
             LIMIT 6000
         `;
 

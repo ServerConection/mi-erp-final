@@ -159,8 +159,13 @@ const queryKPI = (columna, filters) => `
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
     ) AS ingresos_del_dia,
+    -- "Activas mes" (real_mes): se cuenta por FECHA DE ACTIVACION TELCOS
+    -- (mv.fecha_activacion), no por fecha de registro jotform. Incluye backlog
+    -- (creado antes del periodo pero activado dentro de el) porque el WHERE
+    -- base de este query ahora tambien incluye fecha_activacion en rango.
     COUNT(*) FILTER (
-      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+      WHERE mv.fecha_activacion IS NOT NULL
+      AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
       AND mv.estado_venta = ${ESTADO_ACTIVO}
     ) AS real_mes,
     COUNT(*) FILTER (
@@ -189,6 +194,7 @@ const queryKPI = (columna, filters) => `
   WHERE (
     mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
     OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+    OR mv.fecha_activacion::date BETWEEN $1::date AND $2::date
   ) ${filters}
   GROUP BY 1 ORDER BY ingresos_reales DESC, ventas_crm DESC
 `;
@@ -339,8 +345,8 @@ SELECT
   mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
-WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date 
-BETWEEN $1::date AND $2::date
+WHERE mv.fecha_activacion IS NOT NULL
+AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
 ${filters}
 LIMIT 6000
     `;

@@ -147,6 +147,7 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
           'ID','TITLE','CATEGORY_ID','STAGE_ID','ASSIGNED_BY_ID',
           'SOURCE_ID','DATE_CREATE','DATE_MODIFY','CLOSEDATE',
           'CLOSED','STAGE_SEMANTIC_ID','OPPORTUNITY','CURRENCY_ID',
+          'CONTACT_ID',
           'UF_*',
         ],
       });
@@ -161,8 +162,8 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
           `INSERT INTO bitrix_deals
              (id, titulo, category_id, stage_id, asesor_id, source_id,
               fecha_creacion, fecha_modificacion, fecha_cierre,
-              cerrado, ganado, perdido, monto, moneda, campos_custom, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+              cerrado, ganado, perdido, monto, moneda, campos_custom, contact_id, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
            ON CONFLICT (id) DO UPDATE SET
              titulo             = EXCLUDED.titulo,
              stage_id           = EXCLUDED.stage_id,
@@ -174,6 +175,7 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
              perdido            = EXCLUDED.perdido,
              monto              = EXCLUDED.monto,
              campos_custom      = EXCLUDED.campos_custom,
+             contact_id         = EXCLUDED.contact_id,
              updated_at         = NOW()
            RETURNING (xmax = 0) AS es_nuevo`,
           [
@@ -190,6 +192,7 @@ const syncBitrix = async ({ desde = null, hasta = null, categorias = CAT_VELSA }
             parseFloat(d.OPPORTUNITY) || 0,
             d.CURRENCY_ID || 'USD',
             camposCustom ? JSON.stringify(camposCustom) : '{}',
+            d.CONTACT_ID ? parseInt(d.CONTACT_ID) : null,
           ]
         );
 

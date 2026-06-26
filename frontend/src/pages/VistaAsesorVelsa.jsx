@@ -408,6 +408,8 @@ export default function VistaAsesorVelsa() {
     etapaCRM:             "",
     etapaJotform:         "",
     idBitrix:             "",
+    fechaActivacionDesde: "",
+    fechaActivacionHasta: "",
   });
 
   // ── Fetch — endpoint Velsa ────────────────────────────────────────────────
@@ -549,6 +551,24 @@ export default function VistaAsesorVelsa() {
                 className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                 value={filtros.fechaHasta}
                 onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 flex flex-col gap-2">
+            <label className="text-[9px] font-black text-orange-400 italic tracking-widest uppercase" title="Filtro opcional e independiente. Si lo dejas vacío no afecta nada (se sigue filtrando solo por fecha de creación). Si seleccionas un período aquí, se agrega como filtro adicional sobre la fecha en que se activó el servicio.">📅 FECHA ACTIVACIÓN (OPCIONAL)</label>
+            <div className="flex bg-white border border-orange-300 rounded-xl p-1.5 shadow-inner">
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionDesde} onChange={(e) => setFiltros({ ...filtros, fechaActivacionDesde: e.target.value })} />
+              <span className="text-slate-300 px-1 self-center font-black">–</span>
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionHasta} onChange={(e) => setFiltros({ ...filtros, fechaActivacionHasta: e.target.value })} />
+              {(filtros.fechaActivacionDesde || filtros.fechaActivacionHasta) && (
+                <button
+                  title="Quitar filtro de fecha de activación"
+                  onClick={() => { const f = { ...filtros, fechaActivacionDesde: "", fechaActivacionHasta: "" }; setFiltros(f); fetchData(f); }}
+                  className="text-orange-400 hover:text-orange-600 font-black px-1"
+                >✕</button>
+              )}
             </div>
           </div>
 

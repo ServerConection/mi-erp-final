@@ -153,8 +153,8 @@ function KpiCard({ label, value, icon, color, small=false }) {
     <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-col gap-1"
       style={{ borderTop: `3px solid ${color}` }}>
       <div className="flex items-center justify-between">
-        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-tight">{label}</span>
-        <span className="text-sm">{icon}</span>
+        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">{label}</span>
+        <span className="text-base">{icon}</span>
       </div>
       <div className={`font-black leading-none ${small?'text-2xl':'text-3xl'}`} style={{color}}>{value}</div>
     </div>
@@ -184,8 +184,9 @@ function ListaNegociaciones({ movimientos, emp, cfg }) {
         <input
           value={q} onChange={e=>setQ(e.target.value)}
           placeholder="🔍 Buscar por negocio o etapa..."
-          className="ml-auto text-[9px] border rounded-lg px-2 py-1 bg-white focus:outline-none"
-          style={{ borderColor: cfg.border, width: 180 }}
+          aria-label="Buscar negociación"
+          className="ml-auto text-[9px] border rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2"
+          style={{ borderColor: cfg.border, width: 180, '--tw-ring-color': cfg.border }}
         />
         <button
           onClick={()=>setSoloConActividad(v=>!v)}
@@ -352,7 +353,7 @@ function TablaEmpresa({ empresa, asesores, horas, busqueda }) {
       </div>
 
       {/* Encabezado tabla */}
-      <div className="grid px-5 py-2.5 border-b text-[8px] font-black text-slate-400 uppercase tracking-widest"
+      <div className="grid px-5 py-2.5 border-b text-[9px] font-black text-slate-400 uppercase tracking-widest"
         style={{gridTemplateColumns:'2fr 80px 80px 80px 90px 110px 26px', background:'#f8fafc', borderColor: cfg.border}}>
         <span>Asesor</span>
         <span className="text-center">Estado</span>
@@ -500,11 +501,12 @@ export default function BitrixLive() {
   const [data,      setData]      = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
-  const [horas,     setHoras]     = useState(8);
+  const [horas,     setHoras]     = useState(48); // siempre arranca con el histórico completo de 48h
   const [busqueda,  setBusqueda]  = useState('');
   const [lastSync,  setLastSync]  = useState(null);
   const [countdown, setCountdown] = useState(REFRESH_SECS);
   const [tab,       setTab]       = useState('tabla');
+  const [empresaFiltro, setEmpresaFiltro] = useState('TODOS'); // filtro interactivo por empresa (solo admin)
 
   // Perfil del usuario logueado
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
@@ -560,7 +562,18 @@ export default function BitrixLive() {
       horas===h ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'
     }`;
 
-  const mostrar = (emp) => empresaUsuario==='TODOS' || empresaUsuario===emp;
+  // Un asesor con perfil de una sola empresa siempre ve solo la suya.
+  // Un admin (empresaUsuario==='TODOS') puede acotar la vista con el chip de filtro.
+  const mostrar = (emp) =>
+    empresaUsuario === emp ||
+    (empresaUsuario === 'TODOS' && (empresaFiltro === 'TODOS' || empresaFiltro === emp));
+
+  const btnEmpresa = (key, cfgColor) =>
+    `px-3 py-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1.5 ${
+      empresaFiltro===key
+        ? 'text-white shadow-sm'
+        : 'text-slate-500 hover:bg-slate-200 bg-white'
+    }`;
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
@@ -573,30 +586,45 @@ export default function BitrixLive() {
               BTX
             </div>
             <div>
-              <h1 className="text-white font-black text-[18px] uppercase tracking-tight">
-                Actividad en Tiempo Real
-              </h1>
-              <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">
+              <div className="flex items-center gap-2">
+                <h1 className="text-white font-black text-[19px] uppercase tracking-tight">
+                  Actividad en Tiempo Real
+                </h1>
+                <span className="flex items-center gap-1 bg-emerald-500/15 border border-emerald-400/30 rounded-full px-2 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                  <span className="text-emerald-300 text-[8px] font-black uppercase tracking-widest">En vivo</span>
+                </span>
+              </div>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">
                 Bitrix24
                 {esAdmin ? ' · Novonet + Velsa' : ` · ${empresaUsuario}`}
-                {lastSync && ` · Sync ${lastSync.toLocaleTimeString('es-EC',{timeStyle:'short'})}`}
+                {lastSync && ` · Última sync ${lastSync.toLocaleTimeString('es-EC',{timeStyle:'short'})}`}
               </p>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Periodo */}
-          <div className="flex bg-white/10 p-1 rounded-xl gap-0.5">
-            {[4,8,24,48].map(h=>(
-              <button key={h} onClick={()=>setHoras(h)} className={btnH(h)}>{h}h</button>
-            ))}
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-slate-500 text-[8px] font-black uppercase tracking-widest pl-1">Ventana de datos</span>
+            <div className="flex bg-white/10 p-1 rounded-xl gap-0.5">
+              {[4,8,24,48].map(h=>(
+                <button key={h} onClick={()=>setHoras(h)} className={btnH(h)} title={h===48?'Histórico completo (recomendado)':`Últimas ${h} horas`}>
+                  {h}h{h===48?' ★':''}
+                </button>
+              ))}
+            </div>
           </div>
           {/* Countdown */}
-          <Countdown secs={countdown} total={REFRESH_SECS}/>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-slate-500 text-[8px] font-black uppercase tracking-widest">Próx. sync</span>
+            <Countdown secs={countdown} total={REFRESH_SECS}/>
+          </div>
           {/* Refresh */}
           <button onClick={()=>{setLoading(true);setCountdown(REFRESH_SECS);fetchData();}}
-            className="px-3 py-2 rounded-xl text-[9px] font-black uppercase text-white bg-white/10 hover:bg-white/20 transition-all">
-            {loading?'…':'⟳ Refresh'}
+            className="px-3 py-2.5 rounded-xl text-[10px] font-black uppercase text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
+            aria-label="Actualizar ahora">
+            {loading?'…':'⟳ Actualizar'}
           </button>
         </div>
       </div>
@@ -609,6 +637,33 @@ export default function BitrixLive() {
         <KpiCard label="Leads totales"  value={statsGlobales.leads}     icon="📋" color="#7c3aed"/>
       </div>
 
+      {/* ── Filtro por empresa (solo admin/cross) ── */}
+      {esAdmin && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">🏢 Empresa:</span>
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+            <button
+              onClick={()=>setEmpresaFiltro('TODOS')}
+              className={btnEmpresa('TODOS')}
+              style={empresaFiltro==='TODOS'?{background:'#1e293b'}:{}}>
+              Todas
+            </button>
+            <button
+              onClick={()=>setEmpresaFiltro('NOVONET')}
+              className={btnEmpresa('NOVONET')}
+              style={empresaFiltro==='NOVONET'?{background:EMP.NOVONET.grad}:{}}>
+              {EMP.NOVONET.icon} Novonet
+            </button>
+            <button
+              onClick={()=>setEmpresaFiltro('VELSA')}
+              className={btnEmpresa('VELSA')}
+              style={empresaFiltro==='VELSA'?{background:EMP.VELSA.grad}:{}}>
+              {EMP.VELSA.icon} Velsa
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Búsqueda + tabs ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex bg-slate-100 p-1 rounded-xl gap-0.5">
@@ -616,10 +671,11 @@ export default function BitrixLive() {
           <button className={btnTab('graficas')} onClick={()=>setTab('graficas')}>📈 Gráficas</button>
         </div>
         <input
-          className="text-[10px] border border-slate-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 w-52 bg-white"
+          className="text-[11px] border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-200 w-56 bg-white"
           placeholder="🔍 Buscar asesor..."
           value={busqueda}
           onChange={e=>setBusqueda(e.target.value)}
+          aria-label="Buscar asesor"
         />
       </div>
 
@@ -678,9 +734,9 @@ export default function BitrixLive() {
       )}
 
       {/* ── Footer ── */}
-      <div className="text-center text-[8px] text-slate-300 font-bold uppercase tracking-widest pt-2">
+      <div className="text-center text-[9px] text-slate-400 font-bold uppercase tracking-widest pt-2">
         🟢 Activo = últimos 30 min · 🟡 Reciente = 30–120 min · ⚪ Inactivo = más de 2h
-        · Clic en una fila para ver detalle horario
+        · Clic en una fila para ver detalle horario · Ventana actual: {horas}h
       </div>
     </div>
   );

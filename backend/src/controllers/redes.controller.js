@@ -1,5 +1,50 @@
 const pool = require('../config/db');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+// "negociables" en este archivo usa la misma definición de GESTIONABLE.
+// ─────────────────────────────────────────────────────────────────────────────
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+
   const getFiltroFechas = (query) => {
     const hoy = new Date().toISOString().split('T')[0];
     return { fechaDesde: query.fechaDesde || hoy, fechaHasta: query.fechaHasta || hoy };
@@ -167,12 +212,7 @@ const pool = require('../config/db');
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
               OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA PELIGROSA%')               AS zonas_peligrosas,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%') AS innegociable,
-            COUNT(*) FILTER (WHERE
-              (mb.b_etapa_de_la_negociacion NOT ILIKE '%ATC%')                AND
-              (mb.b_etapa_de_la_negociacion NOT ILIKE '%SOPORTE%')            AND
-              (mb.b_etapa_de_la_negociacion NOT ILIKE '%FUERA DE COBERTURA%') AND
-              (mb.b_etapa_de_la_negociacion NOT ILIKE '%INNEGOCIABLE%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADO%') AND (mb.b_etapa_de_la_negociacion NOT ILIKE '%REGULARIZA%')
-            )                                                                          AS negociables,
+            COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS negociables,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%SEGUIMIENTO%')  AS seguimiento_negociacion
           FROM public.mestra_bitrix mb

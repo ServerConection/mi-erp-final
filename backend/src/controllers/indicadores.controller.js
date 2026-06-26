@@ -72,16 +72,82 @@ const setDashboardCache = (key, data) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
-// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
-// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD
+// Aplica IGUAL para NOVONET y VELSA (las etapas del CRM son las mismas).
+// Comparación SIEMPRE case-insensitive (UPPER+TRIM) para que no importe si la
+// etapa viene en mayúsculas, minúsculas o mixta.
+//
+// NO GESTIONABLES (todo lo demás se considera gestionable = SI):
+//   ATC, ATC/SOPORTE, DUPLICADO, FUERA DE COBERTURA, INNEGOCIABLE,
+//   ZONA(S) PELIGROSA(S), POSTVENTA (exacto, no aplica a "POSTVENTA NOVONET"),
+//   REGULARIZACION, CONTRATO PARAMOUNT, PARAMOUNT SEGUIMIENTO POR CERRAR.
+//
+// DESCARTE = SI (subconjunto de las gestionables, el resto de gestionables es
+// DESCARTE = NO):
+//   CONTRATO NETLIFE, DESCARTE, DESISTE DE COMPRA, MANTIENE PROVEEDOR,
+//   NO INTERESA COSTO PLAN, NO VOLVER A CONTACTAR, OTRO PROVEEDOR,
+//   DESCARTE REMARKETIZADO, CONTRATO NETLIFE POR OTRO CANAL,
+//   DESCARTE PLAN DE 200, NO INTERESA COSTO INSTALACIÓN.
 // ─────────────────────────────────────────────────────────────────────────────
-const esGestionableExpr = (col) => `(
-    ${col} NOT ILIKE '%ATC%'
-    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
-    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
-    AND ${col} NOT ILIKE '%DUPLICADO%'
-)`;
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO', // typo real encontrado en datos
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+// gestionable = SI  ⇔  la etapa NO está en la lista de no-gestionables
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+// descarte = SI  ⇔  la etapa está en la lista blanca de descarte
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ORÍGENES (SUMA A REPORTE SI/NO) — FUENTE ÚNICA DE VERDAD.
+// Según la tabla del usuario, el ÚNICO origen que NO suma a reporte es el
+// literal "REMARKETING" (match exacto). Todos los demás orígenes — incluidos
+// los que pertenecen al grupo/agrupación "REMARKETING" (BASE 593-958993371,
+// BASE 593-999803743, Base 593-995967355, Whatsapp 593958993371) y los del
+// grupo "VIDIKA GOOGLE" (BASE 593-962881280, etc.) — SÍ suman a reporte.
+// Comparación exacta (no substring) para evitar falsos positivos.
+// ─────────────────────────────────────────────────────────────────────────────
+const ORIGENES_NO_SUMAN_REPORTE = [
+    'REMARKETING',
+];
+
+// suma_a_reporte = SI  ⇔  el origen NO está en la lista de exclusión
+// (VENTA SUBIDA siempre suma, sin importar el origen — regla de negocio existente)
+const sumaReporteExpr = (origenCol, etapaCol) =>
+    `(${etapaCol} = 'VENTA SUBIDA' OR UPPER(TRIM(COALESCE(${origenCol}, ''))) NOT IN ${_sqlListaUpper(ORIGENES_NO_SUMAN_REPORTE)})`;
 
 const getEtapasCache = async () => {
   const ahora = Date.now();
@@ -209,10 +275,18 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersJoin   += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
             filtersNoJoin += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
+        // Filtro ETAPA CRM: soporta multi-selección. Acepta '?etapaCRM=A,B,C'
+        // (lista separada por comas) o '?etapaCRM=A&etapaCRM=B' (array desde el
+        // frontend). Match EXACTO (case-insensitive), no substring — para no
+        // mezclar etapas distintas (ej. "POSTVENTA" vs "POSTVENTA NOVONET").
         if (etapaCRM) {
-            values.push(`%${etapaCRM}%`);
-            filtersJoin   += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
-            filtersNoJoin += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            const listaEtapas = (Array.isArray(etapaCRM) ? etapaCRM : String(etapaCRM).split(','))
+                .map(e => e.trim()).filter(Boolean);
+            if (listaEtapas.length) {
+                const etapasUpper = _sqlListaUpper(listaEtapas);
+                filtersJoin   += ` AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) IN ${etapasUpper}`;
+                filtersNoJoin += ` AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) IN ${etapasUpper}`;
+            }
         }
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);
@@ -256,62 +330,8 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersNoJoin += ` AND ${origenFilter}`;
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS GESTIONABLES:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_GESTIONABLES = `(
-    'CLIENTE 2 HORAS',
-    'CLIENTE 4 HORAS',
-    'CLIENTE 6 HORAS',
-    'CLIENTE 8 HORAS',
-    'CLIENTE CON ACUERDO',
-    'CLIENTE DISCAPACIDAD',
-    'CONTACTO NUEVO',
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'DOCUMENTOS PENDIENTES',
-    'GESTIÓN DIARIA',
-    'GESTION DIARIA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OPORTUNIDADES',
-    'OPORTUNIDADES SUPERVISOR',
-    'OPORTUNIDADES SUPERVISORES MES ACTUAL',
-    'OTRO ASESOR NOVONET',
-    'OTRO PROVEEDOR',
-    'PENDIENTE CIERRE',
-    'POSTVENTA NOVONET',
-    'VENTA SUBIDA',
-    'VOLVER A LLAMAR NO CONTESTA',
-    'SEGUIMIENTO NEGOCIACION',
-    'SEGUIMIENTO NEGOCIACIÓN',
-    'ENVIO REQUISITOS/DOCUMENTOS PENDIENTES',
-    'GESTION DIARIA/PENDIENTE CIERRE',
-    'CONTACTO NUEVO /SUPERVISOR',
-    'MAS DE 15 DIAS PARA CIERRE',
-    'MÁS DE 15 DÍAS PARA CIERRE',
-    'DESCARTE REMARKETIZADO',
-    'NO CONTESTA 15 MINUTOS',
-    'CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-    'VENTA DIRECTA ECUANET',
-    'REMARKETING DIRARIO ARIEL CURAY',
-    'REMARKETING DIARIO ARIEL CURAY'
-)`;
-
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS DESCARTE:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_DESCARTE = `(
-           'DESCARTE'
-        )`;
+        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
+        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
         // parseFecha genera una expresión CASE+regex que antes se evaluaba 12-14
@@ -358,18 +378,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
     WHERE _bc_date BETWEEN $1::date AND $2::date
     AND b_etapa_de_la_negociacion <> 'DUPLICADO'   -- ← línea nueva
-    AND (
-        b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-        OR
-         COALESCE(b_origen, '') NOT IN (   -- ← mb.b_origen → b_origen
-            'WAZZUP: WhatsApp - Ecuanet Regestion',
-            'BASE 593-962881280',
-            'BASE 593-958993371',
-            'BASE 593-999803743',
-            'Base 593-995967355',
-            'Whatsapp 593958993371'
-        )
-    )
+    AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS leads_totales,
                 COUNT(*) FILTER (
                     WHERE (b_etapa_de_la_negociacion ILIKE '%ATC%' OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%')
@@ -401,21 +410,7 @@ const getIndicadoresDashboard = async (req, res) => {
     -- que gestionables sea siempre un subconjunto de leads_totales.
     WHERE _bc_date BETWEEN $1::date AND $2::date
     AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
-    AND (
-        -- Si es VENTA SUBIDA, siempre cuenta sin importar origen
-        b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-        OR
-        -- Si NO es VENTA SUBIDA, excluir esos origenes conflictivos
-        -- (misma lista que leads_totales, para consistencia)
-        COALESCE(b_origen, '') NOT IN (
-            'WAZZUP: WhatsApp - Ecuanet Regestion',
-            'BASE 593-962881280',
-            'BASE 593-958993371',
-            'BASE 593-999803743',
-            'Base 593-995967355',
-            'Whatsapp 593958993371'
-        )
-    )
+    AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS gestionables,
                 COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date) AS ingresos_reales,
                 COUNT(*) FILTER (
@@ -448,7 +443,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS tercera_edad,
                 (COUNT(*) FILTER (
-                    WHERE b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                    WHERE ${esDescarteExpr('b_etapa_de_la_negociacion')}
                     AND _bc_date BETWEEN $1::date AND $2::date
                 )::numeric /
                 NULLIF(COUNT(*) FILTER (
@@ -864,17 +859,8 @@ const getMonitoreoDiario = async (req, res) => {
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS GESTIONABLES:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_GESTIONABLES = "('CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR','GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES','VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200','CLIENTE 4 HORAS','CLIENTE 2 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE CON ACUERDO','OPORTUNIDADES SUPERVISOR','PENDIENTE CIERRE')";
-
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS DESCARTE:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_DESCARTE = "('NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA','CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO','FUERA DE COBERTURA','DESCARTE')";
+        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
+        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
         // JOIN con fallback igual que en dashboard
         const joinMonitoreo = `
@@ -943,7 +929,7 @@ LEFT JOIN LATERAL (
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-                        AND mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                        AND ${esDescarteExpr('mb.b_etapa_de_la_negociacion')}
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
@@ -1104,66 +1090,8 @@ const getReporte180 = async (req, res) => {
             filtersNoJoin += ` AND (mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS GESTIONABLES:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_GESTIONABLES = `(
-    'CLIENTE 2 HORAS',
-    'CLIENTE 4 HORAS',
-    'CLIENTE 6 HORAS',
-    'CLIENTE 8 HORAS',
-    'CLIENTE CON ACUERDO',
-    'CLIENTE DISCAPACIDAD',
-    'CONTACTO NUEVO',
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'DOCUMENTOS PENDIENTES',
-    'GESTIÓN DIARIA',
-    'GESTION DIARIA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OPORTUNIDADES',
-    'OPORTUNIDADES SUPERVISOR',
-    'OPORTUNIDADES SUPERVISORES MES ACTUAL',
-    'OTRO ASESOR NOVONET',
-    'OTRO PROVEEDOR',
-    'PENDIENTE CIERRE',
-    'POSTVENTA NOVONET',
-    'VENTA SUBIDA',
-    'VOLVER A LLAMAR NO CONTESTA',
-    'SEGUIMIENTO NEGOCIACION',
-    'SEGUIMIENTO NEGOCIACIÓN',
-    'ENVIO REQUISITOS/DOCUMENTOS PENDIENTES',
-    'GESTION DIARIA/PENDIENTE CIERRE',
-    'CONTACTO NUEVO /SUPERVISOR',
-    'MAS DE 15 DIAS PARA CIERRE',
-    'MÁS DE 15 DÍAS PARA CIERRE',
-    'DESCARTE REMARKETIZADO',
-    'NO CONTESTA 15 MINUTOS',
-    'CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-    'VENTA DIRECTA ECUANET',
-    'REMARKETING DIRARIO ARIEL CURAY',
-    'REMARKETING DIARIO ARIEL CURAY'
-)`;
-
-        // ─────────────────────────────────────────────────────────────────────
-        // ETAPAS DESCARTE:
-        // Pipeline NETLIFE (original) + Pipeline NETLIFE NUEVO
-        // ─────────────────────────────────────────────────────────────────────
-        const ETAPAS_DESCARTE = `(
-            'NO INTERESA COSTO PLAN','INNEGOCIABLE','CONTRATO NETLIFE','CLIENTE DISCAPACIDAD',
-            'OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA','OTRO PROVEEDOR',
-            'NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','VENTA ECUANET DIRECTA',
-            'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-            'FUERA DE COBERTURA','DESCARTE'
-        )`;
+        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
+        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
         const queryKPIs = `
             SELECT
@@ -1180,7 +1108,7 @@ const getReporte180 = async (req, res) => {
                 ) AS ventas_servicio,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE mb.b_etapa_de_la_negociacion IN ${ETAPAS_DESCARTE}
+                        WHERE ${esDescarteExpr('mb.b_etapa_de_la_negociacion')}
                         AND ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (

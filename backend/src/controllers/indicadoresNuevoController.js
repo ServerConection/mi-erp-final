@@ -1,16 +1,48 @@
 const pool = require('../config/db');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
-// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
-// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
 // ─────────────────────────────────────────────────────────────────────────────
-const esGestionableExpr = (col) => `(
-    ${col} NOT ILIKE '%ATC%'
-    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
-    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
-    AND ${col} NOT ILIKE '%DUPLICADO%'
-)`;
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
 
 // ─── helpers de fecha ───────────────────────────────────────────────────────
 const getFechaEcuador = () => {
@@ -33,27 +65,8 @@ const MV = `public.mv_indicadores_velsa_completo mv`;
 // ─── estado activo ──────────────────────────────────────────────────────────
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
-// ─── listas de etapas (obtenidas de tu SELECT DISTINCT etapa_crm) ──────────
-// Incluyen todos los valores encontrados, excepto vacío, ATC y los descartes explícitos.
-const ETAPAS_GESTIONABLES = `(
-    'Venta Subida',
-    'OPORTUNIDADES SIUPERVISOR',
-    'GESTION DIARIA / PENDIENTE CIERRE',
-    'CLIENTE CON ACUERDO',
-    'CLIENTE 8 HORAS',
-    'DOCUMENTOS PENDIENTES',
-    'CONTACTO NUEVO',
-    'CLIENTE 2 HORAS',
-    'CLIENTE 6 HORAS',
-    'CLIENTE 12 HORAS',
-    'CLIENTE 4 HORAS'
-)`;
-
-const ETAPAS_DESCARTE = `(
-    'Descarte',
-    'FUERA DE COBERTURA',
-    'ZONA PELIGROSA'
-)`;
+// GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
+// definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
@@ -123,7 +136,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
                         AND ${parseFecha('mv.fecha_registro_jotform')} BETWEEN $1::date AND $2::date
                     ) AS tercera_edad,
                     (COUNT(*) FILTER (
-                        WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE}
+                        WHERE ${esDescarteExpr('mv.etapa_crm')}
                         AND ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date
                     )::numeric /
                     NULLIF(COUNT(*) FILTER (
@@ -363,7 +376,7 @@ async function getMonitoreoDiarioNuevo(req, res) {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-                        AND mv.etapa_crm IN ${ETAPAS_DESCARTE}
+                        AND ${esDescarteExpr('mv.etapa_crm')}
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
@@ -456,7 +469,7 @@ async function getReporte180Nuevo(req, res) {
                 COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
                 COUNT(*) FILTER (WHERE mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE mv.etapa_crm IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
+                    COUNT(*) FILTER (WHERE ${esDescarteExpr('mv.etapa_crm')} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (mv.fecha_registro_jotform::date BETWEEN $1::date AND $2::date
                             OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)

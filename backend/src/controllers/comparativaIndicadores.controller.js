@@ -1,16 +1,48 @@
 const pool = require('../config/db');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
-// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
-// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
 // ─────────────────────────────────────────────────────────────────────────────
-const esGestionableExpr = (col) => `(
-    ${col} NOT ILIKE '%ATC%'
-    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
-    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
-    AND ${col} NOT ILIKE '%DUPLICADO%'
-)`;
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
 
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -70,17 +102,6 @@ LEFT JOIN LATERAL (
     e2.codigo::int DESC
   LIMIT 1
 ) e ON true`;
-
-const ETAPAS_GESTIONABLES = `(
-  'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','NO INTERESA COSTO PLAN','VOLVER A LLAMAR',
-  'GESTION DIARIA','VENTA SUBIDA','SEGUIMIENTO NEGOCIACIÓN','INNEGOCIABLE','CONTRATO NETLIFE',
-  'CLIENTE DISCAPACIDAD','OTRO ASESOR NOVONET','MANTIENE PROVEEDOR','DESISTE DE COMPRA',
-  'OTRO PROVEEDOR','NO VOLVER A CONTACTAR','NO INTERESA COSTO INSTALACIÓN','OPORTUNIDADES',
-  'VENTA ECUANET DIRECTA','VENTA DIRECTA ECUANET','GESTIÓN DIARIA',
-  'SEGUIMIENTO NEGOCIACIÓN CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-  'CONTRATO NETLIFE POR OTRO CANAL','CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-  'SEGUIMIENTO NEGOCIACIÓN','DESCARTE PLAN DE 200','SEGUIMIENTO PLAN 200'
-)`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 const getComparativaSupervisores = async (req, res) => {

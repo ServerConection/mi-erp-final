@@ -24,7 +24,24 @@ const parseHoraTxt = (col) =>
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
-const ETAPAS_NO_GESTIONABLES = ['DUPLICADO', 'ATC', 'FUERA DE COBERTURA', 'ZONA PELIGROSA'];
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
 
 // ── Cubos por empresa ─────────────────────────────────────────
 const CUBO_SQL = {
@@ -216,14 +233,30 @@ async function getDetalle(req, res) {
     const values = [desde, hasta];
 
     if (req.query.asesor) { values.push(req.query.asesor); where.push(`(${cfg.asesorExpr}) = $${values.length}`); }
-    if (req.query.etapa)  { values.push(req.query.etapa);  where.push(`(${cfg.etapaExpr}) = $${values.length}`); }
+    // Filtro ETAPA: soporta multi-selección. Acepta '?etapa=A,B,C' (lista separada
+    // por comas) o '?etapa=A&etapa=B' (array desde el frontend). Match EXACTO
+    // (case-insensitive), no substring — para no mezclar etapas distintas
+    // (ej. "POSTVENTA" vs "POSTVENTA NOVONET").
+    if (req.query.etapa) {
+      const listaEtapas = (Array.isArray(req.query.etapa) ? req.query.etapa : String(req.query.etapa).split(','))
+        .map(e => e.trim()).filter(Boolean);
+      if (listaEtapas.length === 1) {
+        values.push(listaEtapas[0]);
+        where.push(`(${cfg.etapaExpr}) = $${values.length}`);
+      } else if (listaEtapas.length > 1) {
+        const etapasUpper = `(${listaEtapas.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+        where.push(`UPPER(TRIM((${cfg.etapaExpr})::text)) IN ${etapasUpper}`);
+      }
+    }
     if (req.query.dia)    { values.push(req.query.dia);    where.push(`(${cfg.fechaExpr}) = $${values.length}::date`); }
     if (req.query.hora !== undefined && req.query.hora !== '') {
       values.push(parseInt(req.query.hora, 10));
       where.push(`(${cfg.horaExpr}) = $${values.length}`);
     }
     if (req.query.gestionable === 'si' || req.query.gestionable === 'no') {
-      const noGestSql = ETAPAS_NO_GESTIONABLES.map(p => `(${cfg.etapaExpr}) LIKE '%${p}%'`).join(' OR ');
+      // Exacto (no substring) para que "POSTVENTA" no matchee "POSTVENTA NOVONET".
+      const listaUpper = `(${ETAPAS_NO_GESTIONABLES.map(p => `'${p.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+      const noGestSql = `UPPER(TRIM((${cfg.etapaExpr})::text)) IN ${listaUpper}`;
       where.push(req.query.gestionable === 'si' ? `NOT (${noGestSql})` : `(${noGestSql})`);
     }
 

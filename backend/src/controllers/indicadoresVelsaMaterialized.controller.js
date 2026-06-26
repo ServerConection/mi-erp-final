@@ -1,16 +1,64 @@
 const pool = require('../config/db');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GESTIONABLES: en lugar de mantener una lista blanca de etapas (ETAPAS_GESTIONABLES),
-// se identifica un lead como "gestionable" EXCLUYENDO las etapas que matcheen estos
-// patrones. Así, si se agregan etapas nuevas al pipeline, no afectan el conteo.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD
+// Aplica IGUAL para NOVONET y VELSA (las etapas del CRM son las mismas).
+// Comparación SIEMPRE case-insensitive (UPPER+TRIM) para que no importe si la
+// etapa viene en mayúsculas, minúsculas o mixta.
+//
+// NO GESTIONABLES (todo lo demás se considera gestionable = SI):
+//   ATC, ATC/SOPORTE, DUPLICADO, FUERA DE COBERTURA, INNEGOCIABLE,
+//   ZONA(S) PELIGROSA(S), POSTVENTA (exacto, no aplica a "POSTVENTA NOVONET"),
+//   REGULARIZACION, CONTRATO PARAMOUNT, PARAMOUNT SEGUIMIENTO POR CERRAR.
+//
+// DESCARTE = SI (subconjunto de las gestionables, el resto de gestionables es
+// DESCARTE = NO):
+//   CONTRATO NETLIFE, DESCARTE, DESISTE DE COMPRA, MANTIENE PROVEEDOR,
+//   NO INTERESA COSTO PLAN, NO VOLVER A CONTACTAR, OTRO PROVEEDOR,
+//   DESCARTE REMARKETIZADO, CONTRATO NETLIFE POR OTRO CANAL,
+//   DESCARTE PLAN DE 200, NO INTERESA COSTO INSTALACIÓN.
 // ─────────────────────────────────────────────────────────────────────────────
-const esGestionableExpr = (col) => `(
-    ${col} NOT ILIKE '%ATC%'
-    AND ${col} NOT ILIKE '%ZONA PELIGROSA%'
-    AND ${col} NOT ILIKE '%FUERA DE COBERTURA%'
-    AND ${col} NOT ILIKE '%DUPLICADO%'
-)`;
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO', // typo real encontrado en datos
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+// gestionable = SI  ⇔  la etapa NO está en la lista de no-gestionables
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+// descarte = SI  ⇔  la etapa está en la lista blanca de descarte
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
@@ -54,65 +102,8 @@ const HAS_PLAN_VELSA_MV = `(
 )`;
 const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_MV})`;
 
-// Solo etapas verdaderamente gestionables — SIN descartes
-const ETAPAS_GESTIONABLES_UPPER = [
-  'CONTACTO NUEVO','DOCUMENTOS PENDIENTES','VOLVER A LLAMAR',
-  'GESTION DIARIA','GESTION DIARIA / PENDIENTE CIERRE','GESTION DIARIA PENDIENTE CIERRE',
-  'VENTA SUBIDA',
-  'CLIENTE 2 HORAS','CLIENTE 4 HORAS','CLIENTE 6 HORAS','CLIENTE 8 HORAS','CLIENTE 12 HORAS',
-  'CLIENTE CON ACUERDO','PENDIENTE CIERRE',
-  'OPORTUNIDADES SUPERVISOR','OPORTUNIDADES SIUPERVISOR',
-  'OPORTUNIDADES SUPERVISOR MES ACTUAL','OPORTUNIDADES SUPERVISOR MES ANTERIOR',
-  'REMARKETING',
-  'SEGUIMIENTO NEGOCIACION','SEGUIMIENTO NEGOCIACION CON CONTACTO','SEGUIMIENTO SIN CONTACTO',
-  'SEGUIMIENTO NEGOCIACIÓN','SEGUIMIENTO NEGOCIACIÓN CON CONTACTO',
-  'CONTACTO NUEVO SUPERVISOR', 'VOLVER A LLAMAR NO CONTESTA', 'NO CONTESTA 15 MINUTOS', 'NO CONTESTA 30 MINUTOS', 
-  'NO CONTESTA 60 MINUTOS', 'MAS DE 15 DIAS PARA CIERRE',   'CLIENTE 2 HORAS',
-    'CLIENTE 4 HORAS',
-    'CLIENTE 6 HORAS',
-    'CLIENTE 8 HORAS',
-    'CLIENTE CON ACUERDO',
-    'CLIENTE DISCAPACIDAD',
-    'CONTACTO NUEVO',
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'DOCUMENTOS PENDIENTES',
-    'GESTIÓN DIARIA',
-    'GESTION DIARIA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OPORTUNIDADES',
-    'OPORTUNIDADES SUPERVISOR',
-    'OPORTUNIDADES SUPERVISORES MES ACTUAL',
-    'OTRO ASESOR NOVONET',
-    'OTRO PROVEEDOR',
-    'PENDIENTE CIERRE',
-    'POSTVENTA NOVONET',
-    'VENTA SUBIDA',
-    'VOLVER A LLAMAR NO CONTESTA',
-    'SEGUIMIENTO NEGOCIACION',
-    'SEGUIMIENTO NEGOCIACIÓN',
-    'ENVIO REQUISITOS/DOCUMENTOS PENDIENTES',
-    'GESTION DIARIA/PENDIENTE CIERRE',
-    'CONTACTO NUEVO /SUPERVISOR',
-    'MAS DE 15 DIAS PARA CIERRE',
-    'MÁS DE 15 DÍAS PARA CIERRE',
-    'DESCARTE REMARKETIZADO',
-    'NO CONTESTA 15 MINUTOS',
-    'CONTRATO NETLIFE OTRO ASESOR COMPAÑERO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-    'VENTA DIRECTA ECUANET',
-    'REMARKETING DIRARIO ARIEL CURAY',
-    'REMARKETING DIARIO ARIEL CURAY'
-];
-const ETAPAS_GESTIONABLES = `(${ETAPAS_GESTIONABLES_UPPER.map(e => `'${e}'`).join(',')})`;
-
-const ETAPAS_DESCARTE = `('DESCARTE')`;
+// GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
+// definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
@@ -173,7 +164,7 @@ const queryKPI = (columna, filters) => `
       AND ${VENTA_SERVICIO_VELSA_MV}
     ) AS venta_servicio,
     COUNT(*) FILTER (
-      WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE}
+      WHERE ${esDescarteExpr('mv.etapa_crm')}
       AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
     ) AS descarte_count,
     COUNT(*) FILTER (
@@ -538,7 +529,7 @@ async function getReporte180Velsa(req, res) {
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_servicio,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE UPPER(mv.etapa_crm) IN ${ETAPAS_DESCARTE} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
+          COUNT(*) FILTER (WHERE ${esDescarteExpr('mv.etapa_crm')} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
           / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(

@@ -21,15 +21,29 @@
  */
 const pool = require('../config/db');
 
-const ETAPAS_NO_GESTIONABLES = ['DUPLICADO', 'ATC', 'FUERA DE COBERTURA', 'ZONA PELIGROSA'];
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
 
 const esGestionableExpr = (col) =>
-  `(${col} IS NULL OR (
-      UPPER(TRIM(${col})) NOT LIKE '%DUPLICADO%' AND
-      UPPER(TRIM(${col})) NOT LIKE '%ATC%' AND
-      UPPER(TRIM(${col})) NOT LIKE '%FUERA DE COBERTURA%' AND
-      UPPER(TRIM(${col})) NOT LIKE '%ZONA PELIGROSA%'
-  ))`;
+  `(${col} IS NULL OR (UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)}))`;
 
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });

@@ -34,6 +34,50 @@ const CAMPANA_ORIGENES = {
 
 const getCampanaOrigenes = (campana) => CAMPANA_ORIGENES[campana] || [];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
+// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+// ─────────────────────────────────────────────────────────────────────────────
+const ETAPAS_NO_GESTIONABLES = [
+    'ATC',
+    'ATC/SOPORTE',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'FUERA DE COBERTURA',
+    'INNEGOCIABLE',
+    'ZONA PELIGROSA',
+    'ZONAS PELIGROSAS',
+    'POSTVENTA',
+    'REGULARIZACION',
+    'REGULARIZACIÓN',
+    'CONTRATO PARAMOUNT',
+    'PARAMOUNT SEGUMIENTO POR CERRAR',
+    'PARAMOUNT SEGUIMIENTO POR CERRAR',
+];
+
+const ETAPAS_DESCARTE_SI = [
+    'CONTRATO NETLIFE',
+    'DESCARTE',
+    'DESISTE DE COMPRA',
+    'MANTIENE PROVEEDOR',
+    'NO INTERESA COSTO PLAN',
+    'NO VOLVER A CONTACTAR',
+    'OTRO PROVEEDOR',
+    'DESCARTE REMARKETIZADO',
+    'CONTRATO NETLIFE POR OTRO CANAL',
+    'DESCARTE PLAN DE 200',
+    'NO INTERESA COSTO INSTALACIÓN',
+    'NO INTERESA COSTO INSTALACION',
+];
+
+const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+
+const esGestionableExpr = (col) =>
+    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
+
+const esDescarteExpr = (col) =>
+    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+
 // ════════════════════════════════════════════════════════════════════════════════
 // GET /api/forecast/dashboard?empresa=NOVONET&mes=5&anio=2026
 // ════════════════════════════════════════════════════════════════════════════════
@@ -292,13 +336,8 @@ exports.getEjecutivos = async (req, res) => {
         COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%'
           OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%') AS fc_zp,
         COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%') AS inneg,
-        -- Gestionables = leads - ATC - FC/ZP - Inneg - Duplicados
-        COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion NOT ILIKE '%ATC%'
-          AND mb.b_etapa_de_la_negociacion NOT ILIKE '%SOPORTE%'
-          AND mb.b_etapa_de_la_negociacion NOT ILIKE '%FUERA DE COBERTURA%'
-          AND mb.b_etapa_de_la_negociacion NOT ILIKE '%ZONA%PELIGRO%'
-          AND mb.b_etapa_de_la_negociacion NOT ILIKE '%INNEGOCIABLE%'
-          AND mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADO%') AS gestionable,
+        -- Gestionables: tabla oficial de etapas (fuente única de verdad)
+        COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS gestionable,
         COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS ventas,
         COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real ILIKE 'ACTIVO'
           AND mb.j_fecha_activacion_netlife IS NOT NULL

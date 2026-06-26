@@ -12,6 +12,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3050";
+// URL pública del servicio del Automarcador (mismo dominio que el iframe del panel).
+const AUTOMARCADOR_URL = import.meta.env.VITE_AUTOMARCADOR_URL || "https://granddad-important-scoop.ngrok-free.dev";
 
 function authHeaders() {
   const token = localStorage.getItem("token");
@@ -32,6 +34,8 @@ function CargarBase() {
   const [nombreLote, setNombreLote] = useState("");
   const [guardando, setGuardando]   = useState(false);
   const [loteCreado, setLoteCreado] = useState(null);
+  const [enviando, setEnviando]         = useState(false);
+  const [campaniaCreada, setCampaniaCreada] = useState(null); // { id, total, sinTelefono }
 
   useEffect(() => {
     fetch(`${API}/api/llamadas/filtros`, { headers: authHeaders() })
@@ -102,6 +106,35 @@ function CargarBase() {
       setError(e.message);
     } finally {
       setGuardando(false);
+    }
+  };
+
+  // Envía la selección actual directo al Automarcador (crea la campaña ya
+  // cargada con los números — sin pasar por exportar/descargar/subir CSV).
+  const enviarAlAutomarcador = async () => {
+    if (seleccionados.length === 0) return;
+    setEnviando(true); setError(null); setCampaniaCreada(null);
+    try {
+      const items = seleccionados.map(r => ({
+        telefono: r.telefono,
+        nombre_cliente: r.nombre_cliente,
+        deal_id: r.deal_id,
+      }));
+      const res = await fetch(`${AUTOMARCADOR_URL}/api/campaigns/from-erp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({
+          name: nombreLote.trim() || `Bitrix ${new Date().toLocaleDateString("es-EC")}`,
+          items,
+        }),
+      });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.error || "Error al enviar al Automarcador");
+      setCampaniaCreada(j);
+    } catch (e) {
+      setError(`No se pudo conectar con el Automarcador: ${e.message}`);
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -240,7 +273,23 @@ function CargarBase() {
                 ⬇ Descargar CSV para el Automarcador
               </a>
             )}
+            <button onClick={enviarAlAutomarcador} disabled={enviando || seleccionados.length === 0}
+              className="text-[11px] font-black uppercase bg-pink-600 text-white rounded-lg px-4 py-2 disabled:opacity-40">
+              {enviando ? "Enviando…" : `📲 Enviar al Automarcador (${seleccionados.length})`}
+            </button>
           </div>
+
+          {campaniaCreada && (
+            <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-200 text-[11px] text-emerald-700 font-bold space-y-1">
+              <div>
+                ✅ Campaña creada en el Automarcador con {campaniaCreada.total} número(s).
+                {campaniaCreada.sinTelefono > 0 && ` (${campaniaCreada.sinTelefono} negociaciones sin teléfono disponible se omitieron)`}
+              </div>
+              <a href={`${AUTOMARCADOR_URL}/admin`} target="_blank" rel="noopener noreferrer" className="underline">
+                Abrir panel del Automarcador para asignar asesores y arrancar la campaña →
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>

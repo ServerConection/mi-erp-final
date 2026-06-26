@@ -212,13 +212,13 @@ const CANALES_DISPONIBLES = Object.keys(CANAL_ORIGENES_MAP);
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
-        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal });
+        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, fechaActivacionDesde, fechaActivacionHasta });
         const cached = getDashboardCache(cacheKey);
         if (cached) {
             console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
@@ -265,6 +265,22 @@ const getIndicadoresDashboard = async (req, res) => {
             )`;
             filtersJoin   += ` AND ${origenFilter}`;
             filtersNoJoin += ` AND ${origenFilter}`;
+        }
+
+        // Filtro FECHA DE ACTIVACIÓN (opcional, independiente del rango principal
+        // que sigue siendo "fecha de creación"/registro CRM-Jotform). Si NO se
+        // envía, no se toca filtersJoin/filtersNoJoin → cero impacto, el
+        // dashboard se comporta exactamente igual que antes.
+        // Si SE envía, se agrega como restricción ADICIONAL (AND) sobre
+        // jf.fecha_activacion, conviviendo con el filtro de creación en vez
+        // de remplazarlo.
+        if (fechaActivacionDesde && fechaActivacionHasta) {
+            values.push(fechaActivacionDesde, fechaActivacionHasta);
+            const idxDesde = values.length - 1;
+            const idxHasta = values.length;
+            const actFilter = ` AND jf.fecha_activacion::date BETWEEN $${idxDesde}::date AND $${idxHasta}::date`;
+            filtersJoin   += actFilter;
+            filtersNoJoin += actFilter;
         }
 
         // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
@@ -832,7 +848,7 @@ LEFT JOIN LATERAL (
 
 const getReporte180 = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -866,6 +882,14 @@ const getReporte180 = async (req, res) => {
         if (etapaCRM) {
             values.push(`%${etapaCRM}%`);
             filtersNoJoin += ` AND nr.etapa ILIKE $${values.length}`;
+        }
+        // Filtro FECHA DE ACTIVACIÓN (opcional, ver getIndicadoresDashboard para
+        // la explicación completa). Cero impacto si no se envía.
+        if (fechaActivacionDesde && fechaActivacionHasta) {
+            values.push(fechaActivacionDesde, fechaActivacionHasta);
+            const idxDesde180 = values.length - 1;
+            const idxHasta180 = values.length;
+            filtersNoJoin += ` AND jf.fecha_activacion::date BETWEEN $${idxDesde180}::date AND $${idxHasta180}::date`;
         }
 
         // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()

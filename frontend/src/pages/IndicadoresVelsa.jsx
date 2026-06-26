@@ -328,7 +328,7 @@ export default function ReporteVelsa() {
   const [filtros, setFiltros] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
-    asesor: "",
+    asesor: [],
     supervisor: "",
     estadoNetlife: "",
     estadoRegularizacion: "",
@@ -337,13 +337,15 @@ export default function ReporteVelsa() {
     canal: [],
     idBitrix: "",
     gestionables: "",
+    fechaActivacionDesde: "",
+    fechaActivacionHasta: "",
   });
 
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     fechaDesde: getFechaHoyEcuador(),
     fechaHasta: getFechaHoyEcuador(),
-    asesor: "",
+    asesor: [],
     supervisor: "",
     estadoNetlife: "",
     estadoRegularizacion: "",
@@ -352,6 +354,8 @@ export default function ReporteVelsa() {
     canal: [],
     idBitrix: "",
     gestionables: "",
+    fechaActivacionDesde: "",
+    fechaActivacionHasta: "",
   });
 
   const [apiError, setApiError] = useState(null);
@@ -365,6 +369,8 @@ export default function ReporteVelsa() {
     estadoRegularizacion: "",
     etapaCRM: "",
     etapaJotform: "",
+    fechaActivacionDesde: "",
+    fechaActivacionHasta: "",
   });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha_activacion_date ──
@@ -1126,16 +1132,35 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 </div>
               </div>
 
-              {/* ASESOR — dropdown con nombres reales del backend */}
+              {/* FECHA ACTIVACIÓN — filtro opcional e independiente, no afecta nada si queda vacío */}
+              <div className="lg:col-span-2 flex flex-col gap-2">
+                <label className="text-[9px] font-black text-purple-400 italic tracking-widest uppercase" title="Filtro opcional e independiente. Si lo dejas vacío no afecta nada (se sigue filtrando solo por fecha de creación). Si seleccionas un período aquí, se agrega como filtro adicional sobre la fecha en que se activó el servicio.">📅 FECHA ACTIVACIÓN (OPCIONAL)</label>
+                <div className="flex bg-white border border-purple-300 rounded-2xl p-1.5 shadow-inner">
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                    value={filtros.fechaActivacionDesde} onChange={e => updateFiltro('fechaActivacionDesde', e.target.value)} />
+                  <div className="text-slate-400 px-2 font-black self-center">-</div>
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                    value={filtros.fechaActivacionHasta} onChange={e => updateFiltro('fechaActivacionHasta', e.target.value)} />
+                  {(filtros.fechaActivacionDesde || filtros.fechaActivacionHasta) && (
+                    <button
+                      title="Quitar filtro de fecha de activación"
+                      onClick={() => { updateFiltro('fechaActivacionDesde', ''); updateFiltro('fechaActivacionHasta', ''); }}
+                      className="text-purple-400 hover:text-purple-600 font-black px-1"
+                    >✕</button>
+                  )}
+                </div>
+              </div>
+
+              {/* ASESOR — multi-select con nombres reales del backend */}
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>
-                <select className={selectCls} value={filtros.asesor}
-                  onChange={e => updateFiltro('asesor', e.target.value)}>
-                  <option value="">TODOS</option>
-                  {nombresAsesores.map((a) => (
-                    <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
-                  ))}
-                </select>
+                <MultiSelectCanal
+                  value={filtros.asesor}
+                  onChange={vals => updateFiltro('asesor', vals)}
+                  options={nombresAsesores.map(a => a.nombre_grupo)}
+                  accentColor="orange"
+                  placeholder="TODOS LOS ASESORES"
+                />
               </div>
 
               {/* SUPERVISOR */}
@@ -1782,6 +1807,16 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
               <div className="text-slate-400 px-2 font-black self-center">-</div>
               <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                 value={filtros.fechaHasta} onChange={e => updateFiltro180('fechaHasta', e.target.value)} />
+            </div>
+          </div>
+          <div className="lg:col-span-2 flex flex-col gap-2">
+            <label className="text-[9px] font-black text-purple-400 italic tracking-widest uppercase" title="Filtro opcional e independiente. Vacío = no afecta nada.">📅 F. ACTIVACIÓN (OPC.)</label>
+            <div className="flex bg-white border border-purple-300 rounded-2xl p-1.5 shadow-inner">
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionDesde || ''} onChange={e => updateFiltro180('fechaActivacionDesde', e.target.value)} />
+              <div className="text-slate-400 px-2 font-black self-center">-</div>
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionHasta || ''} onChange={e => updateFiltro180('fechaActivacionHasta', e.target.value)} />
             </div>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>

@@ -237,14 +237,14 @@ const CANALES_DISPONIBLES = Object.keys(CANAL_ORIGENES_MAP);
 
 const getIndicadoresDashboard = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
-        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables });
+        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta });
         const cached = getDashboardCache(cacheKey);
         if (cached) {
             console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
@@ -255,10 +255,23 @@ const getIndicadoresDashboard = async (req, res) => {
         let filtersJoin = "";
         let filtersNoJoin = "";
 
+        // Filtro ASESOR: soporta multi-selección. Acepta '?asesor=A,B,C' (lista
+        // separada por comas) o '?asesor=A&asesor=B' (array desde el frontend).
+        // Match EXACTO (case-insensitive) cuando se envía lista; si llega un solo
+        // valor "suelto" (compatibilidad con integraciones viejas) se mantiene
+        // el comportamiento ILIKE parcial previo.
         if (asesor) {
-            values.push(`%${asesor}%`);
-            filtersJoin    += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
-            filtersNoJoin  += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            const listaAsesores = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesores.length > 1) {
+                const asesoresUpper = _sqlListaUpper(listaAsesores);
+                filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
+                filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
+            } else if (listaAsesores.length === 1) {
+                values.push(`%${listaAsesores[0]}%`);
+                filtersJoin    += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+                filtersNoJoin  += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            }
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
@@ -328,6 +341,22 @@ const getIndicadoresDashboard = async (req, res) => {
             )`;
             filtersJoin   += ` AND ${origenFilter}`;
             filtersNoJoin += ` AND ${origenFilter}`;
+        }
+        // Filtro FECHA DE ACTIVACIÓN (opcional, independiente del rango principal
+        // que sigue siendo "fecha de creación" / fecha de registro Jotform).
+        // Si NO se envía, no se toca filtersJoin/filtersNoJoin → cero impacto,
+        // el dashboard se comporta exactamente igual que antes.
+        // Si SE envía, se agrega como una restricción ADICIONAL (AND) sobre
+        // mb.j_fecha_activacion_netlife, que se aplica a todas las queries que
+        // ya reciben filtersJoin/filtersNoJoin (KPIs, backlog, embudo, etc.) —
+        // es decir, "convive" con el filtro de creación en vez de remplazarlo.
+        if (fechaActivacionDesde && fechaActivacionHasta) {
+            values.push(fechaActivacionDesde, fechaActivacionHasta);
+            const idxDesde = values.length - 1;
+            const idxHasta = values.length;
+            const actFilter = ` AND mb.j_fecha_activacion_netlife::date BETWEEN $${idxDesde}::date AND $${idxHasta}::date`;
+            filtersJoin   += actFilter;
+            filtersNoJoin += actFilter;
         }
 
         // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
@@ -882,9 +911,17 @@ LEFT JOIN LATERAL (
         let filtersNoJoin = "";
 
         if (asesor) {
-            values.push(`%${asesor}%`);
-            filtersJoin   += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
-            filtersNoJoin += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            const listaAsesoresMon = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesoresMon.length > 1) {
+                const asesoresUpperMon = _sqlListaUpper(listaAsesoresMon);
+                filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpperMon}`;
+                filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpperMon}`;
+            } else if (listaAsesoresMon.length === 1) {
+                values.push(`%${listaAsesoresMon[0]}%`);
+                filtersJoin    += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+                filtersNoJoin  += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+            }
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
@@ -965,9 +1002,15 @@ LEFT JOIN LATERAL (
         let jotHoyParamOffset = 1;
 
         if (asesor) {
-            valuesJotHoy.push(`%${asesor}%`);
-            jotHoyParamOffset++;
-            filtersJotHoy += ` AND mb.b_persona_responsable ILIKE $${jotHoyParamOffset}`;
+            const listaAsesoresJotHoy = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesoresJotHoy.length > 1) {
+                filtersJotHoy += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${_sqlListaUpper(listaAsesoresJotHoy)}`;
+            } else if (listaAsesoresJotHoy.length === 1) {
+                valuesJotHoy.push(`%${listaAsesoresJotHoy[0]}%`);
+                jotHoyParamOffset++;
+                filtersJotHoy += ` AND mb.b_persona_responsable ILIKE $${jotHoyParamOffset}`;
+            }
         }
         if (supervisor) {
             valuesJotHoy.push(`%${supervisor}%`);
@@ -1038,7 +1081,7 @@ LEFT JOIN LATERAL (
 
 const getReporte180 = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -1094,6 +1137,14 @@ const getReporte180 = async (req, res) => {
         if (idBitrix) {
             values.push(idBitrix.toString());
             filtersNoJoin += ` AND (mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
+        }
+        // Filtro FECHA DE ACTIVACIÓN (opcional, ver getIndicadoresDashboard para
+        // la explicación completa). Cero impacto si no se envía.
+        if (fechaActivacionDesde && fechaActivacionHasta) {
+            values.push(fechaActivacionDesde, fechaActivacionHasta);
+            const idxDesde180 = values.length - 1;
+            const idxHasta180 = values.length;
+            filtersNoJoin += ` AND mb.j_fecha_activacion_netlife::date BETWEEN $${idxDesde180}::date AND $${idxHasta180}::date`;
         }
 
         // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
@@ -1292,9 +1343,32 @@ const getReporte180 = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const getConsultaDescargaNovonet = async (req, res) => {
     try {
-        const { fechaDesde, fechaHasta } = req.query;
+        const { fechaDesde, fechaHasta, asesor, loginNetlife, idBitrix } = req.query;
         if (!fechaDesde || !fechaHasta) {
             return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
+        }
+
+        const values = [fechaDesde, fechaHasta];
+        let filters = '';
+
+        // Filtro ASESOR: soporta multi-selección (igual patrón que el dashboard).
+        if (asesor) {
+            const listaAsesores = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesores.length > 1) {
+                filters += ` AND UPPER(TRIM(codigo_asesor)) IN ${_sqlListaUpper(listaAsesores)}`;
+            } else if (listaAsesores.length === 1) {
+                values.push(`%${listaAsesores[0]}%`);
+                filters += ` AND codigo_asesor ILIKE $${values.length}`;
+            }
+        }
+        if (loginNetlife) {
+            values.push(`%${loginNetlife}%`);
+            filters += ` AND login_netlife ILIKE $${values.length}`;
+        }
+        if (idBitrix) {
+            values.push(`%${idBitrix}%`);
+            filters += ` AND id_bitrix::text ILIKE $${values.length}`;
         }
 
         const result = await pool.query(`
@@ -1332,9 +1406,10 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 ) AS es_venta_servicio
             FROM vista_analisis_novonet
             WHERE created_at::date BETWEEN $1 AND $2
+            ${filters}
             ORDER BY created_at ASC
             LIMIT 100000
-        `, [fechaDesde, fechaHasta]);
+        `, values);
 
         res.json({
             success: true,

@@ -381,10 +381,10 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
-  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "" });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──
   // No afectan ningún otro KPI ni el dashboard principal.
@@ -427,7 +427,8 @@ export default function ReporteComercialCore() {
     const pMon = new URLSearchParams(
       Object.fromEntries(
         Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
-          .filter(([_, v]) => v !== "")
+          .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
       )
     );
     const p180 = new URLSearchParams(Object.fromEntries(
@@ -463,7 +464,8 @@ export default function ReporteComercialCore() {
           porcentajeTarjeta:     Number(result.porcentajeTarjeta ?? 0),
           porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
         });
-        if (!filtrosActivos.supervisor && !filtrosActivos.asesor) {
+        const asesorVacio = Array.isArray(filtrosActivos.asesor) ? filtrosActivos.asesor.length === 0 : !filtrosActivos.asesor;
+        if (!filtrosActivos.supervisor && asesorVacio) {
           if (result.supervisores?.length) setAllSupervisores(result.supervisores);
           if (result.asesores?.length)     setAllAsesores(result.asesores);
         }
@@ -486,7 +488,8 @@ export default function ReporteComercialCore() {
       const p = new URLSearchParams(
         Object.fromEntries(
           Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
-            .filter(([_, v]) => v !== "")
+            .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+            .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
         )
       );
       const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${p}`, { signal: ctrl.signal });
@@ -1483,14 +1486,32 @@ ${asesoresPDF.length>0?`
                     value={filtros.fechaHasta} onChange={e => updateFiltro('fechaHasta', e.target.value)} />
                 </div>
               </div>
+              <div className="lg:col-span-2 flex flex-col gap-2">
+                <label className="text-[9px] font-black text-purple-400 italic tracking-widest uppercase" title="Filtro opcional e independiente. Si lo dejas vacío no afecta nada (se sigue filtrando solo por fecha de creación). Si seleccionas un período aquí, se agrega como filtro adicional sobre la fecha en que se activó el servicio.">📅 FECHA ACTIVACIÓN (OPCIONAL)</label>
+                <div className="flex bg-white border border-purple-300 rounded-2xl p-1.5 shadow-inner">
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                    value={filtros.fechaActivacionDesde} onChange={e => updateFiltro('fechaActivacionDesde', e.target.value)} />
+                  <div className="text-slate-400 px-2 font-black self-center">-</div>
+                  <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                    value={filtros.fechaActivacionHasta} onChange={e => updateFiltro('fechaActivacionHasta', e.target.value)} />
+                  {(filtros.fechaActivacionDesde || filtros.fechaActivacionHasta) && (
+                    <button
+                      title="Quitar filtro de fecha de activación"
+                      onClick={() => { updateFiltro('fechaActivacionDesde', ''); updateFiltro('fechaActivacionHasta', ''); }}
+                      className="text-purple-400 hover:text-purple-600 font-black px-1"
+                    >✕</button>
+                  )}
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>
-                <select className={selectCls} value={filtros.asesor} onChange={e => updateFiltro('asesor', e.target.value)}>
-                  <option value="">TODOS</option>
-                  {nombresAsesores.map((a) => (
-                    <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
-                  ))}
-                </select>
+                <MultiSelectCanal
+                  value={filtros.asesor}
+                  onChange={vals => updateFiltro('asesor', vals)}
+                  options={nombresAsesores.map(a => a.nombre_grupo)}
+                  accentColor="slate"
+                  placeholder="TODOS LOS ASESORES"
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">SUPERVISOR</label>
@@ -1850,6 +1871,9 @@ function ConsultaDescargaNovonet() {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [asesor,       setAsesor]       = useState('');
+  const [loginNetlife, setLoginNetlife] = useState('');
+  const [idBitrix,     setIdBitrix]     = useState('');
   const [loading,    setLoading]    = useState(false);
   const [rows,       setRows]       = useState(null);
   const [error,      setError]      = useState(null);
@@ -1857,7 +1881,11 @@ function ConsultaDescargaNovonet() {
   const consultar = async () => {
     setLoading(true); setError(null); setRows(null);
     try {
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/consulta-descarga?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`);
+      const params = new URLSearchParams({ fechaDesde, fechaHasta });
+      if (asesor.trim())       params.set('asesor', asesor.trim());
+      if (loginNetlife.trim()) params.set('loginNetlife', loginNetlife.trim());
+      if (idBitrix.trim())     params.set('idBitrix', idBitrix.trim());
+      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/consulta-descarga?${params.toString()}`);
       const result = await res.json();
       if (result.success) setRows(result.rows);
       else setError(result.error || 'Error al consultar');
@@ -1913,6 +1941,21 @@ function ConsultaDescargaNovonet() {
             <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Fecha Fin (JOT)</label>
             <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
               className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Asesor</label>
+            <input type="text" value={asesor} onChange={e => setAsesor(e.target.value)} placeholder="Código/nombre asesor"
+              className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-44" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Login Netlife</label>
+            <input type="text" value={loginNetlife} onChange={e => setLoginNetlife(e.target.value)} placeholder="Login Netlife"
+              className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-40" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">ID Bitrix</label>
+            <input type="text" value={idBitrix} onChange={e => setIdBitrix(e.target.value)} placeholder="ID Bitrix"
+              className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-36" />
           </div>
           <button onClick={consultar} disabled={loading}
             className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
@@ -2155,6 +2198,16 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
               <div className="text-slate-400 px-2 font-black self-center">-</div>
               <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
                 value={filtros.fechaHasta} onChange={e => updateFiltro180('fechaHasta', e.target.value)} />
+            </div>
+          </div>
+          <div className="lg:col-span-2 flex flex-col gap-2">
+            <label className="text-[9px] font-black text-purple-400 italic tracking-widest uppercase" title="Filtro opcional e independiente. Vacío = no afecta nada.">📅 F. ACTIVACIÓN (OPC.)</label>
+            <div className="flex bg-white border border-purple-300 rounded-2xl p-1.5 shadow-inner">
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionDesde || ''} onChange={e => updateFiltro180('fechaActivacionDesde', e.target.value)} />
+              <div className="text-slate-400 px-2 font-black self-center">-</div>
+              <input type="date" className="bg-transparent text-slate-800 text-center text-[11px] font-bold outline-none w-full"
+                value={filtros.fechaActivacionHasta || ''} onChange={e => updateFiltro180('fechaActivacionHasta', e.target.value)} />
             </div>
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ASESOR</label>

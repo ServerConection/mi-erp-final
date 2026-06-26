@@ -108,7 +108,7 @@ const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
   let f = '';
-  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables } = q;
+  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta } = q;
   if (asesor)               { values.push(`%${asesor}%`);               f += ` AND mv.asesor ILIKE $${values.length}`; }
   if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
@@ -119,6 +119,19 @@ function buildFilters(q, values) {
   // Filtro GESTIONABLES: 'si' = solo gestionables, 'no' = solo NO gestionables
   if (gestionables === 'si')      f += ` AND ${esGestionableExpr('mv.etapa_crm')}`;
   else if (gestionables === 'no') f += ` AND NOT ${esGestionableExpr('mv.etapa_crm')}`;
+  // Filtro FECHA DE ACTIVACIÓN (opcional, independiente del rango principal
+  // que sigue siendo "fecha de creación" / fecha de registro Jotform).
+  // Si NO se envía, no se toca el string de filtros → cero impacto, el
+  // comportamiento es exactamente igual que antes.
+  // Si SE envía, se agrega como restricción ADICIONAL (AND) sobre
+  // mv.fecha_activacion, conviviendo con el filtro de creación en vez de
+  // remplazarlo. Aplica a todas las queries que consumen buildFilters().
+  if (fechaActivacionDesde && fechaActivacionHasta) {
+    values.push(fechaActivacionDesde, fechaActivacionHasta);
+    const idxDesde = values.length - 1;
+    const idxHasta = values.length;
+    f += ` AND mv.fecha_activacion::date BETWEEN $${idxDesde}::date AND $${idxHasta}::date`;
+  }
   return f;
 }
 

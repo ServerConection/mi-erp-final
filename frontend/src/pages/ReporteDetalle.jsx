@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   LineChart, Line, CartesianGrid, Legend, Cell,
 } from "recharts";
+import * as XLSX from "xlsx";
 
 const API = import.meta.env.VITE_API_URL;
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
@@ -168,6 +169,21 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
   }, [empresa, pivotModo, desde, hasta, fGest, fDias, fHoras]);
 
   const cerrarDrill = () => setDrill(p => ({ ...p, open: false }));
+
+  const descargarDrillExcel = () => {
+    if (!drill.filas.length) return;
+    const columnas = COL_ORDEN.filter(c => drill.filas.some(f => f[c] !== undefined && f[c] !== null && f[c] !== ""));
+    const filasExport = drill.filas.map(f => {
+      const obj = {};
+      columnas.forEach(c => { obj[COL_LABELS[c] || c] = c === "hora" ? `${f[c]}:00` : (f[c] ?? ""); });
+      return obj;
+    });
+    const ws = XLSX.utils.json_to_sheet(filasExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads");
+    const nombreSeguro = (drill.titulo || "leads").replace(/[^a-z0-9_\-]+/gi, "_");
+    XLSX.writeFile(wb, `leads_${empresa}_${nombreSeguro}_${desde}_${hasta}.xlsx`);
+  };
 
   const descargarCSV = () => {
     const { columnas, filas } = pivot;
@@ -359,6 +375,8 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
             <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
               <tr style={{ background: "#1e293b", color: "#fff" }}>
                 <th style={{ padding: ".45rem .6rem", textAlign: "left", position: "sticky", left: 0, background: "#1e293b" }}>ASESOR (clic filtra)</th>
+                <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>TOTAL</th>
+                <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>VER LEADS</th>
                 {pivot.columnas.map(c => (
                   <th key={c} onClick={() => togEtapa(c)}
                     style={{ padding: ".45rem .5rem", cursor: "pointer", whiteSpace: "nowrap", background: fEtapas.has(c) ? accent : "#1e293b" }}
@@ -366,8 +384,6 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                     {c.length > 16 ? c.slice(0, 15) + "…" : c}
                   </th>
                 ))}
-                <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>TOTAL</th>
-                <th style={{ padding: ".45rem .6rem", background: "#0f172a" }}>VER LEADS</th>
               </tr>
             </thead>
             <tbody>
@@ -378,14 +394,6 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                   <td style={{ padding: ".4rem .6rem", fontWeight: 700, color: "#334155", position: "sticky", left: 0, background: "inherit", whiteSpace: "nowrap" }}>
                     {fAsesores.has(r.asesor) ? "✓ " : ""}{r.asesor}
                   </td>
-                  {pivot.columnas.map(c => (
-                    <td key={c}
-                      onClick={(ev) => { if (r[c]) { ev.stopPropagation(); abrirDetalle(r.asesor, c); } }}
-                      title={r[c] ? "Clic para ver los leads de esta celda" : ""}
-                      style={{ padding: ".4rem .5rem", textAlign: "center", color: r[c] ? "#1e293b" : "#cbd5e1", fontWeight: r[c] ? 700 : 400, cursor: r[c] ? "pointer" : "default" }}>
-                      {r[c] || "—"}
-                    </td>
-                  ))}
                   <td style={{ padding: ".4rem .6rem", textAlign: "center", fontWeight: 900, color: accent }}>{r.__total}</td>
                   <td style={{ padding: ".4rem .6rem", textAlign: "center" }}>
                     <button
@@ -395,6 +403,14 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                       🔍 Ver
                     </button>
                   </td>
+                  {pivot.columnas.map(c => (
+                    <td key={c}
+                      onClick={(ev) => { if (r[c]) { ev.stopPropagation(); abrirDetalle(r.asesor, c); } }}
+                      title={r[c] ? "Clic para ver los leads de esta celda" : ""}
+                      style={{ padding: ".4rem .5rem", textAlign: "center", color: r[c] ? "#1e293b" : "#cbd5e1", fontWeight: r[c] ? 700 : 400, cursor: r[c] ? "pointer" : "default" }}>
+                      {r[c] || "—"}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -405,7 +421,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
         </p>
       </Card>
 
-      <DrillModal drill={drill} onClose={cerrarDrill} accent={accent} />
+      <DrillModal drill={drill} onClose={cerrarDrill} accent={accent} onDescargar={descargarDrillExcel} />
     </div>
   );
 }
@@ -439,7 +455,7 @@ const COL_LABELS = {
 };
 const COL_ORDEN = ["fecha", "hora", "asesor", "etapa", "id_crm", "id_jotform", "login", "estado_jotform", "etapa_crm", "forma_pago", "supervisor", "fecha_activacion"];
 
-const DrillModal = ({ drill, onClose, accent }) => {
+const DrillModal = ({ drill, onClose, accent, onDescargar }) => {
   if (!drill.open) return null;
   const columnas = drill.filas.length
     ? COL_ORDEN.filter(c => drill.filas.some(f => f[c] !== undefined && f[c] !== null && f[c] !== ""))
@@ -458,6 +474,13 @@ const DrillModal = ({ drill, onClose, accent }) => {
             <span style={{ fontSize: ".75rem", fontWeight: 700, color: accent, background: `${accent}15`, borderRadius: 999, padding: ".3rem .8rem" }}>
               {drill.filas.length} registro{drill.filas.length === 1 ? "" : "s"}
             </span>
+          )}
+          {!drill.loading && !drill.error && drill.filas.length > 0 && (
+            <button onClick={onDescargar}
+              title="Descargar estos leads en Excel"
+              style={{ border: "1px solid #10b981", background: "#fff", color: "#059669", borderRadius: 8, padding: ".45rem .8rem", fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}>
+              ⬇ Excel
+            </button>
           )}
           <button onClick={onClose}
             style={{ border: "none", background: "#f1f5f9", color: "#64748b", borderRadius: 8, width: 32, height: 32, fontSize: "1rem", fontWeight: 700, cursor: "pointer" }}>✕</button>

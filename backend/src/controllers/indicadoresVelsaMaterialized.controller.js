@@ -349,8 +349,8 @@ SELECT
   mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
-WHERE mv.fecha_activacion IS NOT NULL
-AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
+WHERE mv.fecha_registro_jotform IS NOT NULL
+AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
 ${filters}
 LIMIT 6000
     `;

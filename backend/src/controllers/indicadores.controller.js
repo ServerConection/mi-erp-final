@@ -636,9 +636,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
-            WHERE mb.j_fecha_activacion_netlife IS NOT NULL
-            AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-            AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
             ${filtersJoin}
             LIMIT 6000
         `;

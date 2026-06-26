@@ -1116,7 +1116,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
         <div className="animate-in fade-in duration-500">
 
           {/* Panel de filtros */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200/80" style={{boxShadow:'0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(234,88,12,.04)'}}>
+          <div className="relative z-30 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200/80" style={{boxShadow:'0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(234,88,12,.04)'}}>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">
               {/* Período — solo actualiza al cambiar fecha (no hace fetch por tecla) */}
               <div className="lg:col-span-2 flex flex-col gap-2">
@@ -1797,7 +1797,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         <button onClick={() => onFetch(filtros)} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "CARGANDO..." : "APLICAR"}</button>
       </div>
 
-      <div className="bg-slate-50 rounded-2xl shadow-sm overflow-hidden border border-slate-200">
+      <div className="relative z-30 bg-slate-50 rounded-2xl shadow-sm overflow-visible border border-slate-200">
         <div className="p-5 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 items-end">
           <div className="lg:col-span-2 flex flex-col gap-2">
             <label className="text-[9px] font-black text-amber-600 italic tracking-widest uppercase">PERÍODO</label>

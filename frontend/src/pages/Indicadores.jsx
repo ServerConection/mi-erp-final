@@ -203,7 +203,7 @@ const BarraSemaforo = (props) => {
 };
 
 /** Multi-select dropdown para Campaña/Origen */
-function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "blue" }) {
+function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "blue", placeholder = "TODAS LAS CAMPAÑAS" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -219,7 +219,7 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "b
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)} className={btnCls}>
-        <span className="truncate">{value.length === 0 ? 'TODAS LAS CAMPAÑAS' : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
+        <span className="truncate">{value.length === 0 ? placeholder : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
         <span className={`text-${accentColor}-400 text-[8px] shrink-0`}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
@@ -381,10 +381,10 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
-  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: "", etapaJotform: "" });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "" });
+  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "" });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──
   // No afectan ningún otro KPI ni el dashboard principal.
@@ -430,7 +430,11 @@ export default function ReporteComercialCore() {
           .filter(([_, v]) => v !== "")
       )
     );
-    const p180 = new URLSearchParams(Object.fromEntries(Object.entries(filtrosActivos).filter(([_, v]) => v !== "")));
+    const p180 = new URLSearchParams(Object.fromEntries(
+      Object.entries(filtrosActivos)
+        .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
+        .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+    ));
     // Fire-and-forget: no await, no setLoading
     Promise.allSettled([
       fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${pMon}`, { signal: ctrl.signal }),
@@ -1499,10 +1503,13 @@ ${asesoresPDF.length>0?`
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
-                <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro('etapaCRM', e.target.value)}>
-                  <option value="">TODAS</option>
-                  {(data.etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
-                </select>
+                <MultiSelectCanal
+                  value={filtros.etapaCRM}
+                  onChange={vals => updateFiltro('etapaCRM', vals)}
+                  options={data.etapasCRM || []}
+                  accentColor="slate"
+                  placeholder="TODAS LAS ETAPAS"
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label>
@@ -2157,10 +2164,13 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <input type="text" placeholder="BUSCAR..." className={inputCls} value={filtros.supervisor} onChange={e => updateFiltro180('supervisor', e.target.value)} />
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">ETAPA CRM</label>
-            <select className={selectCls} value={filtros.etapaCRM} onChange={e => updateFiltro180('etapaCRM', e.target.value)}>
-              <option value="">TODAS</option>
-              {(etapasCRM || []).map((etapa, i) => <option key={i} value={etapa}>{etapa}</option>)}
-            </select>
+            <MultiSelectCanal
+              value={filtros.etapaCRM || []}
+              onChange={vals => updateFiltro180('etapaCRM', vals)}
+              options={etapasCRM || []}
+              accentColor="slate"
+              placeholder="TODAS LAS ETAPAS"
+            />
           </div>
           <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-slate-500 italic uppercase">NETLIFE</label>
             <select className={selectCls} value={filtros.estadoNetlife} onChange={e => updateFiltro180('estadoNetlife', e.target.value)}>

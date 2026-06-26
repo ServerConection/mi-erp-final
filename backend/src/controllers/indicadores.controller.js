@@ -1077,9 +1077,15 @@ const getReporte180 = async (req, res) => {
             values.push(`%${estadoRegularizacion}%`);
             filtersNoJoin += ` AND mb.j_estatus_regularizacion ILIKE $${values.length}`;
         }
+        // Filtro ETAPA CRM: soporta multi-selección (ver getIndicadoresDashboard).
+        // Acepta '?etapaCRM=A,B,C' o '?etapaCRM=A&etapaCRM=B'. Match EXACTO
+        // (case-insensitive), no substring.
         if (etapaCRM) {
-            values.push(`%${etapaCRM}%`);
-            filtersNoJoin += ` AND mb.b_etapa_de_la_negociacion ILIKE $${values.length}`;
+            const listaEtapas180 = (Array.isArray(etapaCRM) ? etapaCRM : String(etapaCRM).split(','))
+                .map(e => e.trim()).filter(Boolean);
+            if (listaEtapas180.length) {
+                filtersNoJoin += ` AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) IN ${_sqlListaUpper(listaEtapas180)}`;
+            }
         }
         if (etapaJotform) {
             values.push(`%${etapaJotform}%`);

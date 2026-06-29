@@ -102,7 +102,7 @@ export default function Login() {
         .lp-bg {
           position: absolute;
           inset: 0;
-          background-image: url('/fondo.jpeg');
+          background-image: url('/PSC.gif');
           background-size: cover;
           background-position: center center;
           background-repeat: no-repeat;

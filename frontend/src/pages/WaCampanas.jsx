@@ -78,7 +78,7 @@ export default function WaCampanas() {
     try {
       const r = await fetch(`${API}/campaigns`, {
         method: "POST", headers: authH(),
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, body: variants[0]?.message_text || "" }),
       });
       const d = await r.json();
       if (d.success && d.data) {

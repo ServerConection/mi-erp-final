@@ -3,7 +3,10 @@
  */
 import { useState, useEffect, useCallback } from "react";
 
-const API = `${import.meta.env.VITE_API_URL}/api/wa`;
+const ORIGIN = import.meta.env.VITE_API_URL;
+const API = `${ORIGIN}/api/wa`;
+// media_url se guarda relativo (/wa-uploads/...) → para mostrarlo hay que anteponer el origen
+const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -41,6 +44,7 @@ export default function WaCampanas() {
   const [saving, setSaving]         = useState(false);
   const [detail, setDetail]         = useState(null); // campaign con variantes
   const [search, setSearch]         = useState("");
+  const [uploadingIdx, setUploadingIdx] = useState(null); // índice de variante subiendo imagen
 
   // Normaliza la respuesta de la API: SIEMPRE devuelve un array
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
@@ -71,14 +75,56 @@ export default function WaCampanas() {
     setModal("new");
   };
 
+  // Sube una imagen/archivo para una variante y guarda su media_url
+  const uploadImage = async (file, idx) => {
+    if (!file) return;
+    setUploadingIdx(idx);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`${API}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }, // sin Content-Type: lo pone el browser con boundary
+        body: fd,
+      });
+      const d = await r.json();
+      if (d.success && d.data) {
+        setVariants(vs => vs.map((x, j) => j === idx ? {
+          ...x,
+          media_url: d.data.url,
+          media_type: d.data.mimetype?.startsWith("image/") ? "image" : "document",
+          media_filename: d.data.originalname,
+        } : x));
+      } else {
+        alert(d.error || "No se pudo subir la imagen");
+      }
+    } catch (e) {
+      console.error("[WaCampanas] Error subiendo imagen:", e);
+      alert("Error subiendo la imagen");
+    } finally {
+      setUploadingIdx(null);
+    }
+  };
+
+  const removeImage = (idx) => {
+    setVariants(vs => vs.map((x, j) => j === idx ? { ...x, media_url: null, media_type: null, media_filename: null } : x));
+  };
+
   const save = async () => {
     if (!form.name || !form.line_id || !form.list_id) return;
-    if (variants.some(v => !v.message_text?.trim())) return;
+    if (variants.some(v => !v.message_text?.trim() && !v.media_url)) return;
     setSaving(true);
     try {
+      const first = variants[0] || {};
       const r = await fetch(`${API}/campaigns`, {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ ...form, body: variants[0]?.message_text || "" }),
+        body: JSON.stringify({
+          ...form,
+          body: first.message_text || "",
+          media_url: first.media_url || null,
+          media_type: first.media_type || null,
+          media_filename: first.media_filename || null,
+        }),
       });
       const d = await r.json();
       if (d.success && d.data) {
@@ -310,6 +356,33 @@ export default function WaCampanas() {
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-green-400"
                       />
                       <p className="text-xs text-slate-400 mt-1">Variables: {`{{nombre}}, {{variable}}`}</p>
+
+                      {/* Adjuntar imagen */}
+                      <div className="mt-2">
+                        {v.media_url ? (
+                          <div className="flex items-center gap-2">
+                            {v.media_type === "image" ? (
+                              <img src={mediaSrc(v.media_url)} alt={v.media_filename || "adjunto"}
+                                className="w-14 h-14 object-cover rounded-lg border border-slate-200" />
+                            ) : (
+                              <div className="w-14 h-14 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg text-xl">📎</div>
+                            )}
+                            <span className="text-xs text-slate-500 truncate max-w-[140px]">{v.media_filename}</span>
+                            <button onClick={() => removeImage(i)}
+                              className="text-xs text-slate-300 hover:text-red-400">✕ quitar</button>
+                          </div>
+                        ) : (
+                          <label className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-500 font-medium cursor-pointer">
+                            {uploadingIdx === i ? "Subiendo…" : "📎 Adjuntar imagen"}
+                            <input
+                              type="file" accept="image/*,.pdf"
+                              className="hidden"
+                              disabled={uploadingIdx === i}
+                              onChange={e => { uploadImage(e.target.files?.[0], i); e.target.value = ""; }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -356,7 +429,16 @@ export default function WaCampanas() {
                   {detail.messages.map((m, i) => (
                     <div key={m.id} className="bg-slate-50 rounded-xl p-3">
                       <div className="text-xs font-semibold text-slate-500 mb-1">{m.label || `Variante ${i+1}`}</div>
-                      <div className="text-sm text-slate-700 whitespace-pre-wrap">{m.message_text}</div>
+                      {m.message_text && <div className="text-sm text-slate-700 whitespace-pre-wrap">{m.message_text}</div>}
+                      {m.media_url && (
+                        m.media_type === "image" ? (
+                          <img src={mediaSrc(m.media_url)} alt={m.media_filename || "adjunto"}
+                            className="mt-2 max-h-40 rounded-lg border border-slate-200" />
+                        ) : (
+                          <a href={mediaSrc(m.media_url)} target="_blank" rel="noopener noreferrer"
+                            className="mt-2 inline-block text-xs text-blue-500 underline">📎 {m.media_filename || "Ver adjunto"}</a>
+                        )
+                      )}
                     </div>
                   ))}
                 </div>

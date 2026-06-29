@@ -1,7 +1,12 @@
 /**
  * WaChatbots.jsx — Gestión de chatbots (flujos) WhatsApp en el ERP
+ *
+ * El flujo se edita de forma visual (nodos + conexiones) con BotFlowEditor,
+ * sobre el mismo esquema { nodes:[{id,type,data,position}], edges:[{source,target}] }
+ * que interpreta backend/src/services/FlowEngine.js.
  */
 import { useState, useEffect, useCallback } from "react";
+import BotFlowEditor from "../components/botflow/BotFlowEditor";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 const authH = (json = true) => {
@@ -10,18 +15,39 @@ const authH = (json = true) => {
   return h;
 };
 
-const NODE_TYPES = [
-  { type: "message",  label: "Enviar mensaje",      icon: "💬" },
-  { type: "input",    label: "Esperar respuesta",    icon: "⌨️" },
-  { type: "menu",     label: "Menú de opciones",     icon: "📋" },
-  { type: "condition",label: "Condición",            icon: "🔀" },
-  { type: "transfer", label: "Transferir a humano",  icon: "👤" },
-  { type: "end",      label: "Fin del flujo",        icon: "🏁" },
-  { type: "delay",    label: "Esperar (delay)",       icon: "⏱️" },
-  { type: "media",    label: "Enviar multimedia",    icon: "📎" },
-];
+const emptyFlow = {
+  nodes: [{ id: "start", type: "startNode", data: {}, position: { x: 140, y: 40 } }],
+  edges: [],
+};
 
-const emptyFlow = { nodes: [], edges: [] };
+const exampleFlow = () => ({
+  nodes: [
+    { id: "start",   type: "startNode",  data: {}, position: { x: 160, y: 20 } },
+    { id: "saludo",  type: "messageNode", data: { text: "¡Hola {{nombre}}! 👋 Bienvenido a Netlife." }, position: { x: 160, y: 140 } },
+    { id: "menu1",   type: "pollNode", data: {
+        title: "Elige una opción:",
+        options: [
+          { label: "1. Información de planes", nextNodeId: "info" },
+          { label: "2. Soporte técnico",        nextNodeId: "soporte" },
+          { label: "3. Hablar con un asesor",   nextNodeId: "transfer" },
+        ],
+      }, position: { x: 160, y: 280 } },
+    { id: "info",     type: "messageNode",   data: { text: "Tenemos planes desde $25/mes con fibra óptica simétrica." }, position: { x: -60, y: 520 } },
+    { id: "soporte",  type: "waitResponseNode", data: { question: "Cuéntame brevemente tu problema técnico:", variable: "detalle_soporte" }, position: { x: 200, y: 520 } },
+    { id: "transfer", type: "notifyWaNode", data: { targetNumber: "", message: "Cliente {{nombre}} solicita asesor. Último mensaje: {{_lastInput}}" }, position: { x: 460, y: 520 } },
+    { id: "fin",      type: "endNode", data: { farewellText: "¡Gracias por contactarnos! 🙌" }, position: { x: 160, y: 660 } },
+  ],
+  edges: [
+    { source: "start",   target: "saludo",  sourceHandle: "default" },
+    { source: "saludo",  target: "menu1",   sourceHandle: "default" },
+    { source: "menu1",   target: "info",    sourceHandle: "opt-0" },
+    { source: "menu1",   target: "soporte", sourceHandle: "opt-1" },
+    { source: "menu1",   target: "transfer",sourceHandle: "opt-2" },
+    { source: "info",    target: "fin",     sourceHandle: "default" },
+    { source: "soporte", target: "fin",     sourceHandle: "default" },
+    { source: "transfer",target: "fin",     sourceHandle: "default" },
+  ],
+});
 
 export default function WaChatbots() {
   const [bots, setBots]       = useState([]);
@@ -30,10 +56,12 @@ export default function WaChatbots() {
   const [modal, setModal]     = useState(null); // "new" | "edit"
   const [editing, setEditing] = useState(null); // bot being edited
   const [form, setForm]       = useState({ name: "", description: "" });
-  const [flowJson, setFlowJson] = useState(JSON.stringify(emptyFlow, null, 2));
-  const [flowError, setFlowError] = useState("");
+  const [flow, setFlow]       = useState(emptyFlow);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [jsonDraft, setJsonDraft] = useState("");
+  const [jsonError, setJsonError] = useState("");
   const [saving, setSaving]   = useState(false);
-  const [tab, setTab]         = useState("list"); // "list" | "editor"
+  const [tab, setTab]         = useState("list"); // "list" | "flujo"
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -58,8 +86,9 @@ export default function WaChatbots() {
   const openNew = () => {
     setEditing(null);
     setForm({ name: "", description: "" });
-    setFlowJson(JSON.stringify(emptyFlow, null, 2));
-    setFlowError("");
+    setFlow(emptyFlow);
+    setShowAdvanced(false);
+    setJsonError("");
     setModal("new");
     setTab("list");
   };
@@ -67,23 +96,36 @@ export default function WaChatbots() {
   const openEdit = (bot) => {
     setEditing(bot);
     setForm({ name: bot.name, description: bot.description || "" });
-    setFlowJson(JSON.stringify(bot.flow_json || emptyFlow, null, 2));
-    setFlowError("");
+    const f = (bot.flow_json && Array.isArray(bot.flow_json.nodes) && bot.flow_json.nodes.length) ? bot.flow_json : emptyFlow;
+    setFlow(f);
+    setShowAdvanced(false);
+    setJsonError("");
     setModal("edit");
     setTab("list");
   };
 
-  const validateFlow = (json) => {
-    try { JSON.parse(json); setFlowError(""); return true; }
-    catch (e) { setFlowError(e.message); return false; }
+  const openAdvanced = () => {
+    setJsonDraft(JSON.stringify(flow, null, 2));
+    setJsonError("");
+    setShowAdvanced(true);
+  };
+
+  const applyAdvanced = (text) => {
+    setJsonDraft(text);
+    try {
+      const parsed = JSON.parse(text);
+      setJsonError("");
+      setFlow(parsed);
+    } catch (e) {
+      setJsonError(e.message);
+    }
   };
 
   const save = async () => {
     if (!form.name?.trim()) return;
-    if (!validateFlow(flowJson)) return;
     setSaving(true);
     try {
-      const payload = { ...form, flow_json: JSON.parse(flowJson) };
+      const payload = { ...form, flow_json: flow };
       const r = editing
         ? await fetch(`${API}/bots/${editing.id}`, { method: "PUT",  headers: authH(), body: JSON.stringify(payload) })
         : await fetch(`${API}/bots`,               { method: "POST", headers: authH(), body: JSON.stringify(payload) });
@@ -226,8 +268,8 @@ export default function WaChatbots() {
       {/* Modal crear/editar bot */}
       {(modal === "new" || modal === "edit") && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-800">
                 {modal === "new" ? "Nuevo chatbot" : `Editar: ${editing?.name}`}
               </h3>
@@ -235,10 +277,10 @@ export default function WaChatbots() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 p-3 border-b border-slate-100">
-              {[{ key: "list", label: "ℹ️ Datos" }, { key: "editor", label: "🔧 Flujo JSON" }].map(t => (
+            <div className="flex gap-1 px-3 pt-2 border-b border-slate-100">
+              {[{ key: "list", label: "ℹ️ Datos" }, { key: "flujo", label: "🧩 Flujo del bot" }].map(t => (
                 <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-t-lg text-sm font-medium transition-colors ${
                     tab === t.key ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:text-slate-700"
                   }`}>
                   {t.label}
@@ -246,9 +288,9 @@ export default function WaChatbots() {
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-hidden flex flex-col">
               {tab === "list" && (
-                <div className="space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Nombre del bot</label>
                     <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -261,88 +303,54 @@ export default function WaChatbots() {
                       className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-green-400" />
                   </div>
 
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Tipos de nodo disponibles</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {NODE_TYPES.map(nt => (
-                        <div key={nt.type} className="flex items-center gap-2 text-sm text-slate-600">
-                          <span>{nt.icon}</span>
-                          <span className="truncate">{nt.label}</span>
-                          <span className="text-xs text-slate-400 font-mono ml-auto">{nt.type}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700">
-                    <p className="font-semibold mb-1">💡 Estructura de flujo</p>
-                    <p>Ve a la pestaña "Flujo JSON" para definir los nodos y conexiones del bot. Cada nodo tiene: <code>id</code>, <code>type</code>, <code>data</code>, y opcionalmente <code>next</code>.</p>
+                    <p className="font-semibold mb-1">💡 Diseña el flujo</p>
+                    <p>Ve a la pestaña "Flujo del bot" para armar la conversación arrastrando bloques al lienzo y conectándolos entre sí.</p>
                   </div>
                 </div>
               )}
 
-              {tab === "editor" && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Flow JSON</label>
-                  <textarea
-                    rows={18}
-                    value={flowJson}
-                    onChange={e => { setFlowJson(e.target.value); validateFlow(e.target.value); }}
-                    spellCheck={false}
-                    className={`mt-1 w-full border rounded-xl px-3 py-2 text-xs font-mono resize-none focus:outline-none ${
-                      flowError ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-green-400"
-                    }`}
-                  />
-                  {flowError && (
-                    <p className="text-xs text-red-500 mt-1">❌ JSON inválido: {flowError}</p>
-                  )}
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => {
-                        const example = {
-                          nodes: [
-                            { id: "start", type: "message", data: { text: "¡Hola {{nombre}}! ¿En qué puedo ayudarte?" }, next: "menu1" },
-                            { id: "menu1", type: "menu", data: { text: "Elige una opción:", options: [
-                              { label: "1. Información", value: "1", next: "info" },
-                              { label: "2. Soporte",     value: "2", next: "soporte" },
-                              { label: "3. Hablar con un agente", value: "3", next: "transfer" },
-                            ]}, default: "menu1" },
-                            { id: "info",     type: "message",  data: { text: "Aquí está nuestra información..." }, next: "end" },
-                            { id: "soporte",  type: "message",  data: { text: "Nuestro soporte está disponible de 8am-6pm." }, next: "end" },
-                            { id: "transfer", type: "transfer", data: { message: "Conectando con un agente…" } },
-                            { id: "end",      type: "end",      data: { text: "¡Gracias por contactarnos!" } },
-                          ],
-                          edges: [],
-                        };
-                        setFlowJson(JSON.stringify(example, null, 2));
-                        setFlowError("");
-                      }}
-                      className="text-xs border border-slate-200 text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      📋 Cargar ejemplo
-                    </button>
-                    <button
-                      onClick={() => {
-                        try {
-                          const parsed = JSON.parse(flowJson);
-                          setFlowJson(JSON.stringify(parsed, null, 2));
-                          setFlowError("");
-                        } catch (e) {
-                          setFlowError(e.message);
-                        }
-                      }}
-                      className="text-xs border border-slate-200 text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ✨ Formatear
-                    </button>
+              {tab === "flujo" && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 flex-shrink-0">
+                    <p className="text-xs text-slate-400">{flow.nodes?.length || 0} nodos · {flow.edges?.length || 0} conexiones</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setFlow(exampleFlow())}
+                        className="text-xs border border-slate-200 text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg transition-colors"
+                      >📋 Cargar ejemplo</button>
+                      <button
+                        onClick={() => (showAdvanced ? setShowAdvanced(false) : openAdvanced())}
+                        className="text-xs border border-slate-200 text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg transition-colors"
+                      >{showAdvanced ? "🧩 Ver lienzo" : "🔧 Ver JSON"}</button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-h-0">
+                    {showAdvanced ? (
+                      <div className="p-4 h-full overflow-y-auto">
+                        <textarea
+                          rows={20}
+                          value={jsonDraft}
+                          onChange={e => applyAdvanced(e.target.value)}
+                          spellCheck={false}
+                          className={`w-full h-full border rounded-xl px-3 py-2 text-xs font-mono resize-none focus:outline-none ${
+                            jsonError ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-green-400"
+                          }`}
+                        />
+                        {jsonError && <p className="text-xs text-red-500 mt-1">❌ JSON inválido: {jsonError}</p>}
+                      </div>
+                    ) : (
+                      <BotFlowEditor value={flow} onChange={setFlow} />
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="p-5 border-t border-slate-100 flex gap-3 justify-end">
+            <div className="p-4 border-t border-slate-100 flex gap-3 justify-end flex-shrink-0">
               <button onClick={() => setModal(null)} className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">Cancelar</button>
-              <button onClick={save} disabled={saving || !form.name?.trim() || !!flowError}
+              <button onClick={save} disabled={saving || !form.name?.trim() || (showAdvanced && !!jsonError)}
                 className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
                 {saving ? "Guardando…" : (modal === "new" ? "Crear bot" : "Guardar cambios")}
               </button>

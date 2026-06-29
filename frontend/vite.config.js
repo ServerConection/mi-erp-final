@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@xyflow') || id.includes('zustand') || id.includes('classcat')) return 'vendor-flow';
           if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
           if (id.includes('xlsx') || id.includes('jszip')) return 'vendor-xlsx';
           if (id.includes('socket.io-client') || id.includes('engine.io-client')) return 'vendor-socket';

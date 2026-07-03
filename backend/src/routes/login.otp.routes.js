@@ -160,8 +160,8 @@ router.post('/verify-otp', async (req, res) => {
 
       // 🔥 FIX: ORDER BY id DESC LIMIT 1 → siempre el OTP más reciente
       otpResult = await pool.query(
-        `SELECT otp_code, expira_en FROM otp_login 
-         WHERE usuario_id = $1 
+        `SELECT otp_code, expira_en, (expira_en > NOW()) AS vigente FROM otp_login
+         WHERE usuario_id = $1
          ORDER BY expira_en DESC LIMIT 1`,
         [usuario_id]
       );
@@ -178,8 +178,8 @@ router.post('/verify-otp', async (req, res) => {
       }
 
       otpResult = await pool.query(
-        `SELECT otp_code, expira_en FROM otp_login 
-         WHERE usuario_id = $1 
+        `SELECT otp_code, expira_en, (expira_en > NOW()) AS vigente FROM otp_login
+         WHERE usuario_id = $1
          ORDER BY expira_en DESC LIMIT 1`,
         [userResult.rows[0].id]
       );
@@ -193,11 +193,10 @@ router.post('/verify-otp', async (req, res) => {
 
     const otpRow = otpResult.rows[0];
 
-    // 🔥 FIX: comparar timestamps con margen de 30 segundos para lag de red
-    const ahora = new Date();
-    const expira = new Date(otpRow.expira_en);
-
-    if (ahora > expira) {
+    // 🔥 FIX: la vigencia la calcula la propia BD (expira_en > NOW()) para
+    // evitar desfases de zona horaria entre Postgres y Node (causaba
+    // "OTP expirado" inmediato).
+    if (!otpRow.vigente) {
       await pool.query('DELETE FROM otp_login WHERE usuario_id = $1', [user.id]);
       return res.status(401).json({ success: false, error: 'OTP expirado. Solicita uno nuevo.' });
     }

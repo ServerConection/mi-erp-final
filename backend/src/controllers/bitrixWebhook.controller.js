@@ -110,7 +110,9 @@ const listarLeads = async (req, res) => {
     params.push(parseInt(limit), parseInt(offset));
 
     const r = await pool.query(
-      `SELECT *
+      `SELECT *,
+              to_char(created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+              to_char(updated_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS updated_at
        FROM bitrix_webhook_leads
        ${where}
        ORDER BY updated_at DESC
@@ -132,7 +134,8 @@ const historialLead = async (req, res) => {
       return res.status(400).json({ success: false, error: 'bitrix_id es requerido' });
     }
     const r = await pool.query(
-      `SELECT *
+      `SELECT *,
+              to_char(created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS created_at
        FROM bitrix_webhook_leads_historial
        WHERE bitrix_id = $1
        ORDER BY created_at ASC`,

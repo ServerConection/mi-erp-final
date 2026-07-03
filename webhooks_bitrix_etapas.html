@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Webhooks Bitrix24 por etapa — NOVONET</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --ok: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px 0;
+  }
+  p.subtitle {
+    color: var(--muted);
+    margin: 0 0 20px 0;
+    font-size: 14px;
+  }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  input[type="text"] {
+    flex: 1;
+    min-width: 220px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 14px;
+  }
+  .contador {
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  th {
+    background: #111827;
+    color: var(--muted);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+  }
+  td.etapa {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  td.slug code, td.url code {
+    background: #0b1220;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 12px;
+    word-break: break-all;
+  }
+  td.url {
+    max-width: 480px;
+  }
+  button.copiar {
+    background: var(--accent);
+    color: #001018;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button.copiar.copiado {
+    background: var(--ok);
+  }
+  tr:hover td { background: #24324a; }
+  .nota {
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .nota code { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Webhooks Bitrix24 por etapa — NOVONET</h1>
+<p class="subtitle">Click en "Copiar URL" y pega directo en el Webhook saliente de esa etapa en el Bitrix de NOVONET. Las 53 URLs apuntan al mismo endpoint; solo cambia el slug de la etapa (empresa ya fija en <code>novonet</code>).</p>
+
+<div class="toolbar">
+  <input type="text" id="buscador" placeholder="Buscar etapa... (ej. contacto, descarte, remarketing)">
+  <span class="contador" id="contador"></span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Etapa en Bitrix</th>
+      <th>Slug</th>
+      <th>URL</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="tabla-body"></tbody>
+</table>
+
+<div class="nota">
+  Base: <code>https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php</code> · Token de seguridad ya incluido en cada URL.
+  Si agregas una etapa nueva que no está en esta lista, no hace falta tocar el backend: usa cualquier slug nuevo en <code>&etapa=</code>.
+</div>
+
+<script>
+const BASE  = 'https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php';
+const TOKEN = 'vidika-bx-8fK2mQzR7pW4nL9x';
+
+// [nombre visible en Bitrix, slug usado en event= y etapa=]
+const ETAPAS = [
+  ['ATC', 'atc'],
+  ['ATC/SOPORTE', 'atc_soporte'],
+  ['CLIENTE 2 HORAS', 'cliente_2_horas'],
+  ['CLIENTE 4 HORAS', 'cliente_4_horas'],
+  ['CLIENTE 6 HORAS', 'cliente_6_horas'],
+  ['CLIENTE 8 HORAS', 'cliente_8_horas'],
+  ['CLIENTE CON ACUERDO', 'cliente_con_acuerdo'],
+  ['CLIENTE DISCAPACIDAD', 'cliente_discapacidad'],
+  ['CONTACTO NUEVO', 'contacto_nuevo'],
+  ['CONTRATO NETLIFE', 'contrato_netlife'],
+  ['DESCARTE', 'descarte'],
+  ['DESISTE DE COMPRA', 'desiste_de_compra'],
+  ['DOCUMENTOS PENDIENTES', 'documentos_pendientes'],
+  ['DUPLICADO', 'duplicado'],
+  ['FUERA DE COBERTURA', 'fuera_de_cobertura'],
+  ['GESTIÓN DIARIA', 'gestion_diaria'],
+  ['INNEGOCIABLE', 'innegociable'],
+  ['MANTIENE PROVEEDOR', 'mantiene_proveedor'],
+  ['NO INTERESA COSTO PLAN', 'no_interesa_costo_plan'],
+  ['NO VOLVER A CONTACTAR', 'no_volver_a_contactar'],
+  ['OPORTUNIDADES', 'oportunidades'],
+  ['OPORTUNIDADES SUPERVISOR', 'oportunidades_supervisor'],
+  ['OTRO ASESOR NOVONET', 'otro_asesor_novonet'],
+  ['OTRO PROVEEDOR', 'otro_proveedor'],
+  ['PENDIENTE CIERRE', 'pendiente_cierre'],
+  ['POSTVENTA NOVONET', 'postventa_novonet'],
+  ['VENTA SUBIDA', 'venta_subida'],
+  ['ZONAS PELIGROSAS', 'zonas_peligrosas'],
+  ['OPORTUNIDADES SUPERVISORES MES ACTUAL', 'oportunidades_supervisores_mes_actual'],
+  ['ZONA PELIGROSA', 'zona_peligrosa'],
+  ['VOLVER A LLAMAR NO CONTESTA', 'volver_a_llamar_no_contesta'],
+  ['SEGUIMIENTO NEGOCIACION', 'seguimiento_negociacion'],
+  ['ENVIO REQUISITOS/DOCUMENTOS PENDIENTES', 'envio_requisitos_documentos_pendientes'],
+  ['GESTION DIARIA/PENDIENTE CIERRE', 'gestion_diaria_pendiente_cierre'],
+  ['CONTACTO NUEVO /SUPERVISOR', 'contacto_nuevo_supervisor'],
+  ['MAS DE 15 DIAS PARA CIERRE', 'mas_de_15_dias_para_cierre'],
+  ['DESCARTE REMARKETIZADO', 'descarte_remarketizado'],
+  ['NO CONTESTA 15 MINUTOS', 'no_contesta_15_minutos'],
+  ['DUPLLICADO', 'dupllicado'],
+  ['CONTRATO NETLIFE OTRO ASESOR COMPAÑERO', 'contrato_netlife_otro_asesor_companero'],
+  ['CONTRATO NETLIFE POR OTRO CANAL', 'contrato_netlife_por_otro_canal'],
+  ['POSTVENTA', 'postventa'],
+  ['DESCARTE PLAN DE 200', 'descarte_plan_de_200'],
+  ['NO INTERESA COSTO INSTALACIÓN', 'no_interesa_costo_instalacion'],
+  ['VENTA DIRECTA ECUANET', 'venta_directa_ecuanet'],
+  ['REGULARIZACION', 'regularizacion'],
+  ['REMARKETING DIRARIO ARIEL CURAY', 'remarketing_dirario_ariel_curay'],
+  ['NO CONTESTA 30 MINUTOS', 'no_contesta_30_minutos'],
+  ['URGENTE GESTION SUPERVISOR', 'urgente_gestion_supervisor'],
+  ['REMARKETING', 'remarketing'],
+  ['CONTRATO PARAMOUNT', 'contrato_paramount'],
+  ['PARAMOUNT SEGUMIENTO POR CERRAR', 'paramount_segumiento_por_cerrar'],
+  ['NO CONTESTA 60 MINUTOS', 'no_contesta_60_minutos'],
+];
+
+// Parámetros comunes a las 53 URLs (placeholders de Bitrix, sin URL-encodear:
+// Bitrix los reemplaza tal cual antes de disparar la petición).
+const COMUNES = [
+  ['phone', '{{Contacto: Teléfono (texto)}}'],
+  ['source', '{{Origen}}'],
+  ['city', '{{Ciudad}}'],
+  ['repeated', '{{Negociación repetida > printable}}'],
+  ['responsible', '{{Persona responsable}}'],
+  ['utm_source', '{{UTM Source}}'],
+  ['utm_medium', '{{UTM Medium}}'],
+  ['utm_campaign', '{{UTM Campaign}}'],
+  ['utm_content', '{{UTM Content}}'],
+  ['utm_term', '{{UTM Term}}'],
+  ['fecha_venta_subida', '{{Fecha Venta Subida}}'],
+  ['fecha_concretar', '{{Fecha Concretar}}'],
+  ['modificado_por', '{{Modificado por}}'],
+  ['creado_por', '{{Negociación creada por}}'],
+  ['creado_por_friendly', '{{Negociación creada por > friendly}}'],
+  ['pipeline', '{{Pipeline (texto)}}'],
+  ['etapa_bitrix', '{{Etapa (texto)}}'],
+  ['comentario', '{{Comentario}}'],
+  ['iniciado_el', '{{Iniciado el}}'],
+  ['otro_proveedor', '{{Otro proveedor (texto)}}'],
+  ['razon_descarte', '{{Razon Descarte (texto)}}'],
+  ['innegociable', '{{Innegociable (texto)}}'],
+  ['volver_a_llamar', '{{Volver a llamar (texto)}}'],
+  ['documentos_pendientes', '{{Documentos Pendientes (texto)}}'],
+  ['motivo_atc', '{{MOTIVO ATC (texto)}}'],
+  ['id', '{{ID}}'],
+  ['id_conversacion', '{{ID_CONVERSACION}}'],
+];
+
+const EMPRESA = 'novonet';
+
+function construirUrl(slug) {
+  const partes = [`event=${slug}`, `etapa=${slug}`, `empresa=${EMPRESA}`];
+  COMUNES.forEach(([clave, valor]) => partes.push(`${clave}=${valor}`));
+  partes.push(`token=${TOKEN}`);
+  return `${BASE}?${partes.join('&')}`;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+const filas = ETAPAS.map(([nombre, slug]) => ({ nombre, slug, url: construirUrl(slug) }));
+
+function render(filtro) {
+  const tbody = document.getElementById('tabla-body');
+  const term = (filtro || '').trim().toLowerCase();
+  const visibles = filas.filter(f => !term || f.nombre.toLowerCase().includes(term) || f.slug.includes(term));
+
+  tbody.innerHTML = visibles.map((f, i) => `
+    <tr>
+      <td class="etapa">${escapeHtml(f.nombre)}</td>
+      <td class="slug"><code>${escapeHtml(f.slug)}</code></td>
+      <td class="url"><code>${escapeHtml(f.url)}</code></td>
+      <td><button class="copiar" data-idx="${filas.indexOf(f)}">Copiar URL</button></td>
+    </tr>
+  `).join('');
+
+  document.getElementById('contador').textContent = `${visibles.length} de ${filas.length} etapas`;
+
+  tbody.querySelectorAll('button.copiar').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = filas[parseInt(btn.dataset.idx)].url;
+      copiarTexto(url);
+      btn.textContent = 'Copiado ✓';
+      btn.classList.add('copiado');
+      setTimeout(() => { btn.textContent = 'Copiar URL'; btn.classList.remove('copiado'); }, 1500);
+    });
+  });
+}
+
+function copiarTexto(texto) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).catch(() => copiarFallback(texto));
+  } else {
+    copiarFallback(texto);
+  }
+}
+
+function copiarFallback(texto) {
+  const ta = document.createElement('textarea');
+  ta.value = texto;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+document.getElementById('buscador').addEventListener('input', (e) => render(e.target.value));
+render('');
+</script>
+
+</body>
+</html>

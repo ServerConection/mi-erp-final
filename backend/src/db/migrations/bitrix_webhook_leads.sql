@@ -216,3 +216,53 @@ ALTER TABLE bitrix_webhook_leads_historial
 CREATE INDEX IF NOT EXISTS idx_bwlh_bitrix_id  ON bitrix_webhook_leads_historial(bitrix_id);
 CREATE INDEX IF NOT EXISTS idx_bwlh_created_at ON bitrix_webhook_leads_historial(created_at);
 CREATE INDEX IF NOT EXISTS idx_bwlh_etapa      ON bitrix_webhook_leads_historial(etapa);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 5) MULTI-EMPRESA (Novonet + Velsa son 2 cuentas Bitrix distintas).
+--    El mismo bitrix_id puede repetirse entre cuentas, así que la llave
+--    de identidad del lead pasa de ser solo "bitrix_id" a "(empresa, bitrix_id)".
+--    Los datos existentes (todos de antes de este cambio) se marcan como
+--    'novonet' por defecto — es la única cuenta que estaba activa hasta ahora.
+-- ═══════════════════════════════════════════════════════════════════
+
+ALTER TABLE bitrix_webhook_leads
+  ADD COLUMN IF NOT EXISTS empresa VARCHAR(30) NOT NULL DEFAULT 'novonet';
+
+ALTER TABLE bitrix_webhook_leads_historial
+  ADD COLUMN IF NOT EXISTS empresa VARCHAR(30) NOT NULL DEFAULT 'novonet';
+
+-- Elimina cualquier UNIQUE que sea SOLO sobre bitrix_id (de la versión anterior,
+-- previa a multi-empresa) para poder reemplazarlo por la llave compuesta.
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT c.conname
+    FROM pg_constraint c
+    WHERE c.conrelid = 'bitrix_webhook_leads'::regclass
+      AND c.contype = 'u'
+      AND c.conkey = ARRAY[
+        (SELECT a.attnum FROM pg_attribute a
+         WHERE a.attrelid = 'bitrix_webhook_leads'::regclass AND a.attname = 'bitrix_id')
+      ]
+  LOOP
+    EXECUTE format('ALTER TABLE bitrix_webhook_leads DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END $$;
+
+-- Agrega la llave única compuesta (empresa, bitrix_id) si todavía no existe
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'bitrix_webhook_leads'::regclass
+      AND conname = 'bitrix_webhook_leads_empresa_bitrix_id_key'
+  ) THEN
+    ALTER TABLE bitrix_webhook_leads
+      ADD CONSTRAINT bitrix_webhook_leads_empresa_bitrix_id_key UNIQUE (empresa, bitrix_id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_bwl_empresa  ON bitrix_webhook_leads(empresa);
+CREATE INDEX IF NOT EXISTS idx_bwlh_empresa ON bitrix_webhook_leads_historial(empresa);

@@ -1,6 +1,8 @@
 # Webhooks de Bitrix24 por etapa — VELSA VENTAS NETLIFE
 
-El mismo endpoint del backend (`/bitrix_webhook.php`) sirve para las 53 etapas. Todas las URLs son idénticas EXCEPTO el slug de la etapa, que aparece 2 veces (`event=` y `etapa=`). Copia la plantilla de abajo, reemplaza `SLUG_DE_LA_ETAPA` por el valor de la tabla (en los 2 lugares) y esa es la URL para pegar en esa automatización de Bitrix.
+> **Actualización — multi-empresa:** el mismo endpoint ahora sirve para 2 Bitrix distintos (Novonet y Velsa). Cada URL debe llevar también `&empresa=novonet` o `&empresa=velsa` (si falta, el backend asume `novonet` por retro-compatibilidad con las automatizaciones ya configuradas). Para armar las URLs sin errores, usa las herramientas interactivas en la raíz del repo: **`webhooks_bitrix_etapas.html`** (Novonet, ya con `empresa=novonet`) y **`webhooks_bitrix_etapas_velsa.html`** (Velsa) — cada una tiene un botón "Copiar URL" por etapa. Esta guía en texto queda como referencia de las URLs de Novonet, pero las de Velsa solo están en su HTML.
+
+El mismo endpoint del backend (`/bitrix_webhook.php`) sirve para las 53 etapas de Novonet. Todas las URLs son idénticas EXCEPTO el slug de la etapa, que aparece 2 veces (`event=` y `etapa=`). Copia la plantilla de abajo, reemplaza `SLUG_DE_LA_ETAPA` por el valor de la tabla (en los 2 lugares) y esa es la URL para pegar en esa automatización de Bitrix.
 
 ## Plantilla (reemplaza `SLUG_DE_LA_ETAPA` en los 2 lugares marcados)
 

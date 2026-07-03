@@ -141,7 +141,7 @@
 
 <script>
 const BASE  = 'https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php';
-const TOKEN = 'vidika-bx-8fK2mQzR7pW4nL9x';
+const TOKEN = 'bx-8fK2mQzR7pW4nL9x';
 
 // [nombre visible en Bitrix, slug usado en event= y etapa=]
 const ETAPAS = [
@@ -206,8 +206,8 @@ const COMUNES = [
   ['phone', '{{Contacto: Teléfono (texto)}}'],
   ['source', '{{Origen}}'],
   ['city', '{{Ciudad}}'],
-  ['repeated', '{{Negociación repetida > printable}}'],
-  ['responsible', '{{Persona responsable}}'],
+  ['repeated', '{{Negociación repetida}}'],
+  ['responsible', '{{Persona responsable (texto)}}'],
   ['utm_source', '{{UTM Source}}'],
   ['utm_medium', '{{UTM Medium}}'],
   ['utm_campaign', '{{UTM Campaign}}'],
@@ -215,8 +215,8 @@ const COMUNES = [
   ['utm_term', '{{UTM Term}}'],
   ['fecha_venta_subida', '{{Fecha Venta Subida}}'],
   ['fecha_concretar', '{{Fecha Concretar}}'],
-  ['modificado_por', '{{Modificado por}}'],
-  ['creado_por', '{{Negociación creada por}}'],
+  ['modificado_por', '{{Modificado por > friendly}}'],
+  ['creado_por', '{{Negociación creada por > friendly}}'],
   ['creado_por_friendly', '{{Negociación creada por > friendly}}'],
   ['pipeline', '{{Pipeline (texto)}}'],
   ['etapa_bitrix', '{{Etapa (texto)}}'],

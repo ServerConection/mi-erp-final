@@ -7,13 +7,13 @@ El mismo endpoint del backend (`/bitrix_webhook.php`) sirve para las 53 etapas d
 ## Plantilla (reemplaza `SLUG_DE_LA_ETAPA` en los 2 lugares marcados)
 
 ```
-https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php?event=SLUG_DE_LA_ETAPA&etapa=SLUG_DE_LA_ETAPA&phone={{Contacto: Teléfono (texto)}}&id={{ID}}&source={{Origen}}&city={{Ciudad}}&repeated={{Negociación repetida > printable}}&responsible={{Persona responsable}}&utm_source={{UTM Source}}&utm_medium={{UTM Medium}}&utm_campaign={{UTM Campaign}}&utm_content={{UTM Content}}&utm_term={{UTM Term}}&fecha_venta_subida={{Fecha Venta Subida}}&fecha_concretar={{Fecha Concretar}}&modificado_por={{Modificado por}}&creado_por={{Negociación creada por}}&creado_por_friendly={{Negociación creada por > friendly}}&pipeline={{Pipeline (texto)}}&etapa_bitrix={{Etapa (texto)}}&comentario={{Comentario}}&iniciado_el={{Iniciado el}}&otro_proveedor={{Otro proveedor (texto)}}&razon_descarte={{Razon Descarte (texto)}}&innegociable={{Innegociable (texto)}}&volver_a_llamar={{Volver a llamar (texto)}}&documentos_pendientes={{Documentos Pendientes (texto)}}&motivo_atc={{MOTIVO ATC (texto)}}&id_conversacion={{ID_CONVERSACION}}&token=vidika-bx-8fK2mQzR7pW4nL9x
+https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php?event=SLUG_DE_LA_ETAPA&etapa=SLUG_DE_LA_ETAPA&phone={{Contacto: Teléfono (texto)}}&id={{ID}}&source={{Origen}}&city={{Ciudad}}&repeated={{Negociación repetida}}&responsible={{Persona responsable (texto)}}&utm_source={{UTM Source}}&utm_medium={{UTM Medium}}&utm_campaign={{UTM Campaign}}&utm_content={{UTM Content}}&utm_term={{UTM Term}}&fecha_venta_subida={{Fecha Venta Subida}}&fecha_concretar={{Fecha Concretar}}&modificado_por={{Modificado por > friendly}}&creado_por={{Negociación creada por > friendly}}&creado_por_friendly={{Negociación creada por > friendly}}&pipeline={{Pipeline (texto)}}&etapa_bitrix={{Etapa (texto)}}&comentario={{Comentario}}&iniciado_el={{Iniciado el}}&otro_proveedor={{Otro proveedor (texto)}}&razon_descarte={{Razon Descarte (texto)}}&innegociable={{Innegociable (texto)}}&volver_a_llamar={{Volver a llamar (texto)}}&documentos_pendientes={{Documentos Pendientes (texto)}}&motivo_atc={{MOTIVO ATC (texto)}}&id_conversacion={{ID_CONVERSACION}}&token=bx-8fK2mQzR7pW4nL9x
 ```
 
 Ejemplo ya armado para "CONTACTO NUEVO" (slug `contacto_nuevo`):
 
 ```
-https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php?event=contacto_nuevo&etapa=contacto_nuevo&phone={{Contacto: Teléfono (texto)}}&id={{ID}}&source={{Origen}}&city={{Ciudad}}&repeated={{Negociación repetida > printable}}&responsible={{Persona responsable}}&utm_source={{UTM Source}}&utm_medium={{UTM Medium}}&utm_campaign={{UTM Campaign}}&utm_content={{UTM Content}}&utm_term={{UTM Term}}&fecha_venta_subida={{Fecha Venta Subida}}&fecha_concretar={{Fecha Concretar}}&modificado_por={{Modificado por}}&creado_por={{Negociación creada por}}&creado_por_friendly={{Negociación creada por > friendly}}&pipeline={{Pipeline (texto)}}&etapa_bitrix={{Etapa (texto)}}&comentario={{Comentario}}&iniciado_el={{Iniciado el}}&otro_proveedor={{Otro proveedor (texto)}}&razon_descarte={{Razon Descarte (texto)}}&innegociable={{Innegociable (texto)}}&volver_a_llamar={{Volver a llamar (texto)}}&documentos_pendientes={{Documentos Pendientes (texto)}}&motivo_atc={{MOTIVO ATC (texto)}}&id_conversacion={{ID_CONVERSACION}}&token=vidika-bx-8fK2mQzR7pW4nL9x
+https://erp-backend-v1-qhk2.onrender.com/bitrix_webhook.php?event=contacto_nuevo&etapa=contacto_nuevo&phone={{Contacto: Teléfono (texto)}}&id={{ID}}&source={{Origen}}&city={{Ciudad}}&repeated={{Negociación repetida}}&responsible={{Persona responsable (texto)}}&utm_source={{UTM Source}}&utm_medium={{UTM Medium}}&utm_campaign={{UTM Campaign}}&utm_content={{UTM Content}}&utm_term={{UTM Term}}&fecha_venta_subida={{Fecha Venta Subida}}&fecha_concretar={{Fecha Concretar}}&modificado_por={{Modificado por > friendly}}&creado_por={{Negociación creada por > friendly}}&creado_por_friendly={{Negociación creada por > friendly}}&pipeline={{Pipeline (texto)}}&etapa_bitrix={{Etapa (texto)}}&comentario={{Comentario}}&iniciado_el={{Iniciado el}}&otro_proveedor={{Otro proveedor (texto)}}&razon_descarte={{Razon Descarte (texto)}}&innegociable={{Innegociable (texto)}}&volver_a_llamar={{Volver a llamar (texto)}}&documentos_pendientes={{Documentos Pendientes (texto)}}&motivo_atc={{MOTIVO ATC (texto)}}&id_conversacion={{ID_CONVERSACION}}&token=bx-8fK2mQzR7pW4nL9x
 ```
 
 ## Tabla de slugs (las 53 etapas)
@@ -83,8 +83,8 @@ Además de los datos originales (teléfono, origen, ciudad, responsable, UTMs), 
 | `etapa_bitrix` | `{{Etapa (texto)}}` — nombre real de la etapa que reporta Bitrix (útil para comparar contra nuestro slug manual) |
 | `fecha_venta_subida` | `{{Fecha Venta Subida}}` |
 | `fecha_concretar` | `{{Fecha Concretar}}` |
-| `modificado_por` | `{{Modificado por}}` |
-| `creado_por` | `{{Negociación creada por}}` |
+| `modificado_por` | `{{Modificado por > friendly}}` |
+| `creado_por` | `{{Negociación creada por > friendly}}` |
 | `creado_por_friendly` | `{{Negociación creada por > friendly}}` |
 | `pipeline` | `{{Pipeline (texto)}}` |
 | `comentario` | `{{Comentario}}` |
@@ -97,7 +97,9 @@ Además de los datos originales (teléfono, origen, ciudad, responsable, UTMs), 
 | `motivo_atc` | `{{MOTIVO ATC (texto)}}` |
 | `id_conversacion` | `{{ID_CONVERSACION}}` |
 
-No se duplicó `{{Contacto: Teléfono (texto)}}` (ya estaba como `phone`) ni `{{Origen}}` (ya estaba como `source`). `{{Negociación repetida > printable}}` reemplazó a la versión plana que se usaba antes bajo el mismo parámetro `repeated`.
+No se duplicó `{{Contacto: Teléfono (texto)}}` (ya estaba como `phone`) ni `{{Origen}}` (ya estaba como `source`).
+
+**Actualización de campos (03/07/2026):** `responsible` ahora usa `{{Persona responsable (texto)}}` (antes `{{Persona responsable}}`), `modificado_por` usa `{{Modificado por > friendly}}` (antes `{{Modificado por}}`), y `creado_por` usa `{{Negociación creada por > friendly}}` (antes `{{Negociación creada por}}` sin " > friendly"). Nota: `creado_por` y `creado_por_friendly` quedan con el mismo placeholder — es intencional, así lo pidió el usuario.
 
 ## Cómo funciona la trazabilidad
 
@@ -109,7 +111,7 @@ No se duplicó `{{Contacto: Teléfono (texto)}}` (ya estaba como `phone`) ni `{{
 ## Antes de activar los webhooks
 
 1. Ejecutar `backend/src/db/migrations/bitrix_webhook_leads.sql` en la Postgres de Render (`bddgeneral`). Es seguro volver a correrlo aunque ya lo hayas ejecutado antes (usa `IF NOT EXISTS` en todo, incluidas las columnas nuevas).
-2. En Render → `erp-backend-v1-qhk2` → Environment, agregar `BITRIX_WEBHOOK_TOKEN=vidika-bx-8fK2mQzR7pW4nL9x` (mismo valor que ya está en `backend/.env`).
+2. En Render → `erp-backend-v1-qhk2` → Environment, agregar/actualizar `BITRIX_WEBHOOK_TOKEN=bx-8fK2mQzR7pW4nL9x` (mismo valor que ya está en `backend/.env`). **Ojo:** si cambias este token con automatizaciones ya activas en Bitrix, esas URLs viejas (con el token anterior) empiezan a fallar con 401 hasta que las actualices también con el token nuevo.
 3. Commit + push de los cambios en `backend/` para que Render redeploye.
 4. En cada etapa de Bitrix24 (Automatización → Webhook saliente), pegar la URL armada a partir de la plantilla + el slug de la tabla.
 

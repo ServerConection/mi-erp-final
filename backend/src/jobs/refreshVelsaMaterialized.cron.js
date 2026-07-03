@@ -43,9 +43,11 @@ const refreshMaterializedView = async () => {
 };
 
 // Ejecutar refresco cada 15 minutos
+// ⛔ DESACTIVADO temporalmente (scheduled: false) — el refresh tardaba >90s
+// y contribuyó a la caída de la BD. Para reactivar: quitar { scheduled: false }.
 const job = cron.schedule('*/15 * * * *', () => {
   refreshMaterializedView();
-});
+}, { scheduled: false });
 
 // Ejecutar refresco inicial al iniciar la aplicación
 const runInitialRefresh = async () => {

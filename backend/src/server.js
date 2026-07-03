@@ -31,7 +31,8 @@ initSocket(server);
 server.listen(process.env.PORT, async () => {
   console.log('Backend corriendo en http://localhost:' + process.env.PORT);
   await initAlertas();
-  await refreshMaterializedView();
+  // ⛔ Refresh VELSA desactivado temporalmente (tumbaba la BD). Reactivar cuando
+  // se optimice la vista: await refreshMaterializedView();
   await refreshRedesMVs();
   iniciarWhatsApp();
 });

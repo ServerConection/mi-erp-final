@@ -166,6 +166,7 @@ export default function CoverageChecker() {
   // Persiste en PostgreSQL: sobrevive reinicios del servidor.
   // Se muestra a TODOS los usuarios para que sepan si el sistema está listo.
   const [coverageStatus, setCoverageStatus] = useState(null); // {zonesLoaded, fileName, loadedAt}
+  const [retryingLinks, setRetryingLinks] = useState(false);
 
   // ── Verificar estado de la API ──────────────────────────────────────────────
   useEffect(() => {
@@ -174,6 +175,14 @@ export default function CoverageChecker() {
     const timer = setInterval(checkAPIStatus, 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  // Mientras se están resolviendo NetworkLinks (mapas externos) en el backend,
+  // refresca el estado cada 5s para que el contador de "resueltos" avance solo.
+  useEffect(() => {
+    if (!coverageStatus?.networkLinks?.loading) return;
+    const timer = setInterval(fetchCoverageStatus, 5_000);
+    return () => clearInterval(timer);
+  }, [coverageStatus?.networkLinks?.loading]);
 
   async function checkAPIStatus() {
     try {
@@ -192,13 +201,34 @@ export default function CoverageChecker() {
       if (r.ok) {
         const data = await r.json();
         setCoverageStatus({
-          zonesLoaded: data.zonesLoaded || 0,
-          fileName:    data.fileName   || null,
-          loadedAt:    data.loadedAt   || null,
+          zonesLoaded:  data.zonesLoaded || 0,
+          fileName:     data.fileName   || null,
+          loadedAt:     data.loadedAt   || null,
+          byType:       data.byType     || {},
+          networkLinks: data.networkLinks || null, // { total, resolved, failed, loading }
         });
       }
     } catch {
       // silencioso — no crítico
+    }
+  }
+
+  // ── Reintentar NetworkLinks fallidos (solo admin) ───────────────────────────
+  async function retryLinks() {
+    setRetryingLinks(true);
+    try {
+      const r = await fetch(`${API_URL}/retry-links`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message || "Error al reintentar enlaces");
+      // Refrescar estado: el polling cada 5s se activa solo cuando loading=true
+      await fetchCoverageStatus();
+    } catch (err) {
+      setUploadMsg({ type: "err", text: `❌ ${err.message}` });
+    } finally {
+      setRetryingLinks(false);
     }
   }
 
@@ -317,10 +347,25 @@ export default function CoverageChecker() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Parser KML en el navegador (regex global — captura TODOS los polígonos)
+  // Parser KML en el navegador (regex global — captura TODOS los elementos)
   // Estrategia: escanear el KML completo buscando <coordinates> en cualquier
-  // nesting (Placemark, MultiGeometry, Folder, etc.) para no perder zonas.
+  // nesting (Placemark, MultiGeometry, Folder, etc.) para no perder ninguno.
+  // Antes se descartaba todo lo que tuviera menos de 3 coordenadas (Point,
+  // LineString), lo que dejaba fuera ~65k de los ~88k elementos del KMZ.
+  // Ahora se clasifican por tipo y se conservan todos; además se recolectan
+  // los <NetworkLink> (mapas externos enlazados) para resolverlos en el backend.
   // ─────────────────────────────────────────────────────────────────────────
+  function classifyGeometry(beforeSnippet) {
+    const pointIdx = beforeSnippet.lastIndexOf("<Point>");
+    const lineIdx  = beforeSnippet.lastIndexOf("<LineString>");
+    const ringIdx  = beforeSnippet.lastIndexOf("<LinearRing>");
+    const max = Math.max(pointIdx, lineIdx, ringIdx);
+    if (max === -1) return "Polygon";
+    if (max === pointIdx) return "Point";
+    if (max === lineIdx) return "LineString";
+    return "Polygon";
+  }
+
   function parseKMLFast(kmlString) {
     const zones    = [];
     const coordReg = /<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/g;
@@ -332,8 +377,9 @@ export default function CoverageChecker() {
         return [parseFloat(pts[0]), parseFloat(pts[1])];
       }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
 
-      // Saltar puntos simples (<Point>) y líneas (<LineString>)
-      if (coords.length < 3) continue;
+      if (coords.length === 0) continue;
+
+      const type = classifyGeometry(kmlString.substring(Math.max(0, cm.index - 300), cm.index));
 
       // Buscar el <name> más cercano ANTES de este bloque de coordenadas
       // (ventana de 2000 chars es suficiente para cubrir cualquier Placemark)
@@ -347,9 +393,20 @@ export default function CoverageChecker() {
           .trim();
       }
 
-      zones.push({ name, coordinates: coords });
+      zones.push({ name, coordinates: coords, type });
     }
-    return zones;
+
+    // NetworkLinks: enlaces a mapas externos (Google My Maps, Telcodrive, etc.)
+    // No se pueden resolver desde el navegador por CORS — se le pasan al backend.
+    const networkLinks = [];
+    const nlReg = /<NetworkLink>[\s\S]*?<href>\s*([\s\S]*?)\s*<\/href>/g;
+    let nm;
+    while ((nm = nlReg.exec(kmlString)) !== null) {
+      const href = nm[1].replace(/&amp;/g, "&").trim();
+      if (href) networkLinks.push(href);
+    }
+
+    return { zones, networkLinks };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -376,10 +433,10 @@ export default function CoverageChecker() {
         kmlText = new TextDecoder().decode(arrayBuffer);
       }
 
-      // 3. Parsear zonas en el navegador con regex
-      setUploadMsg({ type: "info", text: "🔍 Extrayendo zonas..." });
-      const zones = parseKMLFast(kmlText);
-      if (zones.length === 0) throw new Error("No se encontraron polígonos en el archivo.");
+      // 3. Parsear zonas en el navegador con regex (Point + LineString + Polygon)
+      setUploadMsg({ type: "info", text: "🔍 Extrayendo elementos..." });
+      const { zones, networkLinks } = parseKMLFast(kmlText);
+      if (zones.length === 0) throw new Error("No se encontraron elementos con coordenadas en el archivo.");
 
       // 4. Enviar al servidor en lotes de 200 (sin saturar la memoria del servidor)
       const BATCH   = 200;
@@ -392,7 +449,7 @@ export default function CoverageChecker() {
         const isFinal   = i + BATCH >= zones.length;
         enviadas += lote.length;
 
-        setUploadMsg({ type: "info", text: `📤 Enviando... ${enviadas}/${zones.length} zonas (lote ${Math.ceil((i+1)/BATCH)}/${total})` });
+        setUploadMsg({ type: "info", text: `📤 Enviando... ${enviadas}/${zones.length} elementos (lote ${Math.ceil((i+1)/BATCH)}/${total})` });
 
         const res = await fetch(`${API_URL}/load-batch`, {
           method: "POST",
@@ -403,6 +460,9 @@ export default function CoverageChecker() {
             isFirst,
             isFinal,
             total:    zones.length,
+            // Solo se manda en el lote final, para que el backend dispare la
+            // resolución de mapas externos (NetworkLinks) una sola vez.
+            ...(isFinal ? { networkLinks } : {}),
           }),
           signal: AbortSignal.timeout(30000),
         });
@@ -410,7 +470,12 @@ export default function CoverageChecker() {
         if (!res.ok) throw new Error(data.message || "Error al enviar lote");
       }
 
-      setUploadMsg({ type: "ok", text: `✅ ${zones.length} zonas cargadas y guardadas correctamente` });
+      setUploadMsg({
+        type: "ok",
+        text: networkLinks.length > 0
+          ? `✅ ${zones.length} elementos cargados. Resolviendo ${networkLinks.length} enlaces externos en segundo plano (puede tardar varios minutos)...`
+          : `✅ ${zones.length} elementos cargados y guardados correctamente`,
+      });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       // Actualizar el indicador de zonas activas para reflejar el nuevo archivo
@@ -495,8 +560,15 @@ export default function CoverageChecker() {
               <span className="text-xl">📡</span>
               <div>
                 <span className="font-semibold">
-                  {coverageStatus.zonesLoaded.toLocaleString()} zonas activas
+                  {coverageStatus.zonesLoaded.toLocaleString()} elementos activos
                 </span>
+                {coverageStatus.byType && Object.keys(coverageStatus.byType).length > 0 && (
+                  <span className="ml-2 text-teal-600 text-xs">
+                    ({Object.entries(coverageStatus.byType)
+                      .map(([t, n]) => `${t}: ${n.toLocaleString()}`)
+                      .join(" · ")})
+                  </span>
+                )}
                 {coverageStatus.fileName && (
                   <span className="ml-2 text-teal-600">
                     — {coverageStatus.fileName}
@@ -507,6 +579,27 @@ export default function CoverageChecker() {
                     (cargadas el{" "}
                     {new Date(coverageStatus.loadedAt).toLocaleString("es-EC")})
                   </span>
+                )}
+                {coverageStatus.networkLinks && coverageStatus.networkLinks.total > 0 && (
+                  <div className="text-xs mt-1">
+                    {coverageStatus.networkLinks.loading ? "🔄" : "✅"} Enlaces externos:{" "}
+                    {coverageStatus.networkLinks.resolved}/{coverageStatus.networkLinks.total} resueltos
+                    {coverageStatus.networkLinks.zonesAdded > 0 && (
+                      <span className="text-teal-700"> (+{coverageStatus.networkLinks.zonesAdded.toLocaleString()} zonas)</span>
+                    )}
+                    {coverageStatus.networkLinks.failed > 0 && (
+                      <span className="text-amber-600"> ({coverageStatus.networkLinks.failed} fallidos)</span>
+                    )}
+                    {isAdmin && !coverageStatus.networkLinks.loading && coverageStatus.networkLinks.failed > 0 && (
+                      <button
+                        onClick={retryLinks}
+                        disabled={retryingLinks}
+                        className="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {retryingLinks ? "Reintentando..." : "🔁 Reintentar fallidos"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </>

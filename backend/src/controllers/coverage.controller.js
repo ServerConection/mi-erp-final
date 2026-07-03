@@ -2,6 +2,7 @@
  * Coverage Controller
  * Maneja validación de cobertura de internet
  * Pure JavaScript - Sin dependencias Python
+ * (rev: resolución robusta de NetworkLinks + reintentos)
  */
 
 const fs     = require('fs');
@@ -102,15 +103,31 @@ let loadedFile   = null;
 let spatialIndex = null;
 let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
 
-// Garantiza que la tabla coverage_zones exista
+// Estado de resolución de NetworkLinks (enlaces a mapas externos: Google My Maps,
+// Telcodrive, etc.). Se resuelven en background porque pueden ser cientos/miles
+// y cada uno requiere una petición HTTP saliente.
+let networkLinksState = { total: 0, resolved: 0, failed: 0, loading: false, zonesAdded: 0 };
+
+// Cuenta zonas cargadas por tipo de geometría (Point / LineString / Polygon)
+function countByType(zones) {
+  return (zones || []).reduce((acc, z) => {
+    const t = z.type || 'Polygon';
+    acc[t] = (acc[t] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+// Garantiza que la tabla coverage_zones exista (y la migra si viene de una versión anterior)
 async function ensureCoverageTable() {
-  // Tabla de zonas individuales — una fila por polígono
+  // Tabla de zonas individuales — una fila por elemento (Point/LineString/Polygon)
   // Mucho mejor que un JSONB gigante: inserts por lotes, loads rápidos
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.coverage_zones (
       id          SERIAL PRIMARY KEY,
       file_name   TEXT    NOT NULL,
       name        TEXT,
+      type        TEXT    DEFAULT 'Polygon',
+      source      TEXT,
       coordinates JSONB   NOT NULL,
       bbox_minlon FLOAT,
       bbox_minlat FLOAT,
@@ -119,6 +136,50 @@ async function ensureCoverageTable() {
       loaded_at   TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Migración para tablas creadas antes de que existieran type/source
+  await pool.query(`ALTER TABLE public.coverage_zones ADD COLUMN IF NOT EXISTS type   TEXT DEFAULT 'Polygon'`);
+  await pool.query(`ALTER TABLE public.coverage_zones ADD COLUMN IF NOT EXISTS source TEXT`);
+
+  // Registro de NetworkLinks (mapas externos) — permite reintentar los fallidos
+  // sin volver a subir el KMZ, y sobrevive reinicios del servidor.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.coverage_links (
+      href        TEXT PRIMARY KEY,
+      status      TEXT DEFAULT 'pending',
+      zones_count INT  DEFAULT 0,
+      error       TEXT,
+      updated_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
+// Inserta zonas SIN borrar las existentes (para las que llegan de NetworkLinks).
+// Así el progreso queda persistido incrementalmente y sobrevive reinicios.
+async function appendZonesToDB(zones, fileName) {
+  if (!zones || zones.length === 0) return;
+  await ensureCoverageTable();
+  const BATCH = 200;
+  for (let i = 0; i < zones.length; i += BATCH) {
+    const batch  = zones.slice(i, i + BATCH);
+    const values = [];
+    const params = [];
+    let   p      = 1;
+    for (const z of batch) {
+      const bbox = buildBBox(z.coordinates);
+      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+      params.push(
+        fileName, z.name, z.type || 'Polygon', z.source || null,
+        JSON.stringify(z.coordinates),
+        bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
+      );
+    }
+    await pool.query(
+      `INSERT INTO public.coverage_zones
+         (file_name, name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+       VALUES ${values.join(',')}`,
+      params
+    );
+  }
 }
 
 // Guarda zonas como filas individuales en batch de 200
@@ -140,10 +201,12 @@ async function saveZonesToDB(zones, fileName) {
 
       for (const z of batch) {
         const bbox = buildBBox(z.coordinates);
-        values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         params.push(
           fileName,
           z.name,
+          z.type || 'Polygon',
+          z.source || null,
           JSON.stringify(z.coordinates),
           bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
         );
@@ -151,7 +214,7 @@ async function saveZonesToDB(zones, fileName) {
 
       await pool.query(
         `INSERT INTO public.coverage_zones
-           (file_name, name, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+           (file_name, name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
          VALUES ${values.join(',')}`,
         params
       );
@@ -168,7 +231,7 @@ async function loadZonesFromDB() {
   try {
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      `SELECT name, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat, file_name, loaded_at
+      `SELECT name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat, file_name, loaded_at
        FROM public.coverage_zones ORDER BY id`
     );
     if (!rows.length) return null;
@@ -176,7 +239,8 @@ async function loadZonesFromDB() {
     const zones = rows.map(r => ({
       name:        r.name,
       coordinates: r.coordinates,
-      type:        'Polygon',
+      type:        r.type || 'Polygon',
+      source:      r.source || null,
       bbox: {
         minLon: r.bbox_minlon, minLat: r.bbox_minlat,
         maxLon: r.bbox_maxlon, maxLat: r.bbox_maxlat
@@ -289,9 +353,13 @@ function buildSpatialIndex(zones) {
     if (!zone.bbox) zone.bbox = buildBBox(zone.coordinates);
   }
 
-  // 2. Asignar cada zona a todas las celdas que su bbox toca
+  // 2. Asignar cada zona a todas las celdas que su bbox toca.
+  //    Solo los Polygon participan en el algoritmo point-in-polygon — Point y
+  //    LineString quedan en loadedZones (para conteos / listado / mapa) pero
+  //    no en la grilla, porque no son geometrías cerradas válidas para "contiene".
   const cells = new Map();
   for (let i = 0; i < zones.length; i++) {
+    if (zones[i].type && zones[i].type !== 'Polygon') continue;
     const { minLon, minLat, maxLon, maxLat } = zones[i].bbox;
     const c0 = Math.floor(minLon / GRID_CELL);
     const c1 = Math.floor(maxLon / GRID_CELL);
@@ -342,10 +410,28 @@ function findZoneForPoint(longitude, latitude, zones, cells) {
 // ════════════════════════════════════════════════════════════════════════════════
 
 /**
- * Extrae zonas de un string KML usando regex global.
- * Escanea TODOS los <coordinates> del archivo sin importar nesting
- * (Placemark, MultiGeometry, Folder, Document, etc.) para no perder zonas.
- * NO construye árbol DOM — consume ~10x menos memoria que xml2js.
+ * Determina el tipo de geometría de un bloque <coordinates> mirando la
+ * etiqueta de apertura más cercana hacia atrás (Point / LineString / LinearRing).
+ * <LinearRing> implica Polygon (outerBoundaryIs/innerBoundaryIs siempre la contienen).
+ */
+function classifyGeometry(beforeSnippet) {
+  const pointIdx = beforeSnippet.lastIndexOf('<Point>');
+  const lineIdx  = beforeSnippet.lastIndexOf('<LineString>');
+  const ringIdx  = beforeSnippet.lastIndexOf('<LinearRing>');
+  const max = Math.max(pointIdx, lineIdx, ringIdx);
+  if (max === -1) return 'Polygon'; // fallback conservador (no debería pasar en KML válido)
+  if (max === pointIdx) return 'Point';
+  if (max === lineIdx) return 'LineString';
+  return 'Polygon';
+}
+
+/**
+ * Extrae TODOS los elementos (Point, LineString, Polygon) de un string KML
+ * usando regex global, y además recolecta los <NetworkLink><href> para que
+ * puedan resolverse después (apuntan a mapas externos: Google My Maps, etc.).
+ * Escanea sin importar nesting (Placemark, MultiGeometry, Folder, Document, etc.)
+ * para no perder ningún elemento. NO construye árbol DOM — consume ~10x menos
+ * memoria que xml2js.
  */
 function parseKMLFast(kmlString) {
   const zones    = [];
@@ -359,8 +445,9 @@ function parseKMLFast(kmlString) {
       return [parseFloat(parts[0]), parseFloat(parts[1])];
     }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
 
-    // Saltar <Point> (1 coord) y <LineString> (2 coords)
-    if (coords.length < 3) continue;
+    if (coords.length === 0) continue;
+
+    const type = classifyGeometry(kmlString.substring(Math.max(0, cm.index - 300), cm.index));
 
     // Buscar el <name> más cercano ANTES de este bloque de coordenadas
     // Ventana de 2000 chars es suficiente para cubrir cualquier Placemark / Folder
@@ -374,11 +461,27 @@ function parseKMLFast(kmlString) {
         .trim();
     }
 
-    zones.push({ name, coordinates: coords, type: 'Polygon' });
+    zones.push({ name, coordinates: coords, type });
   }
 
-  console.log('[KML] Zonas extraídas (regex global):', zones.length);
-  return zones;
+  // NetworkLinks: enlaces a mapas externos (Google My Maps "mid=...", Telcodrive, etc.)
+  // Su contenido NO está embebido en este KML — hay que descargarlo aparte.
+  const networkLinks = [];
+  const nlReg = /<NetworkLink>[\s\S]*?<href>\s*([\s\S]*?)\s*<\/href>/g;
+  let nm;
+  while ((nm = nlReg.exec(kmlString)) !== null) {
+    const href = nm[1].replace(/&amp;/g, '&').trim();
+    if (href) networkLinks.push(href);
+  }
+
+  console.log(
+    '[KML] Elementos extraídos —',
+    'Polygon:', zones.filter(z => z.type === 'Polygon').length,
+    '| Point:', zones.filter(z => z.type === 'Point').length,
+    '| LineString:', zones.filter(z => z.type === 'LineString').length,
+    '| NetworkLinks:', networkLinks.length
+  );
+  return { zones, networkLinks };
 }
 
 /**
@@ -400,8 +503,216 @@ function handleCoverageFile(filePath, originalName = '') {
     kmlString = data.toString('utf8');
   }
 
-  const zones = parseKMLFast(kmlString);
-  return zones; // ya no retorna kmlContent — no lo necesitamos
+  return parseKMLFast(kmlString); // { zones, networkLinks }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Resolución de NetworkLinks — descarga en background los mapas externos
+// referenciados por <NetworkLink><href> (Google My Maps, Telcodrive, etc.)
+// y fusiona sus zonas con las ya cargadas. Nunca bloquea la respuesta al cliente.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Ejecuta `worker` sobre `items` con un máximo de `limit` tareas en paralelo.
+async function mapWithConcurrency(items, limit, worker) {
+  let i = 0;
+  async function run() {
+    while (i < items.length) {
+      const idx = i++;
+      await worker(items[idx], idx);
+    }
+  }
+  const runners = Array.from({ length: Math.min(limit, items.length) }, run);
+  await Promise.all(runners);
+}
+
+/**
+ * Normaliza URLs de Google My Maps.
+ * Los KMZ exportados de Google Earth traen enlaces con ruta de cuenta
+ * (/maps/d/u/1/kml, /u/2/, /u/3/...) que SOLO funcionan con la sesión de ese
+ * usuario en el navegador — desde el servidor redirigen al login de Google y
+ * la resolución falla. La forma pública equivalente es:
+ *   https://www.google.com/maps/d/kml?mid=<ID>&forcekml=1
+ * Además, el mismo mapa (mismo mid) aparece muchas veces con parámetros cv/cid
+ * distintos; al normalizar quedan deduplicados y se descarga UNA sola vez.
+ */
+function normalizeNetworkLinkUrl(href) {
+  try {
+    const u = new URL(href.trim());
+    const isGoogle = /(^|\.)google\.[a-z.]+$/i.test(u.hostname);
+    if (isGoogle && /^\/maps\/d\/(u\/\d+\/)?kml$/i.test(u.pathname)) {
+      const mid = u.searchParams.get('mid');
+      if (mid) return `https://www.google.com/maps/d/kml?mid=${encodeURIComponent(mid)}&forcekml=1`;
+    }
+  } catch (e) { /* URL inválida — se devuelve tal cual */ }
+  return href.trim();
+}
+
+const NL_TIMEOUT_MS = 90000; // mapas de cobertura grandes pueden pesar decenas de MB
+const NL_RETRIES    = 3;     // reintentos con espera creciente (Google ratelimitea)
+
+// Descarga un href de NetworkLink (con reintentos), detecta si la respuesta es
+// KML o KMZ, la parsea, y resuelve recursivamente (hasta `depth` 2) sus propios
+// NetworkLinks.
+async function fetchAndParseLink(href, depth, visited) {
+  const url = normalizeNetworkLinkUrl(href);
+  if (visited.has(url)) return [];
+  visited.add(url);
+
+  let lastErr = null;
+  let buf     = null;
+
+  for (let attempt = 1; attempt <= NL_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(NL_TIMEOUT_MS),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+          'Accept': 'application/vnd.google-earth.kml+xml, application/vnd.google-earth.kmz, */*'
+        }
+      });
+
+      // Redirección al login de Google → el mapa no es público; reintentar no ayuda
+      if (res.url && /accounts\.google\.com|ServiceLogin/i.test(res.url)) {
+        throw Object.assign(new Error('Mapa no público (Google pide login). Compártelo como "Cualquier persona con el enlace".'), { noRetry: true });
+      }
+
+      if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { noRetry: res.status === 404 || res.status === 403 });
+
+      buf = Buffer.from(await res.arrayBuffer());
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (e.noRetry || attempt === NL_RETRIES) break;
+      // Espera creciente: 2s, 6s... (evita el ratelimit de Google)
+      await new Promise(r => setTimeout(r, 2000 * attempt * attempt));
+    }
+  }
+  if (lastErr) throw lastErr;
+
+  let kmlString;
+  // Firma ZIP (PK) → es un KMZ
+  if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
+    const zip   = new AdmZip(buf);
+    const entry = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith('.kml'));
+    if (!entry) throw new Error('KMZ sin .kml interno');
+    kmlString = entry.getData().toString('utf8');
+  } else {
+    kmlString = buf.toString('utf8');
+  }
+
+  if (!/<kml[\s>]/i.test(kmlString)) {
+    throw new Error('La respuesta no es un KML/KMZ válido (posible página de login o error de Google)');
+  }
+
+  const { zones, networkLinks } = parseKMLFast(kmlString);
+  // Marca el origen para trazabilidad (de qué enlace externo vino cada zona)
+  for (const z of zones) z.source = url;
+
+  let all = zones;
+  if (depth < 2 && networkLinks.length > 0) {
+    for (const nestedHref of networkLinks) {
+      try {
+        const nested = await fetchAndParseLink(nestedHref, depth + 1, visited);
+        all = all.concat(nested);
+      } catch (e) {
+        console.warn('[Coverage NetworkLink] Falló enlace anidado', nestedHref, '-', e.message);
+      }
+    }
+  }
+  return all;
+}
+
+// Agrega nuevas zonas a las ya cargadas en memoria y reconstruye el índice espacial.
+function mergeZonesIntoMemory(newZones) {
+  if (!newZones || newZones.length === 0) return;
+  loadedZones  = (loadedZones || []).concat(newZones);
+  spatialIndex = buildSpatialIndex(loadedZones);
+}
+
+// Actualiza el registro de un enlace en coverage_links (para poder reintentar)
+async function upsertLinkStatus(href, status, zonesCount = 0, error = null) {
+  try {
+    await pool.query(
+      `INSERT INTO public.coverage_links (href, status, zones_count, error, updated_at)
+       VALUES ($1,$2,$3,$4,NOW())
+       ON CONFLICT (href) DO UPDATE
+         SET status = $2, zones_count = $3, error = $4, updated_at = NOW()`,
+      [href, status, zonesCount, error]
+    );
+  } catch (e) { /* no crítico */ }
+}
+
+// Resuelve todos los NetworkLinks de un archivo en background, con concurrencia
+// limitada, y va fusionando resultados en memoria y en DB a medida que llegan.
+// `isRetry` = true cuando se reintentan solo los fallidos (no limpia el registro).
+async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
+  // Normalizar ANTES de deduplicar: el mismo mapa (mid) aparece muchas veces
+  // con parámetros distintos → sin normalizar se descargaba varias veces.
+  const unique = Array.from(new Set(
+    (hrefs || []).map(h => normalizeNetworkLinkUrl(h)).filter(Boolean)
+  ));
+  if (unique.length === 0) return;
+  if (networkLinksState.loading) {
+    console.warn('[Coverage] Resolución de NetworkLinks ya en curso — se omite');
+    return;
+  }
+
+  networkLinksState = { total: unique.length, resolved: 0, failed: 0, loading: true, zonesAdded: 0 };
+  console.log(`[Coverage] Resolviendo ${unique.length} NetworkLinks únicos en background...`);
+
+  try {
+    await ensureCoverageTable();
+    if (!isRetry) {
+      // Nuevo archivo: limpiar registro anterior y registrar los enlaces actuales
+      await pool.query('DELETE FROM public.coverage_links');
+      for (const href of unique) await upsertLinkStatus(href, 'pending');
+    }
+  } catch (e) { console.warn('[Coverage] No se pudo preparar coverage_links:', e.message); }
+
+  const visited = new Set();
+  let pendingMerge = [];
+
+  // Concurrencia baja (3): Google ratelimitea si se le pega con 8 conexiones a la vez
+  await mapWithConcurrency(unique, 3, async (href) => {
+    try {
+      const zones = await fetchAndParseLink(href, 0, visited);
+      pendingMerge = pendingMerge.concat(zones);
+      networkLinksState.resolved++;
+      networkLinksState.zonesAdded += zones.length;
+      upsertLinkStatus(href, 'resolved', zones.length);
+    } catch (e) {
+      networkLinksState.failed++;
+      upsertLinkStatus(href, 'failed', 0, e.message);
+      console.warn('[Coverage NetworkLink] Error en', href, '-', e.message);
+    } finally {
+      const done = networkLinksState.resolved + networkLinksState.failed;
+      if (pendingMerge.length && (done % 10 === 0 || done === unique.length)) {
+        const lote = pendingMerge;
+        pendingMerge = [];
+        mergeZonesIntoMemory(lote);
+        // Persistir INCREMENTALMENTE (append) — si el server se reinicia a mitad,
+        // lo ya resuelto no se pierde y queda disponible tras el restart.
+        appendZonesToDB(lote, loadedFile)
+          .catch(err => console.error('[Coverage] Append a DB falló:', err.message));
+      }
+    }
+  });
+
+  if (pendingMerge.length) {
+    mergeZonesIntoMemory(pendingMerge);
+    await appendZonesToDB(pendingMerge, loadedFile)
+      .catch(err => console.error('[Coverage] Append final a DB falló:', err.message));
+  }
+  networkLinksState.loading = false;
+
+  console.log(
+    `[Coverage] NetworkLinks resueltos: ${networkLinksState.resolved}/${networkLinksState.total}`,
+    `(fallidos: ${networkLinksState.failed}) — zonas totales ahora: ${loadedZones ? loadedZones.length : 0}`
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -415,12 +726,12 @@ exports.loadCoverage = async (req, res) => {
     }
 
     // Parsea el KMZ con regex — sin xml2js, sin OOM
-    const zones = handleCoverageFile(req.file.path, req.file.originalname);
+    const { zones, networkLinks } = handleCoverageFile(req.file.path, req.file.originalname);
 
     if (!zones || zones.length === 0) {
       return res.status(422).json({
         status: 'error',
-        message: 'El archivo fue procesado pero no se encontraron zonas con polígonos.'
+        message: 'El archivo fue procesado pero no se encontraron elementos con coordenadas.'
       });
     }
 
@@ -434,13 +745,25 @@ exports.loadCoverage = async (req, res) => {
       status: 'ok',
       fileName: req.file.originalname,
       zonesLoaded: zones.length,
-      message: `Se cargaron ${zones.length} zonas exitosamente`,
+      byType: countByType(zones),
+      networkLinksFound: networkLinks.length,
+      message: networkLinks.length > 0
+        ? `Se cargaron ${zones.length} elementos. Resolviendo ${networkLinks.length} enlaces externos en segundo plano...`
+        : `Se cargaron ${zones.length} elementos exitosamente`,
       loadedAt
     });
 
-    // Guardar zonas en DB como filas individuales (background, sin bloquear)
+    // Guardar zonas base en DB y DESPUÉS resolver NetworkLinks (mapas externos).
+    // Encadenado a propósito: appendZonesToDB de los enlaces no debe correr en
+    // paralelo con el DELETE+INSERT del guardado base o se perderían filas.
     saveZonesToDB(zones, req.file.originalname)
-      .catch(e => console.error('[Coverage] Guardado background fallido:', e.message));
+      .catch(e => console.error('[Coverage] Guardado background fallido:', e.message))
+      .then(() => {
+        if (networkLinks.length > 0) {
+          return resolveNetworkLinksBackground(networkLinks);
+        }
+      })
+      .catch(e => console.error('[Coverage] Error resolviendo NetworkLinks:', e.message));
 
   } catch (error) {
     console.error('[Coverage Error]', error);
@@ -502,7 +825,7 @@ exports.checkCoverage = async (req, res) => {
 // El servidor nunca toca el archivo KMZ — cero riesgo de OOM.
 exports.loadBatch = async (req, res) => {
   try {
-    const { zones, fileName, isFirst, isFinal, total } = req.body;
+    const { zones, fileName, isFirst, isFinal, total, networkLinks } = req.body;
 
     if (!Array.isArray(zones) || zones.length === 0)
       return res.status(400).json({ status: 'error', message: 'zones vacías' });
@@ -518,16 +841,18 @@ exports.loadBatch = async (req, res) => {
     }
 
     // Insertar este lote con sus bounding boxes
+    // Acepta Point (1 coord), LineString (2 coords) y Polygon (>=3 coords) — antes
+    // se descartaba todo lo que tuviera menos de 3 coordenadas, perdiendo los Points.
     const values = [];
     const params = [];
     let   p      = 1;
 
     for (const z of zones) {
-      if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) continue;
+      if (!Array.isArray(z.coordinates) || z.coordinates.length < 1) continue;
       const bbox = buildBBox(z.coordinates);
-      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
       params.push(
-        fileName, z.name || 'Sin nombre',
+        fileName, z.name || 'Sin nombre', z.type || 'Polygon',
         JSON.stringify(z.coordinates),
         bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
       );
@@ -536,13 +861,13 @@ exports.loadBatch = async (req, res) => {
     if (values.length > 0) {
       await pool.query(
         `INSERT INTO public.coverage_zones
-           (file_name, name, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+           (file_name, name, type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
          VALUES ${values.join(',')}`,
         params
       );
     }
 
-    console.log(`[Coverage] Lote guardado: ${zones.length} zonas | archivo: ${fileName}`);
+    console.log(`[Coverage] Lote guardado: ${zones.length} elementos | archivo: ${fileName}`);
 
     // En el último lote, cargar todo en memoria y construir índice espacial
     if (isFinal) {
@@ -552,16 +877,26 @@ exports.loadBatch = async (req, res) => {
         loadedFile   = cached.fileName;
         loadedAt     = new Date().toISOString();
         spatialIndex = buildSpatialIndex(loadedZones);
-        console.log('[Coverage] Índice espacial listo — zonas totales:', loadedZones.length);
+        console.log('[Coverage] Índice espacial listo — elementos totales:', loadedZones.length);
       }
+
+      // Si el navegador detectó NetworkLinks (mapas externos), resolverlos en
+      // background ahora que ya se guardó la base del archivo subido.
+      if (Array.isArray(networkLinks) && networkLinks.length > 0) {
+        resolveNetworkLinksBackground(networkLinks)
+          .catch(e => console.error('[Coverage] Error resolviendo NetworkLinks:', e.message));
+      }
+
       return res.status(200).json({
         status: 'ok',
         zonesLoaded: loadedZones ? loadedZones.length : 0,
-        message: `${total} zonas cargadas y guardadas correctamente`
+        byType: countByType(loadedZones),
+        networkLinksFound: Array.isArray(networkLinks) ? networkLinks.length : 0,
+        message: `${total} elementos cargados y guardados correctamente`
       });
     }
 
-    return res.status(200).json({ status: 'ok', message: `Lote guardado: ${zones.length} zonas` });
+    return res.status(200).json({ status: 'ok', message: `Lote guardado: ${zones.length} elementos` });
 
   } catch (error) {
     console.error('[Coverage] Error en loadBatch:', error);
@@ -630,6 +965,8 @@ exports.getZones = (req, res) => {
     return res.status(200).json({
       zonesLoaded: true,
       totalZones: loadedZones.length,
+      byType: countByType(loadedZones),
+      networkLinks: networkLinksState,
       zones: loadedZones.slice(0, 100),
       loadedAt,
       fileName: loadedFile || null
@@ -641,11 +978,49 @@ exports.getZones = (req, res) => {
   }
 };
 
+// ── POST /api/coverage/retry-links ───────────────────────────────────────────
+// Reintenta la descarga de los NetworkLinks fallidos/pendientes registrados en
+// DB, sin necesidad de volver a subir el KMZ. Solo administradores.
+exports.retryNetworkLinks = async (req, res) => {
+  try {
+    if (networkLinksState.loading) {
+      return res.status(409).json({ status: 'error', message: 'Ya hay una resolución de enlaces en curso. Espera a que termine.' });
+    }
+
+    await ensureCoverageTable();
+    const { rows } = await pool.query(
+      `SELECT href FROM public.coverage_links WHERE status IN ('failed','pending') ORDER BY href`
+    );
+
+    if (!rows.length) {
+      return res.status(200).json({ status: 'ok', retrying: 0, message: 'No hay enlaces fallidos ni pendientes por reintentar.' });
+    }
+
+    // Asegurar que las zonas base estén en memoria antes de fusionar las nuevas
+    await ensureZonesLoaded();
+
+    const hrefs = rows.map(r => r.href);
+    resolveNetworkLinksBackground(hrefs, true)
+      .catch(e => console.error('[Coverage] Error en reintento de NetworkLinks:', e.message));
+
+    return res.status(200).json({
+      status: 'ok',
+      retrying: hrefs.length,
+      message: `Reintentando ${hrefs.length} enlaces externos en segundo plano...`
+    });
+  } catch (error) {
+    console.error('[Coverage retryNetworkLinks Error]', error);
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+};
+
 exports.getCoverageStatus = (req, res) => {
   return res.status(200).json({
     status: 'ok',
     message: 'Coverage service active',
     zonesLoaded: loadedZones ? loadedZones.length : 0,
+    byType: loadedZones ? countByType(loadedZones) : {},
+    networkLinks: networkLinksState,
     loadedAt: loadedAt || null,
     fileName: loadedFile || null,
     timestamp: new Date().toISOString()

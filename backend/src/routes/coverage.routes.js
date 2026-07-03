@@ -61,6 +61,13 @@ router.get('/status', coverageController.getCoverageStatus);
 router.post('/load-batch', verificarToken, soloAdmin, coverageController.loadBatch);
 
 /**
+ * POST /api/coverage/retry-links
+ * Reintenta los NetworkLinks (mapas externos) fallidos o pendientes,
+ * sin necesidad de volver a subir el KMZ. Solo administradores.
+ */
+router.post('/retry-links', verificarToken, soloAdmin, coverageController.retryNetworkLinks);
+
+/**
  * POST /api/coverage/resolve-link
  * Parsea un enlace de WhatsApp / Google Maps / Apple Maps y extrae coordenadas.
  * Body: { "link": "https://maps.google.com/?q=LAT,LNG" }

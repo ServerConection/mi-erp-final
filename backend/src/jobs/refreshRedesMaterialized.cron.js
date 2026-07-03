@@ -48,8 +48,10 @@ const refreshRedesMVs = async () => {
   }
 };
 
-// Ejecutar refresh cada 30 minutos
-const job = cron.schedule('*/30 * * * *', () => {
+// Ejecutar refresh cada 30 minutos, desfasado a :07 y :37
+// para NO coincidir con el cron de VELSA (*/15 → :00, :15, :30, :45).
+// Dos REFRESH simultáneos saturaban la memoria de Postgres en Render.
+const job = cron.schedule('7,37 * * * *', () => {
   refreshRedesMVs();
 });
 

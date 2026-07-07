@@ -326,6 +326,12 @@ const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 
+// ── Perfiles restringidos: ASESOR y GERENCIA solo ven Vista Asesor + JOT Formulario ──
+const isRestringido = (p) => p === 'ASESOR' || p === 'GERENCIA' || p === 'GERENTE';
+const RUTAS_RESTRINGIDAS = ['/vista-asesor', '/vista-asesor-velsa', '/jot-formulario'];
+// Ruta de inicio para perfiles restringidos según su empresa
+const rutaInicioRestringido = (e) => (e === 'VELSA' ? '/vista-asesor-velsa' : '/vista-asesor');
+
 // Lista de IDs de grupos colapsables — se usa para inicializar openGroups
 const GROUP_IDS = [
   "indicadores", "vista-asesor", "seguimiento", "redes", "ventas",
@@ -515,13 +521,26 @@ export default function DashboardLayout() {
   // ── Proteger rutas ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
+
+    const p = (user.perfil  || '').toUpperCase();
+    const e = (user.empresa || '').toUpperCase();
+
+    // Perfiles restringidos (ASESOR / GERENCIA): solo Vista Asesor de su empresa + JOT Formulario
+    if (isRestringido(p)) {
+      const destino   = rutaInicioRestringido(e);
+      const permitida = location.pathname === destino || location.pathname === '/jot-formulario';
+      if (!permitida) navigate(destino, { replace: true });
+      // Dejar abiertos los únicos grupos visibles para estos perfiles
+      setOpenGroups(prev => (prev['vista-asesor'] && prev['formularios'])
+        ? prev
+        : { ...prev, 'vista-asesor': true, 'formularios': true });
+      return;
+    }
+
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
 
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
-
-    const p = (user.perfil  || '').toUpperCase();
-    const e = (user.empresa || '').toUpperCase();
 
     if (itemActual.accessCheck) {
       if (!itemActual.accessCheck(p, e)) navigate('/');
@@ -544,9 +563,15 @@ export default function DashboardLayout() {
   if (!user) return null;
 
   const passaAcceso = (item) => {
+    const p = (user?.perfil  || '').toUpperCase();
+    const e = (user?.empresa || '').toUpperCase();
+
+    // Perfiles restringidos (ASESOR / GERENCIA): solo Vista Asesor + JOT Formulario
+    if (isRestringido(p)) {
+      if (!item.path || !RUTAS_RESTRINGIDAS.includes(item.path)) return false;
+    }
+
     if (item.accessCheck) {
-      const p = (user?.perfil  || '').toUpperCase();
-      const e = (user?.empresa || '').toUpperCase();
       return item.accessCheck(p, e);
     }
     return !item.permiso || permisos.includes(item.permiso);

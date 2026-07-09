@@ -1,13 +1,21 @@
 /**
  * JOTFORM WEBHOOK CONTROLLER
- * Recibe el webhook que Jotform dispara cada vez que alguien ENVÍA el
- * formulario (botón submit del form). Mismo patrón que bitrixWebhook.controller.js:
+ * Recibe el webhook que Jotform dispara cada vez que alguien ENVÍA un
+ * formulario (botón submit del form). Mismo patrón que bitrixWebhook.controller.js,
+ * pero MULTI-FORMULARIO: cada empresa (NOVONET, VELSA, ...) tiene su propio
+ * form de Jotform y su propio par de tablas, porque las preguntas de cada
+ * formulario son completamente distintas:
  *
- *   - jotform_submissions            → 1 fila por submission_id, UPSERT
- *     (la versión más reciente del envío siempre reemplaza a la anterior).
- *   - jotform_submissions_historial  → 1 fila por CADA webhook recibido,
- *     nunca se sobreescribe. Aquí se ve el recorrido completo si Jotform
- *     reintenta o si el mismo submission llega más de una vez.
+ *   NOVONET (213356674788673) → jotform_submissions / jotform_submissions_historial
+ *   VELSA   (251603619851660) → jotform_submissions_velsa / jotform_submissions_velsa_historial
+ *
+ * En ambos casos:
+ *   - tabla base       → 1 fila por submission_id, UPSERT (versión más reciente).
+ *   - tabla _historial  → 1 fila por CADA webhook recibido, nunca se sobreescribe.
+ *
+ * El ruteo a la tabla correcta se hace por "formID" (siempre lo manda Jotform
+ * en el payload) contra TABLAS_POR_FORM — no hace falta configurar nada extra
+ * al registrar el webhook en Jotform.
  *
  * Vive en "erp_database" (poolErp, ver config/dbErp.js) — NO en bddgeneral.
  *
@@ -17,6 +25,21 @@
  */
 
 const poolErp = require('../config/dbErp');
+
+// Mapa formID → nombres de tabla. Los nombres son fijos (no vienen del
+// request), así que es seguro interpolarlos directo en el SQL más abajo.
+const TABLAS_POR_FORM = {
+  [process.env.JOTFORM_FORM_ID || '213356674788673']: {
+    empresa: 'novonet',
+    tabla: 'jotform_submissions',
+    historial: 'jotform_submissions_historial',
+  },
+  [process.env.JOTFORM_FORM_ID_VELSA || '251603619851660']: {
+    empresa: 'velsa',
+    tabla: 'jotform_submissions_velsa',
+    historial: 'jotform_submissions_velsa_historial',
+  },
+};
 
 const recibirSubmission = async (req, res) => {
   try {
@@ -37,6 +60,12 @@ const recibirSubmission = async (req, res) => {
       return res.status(400).send('Falta formID o submissionID');
     }
 
+    const cfg = TABLAS_POR_FORM[formID];
+    if (!cfg) {
+      console.warn('[jotformWebhook] formID sin tabla configurada:', formID);
+      return res.status(400).send('formID no reconocido — agrégalo a TABLAS_POR_FORM');
+    }
+
     let answers = {};
     try {
       answers = rawRequest ? JSON.parse(rawRequest) : {};
@@ -45,13 +74,13 @@ const recibirSubmission = async (req, res) => {
     }
 
     const sqlUpsert = `
-      INSERT INTO jotform_submissions (submission_id, form_id, data, submitted_at)
+      INSERT INTO ${cfg.tabla} (submission_id, form_id, data, submitted_at)
       VALUES ($1, $2, $3, now())
       ON CONFLICT (submission_id)
       DO UPDATE SET data = EXCLUDED.data, form_id = EXCLUDED.form_id, updated_at = now()
     `;
     const sqlHistorial = `
-      INSERT INTO jotform_submissions_historial (submission_id, form_id, data)
+      INSERT INTO ${cfg.historial} (submission_id, form_id, data)
       VALUES ($1, $2, $3)
     `;
     const params = [submissionID, formID, answers];
@@ -67,23 +96,23 @@ const recibirSubmission = async (req, res) => {
   }
 };
 
-// ── GET /api/jotform-webhook/submissions?formId=&limit= — requiere sesión del ERP ──
+// ── GET /api/jotform-webhook/submissions?empresa=novonet|velsa&limit= — requiere sesión del ERP ──
 const listarSubmissions = async (req, res) => {
   try {
-    const { formId, limit = 100 } = req.query;
+    const { empresa = 'novonet', limit = 100 } = req.query;
     const lim = Math.min(Math.max(parseInt(limit) || 100, 1), 500);
 
-    const { rows } = formId
-      ? await poolErp.query(
-          'SELECT * FROM jotform_submissions WHERE form_id = $1 ORDER BY submitted_at DESC LIMIT $2',
-          [formId, lim]
-        )
-      : await poolErp.query(
-          'SELECT * FROM jotform_submissions ORDER BY submitted_at DESC LIMIT $1',
-          [lim]
-        );
+    const cfg = Object.values(TABLAS_POR_FORM).find(c => c.empresa === String(empresa).toLowerCase());
+    if (!cfg) {
+      return res.status(400).json({ success: false, error: 'empresa inválida (novonet|velsa)' });
+    }
 
-    return res.json({ success: true, data: rows, count: rows.length });
+    const { rows } = await poolErp.query(
+      `SELECT * FROM ${cfg.tabla} ORDER BY submitted_at DESC LIMIT $1`,
+      [lim]
+    );
+
+    return res.json({ success: true, empresa: cfg.empresa, data: rows, count: rows.length });
   } catch (err) {
     console.error('[jotformWebhook] listarSubmissions error:', err.message);
     return res.status(500).json({ success: false, error: err.message });

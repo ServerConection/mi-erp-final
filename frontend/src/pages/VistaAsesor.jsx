@@ -97,6 +97,7 @@ function ClienteModal({ cliente, onClose }) {
     LOGIN:                "Login Netlife",
     ASESOR:               "Asesor",
     SUPERVISOR_ASIGNADO:  "Supervisor",
+    PLAN_INGRESADO:       "Plan"
   };
 
   const estadoStyle = pillStyle(cliente.ESTADO_NETLIFE || "SIN ESTADO");

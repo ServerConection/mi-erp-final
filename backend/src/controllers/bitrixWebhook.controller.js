@@ -24,6 +24,20 @@
  */
 
 const pool = require('../config/db');
+const poolErp = require('../config/dbErp');
+
+// Replica una escritura en "erp_database" (el nuevo desarrollo), en el MISMO
+// servidor Postgres. Best-effort: si esa base falla, no existe todavía, o
+// simplemente no tiene las tablas creadas, se registra el error en consola
+// pero NUNCA se propaga — el webhook de Bitrix siempre responde según lo que
+// pasó en la base principal (bddgeneral), sin tocar URLs ni token.
+const replicarEnErp = async (sql, params) => {
+  try {
+    await poolErp.query(sql, params);
+  } catch (err) {
+    console.error('[bitrixWebhook] Aviso: no se pudo replicar en erp_database (no afecta el webhook):', err.message);
+  }
+};
 
 // Normaliza "etapa"/"empresa" para que coincidan con los slugs esperados
 // aunque alguien pegue el nombre con espacios/acentos/mayúsculas por error.
@@ -72,10 +86,10 @@ const recibirLead = async (req, res) => {
     // que identifica al mismo lead en distintas etapas) — igual se guarda en
     // el historial para no perder el evento, pero no se puede hacer UPSERT.
     if (!id) {
-      await pool.query(
-        `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`,
-        [null, empresa, etapa, ...valores, JSON.stringify(req.query)]
-      );
+      const sqlHistorialSinId = `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`;
+      const paramsHistorialSinId = [null, empresa, etapa, ...valores, JSON.stringify(req.query)];
+      await pool.query(sqlHistorialSinId, paramsHistorialSinId);
+      await replicarEnErp(sqlHistorialSinId, paramsHistorialSinId);
       console.warn('[bitrixWebhook] Webhook sin ID recibido — solo se guardó en historial. empresa:', empresa, 'etapa:', etapa);
       return res.status(200).send('OK (sin ID, no se pudo actualizar estado actual)');
     }
@@ -86,23 +100,25 @@ const recibirLead = async (req, res) => {
       .concat(['updated_at = NOW()'])
       .join(', ');
 
+    const sqlUpsertLead = `INSERT INTO bitrix_webhook_leads (${columnas.join(',')})
+       VALUES (${placeholders})
+       ON CONFLICT (empresa, bitrix_id) DO UPDATE SET ${setClause}`;
+    const sqlInsertHistorial = `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`;
+
     await pool.transaction(async (client) => {
       // 1) Estado ACTUAL — la etapa nueva reemplaza a la anterior para este
       //    lead (identificado por empresa + bitrix_id, no solo bitrix_id,
       //    porque Novonet y Velsa son 2 Bitrix distintos y pueden repetir IDs)
-      await client.query(
-        `INSERT INTO bitrix_webhook_leads (${columnas.join(',')})
-         VALUES (${placeholders})
-         ON CONFLICT (empresa, bitrix_id) DO UPDATE SET ${setClause}`,
-        paramsUpsert
-      );
+      await client.query(sqlUpsertLead, paramsUpsert);
 
       // 2) Historial — queda 1 fila más, nunca se toca lo anterior
-      await client.query(
-        `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`,
-        paramsUpsert
-      );
+      await client.query(sqlInsertHistorial, paramsUpsert);
     });
+
+    // 3) Replica best-effort en erp_database (nuevo desarrollo) — no bloquea
+    //    ni afecta la respuesta del webhook si esta base falla o no existe.
+    await replicarEnErp(sqlUpsertLead, paramsUpsert);
+    await replicarEnErp(sqlInsertHistorial, paramsUpsert);
 
     return res.status(200).send('OK');
   } catch (err) {

@@ -266,3 +266,51 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_bwl_empresa  ON bitrix_webhook_leads(empresa);
 CREATE INDEX IF NOT EXISTS idx_bwlh_empresa ON bitrix_webhook_leads_historial(empresa);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 6) COLUMNAS DE FECHA EN HORA ECUADOR (texto legible, ademas de las
+--    columnas timestamptz que ya existen en UTC). Se mantienen
+--    sincronizadas automaticamente con un trigger en cada INSERT/UPDATE,
+--    asi se ven correctas en cualquier SELECT directo (pgAdmin, etc.)
+--    sin necesidad de convertir nada manualmente.
+-- ═══════════════════════════════════════════════════════════════════
+
+ALTER TABLE bitrix_webhook_leads
+  ADD COLUMN IF NOT EXISTS created_at_ecuador VARCHAR(30),
+  ADD COLUMN IF NOT EXISTS updated_at_ecuador VARCHAR(30);
+
+ALTER TABLE bitrix_webhook_leads_historial
+  ADD COLUMN IF NOT EXISTS created_at_ecuador VARCHAR(30);
+
+-- Funcion que calcula el texto en hora Ecuador (compartida por ambas tablas)
+CREATE OR REPLACE FUNCTION bitrix_webhook_set_fecha_ecuador()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'bitrix_webhook_leads' THEN
+    NEW.created_at_ecuador := to_char(NEW.created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS');
+    NEW.updated_at_ecuador := to_char(NEW.updated_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS');
+  ELSIF TG_TABLE_NAME = 'bitrix_webhook_leads_historial' THEN
+    NEW.created_at_ecuador := to_char(NEW.created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_fecha_ecuador_leads ON bitrix_webhook_leads;
+CREATE TRIGGER trg_fecha_ecuador_leads
+  BEFORE INSERT OR UPDATE ON bitrix_webhook_leads
+  FOR EACH ROW EXECUTE FUNCTION bitrix_webhook_set_fecha_ecuador();
+
+DROP TRIGGER IF EXISTS trg_fecha_ecuador_historial ON bitrix_webhook_leads_historial;
+CREATE TRIGGER trg_fecha_ecuador_historial
+  BEFORE INSERT OR UPDATE ON bitrix_webhook_leads_historial
+  FOR EACH ROW EXECUTE FUNCTION bitrix_webhook_set_fecha_ecuador();
+
+-- Backfill de las filas que ya existen (para que las columnas nuevas no
+-- queden vacias en registros insertados antes de este cambio)
+UPDATE bitrix_webhook_leads
+SET created_at_ecuador = to_char(created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS'),
+    updated_at_ecuador = to_char(updated_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS');
+
+UPDATE bitrix_webhook_leads_historial
+SET created_at_ecuador = to_char(created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS');

@@ -192,6 +192,22 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  # ── 12. Bot Auditor Service ───────────────────────────────────────────────────
+  bot-auditor-service:
+    image: node:20-slim
+    container_name: auto_bot_auditor
+    working_dir: /app
+    volumes:
+      - C:\Users\Usuario-PC\Desktop\AREA_DESARROLLO\AREA_DESARROLLO\DesarrolloBaseDatos\bot-auditor-service:/app
+      - bot_auditor_nm:/app/node_modules
+    command: sh -c "npm install --silent && node index.js"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
 # ── Volúmenes nombrados para node_modules ────────────────────────────────────────
 # Docker instala las dependencias en Linux, separadas de las de Windows.
 # Esto evita conflictos con módulos nativos (bcrypt, sqlite3, etc.)
@@ -207,3 +223,4 @@ volumes:
   maestra_bitrix_etl_nm:
   maestra_velsa_netlife_nm:
   reporte_automatizado_nm:
+  bot_auditor_nm:

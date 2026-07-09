@@ -108,6 +108,7 @@ const VISTAS = [
 async function syncVista({ nombre, tipos }) {
   console.log(`  📋 Sincronizando ${nombre}...`);
 
+  const { paramIndex }
   const { rows } = await localPool.query(`SELECT * FROM ${nombre}`);
 
   if (rows.length === 0) {

@@ -1,0 +1,66 @@
+[1mdiff --git a/frontend/src/layouts/DashboardLayout.jsx b/frontend/src/layouts/DashboardLayout.jsx[m
+[1mindex 5c79057..9f331a1 100644[m
+[1m--- a/frontend/src/layouts/DashboardLayout.jsx[m
+[1m+++ b/frontend/src/layouts/DashboardLayout.jsx[m
+[36m@@ -326,12 +326,6 @@[m [mconst isAdmin     = (p)    => p === 'ADMINISTRADOR';[m
+ const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';[m
+ const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);[m
+ [m
+[31m-// ── Perfiles restringidos: ASESOR y GERENCIA solo ven Vista Asesor + JOT Formulario ──[m
+[31m-const isRestringido = (p) => p === 'ASESOR' || p === 'GERENCIA' || p === 'GERENTE';[m
+[31m-const RUTAS_RESTRINGIDAS = ['/vista-asesor', '/vista-asesor-velsa', '/jot-formulario'];[m
+[31m-// Ruta de inicio para perfiles restringidos según su empresa[m
+[31m-const rutaInicioRestringido = (e) => (e === 'VELSA' ? '/vista-asesor-velsa' : '/vista-asesor');[m
+[31m-[m
+ // Lista de IDs de grupos colapsables — se usa para inicializar openGroups[m
+ const GROUP_IDS = [[m
+   "indicadores", "vista-asesor", "seguimiento", "redes", "ventas",[m
+[36m@@ -521,27 +515,14 @@[m [mexport default function DashboardLayout() {[m
+   // ── Proteger rutas ──────────────────────────────────────────────────────────[m
+   useEffect(() => {[m
+     if (!user) return;[m
+[31m-[m
+[31m-    const p = (user.perfil  || '').toUpperCase();[m
+[31m-    const e = (user.empresa || '').toUpperCase();[m
+[31m-[m
+[31m-    // Perfiles restringidos (ASESOR / GERENCIA): solo Vista Asesor de su empresa + JOT Formulario[m
+[31m-    if (isRestringido(p)) {[m
+[31m-      const destino   = rutaInicioRestringido(e);[m
+[31m-      const permitida = location.pathname === destino || location.pathname === '/jot-formulario';[m
+[31m-      if (!permitida) navigate(destino, { replace: true });[m
+[31m-      // Dejar abiertos los únicos grupos visibles para estos perfiles[m
+[31m-      setOpenGroups(prev => (prev['vista-asesor'] && prev['formularios'])[m
+[31m-        ? prev[m
+[31m-        : { ...prev, 'vista-asesor': true, 'formularios': true });[m
+[31m-      return;[m
+[31m-    }[m
+[31m-[m
+     if (RUTAS_PUBLICAS.includes(location.pathname)) return;[m
+ [m
+     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);[m
+     if (!itemActual) return;[m
+ [m
+[32m+[m[32m    const p = (user.perfil  || '').toUpperCase();[m[41m[m
+[32m+[m[32m    const e = (user.empresa || '').toUpperCase();[m[41m[m
+[32m+[m[41m[m
+     if (itemActual.accessCheck) {[m
+       if (!itemActual.accessCheck(p, e)) navigate('/');[m
+     } else if (itemActual.permiso) {[m
+[36m@@ -563,15 +544,9 @@[m [mexport default function DashboardLayout() {[m
+   if (!user) return null;[m
+ [m
+   const passaAcceso = (item) => {[m
+[31m-    const p = (user?.perfil  || '').toUpperCase();[m
+[31m-    const e = (user?.empresa || '').toUpperCase();[m
+[31m-[m
+[31m-    // Perfiles restringidos (ASESOR / GERENCIA): solo Vista Asesor + JOT Formulario[m
+[31m-    if (isRestringido(p)) {[m
+[31m-      if (!item.path || !RUTAS_RESTRINGIDAS.includes(item.path)) return false;[m
+[31m-    }[m
+[31m-[m
+     if (item.accessCheck) {[m
+[32m+[m[32m      const p = (user?.perfil  || '').toUpperCase();[m[41m[m
+[32m+[m[32m      const e = (user?.empresa || '').toUpperCase();[m[41m[m
+       return item.accessCheck(p, e);[m
+     }[m
+     return !item.permiso || permisos.includes(item.permiso);[m

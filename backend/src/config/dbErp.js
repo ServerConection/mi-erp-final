@@ -28,6 +28,7 @@ const pool = new Pool({
   idleTimeoutMillis:       10000,
   connectionTimeoutMillis: 10000,
   allowExitOnIdle:         true,
+  keepAlive:               true, // evita que Render/la red corte la conexión en procesos largos (igual que config/db.js)
 });
 
 pool.on('error', (err) => {

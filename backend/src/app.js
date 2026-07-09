@@ -21,6 +21,7 @@ const ventasRoutes                 = require('./routes/ventas.routes');
 const analistaRoutes               = require('./routes/analista.routes');
 const bitrixRoutes                 = require('./routes/bitrix.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
+const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
 const coverageRoutes               = require('./routes/coverage.routes');
 const inventarioRoutes             = require('./routes/inventario.routes');
 const forecastRoutes               = require('./routes/forecast.routes');
@@ -106,6 +107,7 @@ app.use('/api/ventas',            ventasRoutes);
 app.use('/api/analista',          analistaRoutes);
 app.use('/api/bitrix',            bitrixRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
+app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);
 app.use('/api/inventario',        inventarioRoutes);
 app.use('/api/forecast',          forecastRoutes);

@@ -44,7 +44,8 @@ const upload = multer({
 const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
 
 // Campos obligatorios solo cuando la acción es "CARGAR" (venta final, no borrador)
-const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso', 'turno'];
+// "turno" dejó de ser obligatorio: el campo se retiró del formulario NuevaVenta
+const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso'];
 
 // Columnas editables que acepta el INSERT/UPDATE (todo excepto sistema/auto)
 const COLUMNAS_VENTA = [

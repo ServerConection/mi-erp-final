@@ -2,7 +2,7 @@
 // Formulario de ingreso de venta — vista ASESOR
 // Estilo: lista vertical tipo formulario · Branding Netlife naranja
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL;
@@ -19,7 +19,12 @@ const TIPO_INMUEBLE   = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PA
 const DESCUENTO_3ERA  = ["NO", "SÍ — POR 3RA EDAD"];
 const TIPO_VIV        = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
 const FORMAS_PAGO     = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
-const TIPOS_PLAN      = ["CASA", "PROFESIONAL", "PYMES", "GAMER", "ADULTO MAYOR"];
+// Tipos de plan = pestañas del Excel de precios + venta de solo servicio adicional
+const SOLO_ADICIONAL  = "SOLO SERVICIO ADICIONAL";
+const TIPOS_PLAN      = ["HOME", "TERCERA EDAD", "GAMER", "PRO", "PYME", SOLO_ADICIONAL];
+// Formas de pago que activan cada promoción del catálogo (EFECTIVO no tiene promo)
+const PAGO_TC   = "TARJETA DE CRÉDITO";
+const PAGOS_CTA = ["CUENTA CORRIENTE", "CUENTA AHORROS"];
 const ORIGENES        = [
   "BASE 593-995211968", "API 484", "Base 593-979083368", "BASE 593-992827793",
   "FORMULARIO LANDING 3", "LLAMADA LANDING 3", "WHATSAPP - ECUANET REGISTRO",
@@ -28,7 +33,6 @@ const ORIGENES        = [
   "WHATSAPP 593958993371", "BASE 593-987133635", "FORMULARIO LANDING 4",
   "BASE API 593963463480", "LLAMADA LANDING 4", "LLAMADA REMARKETING",
 ];
-const TURNOS          = ["MAÑANA", "TARDE", "NOCHE", "PARTIDO"];
 const CICLOS_FACT     = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
 const BENEFICIOS_LEY  = ["SI", "NO"];
 
@@ -70,7 +74,7 @@ const INIT = {
   origen_venta: "", turno: "",
   observacion_venta: "",
   // ── Datos para el resumen de venta auto-generado ──
-  precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
+  precio_regular_sin_imp: "", precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
   banco: "", ciclo_facturacion: "", costo_instalacion: "", descuento_instalacion: "",
   beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
   resumen_venta: "",
@@ -99,6 +103,7 @@ function generarResumenVenta(form, user) {
     `⏳Plan contratado: ${plan}`,
     `✅Servicios Empaquetados incluidos:`,
     serviciosTxt,
+    `✅Precio regular (sin impuestos): $${form.precio_regular_sin_imp || "—"}`,
     `✅Precio regular (con impuestos): $${form.precio_regular || "—"}`,
     `✅Precio con promoción: $${form.precio_promocion || "—"}${form.meses_promocion ? ` durante ${form.meses_promocion} facturas` : ""}`,
     `✅Promoción aplicada: ${form.porcentaje_descuento ? `${form.porcentaje_descuento}% de descuento` : "—"}${form.meses_promocion ? ` por ${form.meses_promocion} facturas` : ""}`,
@@ -438,6 +443,8 @@ export default function NuevaVenta() {
   const [success, setSucc]  = useState(null);
   const [uploading, setUploading] = useState({}); // { campo: true }
   const [resumenEditado, setResumenEditado] = useState(false);
+  const [catalogo, setCatalogo]   = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
+  const [vigenciaCat, setVigenciaCat] = useState(null);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -498,6 +505,77 @@ export default function NuevaVenta() {
     })();
   }, [borradorId]);
 
+  // ── Catálogo mensual de planes (viene del Excel que carga el admin) ────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/planes-catalogo`, { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json();
+        if (d.success) { setCatalogo(d.data || []); setVigenciaCat(d.vigencia || null); }
+      } catch { /* sin catálogo → los campos quedan de texto libre */ }
+    })();
+  }, []);
+
+  const hayCatalogo = catalogo.length > 0;
+  const usaCatalogo = hayCatalogo && form.tipo_plan && form.tipo_plan !== SOLO_ADICIONAL;
+
+  // Planes únicos del tipo seleccionado (ej. HOME → Plan 200 Mbps, Plan 400 Mbps…)
+  const planesDelTipo = useMemo(() => {
+    const seen = new Set();
+    return catalogo
+      .filter(c => c.tipo_plan === form.tipo_plan)
+      .filter(c => (seen.has(c.plan_base) ? false : (seen.add(c.plan_base), true)))
+      .map(c => c.plan_base);
+  }, [catalogo, form.tipo_plan]);
+
+  // Empaquetados disponibles para el plan elegido (Sin empaquetado, Paramount+, Netlife Play…)
+  const empaquetadosDelPlan = useMemo(() =>
+    catalogo
+      .filter(c => c.tipo_plan === form.tipo_plan && c.plan_base === form.plan_contratado_final)
+      .map(c => c.empaquetado),
+  [catalogo, form.tipo_plan, form.plan_contratado_final]);
+
+  // Registro exacto seleccionado (tipo + plan + empaquetado) → de aquí salen los precios
+  const opcionSel = useMemo(() =>
+    catalogo.find(c =>
+      c.tipo_plan === form.tipo_plan &&
+      c.plan_base === form.plan_contratado_final &&
+      c.empaquetado === form.servicios_digitales
+    ) || null,
+  [catalogo, form.tipo_plan, form.plan_contratado_final, form.servicios_digitales]);
+
+  // Si el plan tiene un solo empaquetado, se selecciona automáticamente
+  useEffect(() => {
+    if (usaCatalogo && empaquetadosDelPlan.length === 1 && form.servicios_digitales !== empaquetadosDelPlan[0]) {
+      setForm(f => ({ ...f, servicios_digitales: empaquetadosDelPlan[0] }));
+    }
+  }, [usaCatalogo, empaquetadosDelPlan]);
+
+  // Auto-completar precios según plan + empaquetado + forma de pago
+  //   TARJETA DE CRÉDITO → columnas "PROMOCION CON TARJETA DE CREDITO" del Excel
+  //   CUENTA CORRIENTE/AHORROS → columnas "PROMOCION CON CUENTA"
+  //   EFECTIVO → sin promoción (solo precio regular)
+  useEffect(() => {
+    if (!usaCatalogo || !opcionSel) return;
+    const fmt = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? "" : Number(v).toFixed(2);
+    let precio_promocion = "", meses_promocion = "", porcentaje_descuento = "";
+    if (form.forma_pago === PAGO_TC && opcionSel.tc_pvp != null && Number(opcionSel.tc_dsto) > 0) {
+      precio_promocion     = fmt(opcionSel.tc_pvp);
+      meses_promocion      = opcionSel.tc_facturas != null ? String(opcionSel.tc_facturas) : "";
+      porcentaje_descuento = String(Math.round(Number(opcionSel.tc_dsto) * 100));
+    } else if (PAGOS_CTA.includes(form.forma_pago) && opcionSel.cta_pvp != null && Number(opcionSel.cta_dsto) > 0) {
+      precio_promocion     = fmt(opcionSel.cta_pvp);
+      meses_promocion      = opcionSel.cta_facturas != null ? String(opcionSel.cta_facturas) : "";
+      porcentaje_descuento = String(Math.round(Number(opcionSel.cta_dsto) * 100));
+    }
+    setForm(f => ({
+      ...f,
+      precio_regular_sin_imp: fmt(opcionSel.precio_sin_iva),
+      precio_regular:         fmt(opcionSel.precio_con_iva),
+      precio_promocion, meses_promocion, porcentaje_descuento,
+    }));
+  }, [opcionSel, form.forma_pago, usaCatalogo]);
+
   // Distribuidor se deriva del usuario logueado (empresa con la que se le creó la cuenta)
   const distribuidorDelUsuario = (user.empresa || "").toUpperCase();
   const distribuidorLocked = DISTRIBUIDORES.includes(distribuidorDelUsuario);
@@ -519,6 +597,18 @@ export default function NuevaVenta() {
       // Si cambia el distribuidor (caso admin sin lock), limpiar supervisor para evitar mezclas
       if (k === "distribuidor_autorizado" && v !== f.distribuidor_autorizado) {
         next.supervisor = "";
+      }
+      // Cascada del catálogo: cambiar el tipo de plan reinicia plan/empaquetado/precios,
+      // y cambiar el plan reinicia el empaquetado y sus precios
+      if (k === "tipo_plan" && v !== f.tipo_plan) {
+        next.plan_contratado_final = ""; next.servicios_digitales = "";
+        next.precio_regular_sin_imp = ""; next.precio_regular = "";
+        next.precio_promocion = ""; next.meses_promocion = ""; next.porcentaje_descuento = "";
+      }
+      if (k === "plan_contratado_final" && v !== f.plan_contratado_final) {
+        next.servicios_digitales = "";
+        next.precio_regular_sin_imp = ""; next.precio_regular = "";
+        next.precio_promocion = ""; next.meses_promocion = ""; next.porcentaje_descuento = "";
       }
       return next;
     });
@@ -543,7 +633,7 @@ export default function NuevaVenta() {
   }, [
     form.apellidos_cliente, form.nombres_cliente, form.genero_cliente,
     form.plan_contratado_final, form.tipo_plan, form.servicios_digitales,
-    form.precio_regular, form.precio_promocion, form.meses_promocion, form.porcentaje_descuento,
+    form.precio_regular_sin_imp, form.precio_regular, form.precio_promocion, form.meses_promocion, form.porcentaje_descuento,
     form.forma_pago, form.banco, form.ciclo_facturacion, form.costo_instalacion,
     form.descuento_instalacion, form.beneficios_adicionales, form.beneficios_de_ley,
     form.plazo_contrato_meses, resumenEditado,
@@ -910,35 +1000,101 @@ export default function NuevaVenta() {
 
           {/* ── 5. Plan y pago ── */}
           <Seccion num={5} icon="📡" label="Plan y forma de pago">
+            {hayCatalogo && vigenciaCat && (
+              <Row label="Lista de precios vigente">
+                <div className="nv-auto">📅 {vigenciaCat}</div>
+              </Row>
+            )}
             <Row label="Forma de pago" required>
               <FSel value={form.forma_pago} onChange={set("forma_pago")} options={FORMAS_PAGO} />
+              {form.forma_pago === "EFECTIVO" && (
+                <span style={{ fontSize: 11, color: "#A07850", fontWeight: 600 }}>
+                  ℹ️ Con EFECTIVO no aplica precio promocional (solo tarjeta de crédito o cuenta).
+                </span>
+              )}
               {err("forma_pago")}
             </Row>
             <Row label="Tipo de plan" required>
               <Chips value={form.tipo_plan} onChange={set("tipo_plan")} options={TIPOS_PLAN} />
               {err("tipo_plan")}
             </Row>
-            <Row label="Plan contratado (detalle)">
-              <FIn value={form.plan_contratado_final} onChange={set("plan_contratado_final")} placeholder="Ej: 1300 Mbps · $16.96 · Promo 50%" />
-            </Row>
-            <Row label="Servicio empaquetado">
-              <FIn value={form.servicios_digitales} onChange={set("servicios_digitales")} placeholder="Ej: Paramount+, Netlife Play, Extender…" />
-            </Row>
-            <Row label="Servicio adicional">
-              <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")} placeholder="Ej: Netlife Defense, Assistance PRO…" />
-            </Row>
-            <Row label="Precio regular (con impuestos)">
-              <FIn value={form.precio_regular} onChange={set("precio_regular")} placeholder="Ej: 29,61" />
-            </Row>
-            <Row label="Precio con promoción">
-              <FIn value={form.precio_promocion} onChange={set("precio_promocion")} placeholder="Ej: 26,65" />
-            </Row>
-            <Row label="Meses con promoción">
-              <FIn value={form.meses_promocion} onChange={set("meses_promocion")} placeholder="Ej: 6" />
-            </Row>
-            <Row label="% Descuento aplicado">
-              <FIn value={form.porcentaje_descuento} onChange={set("porcentaje_descuento")} placeholder="Ej: 10" />
-            </Row>
+
+            {form.tipo_plan === SOLO_ADICIONAL ? (
+              /* Venta de solo servicio adicional: el asesor describe lo que pide el cliente */
+              <>
+                <Row label="Servicio adicional solicitado" required>
+                  <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")}
+                    placeholder="Ej: Netlife Defense, Assistance PRO, Extender Dual Band…" />
+                </Row>
+                <Row label="Detalle / observación del servicio">
+                  <FIn value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
+                    placeholder="Ej: se añade a plan existente del cliente" />
+                </Row>
+                <Row label="Precio regular (sin impuestos)">
+                  <FIn value={form.precio_regular_sin_imp} onChange={set("precio_regular_sin_imp")} placeholder="Ej: 4,99" />
+                </Row>
+                <Row label="Precio regular (con impuestos)">
+                  <FIn value={form.precio_regular} onChange={set("precio_regular")} placeholder="Ej: 5,74" />
+                </Row>
+              </>
+            ) : (
+              <>
+                <Row label="Plan contratado (detalle)">
+                  {usaCatalogo ? (
+                    <FSel value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
+                      options={planesDelTipo}
+                      placeholder={form.tipo_plan ? "Selecciona el plan…" : "Primero elige el tipo de plan"} />
+                  ) : (
+                    <FIn value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
+                      placeholder={form.tipo_plan ? "Ej: Plan 850 Mbps" : "Primero elige el tipo de plan"} />
+                  )}
+                </Row>
+                <Row label="Servicio empaquetado">
+                  {usaCatalogo ? (
+                    <FSel value={form.servicios_digitales} onChange={set("servicios_digitales")}
+                      options={empaquetadosDelPlan}
+                      placeholder={form.plan_contratado_final ? "Selecciona el empaquetado…" : "Primero selecciona el plan"} />
+                  ) : (
+                    <FIn value={form.servicios_digitales} onChange={set("servicios_digitales")}
+                      placeholder="Ej: Paramount+, Netlife Play, Extender…" />
+                  )}
+                </Row>
+                {opcionSel && (opcionSel.velocidad || opcionSel.equipo || opcionSel.plan_promocion) && (
+                  <Row label="Incluye">
+                    <div style={{ fontSize: 12, color: "#8B5E3C", fontWeight: 600, lineHeight: 1.6 }}>
+                      {opcionSel.velocidad     && <div>⚡ Velocidad: {opcionSel.velocidad}</div>}
+                      {opcionSel.equipo        && <div>📶 Equipo: {opcionSel.equipo}</div>}
+                      {opcionSel.plan_promocion && <div>🎁 Promo del plan: {opcionSel.plan_promocion}</div>}
+                    </div>
+                  </Row>
+                )}
+                <Row label="Servicio adicional">
+                  <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")}
+                    placeholder="Ej: Netlife Defense, Assistance PRO…" />
+                </Row>
+                <Row label="Precio regular (sin impuestos)">
+                  <FIn value={form.precio_regular_sin_imp} onChange={set("precio_regular_sin_imp")}
+                    placeholder="Se llena automático al elegir el plan" readOnly={!!opcionSel} />
+                </Row>
+                <Row label="Precio regular (con impuestos)">
+                  <FIn value={form.precio_regular} onChange={set("precio_regular")}
+                    placeholder="Se llena automático al elegir el plan" readOnly={!!opcionSel} />
+                </Row>
+                <Row label="Precio con promoción">
+                  <FIn value={form.precio_promocion} onChange={set("precio_promocion")}
+                    placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con EFECTIVO" : "Se llena automático según forma de pago"}
+                    readOnly={!!opcionSel} />
+                </Row>
+                <Row label="Meses con promoción">
+                  <FIn value={form.meses_promocion} onChange={set("meses_promocion")}
+                    placeholder="Automático (facturas con promoción)" readOnly={!!opcionSel} />
+                </Row>
+                <Row label="% Descuento aplicado">
+                  <FIn value={form.porcentaje_descuento} onChange={set("porcentaje_descuento")}
+                    placeholder="Automático según forma de pago" readOnly={!!opcionSel} />
+                </Row>
+              </>
+            )}
           </Seccion>
 
           {/* ── 6. Cierre y origen ── */}
@@ -946,9 +1102,6 @@ export default function NuevaVenta() {
             <Row label="Origen de la venta" required>
               <FSel value={form.origen_venta} onChange={set("origen_venta")} options={ORIGENES} />
               {err("origen_venta")}
-            </Row>
-            <Row label="Turno">
-              <Chips value={form.turno} onChange={set("turno")} options={TURNOS} />
             </Row>
             <Row label="Observación de la venta">
               <textarea

@@ -36,6 +36,7 @@ const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 const Inventario           = lazy(() => import("./pages/Inventario"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
+const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const Backoffice           = lazy(() => import("./pages/Backoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
@@ -116,6 +117,7 @@ export default function App() {
             <Route path="inventario"               element={<Inventario />} />
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
+            <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="backoffice"               element={<Backoffice />} />
             <Route path="backoffice-jotform"       element={<BackofficeJotform />} />

@@ -371,6 +371,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "ventas" },
   { name: "📋 Mis ventas pendientes", path: "/mis-ventas-pendientes", icon: "📋",
     accessCheck: (p) => p !== 'CONSULTOR', isChild: true, group: "ventas" },
+  { name: "📊 Catálogo de planes", path: "/catalogo-planes", icon: "📊",
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "ventas" },
 
   // ── Backoffice ───────────────────────────────────────────────────────────
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },

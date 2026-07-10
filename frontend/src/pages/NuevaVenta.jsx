@@ -517,7 +517,9 @@ export default function NuevaVenta() {
   }, []);
 
   const hayCatalogo = catalogo.length > 0;
-  const usaCatalogo = hayCatalogo && form.tipo_plan && form.tipo_plan !== SOLO_ADICIONAL;
+  // Siempre se usa selección por lista (nunca texto libre) para los tipos con catálogo;
+  // si el admin aún no carga el Excel del mes, las listas salen vacías con un aviso.
+  const usaCatalogo = form.tipo_plan && form.tipo_plan !== SOLO_ADICIONAL;
 
   // Planes únicos del tipo seleccionado (ej. HOME → Plan 200 Mbps, Plan 400 Mbps…)
   const planesDelTipo = useMemo(() => {
@@ -1005,6 +1007,13 @@ export default function NuevaVenta() {
                 <div className="nv-auto">📅 {vigenciaCat}</div>
               </Row>
             )}
+            {!hayCatalogo && (
+              <Row label="Lista de precios">
+                <div style={{ fontSize: 12, color: "#991B1B", fontWeight: 700, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8, padding: "8px 12px" }}>
+                  ⚠️ Aún no se ha cargado la lista de precios del mes. Pide al administrador subir el Excel en "Catálogo de planes" para poder seleccionar planes y precios.
+                </div>
+              </Row>
+            )}
             <Row label="Forma de pago" required>
               <FSel value={form.forma_pago} onChange={set("forma_pago")} options={FORMAS_PAGO} />
               {form.forma_pago === "EFECTIVO" && (
@@ -1040,24 +1049,16 @@ export default function NuevaVenta() {
             ) : (
               <>
                 <Row label="Plan contratado (detalle)">
-                  {usaCatalogo ? (
-                    <FSel value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
-                      options={planesDelTipo}
-                      placeholder={form.tipo_plan ? "Selecciona el plan…" : "Primero elige el tipo de plan"} />
-                  ) : (
-                    <FIn value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
-                      placeholder={form.tipo_plan ? "Ej: Plan 850 Mbps" : "Primero elige el tipo de plan"} />
-                  )}
+                  <FSel value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
+                    options={planesDelTipo}
+                    placeholder={!form.tipo_plan ? "Primero elige el tipo de plan"
+                      : planesDelTipo.length ? "Selecciona el plan…" : "Sin planes cargados (falta el Excel del mes)"} />
                 </Row>
                 <Row label="Servicio empaquetado">
-                  {usaCatalogo ? (
-                    <FSel value={form.servicios_digitales} onChange={set("servicios_digitales")}
-                      options={empaquetadosDelPlan}
-                      placeholder={form.plan_contratado_final ? "Selecciona el empaquetado…" : "Primero selecciona el plan"} />
-                  ) : (
-                    <FIn value={form.servicios_digitales} onChange={set("servicios_digitales")}
-                      placeholder="Ej: Paramount+, Netlife Play, Extender…" />
-                  )}
+                  <FSel value={form.servicios_digitales} onChange={set("servicios_digitales")}
+                    options={empaquetadosDelPlan}
+                    placeholder={!form.plan_contratado_final ? "Primero selecciona el plan"
+                      : empaquetadosDelPlan.length ? "Selecciona el empaquetado…" : "Sin opciones cargadas"} />
                 </Row>
                 {opcionSel && (opcionSel.velocidad || opcionSel.equipo || opcionSel.plan_promocion) && (
                   <Row label="Incluye">
@@ -1074,24 +1075,24 @@ export default function NuevaVenta() {
                 </Row>
                 <Row label="Precio regular (sin impuestos)">
                   <FIn value={form.precio_regular_sin_imp} onChange={set("precio_regular_sin_imp")}
-                    placeholder="Se llena automático al elegir el plan" readOnly={!!opcionSel} />
+                    placeholder="Se llena automático al elegir el plan" readOnly />
                 </Row>
                 <Row label="Precio regular (con impuestos)">
                   <FIn value={form.precio_regular} onChange={set("precio_regular")}
-                    placeholder="Se llena automático al elegir el plan" readOnly={!!opcionSel} />
+                    placeholder="Se llena automático al elegir el plan" readOnly />
                 </Row>
                 <Row label="Precio con promoción">
                   <FIn value={form.precio_promocion} onChange={set("precio_promocion")}
                     placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con EFECTIVO" : "Se llena automático según forma de pago"}
-                    readOnly={!!opcionSel} />
+                    readOnly />
                 </Row>
                 <Row label="Meses con promoción">
                   <FIn value={form.meses_promocion} onChange={set("meses_promocion")}
-                    placeholder="Automático (facturas con promoción)" readOnly={!!opcionSel} />
+                    placeholder="Automático (facturas con promoción)" readOnly />
                 </Row>
                 <Row label="% Descuento aplicado">
                   <FIn value={form.porcentaje_descuento} onChange={set("porcentaje_descuento")}
-                    placeholder="Automático según forma de pago" readOnly={!!opcionSel} />
+                    placeholder="Automático según forma de pago" readOnly />
                 </Row>
               </>
             )}

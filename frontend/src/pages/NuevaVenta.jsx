@@ -483,6 +483,16 @@ export default function NuevaVenta() {
             Object.entries(RENOMBRADOS_DB_A_FORM).forEach(([dbCol, formKey]) => {
               if (data[dbCol] !== undefined && data[dbCol] !== null) next[formKey] = String(data[dbCol]);
             });
+            // El plan se guarda combinado ("HOME — Plan 400 Mbps"); al retomar el
+            // borrador lo separamos para que las listas queden re-seleccionadas y
+            // los precios se recalculen solos desde el catálogo.
+            if (data.plan_contratado_final) {
+              const [tp, ...resto] = String(data.plan_contratado_final).split(" — ");
+              if (TIPOS_PLAN.includes(tp)) {
+                next.tipo_plan = tp;
+                next.plan_contratado_final = resto.join(" — ");
+              }
+            }
             // El nombre se guarda combinado en la BD; al recuperar el borrador lo
             // dejamos completo en "nombres" para que el asesor lo separe si hace falta.
             if (data.nombre_cliente_completo && !next.apellidos_cliente && !next.nombres_cliente) {

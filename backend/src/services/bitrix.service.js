@@ -59,6 +59,12 @@ const bitrixCallBase = async (webhook, method, params = {}, intento = 1) => {
 const bitrixCall = (method, params = {}, intento = 1) =>
   bitrixCallBase(WEBHOOK, method, params, intento);
 
+// Igual que bitrixCall, pero contra la cuenta NOVONET (WEBHOOK_NOVONET).
+// La usa gestionablesWebhook.controller.js para escribir el cupo diario
+// (crm.deal.update) en los deals de novonet.bitrix24.es.
+const bitrixCallNovonet = (method, params = {}, intento = 1) =>
+  bitrixCallBase(WEBHOOK_NOVONET, method, params, intento);
+
 // ── Paginación automática ─────────────────────────────────────────────────────
 const bitrixListAllBase = async (webhook, method, params = {}, maxPages = 400) => {
   let all   = [];
@@ -376,4 +382,4 @@ const completarLog = async (id, { procesados, nuevos, actualizados, error, exito
   );
 };
 
-module.exports = { syncBitrix, syncUsuarios, bitrixCall, bitrixListAll, syncNovonet };
+module.exports = { syncBitrix, syncUsuarios, bitrixCall, bitrixCallNovonet, bitrixListAll, syncNovonet };

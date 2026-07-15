@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -142,6 +143,9 @@ export default function App() {
           <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
       </Suspense>
+
+      {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas */}
+      <WhatsAppSupportButton />
     </BrowserRouter>
   );
 }

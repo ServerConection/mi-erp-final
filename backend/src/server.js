@@ -5,6 +5,7 @@ const { initAlertas }     = require('./jobs/alertas.cron');
 const { iniciarWhatsApp } = require('./services/whatsapp.service');
 const { refreshMaterializedView } = require('./jobs/refreshVelsaMaterialized.cron');
 const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
+const { initJotformSync } = require('./jobs/jotformSync.cron');
 
 // SEGURIDAD: Verifica variables de entorno criticas al arrancar
 const requiredEnv = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'PORT'];
@@ -34,6 +35,7 @@ server.listen(process.env.PORT, async () => {
   // ⛔ Refresh VELSA desactivado temporalmente (tumbaba la BD). Reactivar cuando
   // se optimice la vista: await refreshMaterializedView();
   await refreshRedesMVs();
+  initJotformSync();
   iniciarWhatsApp();
 });
 

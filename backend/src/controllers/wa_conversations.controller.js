@@ -1,4 +1,24 @@
 const { query } = require('../config/db')
+const fs = require('fs')
+const path = require('path')
+
+// Traduce /wa-uploads/... a la ruta real en disco
+function resolveMediaPath(mediaUrl) {
+  if (mediaUrl.startsWith('/wa-uploads/')) {
+    const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+    return path.join(dir, mediaUrl.slice('/wa-uploads/'.length))
+  }
+  return mediaUrl
+}
+
+function guessMime(filename) {
+  const ext = (path.extname(filename || '') || '').toLowerCase()
+  const map = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
+    '.webp': 'image/webp', '.pdf': 'application/pdf',
+  }
+  return map[ext] || 'application/octet-stream'
+}
 
 const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
 
@@ -83,16 +103,39 @@ async function getMessages(req, res) {
 async function sendMessage(req, res) {
   try {
     const { id } = req.params
-    const { takeover } = req.body
+    const { takeover, media_url, media_type, media_filename } = req.body
     const text = req.body.text || req.body.body   // acepta ambos nombres
-    if (!text) return res.status(400).json({ success: false, error: 'text requerido' })
+    if (!text && !media_url) return res.status(400).json({ success: false, error: 'text o media_url requerido' })
 
     const owned = await findOwnedConversation(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
 
     const c = owned
     const bm = req.app.get('baileysManager')
-    await bm.sendText(c.line_id, c.wa_number, text)
+
+    if (media_url) {
+      // Enviar imagen/documento (subido antes con POST /api/wa/upload)
+      let buffer
+      if (/^https?:\/\//i.test(media_url)) {
+        const resp = await fetch(media_url)
+        if (!resp.ok) throw new Error(`No se pudo descargar el medio (HTTP ${resp.status})`)
+        buffer = Buffer.from(await resp.arrayBuffer())
+      } else {
+        const filePath = resolveMediaPath(media_url)
+        if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'Archivo no existe' })
+        buffer = fs.readFileSync(filePath)
+      }
+      await bm.sendMedia(c.line_id, c.wa_number, {
+        type:     media_type || 'image',
+        buffer,
+        mimetype: guessMime(media_filename || media_url),
+        filename: media_filename || path.basename(media_url),
+        caption:  text || '',
+        mediaUrl: media_url,
+      })
+    } else {
+      await bm.sendText(c.line_id, c.wa_number, text)
+    }
 
     // Si se pidió takeover, pausar bot por 24h
     if (takeover) {

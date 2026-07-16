@@ -4,7 +4,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 
-const API = `${import.meta.env.VITE_API_URL}/api/wa`;
+const ORIGIN = import.meta.env.VITE_API_URL;
+const API = `${ORIGIN}/api/wa`;
+// media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
+const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
+const isImage = (msg) => msg.type === "image" || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -46,6 +50,7 @@ export default function WaInbox() {
   const [messages, setMessages]           = useState([]);
   const [newMsg, setNewMsg]               = useState("");
   const [sending, setSending]             = useState(false);
+  const [uploading, setUploading]         = useState(false);
   const [filter, setFilter]               = useState("all"); // all|active|human_takeover|closed
   const [search, setSearch]               = useState("");
   const messagesEndRef = useRef(null);
@@ -125,6 +130,40 @@ export default function WaInbox() {
       if (!d.success) alert(d.error || "No se pudo enviar");
       loadMessages(selected.id);          // refresca para ver el mensaje enviado
     } finally { setSending(false); }
+  };
+
+  // Enviar imagen/PDF: sube el archivo y lo manda por WhatsApp
+  const sendFile = async (file) => {
+    if (!file || !selected || uploading) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const rUp = await fetch(`${API}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: fd,
+      });
+      const dUp = await rUp.json();
+      if (!dUp.success || !dUp.data) { alert(dUp.error || "No se pudo subir el archivo"); return; }
+
+      const r = await fetch(`${API}/conversations/${selected.id}/send`, {
+        method: "POST", headers: authH(),
+        body: JSON.stringify({
+          text: newMsg.trim(),   // el texto escrito va como caption (opcional)
+          media_url: dUp.data.url,
+          media_type: dUp.data.mimetype?.startsWith("image/") ? "image" : "document",
+          media_filename: dUp.data.originalname,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) alert(d.error || "No se pudo enviar");
+      setNewMsg("");
+      loadMessages(selected.id);
+    } catch (e) {
+      console.error("[WaInbox] Error enviando archivo:", e);
+      alert("Error enviando el archivo");
+    } finally { setUploading(false); }
   };
 
   const takeOver = async () => {
@@ -256,13 +295,18 @@ export default function WaInbox() {
                     ? "bg-green-600 text-white rounded-br-sm"
                     : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm"
                 }`}>
-                  {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
-                  {msg.media_url && (
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
+                  {msg.media_url && isImage(msg) ? (
+                    <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer">
+                      <img src={mediaSrc(msg.media_url)} alt="imagen"
+                        className="rounded-lg max-h-48 mb-1 border border-black/10" />
+                    </a>
+                  ) : msg.media_url ? (
+                    <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
                       className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>
                       📎 Ver archivo
                     </a>
-                  )}
+                  ) : null}
+                  {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                   <div className={`text-xs mt-0.5 ${msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
                     {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
                     {msg.direction === "out" && (
@@ -278,7 +322,17 @@ export default function WaInbox() {
           </div>
 
           {/* Input */}
-          <div className="bg-white border-t border-slate-200 p-3 flex gap-2">
+          <div className="bg-white border-t border-slate-200 p-3 flex gap-2 items-center">
+            <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-xl hover:bg-slate-100 transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
+              title="Enviar imagen o PDF">
+              {uploading ? "⏳" : "📎"}
+              <input
+                type="file" accept="image/*,.pdf"
+                className="hidden"
+                disabled={uploading}
+                onChange={e => { sendFile(e.target.files?.[0]); e.target.value = ""; }}
+              />
+            </label>
             <input
               type="text"
               placeholder="Escribe un mensaje…"

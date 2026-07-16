@@ -428,7 +428,7 @@ class BaileysManager {
     console.log(`[Line ${lineId}] → Menú numerado enviado`)
   }
 
-  async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption }) {
+  async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption, mediaUrl }) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
     const jid = this._toJid(to)
@@ -443,7 +443,7 @@ class BaileysManager {
       msgContent.mimetype = mimetype
     }
     const result = await inst.sock.sendMessage(jid, msgContent)
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl)
     return result
   }
 
@@ -605,19 +605,20 @@ class BaileysManager {
     return newConv.rows[0]
   }
 
-  async _saveOutboundMessage(lineId, waNumber, type, content) {
+  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null) {
     try {
       const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
       await query(
         `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, timestamp)
-         VALUES ($1,$2,$3,'out',$4,$5,NOW())`,
-        [conv.id, lineId, waNumber, type, content]
+          (conversation_id, line_id, wa_number, direction, type, content, media_url, timestamp)
+         VALUES ($1,$2,$3,'out',$4,$5,$6,NOW())`,
+        [conv.id, lineId, waNumber, type, content, mediaUrl]
       )
       // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
       this.io.emit('message:new', {
         conversation_id: conv.id,
         lineId, waNumber, content, text: content, direction: 'out',
+        type, media_url: mediaUrl,
         timestamp: new Date().toISOString(),
       })
     } catch (e) {}

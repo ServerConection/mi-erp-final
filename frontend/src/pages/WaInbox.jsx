@@ -23,12 +23,13 @@ const getSocket = () => {
 };
 
 const STATUS_BADGE = {
-  active:    "bg-green-100 text-green-700",
-  human:     "bg-blue-100 text-blue-700",
-  closed:    "bg-slate-100 text-slate-400",
-  bot:       "bg-purple-100 text-purple-600",
+  active:         "bg-green-100 text-green-700",
+  human:          "bg-blue-100 text-blue-700",
+  human_takeover: "bg-blue-100 text-blue-700",
+  closed:         "bg-slate-100 text-slate-400",
+  bot:            "bg-purple-100 text-purple-600",
 };
-const STATUS_LABEL = { active: "Activa", human: "Humano", closed: "Cerrada", bot: "Bot" };
+const STATUS_LABEL = { active: "Activa", human: "Humano", human_takeover: "Humano", closed: "Cerrada", bot: "Bot" };
 
 const timeAgo = (ts) => {
   const diff = (Date.now() - new Date(ts).getTime()) / 1000;
@@ -45,9 +46,11 @@ export default function WaInbox() {
   const [messages, setMessages]           = useState([]);
   const [newMsg, setNewMsg]               = useState("");
   const [sending, setSending]             = useState(false);
-  const [filter, setFilter]               = useState("all"); // all|active|human|closed
+  const [filter, setFilter]               = useState("all"); // all|active|human_takeover|closed
   const [search, setSearch]               = useState("");
   const messagesEndRef = useRef(null);
+  const selectedRef = useRef(null);          // evita closure viejo en el socket
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -81,13 +84,18 @@ export default function WaInbox() {
       setConversations(prev => [conv, ...prev.filter(c => c.id !== conv.id)]);
     });
     socket.on("message:new", (msg) => {
-      setConversations(prev => prev.map(c =>
-        c.id === msg.conversation_id
-          ? { ...c, last_msg_at: msg.timestamp, unread_count: c.unread_count + (msg.direction === "in" ? 1 : 0) }
-          : c
-      ));
-      if (selected?.id === msg.conversation_id) {
-        setMessages(prev => [...prev, msg]);
+      setConversations(prev => {
+        const exists = prev.some(c => c.id === msg.conversation_id);
+        if (!exists && msg.conversation_id) loadConvs(); // conversación nueva → recargar lista
+        return prev.map(c =>
+          c.id === msg.conversation_id
+            ? { ...c, last_msg_at: msg.timestamp, last_message: msg.content || msg.text,
+                unread_count: (c.unread_count || 0) + (msg.direction === "in" && selectedRef.current?.id !== c.id ? 1 : 0) }
+            : c
+        );
+      });
+      if (selectedRef.current?.id === msg.conversation_id) {
+        setMessages(prev => [...prev, { ...msg, content: msg.content || msg.text }]);
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       }
     });
@@ -109,17 +117,20 @@ export default function WaInbox() {
     const text = newMsg.trim();
     setNewMsg("");
     try {
-      await fetch(`${API}/conversations/${selected.id}/send`, {
+      const r = await fetch(`${API}/conversations/${selected.id}/send`, {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ body: text }),
+        body: JSON.stringify({ text }),   // el backend espera "text"
       });
+      const d = await r.json();
+      if (!d.success) alert(d.error || "No se pudo enviar");
+      loadMessages(selected.id);          // refresca para ver el mensaje enviado
     } finally { setSending(false); }
   };
 
   const takeOver = async () => {
-    await fetch(`${API}/conversations/${selected.id}/close`, { method: "POST", headers: authH(false) });
-    setSelected(s => ({ ...s, status: "human" }));
-    setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "human" } : c));
+    await fetch(`${API}/conversations/${selected.id}/takeover`, { method: "POST", headers: authH(false) });
+    setSelected(s => ({ ...s, status: "human_takeover" }));
+    setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "human_takeover" } : c));
   };
 
   const returnToBot = async () => {
@@ -150,10 +161,10 @@ export default function WaInbox() {
             className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
           <div className="flex gap-1">
             {[
-              { key: "all",    label: "Todos" },
-              { key: "active", label: "Activos" },
-              { key: "human",  label: "Humano" },
-              { key: "closed", label: "Cerrados" },
+              { key: "all",            label: "Todos" },
+              { key: "active",         label: "Activos" },
+              { key: "human_takeover", label: "Humano" },
+              { key: "closed",         label: "Cerrados" },
             ].map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
@@ -219,7 +230,7 @@ export default function WaInbox() {
               <div className="text-xs text-slate-500">+{selected.wa_number}</div>
             </div>
             <div className="flex gap-2">
-              {selected.status !== "human" ? (
+              {!["human", "human_takeover"].includes(selected.status) ? (
                 <button onClick={takeOver}
                   className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
                   👤 Tomar control

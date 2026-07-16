@@ -9,6 +9,7 @@
  *  - Interpola variables {{nombre}} por cada destinatario
  *  - Soporta adjuntos (image, document, audio)
  *  - Emite progreso por Socket.IO
+ *  - Registra wa_msg_id (acks de entrega) y eventos en campaign_events (2026-07)
  */
 const fs = require('fs')
 const path = require('path')
@@ -183,6 +184,7 @@ class CampaignEngine {
 
     try {
       const body = this._interpolate(msgText, vars)
+      let sendResult = null
 
       if (mediaUrl) {
         // Envío con adjunto (soporta /wa-uploads/, /uploads/, ruta absoluta o URL http)
@@ -197,7 +199,7 @@ class CampaignEngine {
           buffer = fs.readFileSync(filePath)
         }
 
-        await this.baileysManager.sendMedia(lineId, waNumber, {
+        sendResult = await this.baileysManager.sendMedia(lineId, waNumber, {
           type:     mediaType || 'document',
           buffer,
           mimetype: this._guessMime(mediaFile || mediaUrl),
@@ -206,12 +208,14 @@ class CampaignEngine {
         })
       } else {
         // Solo texto
-        await this.baileysManager.sendText(lineId, waNumber, body)
+        sendResult = await this.baileysManager.sendText(lineId, waNumber, body)
       }
 
+      // wa_msg_id permite correlacionar los acks de entrega/lectura de Baileys
+      const waMsgId = sendResult?.key?.id || null
       await query(
-        `UPDATE campaign_recipients SET status='sent', sent_at=NOW(), error=NULL WHERE id=$1`,
-        [recipient.id]
+        `UPDATE campaign_recipients SET status='sent', sent_at=NOW(), error=NULL, wa_msg_id=COALESCE($2, wa_msg_id) WHERE id=$1`,
+        [recipient.id, waMsgId]
       )
       await query(
         `UPDATE campaigns SET sent_count = sent_count + 1 WHERE id=$1`,
@@ -224,6 +228,15 @@ class CampaignEngine {
           `INSERT INTO messages (line_id, wa_number, direction, type, content, campaign_id, timestamp)
            VALUES ($1,$2,'out',$3,$4,$5,NOW())`,
           [lineId, waNumber, mediaUrl ? mediaType : 'text', body, camp.id]
+        )
+      } catch (e) {}
+
+      // Evento de auditoría (métricas por variante)
+      try {
+        await query(
+          `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number)
+           VALUES ($1,$2,$3,'sent',$4)`,
+          [camp.id, recipient.id, variantId, waNumber]
         )
       } catch (e) {}
 
@@ -240,6 +253,14 @@ class CampaignEngine {
         [err.message.substring(0, 500), recipient.id]
       )
       await query(`UPDATE campaigns SET failed_count = failed_count + 1 WHERE id=$1`, [camp.id])
+
+      try {
+        await query(
+          `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number, detail)
+           VALUES ($1,$2,$3,'failed',$4,$5)`,
+          [camp.id, recipient.id, variantId, waNumber, err.message.substring(0, 500)]
+        )
+      } catch (e) {}
 
       this._emit(camp.id, 'campaign:failed', {
         campaignId:  camp.id,

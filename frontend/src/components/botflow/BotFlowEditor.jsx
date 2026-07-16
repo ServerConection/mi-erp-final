@@ -50,6 +50,7 @@ const clampHandleIndex = (items, handlePrefix, edges, source) =>
 function FlowInner({ value, onChange }) {
   const [graph, setGraph] = useState(() => ({ nodes: toRfNodes(value?.nodes), edges: toRfEdges(value?.edges) }));
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const lastEmitted = useRef(JSON.stringify(value || {}));
   const isInternal = useRef(false);
   const wrapperRef = useRef(null);
@@ -137,6 +138,21 @@ function FlowInner({ value, onChange }) {
     });
   }, [mutate]);
 
+  // ── Eliminar SOLO una conexión (sin tocar los nodos) ──────────
+  const deleteEdge = useCallback((edgeId) => {
+    mutate((g) => {
+      const edge = g.edges.find((e) => e.id === edgeId);
+      if (!edge) return g;
+      let nodes = g.nodes;
+      // Limpiar el nextNodeId de la opción/condición correspondiente
+      if (edge.sourceHandle?.startsWith("opt-")) nodes = clearBranchTarget(nodes, edge.source, "opt-", parseInt(edge.sourceHandle.split("-")[1], 10));
+      else if (edge.sourceHandle?.startsWith("cond-")) nodes = clearBranchTarget(nodes, edge.source, "cond-", parseInt(edge.sourceHandle.split("-")[1], 10));
+      return { nodes, edges: g.edges.filter((e) => e.id !== edgeId) };
+    });
+    setSelectedEdgeId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mutate]);
+
   const onNodesDelete = useCallback((deletedNodes) => {
     mutate((g) => {
       const deletedIds = new Set(deletedNodes.map((n) => n.id));
@@ -187,6 +203,13 @@ function FlowInner({ value, onChange }) {
     data: { ...n.data, onDelete },
   }));
 
+  // Resaltar en rojo la conexión seleccionada
+  const decoratedEdges = graph.edges.map((e) => (
+    e.id === selectedEdgeId
+      ? { ...e, selected: true, style: { stroke: "#ef4444", strokeWidth: 3 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#ef4444" } }
+      : e
+  ));
+
   const selectedNode = graph.nodes.find((n) => n.id === selectedId) || null;
   const allNodesForPanel = graph.nodes.map((n) => {
     const def = getNodeDef(n.data.flowType);
@@ -216,6 +239,9 @@ function FlowInner({ value, onChange }) {
         <p className="text-[10px] text-slate-400 px-1 pt-2 leading-relaxed">
           Arrastra un bloque al lienzo o haz clic para insertarlo. Conecta arrastrando desde los puntos de cada nodo.
         </p>
+        <p className="text-[10px] text-slate-400 px-1 leading-relaxed">
+          🗑 Para borrar solo una conexión: haz clic en la línea y pulsa "Eliminar conexión" (o doble clic sobre la línea).
+        </p>
       </div>
 
       {/* Canvas */}
@@ -225,17 +251,28 @@ function FlowInner({ value, onChange }) {
             ⚠️ El flujo debe tener exactamente un nodo "Inicio" (tiene {numStart}).
           </div>
         )}
+        {selectedEdgeId && (
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-white border border-red-200 shadow-md rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-slate-500">Conexión seleccionada</span>
+            <button
+              onClick={() => deleteEdge(selectedEdgeId)}
+              className="text-[11px] bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-2 py-1 rounded-md font-medium transition-colors"
+            >🗑 Eliminar conexión</button>
+          </div>
+        )}
         <ReactFlow
           nodes={decoratedNodes}
-          edges={graph.edges}
+          edges={decoratedEdges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
-          onNodeClick={(_, node) => setSelectedId(node.id)}
-          onPaneClick={() => setSelectedId(null)}
+          onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdgeId(null); }}
+          onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); setSelectedId(null); }}
+          onEdgeDoubleClick={(_, edge) => deleteEdge(edge.id)}
+          onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); }}
           defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" }, style: { stroke: "#94a3b8", strokeWidth: 2 } }}
           deleteKeyCode={["Backspace", "Delete"]}
           fitView

@@ -97,6 +97,7 @@ router.get  ('/conversations',                   convsCtrl.getAll);
 router.get  ('/conversations/:id/messages',      convsCtrl.getMessages);
 router.post ('/conversations/:id/send',          convsCtrl.sendMessage);
 router.post ('/conversations/:id/close',         convsCtrl.close);
+router.post ('/conversations/:id/takeover',      convsCtrl.takeover);
 router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────

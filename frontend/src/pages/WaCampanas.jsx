@@ -2,6 +2,7 @@
  * WaCampanas.jsx — Gestión de campañas masivas WhatsApp en el ERP
  */
 import { useState, useEffect, useCallback } from "react";
+import { io } from "socket.io-client";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -19,13 +20,34 @@ const STATUS_BADGE = {
   running:   "bg-blue-100 text-blue-600",
   paused:    "bg-yellow-100 text-yellow-600",
   finished:  "bg-green-100 text-green-700",
+  completed: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-500",
   failed:    "bg-red-100 text-red-600",
 };
 const STATUS_LABEL = {
   draft:     "Borrador", scheduled: "Programada", running: "Enviando",
-  paused:    "Pausada",  finished:  "Finalizada", cancelled: "Cancelada", failed: "Error",
+  paused:    "Pausada",  finished:  "Finalizada", completed: "Finalizada",
+  cancelled: "Cancelada", failed: "Error",
 };
+
+// Badges para el estado de cada destinatario en el detalle
+const RCPT_BADGE = {
+  pending:   "bg-slate-100 text-slate-500",
+  sending:   "bg-blue-100 text-blue-600",
+  sent:      "bg-sky-100 text-sky-600",
+  delivered: "bg-green-100 text-green-700",
+  read:      "bg-emerald-100 text-emerald-700",
+  failed:    "bg-red-100 text-red-500",
+};
+const RCPT_LABEL = {
+  pending: "Pendiente", sending: "Enviando", sent: "Enviado",
+  delivered: "Entregado", read: "Leído", failed: "Fallido",
+};
+
+// Preview de mensaje con variables de ejemplo
+const PREVIEW_VARS = { nombre: "María", numero: "0999999999" };
+const interpolate = (text) =>
+  (text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => PREVIEW_VARS[k] ?? `{{${k}}}`);
 
 const emptyForm = {
   name: "", line_id: "", list_id: "",
@@ -68,6 +90,29 @@ export default function WaCampanas() {
   }, []);
 
   useEffect(() => { load(); }, []);
+
+  // ── Progreso en vivo por Socket.IO ──────────────────────────
+  useEffect(() => {
+    const s = io(ORIGIN, { auth: { token: localStorage.getItem("token") } });
+
+    // Actualiza contadores de una campaña sin recargar todo
+    const patch = (campaignId, fn) =>
+      setCampaigns(cs => cs.map(c => (c.id === campaignId ? fn(c) : c)));
+
+    s.on("campaign:progress", ({ campaignId, sent, failed, total }) =>
+      patch(campaignId, c => ({ ...c, sent_count: sent, failed_count: failed, total_recipients: total })));
+    s.on("campaign:started",   ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "running" })));
+    s.on("campaign:paused",    ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "paused" })));
+    s.on("campaign:cancelled", ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "cancelled" })));
+    s.on("campaign:completed", ({ campaignId }) => {
+      patch(campaignId, c => ({ ...c, status: "completed" }));
+      load(); // refresca stats finales
+    });
+    s.on("campaign:delivered", ({ campaignId }) =>
+      patch(campaignId, c => ({ ...c, delivered_count: (c.delivered_count || 0) + 1 })));
+
+    return () => s.disconnect();
+  }, [load]);
 
   const openNew = () => {
     setForm(emptyForm);
@@ -152,9 +197,19 @@ export default function WaCampanas() {
   };
 
   const openDetail = async (camp) => {
-    const r = await fetch(`${API}/campaigns/${camp.id}/messages`, { headers: authH(false) });
-    const d = await r.json();
-    setDetail({ ...camp, messages: Array.isArray(d?.data) ? d.data : [] });
+    // Trae variantes + destinatarios (getOne devuelve recipients y stats_by_status)
+    const [rMsgs, rFull] = await Promise.all([
+      fetch(`${API}/campaigns/${camp.id}/messages`, { headers: authH(false) }),
+      fetch(`${API}/campaigns/${camp.id}`,          { headers: authH(false) }),
+    ]);
+    const [dMsgs, dFull] = await Promise.all([rMsgs.json(), rFull.json()]);
+    const full = dFull?.data || {};
+    setDetail({
+      ...camp,
+      ...full,
+      messages:   Array.isArray(dMsgs?.data) ? dMsgs.data : [],
+      recipients: Array.isArray(full.recipients) ? full.recipients : [],
+    });
   };
 
   const filtered = (Array.isArray(campaigns) ? campaigns : []).filter(c =>
@@ -244,7 +299,8 @@ export default function WaCampanas() {
                       ✕
                     </button>
                   )}
-                  {camp.status === "failed" && (
+                  {(camp.status === "failed" ||
+                    (["completed", "finished"].includes(camp.status) && camp.failed_count > 0)) && (
                     <button onClick={() => action(camp.id, "retry-failed")}
                       className="text-xs border border-orange-200 text-orange-600 px-3 py-1.5 rounded-lg transition-colors">
                       🔄 Reintentar
@@ -295,8 +351,18 @@ export default function WaCampanas() {
                   <select value={form.list_id} onChange={e => setForm(f => ({ ...f, list_id: e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
                     <option value="">Seleccionar…</option>
-                    {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    {lists.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}{l.contact_count != null ? ` (${l.contact_count})` : ""}
+                      </option>
+                    ))}
                   </select>
+                  {form.list_id && (() => {
+                    const sel = lists.find(l => l.id === form.list_id);
+                    return sel?.contact_count != null ? (
+                      <p className="text-xs text-slate-400 mt-1">👥 {sel.contact_count} destinatarios</p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
 
@@ -357,6 +423,14 @@ export default function WaCampanas() {
                       />
                       <p className="text-xs text-slate-400 mt-1">Variables: {`{{nombre}}, {{variable}}`}</p>
 
+                      {/* Vista previa interpolada */}
+                      {v.message_text?.trim() && (
+                        <div className="mt-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                          <p className="text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-0.5">Vista previa</p>
+                          <p className="text-xs text-slate-700 whitespace-pre-wrap">{interpolate(v.message_text)}</p>
+                        </div>
+                      )}
+
                       {/* Adjuntar imagen */}
                       <div className="mt-2">
                         {v.media_url ? (
@@ -411,10 +485,11 @@ export default function WaCampanas() {
               <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <div className="p-5 space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-4 gap-3 text-center">
                 {[
                   { label: "Enviados",    val: detail.sent_count,       color: "text-blue-600" },
                   { label: "Entregados",  val: detail.delivered_count,  color: "text-green-600" },
+                  { label: "Leídos",      val: detail.read_count ?? 0,  color: "text-emerald-600" },
                   { label: "Fallidos",    val: detail.failed_count,     color: "text-red-500" },
                 ].map(({ label, val, color }) => (
                   <div key={label} className="bg-slate-50 rounded-xl p-3">
@@ -443,6 +518,46 @@ export default function WaCampanas() {
                   ))}
                 </div>
               </div>
+
+              {/* Destinatarios */}
+              {Array.isArray(detail.recipients) && detail.recipients.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                    Destinatarios ({detail.recipients.length}{detail.total_recipients > detail.recipients.length ? ` de ${detail.total_recipients}` : ""})
+                  </p>
+                  <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-xl">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 sticky top-0">
+                        <tr className="text-left text-slate-500">
+                          <th className="px-3 py-2 font-semibold">Número</th>
+                          <th className="px-3 py-2 font-semibold">Nombre</th>
+                          <th className="px-3 py-2 font-semibold">Estado</th>
+                          <th className="px-3 py-2 font-semibold">Variante</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.recipients.map(r => {
+                          const variant = (detail.messages || []).find(m => m.id === r.message_id);
+                          return (
+                            <tr key={r.id} className="border-t border-slate-100">
+                              <td className="px-3 py-1.5 text-slate-700">+{r.wa_number}</td>
+                              <td className="px-3 py-1.5 text-slate-500 truncate max-w-[100px]">{r.name || "—"}</td>
+                              <td className="px-3 py-1.5">
+                                <span className={`px-2 py-0.5 rounded-full font-medium ${RCPT_BADGE[r.status] || RCPT_BADGE.pending}`}
+                                  title={r.error || ""}>
+                                  {RCPT_LABEL[r.status] || r.status}
+                                </span>
+                                {r.error && <div className="text-red-400 mt-0.5 truncate max-w-[160px]" title={r.error}>{r.error}</div>}
+                              </td>
+                              <td className="px-3 py-1.5 text-slate-500">{variant?.label || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

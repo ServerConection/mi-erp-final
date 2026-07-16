@@ -339,6 +339,11 @@ class BaileysManager {
 
     sock.ev.on('messages.update', async (updates) => {
       for (const { key, update } of updates) {
+        // ── Acks de entrega/lectura (status: 3=entregado, 4=leído) ──
+        if (typeof update.status === 'number' && key?.id) {
+          try { await this._handleDeliveryAck(lineId, key.id, update.status) } catch (e) {}
+        }
+
         if (!update.pollUpdates) continue
 
         const remoteJid = key.remoteJid
@@ -387,8 +392,9 @@ class BaileysManager {
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
     const jid = this._toJid(to)
     console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
-    await inst.sock.sendMessage(jid, { text })
+    const result = await inst.sock.sendMessage(jid, { text })
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text)
+    return result
   }
 
   async sendPoll(lineId, to, pollTitle, options) {
@@ -436,8 +442,9 @@ class BaileysManager {
       msgContent.audio = buffer
       msgContent.mimetype = mimetype
     }
-    await inst.sock.sendMessage(jid, msgContent)
+    const result = await inst.sock.sendMessage(jid, msgContent)
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename)
+    return result
   }
 
   getStatus(lineId) { return this.instances[lineId]?.status || 'disconnected' }
@@ -476,7 +483,8 @@ class BaileysManager {
     }
 
     this.io.emit('message:new', {
-      lineId, waNumber, text, direction: 'in',
+      conversation_id: conv.id,
+      lineId, waNumber, text, content: text, direction: 'in',
       timestamp: new Date().toISOString(),
     })
 
@@ -489,6 +497,56 @@ class BaileysManager {
 
     const engine = new FlowEngine(this, this.io)
     await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  // ── Acks de campañas: marca delivered/read en campaign_recipients ──
+  // Baileys status: 2=server ack, 3=delivery ack, 4=read
+  async _handleDeliveryAck(lineId, waMsgId, status) {
+    if (status < 3) return
+
+    // Entregado (solo la primera vez: transición sent → delivered)
+    const del = await query(
+      `UPDATE campaign_recipients
+       SET status='delivered', delivered_at=COALESCE(delivered_at, NOW())
+       WHERE wa_msg_id=$1 AND status='sent'
+       RETURNING id, campaign_id, message_id, wa_number`,
+      [waMsgId]
+    )
+    if (del.rows.length) {
+      const r = del.rows[0]
+      await query(`UPDATE campaigns SET delivered_count = delivered_count + 1 WHERE id=$1`, [r.campaign_id])
+      try {
+        await query(
+          `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number)
+           VALUES ($1,$2,$3,'delivered',$4)`,
+          [r.campaign_id, r.id, r.message_id, r.wa_number]
+        )
+      } catch (e) {}
+      this.io.emit('campaign:delivered', { campaignId: r.campaign_id, recipientId: r.id, wa_number: r.wa_number })
+    }
+
+    // Leído (solo la primera vez)
+    if (status >= 4) {
+      const rd = await query(
+        `UPDATE campaign_recipients
+         SET read_at=NOW(), status='read'
+         WHERE wa_msg_id=$1 AND read_at IS NULL AND status IN ('sent','delivered')
+         RETURNING id, campaign_id, message_id, wa_number`,
+        [waMsgId]
+      )
+      if (rd.rows.length) {
+        const r = rd.rows[0]
+        await query(`UPDATE campaigns SET read_count = read_count + 1 WHERE id=$1`, [r.campaign_id])
+        try {
+          await query(
+            `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number)
+             VALUES ($1,$2,$3,'read',$4)`,
+            [r.campaign_id, r.id, r.message_id, r.wa_number]
+          )
+        } catch (e) {}
+        this.io.emit('campaign:read', { campaignId: r.campaign_id, recipientId: r.id, wa_number: r.wa_number })
+      }
+    }
   }
 
   async _handlePollVote(lineId, sock, remoteJid, waNumber, selectedLabel) {
@@ -556,6 +614,12 @@ class BaileysManager {
          VALUES ($1,$2,$3,'out',$4,$5,NOW())`,
         [conv.id, lineId, waNumber, type, content]
       )
+      // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
+      this.io.emit('message:new', {
+        conversation_id: conv.id,
+        lineId, waNumber, content, text: content, direction: 'out',
+        timestamp: new Date().toISOString(),
+      })
     } catch (e) {}
   }
 

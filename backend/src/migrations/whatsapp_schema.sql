@@ -213,3 +213,26 @@ DO $$ BEGIN CREATE TRIGGER trg_lines_updated     BEFORE UPDATE ON lines         
 DO $$ BEGIN CREATE TRIGGER trg_lists_updated     BEFORE UPDATE ON contact_lists FOR EACH ROW EXECUTE FUNCTION update_updated_at(); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TRIGGER trg_templates_updated BEFORE UPDATE ON templates     FOR EACH ROW EXECUTE FUNCTION update_updated_at(); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TRIGGER trg_campaigns_updated BEFORE UPDATE ON campaigns     FOR EACH ROW EXECUTE FUNCTION update_updated_at(); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Mejoras 2026-07 (aditivas — seguras de re-ejecutar)
+-- ═══════════════════════════════════════════════════════════════
+
+-- Índice compuesto: el CampaignEngine busca "siguiente pendiente" por cada mensaje
+CREATE INDEX IF NOT EXISTS idx_recipients_campaign_status ON campaign_recipients(campaign_id, status);
+-- Índice para resolver acks de entrega/lectura por wa_msg_id
+CREATE INDEX IF NOT EXISTS idx_recipients_wa_msg ON campaign_recipients(wa_msg_id);
+
+-- Auditoría de eventos de campaña (permite métricas por variante / A-B real)
+CREATE TABLE IF NOT EXISTS campaign_events (
+  id           BIGSERIAL PRIMARY KEY,
+  campaign_id  UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  recipient_id UUID REFERENCES campaign_recipients(id) ON DELETE SET NULL,
+  variant_id   UUID REFERENCES campaign_messages(id) ON DELETE SET NULL,
+  event        VARCHAR(20) NOT NULL,  -- sent | failed | delivered | read
+  wa_number    VARCHAR(30),
+  detail       TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign ON campaign_events(campaign_id, event);
+CREATE INDEX IF NOT EXISTS idx_campaign_events_variant  ON campaign_events(variant_id);

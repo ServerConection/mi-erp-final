@@ -83,7 +83,8 @@ async function getMessages(req, res) {
 async function sendMessage(req, res) {
   try {
     const { id } = req.params
-    const { text, takeover } = req.body
+    const { takeover } = req.body
+    const text = req.body.text || req.body.body   // acepta ambos nombres
     if (!text) return res.status(400).json({ success: false, error: 'text requerido' })
 
     const owned = await findOwnedConversation(req, id)
@@ -104,6 +105,26 @@ async function sendMessage(req, res) {
       await query(`UPDATE conversations SET status='human_takeover' WHERE id=$1`, [id])
     }
 
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ── Tomar control (pausa el bot 24h, NO cierra la conversación) ──
+async function takeover(req, res) {
+  try {
+    const { id } = req.params
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
+    const reactivateAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    await query(
+      `UPDATE contacts SET metadata = metadata || $1::jsonb
+       WHERE wa_number=$2 AND line_id=$3`,
+      [JSON.stringify({ human_agent: true, bot_reactivate_at: reactivateAt }), owned.wa_number, owned.line_id]
+    )
+    await query(`UPDATE conversations SET status='human_takeover' WHERE id=$1`, [id])
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
@@ -145,4 +166,4 @@ async function returnToBot(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, close, returnToBot }
+module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover }

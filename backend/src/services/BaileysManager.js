@@ -264,6 +264,19 @@ class BaileysManager {
           } else {
             waNumber = await this._resolveLid(remoteJid, sock, lineId)
           }
+
+          // LID sin resolver → marcar el contacto para que las respuestas salgan al JID @lid
+          if (waNumber === this._cleanNumber(remoteJid)) {
+            try {
+              await query(
+                `INSERT INTO contacts (wa_number, line_id, metadata)
+                 VALUES ($1,$2,'{"is_lid":true}'::jsonb)
+                 ON CONFLICT (wa_number, line_id)
+                 DO UPDATE SET metadata = contacts.metadata || '{"is_lid":true}'::jsonb`,
+                [waNumber, lineId]
+              )
+            } catch (e) {}
+          }
         }
 
         const listResponse = msg.message?.listResponseMessage
@@ -301,6 +314,9 @@ class BaileysManager {
           : msg.message?.documentMessage ? 'document'
           : msg.message?.audioMessage ? 'audio'
           : 'unknown'
+
+        // Ignorar eventos sin contenido (reacciones, protocolo, etc.) → evita burbujas vacías
+        if (!text && !['image', 'document', 'audio'].includes(msgType)) continue
 
         const pushName = msg.pushName || ''
         // ── Número de quien escribe ──────────────────────────────
@@ -387,10 +403,28 @@ class BaileysManager {
     this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
   }
 
+  // Resuelve el JID correcto para enviar: contactos LID deben recibir en @lid
+  async _resolveSendJid(lineId, to) {
+    const str = (to || '').toString()
+    if (str.includes('@')) return this._toJid(str)   // ya viene como JID completo
+    const num = this._cleanNumber(str)
+    if (this.lidMap[num]) return `${this.lidMap[num]}@s.whatsapp.net`  // LID con número real conocido
+    try {
+      const r = await query(
+        `SELECT metadata FROM contacts WHERE wa_number=$1 AND line_id=$2`,
+        [num, lineId]
+      )
+      const md = r.rows[0]?.metadata || {}
+      if (md.real_phone) return `${String(md.real_phone).replace(/\D/g, '')}@s.whatsapp.net`
+      if (md.is_lid) return `${num}@lid`             // LID sin resolver → responder al JID @lid
+    } catch (e) {}
+    return this._toJid(num)
+  }
+
   async sendText(lineId, to, text) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
-    const jid = this._toJid(to)
+    const jid = await this._resolveSendJid(lineId, to)
     console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
     const result = await inst.sock.sendMessage(jid, { text })
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text)
@@ -431,7 +465,7 @@ class BaileysManager {
   async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption, mediaUrl }) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
-    const jid = this._toJid(to)
+    const jid = await this._resolveSendJid(lineId, to)
     const msgContent = { caption: caption || '' }
     if (type === 'image') msgContent.image = buffer
     else if (type === 'document') {
@@ -579,9 +613,10 @@ class BaileysManager {
   }
 
   async _getOrCreateConversation(lineId, waNumber, remoteJid) {
+    // Reusar cualquier conversación abierta (activa o en manos de humano) — evita duplicados
     const existing = await query(
       `SELECT * FROM conversations
-       WHERE line_id=$1 AND wa_number=$2 AND status='active'
+       WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
        ORDER BY started_at DESC LIMIT 1`,
       [lineId, waNumber]
     )
@@ -606,6 +641,7 @@ class BaileysManager {
   }
 
   async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null) {
+    if (!content && !mediaUrl) return   // no guardar burbujas vacías
     try {
       const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
       await query(

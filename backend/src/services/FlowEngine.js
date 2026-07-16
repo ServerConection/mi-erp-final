@@ -196,21 +196,25 @@ class FlowEngine {
 
         console.log(`[FlowEngine] Enviando imagen+poll a ${waNumber}: "${title}" (${options.length} opciones)`)
 
-        // 1. Enviar imagen visual del menú
+        // 1. Enviar imagen visual del menú (opcional: solo si el servicio existe)
         try {
-          const { generateMenuImage } = require('../services/imageMenu.service')
-          const imgBuffer = await generateMenuImage(title, options)
-          await this.baileysManager.sendMedia(lineId, waNumber, {
-            type: 'image',
-            buffer: imgBuffer,
-            mimetype: 'image/png',
-            filename: 'menu.png',
-            caption: '',
-          })
-          console.log(`[FlowEngine] Imagen de menú enviada OK`)
+          let generateMenuImage = null
+          try { ({ generateMenuImage } = require('../services/imageMenu.service')) } catch (_) {
+            // imageMenu.service no instalado → se envía solo el menú de texto
+          }
+          if (generateMenuImage) {
+            const imgBuffer = await generateMenuImage(title, options)
+            await this.baileysManager.sendMedia(lineId, waNumber, {
+              type: 'image',
+              buffer: imgBuffer,
+              mimetype: 'image/png',
+              filename: 'menu.png',
+              caption: '',
+            })
+            console.log(`[FlowEngine] Imagen de menú enviada OK`)
+          }
         } catch (e) {
           console.error(`[FlowEngine] Error enviando imagen de menú:`, e.message)
-          console.error(e.stack)
         }
 
 

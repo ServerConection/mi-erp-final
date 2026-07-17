@@ -90,11 +90,33 @@ class CampaignEngine {
     return r.rows  // [] si no hay variantes → usar body/media de la campaña
   }
 
+  // Baraja un array (Fisher-Yates) — para rotar variantes sin repetir
+  _shuffle(arr) {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+
+  // Devuelve la siguiente variante rotando: usa TODAS en orden aleatorio,
+  // y cuando se agotan, vuelve a barajar y empieza de nuevo. Así cada
+  // variante se usa por igual y los mensajes salen más variados (anti-bloqueo).
+  _nextVariant(state, variants) {
+    if (!variants.length) return null
+    if (!state.queue || state.queue.length === 0) {
+      state.queue = this._shuffle(variants)
+    }
+    return state.queue.shift()
+  }
+
   // ── Loop principal de envío ───────────────────────────────
   async _run(campaignId) {
     let camp     = await this._loadCampaign(campaignId)
     let variants = await this._loadVariants(campaignId)
     let processedInBatch = 0
+    const rotState = {}  // estado de rotación de variantes (cola barajada)
 
     while (camp.status === 'running') {
       if (this.running[campaignId]?.abortFlag) {
@@ -123,10 +145,8 @@ class CampaignEngine {
       }
 
       const recipient = pending.rows[0]
-      // Elegir variante aleatoria (si hay); si no, usar datos de la campaña
-      const variant = variants.length
-        ? variants[Math.floor(Math.random() * variants.length)]
-        : null
+      // Rotación: usa TODAS las variantes en orden aleatorio antes de repetir
+      const variant = this._nextVariant(rotState, variants)
       await this._sendOne(camp, recipient, variant)
       processedInBatch++
 

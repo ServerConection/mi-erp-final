@@ -77,6 +77,12 @@ const initSocket = (httpServer) => {
   _io.on('connection', (socket) => {
     const { perfil, empresa } = socket.user;
 
+    // Sala privada por usuario: usada para eventos sensibles (QR de WhatsApp)
+    // que SOLO debe ver el dueño de la línea, nunca los demás.
+    if (socket.userId) {
+      socket.join('user:' + socket.userId);
+    }
+
     if (perfil === 'ADMINISTRADOR') {
       socket.join('broadcast:all');
       console.log('[SOCKET] Conectado:', socket.id, '(ADMIN) -> broadcast:all');

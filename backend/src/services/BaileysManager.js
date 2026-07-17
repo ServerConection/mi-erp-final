@@ -21,6 +21,22 @@ class BaileysManager {
     this.io = io
     this.instances = {}
     this.lidMap = {}
+    this.lineOwners = {}   // lineId → userId autorizado a ver el QR
+  }
+
+  // Emite el QR SOLO al usuario dueño/solicitante de la línea.
+  // Si no se conoce el dueño (líneas viejas), cae en broadcast:all (solo admins).
+  _emitQrToOwner(lineId, qrImage) {
+    const ownerId = this.lineOwners[lineId]
+    const payload = { lineId, qr: qrImage }
+    if (ownerId) {
+      this.io.to('user:' + ownerId).emit('line:qr', payload)
+      this.io.to('user:' + ownerId).emit(`line:qr:${lineId}`, payload)
+    } else {
+      // Fallback seguro: solo administradores, nunca todos los usuarios
+      this.io.to('broadcast:all').emit('line:qr', payload)
+      this.io.to('broadcast:all').emit(`line:qr:${lineId}`, payload)
+    }
   }
 
   async _loadLidMapFromDB() {
@@ -88,7 +104,7 @@ class BaileysManager {
     return lidNum
   }
 
-  async connect(lineId) {
+  async connect(lineId, requesterId = null) {
     if (Object.keys(this.lidMap).length === 0) {
       await this._loadLidMapFromDB()
     }
@@ -108,6 +124,9 @@ class BaileysManager {
 
     const lineRow = await query('SELECT * FROM lines WHERE id = $1', [lineId])
     const line = lineRow.rows[0]
+
+    // Registrar quién puede ver el QR: el solicitante, o el dueño de la línea
+    this.lineOwners[lineId] = requesterId || line?.created_by || this.lineOwners[lineId] || null
 
     const socketOptions = {
       version,
@@ -198,10 +217,10 @@ class BaileysManager {
         this.instances[lineId].qr = qrImage
         this.instances[lineId].status = 'qr_ready'
         this._updateLineStatus(lineId, 'qr_ready')
-        this.io.emit('line:qr', { lineId, qr: qrImage })
-        this.io.emit(`line:qr:${lineId}`, { lineId, qr: qrImage })
+        // QR: SOLO al dueño de la línea (evita que otros lo escaneen y secuestren el número)
+        this._emitQrToOwner(lineId, qrImage)
         this.io.emit('line:status', { lineId, status: 'qr_ready' })
-        console.log(`[Line ${lineId}] QR generado`)
+        console.log(`[Line ${lineId}] QR generado (visible solo para el dueño)`)
       }
 
       if (connection === 'open') {
@@ -421,11 +440,24 @@ class BaileysManager {
     return this._toJid(num)
   }
 
+  // Simula "escribiendo…" antes de enviar (comportamiento humano → anti-bloqueo).
+  // Nunca rompe el envío: si falla, se ignora.
+  async _simulateTyping(sock, jid, textLen = 0) {
+    try {
+      await sock.sendPresenceUpdate('composing', jid)
+      // Tiempo proporcional a la longitud del texto, con tope (0.8s–3s)
+      const ms = Math.min(3000, Math.max(800, (textLen || 20) * 45))
+      await new Promise(r => setTimeout(r, ms))
+      await sock.sendPresenceUpdate('paused', jid)
+    } catch (e) { /* ignorar */ }
+  }
+
   async sendText(lineId, to, text) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
     const jid = await this._resolveSendJid(lineId, to)
     console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
+    await this._simulateTyping(inst.sock, jid, (text || '').length)
     const result = await inst.sock.sendMessage(jid, { text })
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text)
     return result

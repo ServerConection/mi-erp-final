@@ -138,7 +138,8 @@ async function connect(req, res) {
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
 
     const bm = req.app.get('baileysManager')
-    await bm.connect(id)
+    // Pasar quién solicita: el QR se emite SOLO a este usuario (seguridad)
+    await bm.connect(id, req.user.id)
     res.json({ success: true, message: 'Conectando... espera el QR' })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })

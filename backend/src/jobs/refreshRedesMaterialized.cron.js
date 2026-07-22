@@ -28,17 +28,39 @@ const refreshRedesMVs = async () => {
   try {
     console.log('[REFRESH-MV-REDES] Iniciando refresco de vistas materializadas de Redes...');
 
+    // FIX (2026-07-22): validar contra pg_matviews ANTES de refrescar.
+    // "mv_monitoreo_publicidad" existía como vista NORMAL (no materializada)
+    // y el REFRESH abortaba el loop completo → las demás vistas tampoco se
+    // refrescaban y el contador de errores crecía en cada ciclo (cada 30 min).
+    const { rows } = await pool.query(
+      `SELECT schemaname || '.' || matviewname AS nombre FROM pg_matviews`
+    );
+    const matviewsReales = new Set(rows.map(r => r.nombre));
+
+    let refrescadas = 0;
     for (const vista of VISTAS) {
+      if (!matviewsReales.has(vista)) {
+        console.warn(`[REFRESH-MV-REDES] ⏭️ ${vista} no es una vista materializada — omitida. ` +
+          `(Si debe serlo: DROP VIEW ${vista}; CREATE MATERIALIZED VIEW ${vista} AS ...)`);
+        continue;
+      }
+      // try/catch por vista: un fallo individual no aborta las demás
       const t0 = Date.now();
-      await pool.query(`REFRESH MATERIALIZED VIEW ${vista}`);
-      console.log(`[REFRESH-MV-REDES] ✅ ${vista} refrescada en ${Date.now() - t0}ms`);
+      try {
+        await pool.query(`REFRESH MATERIALIZED VIEW ${vista}`);
+        refrescadas++;
+        console.log(`[REFRESH-MV-REDES] ✅ ${vista} refrescada en ${Date.now() - t0}ms`);
+      } catch (err) {
+        refreshErrors++;
+        console.error(`[REFRESH-MV-REDES] ❌ Error refrescando ${vista}:`, err.message);
+      }
     }
 
     const duration = Date.now() - startTime;
     lastRefreshTime = new Date();
     refreshCount++;
 
-    console.log(`[REFRESH-MV-REDES] ✅ Todas las vistas refrescadas en ${duration}ms (total: ${refreshCount})`);
+    console.log(`[REFRESH-MV-REDES] ✅ ${refrescadas}/${VISTAS.length} vistas refrescadas en ${duration}ms (ciclos: ${refreshCount} | errores acumulados: ${refreshErrors})`);
   } catch (err) {
     refreshErrors++;
     console.error(`[REFRESH-MV-REDES] ❌ Error al refrescar vistas:`, err.message);

@@ -180,7 +180,13 @@ const getPrimerDiaMesEcuador = () => {
     return `${fechaEcuador.getFullYear()}-${String(fechaEcuador.getMonth() + 1).padStart(2, '0')}-01`;
 };
 
-const parseFecha = (col) => `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ELSE TO_DATE(SUBSTRING(${col}::text FROM 5 FOR 11), 'Mon DD YYYY') END`;
+// PERFORMANCE FIX (2026-07-22): antes esto emitía un CASE+regex+TO_DATE inline
+// que NO es indexable (text::date y TO_DATE no son IMMUTABLE), forzando Seq Scan
+// de mestra_bitrix en cada query → "Query read timeout" (90s) bajo carga.
+// Ahora emite public.parse_fecha_flex(col::text): función IMMUTABLE con la MISMA
+// lógica, respaldada por índices funcionales (ver fix_dashboard_performance.sql).
+// La función se auto-provisiona al arrancar en config/db.js.
+const parseFecha = (col) => `public.parse_fecha_flex(${col}::text)`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // JOIN LATERAL con fallback de mes:
@@ -354,7 +360,7 @@ const getIndicadoresDashboard = async (req, res) => {
             values.push(fechaActivacionDesde, fechaActivacionHasta);
             const idxDesde = values.length - 1;
             const idxHasta = values.length;
-            const actFilter = ` AND mb.j_fecha_activacion_netlife::date BETWEEN $${idxDesde}::date AND $${idxHasta}::date`;
+            const actFilter = ` AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $${idxDesde}::date AND $${idxHasta}::date`;
             filtersJoin   += actFilter;
             filtersNoJoin += actFilter;
         }
@@ -386,19 +392,19 @@ const getIndicadoresDashboard = async (req, res) => {
                     e.supervisor,
                     -- Fechas pre-calculadas 1 vez por fila (evita CASE+regex repetido):
                     ${parseFecha('mb.b_creado_el_fecha')}        AS _bc_date,
-                    mb.b_cerrado::date                           AS _bcerrado_date,
-                    mb.j_fecha_registro_sistema::date            AS _jf_date,
+                    public.parse_fecha_flex(mb.b_cerrado::text)                           AS _bcerrado_date,
+                    public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)            AS _jf_date,
                     ${parseFecha('mb.j_fecha_registro_sistema')} AS _jf_parsed_date,
                     ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date,
-                    mb.j_fecha_activacion_netlife::date          AS _jfact_date,
+                    public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)          AS _jfact_date,
                     ${VENTA_SERVICIO_VAN}                        AS _venta_servicio
                 FROM mestra_bitrix mb
                 ${joinEmpleadosDedup}
                 ${JOIN_VAN_NOVONET}
                 WHERE (
                     ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                    OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-                    OR mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+                    OR public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    OR public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
                 ) ${filtersJoin}
             )
             SELECT
@@ -528,9 +534,9 @@ const getIndicadoresDashboard = async (req, res) => {
             FROM public.mestra_bitrix mb_jot
             JOIN public.mestra_bitrix mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
-            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
             GROUP BY 1
         `;
@@ -546,9 +552,9 @@ const getIndicadoresDashboard = async (req, res) => {
                 WHERE e2.nombre_completo = mb_crm.b_persona_responsable
                 ORDER BY e2.codigo::int DESC LIMIT 1
             ) e ON true
-            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             GROUP BY 1
         `;
 
@@ -561,8 +567,8 @@ const getIndicadoresDashboard = async (req, res) => {
             FROM public.mestra_bitrix mb_jot
             JOIN public.mestra_bitrix mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
-            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
             GROUP BY 1
         `;
@@ -578,8 +584,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 WHERE e2.nombre_completo = mb_crm.b_persona_responsable
                 ORDER BY e2.codigo::int DESC LIMIT 1
             ) e ON true
-            WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+            WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             GROUP BY 1
         `;
 
@@ -596,9 +602,9 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
             AND mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-            AND mb.j_fecha_activacion_netlife::date >= $1::date
-            AND mb.j_fecha_activacion_netlife::date <= $2::date
-            AND mb.j_fecha_registro_sistema::date < $1::date
+            AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= $1::date
+            AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <= $2::date
+            AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) < $1::date
             ${filtersJoin}
             GROUP BY 1
         `;
@@ -636,7 +642,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 e.supervisor AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersJoin}
             LIMIT 6000
         `;
@@ -646,7 +652,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
             GROUP BY 1
             ORDER BY total DESC
@@ -664,14 +670,14 @@ const getIndicadoresDashboard = async (req, res) => {
 
         const queryPorDia = `
             SELECT
-                mb.j_fecha_registro_sistema::date AS fecha,
+                public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) AS fecha,
                 COUNT(*)::int AS total,
                 COUNT(*) FILTER (
                     WHERE mb.j_netlife_estatus_real = 'ACTIVO'
                 )::int AS activos
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
-            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
             GROUP BY 1
             ORDER BY fecha ASC
@@ -682,12 +688,12 @@ const getIndicadoresDashboard = async (req, res) => {
         // existentes ni cambia ningún KPI — es un indicador independiente.
         const queryActivacionesPorDia = `
             SELECT
-                mb.j_fecha_activacion_netlife::date AS fecha,
+                public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) AS fecha,
                 COUNT(*)::int AS activaciones
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-            AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+            AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
             GROUP BY 1
             ORDER BY fecha ASC
@@ -709,7 +715,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
             FROM public.mestra_bitrix mb
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
         `;
 
@@ -738,23 +744,23 @@ const getIndicadoresDashboard = async (req, res) => {
         const queryPlanesPorCategoria = `
             SELECT
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
                 ) AS hogar_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
                 ) AS hogar_activos,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND (
                         (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
                         (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
                     )
                 ) AS pymes_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND (
                         (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
@@ -762,17 +768,17 @@ const getIndicadoresDashboard = async (req, res) => {
                     )
                 ) AS pymes_activos,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_activos
             FROM public.mestra_bitrix mb
             ${JOIN_VAN_NOVONET}
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
         `;
 
         const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash] = await Promise.all([
@@ -945,17 +951,17 @@ LEFT JOIN LATERAL (
             SELECT
                 COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
                     AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                 ) AS real_dia_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS crm_acumulado,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS crm_dia,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE ${parseFecha('mb.b_cerrado')} = $2::date
@@ -963,32 +969,32 @@ LEFT JOIN LATERAL (
                 ) AS v_subida_crm_hoy,
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                         AND ${esDescarteExpr('mb.b_etapa_de_la_negociacion')}
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                        WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS real_descarte,
                 ROUND(COALESCE(
                     COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                         AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS real_tarjeta,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND ${VENTA_SERVICIO_VAN}
                 ) AS real_venta_servicio
             FROM public.mestra_bitrix mb
             ${joinMonitoreo}
             ${JOIN_VAN_NOVONET}
             WHERE (
-                mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+                public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 OR ${parseFecha('mb.b_cerrado')} BETWEEN $1::date AND $2::date
             ) ${filtersJoin}
             GROUP BY 1
@@ -1142,7 +1148,7 @@ const getReporte180 = async (req, res) => {
             values.push(fechaActivacionDesde, fechaActivacionHasta);
             const idxDesde180 = values.length - 1;
             const idxHasta180 = values.length;
-            filtersNoJoin += ` AND mb.j_fecha_activacion_netlife::date BETWEEN $${idxDesde180}::date AND $${idxHasta180}::date`;
+            filtersNoJoin += ` AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $${idxDesde180}::date AND $${idxHasta180}::date`;
         }
 
         // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
@@ -1151,14 +1157,14 @@ const getReporte180 = async (req, res) => {
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND mb.j_netlife_estatus_real = 'ACTIVO'
                 ) AS ventas_activas,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND ${VENTA_SERVICIO_VAN}
                 ) AS ventas_servicio,
                 ROUND(COALESCE(
@@ -1173,7 +1179,7 @@ const getReporte180 = async (req, res) => {
                 , 0) * 100, 2) AS pct_descarte,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
-                        WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
@@ -1184,18 +1190,18 @@ const getReporte180 = async (req, res) => {
                     COUNT(*) FILTER (
                         WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
                         AND mb.j_netlife_estatus_real = 'ACTIVO'
-                        AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE mb.j_netlife_estatus_real = 'ACTIVO'
-                        AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                        AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
             FROM public.mestra_bitrix mb
             ${JOIN_VAN_NOVONET}
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
-                OR mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                OR public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ) ${filtersNoJoin}
         `;
 
@@ -1214,7 +1220,7 @@ const getReporte180 = async (req, res) => {
                 COALESCE(mb.j_netlife_estatus_real, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
             FROM public.mestra_bitrix mb
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.j_netlife_estatus_real
             ORDER BY total DESC
         `;
@@ -1227,7 +1233,7 @@ const getReporte180 = async (req, res) => {
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
-            AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb.j_ciudad IS NOT NULL
             AND TRIM(mb.j_ciudad) != ''
             ${filtersNoJoin}
@@ -1244,23 +1250,23 @@ const getReporte180 = async (req, res) => {
         const queryPlanesPorCategoria = `
             SELECT
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
                 ) AS hogar_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_casa IS NOT NULL AND TRIM(van.plan_casa::text) <> \'\'
                 ) AS hogar_activos,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND (
                         (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
                         (van.plan_pyme_corp IS NOT NULL AND TRIM(van.plan_pyme_corp::text) <> \'\')
                     )
                 ) AS pymes_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND (
                         (van.plan_pyme IS NOT NULL AND TRIM(van.plan_pyme::text) <> \'\') OR
@@ -1268,17 +1274,17 @@ const getReporte180 = async (req, res) => {
                     )
                 ) AS pymes_activos,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_ingresados,
                 COUNT(*) FILTER (
-                    WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_activos
             FROM public.mestra_bitrix mb
             ${JOIN_VAN_NOVONET}
-            WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
         `;
 
         const [resKPIs, resEmbCRM, resEmbJot, resMapaCalor, resPlanes] = await Promise.all([
@@ -1448,12 +1454,12 @@ const getActivacionesPorDia = async (req, res) => {
 
         const result = await pool.query(`
             SELECT
-                mb.j_fecha_activacion_netlife::date AS fecha,
+                public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) AS fecha,
                 COUNT(*)::int AS activaciones
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-              AND mb.j_fecha_activacion_netlife::date BETWEEN $1::date AND $2::date
+              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
               ${filters}
             GROUP BY 1
             ORDER BY fecha ASC

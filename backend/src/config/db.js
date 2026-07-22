@@ -34,6 +34,43 @@ pool.on('error', (err) => {
   console.error('[DB] Error en pool de conexiones:', err.message);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// parse_fecha_flex: función IMMUTABLE usada por los índices funcionales del
+// dashboard (ver migrations/fix_dashboard_performance.sql). Se auto-provisiona
+// al arrancar para que el deploy no dependa del orden código/migración.
+// CREATE OR REPLACE es idempotente y barato.
+// ─────────────────────────────────────────────────────────────────────────────
+const PARSE_FECHA_FLEX_DDL = `
+CREATE OR REPLACE FUNCTION public.parse_fecha_flex(valor text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+BEGIN
+    IF valor IS NULL OR TRIM(valor) = '' THEN
+        RETURN NULL;
+    END IF;
+    IF valor ~ '^\\d{4}-\\d{2}-\\d{2}' THEN
+        RETURN SUBSTRING(valor FROM 1 FOR 10)::date;
+    END IF;
+    RETURN TO_DATE(SUBSTRING(valor FROM 5 FOR 11), 'Mon DD YYYY');
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$;`;
+
+const ensureParseFechaFlex = async (intento = 1) => {
+  try {
+    await pool.query(PARSE_FECHA_FLEX_DDL);
+    console.log('[DB] Función parse_fecha_flex lista');
+  } catch (err) {
+    console.error(`[DB] Error creando parse_fecha_flex (intento ${intento}):`, err.message);
+    if (intento < 3) setTimeout(() => ensureParseFechaFlex(intento + 1), 5000 * intento);
+  }
+};
+ensureParseFechaFlex();
+
 // ── Helpers para el módulo WhatsApp (aditivo, no cambia el uso existente) ──
 // Permiten `const { query, transaction } = require('../config/db')` con bind correcto.
 // El código existente que hace `pool.query(...)` sigue funcionando igual.

@@ -120,6 +120,65 @@ export default function WaCampanas() {
     setModal("new");
   };
 
+  // Duplicar: abre el modal de nueva campaña precargado con la config y
+  // variantes de la original — solo eliges otra lista (otra base) y listo.
+  const openDuplicate = async (camp) => {
+    const r = await fetch(`${API}/campaigns/${camp.id}/messages`, { headers: authH(false) });
+    const d = await r.json();
+    const msgs = Array.isArray(d?.data) ? d.data : [];
+    setForm({
+      name: `${camp.name} (copia)`,
+      line_id: camp.line_id || "",
+      list_id: "",                       // el usuario elige la nueva base
+      min_delay_secs: camp.min_delay_secs ?? 8,
+      max_delay_secs: camp.max_delay_secs ?? 20,
+      batch_size: camp.batch_size ?? 50,
+      batch_pause_secs: camp.batch_pause_secs ?? 120,
+    });
+    setVariants(msgs.length
+      ? msgs.map(m => ({
+          label: m.label || "",
+          message_text: m.message_text || "",
+          media_url: m.media_url || null,
+          media_type: m.media_type || null,
+          media_filename: m.media_caption || null,
+        }))
+      : [{ label: "Variante 1", message_text: camp.body || "" }]);
+    setModal("new");
+  };
+
+  // Editar configuración (delays, lotes, línea) de campañas pausadas/borrador
+  const [editCamp, setEditCamp] = useState(null); // campaña en edición
+  const [editForm, setEditForm] = useState({});
+  const openEdit = (camp) => {
+    setEditForm({
+      min_delay_secs: camp.min_delay_secs ?? 8,
+      max_delay_secs: camp.max_delay_secs ?? 20,
+      batch_size: camp.batch_size ?? 50,
+      batch_pause_secs: camp.batch_pause_secs ?? 120,
+      line_id: camp.line_id || "",
+    });
+    setEditCamp(camp);
+  };
+  const saveEdit = async () => {
+    if (!editCamp) return;
+    const r = await fetch(`${API}/campaigns/${editCamp.id}`, {
+      method: "PUT", headers: authH(),
+      body: JSON.stringify({
+        ...editForm,
+        // preservar media/schedule actuales (el endpoint los setea directo)
+        media_url: editCamp.media_url || null,
+        media_type: editCamp.media_type || null,
+        media_filename: editCamp.media_filename || null,
+        scheduled_at: editCamp.scheduled_at || null,
+      }),
+    });
+    const d = await r.json();
+    if (!d.success) alert(d.error || "No se pudo guardar");
+    setEditCamp(null);
+    load();
+  };
+
   // Sube una imagen/archivo para una variante y guarda su media_url
   const uploadImage = async (file, idx) => {
     if (!file) return;
@@ -275,6 +334,16 @@ export default function WaCampanas() {
                     className="text-xs border border-slate-200 hover:border-blue-300 hover:text-blue-500 px-3 py-1.5 rounded-lg transition-colors">
                     Ver
                   </button>
+                  <button onClick={() => openDuplicate(camp)} title="Duplicar con otra base"
+                    className="text-xs border border-slate-200 hover:border-purple-300 hover:text-purple-500 px-3 py-1.5 rounded-lg transition-colors">
+                    ⧉ Duplicar
+                  </button>
+                  {["draft", "paused", "scheduled"].includes(camp.status) && (
+                    <button onClick={() => openEdit(camp)} title="Editar tiempos, lotes y línea"
+                      className="text-xs border border-slate-200 hover:border-amber-300 hover:text-amber-600 px-3 py-1.5 rounded-lg transition-colors">
+                      ⚙
+                    </button>
+                  )}
                   {camp.status === "draft" && (
                     <button onClick={() => action(camp.id, "start")}
                       className="text-xs bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors">
@@ -470,6 +539,60 @@ export default function WaCampanas() {
               <button onClick={save} disabled={saving || !form.name || !form.line_id || !form.list_id}
                 className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
                 {saving ? "Guardando…" : "Crear campaña"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar configuración (pausada/borrador/programada) */}
+      {editCamp && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-5 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">⚙ Configuración: {editCamp.name}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Los cambios aplican al reanudar el envío</p>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Línea de envío</label>
+                <select value={editForm.line_id} onChange={e => setEditForm(f => ({ ...f, line_id: e.target.value }))}
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                  {lines.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Delay mín (seg)</label>
+                  <input type="number" value={editForm.min_delay_secs}
+                    onChange={e => setEditForm(f => ({ ...f, min_delay_secs: +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Delay máx (seg)</label>
+                  <input type="number" value={editForm.max_delay_secs}
+                    onChange={e => setEditForm(f => ({ ...f, max_delay_secs: +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Lote (mensajes)</label>
+                  <input type="number" value={editForm.batch_size}
+                    onChange={e => setEditForm(f => ({ ...f, batch_size: +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pausa lote (seg)</label>
+                  <input type="number" value={editForm.batch_pause_secs}
+                    onChange={e => setEditForm(f => ({ ...f, batch_pause_secs: +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setEditCamp(null)} className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">Cancelar</button>
+              <button onClick={saveEdit}
+                className="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Guardar
               </button>
             </div>
           </div>

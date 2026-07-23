@@ -4,6 +4,7 @@ const {
   useMultiFileAuthState,
   getAggregateVotesInPollMessage,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } = require('@whiskeysockets/baileys')
 const { Boom } = require('@hapi/boom')
 const path = require('path')
@@ -337,6 +338,25 @@ class BaileysManager {
         // Ignorar eventos sin contenido (reacciones, protocolo, etc.) → evita burbujas vacías
         if (!text && !['image', 'document', 'audio'].includes(msgType)) continue
 
+        // ── Descargar media entrante (imagen/documento/audio del cliente) ──
+        let inMediaUrl = null
+        if (['image', 'document', 'audio'].includes(msgType)) {
+          try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {})
+            const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+            fs.mkdirSync(dir, { recursive: true })
+            const ext = msgType === 'image' ? '.jpg'
+              : msgType === 'audio' ? '.ogg'
+              : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
+            const fname = `in-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+            fs.writeFileSync(path.join(dir, fname), buffer)
+            inMediaUrl = `/wa-uploads/${fname}`
+            console.log(`[Line ${lineId}] 📥 Media entrante guardada: ${fname}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo descargar media entrante:`, e.message)
+          }
+        }
+
         const pushName = msg.pushName || ''
         // ── Número de quien escribe ──────────────────────────────
         const waNumberDisplay = `+${waNumber}`
@@ -364,7 +384,7 @@ class BaileysManager {
         try { await sock.readMessages([msg.key]) } catch (e) {}
 
         try {
-          await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName)
+          await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName, inMediaUrl)
         } catch (err) {
           console.error(`[Line ${lineId}] Error procesando mensaje:`, err.message)
           console.error(err.stack)
@@ -523,7 +543,7 @@ class BaileysManager {
     return result
   }
 
-  async _handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName = '') {
+  async _handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName = '', mediaUrl = null) {
     const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
 
     if (pushName) {
@@ -539,9 +559,9 @@ class BaileysManager {
     try {
       await query(
         `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, timestamp)
-         VALUES ($1,$2,$3,'in',$4,$5,$6,NOW())`,
-        [conv.id, lineId, waNumber, msgType, text, msg.key.id]
+          (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, media_url, timestamp)
+         VALUES ($1,$2,$3,'in',$4,$5,$6,$7,NOW())`,
+        [conv.id, lineId, waNumber, msgType, text, msg.key.id, mediaUrl]
       )
       await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
     } catch (e) {
@@ -551,6 +571,7 @@ class BaileysManager {
     this.io.emit('message:new', {
       conversation_id: conv.id,
       lineId, waNumber, text, content: text, direction: 'in',
+      type: msgType, media_url: mediaUrl,
       timestamp: new Date().toISOString(),
     })
 

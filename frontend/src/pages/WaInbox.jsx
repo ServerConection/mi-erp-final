@@ -237,10 +237,18 @@ export default function WaInbox() {
                   </span>
                   <span className="text-xs text-slate-400 flex-shrink-0">{timeAgo(conv.last_msg_at)}</span>
                 </div>
+                {conv.last_message && (
+                  <div className="text-xs text-slate-400 truncate mt-0.5">
+                    {conv.last_direction === "out" ? "Tú: " : ""}{conv.last_message}
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[conv.status] || STATUS_BADGE.active}`}>
                     {STATUS_LABEL[conv.status] || conv.status}
                   </span>
+                  {conv.line_name && (
+                    <span className="text-xs text-slate-400 truncate">📱 {conv.line_name}</span>
+                  )}
                   {conv.unread_count > 0 && (
                     <span className="ml-auto bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold flex-shrink-0">
                       {conv.unread_count > 9 ? "9+" : conv.unread_count}
@@ -300,6 +308,8 @@ export default function WaInbox() {
                       <img src={mediaSrc(msg.media_url)} alt="imagen"
                         className="rounded-lg max-h-48 mb-1 border border-black/10" />
                     </a>
+                  ) : msg.media_url && msg.type === "audio" ? (
+                    <audio controls src={mediaSrc(msg.media_url)} className="max-w-full mb-1" />
                   ) : msg.media_url ? (
                     <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
                       className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>

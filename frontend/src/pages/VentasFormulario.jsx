@@ -19,16 +19,17 @@ const mesActual = () => {
 
 const API = import.meta.env.VITE_API_URL;
 
-const ESTADOS = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICADO", "ASIGNADO"];
+const ESTADOS = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICADO","PRE-PLANIFICADO", "ASIGNADO","SIN ESTADO", "ANULADA"];
 const PAGOS   = ["EFEC", "TC", "CA"];
 
 const ESTADO_ESTILOS = {
   ACTIVO:          "bg-emerald-50 text-emerald-700 border border-emerald-300",
   DETENIDO:        "bg-red-50 text-red-700 border border-red-300",
-  "RE-PLANIFICADO":"bg-orange-50 text-orange-700 border border-orange-300",
+  "RE-PLANIFICADO":  "bg-orange-50 text-orange-700 border border-orange-300",
   FACTIBLE:        "bg-cyan-50 text-cyan-700 border border-cyan-300",
   PLANIFICADO:     "bg-blue-50 text-blue-700 border border-blue-300",
   ASIGNADO:        "bg-slate-100 text-slate-600 border border-slate-300",
+
 };
 
 const PAGO_ESTILOS = {

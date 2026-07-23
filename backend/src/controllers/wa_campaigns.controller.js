@@ -215,6 +215,7 @@ async function update(req, res) {
     const {
       name, body, media_url, media_type, media_filename,
       min_delay_secs, max_delay_secs, batch_size, batch_pause_secs, scheduled_at,
+      line_id,   // permite cambiar la línea de envío mientras está pausada/borrador
     } = req.body
 
     const result = await query(
@@ -228,11 +229,12 @@ async function update(req, res) {
          max_delay_secs = COALESCE($7, max_delay_secs),
          batch_size = COALESCE($8, batch_size),
          batch_pause_secs = COALESCE($9, batch_pause_secs),
-         scheduled_at = $10
-       WHERE id=$11 RETURNING *`,
+         scheduled_at = $10,
+         line_id = COALESCE($11, line_id)
+       WHERE id=$12 RETURNING *`,
       [name, body, media_url || null, media_type || null, media_filename || null,
        min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
-       scheduled_at || null, id]
+       scheduled_at || null, line_id || null, id]
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {

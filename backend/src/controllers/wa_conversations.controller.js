@@ -154,33 +154,57 @@ async function sendMessage(req, res) {
   }
 }
 
-// ── RESPALDO: buscar por número (lista de números con actividad) ──
+// ── RESPALDO: buscar por número O por nombre ──────────────────
+// Acepta ?phone= (dígitos, busca en número guardado o número real) y/o
+// ?name= (nombre del contacto). Devuelve número real y si es un LID.
 async function backupSearch(req, res) {
   try {
-    const { phone = '' } = req.query
-    const digits = phone.replace(/\D/g, '')
-    const params = []
-    let filter = ''
-    if (digits) { params.push(`%${digits}%`); filter = `AND m.wa_number ILIKE $${params.length}` }
-    if (!isAdmin(req)) { params.push(req.user.id); filter += ` AND l.created_by = $${params.length}` }
+    const q = (req.query.phone || req.query.q || '').trim()
+    const nameQ = (req.query.name || '').trim()
+    const digits = q.replace(/\D/g, '')
 
-    // Un registro por número: total de mensajes, primer/último mensaje, nombre y línea
+    const params = []
+    const conds = []
+
+    // Si el texto tiene dígitos → buscar por número guardado o número real (metadata)
+    if (digits) {
+      params.push(`%${digits}%`)
+      conds.push(`(m.wa_number ILIKE $${params.length} OR ct.metadata->>'real_phone' ILIKE $${params.length})`)
+    }
+    // Búsqueda por nombre: usa ?name= o el mismo texto de ?phone si no era numérico
+    const nameText = nameQ || (!digits && q ? q : '')
+    if (nameText) {
+      params.push(`%${nameText}%`)
+      conds.push(`ct.name ILIKE $${params.length}`)
+    }
+    if (!isAdmin(req)) { params.push(req.user.id); conds.push(`l.created_by = $${params.length}`) }
+
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
+
     const result = await query(`
       SELECT m.wa_number,
-             MAX(ct.name)                        AS contact_name,
-             MAX(l.name)                         AS line_name,
-             COUNT(*)::int                       AS total_mensajes,
-             MIN(m.timestamp)                    AS primer_mensaje,
-             MAX(m.timestamp)                    AS ultimo_mensaje
+             MAX(ct.name)                          AS contact_name,
+             MAX(ct.metadata->>'real_phone')       AS real_phone,
+             MAX(l.name)                           AS line_name,
+             COUNT(*)::int                         AS total_mensajes,
+             MIN(m.timestamp)                      AS primer_mensaje,
+             MAX(m.timestamp)                      AS ultimo_mensaje
       FROM messages m
       LEFT JOIN lines l ON m.line_id = l.id
       LEFT JOIN contacts ct ON ct.wa_number = m.wa_number AND ct.line_id = m.line_id
-      WHERE 1=1 ${filter}
+      ${where}
       GROUP BY m.wa_number
       ORDER BY MAX(m.timestamp) DESC
       LIMIT 100
     `, params)
-    res.json({ success: true, data: result.rows })
+
+    // Marcar LID: número muy largo (>13 dígitos) sin real_phone
+    const rows = result.rows.map(r => ({
+      ...r,
+      is_lid: (r.wa_number || '').length > 13 && !r.real_phone,
+      display_number: r.real_phone || r.wa_number,
+    }))
+    res.json({ success: true, data: rows })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }
@@ -198,9 +222,10 @@ async function backupByNumber(req, res) {
 
     const info = await query(`
       SELECT m.wa_number,
-             MAX(ct.name)     AS contact_name,
-             MAX(l.name)      AS line_name,
-             COUNT(*)::int    AS total_mensajes
+             MAX(ct.name)                     AS contact_name,
+             MAX(ct.metadata->>'real_phone')  AS real_phone,
+             MAX(l.name)                      AS line_name,
+             COUNT(*)::int                    AS total_mensajes
       FROM messages m
       LEFT JOIN lines l ON m.line_id = l.id
       LEFT JOIN contacts ct ON ct.wa_number = m.wa_number AND ct.line_id = m.line_id

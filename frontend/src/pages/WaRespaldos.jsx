@@ -18,7 +18,9 @@ const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
 
 // Genera el HTML del respaldo y lo manda a imprimir (Guardar como PDF)
-export function exportChatPDF({ wa_number, contact_name, line_name, messages }) {
+export function exportChatPDF({ wa_number, contact_name, line_name, messages, real_phone }) {
+  const shownNumber = real_phone || wa_number;
+  const isLid = !real_phone && (wa_number || "").length > 13;
   const esc = (s) => (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   let lastDay = "";
   const rows = (messages || []).map(m => {
@@ -66,7 +68,7 @@ export function exportChatPDF({ wa_number, contact_name, line_name, messages }) 
       <h1>Respaldo de conversación WhatsApp</h1>
       <div class="meta">
         <b>Contacto:</b> ${esc(contact_name || "Sin nombre")} &nbsp;·&nbsp;
-        <b>Número:</b> +${esc(wa_number)} &nbsp;·&nbsp;
+        <b>Número:</b> +${esc(shownNumber)}${isLid ? " (identificador WhatsApp — número real no disponible)" : ""} &nbsp;·&nbsp;
         <b>Línea:</b> ${esc(line_name || "—")}<br/>
         <b>Total de mensajes:</b> ${messages.length} &nbsp;·&nbsp;
         <b>Generado:</b> ${fmtFull(Date.now())}
@@ -120,14 +122,14 @@ export default function WaRespaldos() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-slate-800">🗂️ Respaldo de conversaciones</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Busca por número de teléfono y descarga la conversación completa en PDF.
+          Busca por número <b>o por nombre</b> del contacto y descarga la conversación completa en PDF.
         </p>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex gap-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-2 flex gap-3">
         <input
           type="text"
-          placeholder="Escribe el número (ej. 593987654321)"
+          placeholder="Número o nombre del contacto (ej. 593987654321 o Juan Pérez)"
           value={phone}
           onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && search()}
@@ -138,6 +140,10 @@ export default function WaRespaldos() {
           {loading ? "Buscando…" : "🔍 Buscar"}
         </button>
       </div>
+      <p className="text-xs text-slate-400 mb-6 px-1">
+        💡 Algunos contactos aparecen con un código largo (LID) porque WhatsApp oculta su número real.
+        En esos casos búscalos por <b>nombre</b>.
+      </p>
 
       {searched && !loading && results.length === 0 && (
         <div className="text-center py-16 text-slate-400">
@@ -155,8 +161,14 @@ export default function WaRespaldos() {
                 {(r.contact_name || r.wa_number || "?").charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-slate-800 truncate">
-                  {r.contact_name || "Sin nombre"} <span className="text-slate-400 font-normal">+{r.wa_number}</span>
+                <div className="font-semibold text-slate-800 truncate flex items-center gap-2">
+                  {r.contact_name || "Sin nombre"}
+                  <span className="text-slate-400 font-normal">+{r.display_number || r.wa_number}</span>
+                  {r.is_lid && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full" title="WhatsApp oculta el número real de este contacto">
+                      LID
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
                   📱 {r.line_name || "—"} · {r.total_mensajes} mensajes ·

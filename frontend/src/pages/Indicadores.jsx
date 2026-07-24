@@ -376,6 +376,7 @@ function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
 export default function ReporteComercialCore() {
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);
+  const [refreshing, setRefreshing]     = useState(false);   // ← botón "Forzar Refresh"
   const [alertas, setAlertas]           = useState([]);
   const [diaFiltrado, setDiaFiltrado]   = useState(null);
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
@@ -1088,6 +1089,29 @@ ${asesoresPDF.length>0?`
     else if (tabActiva === "REPORTE180") fetchReporte180();
   }, [tabActiva]);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // FORZAR REFRESH: Novonet lee de tablas con caché en memoria del servidor
+  // (TTL 2 min). Ctrl+Shift+R NO lo limpia. Este botón vacía ese caché en el
+  // servidor y luego re-consulta la pestaña activa con datos frescos de la BD.
+  // ──────────────────────────────────────────────────────────────────────────
+  const forzarRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await fetch(
+        `${import.meta.env.VITE_API_URL}/api/indicadores/force-refresh`,
+        { method: 'POST', headers: { 'Cache-Control': 'no-cache' } }
+      );
+    } catch (e) {
+      console.error('Error force-refresh Novonet:', e);
+    } finally {
+      if (tabActiva === "GENERAL") fetchDashboard(filtros);
+      else if (tabActiva === "MONITOREO") fetchMonitoreo();
+      else if (tabActiva === "REPORTE180") fetchReporte180(filtros180);
+      setRefreshing(false);
+    }
+  };
+
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
     if (!list || !list.length) return;
@@ -1455,19 +1479,32 @@ ${asesoresPDF.length>0?`
           </h1>
           <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Novonet · Netlife · Análisis en tiempo real</p>
         </div>
-        <div className="flex gap-1 bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-inner w-full sm:w-auto overflow-x-auto">
-          {[
-            { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#0F172A,#1e293b)' },
-            { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#2563eb,#1d4ed8)' },
-            { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
-            { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setTabActiva(tab.id)}
-              style={tabActiva === tab.id ? { background: tab.grad } : {}}
-              className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm'}`}>
-              <span className="text-[11px]">{tab.icon}</span>{tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Botón FORZAR REFRESH — limpia caché del servidor y re-consulta */}
+          <button
+            onClick={forzarRefresh}
+            disabled={refreshing}
+            title="Refresca los datos (limpia el caché del servidor y vuelve a consultar). Úsalo si la información se queda cargando o desactualizada."
+            className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 transition-all duration-200 border ${refreshing ? 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed' : 'text-white border-transparent shadow-lg hover:scale-[1.02]'}`}
+            style={refreshing ? {} : { background: 'linear-gradient(135deg,#2563eb,#1d4ed8)' }}
+          >
+            <span className={`text-[11px] ${refreshing ? 'animate-spin inline-block' : ''}`}>🔄</span>
+            {refreshing ? 'ACTUALIZANDO…' : 'FORZAR REFRESH'}
+          </button>
+          <div className="flex gap-1 bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-inner overflow-x-auto">
+            {[
+              { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#0F172A,#1e293b)' },
+              { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#2563eb,#1d4ed8)' },
+              { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
+              { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setTabActiva(tab.id)}
+                style={tabActiva === tab.id ? { background: tab.grad } : {}}
+                className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm'}`}>
+                <span className="text-[11px]">{tab.icon}</span>{tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

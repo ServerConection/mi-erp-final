@@ -7,6 +7,11 @@ DROP MATERIALIZED VIEW IF EXISTS public.mv_indicadores_velsa_completo CASCADE;
 
 CREATE MATERIALIZED VIEW public.mv_indicadores_velsa_completo AS
 SELECT
+  -- Surrogate único para permitir REFRESH ... CONCURRENTLY (no bloqueante)
+  ROW_NUMBER() OVER (
+    ORDER BY COALESCE(nr.id, jf.id_negociacion_bitrix::integer),
+             jf.id_negociacion_bitrix
+  ) AS mv_row_id,
   COALESCE(nr.id, jf.id_negociacion_bitrix::integer) AS id_registro,
   nr.id AS id_crm,
   jf.id_negociacion_bitrix::integer AS id_jotform,
@@ -34,6 +39,9 @@ FULL OUTER JOIN public.vw_jotform_velsa_netlife_completo jf
   ON nr.id = jf.id_negociacion_bitrix::integer
 LEFT JOIN employees emp
   ON nr.responsable_id = emp.id;
+
+-- Índice ÚNICO obligatorio para REFRESH ... CONCURRENTLY (botón "Forzar Refresh")
+CREATE UNIQUE INDEX ux_mv_velsa_row_id  ON public.mv_indicadores_velsa_completo(mv_row_id);
 
 -- Crear índices para mejor rendimiento
 CREATE INDEX idx_mv_velsa_id_crm        ON public.mv_indicadores_velsa_completo(id_crm);

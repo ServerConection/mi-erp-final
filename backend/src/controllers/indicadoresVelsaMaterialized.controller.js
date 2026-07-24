@@ -830,6 +830,62 @@ async function getActivacionesPorDiaVelsa(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FORZAR REFRESH — refresca la vista materializada bajo demanda (botón "Forzar
+// Refresh" del frontend). Intenta REFRESH ... CONCURRENTLY (NO bloquea las
+// lecturas mientras se refresca) siempre que exista el índice ÚNICO en la MV
+// (ver migración add_unique_index_mv_velsa.sql). Si el índice único todavía no
+// está aplicado, cae automáticamente a un REFRESH normal (bloqueante).
+//
+// Guards anti-abuso (importante: un REFRESH pesado tumbó la BD en el pasado):
+//   • No permite dos refresh simultáneos.
+//   • No permite forzar más de una vez cada 60 s.
+// ─────────────────────────────────────────────────────────────────────────────
+let _mvRefreshing  = false;
+let _mvLastRefresh = 0;
+const _MV_MIN_INTERVAL_MS = 60 * 1000; // 60 s entre refresh manuales
+
+async function forceRefreshVelsa(req, res) {
+  if (_mvRefreshing) {
+    return res.status(409).json({
+      success: false, code: 'IN_PROGRESS',
+      message: 'Ya hay un refresh en progreso. Espera unos segundos.'
+    });
+  }
+  const transcurrido = Date.now() - _mvLastRefresh;
+  if (_mvLastRefresh && transcurrido < _MV_MIN_INTERVAL_MS) {
+    const faltan = Math.ceil((_MV_MIN_INTERVAL_MS - transcurrido) / 1000);
+    return res.status(429).json({
+      success: false, code: 'TOO_SOON', waitMs: _MV_MIN_INTERVAL_MS - transcurrido,
+      message: `Se refrescó hace poco. Reintenta en ${faltan}s.`
+    });
+  }
+
+  _mvRefreshing = true;
+  const t0 = Date.now();
+  try {
+    let modo = 'CONCURRENTLY';
+    try {
+      await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_indicadores_velsa_completo');
+    } catch (err) {
+      // Postgres exige un índice ÚNICO para CONCURRENTLY. Si no existe todavía
+      // (migración no aplicada) → fallback a REFRESH normal (bloquea la vista).
+      console.warn('[FORCE-REFRESH-VELSA] CONCURRENTLY no disponible, usando REFRESH normal:', err.message);
+      modo = 'NORMAL';
+      await pool.query('REFRESH MATERIALIZED VIEW public.mv_indicadores_velsa_completo');
+    }
+    const duracionMs = Date.now() - t0;
+    _mvLastRefresh = Date.now();
+    console.log(`[FORCE-REFRESH-VELSA] ✅ ${modo} en ${duracionMs}ms`);
+    res.json({ success: true, modo, duracionMs });
+  } catch (error) {
+    console.error('[FORCE-REFRESH-VELSA] ❌', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  } finally {
+    _mvRefreshing = false;
+  }
+}
+
 module.exports = {
   getIndicadoresDashboardVelsa,
   getMonitoreoDiarioVelsa,
@@ -840,4 +896,5 @@ module.exports = {
   getActivasVelsa,
   getBacklogVelsa,
   getActivacionesPorDiaVelsa,
+  forceRefreshVelsa,
 };

@@ -289,6 +289,7 @@ function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
 export default function ReporteVelsa() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);   // ← botón "Forzar Refresh"
   const abortRef = useRef(null);
   const abortCRMRef = useRef(null);   // ← ref independiente para fetchDetalleCRMData
   const prefetchRef = useRef(null);
@@ -796,6 +797,37 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     else if (tabActiva === "REPORTE180") fetchReporte180();
   }, [tabActiva]);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // FORZAR REFRESH: refresca la vista materializada en el servidor (datos
+  // frescos del CRM) y luego re-consulta la pestaña activa. Resuelve el caso
+  // "se queda cargando" que Ctrl+Shift+R no arregla (los datos viven en la MV,
+  // no en el navegador).
+  // ──────────────────────────────────────────────────────────────────────────
+  const forzarRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setApiError(null);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/indicadores-velsa/force-refresh`,
+        { method: 'POST', headers: { 'Cache-Control': 'no-cache' } }
+      );
+      // 429/409 = refrescada hace poco o en progreso: no es error fatal, igual re-consultamos.
+      if (!res.ok && res.status !== 429 && res.status !== 409) {
+        const j = await res.json().catch(() => ({}));
+        setApiError(j.message || j.error || `No se pudo refrescar (HTTP ${res.status})`);
+      }
+    } catch (e) {
+      console.error('Error force-refresh Velsa:', e);
+    } finally {
+      // Re-consultar la pestaña activa con los datos ya refrescados
+      if (tabActiva === "GENERAL") { fetchDashboard(filtros); fetchDetalleCRMData(filtros); }
+      else if (tabActiva === "MONITOREO") fetchMonitoreo();
+      else if (tabActiva === "REPORTE180") fetchReporte180(filtros180);
+      setRefreshing(false);
+    }
+  };
+
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? dataCRMDetalle : data.dataNetlife;
     if (!list || !list.length) return;
@@ -1096,19 +1128,32 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           </h1>
           <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Velsa · Netlife · Análisis en tiempo real</p>
         </div>
-        <div className="flex gap-1 bg-stone-100/80 backdrop-blur-sm p-1 rounded-2xl border border-stone-200 shadow-inner w-full sm:w-auto overflow-x-auto">
-          {[
-            { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#1c1917,#292524)' },
-            { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#ea580c,#c2410c)' },
-            { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
-            { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setTabActiva(tab.id)}
-              style={tabActiva === tab.id ? { background: tab.grad } : {}}
-              className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-stone-500 hover:bg-white hover:text-stone-700 hover:shadow-sm'}`}>
-              <span className="text-[11px]">{tab.icon}</span>{tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Botón FORZAR REFRESH — refresca la MV y re-consulta */}
+          <button
+            onClick={forzarRefresh}
+            disabled={refreshing}
+            title="Refresca los datos desde el CRM y vuelve a consultar (usar si la información se queda cargando o desactualizada)"
+            className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 transition-all duration-200 border ${refreshing ? 'bg-stone-200 text-stone-400 border-stone-200 cursor-not-allowed' : 'text-white border-transparent shadow-lg hover:scale-[1.02]'}`}
+            style={refreshing ? {} : { background: 'linear-gradient(135deg,#dc2626,#991b1b)' }}
+          >
+            <span className={`text-[11px] ${refreshing ? 'animate-spin inline-block' : ''}`}>🔄</span>
+            {refreshing ? 'ACTUALIZANDO…' : 'FORZAR REFRESH'}
+          </button>
+          <div className="flex gap-1 bg-stone-100/80 backdrop-blur-sm p-1 rounded-2xl border border-stone-200 shadow-inner overflow-x-auto">
+            {[
+              { id:'GENERAL',    icon:'📊', label:'REPORTE D-1',  grad:'linear-gradient(135deg,#1c1917,#292524)' },
+              { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#ea580c,#c2410c)' },
+              { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
+              { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setTabActiva(tab.id)}
+                style={tabActiva === tab.id ? { background: tab.grad } : {}}
+                className={`flex-none px-4 py-2 text-[9px] font-black rounded-xl transition-all duration-200 uppercase tracking-wide whitespace-nowrap flex items-center gap-1.5 ${tabActiva === tab.id ? 'text-white shadow-lg scale-[1.02]' : 'text-stone-500 hover:bg-white hover:text-stone-700 hover:shadow-sm'}`}>
+                <span className="text-[11px]">{tab.icon}</span>{tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -12,10 +12,13 @@ const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIG
 const isImage = (msg) => msg.type === "image" || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
 
 // Empresa del usuario (para construir el enlace correcto a Bitrix)
-const USER_EMPRESA = (() => {
-  try { return (JSON.parse(localStorage.getItem("userProfile") || "{}").empresa || "").toUpperCase(); }
-  catch { return ""; }
+const USER_PROFILE = (() => {
+  try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
+  catch { return {}; }
 })();
+const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
+const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
+const CAN_PICK_LINE = USER_PERFIL === "ADMINISTRADOR" || USER_PERFIL === "SUPERVISOR";
 const BITRIX_DEAL_BASE = {
   VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
   NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
@@ -76,6 +79,23 @@ export default function WaInbox() {
   const [bitrixModal, setBitrixModal] = useState(null); // "new" | "add"
   const [bitrixId, setBitrixId]       = useState("");
   const [bitrixBusy, setBitrixBusy]   = useState(false);
+  const [newMode, setNewMode]         = useState("phone"); // "phone" | "bitrix" (en modal nueva)
+  const [newPhone, setNewPhone]       = useState("");
+  const [newLineId, setNewLineId]     = useState("");
+  const [lines, setLines]             = useState([]);      // líneas conectadas (para admin/supervisor)
+
+  // Cargar líneas conectadas (solo si el usuario puede elegir línea)
+  useEffect(() => {
+    if (!CAN_PICK_LINE) return;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/lines`, { headers: authH(false) });
+        const d = await r.json();
+        const arr = (Array.isArray(d?.data) ? d.data : []).filter(l => (l.rt_status || l.status) === "connected");
+        setLines(arr);
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -198,24 +218,33 @@ export default function WaInbox() {
     setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "active" } : c));
   };
 
-  // Iniciar conversación desde un ID de negociación de Bitrix
-  const startFromBitrix = async () => {
-    const id = bitrixId.trim();
-    if (!id || bitrixBusy) return;
+  // Iniciar conversación: por número directo o por ID de negociación
+  const startConversation = async () => {
+    if (bitrixBusy) return;
+    const body = {};
+    if (newMode === "phone") {
+      if (!newPhone.trim()) return;
+      body.phone = newPhone.trim();
+      if (bitrixId.trim()) body.bitrix_id = bitrixId.trim(); // opcional
+    } else {
+      if (!bitrixId.trim()) return;
+      body.bitrix_id = bitrixId.trim();
+    }
+    if (CAN_PICK_LINE && newLineId) body.line_id = newLineId;
+
     setBitrixBusy(true);
     try {
       const r = await fetch(`${API}/bitrix/start`, {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ bitrix_id: id }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error || "No se pudo iniciar la conversación"); return; }
-      // Agregar/actualizar en la lista y abrirla
       setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)]);
       setSelected(d.data);
-      setBitrixModal(null); setBitrixId("");
+      setBitrixModal(null); setBitrixId(""); setNewPhone("");
     } catch (e) {
-      alert("Error consultando Bitrix");
+      alert("Error al iniciar la conversación");
     } finally { setBitrixBusy(false); }
   };
 
@@ -457,42 +486,101 @@ export default function WaInbox() {
         </div>
       )}
 
-      {/* Modal Bitrix: nueva conversación / asociar ID */}
-      {bitrixModal && (
+      {/* Modal: asociar ID Bitrix a conversación existente */}
+      {bitrixModal === "add" && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="p-5 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800">
-                {bitrixModal === "new" ? "Nueva conversación desde Bitrix" : "Asociar ID Bitrix"}
-              </h3>
+              <h3 className="font-bold text-slate-800">Asociar ID Bitrix</h3>
               <p className="text-xs text-slate-500 mt-1">
-                {bitrixModal === "new"
-                  ? "Escribe el ID de negociación. Traeremos el teléfono desde Bitrix y abriremos el chat."
-                  : `Vincula el ID de negociación a la conversación con +${selected?.wa_number}.`}
+                Vincula el ID de negociación a la conversación con +{selected?.wa_number}.
               </p>
             </div>
             <div className="p-5">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID de negociación (Bitrix)</label>
               <input
-                type="text" inputMode="numeric" autoFocus
-                placeholder="Ej. 56124"
-                value={bitrixId}
-                onChange={e => setBitrixId(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && (bitrixModal === "new" ? startFromBitrix() : addBitrixId())}
+                type="text" inputMode="numeric" autoFocus placeholder="Ej. 56124"
+                value={bitrixId} onChange={e => setBitrixId(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addBitrixId()}
                 className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400"
               />
-              {USER_EMPRESA && (
-                <p className="text-xs text-slate-400 mt-2">Empresa: <b>{USER_EMPRESA}</b></p>
-              )}
             </div>
             <div className="p-4 border-t border-slate-100 flex gap-3 justify-end">
               <button onClick={() => { setBitrixModal(null); setBitrixId(""); }}
                 className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">Cancelar</button>
-              <button
-                onClick={() => bitrixModal === "new" ? startFromBitrix() : addBitrixId()}
-                disabled={bitrixBusy || !bitrixId.trim()}
+              <button onClick={addBitrixId} disabled={bitrixBusy || !bitrixId.trim()}
                 className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
-                {bitrixBusy ? "Consultando…" : (bitrixModal === "new" ? "Iniciar" : "Guardar")}
+                {bitrixBusy ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: nueva conversación (por número o por ID Bitrix) */}
+      {bitrixModal === "new" && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-5 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">Nueva conversación</h3>
+              <p className="text-xs text-slate-500 mt-1">Inicia un chat por número directo o por ID de negociación.</p>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Selector de modo */}
+              <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+                {[{ k: "phone", l: "📱 Por número" }, { k: "bitrix", l: "🔗 Por ID Bitrix" }].map(t => (
+                  <button key={t.k} onClick={() => setNewMode(t.k)}
+                    className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-colors ${
+                      newMode === t.k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>
+                    {t.l}
+                  </button>
+                ))}
+              </div>
+
+              {newMode === "phone" ? (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Número de teléfono</label>
+                    <input type="text" inputMode="tel" autoFocus placeholder="Ej. 0987654321 o 593987654321"
+                      value={newPhone} onChange={e => setNewPhone(e.target.value)}
+                      className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID de negociación (opcional)</label>
+                    <input type="text" inputMode="numeric" placeholder="Ej. 56124 — puedes dejarlo vacío"
+                      value={bitrixId} onChange={e => setBitrixId(e.target.value)}
+                      className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID de negociación (Bitrix)</label>
+                  <input type="text" inputMode="numeric" autoFocus placeholder="Ej. 56124"
+                    value={bitrixId} onChange={e => setBitrixId(e.target.value)}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                  <p className="text-xs text-slate-400 mt-1">Traeremos el teléfono desde Bitrix ({USER_EMPRESA || "—"}).</p>
+                </div>
+              )}
+
+              {/* Selector de línea (solo admin/supervisor) */}
+              {CAN_PICK_LINE && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Responder desde la línea</label>
+                  <select value={newLineId} onChange={e => setNewLineId(e.target.value)}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    <option value="">Automática (primera conectada)</option>
+                    {lines.map(l => <option key={l.id} value={l.id}>{l.name}{l.owner_username ? ` · ${l.owner_username}` : ""}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => { setBitrixModal(null); setBitrixId(""); setNewPhone(""); }}
+                className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">Cancelar</button>
+              <button onClick={startConversation}
+                disabled={bitrixBusy || (newMode === "phone" ? !newPhone.trim() : !bitrixId.trim())}
+                className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                {bitrixBusy ? "Iniciando…" : "Iniciar"}
               </button>
             </div>
           </div>

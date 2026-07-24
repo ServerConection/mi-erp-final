@@ -86,21 +86,44 @@ function guessMime(filename) {
   return map[ext] || 'application/octet-stream'
 }
 
-const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
+const isSupervisor = (req) => (req.user?.perfil || '').toUpperCase() === 'SUPERVISOR'
 
-// Verifica que la conversación exista y que su línea pertenezca al usuario (o que sea admin).
+// Condición SQL de visibilidad de conversaciones/líneas según el perfil.
+//  - ADMINISTRADOR: ve todo (null → sin filtro)
+//  - SUPERVISOR:    ve las líneas de asesores de SU empresa
+//  - ASESOR/otros:  ve solo sus propias líneas (o huérfanas sin dueño)
+// Requiere que la consulta tenga la tabla lines con alias `l`.
+// Agrega los parámetros necesarios al array `params` (por referencia).
+function visibilityCondition(req, params) {
+  if (isAdmin(req)) return null
+  if (isSupervisor(req)) {
+    params.push((req.user.empresa || '').toUpperCase())
+    return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
+  }
+  params.push(req.user.id)
+  return `(l.created_by = $${params.length} OR l.created_by IS NULL)`
+}
+
+// Verifica que la conversación exista y que el usuario pueda verla según su perfil.
 async function findOwnedConversation(req, id) {
   const result = await query(
-    `SELECT c.*, l.created_by AS line_created_by
+    `SELECT c.*, l.created_by AS line_created_by, u.empresa AS line_empresa
      FROM conversations c
      LEFT JOIN lines l ON c.line_id = l.id
+     LEFT JOIN usuarios u ON l.created_by = u.id
      WHERE c.id=$1`,
     [id]
   )
   if (!result.rows.length) return null
   const conv = result.rows[0]
-  if (!isAdmin(req) && conv.line_created_by !== req.user.id) return null
-  return conv
+  if (isAdmin(req)) return conv
+  if (isSupervisor(req)) {
+    return (conv.line_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? conv : null
+  }
+  // Asesor: solo lo suyo (o líneas huérfanas)
+  if (conv.line_created_by === req.user.id || conv.line_created_by === null) return conv
+  return null
 }
 
 // ── LISTAR conversaciones (inbox) ────────────────────────────
@@ -116,7 +139,8 @@ async function getAll(req, res) {
       params.push(`%${search}%`)
       where.push(`(c.wa_number ILIKE $${params.length} OR ct.name ILIKE $${params.length})`)
     }
-    if (!isAdmin(req)) { params.push(req.user.id); where.push(`l.created_by = $${params.length}`) }
+    const vc = visibilityCondition(req, params)
+    if (vc) where.push(vc)
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     params.push(parseInt(limit))
@@ -243,7 +267,8 @@ async function backupSearch(req, res) {
       params.push(`%${nameText}%`)
       conds.push(`ct.name ILIKE $${params.length}`)
     }
-    if (!isAdmin(req)) { params.push(req.user.id); conds.push(`l.created_by = $${params.length}`) }
+    const vc = visibilityCondition(req, params)
+    if (vc) conds.push(vc)
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
 
@@ -283,8 +308,8 @@ async function backupByNumber(req, res) {
     if (!digits) return res.status(400).json({ success: false, error: 'Número requerido' })
 
     const params = [digits]
-    let ownerFilter = ''
-    if (!isAdmin(req)) { params.push(req.user.id); ownerFilter = `AND l.created_by = $${params.length}` }
+    const vc = visibilityCondition(req, params)
+    const ownerFilter = vc ? `AND ${vc}` : ''
 
     const info = await query(`
       SELECT m.wa_number,
@@ -320,45 +345,69 @@ async function backupByNumber(req, res) {
   }
 }
 
-// ── BITRIX: iniciar conversación desde un ID de negociación ──────
-// Body: { bitrix_id }. Consulta el teléfono en Bitrix (según empresa del
-// usuario), usa la línea conectada del usuario, y crea/abre la conversación.
+// ── Iniciar conversación: por número directo O por ID Bitrix ────
+// Body: { phone?, bitrix_id?, line_id? }
+//  - Si viene phone → se usa directo. Si viene bitrix_id → se consulta en Bitrix.
+//  - line_id opcional: admin/supervisor eligen la línea; el asesor usa la suya.
 async function startFromBitrix(req, res) {
   try {
     const bitrixId = String(req.body.bitrix_id || '').trim()
-    if (!bitrixId) return res.status(400).json({ success: false, error: 'ID Bitrix requerido' })
+    const phoneIn  = String(req.body.phone || '').trim()
+    const lineIdIn = req.body.line_id || null
+    if (!bitrixId && !phoneIn) {
+      return res.status(400).json({ success: false, error: 'Debes indicar un número o un ID de negociación' })
+    }
 
     const empresa = (req.user.empresa || '').toUpperCase()
-    if (!BITRIX_WEBHOOKS[empresa]) {
-      return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
+
+    // 1) Determinar el número: directo o desde Bitrix
+    let waNumber = ''
+    let contactName = null
+    if (phoneIn) {
+      waNumber = normalizePhoneEC(phoneIn)
+      if (!waNumber) return res.status(400).json({ success: false, error: 'Número de teléfono inválido' })
+    } else {
+      if (!BITRIX_WEBHOOKS[empresa]) {
+        return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
+      }
+      let info
+      try { info = await phoneFromDeal(empresa, bitrixId) }
+      catch (e) { return res.status(502).json({ success: false, error: 'Bitrix: ' + e.message }) }
+      if (!info.phone) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
+      waNumber = info.phone
+      contactName = info.contactName
     }
 
-    // 1) Consultar teléfono en Bitrix
-    let info
-    try {
-      info = await phoneFromDeal(empresa, bitrixId)
-    } catch (e) {
-      return res.status(502).json({ success: false, error: 'Bitrix: ' + e.message })
-    }
-    if (!info.phone) {
-      return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
-    }
-
-    // 2) Elegir línea conectada del usuario
+    // 2) Elegir línea de envío
     const bm = req.app.get('baileysManager')
-    const linesRes = await query(
-      isAdmin(req)
-        ? `SELECT id, name, bot_id FROM lines ORDER BY created_at ASC`
-        : `SELECT id, name, bot_id FROM lines WHERE created_by = $1 OR created_by IS NULL ORDER BY created_at ASC`,
-      isAdmin(req) ? [] : [req.user.id]
-    )
-    const connected = linesRes.rows.find(l => bm && bm.getStatus(l.id) === 'connected')
-    if (!connected) {
-      return res.status(400).json({ success: false, error: 'No tienes ninguna línea de WhatsApp conectada. Ve a Líneas y conecta una para iniciar conversaciones.' })
+    const canPickLine = isAdmin(req) || isSupervisor(req)   // asesor NO elige línea
+    let candidates
+    if (isAdmin(req)) {
+      candidates = (await query(`SELECT id, name, bot_id FROM lines ORDER BY created_at ASC`)).rows
+    } else if (isSupervisor(req)) {
+      candidates = (await query(
+        `SELECT id, name, bot_id FROM lines WHERE created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa)=$1) ORDER BY created_at ASC`,
+        [empresa]
+      )).rows
+    } else {
+      candidates = (await query(
+        `SELECT id, name, bot_id FROM lines WHERE created_by=$1 OR created_by IS NULL ORDER BY created_at ASC`,
+        [req.user.id]
+      )).rows
     }
 
-    const waNumber = info.phone
-    const lineId = connected.id
+    let chosen = null
+    if (canPickLine && lineIdIn) {
+      chosen = candidates.find(l => l.id === lineIdIn && bm && bm.getStatus(l.id) === 'connected') || null
+      if (!chosen) return res.status(400).json({ success: false, error: 'La línea seleccionada no está conectada' })
+    } else {
+      chosen = candidates.find(l => bm && bm.getStatus(l.id) === 'connected') || null
+    }
+    if (!chosen) {
+      return res.status(400).json({ success: false, error: 'No hay una línea de WhatsApp conectada. Ve a Líneas y conecta una.' })
+    }
+
+    const lineId = chosen.id
 
     // 3) Crear/abrir conversación (reusa si ya existe una abierta)
     const existing = await query(
@@ -368,24 +417,23 @@ async function startFromBitrix(req, res) {
     let conv
     if (existing.rows.length) {
       conv = existing.rows[0]
-      await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId, conv.id])
+      if (bitrixId) await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId, conv.id])
     } else {
       const contactRes = await query(
         `INSERT INTO contacts (wa_number, line_id, name)
          VALUES ($1,$2,$3)
          ON CONFLICT (wa_number, line_id) DO UPDATE SET name=COALESCE(contacts.name, EXCLUDED.name), last_seen=NOW()
          RETURNING id`,
-        [waNumber, lineId, info.contactName || null]
+        [waNumber, lineId, contactName || null]
       )
       const ins = await query(
         `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id, status, bitrix_deal_id)
          VALUES ($1,$2,$3,$4,'human_takeover',$5) RETURNING *`,
-        [lineId, contactRes.rows[0].id, waNumber, connected.bot_id || null, bitrixId]
+        [lineId, contactRes.rows[0].id, waNumber, chosen.bot_id || null, bitrixId || null]
       )
       conv = ins.rows[0]
     }
 
-    // Devolver con los datos que el inbox necesita para seleccionarla
     const full = await query(`
       SELECT c.*, ct.name AS contact_name, l.name AS line_name
       FROM conversations c
@@ -394,7 +442,7 @@ async function startFromBitrix(req, res) {
       WHERE c.id = $1
     `, [conv.id])
 
-    res.json({ success: true, data: { ...full.rows[0], bitrix_contact_name: info.contactName, phone: waNumber } })
+    res.json({ success: true, data: { ...full.rows[0], phone: waNumber } })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

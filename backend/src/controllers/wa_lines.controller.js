@@ -1,26 +1,37 @@
 const { query } = require('../config/db')
 
-// Helper: ¿el usuario ve todo (admin) o solo lo suyo?
-const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
+// Helpers de perfil
+const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
+const isSupervisor = (req) => (req.user?.perfil || '').toUpperCase() === 'SUPERVISOR'
 
-// Verifica que la línea exista y pertenezca al usuario (o que sea admin).
-// Devuelve la fila si tiene acceso, o null si no existe / no es suya.
+// Verifica que la línea exista y que el usuario pueda verla según su perfil.
+// ADMIN: todo · SUPERVISOR: líneas de su empresa · ASESOR: solo las suyas (o huérfanas).
 async function findOwnedLine(req, id) {
-  const result = await query('SELECT * FROM lines WHERE id=$1', [id])
+  const result = await query(
+    `SELECT l.*, u.empresa AS owner_empresa
+     FROM lines l LEFT JOIN usuarios u ON l.created_by = u.id
+     WHERE l.id=$1`,
+    [id]
+  )
   if (!result.rows.length) return null
   const line = result.rows[0]
-  // Líneas creadas antes de la migración de ownership tienen created_by = NULL.
-  // Se tratan como accesibles para cualquier usuario autenticado (no quedan huérfanas).
-  if (!isAdmin(req) && line.created_by !== null && line.created_by !== req.user.id) return null
-  return line
+  if (isAdmin(req)) return line
+  if (isSupervisor(req)) {
+    return (line.owner_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? line : null
+  }
+  if (line.created_by === null || line.created_by === req.user.id) return line
+  return null
 }
 
-// Obtener todas las líneas (solo las del usuario, salvo ADMINISTRADOR)
+// Obtener las líneas visibles según el perfil
 async function getAll(req, res) {
   try {
     const params = []
     let where = ''
-    if (!isAdmin(req)) {
+    if (isSupervisor(req)) {
+      params.push((req.user.empresa || '').toUpperCase())
+      where = `WHERE l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
+    } else if (!isAdmin(req)) {
       params.push(req.user.id)
       // Incluye también las líneas huérfanas (created_by IS NULL, de antes de la migración)
       where = `WHERE (l.created_by = $${params.length} OR l.created_by IS NULL)`

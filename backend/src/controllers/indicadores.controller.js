@@ -1472,10 +1472,32 @@ const getActivacionesPorDia = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FORZAR REFRESH — Novonet no usa vista materializada: lee de tablas con un
+// CACHÉ EN MEMORIA del servidor (_cacheDashboard, TTL 2 min + _cacheEtapas,
+// TTL 5 min). Por eso Ctrl+Shift+R no trae datos frescos: recarga el navegador
+// pero el servidor sigue devolviendo lo cacheado. Este endpoint (botón "Forzar
+// Refresh") vacía esos cachés para que la próxima consulta vaya directo a la BD.
+// ─────────────────────────────────────────────────────────────────────────────
+const forceRefreshNovonet = async (req, res) => {
+    try {
+        const entradasDash = _cacheDashboard.size;
+        _cacheDashboard.clear();
+        _cacheEtapas    = null;
+        _cacheEtapasTTL = 0;
+        console.log(`[FORCE-REFRESH-NOVONET] Caché limpiado (${entradasDash} entradas dashboard + etapas)`);
+        res.json({ success: true, cacheLimpiado: entradasDash });
+    } catch (error) {
+        console.error('[FORCE-REFRESH-NOVONET]', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     getIndicadoresDashboard,
     getMonitoreoDiario,
     getReporte180,
     getConsultaDescargaNovonet,
     getActivacionesPorDia,
+    forceRefreshNovonet,
 };

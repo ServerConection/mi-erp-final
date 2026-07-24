@@ -98,6 +98,10 @@ router.get  ('/conversations/:id/messages',      convsCtrl.getMessages);
 router.post ('/conversations/:id/send',          convsCtrl.sendMessage);
 router.post ('/conversations/:id/close',         convsCtrl.close);
 router.post ('/conversations/:id/takeover',      convsCtrl.takeover);
+
+// ── RESPALDO DE CONVERSACIONES (buscar y exportar por número) ──
+router.get  ('/backup/search',                   convsCtrl.backupSearch);
+router.get  ('/backup/:phone',                   convsCtrl.backupByNumber);
 router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────

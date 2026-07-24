@@ -50,6 +50,7 @@ const WaCampanas           = lazy(() => import("./pages/WaCampanas"));
 const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
 const WaContactos          = lazy(() => import("./pages/WaContactos"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
+const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
@@ -134,6 +135,7 @@ export default function App() {
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
+            <Route path="whatsapp/respaldos"        element={<WaRespaldos />} />
             <Route path="asistente"                 element={<AsistenteERP />} />
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
             <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />

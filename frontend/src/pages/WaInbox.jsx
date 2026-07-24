@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
+import { exportChatPDF } from "./WaRespaldos";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -277,6 +278,16 @@ export default function WaInbox() {
               <div className="text-xs text-slate-500">+{selected.wa_number}</div>
             </div>
             <div className="flex gap-2">
+              <button onClick={() => exportChatPDF({
+                  wa_number: selected.wa_number,
+                  contact_name: selected.contact_name,
+                  line_name: selected.line_name,
+                  messages,
+                })}
+                title="Exportar conversación a PDF"
+                className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                📄 PDF
+              </button>
               {!["human", "human_takeover"].includes(selected.status) ? (
                 <button onClick={takeOver}
                   className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">

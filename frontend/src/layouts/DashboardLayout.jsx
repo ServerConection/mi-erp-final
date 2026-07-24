@@ -421,6 +421,7 @@ const ALL_MENU_ITEMS = [
   { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
 
   // ── Diversión / actividades internas ────────────────────────────────────
   { name: "Diversión", path: null, icon: "🎮", isGroup: true, groupId: "diversion" },

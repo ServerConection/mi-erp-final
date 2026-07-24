@@ -154,6 +154,81 @@ async function sendMessage(req, res) {
   }
 }
 
+// ── RESPALDO: buscar por número (lista de números con actividad) ──
+async function backupSearch(req, res) {
+  try {
+    const { phone = '' } = req.query
+    const digits = phone.replace(/\D/g, '')
+    const params = []
+    let filter = ''
+    if (digits) { params.push(`%${digits}%`); filter = `AND m.wa_number ILIKE $${params.length}` }
+    if (!isAdmin(req)) { params.push(req.user.id); filter += ` AND l.created_by = $${params.length}` }
+
+    // Un registro por número: total de mensajes, primer/último mensaje, nombre y línea
+    const result = await query(`
+      SELECT m.wa_number,
+             MAX(ct.name)                        AS contact_name,
+             MAX(l.name)                         AS line_name,
+             COUNT(*)::int                       AS total_mensajes,
+             MIN(m.timestamp)                    AS primer_mensaje,
+             MAX(m.timestamp)                    AS ultimo_mensaje
+      FROM messages m
+      LEFT JOIN lines l ON m.line_id = l.id
+      LEFT JOIN contacts ct ON ct.wa_number = m.wa_number AND ct.line_id = m.line_id
+      WHERE 1=1 ${filter}
+      GROUP BY m.wa_number
+      ORDER BY MAX(m.timestamp) DESC
+      LIMIT 100
+    `, params)
+    res.json({ success: true, data: result.rows })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ── RESPALDO: toda la conversación de un número (continuidad completa) ──
+async function backupByNumber(req, res) {
+  try {
+    const digits = (req.params.phone || '').replace(/\D/g, '')
+    if (!digits) return res.status(400).json({ success: false, error: 'Número requerido' })
+
+    const params = [digits]
+    let ownerFilter = ''
+    if (!isAdmin(req)) { params.push(req.user.id); ownerFilter = `AND l.created_by = $${params.length}` }
+
+    const info = await query(`
+      SELECT m.wa_number,
+             MAX(ct.name)     AS contact_name,
+             MAX(l.name)      AS line_name,
+             COUNT(*)::int    AS total_mensajes
+      FROM messages m
+      LEFT JOIN lines l ON m.line_id = l.id
+      LEFT JOIN contacts ct ON ct.wa_number = m.wa_number AND ct.line_id = m.line_id
+      WHERE m.wa_number = $1 ${ownerFilter}
+      GROUP BY m.wa_number
+    `, params)
+
+    if (!info.rows.length) return res.status(404).json({ success: false, error: 'Sin mensajes para ese número' })
+
+    // TODOS los mensajes en orden cronológico → continuidad del chat
+    const msgs = await query(`
+      SELECT m.direction, m.type, m.content, m.media_url, m.status, m.timestamp,
+             l.name AS line_name, m.campaign_id
+      FROM messages m
+      LEFT JOIN lines l ON m.line_id = l.id
+      WHERE m.wa_number = $1 ${ownerFilter}
+      ORDER BY m.timestamp ASC
+    `, params)
+
+    res.json({
+      success: true,
+      data: { ...info.rows[0], messages: msgs.rows },
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
 // ── Tomar control (pausa el bot 24h, NO cierra la conversación) ──
 async function takeover(req, res) {
   try {
@@ -209,4 +284,4 @@ async function returnToBot(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover }
+module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber }

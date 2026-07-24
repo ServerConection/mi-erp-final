@@ -82,26 +82,29 @@ export default function WaInbox() {
   const [newMode, setNewMode]         = useState("phone"); // "phone" | "bitrix" (en modal nueva)
   const [newPhone, setNewPhone]       = useState("");
   const [newLineId, setNewLineId]     = useState("");
-  const [lines, setLines]             = useState([]);      // líneas conectadas (para admin/supervisor)
+  const [lines, setLines]             = useState([]);      // TODAS las líneas visibles (admin/supervisor)
+  const [lineFilter, setLineFilter]   = useState("");      // filtro por línea/usuario en la lista
 
-  // Cargar líneas conectadas (solo si el usuario puede elegir línea)
+  const connectedLines = lines.filter(l => (l.rt_status || l.status) === "connected");
+
+  // Cargar líneas visibles (para filtrar por usuario y elegir línea de envío)
   useEffect(() => {
     if (!CAN_PICK_LINE) return;
     (async () => {
       try {
         const r = await fetch(`${API}/lines`, { headers: authH(false) });
         const d = await r.json();
-        const arr = (Array.isArray(d?.data) ? d.data : []).filter(l => (l.rt_status || l.status) === "connected");
-        setLines(arr);
+        setLines(Array.isArray(d?.data) ? d.data : []);
       } catch { /* ignore */ }
     })();
   }, []);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
-  const loadConvs = useCallback(async () => {
+  const loadConvs = useCallback(async (lineId = "") => {
     try {
-      const r = await fetch(`${API}/conversations`, { headers: authH(false) });
+      const qs = lineId ? `?line_id=${encodeURIComponent(lineId)}` : "";
+      const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
       setConversations(asArray(d));
     } catch (e) {
@@ -110,6 +113,9 @@ export default function WaInbox() {
       setLoading(false);
     }
   }, []);
+
+  // Recargar al cambiar el filtro de línea/usuario
+  useEffect(() => { loadConvs(lineFilter); }, [lineFilter, loadConvs]);
 
   const loadMessages = useCallback(async (convId) => {
     try {
@@ -123,7 +129,7 @@ export default function WaInbox() {
   }, []);
 
   useEffect(() => {
-    loadConvs();
+    // La carga inicial la hace el efecto del filtro (lineFilter). Aquí solo el socket.
     const socket = getSocket();
     socket.on("conversation:new", (conv) => {
       setConversations(prev => [conv, ...prev.filter(c => c.id !== conv.id)]);
@@ -293,6 +299,19 @@ export default function WaInbox() {
           </div>
           <input type="text" placeholder="Buscar…" value={search} onChange={e => setSearch(e.target.value)}
             className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
+
+          {/* Filtro por usuario/línea (admin y supervisor) */}
+          {CAN_PICK_LINE && lines.length > 0 && (
+            <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2 bg-white">
+              <option value="">👥 Todos los asesores / líneas</option>
+              {lines.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.owner_username ? `${l.owner_username} — ` : ""}{l.name}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-1">
             {[
               { key: "all",            label: "Todos" },
@@ -569,7 +588,7 @@ export default function WaInbox() {
                   <select value={newLineId} onChange={e => setNewLineId(e.target.value)}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
                     <option value="">Automática (primera conectada)</option>
-                    {lines.map(l => <option key={l.id} value={l.id}>{l.name}{l.owner_username ? ` · ${l.owner_username}` : ""}</option>)}
+                    {connectedLines.map(l => <option key={l.id} value={l.id}>{l.name}{l.owner_username ? ` · ${l.owner_username}` : ""}</option>)}
                   </select>
                 </div>
               )}

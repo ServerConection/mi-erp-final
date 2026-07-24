@@ -409,6 +409,10 @@ async function startFromBitrix(req, res) {
 
     const lineId = chosen.id
 
+    // Registrar la identidad real del número en WhatsApp (maneja LID) para
+    // que una respuesta temprana del cliente caiga en ESTA conversación.
+    try { await bm.resolveWaJid(lineId, waNumber) } catch (e) {}
+
     // 3) Crear/abrir conversación (reusa si ya existe una abierta)
     const existing = await query(
       `SELECT * FROM conversations WHERE line_id=$1 AND wa_number=$2 AND status != 'closed' ORDER BY started_at DESC LIMIT 1`,

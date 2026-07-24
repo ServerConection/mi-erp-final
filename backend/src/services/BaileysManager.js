@@ -442,21 +442,64 @@ class BaileysManager {
     this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
   }
 
-  // Resuelve el JID correcto para enviar: contactos LID deben recibir en @lid
+  // Pregunta a WhatsApp la identidad REAL de un número (maneja LID) y cachea
+  // el JID de envío + el mapeo lid→número. Devuelve el JID correcto o null.
+  async resolveWaJid(lineId, phone) {
+    const inst = this.instances[lineId]
+    if (!inst?.sock) return null
+    const num = this._cleanNumber(phone)
+    if (!num) return null
+    try {
+      const results = await inst.sock.onWhatsApp('+' + num)
+      const r = results?.[0]
+      if (!r || r.exists === false) return null
+      const jid = r.jid || r.lid || null
+      if (!jid) return null
+
+      const md = { send_jid: jid }
+      if (jid.endsWith('@lid')) {
+        const lidNum = this._cleanNumber(jid)
+        md.lid = lidNum
+        await this._saveLidMapping(lidNum, num)   // lid → número real (unifica chats)
+      }
+      try {
+        await query(
+          `INSERT INTO contacts (wa_number, line_id, metadata)
+           VALUES ($1,$2,$3::jsonb)
+           ON CONFLICT (wa_number, line_id) DO UPDATE SET metadata = contacts.metadata || $3::jsonb`,
+          [num, lineId, JSON.stringify(md)]
+        )
+      } catch (e) {}
+      return jid
+    } catch (e) {
+      return null
+    }
+  }
+
+  // Resuelve el JID correcto para enviar. Usa caché (send_jid) y, si no hay,
+  // pregunta a WhatsApp. Así los mensajes a contactos LID SÍ se entregan.
   async _resolveSendJid(lineId, to) {
     const str = (to || '').toString()
     if (str.includes('@')) return this._toJid(str)   // ya viene como JID completo
     const num = this._cleanNumber(str)
-    if (this.lidMap[num]) return `${this.lidMap[num]}@s.whatsapp.net`  // LID con número real conocido
+
+    // 1) Caché en el contacto
     try {
       const r = await query(
         `SELECT metadata FROM contacts WHERE wa_number=$1 AND line_id=$2`,
         [num, lineId]
       )
       const md = r.rows[0]?.metadata || {}
-      if (md.real_phone) return `${String(md.real_phone).replace(/\D/g, '')}@s.whatsapp.net`
-      if (md.is_lid) return `${num}@lid`             // LID sin resolver → responder al JID @lid
+      if (md.send_jid) return md.send_jid
+      if (md.lid)      return `${String(md.lid).replace(/\D/g, '')}@lid`
     } catch (e) {}
+
+    // 2) Preguntar a WhatsApp (resuelve LID y cachea)
+    const resolved = await this.resolveWaJid(lineId, num)
+    if (resolved) return resolved
+
+    // 3) Fallbacks
+    if (this.lidMap[num]) return `${this.lidMap[num]}@s.whatsapp.net`
     return this._toJid(num)
   }
 

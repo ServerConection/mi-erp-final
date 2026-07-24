@@ -102,6 +102,10 @@ router.post ('/conversations/:id/takeover',      convsCtrl.takeover);
 // ── RESPALDO DE CONVERSACIONES (buscar y exportar por número) ──
 router.get  ('/backup/search',                   convsCtrl.backupSearch);
 router.get  ('/backup/:phone',                   convsCtrl.backupByNumber);
+
+// ── BITRIX: iniciar conversación por ID de negociación y asociar ID ──
+router.post ('/bitrix/start',                    convsCtrl.startFromBitrix);
+router.put  ('/conversations/:id/bitrix',        convsCtrl.setBitrixId);
 router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────

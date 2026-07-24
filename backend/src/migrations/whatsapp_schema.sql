@@ -236,3 +236,7 @@ CREATE TABLE IF NOT EXISTS campaign_events (
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign ON campaign_events(campaign_id, event);
 CREATE INDEX IF NOT EXISTS idx_campaign_events_variant  ON campaign_events(variant_id);
+
+-- ID de negociación (deal) de Bitrix asociado a la conversación (2026-07)
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bitrix_deal_id VARCHAR(30);
+CREATE INDEX IF NOT EXISTS idx_conversations_bitrix ON conversations(bitrix_deal_id);

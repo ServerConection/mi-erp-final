@@ -2,6 +2,72 @@ const { query } = require('../config/db')
 const fs = require('fs')
 const path = require('path')
 
+// ── Bitrix: webhook por empresa (usa env si existe, si no las URLs por defecto) ──
+const BITRIX_WEBHOOKS = {
+  VELSA:   (process.env.BITRIX_VELSA_URL   || process.env.BITRIX_WEBHOOK || 'https://aclopecuador.bitrix24.es/rest/34852/9yzfguq80owrc8wv').replace(/\/$/, ''),
+  NOVONET: (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, ''),
+}
+
+// Llama a un método REST de Bitrix según la empresa del usuario
+async function bitrixGet(empresa, method, params = {}) {
+  const base = BITRIX_WEBHOOKS[(empresa || '').toUpperCase()]
+  if (!base) throw new Error('Empresa sin webhook de Bitrix: ' + empresa)
+  const qs = new URLSearchParams(params).toString()
+  const url = `${base}/${method}.json?${qs}`
+  const controller = new AbortController()
+  const t = setTimeout(() => controller.abort(), 20000)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    const json = await res.json()
+    if (json.error) throw new Error(`Bitrix [${method}]: ${json.error_description || json.error}`)
+    return json.result
+  } finally { clearTimeout(t) }
+}
+
+// Normaliza teléfono de Bitrix al formato de WhatsApp (dígitos, Ecuador +593)
+function normalizePhoneEC(raw) {
+  let d = (raw || '').replace(/\D/g, '')
+  if (!d) return ''
+  if (d.startsWith('00')) d = d.slice(2)          // 00593... → 593...
+  if (d.startsWith('0'))  d = '593' + d.slice(1)  // 09xxxxxxxx → 5939xxxxxxxx
+  else if (!d.startsWith('593') && d.length <= 10) d = '593' + d  // 9xxxxxxxx → 593...
+  return d
+}
+
+// Obtiene el teléfono a partir de un deal (negociación) de Bitrix
+async function phoneFromDeal(empresa, dealId) {
+  const deal = await bitrixGet(empresa, 'crm.deal.get', { ID: dealId })
+  if (!deal || !deal.ID) throw new Error('Negociación no encontrada en Bitrix')
+
+  let phoneRaw = null
+  let contactName = deal.TITLE || null
+
+  // 1) Contacto vinculado (caso estándar)
+  if (deal.CONTACT_ID && deal.CONTACT_ID !== '0') {
+    const contact = await bitrixGet(empresa, 'crm.contact.get', { ID: deal.CONTACT_ID })
+    if (contact) {
+      phoneRaw = contact.PHONE?.[0]?.VALUE || null
+      const nm = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim()
+      if (nm) contactName = nm
+    }
+  }
+  // 2) Fallback: empresa vinculada
+  if (!phoneRaw && deal.COMPANY_ID && deal.COMPANY_ID !== '0') {
+    const company = await bitrixGet(empresa, 'crm.company.get', { ID: deal.COMPANY_ID })
+    if (company) {
+      phoneRaw = company.PHONE?.[0]?.VALUE || null
+      if (company.TITLE) contactName = company.TITLE
+    }
+  }
+
+  return {
+    phone: normalizePhoneEC(phoneRaw),
+    phoneRaw,
+    contactName,
+    dealTitle: deal.TITLE || null,
+  }
+}
+
 // Traduce /wa-uploads/... a la ruta real en disco
 function resolveMediaPath(mediaUrl) {
   if (mediaUrl.startsWith('/wa-uploads/')) {
@@ -254,6 +320,101 @@ async function backupByNumber(req, res) {
   }
 }
 
+// ── BITRIX: iniciar conversación desde un ID de negociación ──────
+// Body: { bitrix_id }. Consulta el teléfono en Bitrix (según empresa del
+// usuario), usa la línea conectada del usuario, y crea/abre la conversación.
+async function startFromBitrix(req, res) {
+  try {
+    const bitrixId = String(req.body.bitrix_id || '').trim()
+    if (!bitrixId) return res.status(400).json({ success: false, error: 'ID Bitrix requerido' })
+
+    const empresa = (req.user.empresa || '').toUpperCase()
+    if (!BITRIX_WEBHOOKS[empresa]) {
+      return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
+    }
+
+    // 1) Consultar teléfono en Bitrix
+    let info
+    try {
+      info = await phoneFromDeal(empresa, bitrixId)
+    } catch (e) {
+      return res.status(502).json({ success: false, error: 'Bitrix: ' + e.message })
+    }
+    if (!info.phone) {
+      return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
+    }
+
+    // 2) Elegir línea conectada del usuario
+    const bm = req.app.get('baileysManager')
+    const linesRes = await query(
+      isAdmin(req)
+        ? `SELECT id, name, bot_id FROM lines ORDER BY created_at ASC`
+        : `SELECT id, name, bot_id FROM lines WHERE created_by = $1 OR created_by IS NULL ORDER BY created_at ASC`,
+      isAdmin(req) ? [] : [req.user.id]
+    )
+    const connected = linesRes.rows.find(l => bm && bm.getStatus(l.id) === 'connected')
+    if (!connected) {
+      return res.status(400).json({ success: false, error: 'No tienes ninguna línea de WhatsApp conectada. Ve a Líneas y conecta una para iniciar conversaciones.' })
+    }
+
+    const waNumber = info.phone
+    const lineId = connected.id
+
+    // 3) Crear/abrir conversación (reusa si ya existe una abierta)
+    const existing = await query(
+      `SELECT * FROM conversations WHERE line_id=$1 AND wa_number=$2 AND status != 'closed' ORDER BY started_at DESC LIMIT 1`,
+      [lineId, waNumber]
+    )
+    let conv
+    if (existing.rows.length) {
+      conv = existing.rows[0]
+      await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId, conv.id])
+    } else {
+      const contactRes = await query(
+        `INSERT INTO contacts (wa_number, line_id, name)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (wa_number, line_id) DO UPDATE SET name=COALESCE(contacts.name, EXCLUDED.name), last_seen=NOW()
+         RETURNING id`,
+        [waNumber, lineId, info.contactName || null]
+      )
+      const ins = await query(
+        `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id, status, bitrix_deal_id)
+         VALUES ($1,$2,$3,$4,'human_takeover',$5) RETURNING *`,
+        [lineId, contactRes.rows[0].id, waNumber, connected.bot_id || null, bitrixId]
+      )
+      conv = ins.rows[0]
+    }
+
+    // Devolver con los datos que el inbox necesita para seleccionarla
+    const full = await query(`
+      SELECT c.*, ct.name AS contact_name, l.name AS line_name
+      FROM conversations c
+      LEFT JOIN contacts ct ON c.contact_id = ct.id
+      LEFT JOIN lines l ON c.line_id = l.id
+      WHERE c.id = $1
+    `, [conv.id])
+
+    res.json({ success: true, data: { ...full.rows[0], bitrix_contact_name: info.contactName, phone: waNumber } })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ── BITRIX: asociar / cambiar el ID de negociación de una conversación ──
+async function setBitrixId(req, res) {
+  try {
+    const { id } = req.params
+    const bitrixId = String(req.body.bitrix_id || '').trim()
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
+    await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId || null, id])
+    res.json({ success: true, data: { id, bitrix_deal_id: bitrixId || null } })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
 // ── Tomar control (pausa el bot 24h, NO cierra la conversación) ──
 async function takeover(req, res) {
   try {
@@ -309,4 +470,4 @@ async function returnToBot(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber }
+module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId }

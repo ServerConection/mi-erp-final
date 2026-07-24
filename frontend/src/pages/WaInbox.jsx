@@ -10,6 +10,20 @@ const API = `${ORIGIN}/api/wa`;
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 const isImage = (msg) => msg.type === "image" || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
+
+// Empresa del usuario (para construir el enlace correcto a Bitrix)
+const USER_EMPRESA = (() => {
+  try { return (JSON.parse(localStorage.getItem("userProfile") || "{}").empresa || "").toUpperCase(); }
+  catch { return ""; }
+})();
+const BITRIX_DEAL_BASE = {
+  VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
+  NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
+};
+const bitrixDealUrl = (dealId) => {
+  const base = BITRIX_DEAL_BASE[USER_EMPRESA];
+  return base ? `${base}/${dealId}/` : null;
+};
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -57,6 +71,11 @@ export default function WaInbox() {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);          // evita closure viejo en el socket
   useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  // Bitrix: modal nueva conversación e ingreso de ID
+  const [bitrixModal, setBitrixModal] = useState(null); // "new" | "add"
+  const [bitrixId, setBitrixId]       = useState("");
+  const [bitrixBusy, setBitrixBusy]   = useState(false);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -179,6 +198,45 @@ export default function WaInbox() {
     setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "active" } : c));
   };
 
+  // Iniciar conversación desde un ID de negociación de Bitrix
+  const startFromBitrix = async () => {
+    const id = bitrixId.trim();
+    if (!id || bitrixBusy) return;
+    setBitrixBusy(true);
+    try {
+      const r = await fetch(`${API}/bitrix/start`, {
+        method: "POST", headers: authH(),
+        body: JSON.stringify({ bitrix_id: id }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error || "No se pudo iniciar la conversación"); return; }
+      // Agregar/actualizar en la lista y abrirla
+      setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)]);
+      setSelected(d.data);
+      setBitrixModal(null); setBitrixId("");
+    } catch (e) {
+      alert("Error consultando Bitrix");
+    } finally { setBitrixBusy(false); }
+  };
+
+  // Asociar un ID Bitrix a la conversación abierta
+  const addBitrixId = async () => {
+    const id = bitrixId.trim();
+    if (!id || !selected || bitrixBusy) return;
+    setBitrixBusy(true);
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}/bitrix`, {
+        method: "PUT", headers: authH(),
+        body: JSON.stringify({ bitrix_id: id }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error || "No se pudo guardar"); return; }
+      setSelected(s => ({ ...s, bitrix_deal_id: id }));
+      setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, bitrix_deal_id: id } : c));
+      setBitrixModal(null); setBitrixId("");
+    } finally { setBitrixBusy(false); }
+  };
+
   const filtered = conversations.filter(c => {
     if (filter !== "all" && c.status !== filter) return false;
     if (search && !(c.wa_number || "").includes(search) && !(c.contact_name || "").toLowerCase().includes(search.toLowerCase())) return false;
@@ -196,7 +254,14 @@ export default function WaInbox() {
       {/* Lista de conversaciones */}
       <div className={`flex flex-col border-r border-slate-200 bg-white ${selected ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0`}>
         <div className="p-3 border-b border-slate-100">
-          <h2 className="font-bold text-slate-800 mb-2">💬 Inbox</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-slate-800">💬 Inbox</h2>
+            <button onClick={() => { setBitrixId(""); setBitrixModal("new"); }}
+              title="Iniciar conversación con un ID de negociación de Bitrix"
+              className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+              + Nueva
+            </button>
+          </div>
           <input type="text" placeholder="Buscar…" value={search} onChange={e => setSearch(e.target.value)}
             className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
           <div className="flex gap-1">
@@ -278,6 +343,20 @@ export default function WaInbox() {
               <div className="text-xs text-slate-500">+{selected.wa_number}</div>
             </div>
             <div className="flex gap-2">
+              {selected.bitrix_deal_id ? (
+                <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
+                  onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}
+                  title={`Abrir negociación ${selected.bitrix_deal_id} en Bitrix`}
+                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
+                  🔗 Bitrix #{selected.bitrix_deal_id}
+                </a>
+              ) : (
+                <button onClick={() => { setBitrixId(""); setBitrixModal("add"); }}
+                  title="Asociar un ID de negociación de Bitrix a esta conversación"
+                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
+                  + ID Bitrix
+                </button>
+              )}
               <button onClick={() => exportChatPDF({
                   wa_number: selected.wa_number,
                   contact_name: selected.contact_name,
@@ -374,6 +453,48 @@ export default function WaInbox() {
             <div className="text-6xl mb-3">💬</div>
             <div className="font-medium text-slate-500">Selecciona una conversación</div>
             <div className="text-sm mt-1">para ver los mensajes</div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Bitrix: nueva conversación / asociar ID */}
+      {bitrixModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-5 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">
+                {bitrixModal === "new" ? "Nueva conversación desde Bitrix" : "Asociar ID Bitrix"}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {bitrixModal === "new"
+                  ? "Escribe el ID de negociación. Traeremos el teléfono desde Bitrix y abriremos el chat."
+                  : `Vincula el ID de negociación a la conversación con +${selected?.wa_number}.`}
+              </p>
+            </div>
+            <div className="p-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID de negociación (Bitrix)</label>
+              <input
+                type="text" inputMode="numeric" autoFocus
+                placeholder="Ej. 56124"
+                value={bitrixId}
+                onChange={e => setBitrixId(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && (bitrixModal === "new" ? startFromBitrix() : addBitrixId())}
+                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+              />
+              {USER_EMPRESA && (
+                <p className="text-xs text-slate-400 mt-2">Empresa: <b>{USER_EMPRESA}</b></p>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => { setBitrixModal(null); setBitrixId(""); }}
+                className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">Cancelar</button>
+              <button
+                onClick={() => bitrixModal === "new" ? startFromBitrix() : addBitrixId()}
+                disabled={bitrixBusy || !bitrixId.trim()}
+                className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                {bitrixBusy ? "Consultando…" : (bitrixModal === "new" ? "Iniciar" : "Guardar")}
+              </button>
+            </div>
           </div>
         </div>
       )}

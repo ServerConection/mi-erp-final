@@ -311,7 +311,7 @@ export default function Ventas() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.mensaje || "Error al guardar");
+      if (!res.ok) throw new Error([data.mensaje, data.detalle].filter(Boolean).join(" · ") || "Error al guardar");
       mostrarToast(esEditar ? "✅ Registro actualizado" : "✅ Registro creado");
       setModal(null);
       cargarVentas();

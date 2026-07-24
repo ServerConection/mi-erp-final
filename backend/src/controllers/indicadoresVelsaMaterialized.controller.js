@@ -71,6 +71,40 @@ const MV = `public.mv_indicadores_velsa_completo mv`;
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CACHÉ EN MEMORIA ALINEADO AL CICLO DE 10 MINUTOS
+// La data llega por lotes (sync Bitrix/GHL/JotForm) y solo cambia en cada
+// "corte" de ~10 min. Cachear por ventana evita re-ejecutar las consultas
+// pesadas contra la MV en cada clic/filtro (antes Velsa NO tenía caché y pegaba
+// a la MV en cada request). Todo el caché expira junto en el próximo corte, así
+// que nunca se sirve data de un ciclo viejo.
+// ─────────────────────────────────────────────────────────────────────────────
+const _cacheVelsa = new Map();
+
+// ms hasta el próximo corte de datos: minutos terminados en 1 (:01,:11,:21,...)
+const msHastaProximoCorte = () => {
+  const now = new Date();
+  const cut = new Date(now);
+  cut.setSeconds(0, 0);
+  do { cut.setMinutes(cut.getMinutes() + 1); } while (cut.getMinutes() % 10 !== 1);
+  return cut.getTime() - now.getTime();
+};
+
+const getCacheVelsa = (key) => {
+  const entry = _cacheVelsa.get(key);
+  if (entry && Date.now() < entry.ttl) return entry.data;
+  if (entry) _cacheVelsa.delete(key);
+  return null;
+};
+const setCacheVelsa = (key, data) => {
+  _cacheVelsa.set(key, { data, ttl: Date.now() + msHastaProximoCorte() });
+  if (_cacheVelsa.size > 200) {
+    const ahora = Date.now();
+    for (const [k, v] of _cacheVelsa) if (ahora > v.ttl) _cacheVelsa.delete(k);
+  }
+};
+const clearCacheVelsa = () => { const n = _cacheVelsa.size; _cacheVelsa.clear(); return n; };
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VENTA DE SERVICIO: la MV no expone columnas plan_* (no se modifica su esquema
 // por decisión del usuario — "Solo JOIN en el controller, sin tocar la MV").
 // Se obtienen vía LEFT JOIN directo a la vista base de Jotform Velsa.
@@ -249,6 +283,9 @@ function mergeBacklog(kpiRows, backlogRows) {
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 async function getIndicadoresDashboardVelsa(req, res) {
+  const cacheKey = 'dashboard:' + JSON.stringify(req.query);
+  const cached = getCacheVelsa(cacheKey);
+  if (cached) return res.json(cached);
   try {
     const hoy   = getFechaEcuador();
     const desde = req.query.fechaDesde || hoy;
@@ -439,7 +476,7 @@ LIMIT 6000
 
     console.log(`[DASHBOARD-VELSA] ${desde}~${hasta} | Sup:${supervisores.length} Ases:${asesores.length}`);
 
-    res.json({
+    const payload = {
       success: true,
       supervisores,
       asesores,
@@ -460,7 +497,9 @@ LIMIT 6000
           adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
         };
       })(),
-    });
+    };
+    setCacheVelsa(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     console.error('[DASHBOARD-VELSA] Error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -471,6 +510,9 @@ LIMIT 6000
 // MONITOREO DIARIO
 // ─────────────────────────────────────────────────────────────────────────────
 async function getMonitoreoDiarioVelsa(req, res) {
+  const cacheKey = 'monitoreo:' + JSON.stringify(req.query);
+  const cached = getCacheVelsa(cacheKey);
+  if (cached) return res.json(cached);
   try {
     const hoy       = getFechaEcuador();
     const iniciomes = getPrimerDiaMesEcuador();
@@ -518,7 +560,9 @@ async function getMonitoreoDiarioVelsa(req, res) {
       };
     });
 
-    res.json({ success: true, supervisores: merge(resSup.rows, resJotSup.rows), asesores: merge(resAses.rows, resJotAses.rows) });
+    const payload = { success: true, supervisores: merge(resSup.rows, resJotSup.rows), asesores: merge(resAses.rows, resJotAses.rows) };
+    setCacheVelsa(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     console.error('[MONITOREO-VELSA] Error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -529,6 +573,9 @@ async function getMonitoreoDiarioVelsa(req, res) {
 // REPORTE 180
 // ─────────────────────────────────────────────────────────────────────────────
 async function getReporte180Velsa(req, res) {
+  const cacheKey = 'reporte180:' + JSON.stringify(req.query);
+  const cached = getCacheVelsa(cacheKey);
+  if (cached) return res.json(cached);
   try {
     const hoy   = getFechaEcuador();
     const desde = req.query.fechaDesde || hoy;
@@ -624,7 +671,7 @@ async function getReporte180Velsa(req, res) {
     ]);
 
     const k = resKPIs.rows[0] || {};
-    res.json({
+    const payload = {
       success: true,
       kpis: {
         ingresos_jot:     Number(k.ingresos_jot     || 0),
@@ -645,7 +692,9 @@ async function getReporte180Velsa(req, res) {
           adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
         };
       })(),
-    });
+    };
+    setCacheVelsa(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     console.error('[REPORTE180-VELSA] Error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -708,6 +757,9 @@ async function getStatusMaterializedView(req, res) {
 // DETALLE CRM
 // ─────────────────────────────────────────────────────────────────────────────
 async function getDetalleCRMData(req, res) {
+  const cacheKey = 'detalle-crm:' + JSON.stringify(req.query);
+  const cached = getCacheVelsa(cacheKey);
+  if (cached) return res.json(cached);
   try {
     const hoy   = getFechaEcuador();
     const desde = req.query.fechaDesde || hoy;
@@ -727,7 +779,9 @@ async function getDetalleCRMData(req, res) {
     `, values);
 
     console.log(`[DETALLE-CRM-VELSA] ${desde}~${hasta} | ${result.rowCount} registros`);
-    res.json({ success: true, registros: result.rows, total: result.rowCount });
+    const payload = { success: true, registros: result.rows, total: result.rowCount };
+    setCacheVelsa(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     console.error('[DETALLE-CRM-VELSA] Error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -831,58 +885,24 @@ async function getActivacionesPorDiaVelsa(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORZAR REFRESH — refresca la vista materializada bajo demanda (botón "Forzar
-// Refresh" del frontend). Intenta REFRESH ... CONCURRENTLY (NO bloquea las
-// lecturas mientras se refresca) siempre que exista el índice ÚNICO en la MV
-// (ver migración add_unique_index_mv_velsa.sql). Si el índice único todavía no
-// está aplicado, cae automáticamente a un REFRESH normal (bloqueante).
+// FORZAR REFRESH (LIVIANO) — botón "Forzar Refresh" del frontend.
+// ⚠️ IMPORTANTE: NO ejecuta REFRESH MATERIALIZED VIEW. Ese refresh es pesado
+// (>90 s, bloquea la MV y tumbó la BD en el pasado — por eso su cron está
+// desactivado en server.js). La MV la refresca el pipeline de sincronización
+// (Bitrix/GHL/JotForm) fuera de la app.
 //
-// Guards anti-abuso (importante: un REFRESH pesado tumbó la BD en el pasado):
-//   • No permite dos refresh simultáneos.
-//   • No permite forzar más de una vez cada 60 s.
+// Lo que SÍ hace este botón: vacía el caché en memoria del servidor para que la
+// próxima consulta lea la MV al instante (saltándose la ventana de 10 min). Es
+// una operación de milisegundos y no genera carga en la BD.
 // ─────────────────────────────────────────────────────────────────────────────
-let _mvRefreshing  = false;
-let _mvLastRefresh = 0;
-const _MV_MIN_INTERVAL_MS = 60 * 1000; // 60 s entre refresh manuales
-
 async function forceRefreshVelsa(req, res) {
-  if (_mvRefreshing) {
-    return res.status(409).json({
-      success: false, code: 'IN_PROGRESS',
-      message: 'Ya hay un refresh en progreso. Espera unos segundos.'
-    });
-  }
-  const transcurrido = Date.now() - _mvLastRefresh;
-  if (_mvLastRefresh && transcurrido < _MV_MIN_INTERVAL_MS) {
-    const faltan = Math.ceil((_MV_MIN_INTERVAL_MS - transcurrido) / 1000);
-    return res.status(429).json({
-      success: false, code: 'TOO_SOON', waitMs: _MV_MIN_INTERVAL_MS - transcurrido,
-      message: `Se refrescó hace poco. Reintenta en ${faltan}s.`
-    });
-  }
-
-  _mvRefreshing = true;
-  const t0 = Date.now();
   try {
-    let modo = 'CONCURRENTLY';
-    try {
-      await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_indicadores_velsa_completo');
-    } catch (err) {
-      // Postgres exige un índice ÚNICO para CONCURRENTLY. Si no existe todavía
-      // (migración no aplicada) → fallback a REFRESH normal (bloquea la vista).
-      console.warn('[FORCE-REFRESH-VELSA] CONCURRENTLY no disponible, usando REFRESH normal:', err.message);
-      modo = 'NORMAL';
-      await pool.query('REFRESH MATERIALIZED VIEW public.mv_indicadores_velsa_completo');
-    }
-    const duracionMs = Date.now() - t0;
-    _mvLastRefresh = Date.now();
-    console.log(`[FORCE-REFRESH-VELSA] ✅ ${modo} en ${duracionMs}ms`);
-    res.json({ success: true, modo, duracionMs });
+    const limpiadas = clearCacheVelsa();
+    console.log(`[FORCE-REFRESH-VELSA] Caché limpiado (${limpiadas} entradas)`);
+    res.json({ success: true, cacheLimpiado: limpiadas });
   } catch (error) {
     console.error('[FORCE-REFRESH-VELSA] ❌', error.message);
     res.status(500).json({ success: false, error: error.message });
-  } finally {
-    _mvRefreshing = false;
   }
 }
 

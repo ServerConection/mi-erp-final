@@ -23,6 +23,15 @@ class BaileysManager {
     this.instances = {}
     this.lidMap = {}
     this.lineOwners = {}   // lineId → userId autorizado a ver el QR
+    this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
+    this.reconnectTimers = {}   // guard: una sola reconexión programada por línea
+  }
+
+  // Marca un mensaje como enviado por el ERP (se limpia solo tras 2 min)
+  _markSentByErp(id) {
+    if (!id) return
+    this.sentByErp.add(id)
+    setTimeout(() => this.sentByErp.delete(id), 120000)
   }
 
   // Emite el QR SOLO al usuario dueño/solicitante de la línea.
@@ -136,11 +145,13 @@ class BaileysManager {
       logger: silentLogger,
       browser: ['WaBot Platform', 'Chrome', '120.0'],
       getMessage: async (key) => {
+        // Devolver el mensaje real cacheado o undefined. NUNCA contenido falso:
+        // un "hello" ficticio corrompe el ratchet y provoca cierres de sesión.
         if (store) {
           const msg = await store.loadMessage(key.remoteJid, key.id)
           return msg?.message || undefined
         }
-        return { conversation: 'hello' }
+        return undefined
       },
     }
 
@@ -225,6 +236,8 @@ class BaileysManager {
       }
 
       if (connection === 'open') {
+        // Conexión estable → cancelar cualquier reconexión pendiente
+        if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
         this.instances[lineId].status = 'connected'
         this.instances[lineId].qr = null
         this._updateLineStatus(lineId, 'connected')
@@ -250,8 +263,16 @@ class BaileysManager {
         const closePayload = { lineId, status: shouldReconnect ? 'disconnected' : 'logged_out' }
         this.io.emit('line:status', closePayload)
         this.io.emit(`line:status:${lineId}`, closePayload)
-        if (shouldReconnect) {
-          setTimeout(() => this.connect(lineId), 5000)
+
+        if (!shouldReconnect) {
+          // Sesión cerrada (401): limpiar auth para forzar QR nuevo, sin bucle
+          if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+        } else if (!this.reconnectTimers[lineId]) {
+          // Reconexión ÚNICA por línea (evita tormentas de sockets duplicados)
+          this.reconnectTimers[lineId] = setTimeout(() => {
+            delete this.reconnectTimers[lineId]
+            this.connect(lineId).catch(err => console.warn(`[Line ${lineId}] Reintento falló:`, err.message))
+          }, 5000)
         }
       }
     })
@@ -260,25 +281,46 @@ class BaileysManager {
       if (type !== 'notify') return
 
       for (const msg of messages) {
-        if (msg.key.fromMe) continue
         if (!msg.message) continue
 
         const remoteJid = msg.key.remoteJid
-        if (remoteJid.endsWith('@g.us')) continue
-        if (remoteJid === 'status@broadcast') continue
+        if (remoteJid.endsWith('@g.us')) continue           // grupos
+        if (remoteJid === 'status@broadcast') continue       // estados
+        if (remoteJid.endsWith('@newsletter')) continue      // canales
+        if (remoteJid.endsWith('@broadcast')) continue       // listas de difusión
+
+        // ── Mensajes que la cuenta envió desde el teléfono / WhatsApp Web ──
+        // Se reflejan en el Inbox como salientes (antes se descartaban).
+        if (msg.key.fromMe) {
+          try { await this._handleOwnOutgoing(lineId, sock, msg, remoteJid) } catch (e) {
+            console.warn(`[Line ${lineId}] Error sync mensaje propio:`, e.message)
+          }
+          continue
+        }
 
         let waNumber = this._cleanNumber(remoteJid)
 
         if (remoteJid.endsWith('@lid')) {
+          // Baileys v7 a veces trae el número real en senderPn / participantPn
           const directJid =
+            msg.key?.senderPn ||
+            msg.key?.participantPn ||
             msg.message?.deviceSentMessage?.destinationJid ||
             msg.key?.participant
 
-          if (directJid && !directJid.endsWith('@lid')) {
+          if (directJid && !directJid.toString().endsWith('@lid')) {
             const directNum = this._cleanNumber(directJid)
-            if (directNum) {
+            if (directNum && directNum.length <= 13) {
               await this._saveLidMapping(waNumber, directNum)
-              console.log(`[Line ${lineId}] ✅ LID resuelto (mensaje directo): ${waNumber} → ${directNum}`)
+              // Guardar el número real en el contacto LID (para respuestas y respaldo)
+              try {
+                await query(
+                  `UPDATE contacts SET metadata = metadata || $1::jsonb
+                   WHERE wa_number=$2 AND line_id=$3`,
+                  [JSON.stringify({ real_phone: directNum }), waNumber, lineId]
+                )
+              } catch (e) {}
+              console.log(`[Line ${lineId}] ✅ LID resuelto (senderPn): ${waNumber} → ${directNum}`)
               waNumber = directNum
             }
           } else {
@@ -484,6 +526,7 @@ class BaileysManager {
     const num = this._cleanNumber(str)
 
     // 1) Caché en el contacto
+    let isLidContact = false
     try {
       const r = await query(
         `SELECT metadata FROM contacts WHERE wa_number=$1 AND line_id=$2`,
@@ -492,7 +535,11 @@ class BaileysManager {
       const md = r.rows[0]?.metadata || {}
       if (md.send_jid) return md.send_jid
       if (md.lid)      return `${String(md.lid).replace(/\D/g, '')}@lid`
+      if (md.is_lid)   isLidContact = true   // el número guardado ES un LID
     } catch (e) {}
+
+    // Si el contacto es un LID, se responde al JID @lid directamente
+    if (isLidContact || num.length > 13) return `${num}@lid`
 
     // 2) Preguntar a WhatsApp (resuelve LID y cachea)
     const resolved = await this.resolveWaJid(lineId, num)
@@ -522,7 +569,8 @@ class BaileysManager {
     console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
     await this._simulateTyping(inst.sock, jid, (text || '').length)
     const result = await inst.sock.sendMessage(jid, { text })
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text)
+    this._markSentByErp(result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id)
     return result
   }
 
@@ -572,7 +620,8 @@ class BaileysManager {
       msgContent.mimetype = mimetype
     }
     const result = await inst.sock.sendMessage(jid, msgContent)
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl)
+    this._markSentByErp(result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id)
     return result
   }
 
@@ -627,6 +676,69 @@ class BaileysManager {
 
     const engine = new FlowEngine(this, this.io)
     await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  // ── Sincroniza un mensaje que la cuenta envió desde otro dispositivo ──
+  // (teléfono del asesor o WhatsApp Web) → lo guarda como saliente en el Inbox.
+  async _handleOwnOutgoing(lineId, sock, msg, remoteJid) {
+    const waMsgId = msg.key.id
+    // No duplicar los que el propio ERP acaba de enviar
+    if (this.sentByErp.has(waMsgId)) return
+    const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [waMsgId])
+    if (dup.rows.length) return
+
+    const text = (
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.documentMessage?.caption ||
+      ''
+    ).trim()
+
+    const msgType = msg.message?.conversation ? 'text'
+      : msg.message?.extendedTextMessage ? 'text'
+      : msg.message?.imageMessage ? 'image'
+      : msg.message?.documentMessage ? 'document'
+      : msg.message?.audioMessage ? 'audio'
+      : 'other'
+
+    if (!text && !['image', 'document', 'audio'].includes(msgType)) return
+
+    // Resolver número destinatario (maneja LID)
+    let waNumber = this._cleanNumber(remoteJid)
+    if (remoteJid.endsWith('@lid')) waNumber = await this._resolveLid(remoteJid, sock, lineId)
+
+    // Descargar media si la hay (para verla en el Inbox)
+    let mediaUrl = null
+    if (['image', 'document', 'audio'].includes(msgType)) {
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {})
+        const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+        fs.mkdirSync(dir, { recursive: true })
+        const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg'
+          : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
+        const fname = `out-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+        fs.writeFileSync(path.join(dir, fname), buffer)
+        mediaUrl = `/wa-uploads/${fname}`
+      } catch (e) { /* sin media */ }
+    }
+
+    const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
+    await query(
+      `INSERT INTO messages
+        (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp)
+       VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW())`,
+      [conv.id, lineId, waNumber, msgType, text, mediaUrl, waMsgId]
+    )
+    await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+    console.log(`[Line ${lineId}] 🔄 Sync saliente (otro dispositivo) → ${waNumber}`)
+
+    this.io.emit('message:new', {
+      conversation_id: conv.id,
+      lineId, waNumber, text, content: text, direction: 'out',
+      type: msgType, media_url: mediaUrl,
+      timestamp: new Date().toISOString(),
+    })
   }
 
   // ── Acks de campañas: marca delivered/read en campaign_recipients ──
@@ -736,15 +848,15 @@ class BaileysManager {
     return newConv.rows[0]
   }
 
-  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null) {
+  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null) {
     if (!content && !mediaUrl) return   // no guardar burbujas vacías
     try {
       const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
       await query(
         `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, media_url, timestamp)
-         VALUES ($1,$2,$3,'out',$4,$5,$6,NOW())`,
-        [conv.id, lineId, waNumber, type, content, mediaUrl]
+          (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp)
+         VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW())`,
+        [conv.id, lineId, waNumber, type, content, mediaUrl, waMsgId]
       )
       // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
       this.io.emit('message:new', {

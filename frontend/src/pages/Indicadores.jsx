@@ -21,6 +21,10 @@ const getFechaHoyEcuador = () => {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 };
 
+// Primer día del mes actual (YYYY-MM-01). La primera consulta abre en "todo el
+// mes" para calentar el caché del servidor (la data cambia cada ~10 min).
+const getPrimerDiaMesEcuador = () => getFechaHoyEcuador().slice(0, 8) + '01';
+
 const calcularDiasFiltro = (fechaDesde, fechaHasta) => {
   if (!fechaDesde || !fechaHasta) return 30;
   const desde = new Date(fechaDesde + 'T00:00:00');
@@ -382,10 +386,10 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
-  const [filtros180, setFiltros180]     = useState({ fechaDesde: getFechaHoyEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtros180, setFiltros180]     = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──
   // No afectan ningún otro KPI ni el dashboard principal.

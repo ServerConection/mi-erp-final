@@ -54,7 +54,19 @@ const CACHE_TTL_MS  = 5 * 60 * 1000; // 5 minutos
 // filtros, o cuando múltiples usuarios piden el mismo período simultáneamente.
 // ─────────────────────────────────────────────────────────────────────────────
 const _cacheDashboard = new Map();
-const CACHE_DASH_TTL_MS = 2 * 60 * 1000; // 2 minutos
+
+// La data de Novonet llega por lotes (sync Bitrix/JotForm) y solo cambia en cada
+// "corte" de ~10 min. En vez de un TTL rodante de 2 min, el caché vive hasta el
+// próximo corte (minutos terminados en 1: :01,:11,:21,...). Así, dentro de la
+// misma ventana de 10 min, toda consulta sale de caché = rápida y sin tocar la
+// BD; y nunca se sirve data de un ciclo viejo.
+const msHastaProximoCorte = () => {
+    const now = new Date();
+    const cut = new Date(now);
+    cut.setSeconds(0, 0);
+    do { cut.setMinutes(cut.getMinutes() + 1); } while (cut.getMinutes() % 10 !== 1);
+    return cut.getTime() - now.getTime();
+};
 
 const getDashboardCache = (key) => {
     const entry = _cacheDashboard.get(key);
@@ -63,7 +75,7 @@ const getDashboardCache = (key) => {
     return null;
 };
 const setDashboardCache = (key, data) => {
-    _cacheDashboard.set(key, { data, ttl: Date.now() + CACHE_DASH_TTL_MS });
+    _cacheDashboard.set(key, { data, ttl: Date.now() + msHastaProximoCorte() });
     // Purgar entradas expiradas si el mapa crece demasiado (máx 100 entradas)
     if (_cacheDashboard.size > 100) {
         const ahora = Date.now();

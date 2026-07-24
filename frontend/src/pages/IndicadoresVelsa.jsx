@@ -19,6 +19,10 @@ const getFechaHoyEcuador = () => {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 };
 
+// Primer día del mes actual (YYYY-MM-01). La primera consulta abre en "todo el
+// mes" para calentar el caché del servidor (la data cambia cada ~10 min).
+const getPrimerDiaMesEcuador = () => getFechaHoyEcuador().slice(0, 8) + '01';
+
 const calcularDiasFiltro = (fechaDesde, fechaHasta) => {
   if (!fechaDesde || !fechaHasta) return 30;
   const desde = new Date(fechaDesde + 'T00:00:00');
@@ -327,7 +331,7 @@ export default function ReporteVelsa() {
 
 
   const [filtros, setFiltros] = useState({
-    fechaDesde: getFechaHoyEcuador(),
+    fechaDesde: getPrimerDiaMesEcuador(),
     fechaHasta: getFechaHoyEcuador(),
     asesor: [],
     supervisor: "",
@@ -344,7 +348,7 @@ export default function ReporteVelsa() {
 
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
   const [filtrosAplicados, setFiltrosAplicados] = useState({
-    fechaDesde: getFechaHoyEcuador(),
+    fechaDesde: getPrimerDiaMesEcuador(),
     fechaHasta: getFechaHoyEcuador(),
     asesor: [],
     supervisor: "",
@@ -362,7 +366,7 @@ export default function ReporteVelsa() {
   const [apiError, setApiError] = useState(null);
 
   const [filtros180, setFiltros180] = useState({
-    fechaDesde: getFechaHoyEcuador(),
+    fechaDesde: getPrimerDiaMesEcuador(),
     fechaHasta: getFechaHoyEcuador(),
     asesor: "",
     supervisor: "",

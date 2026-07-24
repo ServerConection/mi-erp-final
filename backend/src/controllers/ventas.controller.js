@@ -52,11 +52,29 @@ const obtenerVentas = async (req, res) => {
 };
 
 // ── POST /api/ventas ────────────────────────────────────────
+// Convierte cualquier valor a string limpio o null (evita que un valor numérico
+// o indefinido rompa el guardado con "x.trim is not a function").
+const limpiar = (v) => {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+};
+
 const crearVenta = async (req, res) => {
   try {
     const { id: usuario_id, empresa } = req.user;
-    // ✅ FIX: Convertir a Number
     const uid = Number(usuario_id);
+
+    // CAUSA FRECUENTE de "algunos usuarios no pueden guardar": su perfil no
+    // tiene EMPRESA asignada, y la columna empresa no admite null → el INSERT
+    // fallaba con un 500 genérico. Ahora se avisa con un mensaje claro.
+    if (!empresa) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Tu usuario no tiene EMPRESA asignada en su perfil. Pide al administrador que la configure para poder registrar ventas.",
+      });
+    }
+
     const { id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
             observacion, check_cedula, check_foto_cartel, check_resumen } = req.body;
 
@@ -82,16 +100,16 @@ const crearVenta = async (req, res) => {
        RETURNING *`,
       [
         numero_venta,
-        id_bitrix?.trim()              || null,
-        plan?.trim()                   || null,
-        valor_plan?.trim()             || null,
-        login?.trim()                  || null,
+        limpiar(id_bitrix),
+        limpiar(plan),
+        limpiar(valor_plan),
+        limpiar(login),
         ingreso_telcos != null && ingreso_telcos !== "" ? ingreso_telcos : null,
         fecha_ingreso                  || null,
         estado,
         pago,
         tercerdad === true || tercerdad === "SI",
-        observacion?.trim()            || null,
+        limpiar(observacion),
         check_cedula === true          || check_cedula === "SI",
         check_foto_cartel === true     || check_foto_cartel === "SI",
         check_resumen === true         || check_resumen === "SI",
@@ -103,7 +121,18 @@ const crearVenta = async (req, res) => {
     res.status(201).json({ ok: true, data: rows[0] });
   } catch (err) {
     console.error("Error crearVenta:", err);
-    res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
+    // Traducir errores comunes de Postgres a mensajes accionables y, sobre todo,
+    // DEVOLVER el detalle real (antes era un 500 genérico que ocultaba la causa).
+    if (err.code === "23505") { // unique_violation (choque de numero_venta por guardado simultáneo)
+      return res.status(409).json({ ok: false, mensaje: "Número de venta duplicado por guardado simultáneo. Intenta guardar de nuevo.", detalle: err.detail });
+    }
+    if (err.code === "23502") { // not_null_violation
+      return res.status(400).json({ ok: false, mensaje: `Falta un campo obligatorio (${err.column || "desconocido"}).`, detalle: err.message });
+    }
+    if (err.code === "22007" || err.code === "22008") { // formato de fecha inválido
+      return res.status(400).json({ ok: false, mensaje: "Una fecha tiene formato inválido. Revisa Ingreso Telcos / Fecha de ingreso.", detalle: err.message });
+    }
+    res.status(500).json({ ok: false, mensaje: "Error al guardar la venta", detalle: err.message });
   }
 };
 

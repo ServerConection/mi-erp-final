@@ -9,7 +9,7 @@
  * VIDIKA reutilice la misma integración sin cambios.
  *
  * Mapeo Novonet (mestra_bitrix)  →  Velsa (vw_jotform_velsa_netlife_completo):
- *   j_id_bitrix            → id_negociacion_bitrix
+ *   j_id_bitrix            → id_bitrix_ghl
  *   j_ciudad              → ciudad
  *   j_netlife_estatus_real → estado_venta_netlife
  *   j_forma_pago          → forma_pago
@@ -41,16 +41,16 @@ const buscarPorBitrixVelsa = async (req, res) => {
       });
     }
 
-    // Nota: id_negociacion_bitrix en la vista es numérico; se compara como
-    // texto para aceptar el parámetro tal cual llega en la URL.
+    // Nota: id_bitrix_ghl en la vista se compara como texto para aceptar
+    // el parámetro tal cual llega en la URL.
     const result = await pool.query(
       `SELECT
-         jf.id_negociacion_bitrix::text  AS j_id_bitrix,
+         jf.id_bitrix_ghl::text          AS j_id_bitrix,
          jf.ciudad                       AS j_ciudad,
          jf.estado_venta_netlife         AS j_netlife_estatus_real,
          jf.forma_pago                   AS j_forma_pago
        FROM public.vw_jotform_velsa_netlife_completo jf
-       WHERE jf.id_negociacion_bitrix::text = $1
+       WHERE jf.id_bitrix_ghl::text = $1
        LIMIT 1`,
       [String(j_id_bitrix).trim()]
     );

@@ -3,7 +3,8 @@ const app     = require('./app');
 const { initSocket }      = require('./config/socket');
 const { initAlertas }     = require('./jobs/alertas.cron');
 const { iniciarWhatsApp } = require('./services/whatsapp.service');
-const { refreshMaterializedView } = require('./jobs/refreshVelsaMaterialized.cron');
+const { refreshMaterializedView, initVelsaAutoRefresh } = require('./jobs/refreshVelsaMaterialized.cron');
+const { initConsultorVelsaRefresh } = require('./jobs/refreshConsultorVelsa.cron');
 const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 
@@ -32,8 +33,14 @@ initSocket(server);
 server.listen(process.env.PORT, async () => {
   console.log('Backend corriendo en http://localhost:' + process.env.PORT);
   await initAlertas();
-  // ⛔ Refresh VELSA desactivado temporalmente (tumbaba la BD). Reactivar cuando
-  // se optimice la vista: await refreshMaterializedView();
+  // Refresh VELSA: el refresco masivo se movio a un cron seguro y APAGADO por
+  // defecto. Solo se activa con VELSA_MV_AUTOREFRESH='on' en el .env (usa
+  // REFRESH CONCURRENTLY + cliente dedicado sin statement_timeout). Sin esa
+  // variable, initVelsaAutoRefresh() no programa nada y el sistema queda igual.
+  initVelsaAutoRefresh();
+  // Refresco del MV pequeño de la API consultor externo Velsa (encendido por
+  // defecto; refresco CONCURRENTLY con cliente dedicado, no bloquea nada).
+  initConsultorVelsaRefresh();
   await refreshRedesMVs();
   initJotformSync();
   iniciarWhatsApp();
@@ -42,8 +49,17 @@ server.listen(process.env.PORT, async () => {
 // Apagado limpio (Render envia SIGTERM antes de reiniciar)
 const SHUTDOWN_TIMEOUT = 25000;
 
-function gracefulShutdown(signal) {
+async function gracefulShutdown(signal) {
   console.log('[Server] ' + signal + ' recibido - apagado limpio en curso...');
+  // Cerrar los sockets de WhatsApp ANTES de morir para no dejar sesiones
+  // duplicadas que choquen con la nueva instancia (causa de 401/428 en deploys).
+  try {
+    const wa = require('./services/whatsapp.service');
+    const bm = wa.getBaileysManager && wa.getBaileysManager();
+    if (bm && bm.shutdown) await bm.shutdown();
+  } catch (e) {
+    console.warn('[Server] No se pudo cerrar WhatsApp limpio:', e.message);
+  }
   server.close(() => {
     console.log('[Server] HTTP cerrado correctamente');
     process.exit(0);

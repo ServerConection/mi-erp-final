@@ -4,15 +4,20 @@
  *
  * GET /api/consultor-velsa/buscar?j_id_bitrix=452799
  *
- * Fuente de datos: public.vw_jotform_velsa_netlife_completo (Jotform/Netlife Velsa).
- * Los campos se devuelven con los MISMOS nombres que la API de Novonet para que
- * VIDIKA reutilice la misma integración sin cambios.
+ * Fuente de datos: public.mv_consultor_velsa (vista MATERIALIZADA e indexada).
+ * Se precalcula desde vw_jotform_velsa_netlife_completo (Jotform/Netlife Velsa)
+ * porque esa vista base es demasiado pesada para consultarla en caliente
+ * (superaba el statement_timeout de 90 s -> 500). El MV ya trae los 4 campos
+ * con los nombres finales y un índice único sobre j_id_bitrix (= id_bitrix_ghl),
+ * así la búsqueda es instantánea. Ver migración migrations/mv_consultor_velsa.sql
+ * y el cron jobs/refreshConsultorVelsa.cron.js.
  *
- * Mapeo Novonet (mestra_bitrix)  →  Velsa (vw_jotform_velsa_netlife_completo):
- *   j_id_bitrix            → id_bitrix_ghl
- *   j_ciudad              → ciudad
- *   j_netlife_estatus_real → estado_venta_netlife
- *   j_forma_pago          → forma_pago
+ * Los campos se devuelven con los MISMOS nombres que la API de Novonet para que
+ * VIDIKA reutilice la misma integración sin cambios:
+ *   j_id_bitrix            (← id_bitrix_ghl)
+ *   j_ciudad              (← ciudad)
+ *   j_netlife_estatus_real (← estado_venta_netlife)
+ *   j_forma_pago          (← forma_pago)
  *
  * Respuesta exitosa:
  * {
@@ -41,16 +46,15 @@ const buscarPorBitrixVelsa = async (req, res) => {
       });
     }
 
-    // Nota: id_bitrix_ghl en la vista se compara como texto para aceptar
-    // el parámetro tal cual llega en la URL.
+    // Consulta contra el MV indexado: j_id_bitrix ya es texto (id_bitrix_ghl).
     const result = await pool.query(
       `SELECT
-         jf.id_bitrix_ghl::text          AS j_id_bitrix,
-         jf.ciudad                       AS j_ciudad,
-         jf.estado_venta_netlife         AS j_netlife_estatus_real,
-         jf.forma_pago                   AS j_forma_pago
-       FROM public.vw_jotform_velsa_netlife_completo jf
-       WHERE jf.id_bitrix_ghl::text = $1
+         j_id_bitrix,
+         j_ciudad,
+         j_netlife_estatus_real,
+         j_forma_pago
+       FROM public.mv_consultor_velsa
+       WHERE j_id_bitrix = $1
        LIMIT 1`,
       [String(j_id_bitrix).trim()]
     );

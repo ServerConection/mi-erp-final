@@ -146,7 +146,7 @@ exports.getNovonet = async (req, res) => {
     res.json({ success: true, ...data });
   } catch (err) {
     console.error('[reporteJefatura.getNovonet]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -156,7 +156,7 @@ exports.getVelsa = async (req, res) => {
     res.json({ success: true, ...data });
   } catch (err) {
     console.error('[reporteJefatura.getVelsa]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -170,6 +170,6 @@ exports.getAmbas = async (req, res) => {
     res.json({ success: true, novonet, velsa });
   } catch (err) {
     console.error('[reporteJefatura.getAmbas]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };

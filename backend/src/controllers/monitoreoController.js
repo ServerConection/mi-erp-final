@@ -167,7 +167,7 @@ const getMonitoreoRedes = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en getMonitoreoRedes:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener datos', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -194,7 +194,7 @@ const getMonitoreoCiudad = async (req, res) => {
     res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoCiudad:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos por ciudad', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener datos por ciudad', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -219,7 +219,7 @@ const getMonitoreoHora = async (req, res) => {
     res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoHora:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos por hora', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener datos por hora', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -240,7 +240,7 @@ const getMonitoreoAtc = async (req, res) => {
     res.json({ success: true, totales: totalesResult.rows, data: detalleResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoAtc:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener motivos ATC', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener motivos ATC', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -252,7 +252,7 @@ const getMonitoreoCosto = async (req, res) => {
     res.json({ success: true, data: [], message: 'En desarrollo' });
   } catch (error) {
     console.error('Error en getMonitoreoCosto:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos de costos', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener datos de costos', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -379,7 +379,7 @@ const getMonitoreoMetas = async (req, res) => {
     res.json({ success: true, canales, canales_disponibles: canalesDisponibles });
   } catch (error) {
     console.error('Error en getMonitoreoMetas:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener metas', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener metas', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -682,7 +682,7 @@ const getReporteData = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en getReporteData:', error);
-    res.status(500).json({ success: false, message: 'Error al generar reporte', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al generar reporte', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 

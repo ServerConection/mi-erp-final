@@ -891,7 +891,7 @@ const getIndicadoresDashboard = async (req, res) => {
 
     } catch (error) {
         console.error("ERROR DASHBOARD:", error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 
@@ -1091,7 +1091,7 @@ LEFT JOIN LATERAL (
 
     } catch (error) {
         console.error("ERROR MONITOREO:", error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 
@@ -1350,7 +1350,7 @@ const getReporte180 = async (req, res) => {
 
     } catch (error) {
         console.error("ERROR REPORTE180:", error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 
@@ -1434,7 +1434,7 @@ const getConsultaDescargaNovonet = async (req, res) => {
         });
     } catch (error) {
         console.error("ERROR CONSULTA DESCARGA NOVONET:", error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 
@@ -1480,7 +1480,7 @@ const getActivacionesPorDia = async (req, res) => {
         res.json({ success: true, rows: result.rows });
     } catch (error) {
         console.error('[ACTIVACIONES-DIA-NOVONET]', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 
@@ -1501,7 +1501,7 @@ const forceRefreshNovonet = async (req, res) => {
         res.json({ success: true, cacheLimpiado: entradasDash });
     } catch (error) {
         console.error('[FORCE-REFRESH-NOVONET]', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 };
 

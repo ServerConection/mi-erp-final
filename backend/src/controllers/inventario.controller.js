@@ -52,7 +52,7 @@ exports.getEquipos = async (req, res) => {
     res.json({ ok: true, data: result.rows });
   } catch (e) {
     console.error('[Inventario] getEquipos:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -70,7 +70,7 @@ exports.getEquipo = async (req, res) => {
     res.json({ ok: true, data: result.rows[0] });
   } catch (e) {
     console.error('[Inventario] getEquipo:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -117,7 +117,7 @@ exports.createEquipo = async (req, res) => {
     console.error('[Inventario] createEquipo:', e.message);
     if (e.code === '23505')
       return res.status(409).json({ ok: false, error: `El código ya existe` });
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -163,7 +163,7 @@ exports.updateEquipo = async (req, res) => {
     res.json({ ok: true, data: result.rows[0] });
   } catch (e) {
     console.error('[Inventario] updateEquipo:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -177,7 +177,7 @@ exports.deleteEquipo = async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('[Inventario] deleteEquipo:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -212,6 +212,6 @@ exports.getDashboard = async (req, res) => {
     });
   } catch (e) {
     console.error('[Inventario] getDashboard:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };

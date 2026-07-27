@@ -37,7 +37,7 @@ async function getAll(req, res) {
     )
     res.json({ success: true, data: rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -71,7 +71,7 @@ async function create(req, res) {
     res.status(201).json({ success: true, data: rows[0] })
   } catch (err) {
     console.error('[CampaignMessages] create:', err.message)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -109,7 +109,7 @@ async function update(req, res) {
     if (!rows.length) return res.status(404).json({ success: false, error: 'Variante no encontrada' })
     res.json({ success: true, data: rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -140,7 +140,7 @@ async function remove(req, res) {
     await query(`DELETE FROM campaign_messages WHERE id=$1 AND campaign_id=$2`, [messageId, campaignId])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -162,7 +162,7 @@ async function reorder(req, res) {
     }
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

@@ -278,7 +278,7 @@ async function getDetalle(req, res) {
     res.json({ success: true, empresa, tipo, total: rows.length, limite: limit, filas: rows });
   } catch (err) {
     console.error('[ReporteDetalle:getDetalle]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -310,7 +310,7 @@ async function getCubo(req, res) {
     });
   } catch (err) {
     console.error('[ReporteDetalle]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 

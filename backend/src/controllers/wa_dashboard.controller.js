@@ -80,7 +80,7 @@ async function getOverview(req, res) {
       },
     })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

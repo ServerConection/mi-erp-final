@@ -165,7 +165,7 @@ async function getAll(req, res) {
 
     res.json({ success: true, data: result.rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -185,7 +185,7 @@ async function getMessages(req, res) {
     await query('UPDATE conversations SET unread_count=0 WHERE id=$1', [id])
     res.json({ success: true, data: result.rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -240,7 +240,7 @@ async function sendMessage(req, res) {
 
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -297,7 +297,7 @@ async function backupSearch(req, res) {
     }))
     res.json({ success: true, data: rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -341,7 +341,7 @@ async function backupByNumber(req, res) {
       data: { ...info.rows[0], messages: msgs.rows },
     })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -448,7 +448,7 @@ async function startFromBitrix(req, res) {
 
     res.json({ success: true, data: { ...full.rows[0], phone: waNumber } })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -463,7 +463,7 @@ async function setBitrixId(req, res) {
     await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId || null, id])
     res.json({ success: true, data: { id, bitrix_deal_id: bitrixId || null } })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -483,7 +483,7 @@ async function takeover(req, res) {
     await query(`UPDATE conversations SET status='human_takeover' WHERE id=$1`, [id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -499,7 +499,7 @@ async function close(req, res) {
     )
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -518,7 +518,7 @@ async function returnToBot(req, res) {
     await query(`UPDATE conversations SET status='active' WHERE id=$1`, [id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

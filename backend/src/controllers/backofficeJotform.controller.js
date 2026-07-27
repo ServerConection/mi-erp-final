@@ -257,7 +257,7 @@ async function getListado(req, res) {
     });
   } catch (err) {
     console.error('[BackofficeJotform][listado]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -292,7 +292,7 @@ async function getKpis(req, res) {
     res.json({ success: true, empresa, rango, kpis: rows[0] });
   } catch (err) {
     console.error('[BackofficeJotform][kpis]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -423,7 +423,7 @@ async function getEmbudo(req, res) {
     });
   } catch (err) {
     console.error('[BackofficeJotform][embudo]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -459,7 +459,7 @@ async function getHeatmap(req, res) {
     res.json({ success: true, empresa, rango, celdas: rows });
   } catch (err) {
     console.error('[BackofficeJotform][heatmap]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -496,7 +496,7 @@ async function setRevision(req, res) {
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     console.error('[BackofficeJotform][setRevision]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -555,7 +555,7 @@ async function exportExcel(req, res) {
     res.send(buf);
   } catch (err) {
     console.error('[BackofficeJotform][export]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 

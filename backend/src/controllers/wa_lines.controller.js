@@ -53,7 +53,7 @@ async function getAll(req, res) {
     }))
     res.json({ success: true, data: lines })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -80,7 +80,7 @@ async function getOne(req, res) {
       },
     })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -97,7 +97,7 @@ async function create(req, res) {
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -121,7 +121,7 @@ async function update(req, res) {
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -137,7 +137,7 @@ async function remove(req, res) {
     await query('DELETE FROM lines WHERE id=$1', [id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -153,7 +153,7 @@ async function connect(req, res) {
     await bm.connect(id, req.user.id)
     res.json({ success: true, message: 'Conectando... espera el QR' })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -168,7 +168,7 @@ async function disconnect(req, res) {
     await bm.disconnect(id)
     res.json({ success: true, message: 'Línea desconectada' })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -184,7 +184,7 @@ async function getQR(req, res) {
     if (!qr) return res.status(404).json({ success: false, error: 'QR no disponible' })
     res.json({ success: true, qr })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

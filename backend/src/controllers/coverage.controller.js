@@ -768,7 +768,7 @@ exports.loadCoverage = async (req, res) => {
   } catch (error) {
     console.error('[Coverage Error]', error);
     if (!res.headersSent) {
-      res.status(500).json({ status: 'error', message: error.message });
+      res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
   }
 };
@@ -816,7 +816,7 @@ exports.checkCoverage = async (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -900,7 +900,7 @@ exports.loadBatch = async (req, res) => {
 
   } catch (error) {
     console.error('[Coverage] Error en loadBatch:', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -950,7 +950,7 @@ exports.checkBatch = async (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -974,7 +974,7 @@ exports.getZones = (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -1010,7 +1010,7 @@ exports.retryNetworkLinks = async (req, res) => {
     });
   } catch (error) {
     console.error('[Coverage retryNetworkLinks Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -1098,6 +1098,6 @@ exports.resolveLink = async (req, res) => {
 
   } catch (error) {
     console.error('[Coverage resolveLink Error]', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };

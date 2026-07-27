@@ -283,7 +283,7 @@ const getComparativaSupervisores = async (req, res) => {
 
   } catch (error) {
     console.error('ERROR COMPARATIVA:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 

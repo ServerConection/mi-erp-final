@@ -215,7 +215,7 @@ exports.getDashboard = async (req, res) => {
     });
   } catch (e) {
     console.error('[Forecast] getDashboard:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -291,7 +291,7 @@ exports.getDiario = async (req, res) => {
     res.json({ ok: true, canal, dias, objetivo: obj });
   } catch (e) {
     console.error('[Forecast] getDiario:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -422,7 +422,7 @@ exports.getEjecutivos = async (req, res) => {
     res.json({ ok: true, periodo: { mes: m, anio: y }, equipos });
   } catch (e) {
     console.error('[Forecast] getEjecutivos:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -445,7 +445,7 @@ exports.getObjetivos = async (req, res) => {
     res.json({ ok: true, data: result.rows });
   } catch (e) {
     console.error('[Forecast] getObjetivos:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
 
@@ -499,6 +499,6 @@ exports.upsertObjetivos = async (req, res) => {
     res.json({ ok: true, data: result.rows[0] });
   } catch (e) {
     console.error('[Forecast] upsertObjetivos:', e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };

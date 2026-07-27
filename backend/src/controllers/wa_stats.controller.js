@@ -58,7 +58,7 @@ async function getByLine(req, res) {
       topNodes: topNodes.rows,
     })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -84,7 +84,7 @@ async function getAllLines(req, res) {
     `, params)
     res.json({ success: true, data: result.rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -182,7 +182,7 @@ async function exportCSV(req, res) {
     res.send('\uFEFF' + csv) // BOM para que Excel lo abra correctamente
   } catch (err) {
     console.error('Error exportCSV:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -291,7 +291,7 @@ async function exportExcel(req, res) {
     res.send(buf)
   } catch (err) {
     console.error('Error exportExcel:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

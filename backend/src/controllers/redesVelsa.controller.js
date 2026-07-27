@@ -46,7 +46,7 @@ const getCanalesDisponibles = async (req, res) => {
     res.json({ success: true, canales: result.rows });
   } catch (error) {
     console.error('Error en getCanalesDisponibles (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener canales', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener canales', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -150,7 +150,7 @@ const getMonitoreoRedesVelsa = async (req, res) => {
     res.json({ success: true, totales, porCanal, data });
   } catch (error) {
     console.error('Error en getMonitoreoRedesVelsa:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener datos', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener datos', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -207,7 +207,7 @@ const getTendenciaDiaria = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error en getTendenciaDiaria (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener tendencia', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener tendencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -230,7 +230,7 @@ const getInversion = async (req, res) => {
     res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Error en getInversion (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener inversión', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -272,7 +272,7 @@ const upsertInversion = async (req, res) => {
     res.json({ success: true, data: guardados });
   } catch (error) {
     console.error('Error en upsertInversion (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al guardar inversión', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al guardar inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -342,7 +342,7 @@ const getMonitoreoCiudad = async (req, res) => {
     res.json({ success: true, porCiudad: result.rows, porCiudadDia: porDiaResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoCiudad (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener monitoreo por ciudad', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener monitoreo por ciudad', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -394,7 +394,7 @@ const getMonitoreoHora = async (req, res) => {
     res.json({ success: true, porHora: result.rows, porHoraDia: porDiaResult.rows });
   } catch (error) {
     console.error('Error en getMonitoreoHora (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener monitoreo por hora', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener monitoreo por hora', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -439,7 +439,7 @@ const getMonitoreoAtc = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en getMonitoreoAtc (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al obtener motivos', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener motivos', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -612,7 +612,7 @@ const getReporteData = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en getReporteData (RedesVelsa):', error);
-    res.status(500).json({ success: false, message: 'Error al generar reporte', error: error.message });
+    res.status(500).json({ success: false, message: 'Error al generar reporte', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 

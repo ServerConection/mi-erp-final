@@ -347,7 +347,7 @@ async function getIndicadoresDashboardNuevo(req, res) {
 
     } catch (error) {
         console.error("ERROR DASHBOARD NUEVO:", error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 }
 
@@ -440,7 +440,7 @@ async function getMonitoreoDiarioNuevo(req, res) {
 
     } catch (error) {
         console.error("ERROR MONITOREO NUEVO:", error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 }
 
@@ -546,7 +546,7 @@ async function getReporte180Nuevo(req, res) {
 
     } catch (error) {
         console.error("ERROR REPORTE180 NUEVO:", error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
     }
 }
 

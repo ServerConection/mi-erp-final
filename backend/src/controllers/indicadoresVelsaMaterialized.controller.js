@@ -502,7 +502,7 @@ LIMIT 6000
     res.json(payload);
   } catch (error) {
     console.error('[DASHBOARD-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -565,7 +565,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
     res.json(payload);
   } catch (error) {
     console.error('[MONITOREO-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -697,7 +697,7 @@ async function getReporte180Velsa(req, res) {
     res.json(payload);
   } catch (error) {
     console.error('[REPORTE180-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -732,7 +732,7 @@ async function getConsultaDescargaVelsa(req, res) {
     res.json({ success: true, registros: result.rows, total: result.rowCount });
   } catch (error) {
     console.error('[CONSULTA-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -749,7 +749,7 @@ async function getStatusMaterializedView(req, res) {
     const total = await pool.query(`SELECT COUNT(*) AS total FROM public.mv_indicadores_velsa_completo`);
     res.json({ success: true, status: result.rows[0] || {}, totalRegistros: Number(total.rows[0]?.total || 0) });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -784,7 +784,7 @@ async function getDetalleCRMData(req, res) {
     res.json(payload);
   } catch (error) {
     console.error('[DETALLE-CRM-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -815,7 +815,7 @@ async function getActivasVelsa(req, res) {
     res.json({ success: true, registros: result.rows });
   } catch (error) {
     console.error('[ACTIVAS-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -845,7 +845,7 @@ async function getBacklogVelsa(req, res) {
     res.json({ success: true, registros: result.rows });
   } catch (error) {
     console.error('[BACKLOG-VELSA] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -880,7 +880,7 @@ async function getActivacionesPorDiaVelsa(req, res) {
     res.json({ success: true, rows: result.rows });
   } catch (error) {
     console.error('[ACTIVACIONES-DIA-VELSA]', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 
@@ -902,7 +902,7 @@ async function forceRefreshVelsa(req, res) {
     res.json({ success: true, cacheLimpiado: limpiadas });
   } catch (error) {
     console.error('[FORCE-REFRESH-VELSA] ❌', error.message);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 }
 

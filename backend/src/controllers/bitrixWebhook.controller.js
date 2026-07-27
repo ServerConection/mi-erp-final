@@ -151,7 +151,7 @@ const listarLeads = async (req, res) => {
     return res.json({ success: true, data: r.rows, count: r.rows.length });
   } catch (err) {
     console.error('[bitrixWebhook] listarLeads error:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -179,7 +179,7 @@ const historialLead = async (req, res) => {
     return res.json({ success: true, bitrix_id, empresa: empresa || null, recorrido: r.rows, count: r.rows.length });
   } catch (err) {
     console.error('[bitrixWebhook] historialLead error:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 

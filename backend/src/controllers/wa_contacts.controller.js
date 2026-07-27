@@ -51,7 +51,7 @@ async function getAll(req, res) {
 
     res.json({ success: true, data: result.rows, total: countRes.rows[0].total })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -62,7 +62,7 @@ async function getOne(req, res) {
     if (!contact) return res.status(404).json({ success: false, error: 'Contacto no encontrado' })
     res.json({ success: true, data: contact })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -86,7 +86,7 @@ async function create(req, res) {
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -110,7 +110,7 @@ async function update(req, res) {
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -123,7 +123,7 @@ async function remove(req, res) {
     await query('DELETE FROM contacts WHERE id=$1', [req.params.id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -220,7 +220,7 @@ async function importFile(req, res) {
     })
   } catch (err) {
     console.error('[contacts.import] error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

@@ -32,7 +32,7 @@ const triggerSync = async (req, res) => {
       console.error('[bitrix sync novonet error]', e.message)
     );
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -44,7 +44,7 @@ const getSyncStatus = async (req, res) => {
     );
     res.json({ success: true, logs: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -203,7 +203,7 @@ const getResumenVelsaBitrix = async (req, res) => {
 
   } catch (err) {
     console.error('[bitrix] getResumenVelsaBitrix:', err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -335,7 +335,7 @@ const getTablaBitrix = async (req, res) => {
     console.error('[bitrix] getTablaBitrix:', err);
     // Resetear caché si error de columna para que reintente en la próxima petición
     if (err.message?.includes('campos_custom')) _tieneCustom = null;
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -586,7 +586,7 @@ const getLiveActividad = async (req, res) => {
     });
   } catch (err) {
     console.error('[live-actividad error]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 

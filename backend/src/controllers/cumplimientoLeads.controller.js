@@ -88,7 +88,7 @@ async function getReporte(req, res) {
     });
   } catch (err) {
     console.error('[CumplimientoLeads][reporte]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -105,7 +105,7 @@ async function getMetas(req, res) {
     res.json({ success: true, data: rows });
   } catch (err) {
     console.error('[CumplimientoLeads][getMetas]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -134,7 +134,7 @@ async function upsertMeta(req, res) {
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     console.error('[CumplimientoLeads][upsertMeta]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -156,7 +156,7 @@ async function updateMeta(req, res) {
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     console.error('[CumplimientoLeads][updateMeta]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 
@@ -208,7 +208,7 @@ async function exportExcel(req, res) {
     res.send(buf);
   } catch (err) {
     console.error('[CumplimientoLeads][export]', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 }
 

@@ -43,7 +43,7 @@ exports.listarEquipos = async (req, res) => {
     });
   } catch (err) {
     console.error('[polla.listarEquipos]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -66,7 +66,7 @@ exports.miPolla = async (req, res) => {
     });
   } catch (err) {
     console.error('[polla.miPolla]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -110,7 +110,7 @@ exports.guardarPredGrupos = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[polla.guardarPredGrupos]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -148,7 +148,7 @@ exports.guardarPredFases = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[polla.guardarPredFases]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -166,7 +166,7 @@ exports.resultados = async (_req, res) => {
     res.json({ success: true, grupos: grupos.rows, fases: fases.rows });
   } catch (err) {
     console.error('[polla.resultados]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -198,7 +198,7 @@ exports.guardarResGrupo = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[polla.guardarResGrupo]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -226,7 +226,7 @@ exports.guardarResFase = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[polla.guardarResFase]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -244,7 +244,7 @@ exports.actualizarConfig = async (req, res) => {
     res.json({ success: true, predicciones_abiertas: abierta });
   } catch (err) {
     console.error('[polla.actualizarConfig]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -350,7 +350,7 @@ exports.ranking = async (_req, res) => {
     res.json({ success: true, ranking, config });
   } catch (err) {
     console.error('[polla.ranking]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -397,7 +397,7 @@ exports.listarPartidos = async (req, res) => {
     });
   } catch (err) {
     console.error('[polla.listarPartidos]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -444,7 +444,7 @@ exports.guardarPredPartidos = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[polla.guardarPredPartidos]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -473,7 +473,7 @@ exports.guardarResPartido = async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[polla.guardarResPartido]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -491,7 +491,7 @@ exports.miBracket = async (req, res) => {
     res.json({ success: true, data: r.rows[0]?.data || {} });
   } catch (err) {
     console.error('[polla.miBracket]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -515,6 +515,6 @@ exports.guardarBracket = async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[polla.guardarBracket]', err);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };

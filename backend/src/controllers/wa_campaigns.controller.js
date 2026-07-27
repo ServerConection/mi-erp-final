@@ -38,7 +38,7 @@ async function getAll(req, res) {
     `, params)
     res.json({ success: true, data: result.rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -80,7 +80,7 @@ async function getOne(req, res) {
       },
     })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -198,7 +198,7 @@ async function create(req, res) {
     res.status(201).json({ success: true, data: camp })
   } catch (err) {
     console.error('[campaigns.create]', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -238,7 +238,7 @@ async function update(req, res) {
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -253,7 +253,7 @@ async function remove(req, res) {
     await query('DELETE FROM campaigns WHERE id=$1', [req.params.id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -267,7 +267,7 @@ async function start(req, res) {
     const r = await engine.start(req.params.id)
     res.json({ success: true, ...r })
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message })
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -280,7 +280,7 @@ async function pause(req, res) {
     const r = await engine.pause(req.params.id)
     res.json({ success: true, ...r })
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message })
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -293,7 +293,7 @@ async function resume(req, res) {
     const r = await engine.resume(req.params.id)
     res.json({ success: true, ...r })
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message })
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -306,7 +306,7 @@ async function cancel(req, res) {
     const r = await engine.cancel(req.params.id)
     res.json({ success: true, ...r })
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message })
+    res.status(400).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -330,7 +330,7 @@ async function retryFailed(req, res) {
     )
     res.json({ success: true, retried: r.rowCount })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

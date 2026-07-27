@@ -29,7 +29,7 @@ async function getAll(req, res) {
     `, params)
     res.json({ success: true, data: result.rows })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -45,7 +45,7 @@ async function getOne(req, res) {
     )
     res.json({ success: true, data: { ...list, items: items.rows } })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -59,7 +59,7 @@ async function create(req, res) {
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -80,7 +80,7 @@ async function update(req, res) {
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -92,7 +92,7 @@ async function remove(req, res) {
     await query('DELETE FROM contact_lists WHERE id=$1', [req.params.id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -117,7 +117,7 @@ async function addItem(req, res) {
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 
@@ -130,7 +130,7 @@ async function removeItem(req, res) {
     await query('DELETE FROM contact_list_items WHERE id=$1 AND list_id=$2', [itemId, id])
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
 

@@ -43,7 +43,7 @@ exports.listarTorneos = async (req, res) => {
     res.json({ success: true, torneos: r.rows });
   } catch (err) {
     console.error('[mundialito.listarTorneos]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -69,7 +69,7 @@ exports.crearTorneo = async (req, res) => {
     res.json({ success: true, torneo });
   } catch (err) {
     console.error('[mundialito.crearTorneo]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -79,7 +79,7 @@ exports.cerrarTorneo = async (req, res) => {
     await pool.query(`UPDATE mundialito_torneos SET estado='CERRADO', updated_at=NOW() WHERE id=$1`, [id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -93,7 +93,7 @@ exports.actualizarReglas = async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -109,7 +109,7 @@ exports.listarGrupos = async (req, res) => {
     );
     res.json({ success: true, grupos: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -129,7 +129,7 @@ exports.listarParticipantes = async (req, res) => {
     );
     res.json({ success: true, participantes: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -149,7 +149,7 @@ exports.agregarParticipante = async (req, res) => {
     );
     res.json({ success: true, participante: r.rows[0] });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -159,7 +159,7 @@ exports.eliminarParticipante = async (req, res) => {
     await pool.query(`DELETE FROM mundialito_participantes WHERE id=$1`, [id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -206,7 +206,7 @@ exports.realizarSorteo = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[mundialito.realizarSorteo]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -238,7 +238,7 @@ exports.listarPartidos = async (req, res) => {
     );
     res.json({ success: true, partidos: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -290,7 +290,7 @@ exports.generarPartidosDia = async (req, res) => {
     res.json({ success: true, partidos_creados: creados });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -336,7 +336,7 @@ exports.cerrarPartido = async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[mundialito.cerrarPartido]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -372,7 +372,7 @@ exports.registrarGol = async (req, res) => {
     res.json({ success: true, ...payload });
   } catch (err) {
     console.error('[mundialito.registrarGol]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -391,7 +391,7 @@ exports.listarGoles = async (req, res) => {
     );
     res.json({ success: true, goles: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -420,7 +420,7 @@ exports.tablaPosiciones = async (req, res) => {
     res.json({ success: true, posiciones: rows });
   } catch (err) {
     console.error('[mundialito.tablaPosiciones]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -447,7 +447,7 @@ exports.calcularTop10 = async (req, res) => {
     }
     res.json({ success: true, top10: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -464,7 +464,7 @@ exports.listarTop10 = async (req, res) => {
     );
     res.json({ success: true, top10: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -507,7 +507,7 @@ exports.calcularPremios = async (req, res) => {
     res.json({ success: true, premios_calculados: acumulado.size });
   } catch (err) {
     console.error('[mundialito.calcularPremios]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -523,6 +523,6 @@ exports.listarPremios = async (req, res) => {
     );
     res.json({ success: true, premios: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };

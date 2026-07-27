@@ -103,7 +103,7 @@ const recibirGestionable = async (req, res) => {
 
   } catch (err) {
     console.error('[gestionablesWebhook] recibirGestionable error:', err.message);
-    await registrarLog({ bitrixId: bitrixId || '(vacio)', nombreAsesor, error: err.message });
+    await registrarLog({ bitrixId: bitrixId || '(vacio)', nombreAsesor, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
     return res.status(500).send('Error interno');
   }
 };

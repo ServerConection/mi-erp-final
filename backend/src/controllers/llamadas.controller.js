@@ -43,7 +43,7 @@ const getCatalogosFiltro = async (req, res) => {
     res.json({ success: true, asesores: asesoresRes.rows, etapas: etapasRes.rows });
   } catch (err) {
     console.error('[llamadas.controller] getCatalogosFiltro error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -135,7 +135,7 @@ const filtrarNegociaciones = async (req, res) => {
     });
   } catch (err) {
     console.error('[llamadas.controller] filtrarNegociaciones error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -177,7 +177,7 @@ const crearLote = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[llamadas.controller] crearLote error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   } finally {
     client.release();
   }
@@ -196,7 +196,7 @@ const listarLotes = async (req, res) => {
     );
     res.json({ success: true, data: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -213,7 +213,7 @@ const asignarAsesorItem = async (req, res) => {
     if (r.rows.length === 0) return res.status(404).json({ success: false, error: 'Item no encontrado' });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 
@@ -241,7 +241,7 @@ const exportarLoteCsv = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="lote_${loteId}.csv"`);
     res.send(filas.join('\n'));
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
   }
 };
 

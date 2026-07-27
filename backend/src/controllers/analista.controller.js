@@ -198,7 +198,7 @@ const getResumenNovonet = async (req, res) => {
     });
   } catch (error) {
     console.error('[analista] getResumenNovonet:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 
@@ -369,7 +369,7 @@ const getResumenVelsa = async (req, res) => {
     });
   } catch (error) {
     console.error('[analista] getResumenVelsa:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
 

@@ -33,6 +33,7 @@ const mundialitoRoutes             = require('./routes/mundialito.routes');
 const pollaMundialistaRoutes       = require('./routes/pollaMundialista.routes');
 const reporteJefaturaRoutes        = require('./routes/reporteJefatura.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
+const consultorVelsaRoutes         = require('./routes/consultorVelsa.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
@@ -121,6 +122,7 @@ app.use('/api/mundialito',        mundialitoRoutes);
 app.use('/api/polla',             pollaMundialistaRoutes);
 app.use('/api/reporte-jefatura',  reporteJefaturaRoutes);
 app.use('/api/consultor',         consultorRoutes);
+app.use('/api/consultor-velsa',   consultorVelsaRoutes);
 
 // Broadcast TV / Inventario - servir uploads con cache HTTP.
 // SEGURIDAD: las carpetas envios_ventas y tthh_documentos contienen PII

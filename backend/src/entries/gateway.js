@@ -1,20 +1,19 @@
 /**
  * PROCESO: API GATEWAY  (único URL para el frontend)
  *
- * Enruta cada prefijo al servicio correcto. El frontend sigue usando UN solo
- * host. Los servicios internos quedan detrás.
+ * Enruta cada prefijo al servicio correcto conservando la RUTA COMPLETA.
  *
- * Reglas (el orden importa: los prefijos más específicos primero):
- *   - Socket.io + WhatsApp + broadcast  → WABOT
+ * IMPORTANTE (fix): usamos `pathFilter` montando el proxy en la raíz, en vez de
+ * `app.use('/prefijo', proxy)`. Con el segundo, Express recorta el prefijo y el
+ * servicio destino recibe la ruta incompleta (causa de "Endpoint no encontrado").
+ * Con pathFilter se reenvía la URL original tal cual.
+ *
+ * Reglas (orden importa: lo más específico primero):
+ *   - socket.io / WhatsApp / broadcast          → WABOT
  *   - indicadores-velsa / redes-velsa / datos-adicionales → ANALÍTICA VELSA
- *   - indicadores / redes / forecast / coverage / ...     → ANALÍTICA NOVO
- *   - webhooks Bitrix/Jotform            → INGESTA
- *   - TODO lo demás (auth, ventas, tthh, consultor, ...)  → CORE
- *
- * NOTA: /api/consultor y /api/consultor-velsa caen al catch-all → CORE, de modo
- * que estas APIs externas NO cambian de comportamiento.
- *
- * URLs de destino por variables de entorno (ver render.yaml / guía).
+ *   - indicadores / redes / forecast / ...       → ANALÍTICA NOVO
+ *   - webhooks Bitrix/Jotform                    → INGESTA
+ *   - TODO lo demás (auth, ventas, consultor...) → CORE (monolito)
  */
 require('dotenv').config();
 const express = require('express');
@@ -37,42 +36,52 @@ for (const [k, v] of Object.entries(TARGETS)) {
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'gateway', ts: Date.now() }));
 
-const proxy = (target, opts = {}) => createProxyMiddleware({
+const makeProxy = (target, pathFilter, ws = false) => createProxyMiddleware({
   target,
   changeOrigin: true,
   xfwd: true,
+  ws,
+  pathFilter,
   proxyTimeout: 120000,
   timeout: 120000,
-  ...opts,
 });
 
-// Tiempo real de WhatsApp (WebSocket) → WABOT
-app.use('/socket.io', proxy(TARGETS.WABOT, { ws: true }));
+// WhatsApp + tiempo real → WABOT (monolito por ahora)
+const waProxy = makeProxy(TARGETS.WABOT, ['/socket.io/**', '/api/wa/**', '/wa-uploads/**', '/api/broadcast/**'], true);
+app.use(waProxy);
 
-// WABOT
-app.use(['/api/wa', '/wa-uploads', '/api/broadcast'], proxy(TARGETS.WABOT));
-
-// ANALÍTICA VELSA (antes que Novonet para que -velsa gane el prefijo)
-app.use(['/api/indicadores-velsa', '/api/redes-velsa', '/api/datos-adicionales'], proxy(TARGETS.VELSA));
+// ANALÍTICA VELSA (antes que Novonet)
+app.use(makeProxy(TARGETS.VELSA, [
+  '/api/indicadores-velsa', '/api/indicadores-velsa/**',
+  '/api/redes-velsa', '/api/redes-velsa/**',
+  '/api/datos-adicionales', '/api/datos-adicionales/**',
+]));
 
 // ANALÍTICA NOVONET
-app.use([
-  '/api/indicadores', '/api/comparativa-indicadores', '/api/redes',
-  '/api/forecast', '/api/coverage', '/api/cumplimiento-leads', '/api/llamadas',
-], proxy(TARGETS.NOVO));
+app.use(makeProxy(TARGETS.NOVO, [
+  '/api/indicadores', '/api/indicadores/**',
+  '/api/comparativa-indicadores', '/api/comparativa-indicadores/**',
+  '/api/redes', '/api/redes/**',
+  '/api/forecast', '/api/forecast/**',
+  '/api/coverage', '/api/coverage/**',
+  '/api/cumplimiento-leads', '/api/cumplimiento-leads/**',
+  '/api/llamadas', '/api/llamadas/**',
+]));
 
 // INGESTA / WEBHOOKS
-app.use([
-  '/bitrix_webhook.php', '/api/bitrix-webhook',
+app.use(makeProxy(TARGETS.INGESTA, [
+  '/bitrix_webhook.php', '/api/bitrix-webhook/**',
   '/bitrix_webhook_gestionables.php',
-  '/jotform_webhook.php', '/api/jotform-webhook',
-], proxy(TARGETS.INGESTA));
+  '/jotform_webhook.php', '/api/jotform-webhook/**',
+]));
 
-// CATCH-ALL → CORE  (incluye /api/consultor y /api/consultor-velsa, intactas)
-app.use('/', proxy(TARGETS.CORE));
+// CATCH-ALL → CORE (monolito). Incluye /api/consultor y /api/consultor-velsa.
+app.use(makeProxy(TARGETS.CORE, ['/**']));
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`[gateway] escuchando en :${PORT}`));
+const server = app.listen(PORT, () => console.log(`[gateway] escuchando en :${PORT}`));
+// Habilita el proxy de WebSocket (socket.io) hacia WABOT
+server.on('upgrade', waProxy.upgrade);
 
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT',  () => process.exit(0));

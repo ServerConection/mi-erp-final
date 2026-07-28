@@ -149,10 +149,12 @@ async function connect(req, res) {
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
 
     const bm = req.app.get('baileysManager')
+    if (!bm) { console.error('[wa_lines.connect] baileysManager NO disponible en req.app'); return res.status(503).json({ success: false, error: 'WhatsApp no inicializado' }) }
     // Pasar quién solicita: el QR se emite SOLO a este usuario (seguridad)
     await bm.connect(id, req.user.id)
     res.json({ success: true, message: 'Conectando... espera el QR' })
   } catch (err) {
+    console.error('[wa_lines.connect] ERROR:', err && (err.stack || err.message || err))
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }

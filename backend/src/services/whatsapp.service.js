@@ -57,14 +57,24 @@ const iniciarWhatsApp = async (appInstance) => {
 
     await campaignEngine.resumePendingOnBoot();
 
+    // Restaurar TODAS las líneas con sesión previa, no solo las 'connected'.
+    // Si el server se reinició cuando una línea estaba 'disconnected'/'connecting',
+    // antes quedaba caída para siempre. Con la sesión en disco se levantan sin QR.
+    // Se excluyen 'logged_out' y 'error' (requieren acción manual / QR nuevo).
     const { rows } = await pool.query(
-      "SELECT id, name FROM lines WHERE status = 'connected'"
+      `SELECT id, name FROM lines
+       WHERE status IN ('connected','disconnected','connecting','qr_ready')
+         AND last_connected IS NOT NULL`
     );
     if (rows.length) {
-      console.log('[WA] Reconectando', rows.length, 'línea(s)...');
+      console.log('[WA] Restaurando', rows.length, 'línea(s)...');
       for (const line of rows) {
-        try { await baileysManager.connect(line.id); }
-        catch (e) { console.warn('[WA] Error reconectando', line.name, ':', e.message); }
+        try {
+          await baileysManager.connect(line.id);
+          // Pausa breve entre líneas: evita golpear DB/CPU con todas a la vez
+          await new Promise(r => setTimeout(r, 1500));
+        }
+        catch (e) { console.warn('[WA] Error restaurando', line.name, ':', e.message); }
       }
     }
     console.log('[WA] Módulo WhatsApp iniciado');

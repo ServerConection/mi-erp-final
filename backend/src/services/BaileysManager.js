@@ -145,8 +145,11 @@ class BaileysManager {
   }
 
   async connect(lineId, requesterId = null) {
-    if (Object.keys(this.lidMap).length === 0) {
+    // Cargar el LidMap UNA sola vez (antes: query a la DB en cada reconexión
+    // mientras estuviera vacío → carga innecesaria durante tormentas de reconexión)
+    if (!this._lidMapLoaded) {
       await this._loadLidMapFromDB()
+      this._lidMapLoaded = true
     }
 
     if (this.instances[lineId]?.sock) {
@@ -698,6 +701,23 @@ class BaileysManager {
     this._markSentByErp(result?.key?.id)
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id)
     return result
+  }
+
+  // Reconexión perezosa: si la línea está caída pero su sesión existe en disco,
+  // la levanta sin QR y espera hasta timeoutMs a que conecte. Resetea el backoff
+  // (acción manual del usuario = intención explícita de reconectar).
+  async ensureConnected(lineId, timeoutMs = 8000) {
+    if (this.getStatus(lineId) === 'connected') return true
+    delete this.reconnectAttempts[lineId]
+    try { await this.connect(lineId) } catch (e) {
+      console.warn(`[Line ${lineId}] ensureConnected: fallo al iniciar conexión:`, e.message)
+    }
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      if (this.getStatus(lineId) === 'connected') return true
+      await new Promise(r => setTimeout(r, 500))
+    }
+    return this.getStatus(lineId) === 'connected'
   }
 
   getStatus(lineId) { return this.instances[lineId]?.status || 'disconnected' }

@@ -202,6 +202,19 @@ async function sendMessage(req, res) {
 
     const c = owned
     const bm = req.app.get('baileysManager')
+    if (!bm) return res.status(503).json({ success: false, error: 'WhatsApp no inicializado. Intenta en unos segundos.' })
+
+    // Resiliencia: si la línea está caída, intentar levantarla con la sesión
+    // guardada (sin QR). Si no se puede, responder claro en vez de error 500.
+    if (bm.getStatus(c.line_id) !== 'connected') {
+      const ok = await bm.ensureConnected(c.line_id)
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'La línea de WhatsApp de esta conversación está desconectada. Ve a Líneas y reconéctala (escanea el QR si es necesario).',
+        })
+      }
+    }
 
     if (media_url) {
       // Enviar imagen/documento (subido antes con POST /api/wa/upload)
@@ -240,7 +253,13 @@ async function sendMessage(req, res) {
 
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+    console.error('[wa_conversations.sendMessage] ERROR:', err && (err.stack || err.message || err))
+    // Mensajes claros para el vendedor según el tipo de fallo
+    const msg = (err && err.message) || ''
+    if (msg.includes('no conectada')) {
+      return res.status(409).json({ success: false, error: 'La línea de WhatsApp está desconectada. Reconéctala en Líneas.' })
+    }
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'No se pudo enviar el mensaje. Intenta de nuevo.' : err.message) })
   }
 }
 

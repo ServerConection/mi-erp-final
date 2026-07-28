@@ -25,6 +25,7 @@ class BaileysManager {
     this.lineOwners = {}   // lineId → userId autorizado a ver el QR
     this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
     this.reconnectTimers = {}   // guard: una sola reconexión programada por línea
+    this.reconnectAttempts = {} // contador de reintentos por línea (backoff)
   }
 
   // Marca un mensaje como enviado por el ERP (se limpia solo tras 2 min)
@@ -265,8 +266,9 @@ class BaileysManager {
       }
 
       if (connection === 'open') {
-        // Conexión estable → cancelar cualquier reconexión pendiente
+        // Conexión estable → cancelar reconexión pendiente y resetear contador
         if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+        delete this.reconnectAttempts[lineId]
         this.instances[lineId].status = 'connected'
         this.instances[lineId].qr = null
         this._updateLineStatus(lineId, 'connected')
@@ -285,24 +287,38 @@ class BaileysManager {
 
       if (connection === 'close') {
         const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-        console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`)
+        // 401 = sesión cerrada · 403 = número restringido/prohibido por WhatsApp.
+        // En ambos NO se auto-reconecta: reconectar en bucle ahoga la base de datos
+        // y AUMENTA el riesgo de bloqueo. El resto reconecta con espera creciente y tope.
+        const fatal = statusCode === DisconnectReason.loggedOut || statusCode === 403
+        const MAX_RETRIES = 5
+        const attempts = this.reconnectAttempts[lineId] || 0
+        const shouldReconnect = !fatal && attempts < MAX_RETRIES
+        console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect} (intento ${attempts}/${MAX_RETRIES})`)
         delete this.instances[lineId]
-        this._updateLineStatus(lineId, shouldReconnect ? 'disconnected' : 'logged_out')
-        const closePayload = { lineId, status: shouldReconnect ? 'disconnected' : 'logged_out' }
-        this.io.emit('line:status', closePayload)
-        this.io.emit(`line:status:${lineId}`, closePayload)
+        if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
 
-        if (!shouldReconnect) {
-          // Sesión cerrada (401): limpiar auth para forzar QR nuevo, sin bucle
-          if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
-        } else if (!this.reconnectTimers[lineId]) {
-          // Reconexión ÚNICA por línea (evita tormentas de sockets duplicados)
-          this.reconnectTimers[lineId] = setTimeout(() => {
-            delete this.reconnectTimers[lineId]
-            this.connect(lineId).catch(err => console.warn(`[Line ${lineId}] Reintento falló:`, err.message))
-          }, 5000)
+        if (fatal || attempts >= MAX_RETRIES) {
+          // Detener el bucle. Requiere reconexión manual (escanear QR de nuevo).
+          const st = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'error'
+          this._updateLineStatus(lineId, st)
+          this.io.emit('line:status', { lineId, status: st })
+          this.io.emit(`line:status:${lineId}`, { lineId, status: st })
+          if (statusCode === 403) console.warn(`[Line ${lineId}] ⛔ Código 403: número restringido por WhatsApp. Reconexión detenida — revisa el número.`)
+          return
         }
+
+        this._updateLineStatus(lineId, 'disconnected')
+        this.io.emit('line:status', { lineId, status: 'disconnected' })
+        this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+
+        // Reconexión con backoff exponencial: 5s, 10s, 20s, 40s, 80s (tope 2 min)
+        this.reconnectAttempts[lineId] = attempts + 1
+        const delay = Math.min(5000 * Math.pow(2, attempts), 120000)
+        this.reconnectTimers[lineId] = setTimeout(() => {
+          delete this.reconnectTimers[lineId]
+          this.connect(lineId).catch(err => console.warn(`[Line ${lineId}] Reintento falló:`, err.message))
+        }, delay)
       }
     })
 

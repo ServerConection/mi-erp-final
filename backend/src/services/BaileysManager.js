@@ -278,7 +278,9 @@ class BaileysManager {
     })
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return
+      // 'notify' = mensajes en vivo. 'append' = mensajes que llegaron durante
+      // una microcaída y se sincronizan al reconectar (recupera lo perdido).
+      if (type !== 'notify' && type !== 'append') return
 
       for (const msg of messages) {
         if (!msg.message) continue
@@ -288,6 +290,16 @@ class BaileysManager {
         if (remoteJid === 'status@broadcast') continue       // estados
         if (remoteJid.endsWith('@newsletter')) continue      // canales
         if (remoteJid.endsWith('@broadcast')) continue       // listas de difusión
+
+        // En 'append' solo procesar lo reciente (últimos 15 min) y sin duplicar
+        if (type === 'append') {
+          const ts = Number(msg.messageTimestamp || 0) * 1000
+          if (ts && Date.now() - ts > 15 * 60 * 1000) continue
+          if (msg.key.id) {
+            const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [msg.key.id])
+            if (dup.rows.length) continue
+          }
+        }
 
         // ── Mensajes que la cuenta envió desde el teléfono / WhatsApp Web ──
         // Se reflejan en el Inbox como salientes (antes se descartaban).
@@ -472,6 +484,24 @@ class BaileysManager {
         }
       }
     })
+  }
+
+  // Apagado limpio en un reinicio/deploy: cierra los WebSockets SIN cerrar la
+  // sesión (no borra credenciales) para que la nueva instancia reconecte sin
+  // conflicto de "sesión duplicada" (evita 401/428 en cada deploy).
+  async shutdown() {
+    const ids = Object.keys(this.instances)
+    console.log(`[BaileysManager] Cerrando ${ids.length} línea(s) por apagado limpio...`)
+    for (const id of ids) {
+      // Cancelar reconexiones pendientes
+      if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
+      try {
+        // end() cierra el socket sin hacer logout (conserva la sesión en disco)
+        this.instances[id].sock?.end?.(undefined)
+        this.instances[id].sock?.ws?.close?.()
+      } catch (e) {}
+      delete this.instances[id]
+    }
   }
 
   async disconnect(lineId) {

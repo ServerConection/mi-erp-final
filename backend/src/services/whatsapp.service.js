@@ -30,7 +30,10 @@ const ejecutarMigracion = async () => {
   }
 };
 
-const iniciarWhatsApp = async () => {
+// appInstance: opcional. Cuando WABOT corre como proceso separado, el
+// entrypoint pasa SU app Express para registrar el baileysManager ahí. Si no
+// se pasa (monolito), cae al require('../app') de siempre → sin cambios.
+const iniciarWhatsApp = async (appInstance) => {
   try {
     const io = getIO();
 
@@ -45,7 +48,7 @@ const iniciarWhatsApp = async () => {
     scheduler      = new WaSchedulerService({ baileysManager, campaignEngine, io });
 
     // Registrar en la app Express para que los controladores accedan vía req.app.get(...)
-    const app = require('../app');
+    const app = appInstance || require('../app');
     app.set('baileysManager', baileysManager);
     app.set('campaignEngine', campaignEngine);
 

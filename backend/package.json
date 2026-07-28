@@ -7,7 +7,14 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "start:core": "node src/entries/core.js",
+    "start:analitica-velsa": "node src/entries/analitica-velsa.js",
+    "start:analitica-novo": "node src/entries/analitica-novo.js",
+    "start:wabot": "node src/entries/wabot.js",
+    "start:ingesta": "node src/entries/ingesta.js",
+    "start:workers": "node src/entries/workers.js",
+    "start:gateway": "node src/entries/gateway.js"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +31,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "http-proxy-middleware": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",

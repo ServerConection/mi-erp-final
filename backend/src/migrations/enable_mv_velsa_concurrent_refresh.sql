@@ -1,0 +1,84 @@
+-- ============================================================================
+-- MIGRACION: habilitar REFRESH MATERIALIZED VIEW CONCURRENTLY para
+--            public.mv_indicadores_velsa_completo
+-- ----------------------------------------------------------------------------
+-- OBJETIVO
+--   Permitir que la MV de VELSA se refresque SIN bloquear las lecturas del
+--   dashboard (CONCURRENTLY), para poder reactivar el auto-refresh sin volver
+--   a "tumbar la BD".
+--
+-- POR QUE ES SEGURA
+--   - NO hace DROP de la MV (la MV tiene dependientes, p.ej. las vistas de
+--     Redes que se construyen sobre ella; un DROP ... CASCADE las borraria).
+--   - Solo AGREGA un indice UNICO. Postgres exige ese indice para poder usar
+--     REFRESH ... CONCURRENTLY.
+--   - Se crea con CONCURRENTLY, asi que la creacion del indice tampoco bloquea.
+--   - Si hay duplicados, el indice simplemente NO se crea (error controlado) y
+--     nada se rompe: se sigue pudiendo usar el modo 'blocking' de madrugada.
+--
+-- COMO APLICAR (recomendado en horario de baja carga)
+--   1) PASO 1: verificar que NO haya duplicados en la clave (abajo).
+--   2) PASO 2A si NO hay duplicados: crear el indice unico natural.
+--      PASO 2B si SI hay duplicados: usar el indice unico sobre ctid (siempre
+--              funciona) O revisar la vista base para deduplicar.
+--   3) Activar en el .env del backend:  VELSA_MV_AUTOREFRESH=on
+--                                        VELSA_MV_REFRESH_MODE=concurrent
+--      y reiniciar el backend.
+--
+-- ROLLBACK
+--   DROP INDEX CONCURRENTLY IF EXISTS public.ux_mv_velsa_id_registro;
+--   DROP INDEX CONCURRENTLY IF EXISTS public.ux_mv_velsa_ctid;
+--   (y quitar VELSA_MV_AUTOREFRESH del .env)
+-- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- PASO 1 · VERIFICAR DUPLICADOS en la clave natural (id_registro)
+-- Ejecuta esto primero. Si devuelve 0 filas, ve al PASO 2A.
+-- Si devuelve filas, la clave natural NO es unica: ve al PASO 2B.
+-- ----------------------------------------------------------------------------
+-- SELECT id_registro, COUNT(*) AS repeticiones
+-- FROM public.mv_indicadores_velsa_completo
+-- GROUP BY id_registro
+-- HAVING COUNT(*) > 1
+-- ORDER BY repeticiones DESC
+-- LIMIT 20;
+
+
+-- ----------------------------------------------------------------------------
+-- PASO 2A · CLAVE NATURAL UNICA (usar SOLO si el PASO 1 devolvio 0 filas)
+-- No bloquea gracias a CONCURRENTLY. Es el indice ideal para el diff de refresh.
+-- ----------------------------------------------------------------------------
+-- CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_mv_velsa_id_registro
+--   ON public.mv_indicadores_velsa_completo (id_registro);
+
+
+-- ----------------------------------------------------------------------------
+-- PASO 2B · CLAVE UNICA GARANTIZADA (usar si el PASO 1 encontro duplicados)
+-- ----------------------------------------------------------------------------
+-- Nota: REFRESH CONCURRENTLY solo necesita "algun" indice UNICO sobre la MV.
+-- Si id_registro tiene duplicados (porque la vista base de Jotform puede tener
+-- varias filas por negociacion), lo mas limpio es deduplicar esa vista base.
+-- Mientras tanto, para NO bloquear el dashboard puedes:
+--
+--   OPCION 1 (recomendada temporal): usar el modo 'blocking' de madrugada.
+--     En el .env:  VELSA_MV_AUTOREFRESH=on
+--                  VELSA_MV_REFRESH_MODE=blocking
+--                  VELSA_MV_REFRESH_CRON=0 6 * * *   (6:00, ajusta a tu zona)
+--     No necesita ningun indice; el lock ocurre cuando nadie usa el dashboard.
+--
+--   OPCION 2 (definitiva): deduplicar la vista base
+--     public.vw_jotform_velsa_netlife_completo para que haya 1 fila por
+--     id_negociacion_bitrix, de modo que id_registro sea unico, y entonces
+--     aplicar el PASO 2A. (Requiere revisar esa vista con el equipo.)
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- VERIFICACION FINAL (opcional): confirmar que el indice unico existe
+-- ----------------------------------------------------------------------------
+-- SELECT indexname, indexdef
+-- FROM pg_indexes
+-- WHERE schemaname='public'
+--   AND tablename='mv_indicadores_velsa_completo'
+--   AND indexdef ILIKE '%UNIQUE%';

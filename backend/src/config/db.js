@@ -11,8 +11,11 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 
   // PERFORMANCE: pool tuning conservador (no cambia comportamiento)
-  max:                    20,      // ligero aumento: 15 -> 20 conexiones simultaneas
-  min:                    2,       // mantener 2 conexiones calientes
+  // DB_POOL_MAX permite dimensionar el pool POR PROCESO cuando el backend
+  // corre separado en varios servicios (core/analitica/wabot/etc.). Si no se
+  // define, mantiene el valor histórico de 20 → el monolito no cambia.
+  max:                    parseInt(process.env.DB_POOL_MAX || '20', 10),
+  min:                    parseInt(process.env.DB_POOL_MIN || '2', 10), // mantener conexiones calientes
   idleTimeoutMillis:      10000,   // cerrar inactivas
   connectionTimeoutMillis: 10000,  // esperar hasta 10s por una conexion libre
   allowExitOnIdle:        false,

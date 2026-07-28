@@ -1,0 +1,143 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Render Blueprint — ERP separado en procesos (Strangler Fig, fase 1)
+#
+# Un solo repositorio, varios servicios. Cada servicio corre el MISMO código
+# pero con distinto startCommand (entrypoint). rootDir apunta a /backend.
+#
+# Secretos compartidos (DB_*, JWT_SECRET, etc.): créalos UNA vez en un Environment
+# Group llamado "erp-shared" en el dashboard de Render y se inyectan con fromGroup.
+#
+# Orden sugerido de despliegue: core → analitica-velsa → analitica-novo →
+# wabot → ingesta → workers → gateway (el gateway necesita las URLs de los demás).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── CORE ERP — CONSERVA la URL/servicio actual (APIs externas intactas) ──
+  - type: web
+    name: erp-core
+    runtime: node
+    rootDir: backend
+    plan: standard
+    region: oregon                 # ← ajusta a tu región actual
+    buildCommand: npm install
+    startCommand: npm run start:core
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "10"
+
+  # ── ANALÍTICA VELSA (read-heavy, pool propio) ──
+  - type: web
+    name: erp-analitica-velsa
+    runtime: node
+    rootDir: backend
+    plan: standard
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:analitica-velsa
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "8"
+      # Cuando exista la réplica de lectura, apunta DB_HOST de ESTE servicio a ella.
+
+  # ── ANALÍTICA NOVONET (read-heavy, pool propio) ──
+  - type: web
+    name: erp-analitica-novo
+    runtime: node
+    rootDir: backend
+    plan: standard
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:analitica-novo
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "8"
+
+  # ── WABOT (WhatsApp) — UNA sola instancia + disco persistente ──
+  - type: web
+    name: erp-wabot
+    runtime: node
+    rootDir: backend
+    plan: standard
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:wabot
+    healthCheckPath: /health
+    autoDeploy: false
+    numInstances: 1                # ← NO escalar: las sesiones de Baileys son estado local
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: WA_AUTH_DIR
+        value: /var/data/auth_sessions
+      - key: WA_UPLOADS_DIR
+        value: /var/data/wa_uploads
+    disk:
+      name: wabot-data
+      mountPath: /var/data
+      sizeGB: 5
+
+  # ── INGESTA / WEBHOOKS ──
+  - type: web
+    name: erp-ingesta
+    runtime: node
+    rootDir: backend
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:ingesta
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "5"
+
+  # ── WORKERS / JOBS (background, sin HTTP) ──
+  - type: worker
+    name: erp-workers
+    runtime: node
+    rootDir: backend
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:workers
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "4"
+
+  # ── API GATEWAY (único URL para el frontend) ──
+  - type: web
+    name: erp-gateway
+    runtime: node
+    rootDir: backend
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run start:gateway
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: erp-shared
+      # Pega las URLs públicas de cada servicio tras su primer deploy:
+      - key: CORE_URL
+        sync: false
+      - key: ANALITICA_VELSA_URL
+        sync: false
+      - key: ANALITICA_NOVO_URL
+        sync: false
+      - key: WABOT_URL
+        sync: false
+      - key: INGESTA_URL
+        sync: false

@@ -117,12 +117,12 @@ export default function WaInbox() {
   // Recargar al cambiar el filtro de línea/usuario
   useEffect(() => { loadConvs(lineFilter); }, [lineFilter, loadConvs]);
 
-  const loadMessages = useCallback(async (convId) => {
+  const loadMessages = useCallback(async (convId, { scroll = true } = {}) => {
     try {
       const r = await fetch(`${API}/conversations/${convId}/messages`, { headers: authH(false) });
       const d = await r.json();
       setMessages(asArray(d));
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      if (scroll) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) {
       console.error("[WaInbox] Error cargando mensajes:", e);
     }
@@ -156,6 +156,18 @@ export default function WaInbox() {
   useEffect(() => {
     if (selected) loadMessages(selected.id);
   }, [selected]);
+
+  // ── Respaldo en vivo: refresco automático cada 30s ──────────────────────
+  // Garantiza que los vendedores vean la actividad con menos de 1 minuto de
+  // retraso aunque el tiempo real por socket falle (p. ej. detrás del gateway).
+  // No fuerza scroll para no interrumpir la lectura de una conversación.
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadConvs(lineFilter);
+      if (selectedRef.current?.id) loadMessages(selectedRef.current.id, { scroll: false });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [lineFilter, loadConvs, loadMessages]);
 
   const selectConv = (conv) => {
     setSelected(conv);

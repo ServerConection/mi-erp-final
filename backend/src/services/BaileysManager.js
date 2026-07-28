@@ -776,6 +776,25 @@ class BaileysManager {
   async _handleDeliveryAck(lineId, waMsgId, status) {
     if (status < 3) return
 
+    // ── Inbox: reflejar entregado/leído en el mensaje (✓✓ estilo WhatsApp) ──
+    // status 3 = entregado, 4 = leído. No degradar de 'read' a 'delivered'.
+    try {
+      const nuevoEstado = status >= 4 ? 'read' : 'delivered'
+      const upd = await query(
+        `UPDATE messages SET status = $1
+         WHERE wa_msg_id = $2 AND direction = 'out' AND status IS DISTINCT FROM 'read'
+         RETURNING conversation_id`,
+        [nuevoEstado, waMsgId]
+      )
+      if (upd.rows.length) {
+        this.io.emit('message:status', {
+          wa_msg_id: waMsgId,
+          status: nuevoEstado,
+          conversation_id: upd.rows[0].conversation_id,
+        })
+      }
+    } catch (e) { /* no romper los acks de campaña de abajo */ }
+
     // Entregado (solo la primera vez: transición sent → delivered)
     const del = await query(
       `UPDATE campaign_recipients
@@ -851,6 +870,11 @@ class BaileysManager {
   }
 
   async _getOrCreateConversation(lineId, waNumber, remoteJid) {
+    // Evitar chats duplicados por "número de privacidad" (LID): si conocemos el
+    // número real de este LID, usarlo como número canónico del chat.
+    if (waNumber && this.lidMap && this.lidMap[waNumber]) {
+      waNumber = this.lidMap[waNumber]
+    }
     // Reusar cualquier conversación abierta (activa o en manos de humano) — evita duplicados
     const existing = await query(
       `SELECT * FROM conversations

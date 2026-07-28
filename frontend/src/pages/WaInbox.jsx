@@ -150,7 +150,11 @@ export default function WaInbox() {
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       }
     });
-    return () => { socket.off("conversation:new"); socket.off("message:new"); };
+    // Actualiza ✓✓ (entregado/leído) en vivo
+    socket.on("message:status", ({ wa_msg_id, status }) => {
+      setMessages(prev => prev.map(m => m.wa_msg_id === wa_msg_id ? { ...m, status } : m));
+    });
+    return () => { socket.off("conversation:new"); socket.off("message:new"); socket.off("message:status"); };
   }, []);
 
   useEffect(() => {
@@ -496,8 +500,8 @@ export default function WaInbox() {
                   <div className={`text-xs mt-0.5 ${msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
                     {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
                     {msg.direction === "out" && (
-                      <span className="ml-1">
-                        {msg.status === "read" ? "✓✓" : msg.status === "delivered" ? "✓✓" : "✓"}
+                      <span className={`ml-1 ${msg.status === "read" ? "text-sky-300 font-semibold" : "text-green-100"}`}>
+                        {msg.status === "read" ? "✓✓ Leído" : msg.status === "delivered" ? "✓✓ Entregado" : "✓ Enviado"}
                       </span>
                     )}
                   </div>

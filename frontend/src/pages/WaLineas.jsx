@@ -44,6 +44,8 @@ export default function WaLineas() {
   const [newName, setNewName]   = useState("");
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
+  const qrPollRef = useRef(null);
+  const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
 
   const load = useCallback(async () => {
     try {
@@ -65,7 +67,7 @@ export default function WaLineas() {
     socket.on("line:qr", ({ lineId, qr }) => {
       setQrModal({ lineId, qr });
     });
-    return () => { socket.off("line:status"); socket.off("line:qr"); };
+    return () => { socket.off("line:status"); socket.off("line:qr"); stopQrPoll(); };
   }, []);
 
   const create = async () => {
@@ -90,8 +92,36 @@ export default function WaLineas() {
     try {
       const r = await fetch(`${API}/lines/${id}/connect`, { method: "POST", headers: authH(false) });
       const d = await r.json();
-      if (!d.success) setError(d.error || "No se pudo conectar la línea");
+      if (!d.success) { setError(d.error || "No se pudo conectar la línea"); return; }
+      // Feedback inmediato + obtener el QR por HTTP (confiable, no depende del socket)
+      setQrModal({ lineId: id, qr: null });   // muestra "Generando QR…"
+      startQrPoll(id);
     } catch { setError("No se pudo conectar la línea"); }
+  };
+
+  // Pide el QR por HTTP cada 2s hasta que aparezca (Baileys lo regenera solo).
+  // Si la línea se conecta, cierra el modal. Máximo ~2 min.
+  const startQrPoll = (id) => {
+    stopQrPoll();
+    let tries = 0;
+    qrPollRef.current = setInterval(async () => {
+      tries++;
+      try {
+        const rl = await fetch(`${API}/lines`, { headers: authH(false) });
+        const dl = await rl.json();
+        const line = (Array.isArray(dl?.data) ? dl.data : []).find(l => l.id === id);
+        if (line) setLines(prev => prev.map(l => l.id === id ? { ...l, ...line } : l));
+        const st = line?.rt_status || line?.status;
+        if (st === "connected") { stopQrPoll(); setQrModal(null); load(); return; }
+
+        const rq = await fetch(`${API}/lines/${id}/qr`, { headers: authH(false) });
+        if (rq.ok) {
+          const dq = await rq.json();
+          if (dq.success && dq.qr) setQrModal({ lineId: id, qr: dq.qr });
+        }
+      } catch { /* reintenta en el siguiente ciclo */ }
+      if (tries > 60) stopQrPoll();
+    }, 2000);
   };
 
   const disconnect = async (id) => {
@@ -215,8 +245,15 @@ export default function WaLineas() {
             <p className="text-xs text-slate-500 mb-4">
               Abre WhatsApp → Dispositivos vinculados → Vincular dispositivo
             </p>
-            <img src={qrModal.qr} alt="QR WhatsApp" className="mx-auto rounded-xl border" />
-            <button onClick={() => setQrModal(null)}
+            {qrModal.qr ? (
+              <img src={qrModal.qr} alt="QR WhatsApp" className="mx-auto rounded-xl border" />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+                <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <div className="text-sm">Generando QR…</div>
+              </div>
+            )}
+            <button onClick={() => { setQrModal(null); stopQrPoll(); }}
               className="mt-4 text-sm text-slate-500 hover:text-slate-700">
               Cerrar
             </button>

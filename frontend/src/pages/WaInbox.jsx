@@ -155,7 +155,12 @@ export default function WaInbox() {
     socket.on("message:status", ({ wa_msg_id, status }) => {
       setMessages(prev => prev.map(m => m.wa_msg_id === wa_msg_id ? { ...m, status } : m));
     });
-    return () => { socket.off("conversation:new"); socket.off("message:new"); socket.off("message:status"); };
+    // Chat duplicado (LID) fusionado con el real → quitar el duplicado de la lista
+    socket.on("conversation:merged", ({ from }) => {
+      setConversations(prev => prev.filter(c => c.id !== from));
+      setSelected(s => (s && s.id === from ? null : s));
+    });
+    return () => { socket.off("conversation:new"); socket.off("message:new"); socket.off("message:status"); socket.off("conversation:merged"); };
   }, []);
 
   useEffect(() => {

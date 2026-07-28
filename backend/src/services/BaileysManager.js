@@ -74,6 +74,35 @@ class BaileysManager {
     } catch (e) {
       console.warn('[BaileysManager] Error guardando lid_mapping:', e.message)
     }
+    // Unificar chats duplicados: al conocer el número real de un LID, fusiona el
+    // chat del LID con el chat del número real (mueve mensajes y borra el duplicado).
+    try { await this._mergeLidConversations(lidNum, realNum) }
+    catch (e) { console.warn('[BaileysManager] Error fusionando chats LID:', e.message) }
+  }
+
+  // Une el chat creado con el número LID al chat del número real (por línea).
+  async _mergeLidConversations(lidNum, realNum) {
+    if (!lidNum || !realNum || lidNum === realNum) return
+    const lidConvs = await query(`SELECT id, line_id FROM conversations WHERE wa_number = $1`, [lidNum])
+    for (const lc of lidConvs.rows) {
+      const realConv = await query(
+        `SELECT id FROM conversations WHERE wa_number = $1 AND line_id = $2 ORDER BY started_at ASC LIMIT 1`,
+        [realNum, lc.line_id]
+      )
+      if (realConv.rows.length && realConv.rows[0].id !== lc.id) {
+        const realId = realConv.rows[0].id
+        await query(`UPDATE messages SET conversation_id = $1, wa_number = $2 WHERE conversation_id = $3`, [realId, realNum, lc.id])
+        await query(`UPDATE conversations SET last_msg_at = NOW() WHERE id = $1`, [realId])
+        await query(`DELETE FROM conversations WHERE id = $1`, [lc.id])
+        console.log(`[Merge] Chat LID ${lidNum} unido a ${realNum} (línea ${lc.line_id})`)
+        this.io.emit('conversation:merged', { from: lc.id, into: realId })
+      } else if (!realConv.rows.length) {
+        // Aún no hay chat con el número real → renombrar el del LID
+        await query(`UPDATE conversations SET wa_number = $1 WHERE id = $2`, [realNum, lc.id])
+        await query(`UPDATE messages SET wa_number = $1 WHERE conversation_id = $2`, [realNum, lc.id])
+        console.log(`[Merge] Chat LID ${lidNum} renombrado a ${realNum} (línea ${lc.line_id})`)
+      }
+    }
   }
 
   async _resolveLid(lidRaw, sock, lineId) {

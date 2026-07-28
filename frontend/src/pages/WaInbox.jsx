@@ -162,6 +162,32 @@ export default function WaInbox() {
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
+  // ── Enlace directo por URL ──────────────────────────────────────────────
+  // Abre/busca una conversación por número desde la URL. Ejemplos válidos:
+  //   /whatsapp/inbox?num=0960288044   ?telefono=0960288044   ?q=0960288044
+  //   /whatsapp/inbox?0960288044       (número suelto)
+  const deepLinkRef = useRef(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    let target = params.get("num") || params.get("telefono") || params.get("q");
+    if (!target) {
+      const raw = window.location.search.replace(/^\?/, "");
+      if (raw && !raw.includes("=")) target = decodeURIComponent(raw);
+    }
+    if (target) {
+      const digits = target.replace(/\D/g, "").replace(/^0+/, ""); // sin ceros iniciales
+      if (digits) { deepLinkRef.current = digits; setSearch(digits); }
+    }
+  }, []);
+
+  // Cuando cargan las conversaciones, si venimos por enlace directo, abre el chat
+  useEffect(() => {
+    if (!deepLinkRef.current || selected || conversations.length === 0) return;
+    const d = deepLinkRef.current;
+    const match = conversations.find(c => (c.wa_number || "").replace(/\D/g, "").includes(d));
+    if (match) { selectConv(match); deepLinkRef.current = null; }
+  }, [conversations, selected]);
+
   const send = async () => {
     if (!newMsg.trim() || !selected || sending) return;
     setSending(true);

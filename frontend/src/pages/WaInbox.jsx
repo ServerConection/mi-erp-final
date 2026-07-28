@@ -19,6 +19,7 @@ const USER_PROFILE = (() => {
 const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
 const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
 const CAN_PICK_LINE = USER_PERFIL === "ADMINISTRADOR" || USER_PERFIL === "SUPERVISOR";
+const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
 const BITRIX_DEAL_BASE = {
   VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
   NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
@@ -266,6 +267,19 @@ export default function WaInbox() {
     setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "active" } : c));
   };
 
+  // Eliminar chat (solo Administrador). Borra la conversación y sus mensajes.
+  const deleteConv = async () => {
+    if (!selected) return;
+    if (!confirm(`¿Eliminar el chat con +${selected.wa_number}? Se borrarán todos sus mensajes. Esta acción no se puede deshacer.`)) return;
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}`, { method: "DELETE", headers: authH(false) });
+      const d = await r.json();
+      if (!d.success) { alert(d.error || "No se pudo eliminar"); return; }
+      setConversations(prev => prev.filter(c => c.id !== selected.id));
+      setSelected(null);
+    } catch { alert("No se pudo eliminar el chat"); }
+  };
+
   // Iniciar conversación: por número directo o por ID de negociación
   const startConversation = async () => {
     if (bitrixBusy) return;
@@ -466,6 +480,13 @@ export default function WaInbox() {
                 <button onClick={returnToBot}
                   className="text-xs bg-purple-50 border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
                   🤖 Regresar a bot
+                </button>
+              )}
+              {IS_ADMIN && (
+                <button onClick={deleteConv}
+                  title="Eliminar este chat (solo administrador)"
+                  className="text-xs bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
+                  🗑️ Eliminar
                 </button>
               )}
             </div>

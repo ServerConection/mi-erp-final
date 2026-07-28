@@ -522,4 +522,20 @@ async function returnToBot(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId }
+// ── Eliminar conversación (SOLO Administrador) ──────────────
+async function remove(req, res) {
+  try {
+    if (!isAdmin(req)) {
+      return res.status(403).json({ success: false, error: 'Solo un administrador puede eliminar chats' })
+    }
+    const { id } = req.params
+    // Los mensajes se borran en cascada (FK messages.conversation_id ON DELETE CASCADE)
+    const r = await query(`DELETE FROM conversations WHERE id=$1 RETURNING id`, [id])
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }

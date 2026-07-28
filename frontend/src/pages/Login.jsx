@@ -102,8 +102,9 @@ export default function Login() {
         .lp-bg {
           position: absolute;
           inset: 0;
+          background-color: #0a1a4a;
           background-image: url('/NET.png');
-          background-size: cover;
+          background-size: contain;
           background-position: center center;
           background-repeat: no-repeat;
           z-index: 0;

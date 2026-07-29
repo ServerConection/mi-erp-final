@@ -86,8 +86,11 @@ function guessMime(filename) {
   return map[ext] || 'application/octet-stream'
 }
 
+// Perfiles "gerenciales" ven todos los chats de SU empresa (no de otras).
+// Solo ADMINISTRADOR ve todo, sin restricción de empresa.
+const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
-const isSupervisor = (req) => (req.user?.perfil || '').toUpperCase() === 'SUPERVISOR'
+const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
 
 // Condición SQL de visibilidad de conversaciones/líneas según el perfil.
 //  - ADMINISTRADOR: ve todo (null → sin filtro)

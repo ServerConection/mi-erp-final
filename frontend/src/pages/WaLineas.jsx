@@ -5,6 +5,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
+
+// Solo ADMINISTRADOR puede crear/eliminar líneas (el resto solo conecta/reconecta las suyas)
+const USER_PROFILE = (() => {
+  try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
+  catch { return {}; }
+})();
+const IS_ADMIN = (USER_PROFILE.perfil || "").toUpperCase() === "ADMINISTRADOR";
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -170,24 +177,26 @@ export default function WaLineas() {
         </div>
       )}
 
-      {/* Agregar línea */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex gap-3">
-        <input
-          type="text"
-          placeholder="Nombre de la línea (ej. Ventas Principal)"
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && create()}
-          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400"
-        />
-        <button
-          onClick={create}
-          disabled={saving || !newName.trim()}
-          className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          {saving ? "Creando…" : "+ Agregar"}
-        </button>
-      </div>
+      {/* Agregar línea — solo ADMINISTRADOR */}
+      {IS_ADMIN && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex gap-3">
+          <input
+            type="text"
+            placeholder="Nombre de la línea (ej. Ventas Principal)"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && create()}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400"
+          />
+          <button
+            onClick={create}
+            disabled={saving || !newName.trim()}
+            className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            {saving ? "Creando…" : "+ Agregar"}
+          </button>
+        </div>
+      )}
 
       {/* Lista de líneas */}
       {lines.length === 0 ? (
@@ -227,10 +236,12 @@ export default function WaLineas() {
                     Conectar QR
                   </button>
                 )}
-                <button onClick={() => remove(line.id)}
-                  className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
-                  🗑️
-                </button>
+                {IS_ADMIN && (
+                  <button onClick={() => remove(line.id)}
+                    className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
+                    🗑️
+                  </button>
+                )}
               </div>
             </div>
           ))}

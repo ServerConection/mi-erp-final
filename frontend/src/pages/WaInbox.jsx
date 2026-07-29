@@ -18,7 +18,8 @@ const USER_PROFILE = (() => {
 })();
 const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
 const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
-const CAN_PICK_LINE = USER_PERFIL === "ADMINISTRADOR" || USER_PERFIL === "SUPERVISOR";
+// Perfiles gerenciales (ven todos los chats/líneas de su empresa)
+const CAN_PICK_LINE = ["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "ANALISTA"].includes(USER_PERFIL);
 const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
 const BITRIX_DEAL_BASE = {
   VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",

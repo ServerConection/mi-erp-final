@@ -1,8 +1,11 @@
 const { query } = require('../config/db')
 
 // Helpers de perfil
+// Perfiles "gerenciales" ven todas las líneas/chats de SU empresa (no de otras).
+// Solo ADMINISTRADOR ve todo, sin restricción de empresa.
+const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
-const isSupervisor = (req) => (req.user?.perfil || '').toUpperCase() === 'SUPERVISOR'
+const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
 
 // Verifica que la línea exista y que el usuario pueda verla según su perfil.
 // ADMIN: todo · SUPERVISOR: líneas de su empresa · ASESOR: solo las suyas (o huérfanas).
@@ -85,8 +88,12 @@ async function getOne(req, res) {
 }
 
 // Crear nueva línea (queda asociada al usuario que la crea)
+// Restringido: solo ADMINISTRADOR puede crear líneas.
 async function create(req, res) {
   try {
+    if (!isAdmin(req)) {
+      return res.status(403).json({ success: false, error: 'Solo un administrador puede crear líneas' })
+    }
     const { name, bot_id, proxy_enabled, proxy_config } = req.body
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
 
@@ -125,9 +132,12 @@ async function update(req, res) {
   }
 }
 
-// Eliminar línea — solo si es del usuario
+// Eliminar línea — restringido: solo ADMINISTRADOR puede eliminar líneas.
 async function remove(req, res) {
   try {
+    if (!isAdmin(req)) {
+      return res.status(403).json({ success: false, error: 'Solo un administrador puede eliminar líneas' })
+    }
     const { id } = req.params
     const owned = await findOwnedLine(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })

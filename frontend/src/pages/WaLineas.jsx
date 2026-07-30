@@ -6,12 +6,14 @@ import { io } from "socket.io-client";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 
-// Solo ADMINISTRADOR puede crear/eliminar líneas (el resto solo conecta/reconecta las suyas)
+// Permisos: solo ADMINISTRADOR elimina líneas y crea sin límite.
+// El resto (asesores) puede crear su línea solo si aún no tiene ninguna.
 const USER_PROFILE = (() => {
   try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
   catch { return {}; }
 })();
 const IS_ADMIN = (USER_PROFILE.perfil || "").toUpperCase() === "ADMINISTRADOR";
+const USER_ID  = USER_PROFILE.id || null;
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -53,6 +55,11 @@ export default function WaLineas() {
   const [error, setError]       = useState("");
   const qrPollRef = useRef(null);
   const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
+
+  // El admin siempre puede crear. El asesor solo si no tiene ninguna línea propia
+  // (si se le eliminó la suya, el formulario vuelve a aparecer automáticamente).
+  const misLineas = USER_ID ? lines.filter(l => l.created_by === USER_ID).length : lines.length;
+  const canCreate = IS_ADMIN || misLineas === 0;
 
   const load = useCallback(async () => {
     try {
@@ -177,8 +184,8 @@ export default function WaLineas() {
         </div>
       )}
 
-      {/* Agregar línea — solo ADMINISTRADOR */}
-      {IS_ADMIN && (
+      {/* Agregar línea — admin sin límite; asesor solo si aún no tiene línea propia */}
+      {canCreate && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex gap-3">
           <input
             type="text"

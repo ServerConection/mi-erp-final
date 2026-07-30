@@ -87,12 +87,24 @@ async function getOne(req, res) {
   }
 }
 
+// Cupo de líneas por usuario no administrador (1 línea = 1 número por asesor)
+const MAX_LINEAS_POR_USUARIO = 1
+
 // Crear nueva línea (queda asociada al usuario que la crea)
-// Restringido: solo ADMINISTRADOR puede crear líneas.
+// ADMINISTRADOR: sin límite · Resto: solo si no tiene ninguna línea propia.
 async function create(req, res) {
   try {
     if (!isAdmin(req)) {
-      return res.status(403).json({ success: false, error: 'Solo un administrador puede crear líneas' })
+      const propias = await query(
+        'SELECT COUNT(*)::int AS total FROM lines WHERE created_by = $1',
+        [req.user.id]
+      )
+      if ((propias.rows[0]?.total || 0) >= MAX_LINEAS_POR_USUARIO) {
+        return res.status(403).json({
+          success: false,
+          error: 'Ya tienes una línea asignada. Si necesitas otra, solicítala a un administrador.'
+        })
+      }
     }
     const { name, bot_id, proxy_enabled, proxy_config } = req.body
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })

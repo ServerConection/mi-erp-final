@@ -64,7 +64,8 @@ const iniciarWhatsApp = async (appInstance) => {
     const { rows } = await pool.query(
       `SELECT id, name FROM lines
        WHERE status IN ('connected','disconnected','connecting','qr_ready')
-         AND last_connected IS NOT NULL`
+         AND last_connected IS NOT NULL
+         AND deleted_at IS NULL`
     );
     if (rows.length) {
       console.log('[WA] Restaurando', rows.length, 'línea(s)...');

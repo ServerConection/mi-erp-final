@@ -157,6 +157,18 @@ class BaileysManager {
       return
     }
 
+    // FIX "Conectar QR no conecta": si la línea quedó en logged_out/error, las
+    // credenciales en disco ya no sirven. Baileys intentaría reusarlas, WhatsApp
+    // responde 401 y el QR nunca se emite → el usuario ve el modal colgado.
+    // Se limpian antes de conectar para forzar un emparejamiento nuevo.
+    const estadoPrevio = await query('SELECT status FROM lines WHERE id = $1', [lineId])
+      .then(r => r.rows[0]?.status)
+      .catch(() => null)
+    if (estadoPrevio === 'logged_out' || estadoPrevio === 'error') {
+      console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}" → limpiando sesión para generar QR nuevo`)
+      this._wipeAuth(lineId)
+    }
+
     const authDir = path.join(AUTH_BASE, lineId)
     fs.mkdirSync(authDir, { recursive: true })
 
@@ -552,12 +564,39 @@ class BaileysManager {
     }
   }
 
-  async disconnect(lineId) {
+  // Borra las credenciales locales de una línea. Sin esto, una sesión inválida
+  // (401/logged_out) queda en disco y en el siguiente "Conectar QR" Baileys
+  // intenta reusarla, falla y NUNCA llega a emitir un QR nuevo.
+  _wipeAuth(lineId) {
+    try {
+      const dir = path.join(AUTH_BASE, lineId)
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true })
+        console.log(`[Line ${lineId}] 🧹 Credenciales locales borradas (sesión limpia)`)
+      }
+      return true
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudieron borrar credenciales:`, e.message)
+      return false
+    }
+  }
+
+  async disconnect(lineId, { wipeAuth = false } = {}) {
     const inst = this.instances[lineId]
-    if (!inst) return
-    try { await inst.sock.logout() } catch (e) {}
-    delete this.instances[lineId]
-    this._updateLineStatus(lineId, 'disconnected')
+    // Cancelar cualquier reconexión programada: si no, el timer revive la línea
+    if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+    delete this.reconnectAttempts[lineId]
+
+    if (inst) {
+      try { await inst.sock.logout() } catch (e) {}
+      try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+    }
+    if (wipeAuth) this._wipeAuth(lineId)
+
+    // await: quien llama (p. ej. la baja lógica de una línea) escribe el estado
+    // después; sin await ese UPDATE podría pisar al de aquí.
+    await this._updateLineStatus(lineId, 'disconnected')
     this.io.emit('line:status', { lineId, status: 'disconnected' })
     this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
   }

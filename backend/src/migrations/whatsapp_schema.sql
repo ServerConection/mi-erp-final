@@ -240,3 +240,13 @@ CREATE INDEX IF NOT EXISTS idx_campaign_events_variant  ON campaign_events(varia
 -- ID de negociación (deal) de Bitrix asociado a la conversación (2026-07)
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bitrix_deal_id VARCHAR(30);
 CREATE INDEX IF NOT EXISTS idx_conversations_bitrix ON conversations(bitrix_deal_id);
+
+-- Baja lógica de líneas (2026-07)
+-- IMPORTANTE: conversations.line_id y messages.line_id son ON DELETE CASCADE.
+-- Un DELETE real de una línea BORRA todo su historial de chats de forma
+-- irreversible. Por eso "eliminar" una línea marca deleted_at en lugar de
+-- borrar la fila: el asesor libera su cupo y puede vincular un número nuevo,
+-- pero sus conversaciones anteriores siguen existiendo y visibles para él
+-- (la línea conserva created_by, que es lo que da la visibilidad en el inbox).
+ALTER TABLE lines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_lines_deleted ON lines(deleted_at);

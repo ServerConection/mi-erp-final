@@ -13,7 +13,7 @@ async function findOwnedLine(req, id) {
   const result = await query(
     `SELECT l.*, u.empresa AS owner_empresa
      FROM lines l LEFT JOIN usuarios u ON l.created_by = u.id
-     WHERE l.id=$1`,
+     WHERE l.id=$1 AND l.deleted_at IS NULL`,
     [id]
   )
   if (!result.rows.length) return null
@@ -30,15 +30,18 @@ async function findOwnedLine(req, id) {
 async function getAll(req, res) {
   try {
     const params = []
-    let where = ''
+    // Las líneas dadas de baja (deleted_at) nunca se listan, pero su fila se
+    // conserva para no perder el historial de chats asociado.
+    const conds = ['l.deleted_at IS NULL']
     if (isSupervisor(req)) {
       params.push((req.user.empresa || '').toUpperCase())
-      where = `WHERE l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
+      conds.push(`l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`)
     } else if (!isAdmin(req)) {
       params.push(req.user.id)
       // Incluye también las líneas huérfanas (created_by IS NULL, de antes de la migración)
-      where = `WHERE (l.created_by = $${params.length} OR l.created_by IS NULL)`
+      conds.push(`(l.created_by = $${params.length} OR l.created_by IS NULL)`)
     }
+    const where = `WHERE ${conds.join(' AND ')}`
     const result = await query(`
       SELECT l.*, b.name AS bot_name, u.usuario AS owner_username
       FROM lines l
@@ -96,7 +99,7 @@ async function create(req, res) {
   try {
     if (!isAdmin(req)) {
       const propias = await query(
-        'SELECT COUNT(*)::int AS total FROM lines WHERE created_by = $1',
+        'SELECT COUNT(*)::int AS total FROM lines WHERE created_by = $1 AND deleted_at IS NULL',
         [req.user.id]
       )
       if ((propias.rows[0]?.total || 0) >= MAX_LINEAS_POR_USUARIO) {
@@ -144,20 +147,29 @@ async function update(req, res) {
   }
 }
 
-// Eliminar línea — restringido: solo ADMINISTRADOR puede eliminar líneas.
+// Eliminar línea — BAJA LÓGICA (no borra la fila).
+// Cualquiera con acceso a la línea puede darla de baja: así el asesor libera su
+// cupo y puede vincular otro número. NO se hace DELETE porque conversations y
+// messages tienen ON DELETE CASCADE sobre lines: un borrado real destruiría
+// todo el historial de chats de forma irreversible. Al conservar la fila (con
+// su created_by), las conversaciones anteriores siguen visibles para el asesor.
 async function remove(req, res) {
   try {
-    if (!isAdmin(req)) {
-      return res.status(403).json({ success: false, error: 'Solo un administrador puede eliminar líneas' })
-    }
     const { id } = req.params
     const owned = await findOwnedLine(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
 
     const bm = req.app.get('baileysManager')
-    await bm.disconnect(id)
-    await query('DELETE FROM lines WHERE id=$1', [id])
-    res.json({ success: true })
+    // Cierra el socket y borra las credenciales locales de WhatsApp para que el
+    // número quede realmente desvinculado (y no reviva en el próximo arranque).
+    try { if (bm) await bm.disconnect(id, { wipeAuth: true }) }
+    catch (e) { console.warn('[wa_lines.remove] No se pudo desconectar limpio:', e.message) }
+
+    await query(
+      `UPDATE lines SET deleted_at = NOW(), status = 'deleted', updated_at = NOW() WHERE id = $1`,
+      [id]
+    )
+    res.json({ success: true, message: 'Línea dada de baja. El historial de chats se conserva.' })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
@@ -212,4 +224,91 @@ async function getQR(req, res) {
   }
 }
 
-module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR }
+// ── DASHBOARD: quién tiene línea, cuántas y en qué estado ─────────────────
+// Agrupa por empresa → asesor. ADMINISTRADOR ve todas las empresas;
+// los perfiles gerenciales solo la suya. Un asesor solo se ve a sí mismo.
+async function dashboard(req, res) {
+  try {
+    const params = []
+    const conds = ['l.deleted_at IS NULL']
+
+    if (!isAdmin(req)) {
+      if (isSupervisor(req)) {
+        params.push((req.user.empresa || '').toUpperCase())
+        conds.push(`UPPER(u.empresa) = $${params.length}`)
+      } else {
+        params.push(req.user.id)
+        conds.push(`l.created_by = $${params.length}`)
+      }
+    }
+
+    const { rows } = await query(`
+      SELECT l.id, l.name, l.phone_number, l.status, l.last_connected, l.created_at,
+             l.created_by,
+             COALESCE(UPPER(u.empresa), 'SIN EMPRESA') AS empresa,
+             COALESCE(u.usuario, 'SIN ASIGNAR')        AS usuario,
+             TRIM(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre_completo
+      FROM lines l
+      LEFT JOIN usuarios u ON l.created_by = u.id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY empresa ASC, usuario ASC, l.created_at ASC
+    `, params)
+
+    // Estado en vivo desde BaileysManager (más fiable que el guardado en BD)
+    const bm = req.app.get('baileysManager')
+    const lineas = rows.map(r => {
+      const rt = bm ? bm.getStatus(r.id) : null
+      // Si Baileys no tiene la línea en memoria devuelve 'disconnected'; en ese
+      // caso conservamos el último estado conocido de BD (logged_out / error),
+      // que es más informativo para saber por qué no está conectada.
+      const estado = (rt && rt !== 'disconnected') ? rt : (r.status || 'disconnected')
+      return { ...r, estado, conectada: estado === 'connected' }
+    })
+
+    // Agrupar: empresa → asesor → líneas
+    const porEmpresa = {}
+    for (const l of lineas) {
+      if (!porEmpresa[l.empresa]) {
+        porEmpresa[l.empresa] = { empresa: l.empresa, total: 0, conectadas: 0, asesores: {} }
+      }
+      const emp = porEmpresa[l.empresa]
+      if (!emp.asesores[l.usuario]) {
+        emp.asesores[l.usuario] = {
+          usuario: l.usuario,
+          nombre: l.nombre_completo || l.usuario,
+          total: 0,
+          conectadas: 0,
+          lineas: [],
+        }
+      }
+      const ase = emp.asesores[l.usuario]
+      ase.lineas.push({
+        id: l.id, name: l.name, phone_number: l.phone_number,
+        estado: l.estado, last_connected: l.last_connected,
+      })
+      ase.total++;  emp.total++
+      if (l.conectada) { ase.conectadas++; emp.conectadas++ }
+    }
+
+    const data = Object.values(porEmpresa).map(e => ({
+      ...e,
+      asesores: Object.values(e.asesores).sort((a, b) => a.usuario.localeCompare(b.usuario)),
+    }))
+
+    res.json({
+      success: true,
+      data,
+      resumen: {
+        empresas:   data.length,
+        lineas:     lineas.length,
+        conectadas: lineas.filter(l => l.conectada).length,
+        asesores:   data.reduce((n, e) => n + e.asesores.length, 0),
+      },
+    })
+  } catch (err) {
+    console.error('[wa_lines.dashboard]', err.message)
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard }

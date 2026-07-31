@@ -422,6 +422,9 @@ const ALL_MENU_ITEMS = [
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
+  { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
 
   // ── Diversión / actividades internas ────────────────────────────────────
   { name: "Diversión", path: null, icon: "🎮", isGroup: true, groupId: "diversion" },

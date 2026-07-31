@@ -46,6 +46,7 @@ const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
+const WaLineasDashboard    = lazy(() => import("./pages/WaLineasDashboard"));
 const WaCampanas           = lazy(() => import("./pages/WaCampanas"));
 const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
 const WaContactos          = lazy(() => import("./pages/WaContactos"));
@@ -131,6 +132,7 @@ export default function App() {
 
             {/* ── Módulo WhatsApp ──────────────────────────────── */}
             <Route path="whatsapp/lineas"           element={<WaLineas />} />
+            <Route path="whatsapp/control-lineas"   element={<WaLineasDashboard />} />
             <Route path="whatsapp/campanas"         element={<WaCampanas />} />
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />

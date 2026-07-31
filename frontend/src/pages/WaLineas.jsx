@@ -150,7 +150,12 @@ export default function WaLineas() {
   };
 
   const remove = async (id) => {
-    if (!confirm("¿Eliminar esta línea? Se perderá la sesión de WhatsApp.")) return;
+    if (!confirm(
+      "¿Dar de baja esta línea?\n\n" +
+      "• Se desvincula el número de WhatsApp (habrá que escanear un QR nuevo).\n" +
+      "• El historial de chats NO se borra: seguirá visible en el Inbox.\n" +
+      "• Quedarás libre para vincular otro número."
+    )) return;
     setError("");
     try {
       const r = await fetch(`${API}/lines/${id}`, { method: "DELETE", headers: authH(false) });
@@ -243,12 +248,11 @@ export default function WaLineas() {
                     Conectar QR
                   </button>
                 )}
-                {IS_ADMIN && (
-                  <button onClick={() => remove(line.id)}
-                    className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
-                    🗑️
-                  </button>
-                )}
+                <button onClick={() => remove(line.id)}
+                  title="Dar de baja la línea (se conserva el historial de chats)"
+                  className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
+                  🗑️
+                </button>
               </div>
             </div>
           ))}

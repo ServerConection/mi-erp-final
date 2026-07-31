@@ -34,6 +34,8 @@ const upload = multer({
 router.use(verificarToken);
 
 // ── LÍNEAS ────────────────────────────────────────────────────
+// OJO: /lines/dashboard va ANTES de /lines/:id, si no Express lo captura como id
+router.get   ('/lines/dashboard', linesCtrl.dashboard);
 router.get   ('/lines',           linesCtrl.getAll);
 router.get   ('/lines/:id',       linesCtrl.getOne);
 router.post  ('/lines',           linesCtrl.create);

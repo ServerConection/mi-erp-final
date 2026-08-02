@@ -5,6 +5,7 @@ import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
+  CheckSquare,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -86,6 +87,9 @@ export default function HomeModules() {
     { title: "Cobertura", path: "/cobertura", icon: MapPin, accent: "cian", cat: "ventas",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps." },
 
+    { title: "Tareas y Acuerdos", path: "/tareas", icon: CheckSquare, accent: "verde", cat: "equipo",
+      desc: "Registra tareas y acuerdos, define responsable y fecha de entrega, y sigue el cumplimiento por área.",
+      rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'ADMINISTRADOR'] },
     { title: "Recursos Humanos", path: "/rrhh", icon: Users, accent: "morado", cat: "equipo",
       desc: "Gestión de talento, vacaciones y expedientes del personal." },
     { title: "Control Horarios", path: "/horarios", icon: Clock, accent: "ambar", cat: "equipo",

@@ -675,6 +675,10 @@ async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
 
   const visited = new Set();
   let pendingMerge = [];
+  // Escrituras a DB en vuelo. Se esperan TODAS antes de dar por terminado el
+  // proceso: si no, `loading` pasa a false mientras aún faltan filas por
+  // insertar y el usuario ve un total incompleto (o se pierde al reiniciar).
+  const escriturasEnVuelo = [];
 
   // Concurrencia baja (3): Google ratelimitea si se le pega con 8 conexiones a la vez
   await mapWithConcurrency(unique, 3, async (href) => {
@@ -696,17 +700,24 @@ async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
         mergeZonesIntoMemory(lote);
         // Persistir INCREMENTALMENTE (append) — si el server se reinicia a mitad,
         // lo ya resuelto no se pierde y queda disponible tras el restart.
-        appendZonesToDB(lote, loadedFile)
-          .catch(err => console.error('[Coverage] Append a DB falló:', err.message));
+        escriturasEnVuelo.push(
+          appendZonesToDB(lote, loadedFile)
+            .catch(err => console.error('[Coverage] Append a DB falló:', err.message))
+        );
       }
     }
   });
 
   if (pendingMerge.length) {
     mergeZonesIntoMemory(pendingMerge);
-    await appendZonesToDB(pendingMerge, loadedFile)
-      .catch(err => console.error('[Coverage] Append final a DB falló:', err.message));
+    escriturasEnVuelo.push(
+      appendZonesToDB(pendingMerge, loadedFile)
+        .catch(err => console.error('[Coverage] Append final a DB falló:', err.message))
+    );
   }
+
+  // Esperar a que TODAS las inserciones terminen antes de marcar como completo
+  await Promise.all(escriturasEnVuelo);
   networkLinksState.loading = false;
 
   console.log(
@@ -728,10 +739,12 @@ exports.loadCoverage = async (req, res) => {
     // Parsea el KMZ con regex — sin xml2js, sin OOM
     const { zones, networkLinks } = handleCoverageFile(req.file.path, req.file.originalname);
 
-    if (!zones || zones.length === 0) {
+    // Un KML puede ser solo un índice de enlaces (sin coordenadas propias).
+    // Es válido: la cobertura llega al resolver los NetworkLinks.
+    if ((!zones || zones.length === 0) && (!networkLinks || networkLinks.length === 0)) {
       return res.status(422).json({
         status: 'error',
-        message: 'El archivo fue procesado pero no se encontraron elementos con coordenadas.'
+        message: 'El archivo fue procesado pero no se encontraron elementos con coordenadas ni enlaces externos.'
       });
     }
 
@@ -827,7 +840,12 @@ exports.loadBatch = async (req, res) => {
   try {
     const { zones, fileName, isFirst, isFinal, total, networkLinks } = req.body;
 
-    if (!Array.isArray(zones) || zones.length === 0)
+    // Un KML puede ser SOLO un índice de enlaces (ej: "COBERTURA SMB_LINK.kml",
+    // que apunta al KMZ real en TelcoDrive). En ese caso zones viene vacío y
+    // toda la cobertura llega al resolver los NetworkLinks — es válido.
+    const soloEnlaces = Array.isArray(networkLinks) && networkLinks.length > 0;
+
+    if (!Array.isArray(zones) || (zones.length === 0 && !soloEnlaces))
       return res.status(400).json({ status: 'error', message: 'zones vacías' });
     if (!fileName)
       return res.status(400).json({ status: 'error', message: 'fileName requerido' });
@@ -878,6 +896,14 @@ exports.loadBatch = async (req, res) => {
         loadedAt     = new Date().toISOString();
         spatialIndex = buildSpatialIndex(loadedZones);
         console.log('[Coverage] Índice espacial listo — elementos totales:', loadedZones.length);
+      } else {
+        // Archivo solo-enlaces: aún no hay ninguna zona en DB. Inicializar el
+        // estado igual para que las zonas que lleguen de los NetworkLinks se
+        // puedan fusionar y persistir con el nombre de archivo correcto.
+        loadedZones  = [];
+        loadedFile   = fileName;
+        loadedAt     = new Date().toISOString();
+        spatialIndex = buildSpatialIndex(loadedZones);
       }
 
       // Si el navegador detectó NetworkLinks (mapas externos), resolverlos en
@@ -887,12 +913,15 @@ exports.loadBatch = async (req, res) => {
           .catch(e => console.error('[Coverage] Error resolviendo NetworkLinks:', e.message));
       }
 
+      const nEnlaces = Array.isArray(networkLinks) ? networkLinks.length : 0;
       return res.status(200).json({
         status: 'ok',
         zonesLoaded: loadedZones ? loadedZones.length : 0,
         byType: countByType(loadedZones),
-        networkLinksFound: Array.isArray(networkLinks) ? networkLinks.length : 0,
-        message: `${total} elementos cargados y guardados correctamente`
+        networkLinksFound: nEnlaces,
+        message: (total || 0) > 0
+          ? `${total} elementos cargados y guardados correctamente`
+          : `Archivo de enlaces cargado. Descargando cobertura desde ${nEnlaces} origen(es) externo(s)...`
       });
     }
 

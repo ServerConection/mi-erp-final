@@ -436,7 +436,42 @@ export default function CoverageChecker() {
       // 3. Parsear zonas en el navegador con regex (Point + LineString + Polygon)
       setUploadMsg({ type: "info", text: "🔍 Extrayendo elementos..." });
       const { zones, networkLinks } = parseKMLFast(kmlText);
-      if (zones.length === 0) throw new Error("No se encontraron elementos con coordenadas en el archivo.");
+
+      if (zones.length === 0 && networkLinks.length === 0) {
+        throw new Error("No se encontraron elementos con coordenadas ni enlaces externos en el archivo.");
+      }
+
+      // 3b. Archivo SOLO-ENLACES (ej: "COBERTURA SMB_LINK.kml", que apunta al KMZ
+      // real en TelcoDrive). No trae coordenadas: se manda un único request para
+      // que el backend descargue la cobertura desde el origen externo.
+      if (zones.length === 0) {
+        setUploadMsg({ type: "info", text: `🔗 Archivo de enlaces — solicitando descarga de ${networkLinks.length} origen(es)...` });
+
+        const res = await fetch(`${API_URL}/load-batch`, {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            zones:    [],
+            fileName: selectedFile.name,
+            isFirst:  true,
+            isFinal:  true,
+            total:    0,
+            networkLinks,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Error al enviar el archivo de enlaces");
+
+        setUploadMsg({
+          type: "ok",
+          text: `✅ Archivo de enlaces cargado. Descargando cobertura desde ${networkLinks.length} origen(es) externo(s) en segundo plano (puede tardar varios minutos)...`,
+        });
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        await fetchCoverageStatus();
+        return;
+      }
 
       // 4. Enviar al servidor en lotes de 200 (sin saturar la memoria del servidor)
       const BATCH   = 200;

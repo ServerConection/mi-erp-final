@@ -100,7 +100,8 @@ function isShortenedUrl(url) {
 let loadedZones  = null;
 let loadedAt     = null;
 let loadedFile   = null;
-let spatialIndex = null;
+let spatialIndex = null; // grilla de zonas de COBERTURA
+let dangerIndex  = null; // grilla de zonas de PELIGRO (independiente)
 let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
 
 // Estado de resolución de NetworkLinks (enlaces a mapas externos: Google My Maps,
@@ -115,6 +116,73 @@ function countByType(zones) {
     acc[t] = (acc[t] || 0) + 1;
     return acc;
   }, {});
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Clasificación de ZONAS DE PELIGRO
+// ────────────────────────────────────────────────────────────────────────────────
+// Telconet cambió la nomenclatura con el tiempo:
+//   • Hasta 2024  → "OPU", "GIS"                        (Guayaquil)
+//   • Desde 2025  → "Bloqueado", "Horario restringido"  (nacional)
+// Ambas convenciones conviven en el mismo KMZ, así que se reconocen las dos.
+//
+// Tipos y su significado operativo:
+//   BLOQUEADO           → NO ingresar. Prohibido.
+//   HORARIO_RESTRINGIDO → Se puede ingresar solo en horario permitido.
+//   RESTRINGIDA         → Marcada como peligrosa (nomenclatura antigua OPU/GIS).
+// ════════════════════════════════════════════════════════════════════════════════
+
+const DANGER_BLOQUEADO   = 'BLOQUEADO';
+const DANGER_HORARIO     = 'HORARIO_RESTRINGIDO';
+const DANGER_RESTRINGIDA = 'RESTRINGIDA';
+
+const DANGER_LABELS = {
+  [DANGER_BLOQUEADO]:   'Bloqueado',
+  [DANGER_HORARIO]:     'Horario restringido',
+  [DANGER_RESTRINGIDA]: 'Zona restringida'
+};
+
+// Nomenclatura antigua: nombres exactos (no substring — "GIS" aparecería dentro
+// de palabras como "REGISTRO" y marcaría zonas buenas como peligrosas).
+const DANGER_LEGACY_EXACT = new Set(['OPU', 'GIS', 'AZ4']);
+
+/**
+ * Determina si una zona es de peligro a partir de su nombre y el de su carpeta.
+ * Devuelve null si no es peligrosa, o el tipo (constante DANGER_*) si lo es.
+ */
+function classifyDanger(zoneName, folderName) {
+  const n = (zoneName || '').trim();
+  if (!n) return null;
+
+  const upper = n.toUpperCase();
+
+  // Nomenclatura nueva (2025+) — por nombre del placemark
+  if (upper.includes('BLOQUEAD'))                          return DANGER_BLOQUEADO;
+  if (upper.includes('HORARIO') && upper.includes('RESTR')) return DANGER_HORARIO;
+
+  // Nomenclatura antigua (OPU / GIS / AZ4) — coincidencia EXACTA
+  if (DANGER_LEGACY_EXACT.has(upper)) return DANGER_RESTRINGIDA;
+
+  // Respaldo: si la carpeta contenedora es de zonas de peligro, marcar la zona
+  // aunque su nombre no siga ninguna convención conocida (nomenclaturas futuras).
+  const f = (folderName || '').toUpperCase();
+  if (f.includes('PELIGRO')) {
+    if (upper.includes('BLOQUEAD'))                           return DANGER_BLOQUEADO;
+    if (upper.includes('HORARIO') && upper.includes('RESTR')) return DANGER_HORARIO;
+    return DANGER_RESTRINGIDA;
+  }
+
+  return null;
+}
+
+// Cuenta zonas de peligro por tipo
+function countDanger(zones) {
+  const acc = {};
+  for (const z of (zones || [])) {
+    if (!z.dangerType) continue;
+    acc[z.dangerType] = (acc[z.dangerType] || 0) + 1;
+  }
+  return acc;
 }
 
 // Garantiza que la tabla coverage_zones exista (y la migra si viene de una versión anterior)
@@ -139,6 +207,9 @@ async function ensureCoverageTable() {
   // Migración para tablas creadas antes de que existieran type/source
   await pool.query(`ALTER TABLE public.coverage_zones ADD COLUMN IF NOT EXISTS type   TEXT DEFAULT 'Polygon'`);
   await pool.query(`ALTER TABLE public.coverage_zones ADD COLUMN IF NOT EXISTS source TEXT`);
+  // Zonas de peligro: BLOQUEADO / HORARIO_RESTRINGIDO / RESTRINGIDA (NULL = normal)
+  await pool.query(`ALTER TABLE public.coverage_zones ADD COLUMN IF NOT EXISTS danger_type TEXT`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_coverage_zones_danger ON public.coverage_zones (danger_type) WHERE danger_type IS NOT NULL`);
 
   // Registro de NetworkLinks (mapas externos) — permite reintentar los fallidos
   // sin volver a subir el KMZ, y sobrevive reinicios del servidor.
@@ -166,16 +237,17 @@ async function appendZonesToDB(zones, fileName) {
     let   p      = 1;
     for (const z of batch) {
       const bbox = buildBBox(z.coordinates);
-      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
       params.push(
         fileName, z.name, z.type || 'Polygon', z.source || null,
+        z.dangerType || null,
         JSON.stringify(z.coordinates),
         bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
       );
     }
     await pool.query(
       `INSERT INTO public.coverage_zones
-         (file_name, name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+         (file_name, name, type, source, danger_type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
        VALUES ${values.join(',')}`,
       params
     );
@@ -201,12 +273,13 @@ async function saveZonesToDB(zones, fileName) {
 
       for (const z of batch) {
         const bbox = buildBBox(z.coordinates);
-        values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         params.push(
           fileName,
           z.name,
           z.type || 'Polygon',
           z.source || null,
+          z.dangerType || null,
           JSON.stringify(z.coordinates),
           bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
         );
@@ -214,7 +287,7 @@ async function saveZonesToDB(zones, fileName) {
 
       await pool.query(
         `INSERT INTO public.coverage_zones
-           (file_name, name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+           (file_name, name, type, source, danger_type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
          VALUES ${values.join(',')}`,
         params
       );
@@ -231,7 +304,7 @@ async function loadZonesFromDB() {
   try {
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      `SELECT name, type, source, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat, file_name, loaded_at
+      `SELECT name, type, source, danger_type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat, file_name, loaded_at
        FROM public.coverage_zones ORDER BY id`
     );
     if (!rows.length) return null;
@@ -241,13 +314,17 @@ async function loadZonesFromDB() {
       coordinates: r.coordinates,
       type:        r.type || 'Polygon',
       source:      r.source || null,
+      // Zonas guardadas ANTES de esta versión no tienen danger_type en DB.
+      // Se reclasifican al vuelo para no exigir recargar el KMZ.
+      dangerType:  r.danger_type || classifyDanger(r.name, '') || undefined,
       bbox: {
         minLon: r.bbox_minlon, minLat: r.bbox_minlat,
         maxLon: r.bbox_maxlon, maxLat: r.bbox_maxlat
       }
     }));
 
-    console.log('[Coverage] Restaurado desde DB — zonas:', zones.length);
+    console.log('[Coverage] Restaurado desde DB — zonas:', zones.length,
+      '| de peligro:', zones.filter(z => z.dangerType).length);
     return { zones, fileName: rows[0].file_name, savedAt: rows[0].loaded_at };
   } catch (e) {
     console.warn('[Coverage] No se pudo restaurar desde DB:', e.message);
@@ -275,7 +352,7 @@ async function ensureZonesLoaded() {
       loadedZones  = cached.zones;
       loadedAt     = cached.savedAt;
       loadedFile   = cached.fileName;
-      spatialIndex = buildSpatialIndex(loadedZones);
+      rebuildIndexes(loadedZones);
       console.log('[Coverage] Restauración lazy exitosa — zonas:', loadedZones.length);
       return true;
     }
@@ -295,7 +372,7 @@ async function ensureZonesLoaded() {
         loadedZones  = cached.zones;
         loadedAt     = cached.savedAt;
         loadedFile   = cached.fileName;
-        spatialIndex = buildSpatialIndex(loadedZones);
+        rebuildIndexes(loadedZones);
         console.log('[Coverage] Inicialización exitosa — zonas:', loadedZones.length);
       } else {
         console.log('[Coverage] Sin zonas previas en DB — esperando carga de KMZ');
@@ -345,8 +422,19 @@ function buildBBox(coords) {
   return { minLon, minLat, maxLon, maxLat };
 }
 
-function buildSpatialIndex(zones) {
+/**
+ * Construye la grilla espacial.
+ * @param {Array}   zones  todas las zonas cargadas
+ * @param {Object}  opts   { soloPeligro: true } → indexa SOLO zonas de peligro
+ *
+ * Se construyen DOS índices independientes (cobertura y peligro) porque son
+ * preguntas distintas: un punto puede tener cobertura Y estar en zona bloqueada
+ * a la vez. Con un solo índice se devolvía la primera coincidencia y la alerta
+ * de peligro podía quedar enmascarada por una zona de cobertura.
+ */
+function buildSpatialIndex(zones, opts = {}) {
   const t0 = Date.now();
+  const soloPeligro = !!opts.soloPeligro;
 
   // 1. Pre-calcular bounding box de cada zona (en el objeto mismo)
   for (const zone of zones) {
@@ -358,8 +446,11 @@ function buildSpatialIndex(zones) {
   //    LineString quedan en loadedZones (para conteos / listado / mapa) pero
   //    no en la grilla, porque no son geometrías cerradas válidas para "contiene".
   const cells = new Map();
+  let indexadas = 0;
   for (let i = 0; i < zones.length; i++) {
     if (zones[i].type && zones[i].type !== 'Polygon') continue;
+    if (soloPeligro && !zones[i].dangerType) continue;
+    if (!soloPeligro && zones[i].dangerType) continue; // peligro va en su propio índice
     const { minLon, minLat, maxLon, maxLat } = zones[i].bbox;
     const c0 = Math.floor(minLon / GRID_CELL);
     const c1 = Math.floor(maxLon / GRID_CELL);
@@ -372,10 +463,20 @@ function buildSpatialIndex(zones) {
         cells.get(key).push(i);
       }
     }
+    indexadas++;
   }
 
-  console.log(`[Coverage] Índice espacial listo: ${cells.size} celdas / ${zones.length} zonas (${Date.now() - t0}ms)`);
+  console.log(
+    `[Coverage] Índice ${soloPeligro ? 'de PELIGRO' : 'de cobertura'} listo:`,
+    `${cells.size} celdas / ${indexadas} polígonos (${Date.now() - t0}ms)`
+  );
   return cells;
+}
+
+// Reconstruye AMBOS índices a partir de las zonas en memoria
+function rebuildIndexes(zones) {
+  spatialIndex = buildSpatialIndex(zones);
+  dangerIndex  = buildSpatialIndex(zones, { soloPeligro: true });
 }
 
 /**
@@ -385,6 +486,7 @@ function buildSpatialIndex(zones) {
  * 3. Ray-casting solo si pasa el bbox
  */
 function findZoneForPoint(longitude, latitude, zones, cells) {
+  if (!cells) return null;
   const row = Math.floor(latitude  / GRID_CELL);
   const col = Math.floor(longitude / GRID_CELL);
   const key = `${row},${col}`;
@@ -401,6 +503,58 @@ function findZoneForPoint(longitude, latitude, zones, cells) {
     if (pointInPolygon(point, zone.coordinates)) return zone;
   }
   return null;
+}
+
+/**
+ * Devuelve TODAS las zonas de peligro que contienen el punto.
+ * Se devuelven todas (no la primera) porque un punto puede caer en el solape de
+ * una zona "Bloqueado" y una "Horario restringido"; el operador debe ver la más
+ * grave, y para eso hay que tenerlas todas.
+ */
+function findDangerZonesForPoint(longitude, latitude, zones, cells) {
+  if (!cells) return [];
+  const row = Math.floor(latitude  / GRID_CELL);
+  const col = Math.floor(longitude / GRID_CELL);
+  const candidates = cells.get(`${row},${col}`);
+  if (!candidates || candidates.length === 0) return [];
+
+  const point = [longitude, latitude];
+  const out = [];
+  for (const idx of candidates) {
+    const zone = zones[idx];
+    const { minLon, minLat, maxLon, maxLat } = zone.bbox;
+    if (longitude < minLon || longitude > maxLon ||
+        latitude  < minLat || latitude  > maxLat) continue;
+    if (pointInPolygon(point, zone.coordinates)) out.push(zone);
+  }
+  return out;
+}
+
+// Gravedad: BLOQUEADO manda sobre HORARIO_RESTRINGIDO, y este sobre RESTRINGIDA
+const DANGER_SEVERITY = { [DANGER_BLOQUEADO]: 3, [DANGER_HORARIO]: 2, [DANGER_RESTRINGIDA]: 1 };
+
+/**
+ * Evalúa el peligro de un punto y devuelve un resumen listo para la UI.
+ */
+function evaluarPeligro(longitude, latitude) {
+  const zonas = findDangerZonesForPoint(longitude, latitude, loadedZones, dangerIndex);
+  if (zonas.length === 0) {
+    return { esPeligrosa: false, tipo: null, etiqueta: null, zonas: [] };
+  }
+  // La más grave define el veredicto
+  const peor = zonas.reduce((a, b) =>
+    (DANGER_SEVERITY[b.dangerType] || 0) > (DANGER_SEVERITY[a.dangerType] || 0) ? b : a
+  );
+  return {
+    esPeligrosa: true,
+    tipo:        peor.dangerType,
+    etiqueta:    DANGER_LABELS[peor.dangerType] || 'Zona restringida',
+    zonas: zonas.map(z => ({
+      nombre:   z.name,
+      tipo:     z.dangerType,
+      etiqueta: DANGER_LABELS[z.dangerType] || 'Zona restringida'
+    }))
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -438,6 +592,29 @@ function parseKMLFast(kmlString) {
   const coordReg = /<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/g;
   let cm;
 
+  // Mapa de posición → nombre de la carpeta que la contiene. Se usa para
+  // clasificar zonas de peligro cuyo nombre no sigue ninguna convención
+  // conocida pero que viven en una carpeta "Zonas_Peligro_*".
+  const folderMarks = [];
+  const folderReg = /<(?:Folder|Document)>\s*(?:<[^>]+>\s*)*?<name>\s*([\s\S]*?)\s*<\/name>/g;
+  let fm;
+  while ((fm = folderReg.exec(kmlString)) !== null) {
+    folderMarks.push({
+      idx:  fm.index,
+      name: fm[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim()
+    });
+  }
+  // Devuelve el nombre de la última carpeta abierta antes de `pos`
+  function folderAt(pos) {
+    let lo = 0, hi = folderMarks.length - 1, res = '';
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (folderMarks[mid].idx <= pos) { res = folderMarks[mid].name; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return res;
+  }
+
   while ((cm = coordReg.exec(kmlString)) !== null) {
     // Parsear pares lon,lat,alt separados por espacios/saltos
     const coords = cm[1].trim().split(/\s+/).filter(Boolean).map(pair => {
@@ -461,7 +638,13 @@ function parseKMLFast(kmlString) {
         .trim();
     }
 
-    zones.push({ name, coordinates: coords, type });
+    // ¿Es zona de peligro? Se evalúa por nombre y, como respaldo, por la
+    // carpeta contenedora ("Zonas_Peligro_Urbano", "Zonas-Peligros-Gye"…).
+    const dangerType = classifyDanger(name, folderAt(cm.index));
+
+    const zone = { name, coordinates: coords, type };
+    if (dangerType) zone.dangerType = dangerType;
+    zones.push(zone);
   }
 
   // NetworkLinks: enlaces a mapas externos (Google My Maps "mid=...", Telcodrive, etc.)
@@ -474,12 +657,14 @@ function parseKMLFast(kmlString) {
     if (href) networkLinks.push(href);
   }
 
+  const nPeligro = zones.filter(z => z.dangerType).length;
   console.log(
     '[KML] Elementos extraídos —',
     'Polygon:', zones.filter(z => z.type === 'Polygon').length,
     '| Point:', zones.filter(z => z.type === 'Point').length,
     '| LineString:', zones.filter(z => z.type === 'LineString').length,
-    '| NetworkLinks:', networkLinks.length
+    '| NetworkLinks:', networkLinks.length,
+    nPeligro > 0 ? `| ⚠️ Zonas de peligro: ${nPeligro} ${JSON.stringify(countDanger(zones))}` : ''
   );
   return { zones, networkLinks };
 }
@@ -630,7 +815,7 @@ async function fetchAndParseLink(href, depth, visited) {
 function mergeZonesIntoMemory(newZones) {
   if (!newZones || newZones.length === 0) return;
   loadedZones  = (loadedZones || []).concat(newZones);
-  spatialIndex = buildSpatialIndex(loadedZones);
+  rebuildIndexes(loadedZones);
 }
 
 // Actualiza el registro de un enlace en coverage_links (para poder reintentar)
@@ -752,7 +937,7 @@ exports.loadCoverage = async (req, res) => {
     loadedZones  = zones;
     loadedAt     = new Date().toISOString();
     loadedFile   = req.file.originalname;
-    spatialIndex = buildSpatialIndex(zones);
+    rebuildIndexes(zones);
 
     res.status(200).json({
       status: 'ok',
@@ -813,17 +998,23 @@ exports.checkCoverage = async (req, res) => {
       }
     }
 
-    const zone = spatialIndex
-      ? findZoneForPoint(longitude, latitude, loadedZones, spatialIndex)
-      : (() => {
-          const p = [longitude, latitude];
-          return loadedZones.find(z => pointInPolygon(p, z.coordinates)) || null;
-        })();
+    // ── DOS PREGUNTAS INDEPENDIENTES ─────────────────────────────────────────
+    // 1) ¿Hay cobertura?   2) ¿Es zona de peligro?
+    // Se evalúan por separado contra índices distintos: un punto puede tener
+    // cobertura Y estar en zona bloqueada al mismo tiempo.
+    const zone    = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
+    const peligro = evaluarPeligro(longitude, latitude);
 
     return res.status(200).json({
       latitude, longitude,
+      // Pregunta 1 — cobertura
       hasCoverage: !!zone,
       zoneName:    zone ? zone.name : 'Sin cobertura',
+      // Pregunta 2 — peligro (siempre presente, independiente de la cobertura)
+      esZonaPeligrosa: peligro.esPeligrosa,
+      peligroTipo:     peligro.tipo,      // BLOQUEADO | HORARIO_RESTRINGIDO | RESTRINGIDA | null
+      peligroEtiqueta: peligro.etiqueta,  // texto para mostrar
+      peligroZonas:    peligro.zonas,     // todas las zonas de peligro que contienen el punto
       timestamp:   new Date().toISOString()
     });
 
@@ -894,7 +1085,7 @@ exports.loadBatch = async (req, res) => {
         loadedZones  = cached.zones;
         loadedFile   = cached.fileName;
         loadedAt     = new Date().toISOString();
-        spatialIndex = buildSpatialIndex(loadedZones);
+        rebuildIndexes(loadedZones);
         console.log('[Coverage] Índice espacial listo — elementos totales:', loadedZones.length);
       } else {
         // Archivo solo-enlaces: aún no hay ninguna zona en DB. Inicializar el
@@ -903,7 +1094,7 @@ exports.loadBatch = async (req, res) => {
         loadedZones  = [];
         loadedFile   = fileName;
         loadedAt     = new Date().toISOString();
-        spatialIndex = buildSpatialIndex(loadedZones);
+        rebuildIndexes(loadedZones);
       }
 
       // Si el navegador detectó NetworkLinks (mapas externos), resolverlos en
@@ -953,26 +1144,32 @@ exports.checkBatch = async (req, res) => {
       const latitude  = parseFloat(p.latitude);
       const longitude = parseFloat(p.longitude);
 
-      const zone = spatialIndex
-        ? findZoneForPoint(longitude, latitude, loadedZones, spatialIndex)
-        : (() => {
-            const pt = [longitude, latitude];
-            return loadedZones.find(z => pointInPolygon(pt, z.coordinates)) || null;
-          })();
+      // Dos preguntas independientes por cada punto
+      const zone    = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
+      const peligro = evaluarPeligro(longitude, latitude);
 
       return {
         latitude, longitude,
         hasCoverage: !!zone,
-        zoneName:    zone ? zone.name : 'Sin cobertura'
+        zoneName:    zone ? zone.name : 'Sin cobertura',
+        esZonaPeligrosa: peligro.esPeligrosa,
+        peligroTipo:     peligro.tipo,
+        peligroEtiqueta: peligro.etiqueta,
+        peligroZonas:    peligro.zonas
       };
     });
 
     const withCoverage = results.filter(r => r.hasCoverage).length;
+    const enPeligro    = results.filter(r => r.esZonaPeligrosa).length;
 
     return res.status(200).json({
       totalPoints: results.length,
       pointsWithCoverage: withCoverage,
       pointsWithoutCoverage: results.length - withCoverage,
+      // Resumen de peligro del lote
+      pointsEnZonaPeligrosa: enPeligro,
+      pointsBloqueados:      results.filter(r => r.peligroTipo === DANGER_BLOQUEADO).length,
+      pointsHorarioRestringido: results.filter(r => r.peligroTipo === DANGER_HORARIO).length,
       results,
       timestamp: new Date().toISOString()
     });
@@ -995,6 +1192,7 @@ exports.getZones = (req, res) => {
       zonesLoaded: true,
       totalZones: loadedZones.length,
       byType: countByType(loadedZones),
+      byDanger: countDanger(loadedZones),
       networkLinks: networkLinksState,
       zones: loadedZones.slice(0, 100),
       loadedAt,
@@ -1003,6 +1201,31 @@ exports.getZones = (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── GET /api/coverage/danger-zones ───────────────────────────────────────────
+// Lista las zonas de peligro cargadas (sin coordenadas, para que sea liviano).
+// Sirve para auditar qué está detectando el sistema.
+exports.getDangerZones = async (req, res) => {
+  try {
+    if (!loadedZones || loadedZones.length === 0) await ensureZonesLoaded();
+    const zonas = (loadedZones || []).filter(z => z.dangerType);
+
+    return res.status(200).json({
+      total: zonas.length,
+      porTipo: countDanger(loadedZones),
+      etiquetas: DANGER_LABELS,
+      zonas: zonas.map(z => ({
+        nombre:   z.name,
+        tipo:     z.dangerType,
+        etiqueta: DANGER_LABELS[z.dangerType] || 'Zona restringida',
+        bbox:     z.bbox || buildBBox(z.coordinates)
+      }))
+    });
+  } catch (error) {
+    console.error('[Coverage getDangerZones Error]', error);
     return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
@@ -1049,6 +1272,9 @@ exports.getCoverageStatus = (req, res) => {
     message: 'Coverage service active',
     zonesLoaded: loadedZones ? loadedZones.length : 0,
     byType: loadedZones ? countByType(loadedZones) : {},
+    byDanger: loadedZones ? countDanger(loadedZones) : {},
+    dangerTotal: loadedZones ? loadedZones.filter(z => z.dangerType).length : 0,
+    dangerLabels: DANGER_LABELS,
     networkLinks: networkLinksState,
     loadedAt: loadedAt || null,
     fileName: loadedFile || null,

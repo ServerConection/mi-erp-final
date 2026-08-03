@@ -46,6 +46,13 @@ router.post('/check-batch', verificarToken, coverageController.checkBatch);
 router.get('/zones', verificarToken, coverageController.getZones);
 
 /**
+ * GET /api/coverage/danger-zones
+ * Lista las zonas de peligro detectadas (Bloqueado / Horario restringido / OPU / GIS)
+ * Requiere autenticación
+ */
+router.get('/danger-zones', verificarToken, coverageController.getDangerZones);
+
+/**
  * GET /api/coverage/status
  * Estado del servicio
  * Public endpoint (sin autenticación)

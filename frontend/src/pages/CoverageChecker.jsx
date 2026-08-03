@@ -83,12 +83,44 @@ function parseLocationUrl(text) {
   return null;
 }
 
-// Zonas marcadas como peligrosas
-const ZONAS_PELIGROSAS = ["AZ4", "OPU", "GIS"];
-function esZonaPeligrosa(zoneName) {
-  if (!zoneName) return false;
-  const upper = zoneName.toUpperCase();
-  return ZONAS_PELIGROSAS.some(z => upper.includes(z));
+// ─────────────────────────────────────────────────────────────────────────────
+// Zonas de peligro
+// El backend las clasifica geométricamente (point-in-polygon contra la capa de
+// zonas de peligro) y devuelve `esZonaPeligrosa` + `peligroTipo`. Aquí solo se
+// presenta. Antes se adivinaba por el NOMBRE de la zona de cobertura con una
+// lista fija ["AZ4","OPU","GIS"], lo que dejaba fuera las zonas nuevas
+// ("Bloqueado" / "Horario restringido") — la gran mayoría.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PELIGRO_ESTILOS = {
+  BLOQUEADO: {
+    etiqueta:  "ZONA BLOQUEADA",
+    icono:     "⛔",
+    mensaje:   "NO INGRESAR. Zona bloqueada por seguridad.",
+    caja:      "bg-red-100 border-red-500 text-red-900",
+    chip:      "bg-red-600 text-white",
+    texto:     "text-red-700",
+  },
+  HORARIO_RESTRINGIDO: {
+    etiqueta:  "HORARIO RESTRINGIDO",
+    icono:     "🕒",
+    mensaje:   "Ingreso permitido SOLO en horario autorizado. Confirmar con supervisión.",
+    caja:      "bg-amber-100 border-amber-500 text-amber-900",
+    chip:      "bg-amber-500 text-white",
+    texto:     "text-amber-700",
+  },
+  RESTRINGIDA: {
+    etiqueta:  "ZONA RESTRINGIDA",
+    icono:     "⚠️",
+    mensaje:   "Zona clasificada como peligrosa. Proceder con precaución.",
+    caja:      "bg-orange-100 border-orange-500 text-orange-900",
+    chip:      "bg-orange-500 text-white",
+    texto:     "text-orange-700",
+  },
+};
+
+function estiloPeligro(tipo) {
+  return PELIGRO_ESTILOS[tipo] || PELIGRO_ESTILOS.RESTRINGIDA;
 }
 
 function isShortenedUrl(text) {
@@ -205,6 +237,8 @@ export default function CoverageChecker() {
           fileName:     data.fileName   || null,
           loadedAt:     data.loadedAt   || null,
           byType:       data.byType     || {},
+          byDanger:     data.byDanger   || {},
+          dangerTotal:  data.dangerTotal || 0,
           networkLinks: data.networkLinks || null, // { total, resolved, failed, loading }
         });
       }
@@ -332,8 +366,14 @@ export default function CoverageChecker() {
       const entry = {
         lat,
         lon,
+        // Pregunta 1 — cobertura
         hasCoverage: data.hasCoverage,
         zoneName: data.zoneName || "—",
+        // Pregunta 2 — peligro (independiente de la cobertura)
+        esZonaPeligrosa: !!data.esZonaPeligrosa,
+        peligroTipo:     data.peligroTipo     || null,
+        peligroEtiqueta: data.peligroEtiqueta || null,
+        peligroZonas:    data.peligroZonas    || [],
         timestamp: new Date().toLocaleString("es-EC"),
         sourceLink: tab === "link" ? linkInput.trim() : null,
       };
@@ -527,12 +567,14 @@ export default function CoverageChecker() {
   // ─────────────────────────────────────────────────────────────────────────
   function exportCSV() {
     if (!history.length) return;
-    const headers = ["Latitud", "Longitud", "Cobertura", "Zona", "Fecha/Hora", "Enlace origen"];
+    const headers = ["Latitud", "Longitud", "Cobertura", "Zona", "Zona peligrosa", "Tipo de restricción", "Fecha/Hora", "Enlace origen"];
     const rows = history.map((h) => [
       h.lat?.toFixed(6) ?? "",
       h.lon?.toFixed(6) ?? "",
       h.hasCoverage ? "Sí" : "No",
       h.zoneName || "—",
+      h.esZonaPeligrosa ? "Sí" : "No",
+      h.esZonaPeligrosa ? estiloPeligro(h.peligroTipo).etiqueta : "Sin restricción",
       h.timestamp,
       h.sourceLink || "",
     ]);
@@ -608,6 +650,20 @@ export default function CoverageChecker() {
                   <span className="ml-2 text-teal-600">
                     — {coverageStatus.fileName}
                   </span>
+                )}
+                {coverageStatus.dangerTotal > 0 && (
+                  <div className="text-xs mt-1 font-semibold text-red-700">
+                    ⛔ Zonas de peligro activas: {coverageStatus.dangerTotal.toLocaleString()}
+                    {coverageStatus.byDanger && (
+                      <span className="font-normal ml-1">
+                        ({[
+                          coverageStatus.byDanger.BLOQUEADO && `Bloqueado: ${coverageStatus.byDanger.BLOQUEADO}`,
+                          coverageStatus.byDanger.HORARIO_RESTRINGIDO && `Horario restringido: ${coverageStatus.byDanger.HORARIO_RESTRINGIDO}`,
+                          coverageStatus.byDanger.RESTRINGIDA && `Restringida: ${coverageStatus.byDanger.RESTRINGIDA}`,
+                        ].filter(Boolean).join(" · ")})
+                      </span>
+                    )}
+                  </div>
                 )}
                 {coverageStatus.loadedAt && (
                   <span className="ml-2 opacity-60 text-xs">
@@ -905,45 +961,57 @@ export default function CoverageChecker() {
                 {result.hasCoverage ? "✅ SÍ tiene cobertura" : "❌ NO tiene cobertura"}
               </h3>
 
-              {/* Alerta de zona peligrosa */}
-              {result.hasCoverage && esZonaPeligrosa(result.zoneName) && (
-                <div className="mb-4 flex items-start gap-3 bg-red-100 border border-red-400 text-red-800 rounded-xl px-4 py-3">
-                  <span className="text-2xl leading-none">⚠️</span>
-                  <div>
-                    <p className="font-bold text-sm">ZONA PELIGROSA</p>
-                    <p className="text-xs mt-0.5">
-                      La zona <strong>{result.zoneName}</strong> está clasificada como peligrosa.
-                      Proceder con precaución.
-                    </p>
+              {/* ── ALERTA DE ZONA DE PELIGRO ──────────────────────────────
+                  Se evalúa SIEMPRE, tenga o no cobertura: son dos preguntas
+                  independientes. El estilo y el texto cambian según el tipo
+                  (Bloqueado ≠ Horario restringido). */}
+              {result.esZonaPeligrosa && (() => {
+                const est = estiloPeligro(result.peligroTipo);
+                return (
+                  <div className={`mb-4 flex items-start gap-3 border-2 rounded-xl px-4 py-3 ${est.caja}`}>
+                    <span className="text-3xl leading-none">{est.icono}</span>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-base tracking-wide">{est.etiqueta}</p>
+                      <p className="text-sm mt-0.5 font-medium">{est.mensaje}</p>
+                      {result.peligroZonas?.length > 0 && (
+                        <p className="text-xs mt-1.5 opacity-80">
+                          Zona{result.peligroZonas.length > 1 ? "s" : ""} afectada
+                          {result.peligroZonas.length > 1 ? "s" : ""}:{" "}
+                          {result.peligroZonas.map(z => z.etiqueta).join(", ")}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
                   { label: "Latitud",  val: result.lat?.toFixed(6) },
                   { label: "Longitud", val: result.lon?.toFixed(6) },
                   { label: "Zona",     val: result.zoneName },
+                  { label: "Seguridad", val: result.esZonaPeligrosa
+                      ? estiloPeligro(result.peligroTipo).etiqueta
+                      : "Sin restricción" },
                   { label: "Hora",     val: result.timestamp },
-                ].map(({ label, val }) => (
+                ].map(({ label, val }) => {
+                  const esSeg = label === "Seguridad";
+                  const alerta = esSeg && result.esZonaPeligrosa;
+                  const est = estiloPeligro(result.peligroTipo);
+                  return (
                   <div
                     key={label}
-                    className={`rounded-xl p-3 ${
-                      label === "Zona" && esZonaPeligrosa(val)
-                        ? "bg-red-200 border border-red-400"
-                        : "bg-white"
-                    }`}
+                    className={`rounded-xl p-3 ${alerta ? est.caja + " border-2" : "bg-white"}`}
                   >
                     <p className="text-xs text-slate-500 mb-0.5">{label}</p>
                     <p className={`font-semibold text-sm break-words ${
-                      label === "Zona" && esZonaPeligrosa(val)
-                        ? "text-red-800"
-                        : "text-slate-800"
+                      alerta ? "font-extrabold" : esSeg ? "text-green-700" : "text-slate-800"
                     }`}>
-                      {label === "Zona" && esZonaPeligrosa(val) ? `⚠️ ${val}` : val}
+                      {alerta ? `${est.icono} ${val}` : val}
                     </p>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               {result.lat && result.lon && (
                 <a
@@ -989,7 +1057,7 @@ export default function CoverageChecker() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      {["Latitud", "Longitud", "Cobertura", "Zona", "Fecha/Hora"].map((h) => (
+                      {["Latitud", "Longitud", "Cobertura", "Zona", "Seguridad", "Fecha/Hora"].map((h) => (
                         <th key={h} className="px-4 py-2.5 text-left font-semibold text-xs">
                           {h}
                         </th>
@@ -997,12 +1065,14 @@ export default function CoverageChecker() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((item) => (
+                    {history.map((item) => {
+                      const est = estiloPeligro(item.peligroTipo);
+                      return (
                       <tr
                         key={item.id}
                         className={`border-t border-slate-100 hover:bg-slate-50 ${
-                          item.hasCoverage && esZonaPeligrosa(item.zoneName)
-                            ? "bg-red-50/60"
+                          item.esZonaPeligrosa
+                            ? (item.peligroTipo === "BLOQUEADO" ? "bg-red-50/70" : "bg-amber-50/70")
                             : item.hasCoverage
                             ? "bg-green-50/40"
                             : ""
@@ -1021,14 +1091,22 @@ export default function CoverageChecker() {
                             {item.hasCoverage ? "✅ Sí" : "❌ No"}
                           </span>
                         </td>
-                        <td className={`px-4 py-2.5 text-xs font-semibold ${
-                          esZonaPeligrosa(item.zoneName) ? "text-red-700" : "text-slate-600"
-                        }`}>
-                          {esZonaPeligrosa(item.zoneName) ? `⚠️ ${item.zoneName}` : item.zoneName}
+                        <td className="px-4 py-2.5 text-xs font-semibold text-slate-600">
+                          {item.zoneName}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {item.esZonaPeligrosa ? (
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${est.chip}`}>
+                              {est.icono} {est.etiqueta}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-xs text-slate-500">{item.timestamp}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

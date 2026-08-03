@@ -33,7 +33,7 @@ function scoreColor(score) {
 }
 
 export default function BotAuditor() {
-  const [filtros, setFiltros] = useState({ empresa: "", calificacion: "", canal: "", q: "" });
+  const [filtros, setFiltros] = useState({ empresa: "", calificacion: "", canal: "", q: "", desde: "", hasta: "" });
   const [page, setPage] = useState(1);
   const [data, setData] = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -50,6 +50,9 @@ export default function BotAuditor() {
     if (filtros.calificacion) params.set("calificacion", filtros.calificacion);
     if (filtros.canal) params.set("canal", filtros.canal);
     if (filtros.q) params.set("q", filtros.q);
+    // desde/hasta filtran por FECHA DE CREACIÓN DEL LEAD
+    if (filtros.desde) params.set("desde", filtros.desde);
+    if (filtros.hasta) params.set("hasta", filtros.hasta);
     params.set("page", page);
     params.set("limit", 25);
     return params.toString();
@@ -78,11 +81,13 @@ export default function BotAuditor() {
     let activo = true;
     const statsParams = new URLSearchParams();
     if (filtros.empresa) statsParams.set("empresa", filtros.empresa);
+    if (filtros.desde) statsParams.set("desde", filtros.desde);
+    if (filtros.hasta) statsParams.set("hasta", filtros.hasta);
     fetchJson(`/api/bot-auditor/stats?${statsParams.toString()}`)
       .then((r) => { if (activo) setStats(r.data); })
       .catch(() => {});
     return () => { activo = false; };
-  }, [filtros.empresa, refreshKey]);
+  }, [filtros.empresa, filtros.desde, filtros.hasta, refreshKey]);
 
   const abrirDetalle = async (id) => {
     setDetalleLoading(true);
@@ -164,12 +169,39 @@ export default function BotAuditor() {
           <option value="VENTA">VENTA</option>
           <option value="ATC">ATC</option>
         </select>
+        {/* Rango por FECHA DE CREACIÓN DEL LEAD */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>Creado del</span>
+          <input
+            type="date"
+            value={filtros.desde}
+            max={filtros.hasta || undefined}
+            onChange={(e) => { setPage(1); setFiltros((f) => ({ ...f, desde: e.target.value })); }}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }}
+          />
+          <span style={{ fontSize: 12, color: "#64748b" }}>al</span>
+          <input
+            type="date"
+            value={filtros.hasta}
+            min={filtros.desde || undefined}
+            onChange={(e) => { setPage(1); setFiltros((f) => ({ ...f, hasta: e.target.value })); }}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }}
+          />
+        </div>
         <input
           placeholder="Buscar por lead, asesor u observación…"
           value={filtros.q}
           onChange={(e) => { setPage(1); setFiltros((f) => ({ ...f, q: e.target.value })); }}
           style={{ flex: 1, minWidth: 220, padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }}
         />
+        {(filtros.desde || filtros.hasta || filtros.q || filtros.empresa || filtros.calificacion) && (
+          <button
+            onClick={() => { setPage(1); setFiltros({ empresa: "", calificacion: "", canal: "", q: "", desde: "", hasta: "" }); }}
+            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 13, cursor: "pointer", color: "#475569" }}
+          >
+            Limpiar
+          </button>
+        )}
       </div>
 
       {/* TABLA */}
@@ -184,7 +216,7 @@ export default function BotAuditor() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
-                {["Lead", "Empresa", "Asesor", "Canal", "Calif.", "Venta", "ATC", "Auditado", "Detalle"].map((h) => (
+                {["Lead", "Creado", "Empresa", "Asesor", "Canal", "Calif.", "Venta", "ATC", "Últ. mensaje", "Auditado", "Detalle"].map((h) => (
                   <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -195,6 +227,7 @@ export default function BotAuditor() {
                 return (
                   <tr key={row.id} style={{ borderTop: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "10px 14px" }}>{row.id_bitrix}</td>
+                    <td style={{ padding: "10px 14px", color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtFecha(row.fecha_creacion_lead)}</td>
                     <td style={{ padding: "10px 14px" }}>{row.empresa || "—"}</td>
                     <td style={{ padding: "10px 14px" }}>{row.asesor || "—"}</td>
                     <td style={{ padding: "10px 14px" }}>{row.tipo_canal || "—"}</td>
@@ -205,6 +238,7 @@ export default function BotAuditor() {
                     </td>
                     <td style={{ padding: "10px 14px", fontWeight: 700, color: scoreColor(row.puntuacion_venta) }}>{row.puntuacion_venta ?? "—"}</td>
                     <td style={{ padding: "10px 14px", fontWeight: 700, color: scoreColor(row.puntuacion_atc) }}>{row.puntuacion_atc ?? "—"}</td>
+                    <td style={{ padding: "10px 14px", color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtFecha(row.ultimo_mensaje_at)}</td>
                     <td style={{ padding: "10px 14px", color: "#64748b", whiteSpace: "nowrap" }}>{fmtFecha(row.fecha_hora_auditada)}</td>
                     <td style={{ padding: "10px 14px" }}>
                       <button onClick={() => abrirDetalle(row.id)} style={{ background: "#1e293b", color: "white", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -264,6 +298,7 @@ export default function BotAuditor() {
                   <div><strong>Puntuación Venta:</strong> {detalle.puntuacion_venta ?? "—"}</div>
                   <div><strong>Puntuación ATC:</strong> {detalle.puntuacion_atc ?? "—"}</div>
                   <div><strong>Lead creado:</strong> {fmtFecha(detalle.fecha_creacion_lead)}</div>
+                  <div><strong>Último mensaje:</strong> {fmtFecha(detalle.ultimo_mensaje_at)}</div>
                   <div><strong>Auditado:</strong> {fmtFecha(detalle.fecha_hora_auditada)}</div>
                 </div>
                 <div style={{ marginBottom: 14 }}>

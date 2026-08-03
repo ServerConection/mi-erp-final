@@ -6,12 +6,28 @@
 // =============================================================================
 const pool = require('../config/db');
 
+// Solo se muestran auditorías de leads en ATC o DESCARTE (las dos empresas).
+// Las filas con stage_id NULL son auditorías previas a que el bot guardara la
+// etapa; se incluyen porque el bot únicamente auditaba esas mismas dos etapas.
+const ETAPAS_VISIBLES = (process.env.BOT_AUDITOR_ETAPAS ||
+  'C19:UC_U0JYD8,C19:LOSE,C8:UC_Q9LSSI,C8:LOSE')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+const FILTRO_ETAPA = `(stage_id IS NULL OR stage_id = ANY($__I__))`;
+
+// Un ADMINISTRADOR ve las dos empresas; cualquier otro perfil queda acotado a
+// la suya. Sin esto, GERENCIA de VELSA podía leer auditorías de NOVONET.
+function empresaVisible(req, empresaSolicitada) {
+  const { empresa, perfil } = req.user || {};
+  if (perfil === 'ADMINISTRADOR') return empresaSolicitada || null; // null = todas
+  return empresa || '__SIN_EMPRESA__';
+}
+
 // GET /api/bot-auditor
 // Query params: empresa, calificacion, canal, asesor, desde, hasta, q, page, limit
 async function listarAuditorias(req, res) {
   try {
     const {
-      empresa,
       calificacion,
       canal,
       asesor,
@@ -26,6 +42,10 @@ async function listarAuditorias(req, res) {
     const params = [];
     let i = 1;
 
+    where.push(FILTRO_ETAPA.replace('$__I__', `$${i++}`));
+    params.push(ETAPAS_VISIBLES);
+
+    const empresa = empresaVisible(req, req.query.empresa);
     if (empresa) {
       where.push(`UPPER(empresa) = UPPER($${i++})`);
       params.push(empresa);
@@ -42,12 +62,15 @@ async function listarAuditorias(req, res) {
       where.push(`asesor ILIKE $${i++}`);
       params.push(`%${asesor}%`);
     }
+    // Rango por FECHA DE CREACIÓN DEL LEAD. `hasta` es inclusivo del día
+    // completo (antes '2026-08-01' cortaba en la medianoche y dejaba fuera
+    // todo ese día).
     if (desde) {
-      where.push(`fecha_hora_auditada >= $${i++}`);
+      where.push(`fecha_creacion_lead >= $${i++}`);
       params.push(desde);
     }
     if (hasta) {
-      where.push(`fecha_hora_auditada <= $${i++}`);
+      where.push(`fecha_creacion_lead < ($${i++}::date + INTERVAL '1 day')`);
       params.push(hasta);
     }
     if (q) {
@@ -69,11 +92,11 @@ async function listarAuditorias(req, res) {
 
     const dataResult = await pool.query(
       `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
-              puntuacion_venta, puntuacion_atc, observacion,
-              fecha_creacion_lead, fecha_hora_auditada
+              puntuacion_venta, puntuacion_atc, observacion, stage_id,
+              fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
        FROM auditorias
        ${whereSql}
-       ORDER BY fecha_hora_auditada DESC
+       ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
        LIMIT $${i++} OFFSET $${i++}`,
       [...params, limitNum, offset]
     );
@@ -92,21 +115,25 @@ async function listarAuditorias(req, res) {
 // GET /api/bot-auditor/stats
 async function obtenerEstadisticas(req, res) {
   try {
-    const { empresa, desde, hasta } = req.query;
+    const { desde, hasta } = req.query;
     const where = [];
     const params = [];
     let i = 1;
 
+    where.push(FILTRO_ETAPA.replace('$__I__', `$${i++}`));
+    params.push(ETAPAS_VISIBLES);
+
+    const empresa = empresaVisible(req, req.query.empresa);
     if (empresa) {
       where.push(`UPPER(empresa) = UPPER($${i++})`);
       params.push(empresa);
     }
     if (desde) {
-      where.push(`fecha_hora_auditada >= $${i++}`);
+      where.push(`fecha_creacion_lead >= $${i++}`);
       params.push(desde);
     }
     if (hasta) {
-      where.push(`fecha_hora_auditada <= $${i++}`);
+      where.push(`fecha_creacion_lead < ($${i++}::date + INTERVAL '1 day')`);
       params.push(hasta);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -137,9 +164,18 @@ async function obtenerEstadisticas(req, res) {
 async function obtenerDetalle(req, res) {
   try {
     const { id } = req.params;
+
+    const params = [id];
+    let scope = '';
+    const empresa = empresaVisible(req, null);
+    if (empresa) {
+      scope = ' AND UPPER(empresa) = UPPER($2)';
+      params.push(empresa);
+    }
+
     const result = await pool.query(
-      `SELECT * FROM auditorias WHERE id = $1`,
-      [id]
+      `SELECT * FROM auditorias WHERE id = $1${scope}`,
+      params
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Auditoría no encontrada' });

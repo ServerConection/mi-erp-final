@@ -159,6 +159,37 @@ function soloNuevas(zones) {
   return nuevas;
 }
 
+/**
+ * Quita de memoria todas las zonas que vinieron de un archivo de origen.
+ * Es la base del modo "actualizar": al resubir un archivo, sus zonas viejas
+ * se retiran y entran las nuevas, SIN tocar lo aportado por otros archivos.
+ * Necesario porque si Telconet cambia la forma de un polígono, la clave cambia
+ * y sin esto quedarían conviviendo la versión vieja y la nueva.
+ */
+function quitarZonasDeArchivo(fileName) {
+  if (!loadedZones || !fileName) return 0;
+  const antes = loadedZones.length;
+  const quedan = loadedZones.filter(z => z.fileName !== fileName);
+  if (quedan.length === antes) return 0;
+  setLoadedZones(quedan);
+  return antes - quedan.length;
+}
+
+/** Resumen de los archivos de origen cargados en memoria. */
+function resumenArchivos() {
+  const m = new Map();
+  for (const z of (loadedZones || [])) {
+    const f = z.fileName || '(desconocido)';
+    if (!m.has(f)) m.set(f, { fileName: f, total: 0, cobertura: 0, peligro: 0, puntos: 0 });
+    const r = m.get(f);
+    r.total++;
+    if (z.dangerType) r.peligro++;
+    else if (z.type === 'Point') r.puntos++;
+    else r.cobertura++;
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
 // Estado de resolución de NetworkLinks (enlaces a mapas externos: Google My Maps,
 // Telcodrive, etc.). Se resuelven en background porque pueden ser cientos/miles
 // y cada uno requiere una petición HTTP saliente.
@@ -218,12 +249,23 @@ function classifyDanger(zoneName, folderName) {
   // Nomenclatura antigua (OPU / GIS / AZ4) — coincidencia EXACTA
   if (DANGER_LEGACY_EXACT.has(upper)) return DANGER_RESTRINGIDA;
 
-  // Respaldo: si la carpeta contenedora es de zonas de peligro, marcar la zona
-  // aunque su nombre no siga ninguna convención conocida (nomenclaturas futuras).
+  // Respaldo por CARPETA contenedora: marca la zona aunque su nombre no siga
+  // ninguna convención conocida. Cubre dos casos:
+  //   • carpetas originales de Telconet ("Zonas_Peligro_Urbano", "Zonas-Peligros-Gye")
+  //   • carpetas ya agrupadas por tipo ("Bloqueado", "Horario restringido",
+  //     "Zona restringida"), como quedan en un archivo consolidado.
   const f = (folderName || '').toUpperCase();
-  if (f.includes('PELIGRO')) {
+  const carpetaBloqueado  = f.includes('BLOQUEAD');
+  const carpetaHorario    = f.includes('HORARIO') && f.includes('RESTR');
+  const carpetaRestringida = f.includes('RESTRINGID');
+  const carpetaPeligro    = f.includes('PELIGRO');
+
+  if (carpetaPeligro || carpetaBloqueado || carpetaHorario || carpetaRestringida) {
+    // El nombre de la zona manda; si no dice nada, decide la carpeta.
     if (upper.includes('BLOQUEAD'))                           return DANGER_BLOQUEADO;
     if (upper.includes('HORARIO') && upper.includes('RESTR')) return DANGER_HORARIO;
+    if (carpetaBloqueado) return DANGER_BLOQUEADO;
+    if (carpetaHorario)   return DANGER_HORARIO;
     return DANGER_RESTRINGIDA;
   }
 
@@ -372,6 +414,9 @@ async function loadZonesFromDB() {
       // Zonas guardadas ANTES de esta versión no tienen danger_type en DB.
       // Se reclasifican al vuelo para no exigir recargar el KMZ.
       dangerType:  r.danger_type || classifyDanger(r.name, '') || undefined,
+      // Archivo de origen: permite actualizar o quitar un origen concreto
+      // sin tocar los demás.
+      fileName:    r.file_name,
       bbox: {
         minLon: r.bbox_minlon, minLat: r.bbox_minlat,
         maxLon: r.bbox_maxlon, maxLat: r.bbox_maxlat
@@ -1127,9 +1172,13 @@ exports.loadBatch = async (req, res) => {
     if (!fileName)
       return res.status(400).json({ status: 'error', message: 'fileName requerido' });
 
-    // MODO: 'sumar' (por defecto) agrega al acervo existente sin borrar nada.
-    //       'reemplazar' limpia todo y deja solo este archivo.
+    // MODOS DE CARGA:
+    //   'sumar'      (por defecto) agrega al acervo sin borrar nada
+    //   'actualizar' reemplaza SOLO lo que aportó este mismo archivo antes,
+    //                conservando lo de los demás orígenes
+    //   'reemplazar' limpia todo y deja solo este archivo
     const reemplazar = modo === 'reemplazar';
+    const actualizar = modo === 'actualizar';
 
     await ensureCoverageTable();
 
@@ -1139,11 +1188,33 @@ exports.loadBatch = async (req, res) => {
         setLoadedZones([]);
         console.log('[Coverage] MODO REEMPLAZAR — zonas anteriores borradas. Archivo:', fileName);
       } else {
-        // Modo sumar: las zonas ya guardadas deben estar en memoria para poder
-        // detectar duplicados contra lo que llega.
+        // Sumar y actualizar necesitan el acervo en memoria para deduplicar
         await ensureZonesLoaded();
         if (!loadedZones) setLoadedZones([]);
-        console.log('[Coverage] MODO SUMAR — acervo actual:', loadedZones.length, 'zonas. Agregando:', fileName);
+
+        if (actualizar) {
+          // Retirar la versión anterior de ESTE archivo (en DB y en memoria).
+          // Así una actualización de cobertura no deja conviviendo el polígono
+          // viejo con el nuevo.
+          const del = await pool.query('DELETE FROM public.coverage_zones WHERE file_name = $1', [fileName]);
+          const quitadas = quitarZonasDeArchivo(fileName);
+          console.log(`[Coverage] MODO ACTUALIZAR — retiradas ${del.rowCount || quitadas} zonas previas de "${fileName}". Acervo restante: ${loadedZones.length}`);
+        } else {
+          console.log('[Coverage] MODO SUMAR — acervo actual:', loadedZones.length, 'zonas. Agregando:', fileName);
+        }
+      }
+    }
+
+    // Marcar el origen y CLASIFICAR EL PELIGRO en el servidor.
+    // Es crítico hacerlo aquí y no confiar en el navegador: la clasificación de
+    // zonas de riesgo es información de seguridad y debe tener una sola fuente
+    // de verdad. Antes, las zonas subidas desde el navegador llegaban sin
+    // clasificar y quedaban invisibles para la alerta.
+    for (const z of zones) {
+      z.fileName = fileName;
+      if (!z.dangerType) {
+        const d = classifyDanger(z.name, z.folder || '');
+        if (d) z.dangerType = d;
       }
     }
 
@@ -1198,7 +1269,7 @@ exports.loadBatch = async (req, res) => {
       const nEnlaces = Array.isArray(networkLinks) ? networkLinks.length : 0;
       return res.status(200).json({
         status: 'ok',
-        modo: reemplazar ? 'reemplazar' : 'sumar',
+        modo: reemplazar ? 'reemplazar' : (actualizar ? 'actualizar' : 'sumar'),
         zonesLoaded: loadedZones ? loadedZones.length : 0,
         byType: countByType(loadedZones),
         byDanger: countDanger(loadedZones),
@@ -1302,6 +1373,115 @@ exports.getZones = (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── GET /api/coverage/links ──────────────────────────────────────────────────
+// Detalle de los mapas externos: cuáles resolvieron, cuáles no y POR QUÉ.
+// Sin esto, un "37 fallidos" no dice si el problema es permisos, red o el mapa.
+exports.getLinksDetail = async (req, res) => {
+  try {
+    await ensureCoverageTable();
+    const { rows } = await pool.query(
+      `SELECT href, status, zones_count, error, updated_at
+       FROM public.coverage_links ORDER BY status, href`
+    );
+
+    // Agrupar los fallos por causa, en lenguaje entendible
+    const motivos = {};
+    for (const r of rows.filter(r => r.status === 'failed')) {
+      const e = (r.error || '').toLowerCase();
+      let causa;
+      if (e.includes('no público') || e.includes('login'))        causa = 'Mapa no compartido públicamente (Google exige iniciar sesión)';
+      else if (e.includes('404'))                                  causa = 'El mapa ya no existe (fue eliminado o cambió de dirección)';
+      else if (e.includes('403'))                                  causa = 'Acceso denegado por Google';
+      else if (e.includes('timeout') || e.includes('abort'))       causa = 'Tiempo de espera agotado (mapa muy grande o red lenta)';
+      else if (e.includes('429'))                                  causa = 'Google limitó las descargas por exceso de peticiones';
+      else if (e.includes('no es un kml'))                         causa = 'La respuesta no era un archivo de mapa válido';
+      else                                                          causa = r.error || 'Error desconocido';
+      if (!motivos[causa]) motivos[causa] = { causa, cantidad: 0, ejemplos: [] };
+      motivos[causa].cantidad++;
+      if (motivos[causa].ejemplos.length < 3) motivos[causa].ejemplos.push(r.href);
+    }
+
+    return res.status(200).json({
+      total:     rows.length,
+      resueltos: rows.filter(r => r.status === 'resolved').length,
+      fallidos:  rows.filter(r => r.status === 'failed').length,
+      pendientes: rows.filter(r => r.status === 'pending').length,
+      zonasAportadas: rows.reduce((a, r) => a + (r.zones_count || 0), 0),
+      motivosDeFallo: Object.values(motivos).sort((a, b) => b.cantidad - a.cantidad),
+      enlaces: rows.map(r => ({
+        href: r.href, status: r.status, zonas: r.zones_count || 0, error: r.error || null
+      }))
+    });
+  } catch (error) {
+    console.error('[Coverage getLinksDetail Error]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── GET /api/coverage/files ──────────────────────────────────────────────────
+// Inventario de los archivos que componen el acervo actual. Permite ver de
+// dónde salió cada zona y decidir qué actualizar o quitar.
+exports.getSourceFiles = async (req, res) => {
+  try {
+    if (!loadedZones || loadedZones.length === 0) await ensureZonesLoaded();
+
+    let fechas = {};
+    try {
+      const { rows } = await pool.query(
+        `SELECT file_name, MIN(loaded_at) AS primera, MAX(loaded_at) AS ultima
+         FROM public.coverage_zones GROUP BY file_name`
+      );
+      for (const r of rows) fechas[r.file_name] = { primera: r.primera, ultima: r.ultima };
+    } catch (e) { /* la vista en memoria basta si la consulta falla */ }
+
+    const archivos = resumenArchivos().map(a => ({ ...a, ...(fechas[a.fileName] || {}) }));
+
+    return res.status(200).json({
+      totalArchivos: archivos.length,
+      totalZonas:    loadedZones ? loadedZones.length : 0,
+      archivos
+    });
+  } catch (error) {
+    console.error('[Coverage getSourceFiles Error]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── DELETE /api/coverage/files ───────────────────────────────────────────────
+// Quita del acervo todo lo aportado por un archivo, sin tocar los demás.
+// Body: { fileName }
+exports.deleteSourceFile = async (req, res) => {
+  try {
+    const { fileName } = req.body || {};
+    if (!fileName) {
+      return res.status(400).json({ status: 'error', message: 'fileName requerido' });
+    }
+
+    await ensureCoverageTable();
+    await ensureZonesLoaded();
+
+    const del = await pool.query('DELETE FROM public.coverage_zones WHERE file_name = $1', [fileName]);
+    const quitadas = quitarZonasDeArchivo(fileName);
+
+    if ((del.rowCount || 0) === 0 && quitadas === 0) {
+      return res.status(404).json({ status: 'error', message: `No hay zonas cargadas del archivo "${fileName}"` });
+    }
+
+    console.log(`[Coverage] Origen eliminado: "${fileName}" — ${del.rowCount || quitadas} zonas. Acervo restante: ${loadedZones.length}`);
+
+    return res.status(200).json({
+      status: 'ok',
+      eliminadas: del.rowCount || quitadas,
+      zonesLoaded: loadedZones.length,
+      byDanger: countDanger(loadedZones),
+      message: `Se quitaron ${del.rowCount || quitadas} zonas de "${fileName}". Quedan ${loadedZones.length} en total.`
+    });
+  } catch (error) {
+    console.error('[Coverage deleteSourceFile Error]', error);
     return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };

@@ -449,6 +449,31 @@ export default function CoverageChecker() {
     const zones    = [];
     const coordReg = /<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/g;
     let cm;
+
+    // Carpeta contenedora de cada zona. Se envía al servidor para que pueda
+    // reconocer zonas de peligro cuyo nombre no siga ninguna convención pero
+    // que vivan en una carpeta "Zonas_Peligro_*". La clasificación en sí la
+    // hace SIEMPRE el servidor: es información de seguridad y no debe depender
+    // del navegador.
+    const folderMarks = [];
+    const folderReg = /<(?:Folder|Document)>\s*(?:<[^>]+>\s*)*?<name>\s*([\s\S]*?)\s*<\/name>/g;
+    let fm;
+    while ((fm = folderReg.exec(kmlString)) !== null) {
+      folderMarks.push({
+        idx:  fm.index,
+        name: fm[1].replace(/<!\[CDATA\[|\]\]>/g, "").trim(),
+      });
+    }
+    function folderAt(pos) {
+      let lo = 0, hi = folderMarks.length - 1, res = "";
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (folderMarks[mid].idx <= pos) { res = folderMarks[mid].name; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      return res;
+    }
+
     while ((cm = coordReg.exec(kmlString)) !== null) {
       // Parsear puntos lon,lat,alt separados por espacios/saltos
       const coords = cm[1].trim().split(/\s+/).filter(Boolean).map(p => {
@@ -472,7 +497,15 @@ export default function CoverageChecker() {
           .trim();
       }
 
-      zones.push({ name, coordinates: coords, type });
+      // Se envía la carpeta para que el servidor pueda clasificar el peligro.
+      // Solo se incluye si parece relevante, para no inflar el payload.
+      const folder = folderAt(cm.index);
+      const z = { name, coordinates: coords, type };
+      // Se envía la carpeta cuando sugiere zona de riesgo, en cualquiera de las
+      // formas conocidas: "Zonas_Peligro_*" (archivos originales) o ya agrupadas
+      // por tipo ("Bloqueado", "Horario restringido", "Zona restringida").
+      if (folder && /PELIGRO|BLOQUEAD|RESTRINGID|HORARIO/i.test(folder)) z.folder = folder;
+      zones.push(z);
     }
 
     // NetworkLinks: enlaces a mapas externos (Google My Maps, Telcodrive, etc.)

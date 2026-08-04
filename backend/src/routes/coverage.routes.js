@@ -61,6 +61,26 @@ router.get('/danger-zones', verificarToken, coverageController.getDangerZones);
 router.get('/zones-in-view', verificarToken, coverageController.getZonesInView);
 
 /**
+ * GET /api/coverage/files
+ * Inventario de archivos que componen el acervo (origen de cada zona).
+ */
+router.get('/files', verificarToken, coverageController.getSourceFiles);
+
+/**
+ * GET /api/coverage/links
+ * Detalle de los mapas externos: resueltos, fallidos y el motivo de cada fallo.
+ */
+router.get('/links', verificarToken, coverageController.getLinksDetail);
+
+/**
+ * DELETE /api/coverage/files
+ * Quita del acervo todo lo aportado por un archivo, sin tocar los demás.
+ * Body: { fileName }
+ * Solo administradores.
+ */
+router.delete('/files', verificarToken, soloAdmin, coverageController.deleteSourceFile);
+
+/**
  * GET /api/coverage/status
  * Estado del servicio
  * Public endpoint (sin autenticación)

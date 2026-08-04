@@ -184,8 +184,22 @@ async function getMessages(req, res) {
        FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC LIMIT 500`,
       [id]
     )
-    // Marcar como leídas
+    // Marcar como leídas en el ERP
     await query('UPDATE conversations SET unread_count=0 WHERE id=$1', [id])
+
+    // Y recién AQUÍ avisar a WhatsApp que fueron leídas (doble check azul).
+    // Antes el acuse salía al recibir el mensaje, así que el cliente veía
+    // "leído" aunque nadie lo hubiera abierto. Ahora refleja la realidad:
+    // un asesor abrió la conversación. No bloquea la respuesta si falla.
+    try {
+      const bm = req.app.get('baileysManager')
+      if (bm && owned.line_id && owned.wa_number) {
+        await bm.markAsRead(owned.line_id, owned.wa_number)
+      }
+    } catch (e) {
+      console.warn('[wa_conversations.getMessages] acuse de lectura:', e.message)
+    }
+
     res.json({ success: true, data: result.rows })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })

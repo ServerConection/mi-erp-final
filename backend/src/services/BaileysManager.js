@@ -26,6 +26,40 @@ class BaileysManager {
     this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
     this.reconnectTimers = {}   // guard: una sola reconexión programada por línea
     this.reconnectAttempts = {} // contador de reintentos por línea (backoff)
+    // Claves de mensajes entrantes AÚN NO LEÍDOS por un humano.
+    // Formato: { 'lineId:waNumber': [msg.key, ...] }
+    // El acuse de lectura (doble check azul) se envía a WhatsApp solo cuando el
+    // asesor abre realmente la conversación en el Inbox — nunca al recibirlo.
+    this.pendingReads = {}
+  }
+
+  // Guarda la clave de un mensaje entrante para acusarlo recibido más tarde
+  _queuePendingRead(lineId, waNumber, key) {
+    if (!key) return
+    const k = `${lineId}:${waNumber}`
+    if (!this.pendingReads[k]) this.pendingReads[k] = []
+    this.pendingReads[k].push(key)
+    // Tope de seguridad: no acumular memoria sin límite en chats muy activos
+    if (this.pendingReads[k].length > 300) this.pendingReads[k].shift()
+  }
+
+  // Envía a WhatsApp el acuse de lectura de una conversación concreta.
+  // Se llama desde el Inbox cuando el asesor ABRE el chat. Si la línea no está
+  // conectada o no hay nada pendiente, no hace nada (no rompe el flujo).
+  async markAsRead(lineId, waNumber) {
+    const inst = this.instances[lineId]
+    const k = `${lineId}:${waNumber}`
+    const keys = this.pendingReads[k]
+    if (!inst?.sock || !keys || !keys.length) return 0
+    try {
+      await inst.sock.readMessages(keys)
+      delete this.pendingReads[k]
+      console.log(`[Line ${lineId}] ✓✓ Lectura confirmada de ${keys.length} mensaje(s) de ${waNumber} (abierto por un asesor)`)
+      return keys.length
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudo enviar acuse de lectura:`, e.message)
+      return 0
+    }
   }
 
   // Marca un mensaje como enviado por el ERP (se limpia solo tras 2 min)
@@ -495,7 +529,11 @@ class BaileysManager {
           } catch (e) {}
         }
 
-        try { await sock.readMessages([msg.key]) } catch (e) {}
+        // NO se marca como leído aquí. Antes se llamaba a sock.readMessages()
+        // apenas llegaba el mensaje, y el cliente veía el doble check azul sin
+        // que ningún asesor lo hubiera abierto. Ahora la clave queda en cola y
+        // el acuse se envía desde el Inbox cuando alguien abre la conversación.
+        this._queuePendingRead(lineId, waNumber, msg.key)
 
         try {
           await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName, inMediaUrl)
@@ -593,6 +631,12 @@ class BaileysManager {
       delete this.instances[lineId]
     }
     if (wipeAuth) this._wipeAuth(lineId)
+
+    // Descartar acuses de lectura pendientes: sus claves ya no sirven en una
+    // sesión nueva y no deben enviarse al reconectar.
+    for (const k of Object.keys(this.pendingReads)) {
+      if (k.startsWith(`${lineId}:`)) delete this.pendingReads[k]
+    }
 
     // await: quien llama (p. ej. la baja lógica de una línea) escribe el estado
     // después; sin await ese UPDATE podría pisar al de aquí.

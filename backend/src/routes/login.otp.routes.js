@@ -118,7 +118,9 @@ router.post('/login', async (req, res) => {
       [user.id, otpHash]
     );
 
-    await enviarOTP(user.correo, otp);
+    // Se manda solo el primer nombre para que el saludo se sienta natural
+    const primerNombre = (user.nombres || '').trim().split(/\s+/)[0] || null;
+    await enviarOTP(user.correo, otp, primerNombre);
 
     // 🔥 FIX CLAVE: devolver usuario_id para que el frontend lo use en verify-otp
     return res.json({

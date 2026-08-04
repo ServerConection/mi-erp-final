@@ -7,6 +7,28 @@ const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
 const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
 
+// SEGURIDAD: proxy_config guarda usuario y contraseña del proveedor de proxies.
+// La API nunca debe devolver esa contraseña (cualquiera con acceso al inbox
+// podría leerla desde la consola del navegador y gastar el saldo contratado).
+// Se enmascara siempre; el frontend solo necesita saber si hay proxy o no.
+function sanitizarLinea(line) {
+  const cfg = (line && line.proxy_config) || {}
+  const tieneProxy = !!cfg.host
+  return {
+    ...line,
+    proxy_config: tieneProxy
+      ? {
+          protocol: cfg.protocol || 'http',
+          host: cfg.host,
+          port: cfg.port,
+          username: cfg.username || '',
+          password: cfg.password ? '********' : '',
+        }
+      : {},
+    proxy_configured: tieneProxy,
+  }
+}
+
 // Verifica que la línea exista y que el usuario pueda verla según su perfil.
 // ADMIN: todo · SUPERVISOR: líneas de su empresa · ASESOR: solo las suyas (o huérfanas).
 async function findOwnedLine(req, id) {
@@ -52,7 +74,7 @@ async function getAll(req, res) {
     `, params)
     // Añadir status en tiempo real desde BaileysManager
     const bm = req.app.get('baileysManager')
-    const lines = result.rows.map(line => ({
+    const lines = result.rows.map(line => sanitizarLinea({
       ...line,
       rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
       has_qr: bm ? !!bm.getQR(line.id) : false,
@@ -79,11 +101,11 @@ async function getOne(req, res) {
     const line = result.rows[0]
     res.json({
       success: true,
-      data: {
+      data: sanitizarLinea({
         ...line,
         rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
         has_qr: bm ? !!bm.getQR(line.id) : false,
-      },
+      }),
     })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
@@ -92,6 +114,43 @@ async function getOne(req, res) {
 
 // Cupo de líneas por usuario no administrador (1 línea = 1 número por asesor)
 const MAX_LINEAS_POR_USUARIO = 1
+
+// ── Proxy automático por línea ────────────────────────────────────────────
+// DataImpulse asigna IP fija (sticky) según el PUERTO: 10000, 10001, 10002...
+// Cada línea recibe un puerto propio → IP propia. Así un bloqueo en una línea
+// no arrastra a las demás. Si no hay credenciales configuradas, no se asigna
+// proxy y todo sigue funcionando igual que antes.
+const PROXY_HOST      = process.env.PROXY_HOST      || 'gw.dataimpulse.com'
+const PROXY_USER      = process.env.PROXY_USER      || ''
+const PROXY_PASS      = process.env.PROXY_PASS      || ''
+const PROXY_COUNTRY   = process.env.PROXY_COUNTRY   || 'ec'
+const PROXY_BASE_PORT = parseInt(process.env.PROXY_STICKY_BASE_PORT || '10000', 10)
+
+async function construirProxyAutomatico() {
+  if (!PROXY_USER || !PROXY_PASS) return null   // sin credenciales → sin proxy
+  try {
+    // Siguiente puerto libre: el mayor ya usado + 1 (solo puertos numéricos)
+    const { rows } = await query(`
+      SELECT COALESCE(MAX((proxy_config->>'port')::int), $1 - 1) AS maxport
+      FROM lines
+      WHERE proxy_config->>'host' = $2
+        AND proxy_config->>'port' ~ '^[0-9]+$'
+    `, [PROXY_BASE_PORT, PROXY_HOST])
+
+    const port = (rows[0]?.maxport ?? (PROXY_BASE_PORT - 1)) + 1
+    return {
+      protocol: 'http',
+      host: PROXY_HOST,
+      port,
+      // Formato DataImpulse para fijar país: usuario__cr.ec
+      username: `${PROXY_USER}__cr.${PROXY_COUNTRY}`,
+      password: PROXY_PASS,
+    }
+  } catch (e) {
+    console.warn('[wa_lines] No se pudo asignar proxy automático:', e.message)
+    return null
+  }
+}
 
 // Crear nueva línea (queda asociada al usuario que la crea)
 // ADMINISTRADOR: sin límite · Resto: solo si no tiene ninguna línea propia.
@@ -112,10 +171,22 @@ async function create(req, res) {
     const { name, bot_id, proxy_enabled, proxy_config } = req.body
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
 
+    // Si no mandaron proxy explícito, se intenta asignar uno automáticamente
+    let cfgProxy = proxy_config
+    let usaProxy = proxy_enabled || false
+    if (!cfgProxy || Object.keys(cfgProxy).length === 0) {
+      const auto = await construirProxyAutomatico()
+      if (auto) {
+        cfgProxy = auto
+        usaProxy = true
+        console.log(`[wa_lines] Línea "${name}" → proxy automático puerto ${auto.port}`)
+      }
+    }
+
     const result = await query(
       `INSERT INTO lines (name, bot_id, proxy_enabled, proxy_config, created_by)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [name, bot_id || null, proxy_enabled || false, JSON.stringify(proxy_config || {}), req.user.id]
+      [name, bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), req.user.id]
     )
     res.status(201).json({ success: true, data: result.rows[0] })
   } catch (err) {

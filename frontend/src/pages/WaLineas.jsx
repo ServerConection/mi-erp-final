@@ -282,6 +282,7 @@ export default function WaLineas() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -34,8 +34,10 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
-// OTP activo — el email de alertas a supervisores fue desactivado en alertas.cron.js
-const OTP_BYPASS = false;
+// OTP DESACTIVADO: el login entrega el token directo con usuario y contraseña,
+// sin enviar ni pedir el código por correo.
+// Para volver a exigir OTP, poner esta constante en false.
+const OTP_BYPASS = true;
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {

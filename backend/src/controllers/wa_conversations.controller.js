@@ -146,8 +146,16 @@ async function getAll(req, res) {
     if (vc) where.push(vc)
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    params.push(parseInt(limit))
 
+    // Parámetros extra: el usuario actual (para sus propios no leídos) y el límite
+    params.push(req.user.id);        const pUser  = params.length
+    params.push(parseInt(limit));    const pLimit = params.length
+
+    // Los no leídos se calculan POR USUARIO: mensajes entrantes posteriores a
+    // la última vez que ESTE usuario abrió la conversación.
+    // Se llama unread_calc (no unread_count) para no chocar con la columna
+    // homónima que llega en c.*; abajo se reemplaza de forma explícita.
+    // Se limita a 30 días para que el conteo no recorra años de historial.
     const result = await query(`
       SELECT c.*,
              ct.name AS contact_name,
@@ -157,16 +165,30 @@ async function getAll(req, res) {
              (SELECT content FROM messages m
               WHERE m.conversation_id = c.id ORDER BY timestamp DESC LIMIT 1) AS last_message,
              (SELECT direction FROM messages m
-              WHERE m.conversation_id = c.id ORDER BY timestamp DESC LIMIT 1) AS last_direction
+              WHERE m.conversation_id = c.id ORDER BY timestamp DESC LIMIT 1) AS last_direction,
+             (SELECT COUNT(*)::int FROM messages m
+               WHERE m.conversation_id = c.id
+                 AND m.direction = 'in'
+                 AND m.timestamp > NOW() - INTERVAL '30 days'
+                 AND m.timestamp > COALESCE(cr.last_read_at, TIMESTAMPTZ 'epoch')
+             ) AS unread_calc
       FROM conversations c
       LEFT JOIN contacts ct ON c.contact_id = ct.id
       LEFT JOIN lines l ON c.line_id = l.id
+      LEFT JOIN conversation_reads cr
+             ON cr.conversation_id = c.id AND cr.user_id = $${pUser}
       ${whereSql}
       ORDER BY c.last_msg_at DESC
-      LIMIT $${params.length}
+      LIMIT $${pLimit}
     `, params)
 
-    res.json({ success: true, data: result.rows })
+    // Sustituir el contador global (siempre 0) por el calculado para este usuario
+    const data = result.rows.map(({ unread_calc, ...conv }) => ({
+      ...conv,
+      unread_count: unread_calc || 0,
+    }))
+
+    res.json({ success: true, data })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
@@ -184,8 +206,15 @@ async function getMessages(req, res) {
        FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC LIMIT 500`,
       [id]
     )
-    // Marcar como leídas en el ERP
-    await query('UPDATE conversations SET unread_count=0 WHERE id=$1', [id])
+    // Marcar como leída SOLO para este usuario. Si un asesor abre el chat, el
+    // supervisor y la gerencia conservan su propio aviso de no leído.
+    await query(
+      `INSERT INTO conversation_reads (conversation_id, user_id, last_read_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (conversation_id, user_id)
+       DO UPDATE SET last_read_at = NOW()`,
+      [id, req.user.id]
+    )
 
     // Y recién AQUÍ avisar a WhatsApp que fueron leídas (doble check azul).
     // Antes el acuse salía al recibir el mensaje, así que el cliente veía

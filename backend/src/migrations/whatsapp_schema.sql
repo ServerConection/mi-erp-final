@@ -250,3 +250,20 @@ CREATE INDEX IF NOT EXISTS idx_conversations_bitrix ON conversations(bitrix_deal
 -- (la línea conserva created_by, que es lo que da la visibilidad en el inbox).
 ALTER TABLE lines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_lines_deleted ON lines(deleted_at);
+
+-- No leídos POR USUARIO (2026-08)
+-- conversations.unread_count era un contador único y compartido: si el asesor
+-- abría el chat, el supervisor perdía su aviso. Además nadie lo incrementaba,
+-- así que siempre valía 0 y el globito nunca aparecía tras recargar la página.
+-- Ahora cada usuario guarda su propia marca de "hasta aquí leí" y los no leídos
+-- se calculan contra ella, de forma independiente para cada persona.
+CREATE TABLE IF NOT EXISTS conversation_reads (
+  conversation_id UUID    NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id         INTEGER NOT NULL REFERENCES usuarios(id)      ON DELETE CASCADE,
+  last_read_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (conversation_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_conv_reads_user ON conversation_reads(user_id);
+-- Índice para que el conteo de no leídos no recorra la tabla de mensajes
+CREATE INDEX IF NOT EXISTS idx_messages_conv_dir_ts
+  ON messages(conversation_id, direction, timestamp DESC);

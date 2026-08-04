@@ -34,10 +34,10 @@ const USUARIOS_ESPECIALES = new Set([
   'berueda', 'brueda', 'achavez', 'dleonardi', 'apachecho', 'asrodriguez'
 ]);
 
-// OTP DESACTIVADO: el login entrega el token directo con usuario y contraseña,
-// sin enviar ni pedir el código por correo.
-// Para volver a exigir OTP, poner esta constante en false.
-const OTP_BYPASS = true;
+// OTP ACTIVO: tras validar usuario y contraseña se envía un código al correo
+// registrado y el token solo se emite al verificarlo.
+// Para saltarse el OTP (login directo), poner esta constante en true.
+const OTP_BYPASS = false;
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {

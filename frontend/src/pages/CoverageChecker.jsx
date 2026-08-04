@@ -32,54 +32,126 @@ function parseCoordPair(text) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Coordenadas en GRADOS, MINUTOS Y SEGUNDOS (DMS)
+// Es el formato que muestra Google Maps al hacer clic derecho sobre un punto:
+//   2°10'22.4"S 79°53'20.9"W
+// ─────────────────────────────────────────────────────────────────────────────
+function dmsAdecimal(g, m, s, hemisferio) {
+  let d = Math.abs(parseFloat(g) || 0) + (parseFloat(m) || 0) / 60 + (parseFloat(s) || 0) / 3600;
+  const h = (hemisferio || "").toUpperCase();
+  if (h === "S" || h === "W" || h === "O") d = -d;
+  else if (!h && String(g).trim().startsWith("-")) d = -d;
+  return d;
+}
+
+function parseDMS(text) {
+  if (!text) return null;
+  const t = String(text)
+    .replace(/[’′]/g, "'")
+    .replace(/[”″]/g, '"')
+    .replace(/º/g, "°")
+    .trim();
+
+  const parte = String.raw`(-?\d{1,3})\s*°?\s*(\d{1,2})\s*'?\s*(\d{1,2}(?:[.,]\d+)?)\s*"?\s*([NSEWO])?`;
+  const re = new RegExp(parte + String.raw`[\s,;]+` + parte, "i");
+  const m = t.match(re);
+  if (!m) return null;
+
+  const a = dmsAdecimal(m[1], m[2], String(m[3]).replace(",", "."), m[4]);
+  const b = dmsAdecimal(m[5], m[6], String(m[7]).replace(",", "."), m[8]);
+
+  const ha = (m[4] || "").toUpperCase(), hb = (m[8] || "").toUpperCase();
+  let lat, lon;
+  if (ha === "E" || ha === "W" || ha === "O" || hb === "N" || hb === "S") { lat = b; lon = a; }
+  else { lat = a; lon = b; }
+
+  if (isValidCoords(lat, lon)) return { lat, lon };
+  return null;
+}
+
+/**
+ * Extrae coordenadas de un enlace o texto.
+ *
+ * ORDEN DE PRIORIDAD — esto corrige el desfase de "unas cuadras":
+ *   1. !3d!4d  → coordenadas EXACTAS del pin del lugar
+ *   2. q= / ll= / geo:  → punto explícito (WhatsApp usa esto)
+ *   3. /search/lat,lon
+ *   4. @lat,lon → ÚLTIMO RECURSO: es el centro de la cámara del mapa, NO el pin.
+ *      Si el usuario movió el mapa antes de compartir, cae a varias cuadras del
+ *      punto real. Antes se leía primero, y por eso la ubicación salía corrida.
+ *
+ * Devuelve { lat, lon, exacta } — exacta:false avisa que es aproximada.
+ */
 function parseLocationUrl(text) {
   text = (text || "").trim();
 
-  // 1. Coordenadas directas: "-2.4189, -79.3459"
+  // Coordenadas decimales escritas directamente
   const direct = parseCoordPair(text);
-  if (direct) return direct;
+  if (direct) return { ...direct, exacta: true };
+
+  // Grados, minutos y segundos
+  const dms = parseDMS(text);
+  if (dms) return { ...dms, exacta: true };
+
+  // 1. Pin exacto del lugar (bloque "data" de Google Maps)
+  const lugar = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (lugar) {
+    const lat = parseFloat(lugar[1]);
+    const lon = parseFloat(lugar[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true };
+  }
+
+  // geo:lat,lon (Android)
+  const geo = text.match(/^geo:(-?\d+\.?\d*),(-?\d+\.?\d*)/i);
+  if (geo) {
+    const lat = parseFloat(geo[1]);
+    const lon = parseFloat(geo[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true };
+  }
 
   try {
     const url = new URL(text);
     const params = new URLSearchParams(url.search);
 
-    // 2. Google Maps ?q=LAT,LNG  (WhatsApp comparte este formato)
-    if (params.has("q")) {
-      const r = parseCoordPair(params.get("q"));
-      if (r) return r;
+    // 2. Punto explícito
+    for (const clave of ["q", "query", "ll", "sll", "daddr", "destination", "center"]) {
+      if (!params.has(clave)) continue;
+      const v = (params.get(clave) || "").replace(/^loc:/i, "").trim();
+      const r = parseCoordPair(v) || parseDMS(v);
+      if (r) return { ...r, exacta: true };
+    }
+    if (params.has("mlat") && params.has("mlon")) {
+      const lat = parseFloat(params.get("mlat"));
+      const lon = parseFloat(params.get("mlon"));
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: true };
     }
 
-    // 3. Apple Maps ?ll=LAT,LNG
-    if (params.has("ll")) {
-      const r = parseCoordPair(params.get("ll"));
-      if (r) return r;
-    }
-
-    // 4. Google Maps place: /@LAT,LNG,ZOOMz en el path
-    const pathMatch = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
-    if (pathMatch) {
-      const lat = parseFloat(pathMatch[1]);
-      const lon = parseFloat(pathMatch[2]);
-      if (isValidCoords(lat, lon)) return { lat, lon };
-    }
-
-    // 5. Google Maps /search/LAT,+LNG
+    // 3. /search/LAT,+LNG
     const searchMatch = url.pathname.match(/\/search\/(-?\d+\.?\d*)(?:,\+?|,\s*)(-?\d+\.?\d*)/);
     if (searchMatch) {
       const lat = parseFloat(searchMatch[1]);
       const lon = parseFloat(searchMatch[2]);
-      if (isValidCoords(lat, lon)) return { lat, lon };
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: true };
+    }
+
+    // 4. ÚLTIMO RECURSO: centro de la cámara (aproximado)
+    const camara = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (camara) {
+      const lat = parseFloat(camara[1]);
+      const lon = parseFloat(camara[2]);
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: false };
     }
   } catch {
     // no es una URL válida
   }
 
-  // 6. Búsqueda general (mínimo 4 decimales para evitar falsos positivos)
+  // 5. Búsqueda general (mínimo 4 decimales para evitar falsos positivos)
   const general = text.match(/(-?\d{1,2}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
   if (general) {
     const lat = parseFloat(general[1]);
     const lon = parseFloat(general[2]);
-    if (isValidCoords(lat, lon)) return { lat, lon };
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true };
   }
 
   return null;
@@ -329,9 +401,12 @@ export default function CoverageChecker() {
     const text = linkInput.trim();
     if (!text) return;
 
-    // Intento cliente primero (más rápido)
+    // Intento en el navegador primero (más rápido).
+    // Si solo se pudo sacar el centro del mapa (exacta:false), NO se corta acá:
+    // se le pide al servidor que resuelva el enlace, porque el HTML de Google
+    // suele traer el pin exacto y así se evita el desfase de varias cuadras.
     const local = parseLocationUrl(text);
-    if (local) {
+    if (local && local.exacta !== false) {
       setParsedCoords(local);
       return;
     }
@@ -347,7 +422,7 @@ export default function CoverageChecker() {
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
-          setParsedCoords({ lat: data.lat, lon: data.lon });
+          setParsedCoords({ lat: data.lat, lon: data.lon, exacta: data.exacta !== false });
         } else {
           setParseError(data.message || "No se pudo extraer coordenadas.");
         }
@@ -356,9 +431,14 @@ export default function CoverageChecker() {
       } finally {
         setParsing(false);
       }
+    } else if (local) {
+      // Solo se tenía el centro del mapa y no se pudo resolver: se usa igual,
+      // pero avisando que es aproximada.
+      setParsedCoords(local);
     } else {
       setParseError(
-        "No se pudo extraer coordenadas. Pega un enlace de Google Maps o escribe lat, lon."
+        'No se pudo extraer coordenadas. Pega un enlace de ubicación de WhatsApp o Google Maps, ' +
+        'o escribe las coordenadas: decimales (-2.4189, -79.3459) o en grados (2°10\'22.4"S 79°53\'20.9"W).'
       );
     }
   }
@@ -379,10 +459,21 @@ export default function CoverageChecker() {
       }
       ({ lat, lon } = parsedCoords);
     } else {
-      lat = parseFloat(manualLat);
-      lon = parseFloat(manualLon);
+      // El campo acepta tanto decimales (-2.4189) como grados (2°10'22.4"S).
+      // Si el usuario pegó el par completo en un solo campo, también se admite.
+      const juntos = parseDMS(`${manualLat} ${manualLon}`) ||
+                     parseDMS(manualLat) ||
+                     parseCoordPair(`${manualLat},${manualLon}`);
+      if (juntos) {
+        lat = juntos.lat;
+        lon = juntos.lon;
+      } else {
+        lat = parseFloat(String(manualLat).replace(",", "."));
+        lon = parseFloat(String(manualLon).replace(",", "."));
+      }
+
       if (isNaN(lat) || isNaN(lon)) {
-        setError("Ingresa coordenadas numéricas válidas.");
+        setError('Coordenadas no válidas. Usa decimales (-2.4189 y -79.3459) o grados (2°10\'22.4"S y 79°53\'20.9"W).');
         return;
       }
       if (!isValidCoords(lat, lon)) {
@@ -916,8 +1007,24 @@ export default function CoverageChecker() {
               )}
 
               {parsedCoords && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm space-y-1">
-                  <p className="font-semibold text-blue-700">✅ Coordenadas extraídas</p>
+                <div className={`border rounded-xl p-4 text-sm space-y-1 ${
+                  parsedCoords.exacta === false
+                    ? "bg-amber-50 border-amber-300"
+                    : "bg-blue-50 border-blue-200"
+                }`}>
+                  {parsedCoords.exacta === false ? (
+                    <>
+                      <p className="font-bold text-amber-800">⚠️ Ubicación APROXIMADA</p>
+                      <p className="text-xs text-amber-800">
+                        El enlace solo traía el encuadre del mapa, no el punto marcado.
+                        Puede estar a varias cuadras del lugar real.
+                        <strong> Pídele al cliente que comparta su ubicación desde WhatsApp</strong> para
+                        obtener el punto exacto.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="font-semibold text-blue-700">✅ Coordenadas exactas extraídas</p>
+                  )}
                   <p className="text-slate-700 font-mono">
                     Lat: <strong>{parsedCoords.lat.toFixed(6)}</strong> &nbsp;|&nbsp; Lon:{" "}
                     <strong>{parsedCoords.lon.toFixed(6)}</strong>
@@ -928,7 +1035,7 @@ export default function CoverageChecker() {
                     rel="noopener noreferrer"
                     className="text-xs text-blue-500 hover:underline"
                   >
-                    🗺 Ver en Google Maps
+                    🗺 Verificar en Google Maps
                   </a>
                 </div>
               )}
@@ -938,20 +1045,24 @@ export default function CoverageChecker() {
           {/* Formulario de coordenadas manuales */}
           {tab === "coords" && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-              <h2 className="font-semibold text-slate-700">Coordenadas decimales</h2>
+              <h2 className="font-semibold text-slate-700">Coordenadas geográficas</h2>
+              <p className="text-xs text-slate-400">
+                Acepta <strong>decimales</strong> (<code>-2.4189</code>) o{" "}
+                <strong>grados, minutos y segundos</strong> (<code>2°10&apos;22.4&quot;S</code>),
+                que es lo que muestra Google Maps al hacer clic derecho sobre un punto.
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">
                     Latitud <span className="text-red-400">*</span>
                   </label>
+                  {/* type="text" a propósito: type="number" rechaza los símbolos ° ' " */}
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="text"
                     value={manualLat}
                     onChange={(e) => setManualLat(e.target.value)}
-                    placeholder="-2.4189"
-                    step="0.0001"
-                    min="-90"
-                    max="90"
+                    placeholder={`-2.4189  ó  2°10'22.4"S`}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -960,27 +1071,51 @@ export default function CoverageChecker() {
                     Longitud <span className="text-red-400">*</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="text"
                     value={manualLon}
                     onChange={(e) => setManualLon(e.target.value)}
-                    placeholder="-79.3459"
-                    step="0.0001"
-                    min="-180"
-                    max="180"
+                    placeholder={`-79.3459  ó  79°53'20.9"W`}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
-              {manualLat && manualLon && (
-                <a
-                  href={`https://maps.google.com/?q=${manualLat},${manualLon}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block text-xs text-blue-500 hover:underline"
-                >
-                  🗺 Ver en Google Maps
-                </a>
-              )}
+
+              {/* Vista previa de la conversión, para detectar errores antes de consultar */}
+              {(() => {
+                if (!manualLat || !manualLon) return null;
+                const r = parseDMS(`${manualLat} ${manualLon}`) ||
+                          parseDMS(manualLat) ||
+                          parseCoordPair(`${manualLat},${manualLon}`) ||
+                          (() => {
+                            const a = parseFloat(String(manualLat).replace(",", "."));
+                            const b = parseFloat(String(manualLon).replace(",", "."));
+                            return isValidCoords(a, b) ? { lat: a, lon: b } : null;
+                          })();
+                if (!r) {
+                  return (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      ❌ No se reconoce el formato. Ejemplos válidos: <code>-2.4189</code> ·{" "}
+                      <code>2°10&apos;22.4&quot;S</code>
+                    </p>
+                  );
+                }
+                return (
+                  <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 space-y-1">
+                    <p className="text-slate-600">
+                      Se consultará: <strong className="font-mono">{r.lat.toFixed(6)}, {r.lon.toFixed(6)}</strong>
+                    </p>
+                    <a
+                      href={`https://maps.google.com/?q=${r.lat},${r.lon}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      🗺 Verificar en Google Maps antes de consultar
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

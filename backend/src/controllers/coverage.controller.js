@@ -21,7 +21,7 @@ function isValidCoords(lat, lon) {
 }
 
 function parseCoordPair(text) {
-  const m = text.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+  const m = (text || '').trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
   if (m) {
     const lat = parseFloat(m[1]);
     const lon = parseFloat(m[2]);
@@ -30,47 +30,146 @@ function parseCoordPair(text) {
   return null;
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// Coordenadas en GRADOS, MINUTOS Y SEGUNDOS (DMS)
+// Formato que muestra Google Maps al hacer clic derecho sobre un punto:
+//   2°10'22.4"S 79°53'20.9"W     ·     2° 10' 22.4" S, 79° 53' 20.9" W
+//   -2°10'22.4"  -79°53'20.9"    ·     2 10 22.4 S 79 53 20.9 W
+// ════════════════════════════════════════════════════════════════════════════════
+
+function dmsAdecimal(grados, minutos, segundos, hemisferio) {
+  let d = Math.abs(parseFloat(grados) || 0)
+        + (parseFloat(minutos)  || 0) / 60
+        + (parseFloat(segundos) || 0) / 3600;
+  const h = (hemisferio || '').toUpperCase();
+  // Signo: hemisferio sur y oeste son negativos. Si no hay letra, respeta el
+  // signo que traiga el número de grados.
+  if (h === 'S' || h === 'W' || h === 'O') d = -d;
+  else if (!h && String(grados).trim().startsWith('-')) d = -d;
+  return d;
+}
+
+/**
+ * Interpreta un par de coordenadas en DMS. Devuelve {lat, lon} o null.
+ * Acepta símbolos ° ' " y también espacios como separadores.
+ */
+function parseDMS(text) {
+  if (!text) return null;
+  const t = String(text)
+    .replace(/[’′]/g, "'")     // apóstrofes tipográficos
+    .replace(/[”″]/g, '"')
+    .replace(/º/g, '°')
+    .trim();
+
+  // grados [°] minutos ['] segundos ["] [NSEWO]
+  const parte = String.raw`(-?\d{1,3})\s*°?\s*(\d{1,2})\s*'?\s*(\d{1,2}(?:[.,]\d+)?)\s*"?\s*([NSEWO])?`;
+  const re = new RegExp(parte + String.raw`[\s,;]+` + parte, 'i');
+  const m = t.match(re);
+  if (!m) return null;
+
+  const a = dmsAdecimal(m[1], m[2], String(m[3]).replace(',', '.'), m[4]);
+  const b = dmsAdecimal(m[5], m[6], String(m[7]).replace(',', '.'), m[8]);
+
+  // Si vienen letras, ellas mandan sobre el orden en que se escribieron
+  const ha = (m[4] || '').toUpperCase(), hb = (m[8] || '').toUpperCase();
+  let lat, lon;
+  if (ha === 'E' || ha === 'W' || ha === 'O' || hb === 'N' || hb === 'S') {
+    lat = b; lon = a;
+  } else {
+    lat = a; lon = b;
+  }
+
+  if (isValidCoords(lat, lon)) return { lat, lon };
+  return null;
+}
+
+/**
+ * Extrae coordenadas de un enlace o texto.
+ *
+ * ORDEN DE PRIORIDAD — es lo que corrige el desfase de "unas cuadras":
+ *
+ *   1. !3d<lat>!4d<lon>  → coordenadas EXACTAS del lugar marcado (el pin).
+ *   2. q= / ll= / geo:   → punto explícito (lo que manda WhatsApp).
+ *   3. /search/lat,lon
+ *   4. @lat,lon          → ÚLTIMO RECURSO. Esto NO es el pin: es el centro de
+ *                          la cámara del mapa. Si el usuario movió o hizo zoom
+ *                          antes de compartir, cae a varias cuadras del punto
+ *                          real. Antes esta era la primera opción y por eso
+ *                          la ubicación salía desplazada.
+ *
+ * Devuelve { lat, lon, exacta, fuente } — `exacta:false` avisa que se usó el
+ * centro del mapa y conviene confirmar con el cliente.
+ */
 function parseCoordinatesFromUrl(text) {
   text = (text || '').trim();
 
+  // Coordenadas escritas directamente
   const direct = parseCoordPair(text);
-  if (direct) return direct;
+  if (direct) return { ...direct, exacta: true, fuente: 'directa' };
+
+  // Grados, minutos y segundos (formato de clic derecho en Google Maps)
+  const dms = parseDMS(text);
+  if (dms) return { ...dms, exacta: true, fuente: 'dms' };
+
+  // 1. Coordenadas del lugar dentro del bloque "data" de Google Maps.
+  //    Es el dato preciso del pin, no el encuadre del mapa.
+  const lugar = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (lugar) {
+    const lat = parseFloat(lugar[1]);
+    const lon = parseFloat(lugar[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true, fuente: 'pin' };
+  }
+
+  // geo:lat,lon (enlaces de Android)
+  const geo = text.match(/^geo:(-?\d+\.?\d*),(-?\d+\.?\d*)/i);
+  if (geo) {
+    const lat = parseFloat(geo[1]);
+    const lon = parseFloat(geo[2]);
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true, fuente: 'geo' };
+  }
 
   try {
     const url = new URL(text);
     const params = new URLSearchParams(url.search);
 
-    if (params.has('q')) {
-      const r = parseCoordPair(params.get('q'));
-      if (r) return r;
+    // 2. Punto explícito. WhatsApp comparte la ubicación así.
+    for (const clave of ['q', 'query', 'll', 'sll', 'daddr', 'destination', 'center', 'mlat']) {
+      if (!params.has(clave)) continue;
+      const v = (params.get(clave) || '').replace(/^loc:/i, '').trim();
+      const r = parseCoordPair(v) || parseDMS(v);
+      if (r) return { ...r, exacta: true, fuente: clave };
+    }
+    // mlat/mlon separados (OpenStreetMap)
+    if (params.has('mlat') && params.has('mlon')) {
+      const lat = parseFloat(params.get('mlat'));
+      const lon = parseFloat(params.get('mlon'));
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: true, fuente: 'mlat/mlon' };
     }
 
-    if (params.has('ll')) {
-      const r = parseCoordPair(params.get('ll'));
-      if (r) return r;
-    }
-
-    const pathMatch = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
-    if (pathMatch) {
-      const lat = parseFloat(pathMatch[1]);
-      const lon = parseFloat(pathMatch[2]);
-      if (isValidCoords(lat, lon)) return { lat, lon };
-    }
-
+    // 3. /search/lat,lon
     const searchMatch = url.pathname.match(/\/search\/(-?\d+\.?\d*)(?:,\+?|,\s*)(-?\d+\.?\d*)/);
     if (searchMatch) {
       const lat = parseFloat(searchMatch[1]);
       const lon = parseFloat(searchMatch[2]);
-      if (isValidCoords(lat, lon)) return { lat, lon };
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: true, fuente: 'search' };
     }
 
-  } catch (e) {}
+    // 4. ÚLTIMO RECURSO: centro de la cámara. Aproximado.
+    const camara = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (camara) {
+      const lat = parseFloat(camara[1]);
+      const lon = parseFloat(camara[2]);
+      if (isValidCoords(lat, lon)) return { lat, lon, exacta: false, fuente: 'centro-mapa' };
+    }
 
+  } catch (e) { /* no era una URL válida */ }
+
+  // Texto suelto con un par de coordenadas
   const generalMatch = text.match(/(-?\d{1,2}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
   if (generalMatch) {
     const lat = parseFloat(generalMatch[1]);
     const lon = parseFloat(generalMatch[2]);
-    if (isValidCoords(lat, lon)) return { lat, lon };
+    if (isValidCoords(lat, lon)) return { lat, lon, exacta: true, fuente: 'texto' };
   }
 
   return null;
@@ -1663,47 +1762,66 @@ exports.resolveLink = async (req, res) => {
 
     const trimmed = link.trim();
 
+    // Respuesta uniforme; `exacta:false` indica que solo se pudo obtener el
+    // centro del mapa y no el pin, así el asesor sabe que debe confirmar.
+    const responder = (r, source, extra = {}) => res.status(200).json({
+      status: 'ok',
+      lat: r.lat, lon: r.lon,
+      exacta: r.exacta !== false,
+      origen: r.fuente || source,
+      source,
+      ...extra,
+      message: r.exacta === false
+        ? `Ubicación APROXIMADA (${r.lat}, ${r.lon}). El enlace solo traía el encuadre del mapa, no el punto exacto. Pídele al cliente que comparta su ubicación desde WhatsApp.`
+        : `Coordenadas extraídas: ${r.lat}, ${r.lon}`
+    });
+
     const direct = parseCoordinatesFromUrl(trimmed);
-    if (direct) {
-      return res.status(200).json({
-        status: 'ok', lat: direct.lat, lon: direct.lon, source: 'direct',
-        message: `Coordenadas extraidas: ${direct.lat}, ${direct.lon}`
-      });
-    }
+    // Si lo único que se obtuvo fue el centro del mapa, aún vale la pena
+    // resolver el enlace: el HTML suele traer el pin exacto.
+    if (direct && direct.exacta !== false) return responder(direct, 'directa');
 
     if (isShortenedUrl(trimmed) || trimmed.startsWith('http')) {
       try {
         const response = await fetch(trimmed, {
           method: 'GET',
           redirect: 'follow',
-          signal: AbortSignal.timeout(8000),
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoverageBot/1.0)' }
+          signal: AbortSignal.timeout(10000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            'Accept-Language': 'es-EC,es;q=0.9'
+          }
         });
 
         const finalUrl = response.url;
 
         if (finalUrl && finalUrl !== trimmed) {
           const fromRedirect = parseCoordinatesFromUrl(finalUrl);
-          if (fromRedirect) {
-            return res.status(200).json({
-              status: 'ok', lat: fromRedirect.lat, lon: fromRedirect.lon,
-              source: 'redirect', resolvedUrl: finalUrl,
-              message: `Coordenadas extraidas tras redireccion: ${fromRedirect.lat}, ${fromRedirect.lon}`
-            });
+          if (fromRedirect && fromRedirect.exacta !== false) {
+            return responder(fromRedirect, 'redireccion', { resolvedUrl: finalUrl });
           }
         }
 
         const html = await response.text().catch(() => '');
-        const htmlMatch = html.match(/(-?\d{1,2}\.\d{6,}),(-?\d{1,3}\.\d{6,})/);
-        if (htmlMatch) {
-          const lat = parseFloat(htmlMatch[1]);
-          const lon = parseFloat(htmlMatch[2]);
-          if (isValidCoords(lat, lon)) {
-            return res.status(200).json({
-              status: 'ok', lat, lon, source: 'html',
-              message: `Coordenadas extraidas del contenido: ${lat}, ${lon}`
-            });
-          }
+
+        // Buscar en el HTML el punto EXACTO del lugar, en orden de fiabilidad.
+        // El bloque !3d!4d y el meta de imagen traen el pin; una coordenada
+        // suelta puede ser cualquier cosa del encuadre.
+        const patrones = [
+          /!3d(-?\d+\.\d{4,})!4d(-?\d+\.\d{4,})/,          // pin del lugar
+          /"latitude":\s*(-?\d+\.\d{4,}).*?"longitude":\s*(-?\d+\.\d{4,})/s,
+          /center=(-?\d+\.\d{4,})%2C(-?\d+\.\d{4,})/,       // meta de imagen
+          /@(-?\d+\.\d{6,}),(-?\d+\.\d{6,})/,               // encuadre
+        ];
+        for (let i = 0; i < patrones.length; i++) {
+          const m = html.match(patrones[i]);
+          if (!m) continue;
+          const lat = parseFloat(m[1]);
+          const lon = parseFloat(m[2]);
+          if (!isValidCoords(lat, lon)) continue;
+          const exacta = i < 3; // el último patrón es el encuadre
+          return responder({ lat, lon, exacta, fuente: exacta ? 'pin-html' : 'centro-mapa' }, 'html',
+            { resolvedUrl: finalUrl });
         }
 
       } catch (fetchErr) {
@@ -1711,11 +1829,15 @@ exports.resolveLink = async (req, res) => {
       }
     }
 
+    // Si al menos se tenía el centro del mapa, devolverlo advirtiendo
+    if (direct) return responder(direct, 'centro-mapa');
+
     return res.status(422).json({
       status: 'error',
       message: 'No se pudo extraer coordenadas del enlace. ' +
-               'Usa un enlace directo de Google Maps (maps.google.com/?q=LAT,LNG) ' +
-               'o escribe las coordenadas directamente (ej: -2.4189, -79.3459).'
+               'Pídele al cliente que comparta su ubicación desde WhatsApp, ' +
+               'o escribe las coordenadas directamente ' +
+               '(decimales: -2.4189, -79.3459 · o en grados: 2°10\'22.4"S 79°53\'20.9"W).'
     });
 
   } catch (error) {

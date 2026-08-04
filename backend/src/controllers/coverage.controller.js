@@ -7,6 +7,7 @@
 
 const fs     = require('fs');
 const path   = require('path');
+const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const pool   = require('../config/db');
 // xml2js ya NO se usa para KML — reemplazado por parser regex de bajo consumo
@@ -103,6 +104,60 @@ let loadedFile   = null;
 let spatialIndex = null; // grilla de zonas de COBERTURA
 let dangerIndex  = null; // grilla de zonas de PELIGRO (independiente)
 let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ACUMULACIÓN DE COBERTURA
+// ────────────────────────────────────────────────────────────────────────────────
+// La cobertura de Netlife está repartida en MUCHOS archivos y mapas externos
+// (KMZ por ciudad, ~250 mapas de My Maps, TelcoDrive…). Ningún archivo tiene el
+// total. Por eso el modo por defecto es SUMAR: cada carga se agrega al acervo
+// existente en vez de reemplazarlo.
+//
+// Antes cada carga hacía DELETE de todo, así que subir un archivo pequeño
+// borraba la cobertura acumulada y zonas que antes daban "sí" pasaban a "no".
+//
+// Para que sumar no genere duplicados se calcula una clave por zona
+// (nombre + geometría). Si la clave ya está cargada, se omite.
+// ════════════════════════════════════════════════════════════════════════════════
+
+let loadedKeys = new Set(); // claves de todas las zonas en memoria
+
+/** Clave estable de una zona: mismo nombre + misma geometría ⇒ misma clave. */
+function zoneKey(z) {
+  const h = crypto.createHash('md5');
+  h.update((z.name || '') + '|' + (z.type || 'Polygon') + '|');
+  for (const c of (z.coordinates || [])) {
+    h.update(Number(c[0]).toFixed(6) + ',' + Number(c[1]).toFixed(6) + ';');
+  }
+  return h.digest('hex');
+}
+
+/** Reemplaza por completo el set de zonas en memoria y reconstruye todo. */
+function setLoadedZones(zones) {
+  loadedZones = zones || [];
+  loadedKeys  = new Set();
+  for (const z of loadedZones) {
+    if (!z._key) z._key = zoneKey(z);
+    loadedKeys.add(z._key);
+  }
+  rebuildIndexes(loadedZones);
+}
+
+/**
+ * Filtra las zonas que YA están cargadas (por clave) y devuelve solo las nuevas.
+ * También deduplica dentro del propio lote entrante.
+ */
+function soloNuevas(zones) {
+  const nuevas = [];
+  for (const z of (zones || [])) {
+    const k = z._key || zoneKey(z);
+    if (loadedKeys.has(k)) continue;
+    z._key = k;
+    loadedKeys.add(k);
+    nuevas.push(z);
+  }
+  return nuevas;
+}
 
 // Estado de resolución de NetworkLinks (enlaces a mapas externos: Google My Maps,
 // Telcodrive, etc.). Se resuelven en background porque pueden ser cientos/miles
@@ -349,10 +404,9 @@ async function ensureZonesLoaded() {
     console.log('[Coverage] Zonas no en memoria — restaurando desde DB...');
     const cached = await loadZonesFromDB();
     if (cached) {
-      loadedZones  = cached.zones;
+      setLoadedZones(cached.zones);
       loadedAt     = cached.savedAt;
       loadedFile   = cached.fileName;
-      rebuildIndexes(loadedZones);
       console.log('[Coverage] Restauración lazy exitosa — zonas:', loadedZones.length);
       return true;
     }
@@ -369,10 +423,9 @@ async function ensureZonesLoaded() {
     try {
       const cached = await loadZonesFromDB();
       if (cached) {
-        loadedZones  = cached.zones;
+        setLoadedZones(cached.zones);
         loadedAt     = cached.savedAt;
         loadedFile   = cached.fileName;
-        rebuildIndexes(loadedZones);
         console.log('[Coverage] Inicialización exitosa — zonas:', loadedZones.length);
       } else {
         console.log('[Coverage] Sin zonas previas en DB — esperando carga de KMZ');
@@ -811,11 +864,21 @@ async function fetchAndParseLink(href, depth, visited) {
   return all;
 }
 
-// Agrega nuevas zonas a las ya cargadas en memoria y reconstruye el índice espacial.
+/**
+ * Agrega zonas nuevas a las ya cargadas y reconstruye los índices.
+ * Devuelve SOLO las que realmente se agregaron (las repetidas se descartan),
+ * para que el llamador persista únicamente esas en la base de datos.
+ */
 function mergeZonesIntoMemory(newZones) {
-  if (!newZones || newZones.length === 0) return;
-  loadedZones  = (loadedZones || []).concat(newZones);
+  if (!newZones || newZones.length === 0) return [];
+  if (!loadedZones) { loadedZones = []; loadedKeys = new Set(); }
+
+  const nuevas = soloNuevas(newZones);
+  if (nuevas.length === 0) return [];
+
+  loadedZones = loadedZones.concat(nuevas);
   rebuildIndexes(loadedZones);
+  return nuevas;
 }
 
 // Actualiza el registro de un enlace en coverage_links (para poder reintentar)
@@ -882,23 +945,28 @@ async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
       if (pendingMerge.length && (done % 10 === 0 || done === unique.length)) {
         const lote = pendingMerge;
         pendingMerge = [];
-        mergeZonesIntoMemory(lote);
+        // Solo se persiste lo que realmente se agregó (sin duplicados)
+        const agregadas = mergeZonesIntoMemory(lote);
         // Persistir INCREMENTALMENTE (append) — si el server se reinicia a mitad,
         // lo ya resuelto no se pierde y queda disponible tras el restart.
-        escriturasEnVuelo.push(
-          appendZonesToDB(lote, loadedFile)
-            .catch(err => console.error('[Coverage] Append a DB falló:', err.message))
-        );
+        if (agregadas.length) {
+          escriturasEnVuelo.push(
+            appendZonesToDB(agregadas, loadedFile)
+              .catch(err => console.error('[Coverage] Append a DB falló:', err.message))
+          );
+        }
       }
     }
   });
 
   if (pendingMerge.length) {
-    mergeZonesIntoMemory(pendingMerge);
-    escriturasEnVuelo.push(
-      appendZonesToDB(pendingMerge, loadedFile)
-        .catch(err => console.error('[Coverage] Append final a DB falló:', err.message))
-    );
+    const agregadas = mergeZonesIntoMemory(pendingMerge);
+    if (agregadas.length) {
+      escriturasEnVuelo.push(
+        appendZonesToDB(agregadas, loadedFile)
+          .catch(err => console.error('[Coverage] Append final a DB falló:', err.message))
+      );
+    }
   }
 
   // Esperar a que TODAS las inserciones terminen antes de marcar como completo
@@ -933,28 +1001,44 @@ exports.loadCoverage = async (req, res) => {
       });
     }
 
-    // Cargar en memoria y responder AL CLIENTE INMEDIATAMENTE
-    loadedZones  = zones;
-    loadedAt     = new Date().toISOString();
-    loadedFile   = req.file.originalname;
-    rebuildIndexes(zones);
+    // MODO: 'sumar' (por defecto) agrega al acervo; 'reemplazar' borra lo previo.
+    const reemplazar = req.body && req.body.modo === 'reemplazar';
+
+    if (reemplazar) {
+      setLoadedZones([]);
+    } else {
+      await ensureZonesLoaded();
+      if (!loadedZones) setLoadedZones([]);
+    }
+
+    const previas  = loadedZones.length;
+    const nuevas   = mergeZonesIntoMemory(zones);
+    loadedAt   = new Date().toISOString();
+    loadedFile = req.file.originalname;
 
     res.status(200).json({
       status: 'ok',
+      modo: reemplazar ? 'reemplazar' : 'sumar',
       fileName: req.file.originalname,
-      zonesLoaded: zones.length,
-      byType: countByType(zones),
+      zonesLoaded: loadedZones.length,
+      zonasNuevas: nuevas.length,
+      zonasOmitidas: zones.length - nuevas.length,
+      byType: countByType(loadedZones),
+      byDanger: countDanger(loadedZones),
       networkLinksFound: networkLinks.length,
       message: networkLinks.length > 0
-        ? `Se cargaron ${zones.length} elementos. Resolviendo ${networkLinks.length} enlaces externos en segundo plano...`
-        : `Se cargaron ${zones.length} elementos exitosamente`,
+        ? `${nuevas.length} elementos nuevos (total ${loadedZones.length}). Resolviendo ${networkLinks.length} enlaces externos en segundo plano...`
+        : `${nuevas.length} elementos nuevos agregados — total ${loadedZones.length}`,
       loadedAt
     });
 
-    // Guardar zonas base en DB y DESPUÉS resolver NetworkLinks (mapas externos).
-    // Encadenado a propósito: appendZonesToDB de los enlaces no debe correr en
-    // paralelo con el DELETE+INSERT del guardado base o se perderían filas.
-    saveZonesToDB(zones, req.file.originalname)
+    // Persistir. En modo reemplazar se reescribe todo; en modo sumar solo se
+    // agregan las nuevas (append), sin tocar lo ya guardado.
+    const persistir = reemplazar
+      ? saveZonesToDB(loadedZones, req.file.originalname)
+      : appendZonesToDB(nuevas, req.file.originalname);
+
+    persistir
       .catch(e => console.error('[Coverage] Guardado background fallido:', e.message))
       .then(() => {
         if (networkLinks.length > 0) {
@@ -962,6 +1046,8 @@ exports.loadCoverage = async (req, res) => {
         }
       })
       .catch(e => console.error('[Coverage] Error resolviendo NetworkLinks:', e.message));
+
+    console.log(`[Coverage] /load ${reemplazar ? 'REEMPLAZAR' : 'SUMAR'} — previas ${previas}, nuevas ${nuevas.length}, total ${loadedZones.length}`);
 
   } catch (error) {
     console.error('[Coverage Error]', error);
@@ -1029,7 +1115,7 @@ exports.checkCoverage = async (req, res) => {
 // El servidor nunca toca el archivo KMZ — cero riesgo de OOM.
 exports.loadBatch = async (req, res) => {
   try {
-    const { zones, fileName, isFirst, isFinal, total, networkLinks } = req.body;
+    const { zones, fileName, isFirst, isFinal, total, networkLinks, modo } = req.body;
 
     // Un KML puede ser SOLO un índice de enlaces (ej: "COBERTURA SMB_LINK.kml",
     // que apunta al KMZ real en TelcoDrive). En ese caso zones viene vacío y
@@ -1041,61 +1127,66 @@ exports.loadBatch = async (req, res) => {
     if (!fileName)
       return res.status(400).json({ status: 'error', message: 'fileName requerido' });
 
+    // MODO: 'sumar' (por defecto) agrega al acervo existente sin borrar nada.
+    //       'reemplazar' limpia todo y deja solo este archivo.
+    const reemplazar = modo === 'reemplazar';
+
     await ensureCoverageTable();
 
-    // En el primer lote, limpiar zonas anteriores
     if (isFirst) {
-      await pool.query('DELETE FROM public.coverage_zones');
-      console.log('[Coverage] Zonas anteriores borradas — iniciando carga de:', fileName);
+      if (reemplazar) {
+        await pool.query('DELETE FROM public.coverage_zones');
+        setLoadedZones([]);
+        console.log('[Coverage] MODO REEMPLAZAR — zonas anteriores borradas. Archivo:', fileName);
+      } else {
+        // Modo sumar: las zonas ya guardadas deben estar en memoria para poder
+        // detectar duplicados contra lo que llega.
+        await ensureZonesLoaded();
+        if (!loadedZones) setLoadedZones([]);
+        console.log('[Coverage] MODO SUMAR — acervo actual:', loadedZones.length, 'zonas. Agregando:', fileName);
+      }
     }
 
-    // Insertar este lote con sus bounding boxes
-    // Acepta Point (1 coord), LineString (2 coords) y Polygon (>=3 coords) — antes
-    // se descartaba todo lo que tuviera menos de 3 coordenadas, perdiendo los Points.
-    const values = [];
-    const params = [];
-    let   p      = 1;
+    // Descartar las que ya existen (mismo nombre + misma geometría) y quedarse
+    // solo con las nuevas. Evita duplicar al recargar un archivo ya cargado.
+    const validas = zones.filter(z => Array.isArray(z.coordinates) && z.coordinates.length >= 1);
+    const nuevas  = mergeZonesIntoMemory(validas);
+    const omitidas = validas.length - nuevas.length;
 
-    for (const z of zones) {
-      if (!Array.isArray(z.coordinates) || z.coordinates.length < 1) continue;
-      const bbox = buildBBox(z.coordinates);
-      values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
-      params.push(
-        fileName, z.name || 'Sin nombre', z.type || 'Polygon',
-        JSON.stringify(z.coordinates),
-        bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
-      );
-    }
-
-    if (values.length > 0) {
+    // Insertar en DB SOLO las nuevas
+    if (nuevas.length > 0) {
+      const values = [];
+      const params = [];
+      let   p      = 1;
+      for (const z of nuevas) {
+        const bbox = buildBBox(z.coordinates);
+        values.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        params.push(
+          fileName, z.name || 'Sin nombre', z.type || 'Polygon', z.source || null,
+          z.dangerType || null,
+          JSON.stringify(z.coordinates),
+          bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat
+        );
+      }
       await pool.query(
         `INSERT INTO public.coverage_zones
-           (file_name, name, type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
+           (file_name, name, type, source, danger_type, coordinates, bbox_minlon, bbox_minlat, bbox_maxlon, bbox_maxlat)
          VALUES ${values.join(',')}`,
         params
       );
     }
 
-    console.log(`[Coverage] Lote guardado: ${zones.length} elementos | archivo: ${fileName}`);
+    console.log(
+      `[Coverage] Lote: recibidas ${zones.length} | nuevas ${nuevas.length}` +
+      (omitidas > 0 ? ` | repetidas omitidas ${omitidas}` : '') +
+      ` | total acumulado ${loadedZones.length} | archivo: ${fileName}`
+    );
 
-    // En el último lote, cargar todo en memoria y construir índice espacial
+    // En el último lote, fijar metadatos y disparar los enlaces externos
     if (isFinal) {
-      const cached = await loadZonesFromDB();
-      if (cached) {
-        loadedZones  = cached.zones;
-        loadedFile   = cached.fileName;
-        loadedAt     = new Date().toISOString();
-        rebuildIndexes(loadedZones);
-        console.log('[Coverage] Índice espacial listo — elementos totales:', loadedZones.length);
-      } else {
-        // Archivo solo-enlaces: aún no hay ninguna zona en DB. Inicializar el
-        // estado igual para que las zonas que lleguen de los NetworkLinks se
-        // puedan fusionar y persistir con el nombre de archivo correcto.
-        loadedZones  = [];
-        loadedFile   = fileName;
-        loadedAt     = new Date().toISOString();
-        rebuildIndexes(loadedZones);
-      }
+      loadedFile = fileName;
+      loadedAt   = new Date().toISOString();
+      console.log('[Coverage] Carga finalizada — elementos totales en memoria:', loadedZones.length);
 
       // Si el navegador detectó NetworkLinks (mapas externos), resolverlos en
       // background ahora que ya se guardó la base del archivo subido.
@@ -1107,16 +1198,26 @@ exports.loadBatch = async (req, res) => {
       const nEnlaces = Array.isArray(networkLinks) ? networkLinks.length : 0;
       return res.status(200).json({
         status: 'ok',
+        modo: reemplazar ? 'reemplazar' : 'sumar',
         zonesLoaded: loadedZones ? loadedZones.length : 0,
         byType: countByType(loadedZones),
+        byDanger: countDanger(loadedZones),
         networkLinksFound: nEnlaces,
         message: (total || 0) > 0
-          ? `${total} elementos cargados y guardados correctamente`
+          ? (reemplazar
+              ? `${loadedZones.length} elementos cargados (reemplazo completo)`
+              : `Acervo actualizado: ${loadedZones.length} elementos en total`)
           : `Archivo de enlaces cargado. Descargando cobertura desde ${nEnlaces} origen(es) externo(s)...`
       });
     }
 
-    return res.status(200).json({ status: 'ok', message: `Lote guardado: ${zones.length} elementos` });
+    return res.status(200).json({
+      status: 'ok',
+      nuevas: nuevas.length,
+      omitidas,
+      acumulado: loadedZones.length,
+      message: `Lote: ${nuevas.length} nuevas de ${zones.length}`
+    });
 
   } catch (error) {
     console.error('[Coverage] Error en loadBatch:', error);
@@ -1201,6 +1302,92 @@ exports.getZones = (req, res) => {
 
   } catch (error) {
     console.error('[Coverage Error]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── GET /api/coverage/zones-in-view ──────────────────────────────────────────
+// Devuelve SOLO las zonas que se ven en el área del mapa (viewport).
+// Nunca se mandan las miles de zonas de golpe: el navegador de operación no lo
+// soportaría. Con este endpoint el mapa pesa lo mismo sin importar cuántas
+// zonas haya cargadas en total.
+//
+// Query: minLon, minLat, maxLon, maxLat  (obligatorios)
+//        limit  (opcional, tope 3000)
+//        soloPeligro=1 (opcional, para pintar solo la capa de riesgo)
+exports.getZonesInView = async (req, res) => {
+  try {
+    const minLon = parseFloat(req.query.minLon);
+    const minLat = parseFloat(req.query.minLat);
+    const maxLon = parseFloat(req.query.maxLon);
+    const maxLat = parseFloat(req.query.maxLat);
+
+    if ([minLon, minLat, maxLon, maxLat].some(v => isNaN(v))) {
+      return res.status(400).json({ status: 'error', message: 'Área inválida: se requieren minLon, minLat, maxLon, maxLat' });
+    }
+
+    if (!loadedZones || loadedZones.length === 0) {
+      const ok = await ensureZonesLoaded();
+      if (!ok) return res.status(200).json({ total: 0, truncado: false, zones: [] });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || '1500', 10) || 1500, 3000);
+    const soloPeligro = req.query.soloPeligro === '1';
+
+    // Simplificación por nivel de acercamiento: cuando el área visible es
+    // grande, el detalle fino de cada polígono no se aprecia en pantalla pero
+    // sí pesa en la descarga. Se reduce el número de vértices para que el mapa
+    // siga siendo liviano en los equipos de operación.
+    const areaGrados = Math.abs(maxLon - minLon) * Math.abs(maxLat - minLat);
+    const paso =
+      areaGrados > 20  ? 8 :   // vista país
+      areaGrados > 4   ? 4 :   // vista provincia
+      areaGrados > 0.5 ? 2 :   // vista ciudad
+      1;                       // barrio: sin simplificar
+
+    // Conserva primer y último vértice (para no abrir el polígono) y toma
+    // uno de cada `paso` en el medio. Nunca baja de 4 vértices.
+    function simplificar(coords) {
+      if (paso === 1 || coords.length <= 12) return coords;
+      const out = [];
+      for (let i = 0; i < coords.length - 1; i += paso) out.push(coords[i]);
+      out.push(coords[coords.length - 1]);
+      return out.length >= 4 ? out : coords;
+    }
+
+    const out = [];
+    let encontradas = 0;
+
+    for (const z of loadedZones) {
+      if (soloPeligro && !z.dangerType) continue;
+      const b = z.bbox || buildBBox(z.coordinates);
+      // Descartar si los bounding boxes no se solapan
+      if (b.maxLon < minLon || b.minLon > maxLon || b.maxLat < minLat || b.minLat > maxLat) continue;
+
+      encontradas++;
+      if (out.length >= limit) continue;
+
+      out.push({
+        name:       z.name,
+        type:       z.type || 'Polygon',
+        dangerType: z.dangerType || null,
+        // [lon,lat] tal como se guarda; el frontend invierte para Leaflet.
+        // Las zonas de peligro NO se simplifican: su forma exacta importa
+        // porque de ella depende la alerta de seguridad.
+        coordinates: z.dangerType ? z.coordinates : simplificar(z.coordinates)
+      });
+    }
+
+    return res.status(200).json({
+      total:     encontradas,
+      devueltas: out.length,
+      truncado:  encontradas > out.length,
+      limit,
+      simplificado: paso,
+      zones:     out
+    });
+  } catch (error) {
+    console.error('[Coverage getZonesInView Error]', error);
     return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };

@@ -53,6 +53,14 @@ router.get('/zones', verificarToken, coverageController.getZones);
 router.get('/danger-zones', verificarToken, coverageController.getDangerZones);
 
 /**
+ * GET /api/coverage/zones-in-view
+ * Devuelve solo las zonas visibles en el área del mapa (viewport).
+ * Query: minLon, minLat, maxLon, maxLat, [limit], [soloPeligro=1]
+ * Requiere autenticación
+ */
+router.get('/zones-in-view', verificarToken, coverageController.getZonesInView);
+
+/**
  * GET /api/coverage/status
  * Estado del servicio
  * Public endpoint (sin autenticación)

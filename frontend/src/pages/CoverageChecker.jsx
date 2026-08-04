@@ -11,6 +11,8 @@
 
 import { useState, useEffect, useRef }  from "react";
 import JSZip from "jszip";
+import MapaCobertura, { LeyendaMapa } from "../components/MapaCobertura";
+import TarjetaCliente from "../components/TarjetaCliente";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parser de URLs de ubicación (cliente — para formatos no acortados)
@@ -199,6 +201,43 @@ export default function CoverageChecker() {
   // Se muestra a TODOS los usuarios para que sepan si el sistema está listo.
   const [coverageStatus, setCoverageStatus] = useState(null); // {zonesLoaded, fileName, loadedAt}
   const [retryingLinks, setRetryingLinks] = useState(false);
+  // Modo de carga: "sumar" agrega al acervo existente (por defecto, porque la
+  // cobertura está repartida en muchos archivos y ninguno tiene el total);
+  // "reemplazar" borra todo lo anterior y deja solo este archivo.
+  const [modoCarga, setModoCarga] = useState("sumar");
+
+  // ── Mapa ────────────────────────────────────────────────────────────────────
+  const [zonasMapa, setZonasMapa]       = useState([]);   // zonas del área visible
+  const [mapaTruncado, setMapaTruncado] = useState(false);
+  const [cargandoMapa, setCargandoMapa] = useState(false);
+  const [verTarjeta, setVerTarjeta]     = useState(false); // modal vista cliente
+  const [vistaMapaGeneral, setVistaMapaGeneral] = useState(false);
+  const peticionMapaRef = useRef(0);
+
+  // Trae solo las zonas del área visible del mapa. Nunca las trae todas:
+  // con miles de zonas el navegador de operación no lo soportaría.
+  async function cargarZonasDelArea({ minLon, minLat, maxLon, maxLat }) {
+    const id = ++peticionMapaRef.current;
+    setCargandoMapa(true);
+    try {
+      const qs = new URLSearchParams({
+        minLon: minLon.toFixed(6), minLat: minLat.toFixed(6),
+        maxLon: maxLon.toFixed(6), maxLat: maxLat.toFixed(6),
+        limit: "1500",
+      });
+      const r = await fetch(`${API_URL}/zones-in-view?${qs}`, { headers: authHeaders() });
+      if (!r.ok) return;
+      const data = await r.json();
+      // Descartar respuestas viejas si el usuario siguió moviendo el mapa
+      if (id !== peticionMapaRef.current) return;
+      setZonasMapa(data.zones || []);
+      setMapaTruncado(!!data.truncado);
+    } catch {
+      /* silencioso — el mapa es complementario, no debe romper la consulta */
+    } finally {
+      if (id === peticionMapaRef.current) setCargandoMapa(false);
+    }
+  }
 
   // ── Verificar estado de la API ──────────────────────────────────────────────
   useEffect(() => {
@@ -496,6 +535,7 @@ export default function CoverageChecker() {
             isFirst:  true,
             isFinal:  true,
             total:    0,
+            modo:     modoCarga,
             networkLinks,
           }),
           signal: AbortSignal.timeout(30000),
@@ -517,6 +557,7 @@ export default function CoverageChecker() {
       const BATCH   = 200;
       const total   = Math.ceil(zones.length / BATCH);
       let   enviadas = 0;
+      let   totalFinal = 0; // acervo total que reporta el servidor al terminar
 
       for (let i = 0; i < zones.length; i += BATCH) {
         const lote      = zones.slice(i, i + BATCH);
@@ -535,6 +576,7 @@ export default function CoverageChecker() {
             isFirst,
             isFinal,
             total:    zones.length,
+            modo:     modoCarga,
             // Solo se manda en el lote final, para que el backend dispare la
             // resolución de mapas externos (NetworkLinks) una sola vez.
             ...(isFinal ? { networkLinks } : {}),
@@ -543,13 +585,17 @@ export default function CoverageChecker() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Error al enviar lote");
+        if (isFinal) totalFinal = data.zonesLoaded ?? 0;
       }
 
+      const resumen = modoCarga === "sumar"
+        ? `✅ ${zones.length} elementos procesados — acervo total: ${totalFinal.toLocaleString()} zonas`
+        : `✅ ${zones.length} elementos cargados (reemplazo completo)`;
       setUploadMsg({
         type: "ok",
         text: networkLinks.length > 0
-          ? `✅ ${zones.length} elementos cargados. Resolviendo ${networkLinks.length} enlaces externos en segundo plano (puede tardar varios minutos)...`
-          : `✅ ${zones.length} elementos cargados y guardados correctamente`,
+          ? `${resumen}. Resolviendo ${networkLinks.length} enlaces externos en segundo plano (puede tardar varios minutos)...`
+          : resumen,
       });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -708,7 +754,75 @@ export default function CoverageChecker() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ── Cambio entre CONSULTAR y MAPA GENERAL ────────────────────────────
+          El mapa general reemplaza a Google Earth para los PCs de operación:
+          en vez de abrir archivos pesados, dibuja solo las zonas del área
+          visible. El peso no depende de cuántas zonas haya cargadas en total. */}
+      <div className="flex gap-2 mb-5">
+        <button
+          onClick={() => setVistaMapaGeneral(false)}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+            !vistaMapaGeneral ? "bg-blue-600 text-white shadow" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+          }`}
+        >
+          🔍 Consultar dirección
+        </button>
+        <button
+          onClick={() => setVistaMapaGeneral(true)}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+            vistaMapaGeneral ? "bg-blue-600 text-white shadow" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+          }`}
+        >
+          🗺 Mapa de coberturas
+        </button>
+      </div>
+
+      {/* ── MAPA GENERAL ─────────────────────────────────────────────────── */}
+      {vistaMapaGeneral && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 className="font-semibold text-slate-700">Mapa de coberturas y zonas de riesgo</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Navega y acerca el mapa. Se dibujan solo las zonas del área visible.
+              </p>
+            </div>
+            <div className="text-xs text-slate-500">
+              {cargandoMapa
+                ? "Cargando zonas…"
+                : `${zonasMapa.length.toLocaleString()} zonas en pantalla`}
+            </div>
+          </div>
+
+          <MapaCobertura
+            key="mapa-general"
+            lat={result?.lat ?? -1.8312}
+            lon={result?.lon ?? -78.1834}
+            zonas={zonasMapa}
+            modo="interno"
+            zoom={result?.lat ? 14 : 7}
+            alto={560}
+            onMoveEnd={cargarZonasDelArea}
+            etiquetaMarcador="Última consulta"
+          />
+          <LeyendaMapa />
+
+          {mapaTruncado && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+              ⚠️ Esta área tiene más zonas de las que se pueden dibujar de una vez.
+              Acerca el mapa para ver el detalle completo.
+            </p>
+          )}
+
+          {coverageStatus && coverageStatus.zonesLoaded === 0 && (
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-2">
+              No hay zonas cargadas en el servidor todavía.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${vistaMapaGeneral ? "hidden" : ""}`}>
         {/* ── Panel izquierdo: formulario ── */}
         <div className="lg:col-span-1 space-y-5">
           {/* Tabs */}
@@ -859,23 +973,75 @@ export default function CoverageChecker() {
                 Carga el archivo con las zonas de cobertura. Máx. 200 MB.
               </p>
 
-              {/* Archivo actualmente activo en el servidor */}
+              {/* Acervo actualmente cargado en el servidor */}
               {coverageStatus && coverageStatus.zonesLoaded > 0 && (
                 <div className="flex items-start gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-xs text-teal-800">
                   <span>✅</span>
                   <div>
-                    <span className="font-semibold">Activo:</span>{" "}
-                    {coverageStatus.fileName}{" "}
-                    <span className="opacity-70">
-                      ({coverageStatus.zonesLoaded.toLocaleString()} zonas)
-                    </span>
-                    <br />
-                    <span className="opacity-60">
-                      Subir un nuevo archivo reemplazará el actual.
-                    </span>
+                    <span className="font-semibold">Acervo actual:</span>{" "}
+                    <span className="font-bold">{coverageStatus.zonesLoaded.toLocaleString()} zonas</span>
+                    {coverageStatus.fileName && (
+                      <span className="opacity-70"> — última carga: {coverageStatus.fileName}</span>
+                    )}
                   </div>
                 </div>
               )}
+
+              {/* ── MODO DE CARGA ────────────────────────────────────────────
+                  La cobertura está repartida en muchos archivos y mapas
+                  externos; ninguno tiene el total. Por eso "Sumar" es el modo
+                  por defecto: antes cada carga borraba todo lo anterior y se
+                  perdía cobertura que ya estaba validada. */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-600">¿Qué hacer con lo ya cargado?</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    {
+                      key: "sumar",
+                      titulo: "➕ Sumar al acervo",
+                      desc: "Agrega estas zonas a las que ya existen. No borra nada. Las repetidas se omiten automáticamente.",
+                      rec: true,
+                    },
+                    {
+                      key: "reemplazar",
+                      titulo: "🔄 Reemplazar todo",
+                      desc: "Borra TODA la cobertura actual y deja solo este archivo. Úsalo únicamente para empezar de cero.",
+                      rec: false,
+                    },
+                  ].map(({ key, titulo, desc, rec }) => (
+                    <label
+                      key={key}
+                      className={`flex items-start gap-2 rounded-lg border-2 px-3 py-2 cursor-pointer transition ${
+                        modoCarga === key
+                          ? (key === "sumar"
+                              ? "border-teal-500 bg-teal-50"
+                              : "border-red-400 bg-red-50")
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="modoCarga"
+                        className="mt-0.5"
+                        checked={modoCarga === key}
+                        onChange={() => setModoCarga(key)}
+                      />
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">
+                          {titulo}
+                          {rec && <span className="ml-1 text-[10px] font-semibold text-teal-600">(recomendado)</span>}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {modoCarga === "reemplazar" && coverageStatus?.zonesLoaded > 0 && (
+                  <p className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+                    ⚠️ Se borrarán las {coverageStatus.zonesLoaded.toLocaleString()} zonas actuales.
+                  </p>
+                )}
+              </div>
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
                 onDragLeave={() => setDragover(false)}
@@ -1013,17 +1179,63 @@ export default function CoverageChecker() {
                   );
                 })}
               </div>
-              {result.lat && result.lon && (
-                <a
-                  href={`https://maps.google.com/?q=${result.lat},${result.lon}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-3 text-xs text-blue-500 hover:underline"
-                >
-                  🗺 Abrir en Google Maps
-                </a>
+              {/* ── MAPA DE DETALLE (vista interna) ──────────────────────────
+                  Muestra la ubicación con los polígonos de cobertura y las
+                  zonas de peligro alrededor. Es información interna: para
+                  enviarle algo al cliente se usa el botón de vista para cliente,
+                  que genera una tarjeta sin ninguno de estos datos. */}
+              {result.lat != null && result.lon != null && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-slate-700">
+                      🗺 Ubicación en el mapa
+                      {cargandoMapa && <span className="ml-2 text-xs font-normal text-slate-400">cargando zonas…</span>}
+                    </h4>
+                    <button
+                      onClick={() => setVerTarjeta(true)}
+                      className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition"
+                    >
+                      📤 Vista para cliente
+                    </button>
+                  </div>
+
+                  <MapaCobertura
+                    lat={result.lat}
+                    lon={result.lon}
+                    zonas={zonasMapa}
+                    modo="interno"
+                    zoom={15}
+                    alto={300}
+                    onMoveEnd={cargarZonasDelArea}
+                  />
+                  <LeyendaMapa />
+                  {mapaTruncado && (
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      ⚠️ Hay más zonas de las que se pueden dibujar. Acerca el mapa para verlas todas.
+                    </p>
+                  )}
+
+                  <a
+                    href={`https://maps.google.com/?q=${result.lat},${result.lon}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-2 text-xs text-blue-500 hover:underline"
+                  >
+                    🔗 Abrir en Google Maps
+                  </a>
+                </div>
               )}
             </div>
+          )}
+
+          {/* Modal: tarjeta presentable para enviar al cliente */}
+          {verTarjeta && result && (
+            <TarjetaCliente
+              lat={result.lat}
+              lon={result.lon}
+              hasCoverage={result.hasCoverage}
+              onCerrar={() => setVerTarjeta(false)}
+            />
           )}
 
           {/* Historial */}

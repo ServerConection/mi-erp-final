@@ -1162,6 +1162,7 @@ ${asesoresPDF.length>0?`
     const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
     const totalBacklog      = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
+    const totalLeadsTotales = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
     const totalIngresosCRM  = s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0);
     const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
     return {
@@ -1184,6 +1185,14 @@ ${asesoresPDF.length>0?`
       activas:                  totalActivos,
       backlog:                  totalBacklog,
       ventaServicio:            totalVentaServicio,
+      // ── Indicadores pedidos por gerencia (hoja "visual comercial ERP") ──
+      // % Leads Gestionables vs Totales — indicador NUEVO
+      pctGestionablesVsTotales: totalLeadsTotales > 0
+        ? ((totalGestionables / totalLeadsTotales) * 100).toFixed(1) : "0.0",
+      // Efectividad vs Leads Totales — reemplaza a "Efic. Pauta".
+      // Antes mostraba efectividad_activas_vs_pauta, que medía otra cosa.
+      efectividadVsLeadsTotales: totalLeadsTotales > 0
+        ? ((totalJotform / totalLeadsTotales) * 100).toFixed(1) : "0.0",
     };
   }, [data]);
 
@@ -1215,20 +1224,10 @@ ${asesoresPDF.length>0?`
     };
   }, [objetivosPauta, filtros.fechaDesde, filtros.fechaHasta]);
 
-  // Reales de ATC / Fuera Cobertura / Inegociables derivados del embudo CRM.
-  // OJO: dependen de que el ETL escriba esas etapas en mestra_bitrix. Si una
-  // etapa no está mapeada, cae en "SIN ETAPA" y aquí se verá 0.
-  const realesEmbudo = useMemo(() => {
-    const emb = data.graficoEmbudo || [];
-    const sumaPorPatron = (re) => emb
-      .filter(e => re.test(String(e.etapa || '').toUpperCase()))
-      .reduce((acc, e) => acc + Number(e.total || 0), 0);
-    return {
-      atc:             sumaPorPatron(/^ATC/),
-      fuera_cobertura: sumaPorPatron(/FUERA\s*DE?\s*COBERTURA|ZONA\s*PELIGROSA/),
-      inegociables:    sumaPorPatron(/IN+EGOCIABLE/),
-    };
-  }, [data.graficoEmbudo]);
+  // NOTA: las tarjetas de ATC / Fuera Cobertura / Inegociables se retiraron de
+  // la vista por decisión de gerencia (no están en "visual comercial ERP").
+  // Sus objetivos siguen cargados en pauta_objetivos_diarios y disponibles en
+  // /api/pauta-objetivos por si se quieren volver a mostrar.
 
   const META_DIA = 65;
   const ETAPAS_JOTFORM  = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
@@ -1706,32 +1705,40 @@ ${asesoresPDF.length>0?`
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini index={0} label="Leads Totales"   meta={metasPauta.leads}        real={stats.leadsGestionables}             color="border-l-emerald-500" />
-            <KpiMini index={1} label="Gestionables"    meta={metasPauta.gestionables} real={stats.gestionables}                  color="border-l-violet-500" />
-            {/* Objetivos de pauta — se muestran solo si hay metas cargadas en BD */}
-            {metasPauta.cargados && (
-              <>
-                <KpiMini index={16} label="ATC"             meta={metasPauta.atc}             real={realesEmbudo.atc}             color="border-l-sky-500" />
-                <KpiMini index={17} label="Fuera Cob./Z.P." meta={metasPauta.fuera_cobertura} real={realesEmbudo.fuera_cobertura} color="border-l-orange-500" />
-                <KpiMini index={18} label="Inegociables"    meta={metasPauta.inegociables}    real={realesEmbudo.inegociables}    color="border-l-red-500" />
-              </>
-            )}
-            <KpiMini index={2} label="Ingresos CRM"    meta={metaDinamica(1364,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosCRM}                   color="border-l-blue-500" />
-            <KpiMini index={3} label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ingresosJotform}               color="border-l-emerald-500" />
-            <KpiMini index={4} label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDelDia}                  color="border-l-green-600" />
-            <KpiMini index={4} label="V. Día (CRM+JOT)" meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventasDiaForm}                 color="border-l-orange-500" />
-            <KpiMini index={4} label="V. Seguimiento"  meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaSeguimiento}              color="border-l-amber-500" />
-            <KpiMini index={5} label="Efectividad"     meta="45%"   real={`${stats.efectividad}%`}             color="border-l-purple-500" />
-            <KpiMini index={6} label="Tasa Inst."      meta="90%"   real={`${stats.tasaInstalacion}%`}         color="border-l-cyan-500" />
-            <KpiMini index={7} label="Tarjeta %"       meta="30%"   real={`${stats.tarjetaCredito}%`}          color="border-l-amber-500" />
-            <KpiMini index={8} label="Descarte %"      meta="30%"   real={`${stats.descartePorc}%`}            color="border-l-rose-500" />
-            <KpiMini index={9} label="Efic. Pauta"     meta="20%"   real={`${stats.efectividadActivasPauta}%`} color="border-l-indigo-600" />
-            <KpiMini index={10} label="3ra Edad %"      meta="14.50%"   real={`${stats.terceraEdad}%`}          color="border-l-pink-500" />
-            <KpiMini index={11} label="Activas Mes"     meta={metaDinamica(1156,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas - stats.backlog}       color="border-l-emerald-500" />
-            <KpiMini index={12} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)}  real={stats.backlog}                       color="border-l-cyan-500" />
-            <KpiMini index={13} label="Activas Total"   meta={metaDinamica(1300,  filtros.fechaDesde, filtros.fechaHasta)}  real={stats.activas}                       color="border-l-teal-500" />
-            <KpiMini index={15} label="Venta Servicio"  meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)}  real={stats.ventaServicio}                 color="border-l-teal-600" />
-            <KpiMini index={14} label="Por Regularizar" value={stats.regularizar}                               color="border-l-pink-500" />
+            {/* ──────────────────────────────────────────────────────────────
+                ORDEN Y ETIQUETAS definidos por gerencia.
+                Fuente: "Copia de INFORMACION COMERCIAL PARA ERP AGOSTO.xlsx",
+                hoja "visual comercial ERP", filas 5-9.
+
+                FILA 1 — Comercial (leads → efectividad → ingresos)
+                FILA 2 — Activaciones y calidad
+               ────────────────────────────────────────────────────────────── */}
+            <KpiMini index={0} label="Leads Totales"   meta={metasPauta.leads}        real={stats.leadsGestionables} color="border-l-emerald-500" />
+            <KpiMini index={1} label="Gestionables"    meta={metasPauta.gestionables} real={stats.gestionables}      color="border-l-violet-500" />
+            {/* NUEVO — pedido por gerencia */}
+            <KpiMini index={2} label="% Gest. vs Totales"  meta="50%"  real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-fuchsia-500" />
+            {/* Antes "Efic. Pauta". Cambió etiqueta Y cálculo: ahora es JOT / Leads Totales */}
+            <KpiMini index={3} label="Efect. vs Leads Tot." meta="20%" real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" />
+            {/* Antes "Efectividad". Solo cambió la etiqueta: ya calculaba JOT / Gestionables */}
+            <KpiMini index={4} label="Efect. vs Gestion."   meta="45%" real={`${stats.efectividad}%`}                color="border-l-purple-500" />
+            <KpiMini index={5} label="Descarte %"      meta="30%" real={`${stats.descartePorc}%`}  color="border-l-rose-500" />
+            <KpiMini index={6} label="Ingresos CRM"    meta={metaDinamica(1364, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}      color="border-l-blue-500" />
+            <KpiMini index={7} label="Ingresos CRM día" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}     color="border-l-green-600" />
+            {/* PENDIENTE BACKEND: hoy ventas_dia_form devuelve el mismo valor que
+                ventas_del_dia (indicadores.controller.js:830-831). Debe ser
+                ingresos Jotform del día SIN exigir que el lead se creara ese día. */}
+            <KpiMini index={8} label="Ingresos Jot día" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}    color="border-l-orange-500" />
+            <KpiMini index={9} label="Ingresos Jot Seg." meta={metaDinamica(0,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento} color="border-l-amber-500" />
+            <KpiMini index={10} label="Ingresos Tot. Jot" meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform} color="border-l-emerald-500" />
+
+            {/* FILA 2 — Activaciones y calidad (sin cambios de nombre) */}
+            <KpiMini index={11} label="Activas Mes"     meta={metaDinamica(1156, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog} color="border-l-emerald-500" />
+            <KpiMini index={12} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                 color="border-l-cyan-500" />
+            <KpiMini index={13} label="Activas Total"   meta={metaDinamica(1300, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                 color="border-l-teal-500" />
+            <KpiMini index={14} label="Tasa Inst."      meta="90%"    real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
+            <KpiMini index={15} label="Tarjeta %"       meta="30%"    real={`${stats.tarjetaCredito}%`}  color="border-l-amber-500" />
+            <KpiMini index={16} label="3ra Edad %"      meta="14.50%" real={`${stats.terceraEdad}%`}     color="border-l-pink-500" />
+            <KpiMini index={17} label="Por Regularizar" value={stats.regularizar}                        color="border-l-pink-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

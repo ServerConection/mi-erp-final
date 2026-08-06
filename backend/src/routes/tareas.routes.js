@@ -17,7 +17,12 @@ const ctrl      = require('../controllers/tareas.controller');
 const proyectos = require('../controllers/tareasProyectos.controller');
 const dash      = require('../controllers/tareasDashboard.controller');
 
-// Puerta de entrada única del módulo
+// ── Verificación de acceso (ANTES del guard, a propósito) ─────────────────────
+// El menú del ERP la consulta para decidir si muestra la tarjeta del módulo.
+// Responde 200 con { tiene_acceso: false } en vez de 403.
+router.get('/mi-acceso', verificarToken, ctrl.miAcceso);
+
+// Puerta de entrada única del resto del módulo
 router.use(verificarToken, accesoTareas);
 
 // ── Catálogos ─────────────────────────────────────────────────────────────────

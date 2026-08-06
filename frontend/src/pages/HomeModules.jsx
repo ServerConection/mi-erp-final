@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
+import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
@@ -47,6 +48,7 @@ export default function HomeModules() {
   const navigate = useNavigate();
   const { rol: userRol, nombre } = getUserInfo();
   const [query, setQuery] = useState("");
+  const { tieneAcceso: accesoTareas } = useAccesoTareas();
 
   const modules = useMemo(() => [
     { title: "Indicadores", path: "/indicadores", icon: BarChart3, accent: "azul", cat: "analitica",
@@ -87,9 +89,11 @@ export default function HomeModules() {
     { title: "Cobertura", path: "/cobertura", icon: MapPin, accent: "cian", cat: "ventas",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps." },
 
+    // El acceso NO depende del perfil sino de tener área y cargo asignados
+    // (los asesores comerciales no los tienen). Se consulta al backend.
     { title: "Tareas y Acuerdos", path: "/tareas", icon: CheckSquare, accent: "verde", cat: "equipo",
       desc: "Registra tareas y acuerdos, define responsable y fecha de entrega, y sigue el cumplimiento por área.",
-      rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'ADMINISTRADOR'] },
+      requiereTareas: true },
     { title: "Recursos Humanos", path: "/rrhh", icon: Users, accent: "morado", cat: "equipo",
       desc: "Gestión de talento, vacaciones y expedientes del personal." },
     { title: "Control Horarios", path: "/horarios", icon: Clock, accent: "ambar", cat: "equipo",
@@ -123,14 +127,20 @@ export default function HomeModules() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return modules.filter(mod => {
-      const allowed = userRol === 'CONSULTOR'
-        ? mod.rolesPermitidos?.includes('CONSULTOR')
-        : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-      if (!allowed) return false;
+      // Módulo de Tareas: el acceso lo decide el área/cargo en la BD, no el perfil.
+      // Mientras se resuelve la consulta no se muestra, para evitar parpadeo.
+      if (mod.requiereTareas) {
+        if (!accesoTareas) return false;
+      } else {
+        const allowed = userRol === 'CONSULTOR'
+          ? mod.rolesPermitidos?.includes('CONSULTOR')
+          : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
+        if (!allowed) return false;
+      }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);
     });
-  }, [modules, userRol, query]);
+  }, [modules, userRol, query, accesoTareas]);
 
   const grouped = useMemo(() => {
     const out = {};

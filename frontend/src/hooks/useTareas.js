@@ -46,6 +46,7 @@ async function pedir(path, { method = 'GET', body, raw = false } = {}) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const tareasApi = {
+  miAcceso:   ()               => pedir('/mi-acceso'),
   catalogos:  ()               => pedir('/catalogos'),
   misTareas:  (rol)            => pedir(`/mis-tareas${rol ? `?rol=${rol}` : ''}`),
   listar:     (filtros = {})   => pedir(`/?${new URLSearchParams(limpiar(filtros))}`),
@@ -86,6 +87,28 @@ function limpiar(obj) {
 // ══════════════════════════════════════════════════════════════════════════════
 // HOOKS
 // ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ¿Este usuario tiene acceso al módulo de Tareas?
+ * Lo decide el área y el cargo en la base, NO el `perfil` del token.
+ * Se usa en el menú del ERP para mostrar u ocultar la tarjeta.
+ * Nunca lanza: si algo falla, devuelve acceso = false y el menú sigue igual.
+ */
+export function useAccesoTareas() {
+  const [acceso, setAcceso]     = useState(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    tareasApi.miAcceso()
+      .then(r => { if (vivo) setAcceso(r.data); })
+      .catch(() => { if (vivo) setAcceso({ tiene_acceso: false }); })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, []);
+
+  return { acceso, tieneAcceso: !!acceso?.tiene_acceso, cargando };
+}
 
 /** Catálogos (áreas, cargos, usuarios, proyectos). Se cargan una vez. */
 export function useCatalogos() {

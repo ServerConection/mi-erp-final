@@ -25,6 +25,49 @@ function manejar(fn, contexto) {
   };
 }
 
+// ── Acceso ────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/tareas/mi-acceso
+ * Responde 200 SIEMPRE (nunca 403). Sirve para que el menú del ERP decida si
+ * pinta la tarjeta del módulo, sin depender del `perfil` del usuario.
+ * No pasa por el middleware accesoTareas a propósito.
+ */
+exports.miAcceso = async (req, res) => {
+  const pool = require('../config/db');
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.area_id, u.cargo_id,
+              a.nombre AS area_nombre,
+              c.nombre AS cargo_nombre,
+              COALESCE(c.es_jefatura, false) AS es_jefatura
+         FROM public.usuarios u
+         LEFT JOIN public.tar_areas  a ON a.id = u.area_id
+         LEFT JOIN public.tar_cargos c ON c.id = u.cargo_id
+        WHERE u.id = $1`,
+      [req.user.id]
+    );
+
+    const r = rows[0] || {};
+    const tieneAcceso = Boolean(r.area_id && r.cargo_id);
+
+    res.json({
+      success: true,
+      data: {
+        tiene_acceso: tieneAcceso,
+        area_nombre:  r.area_nombre  || null,
+        cargo_nombre: r.cargo_nombre || null,
+        es_jefatura:  r.es_jefatura  || false,
+        es_admin:     (req.user.perfil || '').toUpperCase() === 'ADMINISTRADOR',
+      },
+    });
+  } catch (e) {
+    // Si el módulo aún no está migrado, no rompemos el menú del ERP.
+    console.error('[tareas.controller:miAcceso]', e.message);
+    res.json({ success: true, data: { tiene_acceso: false } });
+  }
+};
+
 // ── Lectura ───────────────────────────────────────────────────────────────────
 
 exports.listar = manejar(async (req, res) => {

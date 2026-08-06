@@ -7,3 +7,12 @@ dist/
 tunnel_log.txt
 ollama_url.txt
 prueba_ia.txt
+
+# Basura que genera Vite al recargar la config
+frontend/vite.config.js.timestamp-*
+
+# Backups de scripts de optimizacion
+.backups_optimizacion/
+
+# Logs sueltos
+backend/err.txt

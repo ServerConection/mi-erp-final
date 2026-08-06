@@ -62,6 +62,22 @@ export function TipoBadge({ tipo }) {
   );
 }
 
+/** NOVONET azul, VELSA naranja — misma identidad visual que el resto del ERP. */
+export const EMPRESA_UI = {
+  NOVONET: { label: 'NOVONET', clase: 'bg-blue-50 text-blue-700 border-blue-200'       },
+  VELSA:   { label: 'VELSA',   clase: 'bg-orange-50 text-orange-700 border-orange-200' },
+};
+
+export function EmpresaBadge({ empresa }) {
+  const ui = EMPRESA_UI[String(empresa || '').toUpperCase()];
+  if (!ui) return null;
+  return (
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide border ${ui.clase}`}>
+      {ui.label}
+    </span>
+  );
+}
+
 export function AreaChip({ nombre, color = '#6B7280' }) {
   return (
     <span
@@ -192,7 +208,7 @@ export function Vacio({ titulo, texto, icono: Icono = Inbox, accion }) {
 }
 
 export function ErrorBox({ error, onReintentar }) {
-  const sinAcceso = error?.codigo === 'SIN_AREA_O_CARGO';
+  const sinAcceso = error?.codigo === 'SIN_ACCESO_TAREAS';
   return (
     <div className="m-6 rounded-xl border border-rose-200 bg-rose-50 p-5">
       <div className="flex gap-3">

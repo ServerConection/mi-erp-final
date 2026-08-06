@@ -2,15 +2,17 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * MIDDLEWARE: acceso al módulo de Tareas
  * ═══════════════════════════════════════════════════════════════════════════════
- * El acceso NO se decide por `perfil` sino por si el usuario tiene área y cargo
- * asignados. Los asesores comerciales quedan fuera del módulo porque tienen
- * area_id / cargo_id en NULL.
+ * REGLA ÚNICA: entran todos menos los asesores de ventas.
+ *
+ * No se exige `area_id` ni `cargo_id`. Quien los tenga gana agrupación por área
+ * y, si su cargo es de jefatura, visibilidad sobre toda su área. Quien no los
+ * tenga usa el módulo igual: crea tareas, recibe asignaciones y comenta.
  *
  * Debe usarse SIEMPRE después de `verificarToken`.
  *
  * Inyecta en la request:
  *   req.tareasUser = {
- *     id, usuario, empresa, perfil,
+ *     id, usuario, empresa, perfil, cargoTexto,
  *     areaId, areaCodigo, areaNombre,
  *     cargoId, cargoCodigo, cargoNombre, nivel,
  *     esJefatura, esAdmin
@@ -18,6 +20,7 @@
  */
 
 const pool = require('../config/db');
+const { sqlTieneAccesoTareas } = require('../config/tareas.config');
 
 // ── Cache en memoria (mismo patrón que auth.js) ───────────────────────────────
 const CACHE_TTL_MS = 60 * 1000;
@@ -65,6 +68,7 @@ const accesoTareas = async (req, res, next) => {
                 u.usuario,
                 u.empresa,
                 u.perfil,
+                u.cargo AS cargo_texto,
                 u.area_id,
                 a.codigo AS area_codigo,
                 a.nombre AS area_nombre,
@@ -72,7 +76,8 @@ const accesoTareas = async (req, res, next) => {
                 c.codigo AS cargo_codigo,
                 c.nombre AS cargo_nombre,
                 c.nivel,
-                COALESCE(c.es_jefatura, false) AS es_jefatura
+                COALESCE(c.es_jefatura, false) AS es_jefatura,
+                ${sqlTieneAccesoTareas('u')} AS tiene_acceso
            FROM public.usuarios u
            LEFT JOIN public.tar_areas  a ON a.id = u.area_id
            LEFT JOIN public.tar_cargos c ON c.id = u.cargo_id
@@ -90,25 +95,28 @@ const accesoTareas = async (req, res, next) => {
         usuario:     r.usuario,
         empresa:     (r.empresa || '').toUpperCase(),
         perfil:      (r.perfil  || '').toUpperCase(),
+        cargoTexto:  r.cargo_texto,
         areaId:      r.area_id,
         areaCodigo:  r.area_codigo,
         areaNombre:  r.area_nombre,
         cargoId:     r.cargo_id,
+        // Si no le asignaron cargo del catálogo, mostramos el texto libre
+        cargoNombre: r.cargo_nombre || r.cargo_texto || null,
         cargoCodigo: r.cargo_codigo,
-        cargoNombre: r.cargo_nombre,
         nivel:       r.nivel,
         esJefatura:  r.es_jefatura,
         esAdmin:     (r.perfil || '').toUpperCase() === 'ADMINISTRADOR',
+        tieneAcceso: r.tiene_acceso,
       };
 
       cacheSet(req.user.id, data);
     }
 
-    if (!data.areaId || !data.cargoId) {
+    if (!data.tieneAcceso) {
       return res.status(403).json({
         success: false,
-        error: 'No tienes acceso al módulo de Tareas. Pide a un administrador que te asigne un área y un cargo.',
-        codigo: 'SIN_AREA_O_CARGO',
+        error: 'El módulo de Tareas no está disponible para asesores de ventas.',
+        codigo: 'SIN_ACCESO_TAREAS',
       });
     }
 

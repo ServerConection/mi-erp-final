@@ -5,12 +5,17 @@
  * UN SOLO LUGAR define quién ve qué. Todos los endpoints de lectura usan este
  * predicado. Si mañana cambian las reglas, se cambian aquí y en ningún otro lado.
  *
- * REGLAS
- *   1. Siempre se filtra por empresa del usuario.
- *   2. ADMINISTRADOR ve todo lo de su empresa.
- *   3. Cualquiera ve las tareas donde es responsable o solicitante.
- *   4. Las jefaturas (cargo.es_jefatura) ven todo lo de su área.
- *   5. Las jefaturas ven las tareas donde su área está marcada como involucrada.
+ * REGLAS · solo ven la tarea los involucrados
+ *   1. ADMINISTRADOR ve todo.
+ *   2. Cualquiera ve las tareas donde es responsable o solicitante.
+ *   3. Las jefaturas (cargo.es_jefatura) ven todo lo de su área.
+ *   4. Las jefaturas ven las tareas donde su área está marcada como involucrada.
+ *
+ * NOTA SOBRE EMPRESAS
+ * El personal administrativo se trata como un solo equipo entre NOVONET y VELSA:
+ * un Coordinador de Desarrollo lo es para ambas. Por eso NO se filtra por empresa.
+ * La columna `empresa` de la tarea se conserva como dato informativo (la empresa
+ * de quien la solicitó) y sirve para filtrar en la Lista y el Dashboard.
  */
 
 /**
@@ -22,24 +27,20 @@
  * @returns {string} SQL listo para concatenar tras un WHERE/AND
  */
 function construirFiltroVisibilidad(u, params, alias = 't') {
-  // Regla 1 · aislamiento por empresa (aplica también al admin)
-  params.push(u.empresa);
-  const filtroEmpresa = `${alias}.empresa = $${params.length}`;
-
-  // Regla 2 · el admin no necesita más filtros
+  // Regla 1 · el admin ve todo, sin condiciones
   if (u.esAdmin) {
-    return filtroEmpresa;
+    return 'TRUE';
   }
 
   const condiciones = [];
 
-  // Regla 3 · soy responsable o solicitante
+  // Regla 2 · soy responsable o solicitante
   params.push(u.id);
   const idxUser = params.length;
   condiciones.push(`${alias}.responsable_id = $${idxUser}`);
   condiciones.push(`${alias}.solicitante_id = $${idxUser}`);
 
-  // Reglas 4 y 5 · jefatura sobre su área
+  // Reglas 3 y 4 · jefatura sobre su área (propia o involucrada)
   if (u.esJefatura && u.areaId) {
     params.push(u.areaId);
     const idxArea = params.length;
@@ -50,7 +51,7 @@ function construirFiltroVisibilidad(u, params, alias = 't') {
     );
   }
 
-  return `${filtroEmpresa} AND (${condiciones.join(' OR ')})`;
+  return `(${condiciones.join(' OR ')})`;
 }
 
 /**
@@ -63,7 +64,6 @@ function construirFiltroVisibilidad(u, params, alias = 't') {
  */
 function puedeVerTarea(u, tarea, areasInvolucradas = []) {
   if (!tarea) return false;
-  if ((tarea.empresa || '').toUpperCase() !== u.empresa) return false;
   if (u.esAdmin) return true;
   if (tarea.responsable_id === u.id) return true;
   if (tarea.solicitante_id === u.id) return true;

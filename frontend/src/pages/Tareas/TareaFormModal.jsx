@@ -6,7 +6,7 @@
 import { useState, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { tareasApi } from '../../hooks/useTareas';
-import { Modal, hoyISO, Avatar } from './ui';
+import { Modal, hoyISO, Avatar, EmpresaBadge } from './ui';
 
 const Campo = ({ label, requerido, children, ayuda }) => (
   <div>
@@ -36,6 +36,7 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
     fecha_limite: enUnaSemana,
     proyecto_id: '',
     areas_involucradas: [],
+    empresa: tareaPadre?.empresa || catalogos?.yo?.empresa || 'NOVONET',
     tarea_padre_id: tareaPadre?.id || null,
   });
 
@@ -44,7 +45,8 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
 
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
 
-  // Usuarios agrupados por área para que el select sea navegable
+  // Usuarios agrupados por área. Incluye a los de ambas empresas: el personal
+  // administrativo trabaja cruzado, así que cualquiera puede asignarle a cualquiera.
   const porArea = useMemo(() => {
     const m = new Map();
     for (const u of catalogos?.usuarios || []) {
@@ -54,6 +56,9 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
     }
     return [...m.entries()];
   }, [catalogos]);
+
+  const responsable = (catalogos?.usuarios || [])
+    .find(u => String(u.id) === String(f.responsable_id));
 
   const retroactiva = f.fecha_limite < hoy;
 
@@ -150,7 +155,8 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
         </Campo>
 
         <div className="grid sm:grid-cols-2 gap-4">
-          <Campo label="Responsable" requerido ayuda="Una sola persona rinde cuentas por la tarea.">
+          <Campo label="Responsable" requerido
+                 ayuda="Una sola persona rinde cuentas. Puedes asignar a NOVONET o VELSA.">
             <select className={inputCls} value={f.responsable_id}
               onChange={e => set('responsable_id', e.target.value)}>
               <option value="">Selecciona…</option>
@@ -158,7 +164,7 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
                 <optgroup key={area} label={area}>
                   {usuarios.map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.nombre} · {u.cargo_nombre}
+                      {u.nombre} · {u.cargo_nombre} · {u.empresa}
                     </option>
                   ))}
                 </optgroup>
@@ -201,6 +207,25 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
           </div>
         )}
 
+        {!tareaPadre && (
+          <Campo label="¿A qué empresa corresponde?"
+                 ayuda="Sirve para filtrar y reportar. No limita a quién puedes asignarle.">
+            <div className="grid grid-cols-2 gap-2">
+              {(catalogos?.empresas || ['NOVONET', 'VELSA']).map(emp => (
+                <button key={emp} type="button" onClick={() => set('empresa', emp)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition
+                    ${f.empresa === emp
+                      ? (emp === 'VELSA'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-blue-500 bg-blue-50 text-blue-700')
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                  {emp}
+                </button>
+              ))}
+            </div>
+          </Campo>
+        )}
+
         {(catalogos?.proyectos || []).length > 0 && !tareaPadre && (
           <Campo label="Proyecto" ayuda="Opcional. Agrupa tareas relacionadas.">
             <select className={inputCls} value={f.proyecto_id}
@@ -231,18 +256,16 @@ export default function TareaFormModal({ catalogos, tareaPadre = null, onCerrar,
           </div>
         </Campo>
 
-        {f.responsable_id && (
+        {responsable && (
           <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
-            <Avatar
-              nombre={catalogos.usuarios.find(u => String(u.id) === String(f.responsable_id))?.nombre}
-              size={30}
-            />
-            <div className="text-sm">
-              <p className="font-medium text-slate-700">
-                {catalogos.usuarios.find(u => String(u.id) === String(f.responsable_id))?.nombre}
-              </p>
+            <Avatar nombre={responsable.nombre} size={30} />
+            <div className="text-sm min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="font-medium text-slate-700">{responsable.nombre}</p>
+                <EmpresaBadge empresa={responsable.empresa} />
+              </div>
               <p className="text-xs text-slate-500">
-                {catalogos.usuarios.find(u => String(u.id) === String(f.responsable_id))?.area_nombre}
+                {responsable.area_nombre} · {responsable.cargo_nombre}
               </p>
             </div>
           </div>

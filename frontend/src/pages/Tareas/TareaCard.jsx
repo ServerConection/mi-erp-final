@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { MessageSquare, GitBranch, ChevronDown, Calendar } from 'lucide-react';
 import {
   EstadoBadge, PrioridadBadge, TipoBadge, AreaChip, VencimientoBadge,
-  Avatar, fmtFechaCorta, ESTADO_UI,
+  Avatar, fmtFechaCorta, ESTADO_UI, EmpresaBadge,
 } from './ui';
 
 const TRANSICIONES_RAPIDAS = {
@@ -60,6 +60,7 @@ export default function TareaCard({ tarea, onAbrir, onCambiarEstado, yoId }) {
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onAbrir(tarea.id)}>
           <div className="flex items-center gap-2 flex-wrap mb-1.5">
             <TipoBadge tipo={tarea.tipo} />
+            <EmpresaBadge empresa={tarea.empresa} />
             <span className="text-[11px] font-mono text-slate-400">{tarea.codigo}</span>
             <PrioridadBadge prioridad={tarea.prioridad} />
             <VencimientoBadge tarea={tarea} />

@@ -6,6 +6,34 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+/**
+ * ─── QUIÉN ENTRA AL MÓDULO ─────────────────────────────────────────────────────
+ * Una sola regla: todos menos los asesores de ventas.
+ *
+ * No se exige `area_id` ni `cargo_id` a propósito. Esas dos columnas son
+ * opcionales y solo sirven para dos cosas:
+ *   · agrupar y filtrar por área en la Lista y el Dashboard
+ *   · que una jefatura vea todo lo de su área
+ * Quien no las tenga igual usa el módulo con normalidad: crea tareas, se las
+ * asignan, comenta. Simplemente no aparece agrupado por área.
+ *
+ * La detección de asesor se hace sobre la columna `cargo` (texto libre) de la
+ * tabla `usuarios`, que es donde el ERP ya guarda 'ASESOR'.
+ */
+const CARGOS_SIN_ACCESO = ['ASESOR', 'ASESORA', 'ASESOR COMERCIAL', 'ASESOR DE VENTAS'];
+
+/**
+ * Fragmento SQL reutilizable. Se usa en el middleware de acceso, en el catálogo
+ * de usuarios asignables y al validar un responsable. Un solo lugar que cambiar.
+ *
+ * @param {string} alias alias de la tabla usuarios en la consulta
+ */
+function sqlTieneAccesoTareas(alias = 'u') {
+  const lista = CARGOS_SIN_ACCESO.map(c => `'${c}'`).join(',');
+  return `(${alias}.activo = 'SI'
+           AND UPPER(BTRIM(COALESCE(${alias}.cargo, ''))) NOT IN (${lista}))`;
+}
+
 const ESTADOS = {
   PENDIENTE:   'PENDIENTE',
   EN_PROCESO:  'EN_PROCESO',
@@ -157,6 +185,8 @@ function transicionesDisponibles(actual, rolesUsuario) {
 }
 
 module.exports = {
+  CARGOS_SIN_ACCESO,
+  sqlTieneAccesoTareas,
   ESTADOS,
   ESTADOS_TERMINALES,
   TIPOS,

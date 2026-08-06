@@ -12,7 +12,7 @@ import { tareasApi } from '../../hooks/useTareas';
 import {
   Drawer, Cargando, ErrorBox, EstadoBadge, PrioridadBadge, TipoBadge,
   AreaChip, VencimientoBadge, Avatar, fmtFecha, fmtFechaHora, tiempoRelativo,
-  ESTADO_UI,
+  ESTADO_UI, EmpresaBadge,
 } from './ui';
 
 const ETIQUETA_ACCION = {
@@ -113,6 +113,7 @@ export default function TareaDetallePanel({ tareaId, catalogos, onCerrar, onCamb
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <TipoBadge tipo={t.tipo} />
+                <EmpresaBadge empresa={t.empresa} />
                 <span className="text-xs font-mono text-slate-400">{t.codigo}</span>
                 <EstadoBadge estado={t.estado} />
                 <PrioridadBadge prioridad={t.prioridad} />

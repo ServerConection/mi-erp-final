@@ -2,8 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * CONTROLADOR: Dashboard y exportación del módulo de Tareas
  * ═══════════════════════════════════════════════════════════════════════════════
- * Los KPIs respetan la misma visibilidad que la lista: una jefatura ve su área,
- * el administrador ve toda la empresa.
+ * Los KPIs respetan la misma visibilidad que la lista: una jefatura ve su área
+ * (en ambas empresas), el administrador ve todo. Se puede acotar a una empresa
+ * concreta con ?empresa=NOVONET|VELSA.
  */
 
 const pool = require('../config/db');
@@ -136,7 +137,7 @@ exports.dashboard = async (req, res) => {
         })),
         top_vencidas:  topVencidas.rows,
         alcance: u.esAdmin
-          ? `Toda la empresa ${u.empresa}`
+          ? 'Todas las tareas (NOVONET y VELSA)'
           : (u.esJefatura ? `Área ${u.areaNombre}` : 'Solo mis tareas'),
       },
     });
@@ -214,7 +215,8 @@ exports.exportar = async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws, 'Tareas');
 
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const nombre = `tareas_${u.empresa}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const sufijo = req.query.empresa ? `_${String(req.query.empresa).toUpperCase()}` : '';
+    const nombre = `tareas${sufijo}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     res.setHeader('Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

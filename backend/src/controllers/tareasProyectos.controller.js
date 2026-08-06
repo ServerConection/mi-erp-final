@@ -16,9 +16,9 @@ function error500(res, ctx, e) {
 // GET /api/tareas/proyectos
 exports.listar = async (req, res) => {
   try {
-    const { empresa } = req.tareasUser;
     const incluirArchivados = req.query.archivados === '1';
 
+    // Los proyectos son compartidos entre NOVONET y VELSA, igual que las tareas.
     const { rows } = await pool.query(
       `SELECT p.id, p.nombre, p.descripcion, p.empresa, p.area_id, p.color,
               p.estado, p.created_at,
@@ -32,10 +32,9 @@ exports.listar = async (req, res) => {
          FROM public.tar_proyectos p
          LEFT JOIN public.tar_areas a ON a.id = p.area_id
          LEFT JOIN public.usuarios  u ON u.id = p.creado_por
-        WHERE UPPER(p.empresa) = $1
-          AND ($2::boolean = true OR p.estado = 'ACTIVO')
+        WHERE ($1::boolean = true OR p.estado = 'ACTIVO')
         ORDER BY p.estado, p.nombre`,
-      [empresa, incluirArchivados]
+      [incluirArchivados]
     );
 
     res.json({ success: true, data: rows });
@@ -46,7 +45,7 @@ exports.listar = async (req, res) => {
 exports.crear = async (req, res) => {
   try {
     const u = req.tareasUser;
-    const { nombre, descripcion, area_id, color } = req.body;
+    const { nombre, descripcion, area_id, color, empresa } = req.body;
 
     if (!nombre || !String(nombre).trim()) {
       return res.status(400).json({ success: false, error: 'El nombre es obligatorio' });
@@ -58,7 +57,9 @@ exports.crear = async (req, res) => {
       [
         String(nombre).trim(),
         descripcion || null,
-        u.empresa,
+        ['NOVONET', 'VELSA'].includes(String(empresa || '').toUpperCase())
+          ? String(empresa).toUpperCase()
+          : u.empresa,
         area_id || u.areaId,
         color || '#6B7280',
         u.id,
@@ -81,11 +82,8 @@ exports.editar = async (req, res) => {
     if (existe.length === 0) {
       return res.status(404).json({ success: false, error: 'Proyecto no encontrado' });
     }
-    if ((existe[0].empresa || '').toUpperCase() !== u.empresa) {
-      return res.status(403).json({ success: false, error: 'Ese proyecto es de otra empresa' });
-    }
 
-    const permitidos = ['nombre', 'descripcion', 'area_id', 'color', 'estado'];
+    const permitidos = ['nombre', 'descripcion', 'area_id', 'color', 'estado', 'empresa'];
     const sets = [];
     const params = [];
 
@@ -115,15 +113,14 @@ exports.editar = async (req, res) => {
 // PATCH /api/tareas/proyectos/:id/archivar
 exports.archivar = async (req, res) => {
   try {
-    const u  = req.tareasUser;
     const id = Number(req.params.id);
 
     const { rows } = await pool.query(
       `UPDATE public.tar_proyectos
           SET estado = CASE WHEN estado = 'ACTIVO' THEN 'ARCHIVADO' ELSE 'ACTIVO' END
-        WHERE id = $1 AND UPPER(empresa) = $2
+        WHERE id = $1
         RETURNING *`,
-      [id, u.empresa]
+      [id]
     );
 
     if (rows.length === 0) {

@@ -60,11 +60,18 @@ async function registrarHistorial(db, tareaId, usuarioId, accion, campo, anterio
   );
 }
 
-/** Verifica que el usuario destino exista, esté activo, sea de la misma empresa y tenga acceso. */
-async function validarResponsable(db, responsableId, empresa) {
+/**
+ * Verifica que el usuario destino exista, esté activo y no sea asesor.
+ *
+ * Cualquiera puede asignarle una tarea a cualquiera: no se valida empresa,
+ * ni área, ni jerarquía. La única restricción es que los asesores de ventas
+ * no participan del módulo.
+ */
+async function validarResponsable(db, responsableId) {
   const { rows } = await db.query(
-    `SELECT u.id, u.empresa, u.activo, u.area_id, u.cargo_id,
-            btrim(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre
+    `SELECT u.id, u.empresa, u.activo, u.cargo, u.area_id, u.cargo_id,
+            btrim(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre,
+            ${cfg.sqlTieneAccesoTareas('u')} AS tiene_acceso
        FROM public.usuarios u WHERE u.id = $1`,
     [responsableId]
   );
@@ -72,12 +79,9 @@ async function validarResponsable(db, responsableId, empresa) {
 
   const r = rows[0];
   if (r.activo !== 'SI') throw new ErrorNegocio('El responsable está desactivado', 400);
-  if ((r.empresa || '').toUpperCase() !== empresa) {
-    throw new ErrorNegocio('No puedes asignar tareas a usuarios de otra empresa', 400);
-  }
-  if (!r.area_id || !r.cargo_id) {
+  if (!r.tiene_acceso) {
     throw new ErrorNegocio(
-      'Ese usuario no tiene acceso al módulo de Tareas (le falta área o cargo)', 400
+      'No se pueden asignar tareas a asesores de ventas', 400
     );
   }
   return r;
@@ -102,6 +106,10 @@ async function listarTareas(u, f = {}) {
   if (f.tipo) {
     params.push(String(f.tipo).toUpperCase());
     where += ` AND t.tipo = $${params.length}`;
+  }
+  if (f.empresa) {
+    params.push(String(f.empresa).toUpperCase());
+    where += ` AND t.empresa = $${params.length}`;
   }
   if (f.prioridad) {
     const p = String(f.prioridad).split(',').map(s => s.trim().toUpperCase());
@@ -191,12 +199,12 @@ async function listarTareas(u, f = {}) {
  * Bandeja personal, agrupada por urgencia. La pantalla de entrada del módulo.
  */
 async function misTareas(u, { rol = 'responsable' } = {}) {
-  const params = [u.empresa, u.id];
+  const params = [u.id];
   const campo  = rol === 'solicitante' ? 'solicitante_id' : 'responsable_id';
 
   const { rows } = await pool.query(
     `SELECT * FROM ${VISTA} t
-      WHERE t.empresa = $1 AND t.${campo} = $2
+      WHERE t.${campo} = $1
       ORDER BY
         CASE t.grupo_vencimiento
           WHEN 'VENCIDA' THEN 1 WHEN 'HOY' THEN 2
@@ -292,6 +300,13 @@ async function crearTarea(u, d) {
   const responsableId  = Number(d.responsable_id) || u.id;
   const fechaSolicitud = d.fecha_solicitud || new Date().toISOString().slice(0, 10);
 
+  // La empresa es una etiqueta informativa (¿a qué negocio corresponde el trabajo?).
+  // Por defecto la de quien la crea, pero se puede cambiar: hay tareas de NOVONET
+  // que ejecuta gente de VELSA y viceversa.
+  const empresa = ['NOVONET', 'VELSA'].includes(String(d.empresa || '').toUpperCase())
+    ? String(d.empresa).toUpperCase()
+    : u.empresa;
+
   if (new Date(d.fecha_limite) < new Date(fechaSolicitud)) {
     throw new ErrorNegocio(
       'La fecha límite no puede ser anterior a la de solicitud. ' +
@@ -303,7 +318,7 @@ async function crearTarea(u, d) {
   try {
     await client.query('BEGIN');
 
-    await validarResponsable(client, responsableId, u.empresa);
+    await validarResponsable(client, responsableId);
 
     // Subtarea: el padre debe existir y ser visible
     if (d.tarea_padre_id) {
@@ -328,7 +343,7 @@ async function crearTarea(u, d) {
         d.tarea_padre_id || null,
         String(d.titulo).trim(),
         d.descripcion    || null,
-        u.empresa,
+        empresa,
         u.id,
         responsableId,
         (d.prioridad || 'MEDIA').toUpperCase(),
@@ -574,7 +589,7 @@ async function reasignar(u, id, nuevoResponsableId) {
       throw new ErrorNegocio('Esa persona ya es la responsable', 400);
     }
 
-    const nuevoResp = await validarResponsable(client, nuevoId, u.empresa);
+    const nuevoResp = await validarResponsable(client, nuevoId);
     const anteriorNombre = await nombreUsuario(client, ctx.tarea.responsable_id);
 
     // area_responsable_id se recalcula solo (trigger tar_asigna_area_responsable)
@@ -694,25 +709,31 @@ async function catalogos(u) {
                  WHERE activo = true ORDER BY orden`),
     pool.query(`SELECT id, codigo, nombre, nivel, es_jefatura FROM public.tar_cargos
                  WHERE activo = true ORDER BY nivel, nombre`),
+    // Usuarios asignables: TODOS los activos de ambas empresas menos los asesores.
+    // El área y el cargo del catálogo son opcionales (LEFT JOIN): quien no los
+    // tenga igual aparece, agrupado en "Sin área".
     pool.query(
       `SELECT u.id,
               btrim(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre,
-              u.usuario, u.area_id, a.nombre AS area_nombre, a.color AS area_color,
-              c.nombre AS cargo_nombre, c.es_jefatura
+              u.usuario, UPPER(u.empresa) AS empresa,
+              u.area_id,
+              COALESCE(a.nombre, 'Sin área')        AS area_nombre,
+              COALESCE(a.color, '#94a3b8')          AS area_color,
+              COALESCE(c.nombre, u.cargo, '—')      AS cargo_nombre,
+              COALESCE(c.es_jefatura, false)        AS es_jefatura
          FROM public.usuarios u
-         JOIN public.tar_areas  a ON a.id = u.area_id
-         JOIN public.tar_cargos c ON c.id = u.cargo_id
-        WHERE u.activo = 'SI' AND UPPER(u.empresa) = $1
-        ORDER BY a.orden, c.nivel, nombre`,
-      [u.empresa]
+         LEFT JOIN public.tar_areas  a ON a.id = u.area_id
+         LEFT JOIN public.tar_cargos c ON c.id = u.cargo_id
+        WHERE ${cfg.sqlTieneAccesoTareas('u')}
+        ORDER BY COALESCE(a.orden, 99), COALESCE(c.nivel, 9), nombre`
     ),
     pool.query(
-      `SELECT p.id, p.nombre, p.color, p.area_id, a.nombre AS area_nombre
+      `SELECT p.id, p.nombre, p.color, p.area_id, UPPER(p.empresa) AS empresa,
+              a.nombre AS area_nombre
          FROM public.tar_proyectos p
          LEFT JOIN public.tar_areas a ON a.id = p.area_id
-        WHERE p.estado = 'ACTIVO' AND UPPER(p.empresa) = $1
-        ORDER BY p.nombre`,
-      [u.empresa]
+        WHERE p.estado = 'ACTIVO'
+        ORDER BY p.nombre`
     ),
   ]);
 
@@ -721,11 +742,13 @@ async function catalogos(u) {
     cargos:    cargos.rows,
     usuarios:  usuarios.rows,
     proyectos: proyectos.rows,
+    empresas:  ['NOVONET', 'VELSA'],
     estados: Object.values(cfg.ESTADOS).map(e => ({ valor: e, etiqueta: cfg.ETIQUETAS_ESTADO[e] })),
     tipos:    cfg.TIPOS.map(t => ({ valor: t, etiqueta: cfg.ETIQUETAS_TIPO[t] })),
     prioridades: cfg.PRIORIDADES.map(p => ({ valor: p, etiqueta: cfg.ETIQUETAS_PRIORIDAD[p] })),
     yo: {
-      id: u.id, nombre: u.usuario, area_id: u.areaId, area_nombre: u.areaNombre,
+      id: u.id, nombre: u.usuario, empresa: u.empresa,
+      area_id: u.areaId, area_nombre: u.areaNombre,
       cargo_nombre: u.cargoNombre, es_jefatura: u.esJefatura, es_admin: u.esAdmin,
     },
   };

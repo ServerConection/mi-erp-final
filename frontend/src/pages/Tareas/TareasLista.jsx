@@ -7,11 +7,11 @@ import { Search, Download, X, Loader2, ChevronLeft, ChevronRight, FileSpreadshee
 import { useListaTareas, descargarExcel } from '../../hooks/useTareas';
 import {
   Cargando, ErrorBox, Vacio, EstadoBadge, PrioridadBadge, TipoBadge,
-  AreaChip, Avatar, fmtFechaCorta,
+  AreaChip, Avatar, fmtFechaCorta, EmpresaBadge,
 } from './ui';
 
 const FILTROS_INICIALES = {
-  q: '', estado: '', prioridad: '', tipo: '', area_id: '',
+  q: '', estado: '', prioridad: '', tipo: '', area_id: '', empresa: '',
   responsable_id: '', proyecto_id: '', desde: '', hasta: '',
   vencidas: '', solo_principales: '1',
   orden_por: 'fecha_limite', orden_dir: 'ASC', page: 1, limit: 50,
@@ -96,6 +96,13 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
             {(catalogos?.areas || []).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </select>
 
+          <select className={selectCls} value={f.empresa} onChange={e => set('empresa', e.target.value)}>
+            <option value="">Ambas empresas</option>
+            {(catalogos?.empresas || ['NOVONET', 'VELSA']).map(e => (
+              <option key={e} value={e}>{e}</option>
+            ))}
+          </select>
+
           <select className={selectCls} value={f.responsable_id} onChange={e => set('responsable_id', e.target.value)}>
             <option value="">Todos los responsables</option>
             {(catalogos?.usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
@@ -159,6 +166,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
                     <td className="px-3 py-2.5 max-w-md">
                       <div className="flex items-center gap-2 mb-0.5">
                         <TipoBadge tipo={t.tipo} />
+                        <EmpresaBadge empresa={t.empresa} />
                         <span className="text-[10px] font-mono text-slate-400">{t.codigo}</span>
                         {t.es_subtarea && <span className="text-[10px] text-slate-400">↳ subtarea</span>}
                       </div>

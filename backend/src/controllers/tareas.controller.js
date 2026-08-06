@@ -35,12 +35,14 @@ function manejar(fn, contexto) {
  */
 exports.miAcceso = async (req, res) => {
   const pool = require('../config/db');
+  const { sqlTieneAccesoTareas } = require('../config/tareas.config');
   try {
     const { rows } = await pool.query(
-      `SELECT u.area_id, u.cargo_id,
+      `SELECT u.area_id, u.cargo_id, u.cargo AS cargo_texto,
               a.nombre AS area_nombre,
               c.nombre AS cargo_nombre,
-              COALESCE(c.es_jefatura, false) AS es_jefatura
+              COALESCE(c.es_jefatura, false) AS es_jefatura,
+              ${sqlTieneAccesoTareas('u')} AS tiene_acceso
          FROM public.usuarios u
          LEFT JOIN public.tar_areas  a ON a.id = u.area_id
          LEFT JOIN public.tar_cargos c ON c.id = u.cargo_id
@@ -49,14 +51,13 @@ exports.miAcceso = async (req, res) => {
     );
 
     const r = rows[0] || {};
-    const tieneAcceso = Boolean(r.area_id && r.cargo_id);
 
     res.json({
       success: true,
       data: {
-        tiene_acceso: tieneAcceso,
+        tiene_acceso: Boolean(r.tiene_acceso),
         area_nombre:  r.area_nombre  || null,
-        cargo_nombre: r.cargo_nombre || null,
+        cargo_nombre: r.cargo_nombre || r.cargo_texto || null,
         es_jefatura:  r.es_jefatura  || false,
         es_admin:     (req.user.perfil || '').toUpperCase() === 'ADMINISTRADOR',
       },

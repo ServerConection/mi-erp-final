@@ -36,6 +36,7 @@ const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 const Inventario           = lazy(() => import("./pages/Inventario"));
 const Tareas               = lazy(() => import("./pages/Tareas"));
+const ArchivosCompartidos  = lazy(() => import("./pages/Hojas"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
@@ -120,6 +121,7 @@ export default function App() {
             <Route path="bitrix-live"              element={<BitrixLive />} />
             <Route path="inventario"               element={<Inventario />} />
             <Route path="tareas"                   element={<Tareas />} />
+            <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />

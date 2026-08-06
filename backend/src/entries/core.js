@@ -35,6 +35,7 @@ app.use('/api/reporte-detalle',   require('../routes/reporteDetalle.routes'));
 app.use('/api/bot-auditor',       require('../routes/botAuditor.routes'));
 app.use('/api/tthh',              require('../routes/tthh.routes'));
 app.use('/api/tareas',            require('../routes/tareas.routes'));
+app.use('/api/hojas',             require('../routes/hojas.routes'));
 app.use('/api/asistente',         require('../routes/asistente.routes'));
 app.use('/api/alertas',           require('../routes/alertas.routes'));
 app.use('/api/mundialito',        require('../routes/mundialito.routes'));

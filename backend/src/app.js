@@ -40,10 +40,12 @@ const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const cumplimientoLeadsRoutes      = require('./routes/cumplimientoLeads.routes');
+const pautaObjetivosRoutes         = require('./routes/pautaObjetivos.routes');
 const datosAdicionalesRoutes       = require('./routes/datosAdicionales.routes');
 const tthhRoutes                   = require('./routes/tthh.routes');
 const llamadasRoutes                = require('./routes/llamadas.routes');
 const tareasRoutes                  = require('./routes/tareas.routes');
+const hojasRoutes                   = require('./routes/hojas.routes');
 
 const app = express();
 
@@ -154,10 +156,12 @@ app.use('/api/reporte-detalle', reporteDetalleRoutes);
 app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/cumplimiento-leads', cumplimientoLeadsRoutes);
+app.use('/api/pauta-objetivos',    pautaObjetivosRoutes);
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/tareas',   tareasRoutes);
+app.use('/api/hojas',    hojasRoutes);
 
 // Handler 404
 app.use((req, res) => {

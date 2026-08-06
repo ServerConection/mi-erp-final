@@ -100,6 +100,14 @@ const initSocket = (httpServer) => {
       empresa: socket.user.empresa,
     });
 
+    // Módulo Archivos Compartidos: salas por hoja, presencia y foco de celda.
+    // Se carga aquí dentro para que un fallo del módulo no impida conectar.
+    try {
+      require('../services/hojasSocket').registrarHandlersHojas(_io, socket);
+    } catch (error) {
+      console.warn('[SOCKET] No se pudieron registrar los handlers de hojas:', error.message);
+    }
+
     // Replay: reenviar broadcasts aún vigentes a este socket recién conectado
     const ahora = Date.now();
     for (const b of _broadcastsVigentes) {

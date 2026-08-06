@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { enviarOTP } = require('../services/email.service');
 const { obtenerPermisosUsuario } = require('../config/permisos.config');
+const { JWT_EXPIRES_IN } = require('../config/jwt.config');
 
 // Rate limiting
 const intentos = new Map();
@@ -84,7 +85,7 @@ router.post('/login', async (req, res) => {
       const token = jwt.sign(
         { id: user.id, usuario: user.usuario, empresa, perfil },
         process.env.JWT_SECRET,
-        { expiresIn: '8h' }
+        { expiresIn: JWT_EXPIRES_IN }
       );
       const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)
         ? URL_REPORTES.especiales
@@ -219,7 +220,7 @@ router.post('/verify-otp', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, usuario: user.usuario, empresa, perfil },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
     const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)

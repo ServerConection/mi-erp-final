@@ -432,14 +432,19 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND _bc_date BETWEEN $1::date AND $2::date
                 ) AS atc_soporte,
                 COUNT(*) FILTER (
-                    WHERE _bcerrado_date BETWEEN $1::date AND $2::date
+                    -- CAMBIO (2026-07-28): ventas del CRM por FECHA DE CREACION (_bc_date =
+                    -- b_creado_el_fecha) en vez de fecha de cerrado (_bcerrado_date = b_cerrado),
+                    -- segun definicion de negocio. Antes: WHERE _bcerrado_date BETWEEN ...
+                    WHERE _bc_date BETWEEN $1::date AND $2::date
                     AND b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS ventas_crm,
                 0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE _bcerrado_date BETWEEN $1::date AND $2::date
+                        -- CAMBIO (2026-07-28): denominador de efectividad por FECHA DE CREACION
+                        -- (_bc_date) en vez de fecha de cerrado. Antes: WHERE _bcerrado_date BETWEEN ...
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_realz,

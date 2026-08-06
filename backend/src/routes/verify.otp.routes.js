@@ -4,6 +4,7 @@ const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { JWT_EXPIRES_IN } = require('../config/jwt.config');
 
 router.post('/verify-otp', async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
@@ -92,7 +93,7 @@ router.post('/verify-otp', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, rol: user.perfil },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
     return res.json({

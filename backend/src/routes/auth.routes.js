@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { registrarIntento } = require('../services/audit.service');
 const { obtenerPermisosUsuario } = require('../config/permisos.config');
 const { verificarToken } = require('../middleware/auth');
+const { JWT_EXPIRES_IN } = require('../config/jwt.config');
 
 // Rate limiting simple en memoria
 const intentos = new Map();
@@ -115,7 +116,7 @@ router.post('/login', async (req, res) => {
         perfil: perfil
       },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
     // 🔍 Registrar intento EXITOSO en auditoría

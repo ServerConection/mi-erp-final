@@ -90,9 +90,14 @@ function limpiar(obj) {
 
 /**
  * ¿Este usuario tiene acceso al módulo de Tareas?
- * Lo decide el área y el cargo en la base, NO el `perfil` del token.
+ * Lo decide el backend (regla: todos menos asesores de ventas), no el `perfil`.
  * Se usa en el menú del ERP para mostrar u ocultar la tarjeta.
- * Nunca lanza: si algo falla, devuelve acceso = false y el menú sigue igual.
+ *
+ * IMPORTANTE — comportamiento ante fallos:
+ * Si la llamada falla (backend sin desplegar, endpoint caído, red), se asume
+ * que SÍ tiene acceso y la tarjeta se muestra. Ocultar el módulo por un fallo
+ * de red es peor que mostrarlo de más: la propia pantalla valida el acceso de
+ * verdad y muestra un mensaje claro si la persona no debe entrar.
  */
 export function useAccesoTareas() {
   const [acceso, setAcceso]     = useState(null);
@@ -102,7 +107,16 @@ export function useAccesoTareas() {
     let vivo = true;
     tareasApi.miAcceso()
       .then(r => { if (vivo) setAcceso(r.data); })
-      .catch(() => { if (vivo) setAcceso({ tiene_acceso: false }); })
+      .catch(err => {
+        if (!vivo) return;
+        // 403 explícito = el backend dijo que no. Cualquier otro error = fallo
+        // de infraestructura, no una negativa: mostramos la tarjeta igual.
+        const denegado = err?.status === 403;
+        if (!denegado) {
+          console.warn('[Tareas] No se pudo verificar el acceso, se muestra el módulo:', err?.message);
+        }
+        setAcceso({ tiene_acceso: !denegado, fallback: !denegado });
+      })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
   }, []);

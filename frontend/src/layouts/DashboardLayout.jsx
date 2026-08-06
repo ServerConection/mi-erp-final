@@ -431,6 +431,12 @@ const ALL_MENU_ITEMS = [
   { name: "🏆 Mundialito",        path: "/mundialito",        icon: "🏆", accessCheck: (p) => p !== 'CONSULTOR', isChild: true, group: "diversion" },
   { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null,                         isChild: true, group: "diversion" },
 
+  // ── Archivos compartidos (planillas colaborativas) ──────────────────────────
+  // Visible para todos menos CONSULTOR: quien no tenga archivos compartidos
+  // simplemente verá la lista vacía, y en cuanto le compartan uno aparece solo.
+  { name: "📗 Archivos Compartidos", path: "/archivos-compartidos", icon: "📗",
+    accessCheck: (p) => p !== 'CONSULTOR' },
+
   // ── Asistente de datos del ERP ──────────────────────────────────────────────
   { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },
 ];

@@ -45,6 +45,83 @@ const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
   return Math.floor((metaMensual * dias) / total);
 };
 
+// ── DÍAS DE GESTIÓN OPERATIVA ────────────────────────────────────────────────
+// El área comercial NO trabaja domingos. Las metas comerciales se reparten
+// entre los días operativos del mes, no entre los días calendario.
+// Agosto 2026: 31 días − 5 domingos = 26 días operativos.
+//
+// Se calcula por mes en vez de fijar 26, porque un mes con 4 domingos tiene
+// 27 días operativos y fijar 26 inflaría la meta diaria.
+// Devuelve 0 si el rango no tiene ningún día operativo (ej: filtrar un domingo
+// suelto). En ese caso la meta es 0, que es lo correcto: ese día no se gestiona.
+const diasOperativos = (fechaDesde, fechaHasta) => {
+  if (!fechaDesde || !fechaHasta) return 26;
+  const desde = new Date(fechaDesde + 'T00:00:00');
+  const hasta = new Date(fechaHasta + 'T00:00:00');
+  let n = 0;
+  for (const d = new Date(desde); d <= hasta; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0) n++;   // 0 = domingo
+  }
+  return n;
+};
+
+// Aquí sí se fuerza mínimo 1: es el denominador y un mes siempre tiene
+// días operativos. Evita división por cero.
+const diasOperativosDelMes = (fechaDesde) => {
+  if (!fechaDesde) return 26;
+  const d       = new Date(fechaDesde + 'T00:00:00');
+  const primero = new Date(d.getFullYear(), d.getMonth(), 1);
+  const ultimo  = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const iso     = (x) => x.toLocaleDateString('en-CA');
+  return Math.max(1, diasOperativos(iso(primero), iso(ultimo)));
+};
+
+// Prorrateo de una meta MENSUAL sobre días operativos.
+// NO se usa en las tarjetas (esas muestran la meta mensual constante).
+// Queda disponible para el panel de Control Diario / Producción por día,
+// donde sí se necesita la meta del día.
+// Ej: meta 5247 en agosto → 5247/26 = 202 por día operativo.
+const metaComercial = (metaMensual, fechaDesde, fechaHasta) => {
+  if (!metaMensual) return 0;
+  const dias  = diasOperativos(fechaDesde, fechaHasta);
+  const total = diasOperativosDelMes(fechaDesde);
+  return Math.round((metaMensual * dias) / total);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// METAS COMERCIALES DEL MES — NOVONET
+//
+// Fuente: "INFORMACION COMERCIAL PARA ERP AGOSTO.xlsx", hoja METAS NOVONET,
+//         fila TOTAL NOVONET (suma de los 30 asesores).
+//
+// IMPORTANTE: son metas MENSUALES CONSTANTES. NO se prorratean por fecha.
+// La tarjeta muestra el mismo número sin importar el rango filtrado, tal como
+// lo pidió gerencia.
+//
+// ⚠️ PARA ACTUALIZAR CADA MES: cambiar los valores de este bloque.
+//    (Pendiente: moverlas a BD + pantalla de carga para no depender de deploy.)
+// ─────────────────────────────────────────────────────────────────────────────
+const METAS_COMERCIALES = {
+  leadsTotales:      5247,
+  gestionables:      2886,
+  pctGestionables:  '55%',    // 2886 / 5247
+  efectVsLeads:     '23%',
+  efectVsGestion:   '50%',
+  descarte:         '27%',
+  ingresosCRM:       1443,
+  ingresosCRMDia:      35,    // sin dato en la hoja: se mantiene el valor previo
+  ingresosJotDia:      35,    // idem
+  ingresosJotSeg:       0,    // idem
+  ingresosTotJot:    1443,
+  activasMes:        1156,    // sin dato en la hoja: se mantiene el valor previo
+  activasBacklog:      70,    // idem
+  activasTotal:      1226,
+  tasaInstalacion:  '85%',
+  tarjeta:          '35%',
+  terceraEdad:      '15%',
+  planes150200:     '15%',
+};
+
 // ======================================================
 // TOOLTIP PERSONALIZADO — rico con % y valor absoluto
 // ======================================================
@@ -1713,32 +1790,34 @@ ${asesoresPDF.length>0?`
                 FILA 1 — Comercial (leads → efectividad → ingresos)
                 FILA 2 — Activaciones y calidad
                ────────────────────────────────────────────────────────────── */}
-            <KpiMini index={0} label="Leads Totales"   meta={metasPauta.leads}        real={stats.leadsGestionables} color="border-l-emerald-500" />
-            <KpiMini index={1} label="Gestionables"    meta={metasPauta.gestionables} real={stats.gestionables}      color="border-l-violet-500" />
-            {/* NUEVO — pedido por gerencia */}
-            <KpiMini index={2} label="% Gest. vs Totales"  meta="50%"  real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-fuchsia-500" />
-            {/* Antes "Efic. Pauta". Cambió etiqueta Y cálculo: ahora es JOT / Leads Totales */}
-            <KpiMini index={3} label="Efect. vs Leads Tot." meta="20%" real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" />
-            {/* Antes "Efectividad". Solo cambió la etiqueta: ya calculaba JOT / Gestionables */}
-            <KpiMini index={4} label="Efect. vs Gestion."   meta="45%" real={`${stats.efectividad}%`}                color="border-l-purple-500" />
-            <KpiMini index={5} label="Descarte %"      meta="30%" real={`${stats.descartePorc}%`}  color="border-l-rose-500" />
-            <KpiMini index={6} label="Ingresos CRM"    meta={metaDinamica(1364, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}      color="border-l-blue-500" />
-            <KpiMini index={7} label="Ingresos CRM día" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}     color="border-l-green-600" />
-            {/* PENDIENTE BACKEND: hoy ventas_dia_form devuelve el mismo valor que
+            {/* Metas MENSUALES CONSTANTES — ver METAS_COMERCIALES arriba.
+                No se prorratean por fecha: gerencia las quiere fijas. */}
+            <KpiMini index={0} label="Leads Totales"        meta={METAS_COMERCIALES.leadsTotales}    real={stats.leadsGestionables}                color="border-l-emerald-500" />
+            <KpiMini index={1} label="Gestionables"         meta={METAS_COMERCIALES.gestionables}    real={stats.gestionables}                     color="border-l-violet-500" />
+            <KpiMini index={2} label="% Gest. vs Totales"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" />
+            <KpiMini index={3} label="Efect. vs Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" />
+            <KpiMini index={4} label="Efect. vs Gestion."   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" />
+            <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" />
+            <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" />
+            <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" />
+            {/* PENDIENTE BACKEND: ventas_dia_form devuelve hoy el mismo valor que
                 ventas_del_dia (indicadores.controller.js:830-831). Debe ser
                 ingresos Jotform del día SIN exigir que el lead se creara ese día. */}
-            <KpiMini index={8} label="Ingresos Jot día" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}    color="border-l-orange-500" />
-            <KpiMini index={9} label="Ingresos Jot Seg." meta={metaDinamica(0,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento} color="border-l-amber-500" />
-            <KpiMini index={10} label="Ingresos Tot. Jot" meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform} color="border-l-emerald-500" />
+            <KpiMini index={8} label="Ingresos Jot día"     meta={METAS_COMERCIALES.ingresosJotDia}  real={stats.ventasDiaForm}                    color="border-l-orange-500" />
+            <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" />
+            <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" />
 
-            {/* FILA 2 — Activaciones y calidad (sin cambios de nombre) */}
-            <KpiMini index={11} label="Activas Mes"     meta={metaDinamica(1156, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog} color="border-l-emerald-500" />
-            <KpiMini index={12} label="Activas Backlog" meta={metaDinamica(70,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                 color="border-l-cyan-500" />
-            <KpiMini index={13} label="Activas Total"   meta={metaDinamica(1300, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                 color="border-l-teal-500" />
-            <KpiMini index={14} label="Tasa Inst."      meta="90%"    real={`${stats.tasaInstalacion}%`} color="border-l-cyan-500" />
-            <KpiMini index={15} label="Tarjeta %"       meta="30%"    real={`${stats.tarjetaCredito}%`}  color="border-l-amber-500" />
-            <KpiMini index={16} label="3ra Edad %"      meta="14.50%" real={`${stats.terceraEdad}%`}     color="border-l-pink-500" />
-            <KpiMini index={17} label="Por Regularizar" value={stats.regularizar}                        color="border-l-pink-500" />
+            {/* FILA 2 — Activaciones y calidad */}
+            <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activas - stats.backlog} color="border-l-emerald-500" />
+            <KpiMini index={12} label="Activas Backlog" meta={METAS_COMERCIALES.activasBacklog}  real={stats.backlog}                 color="border-l-cyan-500" />
+            <KpiMini index={13} label="Activas Total"   meta={METAS_COMERCIALES.activasTotal}    real={stats.activas}                 color="border-l-teal-500" />
+            <KpiMini index={14} label="Tasa Inst."      meta={METAS_COMERCIALES.tasaInstalacion} real={`${stats.tasaInstalacion}%`}   color="border-l-cyan-500" />
+            <KpiMini index={15} label="Tarjeta %"       meta={METAS_COMERCIALES.tarjeta}         real={`${stats.tarjetaCredito}%`}    color="border-l-amber-500" />
+            <KpiMini index={16} label="3ra Edad %"      meta={METAS_COMERCIALES.terceraEdad}     real={`${stats.terceraEdad}%`}       color="border-l-pink-500" />
+            {/* NUEVA — pedida por gerencia. PENDIENTE BACKEND: no existe el dato
+                real de planes 150/200 Mbps, por ahora muestra 0%. */}
+            <KpiMini index={17} label="% Planes 150/200" meta={METAS_COMERCIALES.planes150200}   real="0.0%"                          color="border-l-lime-500" />
+            <KpiMini index={18} label="Por Regularizar" value={stats.regularizar}                                                     color="border-l-pink-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

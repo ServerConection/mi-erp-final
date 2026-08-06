@@ -463,8 +463,6 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
-  // Objetivos de pauta cargados desde la BD (null = usar METAS_FALLBACK)
-  const [objetivosPauta, setObjetivosPauta]   = useState(null);
   const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
   const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
@@ -535,9 +533,6 @@ export default function ReporteComercialCore() {
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
-      // Objetivos de pauta: fire-and-forget, en paralelo. No se hace await para
-      // que nunca retrase ni bloquee la carga del dashboard.
-      fetchObjetivosPauta(filtrosActivos);
       const p = new URLSearchParams(Object.fromEntries(
         Object.entries(filtrosActivos)
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
@@ -622,31 +617,6 @@ export default function ReporteComercialCore() {
     } catch (e) { console.error('[ACTIV-FILTRO-NOVONET]', e); }
     finally { setLoadingActiv(false); }
   };
-
-  // ── Fetch independiente de OBJETIVOS DE PAUTA ──────────────────────────────
-  // Trae la meta cargada en public.pauta_objetivos_diarios para el rango
-  // filtrado. AISLADO A PROPÓSITO: si esta llamada falla o la tabla está
-  // vacía, objetivosPauta queda en null y las tarjetas usan los valores
-  // hardcodeados de siempre (ver METAS_FALLBACK). El dashboard nunca se rompe
-  // por culpa de este endpoint.
-  const fetchObjetivosPauta = useCallback(async (f) => {
-    try {
-      const p = new URLSearchParams();
-      p.set('empresa', 'NOVONET');
-      if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
-      if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/pauta-objetivos/resumen?${p}`);
-      const result = await res.json();
-      if (result?.success && result.data?.dias_con_objetivo > 0) {
-        setObjetivosPauta(result.data);
-      } else {
-        setObjetivosPauta(null); // sin objetivos cargados → fallback
-      }
-    } catch (e) {
-      console.error('[PAUTA-OBJETIVOS-NOVONET]', e);
-      setObjetivosPauta(null);
-    }
-  }, []);
 
   // updateFiltro solo actualiza el estado visual; la consulta se ejecuta al presionar "APLICAR FILTROS"
   const updateFiltro = (campo, valor) => {
@@ -1272,39 +1242,6 @@ ${asesoresPDF.length>0?`
         ? ((totalJotform / totalLeadsTotales) * 100).toFixed(1) : "0.0",
     };
   }, [data]);
-
-  // ── OBJETIVOS DE PAUTA ─────────────────────────────────────────────────────
-  // Fuente: public.pauta_objetivos_diarios (Excel FORECAST Y KPIS PAUTAS).
-  // NOVONET = VIDIKA_GOOGLE + ARTS_GOOGLE + ARTS_FACEBOOK.
-  //
-  // El endpoint /resumen ya devuelve el acumulado del rango filtrado, así que
-  // aquí NO se aplica metaDinamica: el prorrateo ya viene hecho día por día.
-  // Si no hay objetivos cargados se cae a los valores históricos hardcodeados,
-  // que es exactamente el comportamiento que tenía la pantalla antes.
-  const METAS_FALLBACK = { leads: 6122, gestionables: 3061, atc: 0, fuera_cobertura: 0, inegociables: 0, efectividad: 0 };
-
-  const metasPauta = useMemo(() => {
-    const r = (clave) => {
-      if (objetivosPauta && Number(objetivosPauta[clave]) > 0) {
-        return Math.round(Number(objetivosPauta[clave]));
-      }
-      return metaDinamica(METAS_FALLBACK[clave] || 0, filtros.fechaDesde, filtros.fechaHasta);
-    };
-    return {
-      leads:           r('leads'),
-      gestionables:    r('gestionables'),
-      atc:             r('atc'),
-      fuera_cobertura: r('fuera_cobertura'),
-      inegociables:    r('inegociables'),
-      efectividad:     r('efectividad'),
-      cargados:        !!objetivosPauta,
-    };
-  }, [objetivosPauta, filtros.fechaDesde, filtros.fechaHasta]);
-
-  // NOTA: las tarjetas de ATC / Fuera Cobertura / Inegociables se retiraron de
-  // la vista por decisión de gerencia (no están en "visual comercial ERP").
-  // Sus objetivos siguen cargados en pauta_objetivos_diarios y disponibles en
-  // /api/pauta-objetivos por si se quieren volver a mostrar.
 
   const META_DIA = 65;
   const ETAPAS_JOTFORM  = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];

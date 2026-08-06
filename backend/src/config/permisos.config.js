@@ -41,7 +41,9 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
     ],
     // 👁️ CONSULTOR: solo puede ver el reporte de Redes
     CONSULTOR: [
-      MODULOS.REDES,
+      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
+      //                       código sigue en el repo; para reactivarlo basta
+      //                       con descomentar aquí y en DashboardLayout.jsx.
       MODULOS.BOT_AUDITOR,
     ],
     SUPERVISOR: [
@@ -57,7 +59,9 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES,
+      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
+      //                       código sigue en el repo; para reactivarlo basta
+      //                       con descomentar aquí y en DashboardLayout.jsx.
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -69,7 +73,9 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES,
+      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
+      //                       código sigue en el repo; para reactivarlo basta
+      //                       con descomentar aquí y en DashboardLayout.jsx.
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -81,7 +87,9 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      MODULOS.REDES,
+      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
+      //                       código sigue en el repo; para reactivarlo basta
+      //                       con descomentar aquí y en DashboardLayout.jsx.
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -99,7 +107,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
     ],
     // 👁️ CONSULTOR: solo puede ver el reporte de Redes (VELSA)
     CONSULTOR: [
-      MODULOS.REDES_VELSA,
+      // MODULOS.REDES_VELSA,  ← módulo Redes ocultado (gerencia, 2026-08)
       MODULOS.BOT_AUDITOR,
     ],
     SUPERVISOR: [
@@ -114,7 +122,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA,
+      // MODULOS.REDES_VELSA,  ← módulo Redes ocultado (gerencia, 2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -126,7 +134,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA,
+      // MODULOS.REDES_VELSA,  ← módulo Redes ocultado (gerencia, 2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -138,7 +146,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR_VELSA,
       MODULOS.SEGUIMIENTO_VELSA,
       MODULOS.INDICADORES_VELSA,
-      MODULOS.REDES_VELSA,
+      // MODULOS.REDES_VELSA,  ← módulo Redes ocultado (gerencia, 2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,

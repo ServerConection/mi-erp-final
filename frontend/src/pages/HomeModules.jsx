@@ -105,9 +105,10 @@ export default function HomeModules() {
     { title: "Inventario", path: "/inventario", icon: Boxes, accent: "morado", cat: "equipo",
       desc: "Gestión de equipos, materiales y planos. Control de stock, movimientos y alertas de mínimos.",
       rolesPermitidos: ['ADMINISTRADOR'] },
-    { title: "Redes", path: "/redes", icon: Flag, accent: "ambar", cat: "equipo",
-      desc: "Monitoreo y gestión de redes.",
-      rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
+    // OCULTO por decisión de gerencia (2026-08). Código conservado.
+    // { title: "Redes", path: "/redes", icon: Flag, accent: "ambar", cat: "equipo",
+    //   desc: "Monitoreo y gestión de redes.",
+    //   rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },

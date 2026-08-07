@@ -637,9 +637,9 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_modificado_el_fecha AS "FECHA_MODIFICACION",
                 mb.b_modificado_el_hora AS "HORA_MODIFICACION",
                 mb.b_origen AS "ORIGEN"
-            FROM mestra_bitrix mb
+            FROM public.vw_bitrix_novonet mb
             ${joinEmpleadosDedup}
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersJoin}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersJoin}
             LIMIT 6000
         `;
 
@@ -675,12 +675,17 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
+        // MIGRADA a vw_bitrix_novonet (webhook Bitrix, tiempo real).
+        // La vista ya trae la etapa normalizada y sin duplicados, y
+        // b_creado_el_fecha es DATE — por eso se compara directo, sin
+        // parse_fecha_flex(). Eso además permite usar el índice.
+        // JotForm NO se toca: esta consulta solo usa columnas b_*.
         const queryEmbudo = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            FROM public.vw_bitrix_novonet mb
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
@@ -1222,12 +1227,13 @@ const getReporte180 = async (req, res) => {
             ) ${filtersNoJoin}
         `;
 
+        // MIGRADA a vw_bitrix_novonet — ver nota en queryEmbudo.
         const queryEmbudoCRM = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
-            WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            FROM public.vw_bitrix_novonet mb
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;

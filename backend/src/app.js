@@ -63,7 +63,9 @@ const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  // Cache-Control y Pragma: los manda el botón "Forzar Refresh" de Indicadores.
+  // Sin ellos el preflight falla con "Request header field cache-control is not allowed".
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
   maxAge: 86400
 };
 

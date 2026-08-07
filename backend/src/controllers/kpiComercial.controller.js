@@ -125,11 +125,30 @@ WITH datos AS (
               AND (mb.b_creado_el_fecha IS NULL OR mb.b_creado_el_fecha < $1::date)
         )                                                  AS activas_backlog,
 
+        -- 3ra Edad: el valor real en la base es 'SI POR TERCERA EDAD'
+        -- (mismo literal que usa queryMetasGlobales en indicadores.controller.js)
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
-              AND UPPER(TRIM(mb.j_aplica_descuento_3ra_edad)) IN ('SI','SÍ','S','TRUE','1')
+              AND UPPER(TRIM(mb.j_aplica_descuento_3ra_edad)) = 'SI POR TERCERA EDAD'
         )                                                  AS tercera_edad_n,
+
+        -- Tarjeta: el valor real lleva punto final → 'TARJETA DE CREDITO.'
+        COUNT(*) FILTER (
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
+              AND UPPER(TRIM(mb.j_forma_pago)) LIKE 'TARJETA DE CREDITO%'
+        )                                                  AS tarjeta_n,
+
+        -- Planes 150/200: ACTIVOS cuyo plan contratado tiene esa velocidad.
+        -- El regex evita falsos positivos como "1500" o "2000": exige que
+        -- antes y después del número no haya otro dígito.
+        COUNT(*) FILTER (
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
+              AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+              AND mb.j_plan_contratado_final ~* '(^|[^0-9])(150|200)([^0-9]|$)'
+        )                                                  AS planes_150_200_n,
 
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
@@ -196,16 +215,17 @@ const derivar = (f) => {
     pct_efect_vs_gestion: pct(f.ingresos_crm,  f.leads_gestion),
     pct_descarte:         pct(f.descarte_n,    f.leads_gestion),
     pct_tasa_activacion:  pct(f.activas_totales, f.ingresos_jot),
-    pct_tercera_edad:     pct(f.tercera_edad_n,  f.ingresos_jot),
-    // PENDIENTE: falta la definición de Tarjeta % y la fuente de Planes 150/200
-    pct_tarjeta:      0,
-    pct_planes_150_200: 0,
+    // Los tres van sobre INGRESOS JOTFORM del rango, según definió gerencia
+    pct_tercera_edad:     pct(f.tercera_edad_n,     f.ingresos_jot),
+    pct_tarjeta:          pct(f.tarjeta_n,          f.ingresos_jot),
+    pct_planes_150_200:   pct(f.planes_150_200_n,   f.ingresos_jot),
   };
 };
 
 const CAMPOS_SUMA = [
   'leads_total', 'leads_gestion', 'ingresos_crm', 'descarte_n', 'ingresos_jot',
-  'activas_totales', 'activa_mes', 'activas_backlog', 'tercera_edad_n', 'por_regularizar',
+  'activas_totales', 'activa_mes', 'activas_backlog', 'tercera_edad_n',
+  'tarjeta_n', 'planes_150_200_n', 'por_regularizar',
   'meta_leads_total', 'meta_leads_gestion', 'meta_ingresos_jot', 'meta_activas_totales',
 ];
 

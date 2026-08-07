@@ -66,6 +66,7 @@ app.use(makeProxy(TARGETS.NOVO, [
   '/api/coverage', '/api/coverage/**',
   '/api/cumplimiento-leads', '/api/cumplimiento-leads/**',
   '/api/llamadas', '/api/llamadas/**',
+  '/api/kpi-comercial', '/api/kpi-comercial/**',
 ]));
 
 // INGESTA / WEBHOOKS

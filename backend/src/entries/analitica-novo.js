@@ -21,6 +21,7 @@ app.use('/api/forecast',                require('../routes/forecast.routes'));
 app.use('/api/coverage',                require('../routes/coverage.routes'));
 app.use('/api/cumplimiento-leads',      require('../routes/cumplimientoLeads.routes'));
 app.use('/api/llamadas',                require('../routes/llamadas.routes'));
+app.use('/api/kpi-comercial',           require('../routes/kpiComercial.routes'));
 
 finalize(app);
 startHttp(app, { serviceName: 'analitica-novo', withSocket: false });

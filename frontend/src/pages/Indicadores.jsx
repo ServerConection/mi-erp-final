@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
+import TablaKpiComercial from "../components/TablaKpiComercial";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -463,6 +464,9 @@ export default function ReporteComercialCore() {
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
+  // Tablas KPI comerciales (estructura pedida por gerencia). Aisladas: si el
+  // endpoint falla, las tablas salen vacías y el resto del dashboard sigue.
+  const [kpiComercial, setKpiComercial] = useState({ supervisores: [], asesores: [], total: null });
   const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
   const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
@@ -533,6 +537,8 @@ export default function ReporteComercialCore() {
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
+      // Fire-and-forget: nunca retrasa la carga del dashboard
+      fetchKpiComercial(filtrosActivos);
       const p = new URLSearchParams(Object.fromEntries(
         Object.entries(filtrosActivos)
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
@@ -617,6 +623,22 @@ export default function ReporteComercialCore() {
     } catch (e) { console.error('[ACTIV-FILTRO-NOVONET]', e); }
     finally { setLoadingActiv(false); }
   };
+
+  // ── Fetch aislado de las tablas KPI comerciales ────────────────────────────
+  const fetchKpiComercial = useCallback(async (f) => {
+    try {
+      const p = new URLSearchParams();
+      if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
+      if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
+      const r   = await res.json();
+      if (r?.success) setKpiComercial(r.data);
+      else setKpiComercial({ supervisores: [], asesores: [], total: null });
+    } catch (e) {
+      console.error('[KPI-COMERCIAL]', e);
+      setKpiComercial({ supervisores: [], asesores: [], total: null });
+    }
+  }, []);
 
   // updateFiltro solo actualiza el estado visual; la consulta se ejecuta al presionar "APLICAR FILTROS"
   const updateFiltro = (campo, valor) => {
@@ -1910,8 +1932,23 @@ ${asesoresPDF.length>0?`
           </div>
 
           {/* Tablas */}
-          <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
-          <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} isAsesor={true} /></div>
+          {/* Tablas con la estructura pedida por gerencia (Excel dato.xlsx).
+              Las viejas (HorizontalTable) siguen en el código y las usa Velsa. */}
+          <div className="mb-8">
+            <TablaKpiComercial
+              titulo="KPI POR SUPERVISOR"
+              filas={kpiComercial.supervisores}
+              total={kpiComercial.total}
+            />
+          </div>
+          <div className="mb-8">
+            <TablaKpiComercial
+              titulo="KPI POR ASESOR"
+              filas={kpiComercial.asesores}
+              total={kpiComercial.total}
+              agrupado={true}
+            />
+          </div>
 
           <div className="grid grid-cols-1 gap-4">
             <DataVisor

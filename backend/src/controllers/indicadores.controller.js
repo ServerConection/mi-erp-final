@@ -394,6 +394,7 @@ const getIndicadoresDashboard = async (req, res) => {
             return `
             WITH _base AS MATERIALIZED (
                 SELECT
+                    mb.b_id,
                     mb.b_persona_responsable,
                     mb.b_etapa_de_la_negociacion,
                     mb.j_netlife_estatus_real,
@@ -427,16 +428,21 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
                 ${extraSelect},
-                COUNT(*) FILTER (
+                -- COUNT(DISTINCT b_id) y no COUNT(*): un lead puede aparecer en
+                -- varias filas cuando tiene mas de una venta Jotform asociada
+                -- (ej. un cliente con 5 servicios bajo la misma negociacion).
+                -- Contar filas lo inflaria. Los conteos del lado Jotform SI usan
+                -- COUNT(*), porque ahi cada fila es una venta distinta.
+                COUNT(DISTINCT b_id) FILTER (
     WHERE _bc_date BETWEEN $1::date AND $2::date
     AND b_etapa_de_la_negociacion <> 'DUPLICADO'   -- ← línea nueva
     AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS leads_totales,
-                COUNT(*) FILTER (
+                COUNT(DISTINCT b_id) FILTER (
                     WHERE (b_etapa_de_la_negociacion ILIKE '%ATC%' OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%')
                     AND _bc_date BETWEEN $1::date AND $2::date
                 ) AS atc_soporte,
-                COUNT(*) FILTER (
+                COUNT(DISTINCT b_id) FILTER (
                     -- CAMBIO (2026-07-28): ventas del CRM por FECHA DE CREACION (_bc_date =
                     -- b_creado_el_fecha) en vez de fecha de cerrado (_bcerrado_date = b_cerrado),
                     -- segun definicion de negocio. Antes: WHERE _bcerrado_date BETWEEN ...
@@ -446,7 +452,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
-                    / NULLIF(COUNT(*) FILTER (
+                    / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         -- CAMBIO (2026-07-28): denominador de efectividad por FECHA DE CREACION
                         -- (_bc_date) en vez de fecha de cerrado. Antes: WHERE _bcerrado_date BETWEEN ...
                         WHERE _bc_date BETWEEN $1::date AND $2::date
@@ -457,7 +463,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _jf_date BETWEEN $1::date AND $2::date
                     AND j_estatus_regularizacion = 'POR REGULARIZAR'
                 ) AS por_regularizar,
-                COUNT(*) FILTER (
+                COUNT(DISTINCT b_id) FILTER (
     -- FIX (2026-06-23): antes este FILTER usaba (_jf_parsed_date OR _bc_date) BETWEEN ...,
     -- una ventana de fecha MAS AMPLIA que la de "leads_totales" (que solo usa _bc_date).
     -- Eso permitia que "gestionables" contara leads cuyo registro Jotform cae en el rango

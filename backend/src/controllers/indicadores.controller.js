@@ -580,11 +580,15 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb_crm.b_persona_responsable AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
             FROM public.mestra_bitrix mb_jot
-            JOIN public.mestra_bitrix mb_crm
+            -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
+            -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
+            -- 279 del webhook, por eso estas métricas daban 0.
+            -- El lado JOT sigue en mestra_bitrix, que es su fuente.
+            JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
             GROUP BY 1
         `;
@@ -593,7 +597,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
             FROM public.mestra_bitrix mb_jot
-            JOIN public.mestra_bitrix mb_crm
+            -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
+            -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
+            -- 279 del webhook, por eso estas métricas daban 0.
+            -- El lado JOT sigue en mestra_bitrix, que es su fuente.
+            JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -602,7 +610,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ) e ON true
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             GROUP BY 1
         `;
 
@@ -613,10 +621,14 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb_crm.b_persona_responsable AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
             FROM public.mestra_bitrix mb_jot
-            JOIN public.mestra_bitrix mb_crm
+            -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
+            -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
+            -- 279 del webhook, por eso estas métricas daban 0.
+            -- El lado JOT sigue en mestra_bitrix, que es su fuente.
+            JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
             GROUP BY 1
         `;
@@ -625,7 +637,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
             FROM public.mestra_bitrix mb_jot
-            JOIN public.mestra_bitrix mb_crm
+            -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
+            -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
+            -- 279 del webhook, por eso estas métricas daban 0.
+            -- El lado JOT sigue en mestra_bitrix, que es su fuente.
+            JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -633,7 +649,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ORDER BY e2.codigo::int DESC LIMIT 1
             ) e ON true
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-            AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             GROUP BY 1
         `;
 

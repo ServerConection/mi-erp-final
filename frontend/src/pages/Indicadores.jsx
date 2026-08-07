@@ -301,21 +301,27 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "b
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)} className={btnCls}>
-        <span className="truncate">{value.length === 0 ? placeholder : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
+        <span className="truncate" title={value.length ? value.join(', ') : placeholder}>
+          {value.length === 0 ? placeholder : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}
+        </span>
         <span className={`text-${accentColor}-400 text-[8px] shrink-0`}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+        // w-max: el desplegable se ensancha al contenido en vez de quedar atado
+        // al ancho del botón. Así se leen completos los nombres largos de origen
+        // tipo "BASE API 593963463480".
+        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-72 overflow-y-auto min-w-full w-max max-w-[420px]">
           {value.length > 0 && (
-            <button onClick={() => onChange([])} className="w-full text-left px-3 py-2 text-[8px] font-black text-red-500 hover:bg-red-50 border-b border-slate-100 uppercase">
-              ✕ Limpiar selección
+            <button onClick={() => onChange([])} className="w-full text-left px-3 py-2 text-[8px] font-black text-red-500 hover:bg-red-50 border-b border-slate-100 uppercase sticky top-0 bg-white z-10">
+              ✕ Limpiar selección ({value.length})
             </button>
           )}
           {options.map((opt, i) => (
-            <label key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-[9px] font-bold text-slate-700 border-b border-slate-50 last:border-0">
+            <label key={i} title={opt}
+              className="flex items-start gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-[9px] font-bold text-slate-700 border-b border-slate-50 last:border-0">
               <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)}
-                className={`accent-${accentColor}-500 w-3 h-3 shrink-0`} />
-              <span className="truncate">{opt}</span>
+                className={`accent-${accentColor}-500 w-3 h-3 shrink-0 mt-[2px]`} />
+              <span className="break-words leading-snug">{opt}</span>
             </label>
           ))}
           {options.length === 0 && <div className="px-3 py-3 text-[9px] text-slate-400 uppercase">Sin opciones</div>}

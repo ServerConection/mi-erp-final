@@ -467,6 +467,8 @@ export default function ReporteComercialCore() {
   // Tablas KPI comerciales (estructura pedida por gerencia). Aisladas: si el
   // endpoint falla, las tablas salen vacías y el resto del dashboard sigue.
   const [kpiComercial, setKpiComercial] = useState({ supervisores: [], asesores: [], total: null });
+  // Monitoreo: SOLO lo creado hoy (Bitrix o Jotform), con meta diaria
+  const [kpiDiario, setKpiDiario] = useState({ supervisores: [], asesores: [], total: null });
   const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
   const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
@@ -641,6 +643,24 @@ export default function ReporteComercialCore() {
     } catch (e) {
       console.error('[KPI-COMERCIAL]', e);
       setKpiComercial({ supervisores: [], asesores: [], total: null });
+    }
+  }, []);
+
+  // ── MONITOREO: solo lo creado HOY ──────────────────────────────────────────
+  // Mismo endpoint, pero con el rango acotado al día de hoy en hora Ecuador.
+  const fetchKpiDiario = useCallback(async () => {
+    try {
+      const hoy = getFechaHoyEcuador();
+      const p = new URLSearchParams({ fechaDesde: hoy, fechaHasta: hoy });
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const r = await res.json();
+      if (r?.success) setKpiDiario(r.data);
+      else setKpiDiario({ supervisores: [], asesores: [], total: null });
+    } catch (e) {
+      console.error('[KPI-DIARIO]', e);
+      setKpiDiario({ supervisores: [], asesores: [], total: null });
     }
   }, []);
 
@@ -1192,7 +1212,7 @@ ${asesoresPDF.length>0?`
 
   useEffect(() => {
     if (tabActiva === "GENERAL") fetchDashboard();
-    else if (tabActiva === "MONITOREO") fetchMonitoreo();
+    else if (tabActiva === "MONITOREO") fetchKpiDiario();
     else if (tabActiva === "REPORTE180") fetchReporte180();
   }, [tabActiva]);
 
@@ -1213,7 +1233,7 @@ ${asesoresPDF.length>0?`
       console.error('Error force-refresh Novonet:', e);
     } finally {
       if (tabActiva === "GENERAL") fetchDashboard(filtros);
-      else if (tabActiva === "MONITOREO") fetchMonitoreo();
+      else if (tabActiva === "MONITOREO") fetchKpiDiario();
       else if (tabActiva === "REPORTE180") fetchReporte180(filtros180);
       setRefreshing(false);
     }
@@ -1980,39 +2000,29 @@ ${asesoresPDF.length>0?`
                 <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
                 MONITOREO DE GESTIÓN EN VIVO
               </h2>
-              <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em] uppercase">DATOS ACUMULADOS DEL MES Y DÍA ACTUAL</p>
+              <p className="text-[9px] font-bold text-emerald-300 tracking-[0.2em] uppercase">
+                SOLO LO CREADO HOY {getFechaHoyEcuador()} · META DIARIA = MENSUAL ÷ {diasOperativosDelMes(getFechaHoyEcuador())} DÍAS OPERATIVOS
+              </p>
             </div>
-            <button onClick={() => fetchMonitoreo()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
+            <button onClick={() => fetchKpiDiario()} className="bg-white/10 hover:bg-white/20 px-6 py-2 rounded-xl text-[10px] font-black backdrop-blur-sm transition-all border border-white/20 uppercase">{loading ? "ACTUALIZANDO..." : "FORZAR RECARGA"}</button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ExpandableChart title="ASESORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
-              <h3 className="text-[10px] font-black text-violet-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
-                <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse shrink-0"></span>
-                ASESORES — GESTIONABLES VS INGRESOS HOY
-              </h3>
-              <div className="flex gap-3 mb-3 text-[8px] font-black">
-                <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-sm bg-violet-500"></span> GESTIONABLES</span>
-                <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
-              </div>
-              <ChartArea h={300}><GraficoAsesores /></ChartArea>
-            </ExpandableChart>
+          {/* Las dos gráficas de gestionables vs ingresos se retiraron por
+              pedido de gerencia. Solo quedan las tablas del día. */}
 
-            <ExpandableChart title="SUPERVISORES — GESTIONABLES VS INGRESOS HOY" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
-              <h3 className="text-[10px] font-black text-cyan-400 mb-2 italic tracking-widest flex items-center gap-2 flex-wrap uppercase">
-                <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shrink-0"></span>
-                SUPERVISORES — GESTIONABLES VS INGRESOS HOY
-              </h3>
-              <div className="flex gap-3 mb-3 text-[8px] font-black">
-                <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-sm bg-cyan-500"></span> GESTIONABLES</span>
-                <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-sm bg-emerald-500"></span> INGRESOS (más oscuro = mejor)</span>
-              </div>
-              <ChartArea h={300}><GraficoSupervisores /></ChartArea>
-            </ExpandableChart>
-          </div>
-
-          <DailyMonitoringTable title="CONTROL OPERATIVO: SUPERVISORES" data={monitoreoData.supervisores} />
-          <DailyMonitoringTable title="CONTROL OPERATIVO: ASESORES" data={monitoreoData.asesores} hasScroll={true} />
+          <TablaKpiComercial
+            titulo="CONTROL OPERATIVO: SUPERVISORES"
+            filas={kpiDiario.supervisores}
+            total={kpiDiario.total}
+            divisorMeta={diasOperativosDelMes(getFechaHoyEcuador())}
+          />
+          <TablaKpiComercial
+            titulo="CONTROL OPERATIVO: ASESORES"
+            filas={kpiDiario.asesores}
+            total={kpiDiario.total}
+            agrupado={true}
+            divisorMeta={diasOperativosDelMes(getFechaHoyEcuador())}
+          />
         </div>
 
       ) : tabActiva === "REPORTE180" ? (

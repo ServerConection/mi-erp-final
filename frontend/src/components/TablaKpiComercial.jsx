@@ -41,11 +41,15 @@ const COLUMNAS = [
 
 const n = (v) => Number(v || 0);
 
-// Las metas de porcentaje vienen 0-1 desde la BD; los reales vienen 0-100
-const metaMostrada = (col, fila) => {
+// Las metas de porcentaje vienen 0-1 desde la BD; los reales vienen 0-100.
+// divisor: para el modo DIARIO se divide la meta mensual entre los días
+// operativos del mes (26 en agosto). Los porcentajes NO se dividen: una meta
+// de 23% de efectividad es 23% tanto en el mes como en un día suelto.
+const metaMostrada = (col, fila, divisor = 1) => {
   if (!col.meta) return null;
   const v = n(fila[col.meta]);
-  return col.tipo === 'pct' ? v * 100 : v;
+  if (col.tipo === 'pct') return v * 100;
+  return divisor > 1 ? v / divisor : v;
 };
 
 const fmt = (col, v) => {
@@ -69,7 +73,15 @@ const colorSemaforo = (col, real, meta) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TablaKpiComercial({ titulo, filas = [], total = null, agrupado = false }) {
+export default function TablaKpiComercial({
+  titulo,
+  filas = [],
+  total = null,
+  agrupado = false,
+  // divisorMeta = días operativos del mes. Se usa en Monitoreo para mostrar
+  // la meta DIARIA (mensual ÷ 26). En 1 muestra la meta mensual tal cual.
+  divisorMeta = 1,
+}) {
   const [abiertos, setAbiertos] = useState({});
 
   const grupos = useMemo(() => {
@@ -87,7 +99,7 @@ export default function TablaKpiComercial({ titulo, filas = [], total = null, ag
       const o = { NOMBRE: f.nombre || f.asesor_display || '' };
       if (agrupado) o.SUPERVISOR = f.supervisor || '';
       for (const c of COLUMNAS) {
-        const m = metaMostrada(c, f);
+        const m = metaMostrada(c, f, divisorMeta);
         if (m !== null) o[`${c.grupo} (Pto)`] = Number(m.toFixed(2));
         o[`${c.grupo} (Real)`] = Number(n(f[c.campo]).toFixed(2));
       }
@@ -102,7 +114,7 @@ export default function TablaKpiComercial({ titulo, filas = [], total = null, ag
 
   const celdas = (f, destacado = false) => COLUMNAS.flatMap((c) => {
     const real = n(f[c.campo]);
-    const meta = metaMostrada(c, f);
+    const meta = metaMostrada(c, f, divisorMeta);
     const base = `text-center px-2 py-1.5 whitespace-nowrap tabular-nums ${destacado ? 'font-black' : 'font-semibold'}`;
     const out = [];
     if (meta !== null) {
@@ -127,7 +139,7 @@ export default function TablaKpiComercial({ titulo, filas = [], total = null, ag
       </td>
       {COLUMNAS.flatMap((c) => {
         const real = n(total[c.campo]);
-        const meta = metaMostrada(c, total);
+        const meta = metaMostrada(c, total, divisorMeta);
         const out = [];
         if (meta !== null) out.push(<td key={`t-${c.campo}-p`} className="text-center px-2 py-2 text-slate-400 font-bold tabular-nums">{fmt(c, meta)}</td>);
         out.push(<td key={`t-${c.campo}-r`} className="text-center px-2 py-2 font-black tabular-nums border-r border-slate-700">{fmt(c, real)}</td>);

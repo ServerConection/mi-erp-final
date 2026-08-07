@@ -16,3 +16,6 @@ frontend/vite.config.js.timestamp-*
 
 # Logs sueltos
 backend/err.txt
+bitrix_backfill_*.csv
+DEAL_*.csv
+*.kml

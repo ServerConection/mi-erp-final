@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
+import TablaKpiComercial from "../components/TablaKpiComercial";
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
@@ -299,6 +300,9 @@ export default function ReporteVelsa() {
   const prefetchRef = useRef(null);
   const [alertas, setAlertas] = useState([]);
   
+  // Tablas KPI comerciales (misma estructura que Novonet)
+  const [kpiComercial, setKpiComercial] = useState({ supervisores: [], asesores: [], total: null });
+
   const [data, setData] = useState({
     supervisores: [],
     asesores: [],
@@ -436,12 +440,32 @@ export default function ReporteVelsa() {
     ]).catch(() => {});
   }, []);
 
+  // ── Tablas KPI comerciales de VELSA ────────────────────────────────────────
+  // Mismo endpoint que Novonet, cambia solo ?empresa=VELSA.
+  // Aislado: si falla, las tablas salen vacías y el resto del dashboard sigue.
+  const fetchKpiComercial = useCallback(async (f) => {
+    try {
+      const p = new URLSearchParams({ empresa: 'VELSA' });
+      if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
+      if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const r = await res.json();
+      setKpiComercial(r?.success ? r.data : { supervisores: [], asesores: [], total: null });
+    } catch (e) {
+      console.error('[KPI-COMERCIAL-VELSA]', e);
+      setKpiComercial({ supervisores: [], asesores: [], total: null });
+    }
+  }, []);
+
   const fetchDashboard = async (filtrosOverride) => {
     if (abortRef.current) abortRef.current.abort();
     const ctrl = new AbortController(); abortRef.current = ctrl;
     setLoading(true);
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
+      fetchKpiComercial(filtrosActivos);   // fire-and-forget
       const p = new URLSearchParams(Object.fromEntries(
         Object.entries(filtrosActivos)
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
@@ -1478,8 +1502,23 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           </div>
 
           {/* Tablas */}
-          <div className="mb-8"><HorizontalTable title="KPI POR SUPERVISOR" data={data.supervisores} /></div>
-          <div className="mb-8"><HorizontalTable title="KPI POR ASESOR" data={data.asesores} hasScroll={true} isAsesor={true} /></div>
+          {/* Misma estructura que Novonet (Excel de gerencia). Velsa no tiene
+              equipos: todo el personal responde a las dos supervisoras. */}
+          <div className="mb-8">
+            <TablaKpiComercial
+              titulo="KPI POR SUPERVISOR"
+              filas={kpiComercial.supervisores}
+              total={kpiComercial.total}
+            />
+          </div>
+          <div className="mb-8">
+            <TablaKpiComercial
+              titulo="KPI POR ASESOR"
+              filas={kpiComercial.asesores}
+              total={kpiComercial.total}
+              agrupado={true}
+            />
+          </div>
           <div className="grid grid-cols-1 gap-4">
             <DataVisor title="DETALLE BASE CRM" data={dataCRMDetalle} onDownload={() => descargarExcel("CRM")} color="bg-stone-600" />
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-orange-600" />

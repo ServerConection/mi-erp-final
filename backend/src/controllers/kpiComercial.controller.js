@@ -69,12 +69,14 @@ const validarRango = (d, h) => {
 // Consulta base: una fila por ASESOR con todos los reales + sus metas.
 // El nivel supervisor se obtiene agregando esta misma base.
 // ─────────────────────────────────────────────────────────────────────────────
+// __VISTA__      → vw_bitrix_novonet | vw_bitrix_velsa
+// __SUPERVISOR__ → cómo se resuelve el supervisor en cada empresa
 const SQL_BASE = `
 WITH datos AS (
     SELECT
         UPPER(TRIM(mb.b_persona_responsable))              AS persona,
         MIN(mb.b_persona_responsable)                      AS asesor_display,
-        COALESCE(MAX(e.supervisor), 'SIN ASIGNAR')         AS supervisor,
+        __SUPERVISOR__                                     AS supervisor,
 
         -- ── Lado Bitrix (por fecha de creación del lead) ──────────────────
         COUNT(DISTINCT mb.b_id) FILTER (
@@ -155,16 +157,8 @@ WITH datos AS (
                   BETWEEN $1::date AND $2::date
               AND UPPER(TRIM(mb.j_estatus_regularizacion)) = 'POR REGULARIZAR'
         )                                                  AS por_regularizar
-    FROM public.vw_bitrix_novonet mb
-    LEFT JOIN LATERAL (
-        SELECT e2.supervisor
-        FROM public.empleados e2
-        WHERE e2.nombre_completo = mb.b_persona_responsable
-        ORDER BY
-            CASE WHEN e2.codigo = EXTRACT(MONTH FROM $1::date)::text THEN 0 ELSE 1 END,
-            e2.codigo::int DESC
-        LIMIT 1
-    ) e ON TRUE
+    FROM public.__VISTA__ mb
+    __JOIN_EMPLEADOS__
     WHERE NULLIF(TRIM(mb.b_persona_responsable), '') IS NOT NULL
     GROUP BY 1
 ),
@@ -183,7 +177,7 @@ metas AS (
            MAX(pct_tercera_edad)    AS m_pct_tercera_edad,
            MAX(pct_planes_150_200)  AS m_pct_planes
     FROM public.metas_asesor
-    WHERE empresa='NOVONET' AND activo
+    WHERE empresa = $3 AND activo
       AND anio = EXTRACT(YEAR  FROM $1::date)::int
       AND mes  = EXTRACT(MONTH FROM $1::date)::int
     GROUP BY 1
@@ -243,8 +237,41 @@ async function getKpiComercial(req, res) {
       });
     }
 
-    const sql = SQL_BASE.replace('__GESTIONABLES__', listaSql(ETAPAS_GESTIONABLES));
-    const { rows } = await pool.query(sql, [rango.desde, rango.hasta]);
+    const empresa = String(req.query.empresa || 'NOVONET').toUpperCase() === 'VELSA'
+      ? 'VELSA' : 'NOVONET';
+
+    // NOVONET: el supervisor sale de public.empleados (por nombre exacto y mes)
+    // VELSA:   no hay equipos — todo el personal responde a las dos supervisoras,
+    //          así que va como un solo grupo. Los datos de supervisor que trae
+    //          la MV están incompletos (55% vacío) y con nombres duplicados.
+    const cfg = empresa === 'VELSA'
+      ? {
+          vista: 'vw_bitrix_velsa',
+          supervisor: `'ALEXANDRA PACHECO · DARIANA LEONARDI'`,
+          joinEmpleados: '',
+        }
+      : {
+          vista: 'vw_bitrix_novonet',
+          supervisor: `COALESCE(MAX(e.supervisor), 'SIN ASIGNAR')`,
+          joinEmpleados: `
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor
+                FROM public.empleados e2
+                WHERE e2.nombre_completo = mb.b_persona_responsable
+                ORDER BY
+                    CASE WHEN e2.codigo = EXTRACT(MONTH FROM $1::date)::text THEN 0 ELSE 1 END,
+                    e2.codigo::int DESC
+                LIMIT 1
+            ) e ON TRUE`,
+        };
+
+    const sql = SQL_BASE
+      .replace('__GESTIONABLES__', listaSql(ETAPAS_GESTIONABLES))
+      .replace('__VISTA__', cfg.vista)
+      .replace('__SUPERVISOR__', cfg.supervisor)
+      .replace('__JOIN_EMPLEADOS__', cfg.joinEmpleados);
+
+    const { rows } = await pool.query(sql, [rango.desde, rango.hasta, empresa]);
 
     // Nivel ASESOR
     const asesores = rows
@@ -269,14 +296,14 @@ async function getKpiComercial(req, res) {
     // TOTAL general
     const total = derivar(
       Object.fromEntries([
-        ['nombre', 'TOTAL NOVONET'],
+        ['nombre', `TOTAL ${empresa}`],
         ...CAMPOS_SUMA.map(c => [c, supervisores.reduce((s, x) => s + Number(x[c] || 0), 0)]),
       ])
     );
 
     return res.json({
       success: true,
-      data: { supervisores, asesores, total, fechaDesde: rango.desde, fechaHasta: rango.hasta },
+      data: { supervisores, asesores, total, empresa, fechaDesde: rango.desde, fechaHasta: rango.hasta },
     });
   } catch (err) {
     return errorResponse(res, 'getKpiComercial', err);

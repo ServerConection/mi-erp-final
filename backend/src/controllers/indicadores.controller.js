@@ -165,7 +165,7 @@ const getEtapasCache = async () => {
   const ahora = Date.now();
   if (_cacheEtapas && ahora < _cacheEtapasTTL) return _cacheEtapas;
 
-  const [resCRM, resJot] = await Promise.all([
+  const [resCRM, resJot, resOrigenes] = await Promise.all([
     pool.query(`SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
                 FROM public.mestra_bitrix mb
                 WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
@@ -174,9 +174,21 @@ const getEtapasCache = async () => {
     pool.query(`SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
                 FROM public.mestra_bitrix mb
                 ORDER BY etapa ASC`),
+    // Orígenes REALES presentes en la data (antes el filtro usaba una lista
+    // hardcodeada de 6 canales que dejaba fuera la mayoría).
+    // Se lee de la vista del webhook, que es la fuente viva.
+    pool.query(`SELECT b_origen AS origen, COUNT(*)::int AS total
+                FROM public.vw_bitrix_novonet
+                WHERE NULLIF(TRIM(b_origen), '') IS NOT NULL
+                GROUP BY 1
+                ORDER BY total DESC, origen ASC`),
   ]);
 
-  _cacheEtapas    = { etapasCRM: resCRM.rows.map(r => r.etapa), etapasJotform: resJot.rows.map(r => r.etapa) };
+  _cacheEtapas    = {
+    etapasCRM: resCRM.rows.map(r => r.etapa),
+    etapasJotform: resJot.rows.map(r => r.etapa),
+    origenes: resOrigenes.rows.map(r => r.origen),
+  };
   _cacheEtapasTTL = ahora + CACHE_TTL_MS;
   return _cacheEtapas;
 };
@@ -343,8 +355,15 @@ const getIndicadoresDashboard = async (req, res) => {
         // Filtro por canal de pauta → convierte a lista de b_origen
         // También incluye filas JOT cuyo j_id_bitrix apunta a un deal con ese b_origen,
         // para que los indicadores JOT no queden en 0 al filtrar por campaña.
-        if (canal && CANAL_ORIGENES_MAP[canal]) {
-            const origenesCanal = CANAL_ORIGENES_MAP[canal];
+        // Acepta DOS formas de valor:
+        //   a) una agrupación de CANAL_ORIGENES_MAP  ("ARTS GOOGLE") → expande a sus orígenes
+        //   b) un b_origen crudo                      ("API 484")     → se usa tal cual
+        // Puede venir uno o varios separados por coma.
+        if (canal) {
+            const seleccion   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
+            const origenesSel = [...new Set(seleccion.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
+            if (origenesSel.length) {
+            const origenesCanal = origenesSel;
             const startIdx = values.length + 1;
             const placeholders = origenesCanal.map((_, i) => `$${startIdx + i}`).join(', ');
             values.push(...origenesCanal);
@@ -359,6 +378,7 @@ const getIndicadoresDashboard = async (req, res) => {
             )`;
             filtersJoin   += ` AND ${origenFilter}`;
             filtersNoJoin += ` AND ${origenFilter}`;
+            }
         }
         // Filtro FECHA DE ACTIVACIÓN (opcional, independiente del rango principal
         // que sigue siendo "fecha de creación" / fecha de registro Jotform).
@@ -895,7 +915,10 @@ const getIndicadoresDashboard = async (req, res) => {
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
             porcentajeTarjeta,
+            // canales: agrupaciones fijas (ARTS, VIDIKA, REMARKETING...)
             canales: CANALES_DISPONIBLES,
+            // origenes: TODOS los valores reales de b_origen presentes en la data
+            origenes: etapasCache.origenes || [],
             planesPorCategoria: (() => {
                 const p = resPlanesDash.rows[0] || {};
                 return {

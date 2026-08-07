@@ -1718,10 +1718,16 @@ ${asesoresPDF.length>0?`
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[9px] font-black text-emerald-400 italic uppercase">📡 CAMPAÑA/ORIGEN</label>
+                {/* Lista las agrupaciones fijas (ARTS, VIDIKA...) MÁS todos los
+                    orígenes reales presentes en la data. Antes solo mostraba
+                    las 6 agrupaciones hardcodeadas. */}
                 <MultiSelectCanal
                   value={filtros.canal}
                   onChange={vals => updateFiltro('canal', vals)}
-                  options={data.canales || ["ARTS","ARTS FACEBOOK","ARTS GOOGLE","REMARKETING","VIDIKA GOOGLE","POR RECOMENDACIÓN"]}
+                  options={[
+                    ...(data.canales || []),
+                    ...(data.origenes || []).filter(o => !(data.canales || []).includes(o)),
+                  ]}
                   accentColor="blue"
                 />
               </div>

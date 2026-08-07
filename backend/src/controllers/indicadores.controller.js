@@ -410,7 +410,12 @@ const getIndicadoresDashboard = async (req, res) => {
                     ${parseFecha('mb.b_modificado_el_fecha')}    AS _bmod_date,
                     public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)          AS _jfact_date,
                     ${VENTA_SERVICIO_VAN}                        AS _venta_servicio
-                FROM mestra_bitrix mb
+                -- MIGRADA a vw_bitrix_novonet: el lado Bitrix sale del webhook
+                -- (tiempo real) y el lado Jotform sigue viniendo de mestra_bitrix.
+                -- La vista los une con FULL OUTER JOIN, así ninguno de los dos
+                -- pierde registros. Motivo: el ETL de mestra_bitrix va atrasado
+                -- (6 leads contra 279 del webhook para el mismo día).
+                FROM public.vw_bitrix_novonet mb
                 ${joinEmpleadosDedup}
                 ${JOIN_VAN_NOVONET}
                 WHERE (

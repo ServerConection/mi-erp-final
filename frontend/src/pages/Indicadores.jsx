@@ -630,7 +630,11 @@ export default function ReporteComercialCore() {
       const p = new URLSearchParams();
       if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
       if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
+      // Este endpoint SI exige JWT (verificarToken + noAsesor), a diferencia
+      // del resto de /api/indicadores. Sin este header devuelve 401.
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
       const r   = await res.json();
       if (r?.success) setKpiComercial(r.data);
       else setKpiComercial({ supervisores: [], asesores: [], total: null });

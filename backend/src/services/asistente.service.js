@@ -9,7 +9,7 @@
  *  2. Si Ollama no está disponible → motor de reglas como respaldo.
  *
  * Fuentes (las mismas de los dashboards):
- *   • Novonet: public.mestra_bitrix (+ public.empleados)
+ *   • Novonet: public.vw_bitrix_novonet (webhook + Jotform) (+ public.empleados)
  *   • Velsa:   public.mv_indicadores_velsa_completo
  */
 const pool = require('../config/db');
@@ -49,14 +49,20 @@ const parseFecha = (col) =>
 const SRC = {
   novonet: {
     nombre: 'NOVONET',
-    tabla: 'public.mestra_bitrix mb',
+    // Vista del webhook (tiempo real). Antes leía mestra_bitrix, cuyo ETL va
+    // atrasado — por eso el asistente no devolvía datos de Novonet.
+    tabla: 'public.vw_bitrix_novonet mb',
     asesor: 'mb.b_persona_responsable',
     etapa: 'mb.b_etapa_de_la_negociacion',
-    fLead: `(${parseFecha('mb.b_creado_el_fecha')})`,
-    fJot: 'mb.j_fecha_registro_sistema::date',
+    // En la vista b_creado_el_fecha ya es DATE: comparación directa.
+    fLead: 'mb.b_creado_el_fecha',
+    // j_fecha_registro_sistema sigue siendo TEXTO con formatos mezclados.
+    // El ::date directo REVIENTA con valores tipo 'Aug 15 2026'.
+    fJot: `public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)`,
     activo: `mb.j_netlife_estatus_real = 'ACTIVO'`,
     tarjeta: `mb.j_forma_pago ILIKE '%TARJETA%'`,
-    tercera: `mb.j_aplica_descuento_ ILIKE '%TERCERA%'`,
+    // Nombre de columna estaba truncado: j_aplica_descuento_ → no existe
+    tercera: `mb.j_aplica_descuento_3ra_edad ILIKE '%TERCERA%'`,
     ciudad: 'mb.j_ciudad',
   },
   velsa: {
@@ -109,14 +115,16 @@ async function ventasDelDia(emp, rango) {
     `, [rango.desde, rango.hasta]);
     return rows[0]?.total ?? 0;
   }
+  // Lado CRM desde el webhook (tiempo real); lado JOT sigue en mestra_bitrix,
+  // que es su fuente. Mismo criterio que indicadores.controller.js.
   const { rows } = await pool.query(`
     SELECT COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS total
     FROM public.mestra_bitrix mb_jot
-    JOIN public.mestra_bitrix mb_crm
+    JOIN public.vw_bitrix_novonet mb_crm
       ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
-    WHERE mb_jot.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+    WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
       AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
-      AND (${parseFecha('mb_crm.b_creado_el_fecha')}) = mb_jot.j_fecha_registro_sistema::date
+      AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
   `, [rango.desde, rango.hasta]);
   return rows[0]?.total ?? 0;
 }
@@ -221,8 +229,8 @@ async function construirSnapshot(q) {
     const hoy = PERIODOS.hoy();
     const { rows } = await pool.query(`
       SELECT COALESCE(UPPER(TRIM(mb.j_ciudad)),'SIN DATO') AS ciudad, COUNT(*)::int AS cantidad
-      FROM public.mestra_bitrix mb
-      WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+      FROM public.vw_bitrix_novonet mb
+      WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY cantidad DESC LIMIT 8
     `, [hoy.desde, hoy.hasta]);
     snapshot.ciudades_novonet_hoy = rows;

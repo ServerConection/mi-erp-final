@@ -41,9 +41,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
     ],
     // 👁️ CONSULTOR: solo puede ver el reporte de Redes
     CONSULTOR: [
-      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
-      //                       código sigue en el repo; para reactivarlo basta
-      //                       con descomentar aquí y en DashboardLayout.jsx.
+      MODULOS.REDES,   // reactivado SOLO para WinTracker (2026-08)
       MODULOS.BOT_AUDITOR,
     ],
     SUPERVISOR: [
@@ -59,9 +57,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
-      //                       código sigue en el repo; para reactivarlo basta
-      //                       con descomentar aquí y en DashboardLayout.jsx.
+      MODULOS.REDES,   // reactivado SOLO para WinTracker (2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -73,9 +69,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
-      //                       código sigue en el repo; para reactivarlo basta
-      //                       con descomentar aquí y en DashboardLayout.jsx.
+      MODULOS.REDES,   // reactivado SOLO para WinTracker (2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,
@@ -87,9 +81,7 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.VISTA_ASESOR,
       MODULOS.SEGUIMIENTO_VENTAS,
       MODULOS.INDICADORES,
-      // MODULOS.REDES,      ← módulo Redes ocultado (gerencia, 2026-08). El
-      //                       código sigue en el repo; para reactivarlo basta
-      //                       con descomentar aquí y en DashboardLayout.jsx.
+      MODULOS.REDES,   // reactivado SOLO para WinTracker (2026-08)
       MODULOS.VENTAS_FORMULARIO,
       MODULOS.GUIA_COMERCIAL,
       MODULOS.RESUMEN_NOVONET,

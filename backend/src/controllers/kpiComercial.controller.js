@@ -119,13 +119,9 @@ WITH datos AS (
               AND mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
         )                                                  AS activa_mes,
 
-        -- ACTIVAS BACKLOG: activación en el rango pero lead creado ANTES
-        COUNT(*) FILTER (
-            WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
-              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)
-                  BETWEEN $1::date AND $2::date
-              AND (mb.b_creado_el_fecha IS NULL OR mb.b_creado_el_fecha < $1::date)
-        )                                                  AS activas_backlog,
+        -- activas_backlog NO se calcula aquí: se deriva como TOTALES − MES
+        -- en la función derivar(), para que los tres números siempre cuadren.
+        0::int                                             AS activas_backlog,
 
         -- 3ra Edad: el valor real en la base es 'SI POR TERCERA EDAD'
         -- (mismo literal que usa queryMetasGlobales en indicadores.controller.js)
@@ -202,8 +198,17 @@ LEFT JOIN metas m ON m.persona = d.persona
 const derivar = (f) => {
   const n = (v) => Number(v || 0);
   const pct = (num, den) => (n(den) > 0 ? Number(((n(num) / n(den)) * 100).toFixed(1)) : 0);
+
+  // ACTIVAS TOTALES = todo lo que tiene fecha de activación en el rango
+  // ACTIVA MES      = de esas, las que además se crearon en el rango
+  // ACTIVAS BACKLOG = TOTALES − MES  (definición de gerencia, 2026-08)
+  // Se calcula por resta y no con su propio FILTER: así los tres siempre
+  // cuadran entre sí, en cualquier nivel (asesor, supervisor o total).
+  const activasBacklog = Math.max(0, n(f.activas_totales) - n(f.activa_mes));
+
   return {
     ...f,
+    activas_backlog: activasBacklog,
     pct_gestion_vs_total: pct(f.leads_gestion, f.leads_total),
     pct_efect_vs_leads:   pct(f.ingresos_crm,  f.leads_total),
     pct_efect_vs_gestion: pct(f.ingresos_crm,  f.leads_gestion),

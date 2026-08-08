@@ -502,16 +502,24 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS venta_servicio,
-                -- "Activas mes" (real_mes): se cuenta por FECHA DE ACTIVACION TELCOS
-                -- (j_fecha_activacion_netlife), no por fecha de registro/creacion.
-                -- Esto incluye registros "backlog" (creados antes del periodo pero
-                -- activados dentro del periodo), porque _base ahora tambien incluye
-                -- filas cuya _jfact_date cae en [$1,$2] aunque su _jf_date/_bc_date no.
+                -- ── ACTIVAS (definición de gerencia, 2026-08) ──────────────
+                -- real_mes  = ACTIVAS TOTALES: todo lo que se activó en el rango
+                -- activa_mes= de esas, las que ADEMÁS se crearon en el rango
+                -- backlog   = TOTALES − MES  (se deriva, ya no se consulta aparte)
+                --
+                -- OJO: antes el frontend hacía activas = real_mes + backlog, y
+                -- como real_mes ya incluía el backlog, se contaba DOBLE.
                 COUNT(*) FILTER (
                     WHERE _jfact_date IS NOT NULL
                     AND _jfact_date BETWEEN $1::date AND $2::date
                     AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS real_mes,
+                COUNT(*) FILTER (
+                    WHERE _jfact_date IS NOT NULL
+                    AND _jfact_date BETWEEN $1::date AND $2::date
+                    AND j_netlife_estatus_real = 'ACTIVO'
+                    AND _bc_date BETWEEN $1::date AND $2::date
+                ) AS activa_mes,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS total_activas_calculada,
@@ -863,12 +871,15 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryPlanesPorCategoria, values),
         ]);
 
-        const mergeBacklog = (filas, backlogRows) => {
-            return filas.map(row => {
-                const bl = backlogRows.find(b => b.nombre_grupo === row.nombre_grupo);
-                return { ...row, backlog: bl ? Number(bl.backlog) : 0 };
-            });
-        };
+        // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
+        // Ya no se usa queryBacklog: aquella consulta filtraba por fecha de
+        // REGISTRO JOTFORM anterior al período, un criterio distinto que hacía
+        // que Mes + Backlog no cuadrara con Totales.
+        const mergeBacklog = (filas) => filas.map(row => {
+            const totales = Number(row.real_mes  || 0);
+            const mes     = Number(row.activa_mes || 0);
+            return { ...row, backlog: Math.max(0, totales - mes) };
+        });
 
         // Merge ventas del día (self-join) + calcular venta_seguimiento
         // VENTA SEGUIMIENTO = ingresos Jot − INGRESOS DEL DÍA (jot cuyo lead se creó el mismo día)
@@ -887,8 +898,8 @@ const getIndicadoresDashboard = async (req, res) => {
             };
         });
 
-        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows, resBacklogSup.rows), resVDASup.rows, resIngDiaSup.rows);
-        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows, resBacklogAses.rows), resVDAsesor.rows, resIngDiaAsesor.rows);
+        const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows),  resVDASup.rows,    resIngDiaSup.rows);
+        const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows), resVDAsesor.rows, resIngDiaAsesor.rows);
 
         const estadosNetlife = resEstados.rows.map(r => ({
             estado: r.estado,

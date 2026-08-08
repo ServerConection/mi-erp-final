@@ -1258,8 +1258,12 @@ ${asesoresPDF.length>0?`
     const s = data.supervisores || [];
     const n = s.length || 1;
     const totalJotform      = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
-    const totalBacklog      = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
+    // ACTIVAS TOTALES = real_mes (todo lo activado en el rango).
+    // Antes se sumaba real_mes + backlog, pero real_mes YA incluía el backlog
+    // → se contaba doble. ACTIVA MES y BACKLOG salen de ahí.
+    const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes   || 0), 0);
+    const totalActivaMes    = s.reduce((acc, c) => acc + Number(c.activa_mes || 0), 0);
+    const totalBacklog      = Math.max(0, totalActivos - totalActivaMes);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalLeadsTotales = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
     const totalIngresosCRM  = s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0);
@@ -1281,8 +1285,9 @@ ${asesoresPDF.length>0?`
       tarjetaCredito:           Number(data.porcentajeTarjeta || 0).toFixed(1),
       terceraEdad:              Number(data.porcentajeTerceraEdad || 0).toFixed(1),
       efectividadActivasPauta:  (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas:                  totalActivos,
-      backlog:                  totalBacklog,
+      activas:                  totalActivos,     // ACTIVAS TOTALES
+      activaMes:                totalActivaMes,   // creados y activados en el rango
+      backlog:                  totalBacklog,     // TOTALES − MES
       ventaServicio:            totalVentaServicio,
       // ── Indicadores pedidos por gerencia (hoja "visual comercial ERP") ──
       // % Leads Gestionables vs Totales — indicador NUEVO
@@ -1803,7 +1808,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" />
 
             {/* FILA 2 — Activaciones y calidad */}
-            <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activas - stats.backlog} color="border-l-emerald-500" />
+            <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" />
             <KpiMini index={12} label="Activas Backlog" meta={METAS_COMERCIALES.activasBacklog}  real={stats.backlog}                 color="border-l-cyan-500" />
             <KpiMini index={13} label="Activas Total"   meta={METAS_COMERCIALES.activasTotal}    real={stats.activas}                 color="border-l-teal-500" />
             <KpiMini index={14} label="Tasa Inst."      meta={METAS_COMERCIALES.tasaInstalacion} real={`${stats.tasaInstalacion}%`}   color="border-l-cyan-500" />

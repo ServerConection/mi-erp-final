@@ -197,15 +197,21 @@ const queryKPI = (columna, filters) => `
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
     ) AS ingresos_del_dia,
-    -- "Activas mes" (real_mes): se cuenta por FECHA DE ACTIVACION TELCOS
-    -- (mv.fecha_activacion), no por fecha de registro jotform. Incluye backlog
-    -- (creado antes del periodo pero activado dentro de el) porque el WHERE
-    -- base de este query ahora tambien incluye fecha_activacion en rango.
+    -- ── ACTIVAS (definición de gerencia, 2026-08) ────────────────────────
+    -- real_mes   = ACTIVAS TOTALES: todo lo activado en el rango
+    -- activa_mes = de esas, las que ADEMÁS se crearon en el rango
+    -- backlog    = TOTALES − MES (se deriva, ya no se consulta aparte)
     COUNT(*) FILTER (
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
       AND mv.estado_venta = ${ESTADO_ACTIVO}
     ) AS real_mes,
+    COUNT(*) FILTER (
+      WHERE mv.fecha_activacion IS NOT NULL
+      AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
+      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    ) AS activa_mes,
     COUNT(*) FILTER (
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND ${VENTA_SERVICIO_VELSA_MV}
@@ -254,8 +260,6 @@ const queryBacklog = (columna, filters) => `
 
 // ── Merge KPI + Backlog + calcular campos derivados ──────────────────────────
 function mergeBacklog(kpiRows, backlogRows) {
-  const map = {};
-  (backlogRows || []).forEach(r => { map[r.nombre_grupo] = Number(r.backlog || 0); });
   return kpiRows.map(r => {
     const gest  = Number(r.gestionables   || 0);
     const jot   = Number(r.ingresos_reales || 0);
@@ -263,11 +267,16 @@ function mergeBacklog(kpiRows, backlogRows) {
     const desc  = Number(r.descarte_count || 0);
     const leads = Number(r.leads_totales  || 0);
     const vdia  = Number(r.ventas_del_dia || 0);
-    const bk    = map[r.nombre_grupo] || 0;
+    // BACKLOG = ACTIVAS TOTALES − ACTIVA MES. Antes venía de una consulta
+    // aparte que filtraba por fecha de registro Jotform previa al período,
+    // criterio distinto que hacía que Mes + Backlog no cuadrara con Totales.
+    const bk    = Math.max(0, activ - Number(r.activa_mes || 0));
     return {
       ...r,
       backlog:                    bk,
-      total_activas_calculada:    activ + bk,
+      // TOTALES ya es "activ": no se le suma el backlog, que está DENTRO de él.
+      // Antes hacía activ + bk y contaba el backlog dos veces.
+      total_activas_calculada:    activ,
       // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
       venta_seguimiento:          Math.max(0, jot - vdia),
       descarte:                   gest  > 0 ? parseFloat(((desc  / gest)  * 100).toFixed(1)) : 0,

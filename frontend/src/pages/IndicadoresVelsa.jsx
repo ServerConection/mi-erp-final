@@ -871,7 +871,10 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     const n = s.length || 1;
     const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
     const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
-    const totalActivos = s.reduce((acc, c) => acc + Number(c.real_mes || 0) + Number(c.backlog || 0), 0);
+    // ACTIVAS TOTALES = real_mes. Antes se sumaba real_mes + backlog, pero
+    // real_mes YA incluye el backlog → se contaba doble.
+    const totalActivos   = s.reduce((acc, c) => acc + Number(c.real_mes   || 0), 0);
+    const totalActivaMes = s.reduce((acc, c) => acc + Number(c.activa_mes || 0), 0);
     const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
     const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
     return {
@@ -890,7 +893,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
       terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
       efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas: totalActivos,
+      activas:   totalActivos,     // ACTIVAS TOTALES
+      activaMes: totalActivaMes,   // creados y activados en el rango
       backlog: totalBacklog,
       ventaServicio: totalVentaServicio,
     };
@@ -1362,7 +1366,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={8} variant="stone" label="Descarte %"      meta="25%"  real={`${stats.descartePorc}%`}            color="border-l-red-500" />
             <KpiMini index={9} variant="stone" label="Efic. Pauta"     meta="20%"  real={`${stats.efectividadActivasPauta}%`} color="border-l-orange-700" />
             <KpiMini index={10} variant="stone" label="3ra Edad %"      meta="15%"  real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
-            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas - stats.backlog}    color="border-l-orange-500" />
+            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes}                  color="border-l-orange-500" />
             <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(200,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                    color="border-l-amber-500" />
             <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                    color="border-l-yellow-600" />
             <KpiMini index={15} variant="stone" label="Venta Servicio"  meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaServicio}              color="border-l-emerald-600" />

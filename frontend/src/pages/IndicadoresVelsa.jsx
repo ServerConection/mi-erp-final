@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef, useContext, createCo
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
 import TablaKpiComercial from "../components/TablaKpiComercial";
+import { fetchConSesion } from "../utils/sesion";
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
@@ -448,9 +449,7 @@ export default function ReporteVelsa() {
       const p = new URLSearchParams({ empresa: 'VELSA' });
       if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
       if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
       const r = await res.json();
       setKpiComercial(r?.success ? r.data : { supervisores: [], asesores: [], total: null });
     } catch (e) {

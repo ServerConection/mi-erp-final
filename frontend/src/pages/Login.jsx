@@ -16,7 +16,15 @@ export default function Login() {
   const [usuarioId, setUsuarioId]     = useState(null);
   const [usuarioLogin, setUsuarioLogin] = useState("");
   const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState("");
+  // Si llegamos aquí por token vencido, mostrar el motivo en vez de una
+  // pantalla de login sin contexto. Lo deja utils/sesion.js.
+  const [error, setError]             = useState(() => {
+    try {
+      const m = sessionStorage.getItem('__motivo_logout__');
+      if (m) { sessionStorage.removeItem('__motivo_logout__'); return m; }
+    } catch (_) { /* modo privado */ }
+    return "";
+  });
   const [showPass, setShowPass]       = useState(false);
 
   const handleChange = (e) => {

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef, useContext, createCo
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
 import TablaKpiComercial from "../components/TablaKpiComercial";
+import { fetchConSesion } from "../utils/sesion";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -640,9 +641,7 @@ export default function ReporteComercialCore() {
       if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
       // Este endpoint SI exige JWT (verificarToken + noAsesor), a diferencia
       // del resto de /api/indicadores. Sin este header devuelve 401.
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
       const r   = await res.json();
       if (r?.success) setKpiComercial(r.data);
       else setKpiComercial({ supervisores: [], asesores: [], total: null });
@@ -658,9 +657,7 @@ export default function ReporteComercialCore() {
     try {
       const hoy = getFechaHoyEcuador();
       const p = new URLSearchParams({ fechaDesde: hoy, fechaHasta: hoy });
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
       const r = await res.json();
       if (r?.success) setKpiDiario(r.data);
       else setKpiDiario({ supervisores: [], asesores: [], total: null });

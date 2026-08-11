@@ -445,6 +445,7 @@ export default function NuevaVenta() {
   const [resumenEditado, setResumenEditado] = useState(false);
   const [catalogo, setCatalogo]   = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
   const [vigenciaCat, setVigenciaCat] = useState(null);
+  const [validandoBitrix, setValidandoBitrix] = useState(false);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -706,6 +707,43 @@ export default function NuevaVenta() {
     return Object.keys(e).length === 0;
   };
 
+  // ── Validar ID Bitrix ──────────────────────────────────────────────────────
+  const validarIdBitrix = async (idBitrix) => {
+    if (!idBitrix || idBitrix.trim() === "") {
+      return true; // No validar si está vacío
+    }
+
+    setValidandoBitrix(true);
+    try {
+      const res = await fetch(`${API}/api/bitrix/validar-venta/${idBitrix}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+
+      if (!data.existe) {
+        setAlert({
+          tipo: "err",
+          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa \"VENTA SUBIDA\".`
+        });
+        return false;
+      } else {
+        setAlert({
+          tipo: "ok",
+          msg: `✓ Lead verificado (Empresa: ${data.data.empresa.toUpperCase()}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})`
+        });
+        return true;
+      }
+    } catch (error) {
+      setAlert({
+        tipo: "err",
+        msg: `Error al validar ID Bitrix: ${error.message}`
+      });
+      return false;
+    } finally {
+      setValidandoBitrix(false);
+    }
+  };
+
   // ── Envío ──────────────────────────────────────────────────────────────────
   // accion: "CARGAR" (venta final, ya no editable) o "BORRADOR" (REGISTRAR VENTA, se puede retomar)
   const handleSubmit = async (accion) => {
@@ -714,6 +752,15 @@ export default function NuevaVenta() {
       setAlert({ tipo: "err", msg: "Corrige los campos marcados antes de continuar." });
       return;
     }
+
+    // Validar que el idBitrix exista si está informado
+    if (form.id_bitrix && form.id_bitrix.trim() !== "") {
+      const esValido = await validarIdBitrix(form.id_bitrix);
+      if (!esValido) {
+        return;
+      }
+    }
+
     setLoad(accion);
     try {
       // Construir payload mapeado a columnas de envios_ventas
@@ -877,7 +924,13 @@ export default function NuevaVenta() {
               <FIn value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
             </Row>
             <Row label="ID Bitrix">
-              <FIn value={form.id_bitrix} onChange={set("id_bitrix")} placeholder="Ej: 12345" />
+              <FIn 
+                value={form.id_bitrix} 
+                onChange={set("id_bitrix")} 
+                onBlur={() => validarIdBitrix(form.id_bitrix)}
+                placeholder="Ej: 12345"
+                disabled={validandoBitrix}
+              />
             </Row>
             <Row label="Distribuidor" required>
               {distribuidorLocked ? (

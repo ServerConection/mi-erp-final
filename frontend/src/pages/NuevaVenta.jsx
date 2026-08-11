@@ -723,7 +723,7 @@ export default function NuevaVenta() {
       if (!data.existe) {
         setAlert({
           tipo: "err",
-          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa \"VENTA SUBIDA\".`
+          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa \"VENTA SUBIDA\"_Error`
         });
         return false;
       } else {

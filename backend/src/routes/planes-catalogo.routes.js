@@ -8,11 +8,17 @@
 //                                       agrupado para el formulario NuevaVenta.
 //
 // Estructura esperada del Excel (se mantiene mes a mes, solo cambian valores):
-//   HOME          — A5 headers, filas 6+ · promos TC (K..Q) y Cuenta (S..Y)
-//   TERCERA EDAD  — B4 headers, filas 5+ · sin promos
+//   HOME          — A5 headers, filas 6+ · promos TC (J..O) y Cuenta (Q..V)
+//   TERCERA EDAD  — A5 headers, filas 6+ · sin promos
 //   GAMER         — A4 headers, filas 5+ · sin promos
 //   PRO           — B5 headers, filas 6+ · sin promos
-//   PYME          — A5 headers, filas 6+ · sin promos
+//   PYME          — A6 headers, filas 7+ · sin promos
+//
+// IMPORTANTE: si el mes que viene el Excel trae columnas movidas/insertadas,
+// este parser (basado en letras de columna fijas) volverá a desalinearse.
+// Si vuelve a pasar, compara los headers reales del Excel (fila indicada
+// arriba) contra las letras usadas en cada parseXxx() de abajo antes de asumir
+// que es otro tipo de error.
 //
 // Cada fila del Excel se expande en 1..N registros (plan_base + empaquetado):
 // los textos "X o Y" se separan en opciones únicas para que el asesor elija
@@ -101,30 +107,30 @@ function parseHome(ws) {
       paramountExtra: r.I,
       precios: { sinIva: num(r.F) },
       promos: {
-        tc_dsto:      num(r.K),  // 0.35 = 35%
-        tc_facturas:  num(r.L),
-        tc_pvp:       round2(num(r.Q)),
-        cta_dsto:     num(r.S),
-        cta_facturas: num(r.T),
-        cta_pvp:      round2(num(r.Y)),
+        tc_dsto:      num(r.J),  // 0.35 = 35%
+        tc_facturas:  num(r.K),
+        tc_pvp:       round2(num(r.O)),
+        cta_dsto:     num(r.Q),
+        cta_facturas: num(r.R),
+        cta_pvp:      round2(num(r.V)),
       },
-    }).map(x => ({ ...x, tipo_plan: 'HOME', velocidad: limpiar(r.B), plan_promocion: limpiar(r.C), equipo: limpiar(r.E) })));
+    }).map(x => ({ ...x, tipo_plan: 'HOME', velocidad: limpiar(r.B), plan_promocion: limpiar(r.E), equipo: limpiar(r.C) })));
   }
   return out;
 }
 
 function parseTerceraEdad(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 4, defval: null }); // desde fila 5
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
   const out = [];
   for (const r of rows) {
-    if (!r.B || !/^plan/i.test(String(r.B))) continue;
+    if (!r.A || !/^plan/i.test(String(r.A))) continue;
     out.push(...expandirFilaHome({
-      nombre: r.B,
-      adicionales: r.E,
+      nombre: r.A,
+      adicionales: r.D,
       paramountExtra: r.J,
       precios: { sinIva: num(r.G) },
       promos: {}, // esta hoja no tiene promociones
-    }).map(x => ({ ...x, tipo_plan: 'TERCERA EDAD', velocidad: limpiar(r.C), plan_promocion: limpiar(r.D), equipo: limpiar(r.F) })));
+    }).map(x => ({ ...x, tipo_plan: 'TERCERA EDAD', velocidad: limpiar(r.B), plan_promocion: limpiar(r.E), equipo: limpiar(r.C) })));
   }
   return out;
 }
@@ -170,16 +176,15 @@ function parsePro(ws) {
 }
 
 function parsePyme(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 6, defval: null }); // desde fila 7
   const out = [];
   for (const r of rows) {
     if (!r.A || !/^plan/i.test(String(r.A))) continue;
-    const incluidas = limpiar(r.C);                 // ej: "NETLIFE DEFENSE"
-    const alts      = opcionesDe(r.D);              // ej: ["ASPRO", "EXTENDER WIFI"]
-    const sinIva    = num(r.E);
-    const etiquetas = alts.length
-      ? alts.map(a => [incluidas, a].filter(Boolean).join(' + '))
-      : [incluidas || 'Sin empaquetado'];
+    // La columna C trae todo lo incluido en el plan; si contiene "X o Y" se
+    // expande en opciones separadas (igual que en HOME/TERCERA EDAD).
+    const opciones  = opcionesDe(r.C);
+    const etiquetas = opciones.length ? opciones : ['Sin empaquetado'];
+    const sinIva    = num(r.D);
     for (const etq of etiquetas) {
       out.push({
         tipo_plan: 'PYME',
@@ -187,9 +192,9 @@ function parsePyme(ws) {
         empaquetado: etq,
         velocidad: limpiar(r.B) || null,
         plan_promocion: null,
-        equipo: limpiar(r.H) || null,
+        equipo: limpiar(r.G) || null,
         precio_sin_iva: round2(sinIva),
-        precio_con_iva: round2(num(r.G) ?? (sinIva != null ? sinIva * (1 + IVA) : null)),
+        precio_con_iva: round2(num(r.F) ?? (sinIva != null ? sinIva * (1 + IVA) : null)),
       });
     }
   }

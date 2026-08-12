@@ -160,6 +160,99 @@ async function obtenerEstadisticas(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG DEL PROMPT (BotAuditor)
+// El motor real (Bitrix24 + Wazzup + Groq) es un servicio externo a este repo
+// que solo se acopla por Postgres (bot-auditor-service). Esta tabla es la
+// única forma en que el admin puede cambiar las reglas de clasificación y
+// puntuación sin tocar ese servicio directamente. El esquema JSON de salida
+// que espera el servicio queda fijo fuera de esta tabla (no editable), para
+// no romper el parseo de la respuesta de Groq.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_REGLAS_CLASIFICACION =
+  '- VENTA: el cliente pregunta por planes, precios o quiere contratar el servicio\n' +
+  '- ATC: el cliente tiene un problema, reclamo, consulta de factura o soporte técnico';
+
+const DEFAULT_REGLAS_PUNTUACION_VENTA =
+  '- Presentó planes con claridad y precios (25 pts)\n' +
+  '- Capturó ubicación o verificó cobertura (25 pts)\n' +
+  '- Mantuvo al cliente enganchado con seguimiento (25 pts)\n' +
+  '- Manejó objeciones o cerró la venta (25 pts)';
+
+const DEFAULT_REGLAS_PUNTUACION_ATC =
+  '- Resolvió el problema del cliente (30 pts)\n' +
+  '- Dio información correcta y completa (25 pts)\n' +
+  '- Fue empático y profesional (25 pts)\n' +
+  '- El cliente quedó satisfecho o con próximos pasos claros (20 pts)';
+
+const CREAR_TABLA_CONFIG_SQL = `
+  CREATE TABLE IF NOT EXISTS bot_auditor_prompt_config (
+    id                       INTEGER PRIMARY KEY DEFAULT 1,
+    reglas_clasificacion     TEXT,
+    reglas_puntuacion_venta  TEXT,
+    reglas_puntuacion_atc    TEXT,
+    actualizado_por          VARCHAR(255),
+    actualizado_at           TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT bot_auditor_prompt_config_single_row CHECK (id = 1)
+  )
+`;
+
+// GET /api/bot-auditor/config-prompt
+async function obtenerConfigPrompt(req, res) {
+  try {
+    await pool.query(CREAR_TABLA_CONFIG_SQL);
+    const result = await pool.query(`SELECT * FROM bot_auditor_prompt_config WHERE id = 1`);
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        reglas_clasificacion: row?.reglas_clasificacion || DEFAULT_REGLAS_CLASIFICACION,
+        reglas_puntuacion_venta: row?.reglas_puntuacion_venta || DEFAULT_REGLAS_PUNTUACION_VENTA,
+        reglas_puntuacion_atc: row?.reglas_puntuacion_atc || DEFAULT_REGLAS_PUNTUACION_ATC,
+        actualizado_por: row?.actualizado_por || null,
+        actualizado_at: row?.actualizado_at || null,
+      },
+    });
+  } catch (error) {
+    console.error('[botAuditor.controller] obtenerConfigPrompt error:', error);
+    res.status(500).json({ success: false, error: 'Error al consultar la configuración del prompt' });
+  }
+}
+
+// PUT /api/bot-auditor/config-prompt — protegido con soloAdmin en las rutas
+async function actualizarConfigPrompt(req, res) {
+  try {
+    const { reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc } = req.body || {};
+    if (!reglas_clasificacion?.trim() || !reglas_puntuacion_venta?.trim() || !reglas_puntuacion_atc?.trim()) {
+      return res.status(400).json({ success: false, error: 'Los tres campos son obligatorios' });
+    }
+
+    await pool.query(CREAR_TABLA_CONFIG_SQL);
+    await pool.query(
+      `INSERT INTO bot_auditor_prompt_config
+         (id, reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc, actualizado_por, actualizado_at)
+       VALUES (1, $1, $2, $3, $4, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         reglas_clasificacion    = EXCLUDED.reglas_clasificacion,
+         reglas_puntuacion_venta = EXCLUDED.reglas_puntuacion_venta,
+         reglas_puntuacion_atc   = EXCLUDED.reglas_puntuacion_atc,
+         actualizado_por         = EXCLUDED.actualizado_por,
+         actualizado_at          = NOW()`,
+      [
+        reglas_clasificacion.trim(),
+        reglas_puntuacion_venta.trim(),
+        reglas_puntuacion_atc.trim(),
+        req.user?.usuario || 'admin',
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[botAuditor.controller] actualizarConfigPrompt error:', error);
+    res.status(500).json({ success: false, error: 'Error al guardar la configuración del prompt' });
+  }
+}
+
 // GET /api/bot-auditor/:id
 async function obtenerDetalle(req, res) {
   try {
@@ -187,4 +280,10 @@ async function obtenerDetalle(req, res) {
   }
 }
 
-module.exports = { listarAuditorias, obtenerEstadisticas, obtenerDetalle };
+module.exports = {
+  listarAuditorias,
+  obtenerEstadisticas,
+  obtenerDetalle,
+  obtenerConfigPrompt,
+  actualizarConfigPrompt,
+};

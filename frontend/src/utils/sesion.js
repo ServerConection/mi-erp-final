@@ -47,6 +47,32 @@ export function cerrarSesionPorTokenExpirado(motivo = 'Tu sesión expiró') {
  */
 const RUTAS_LOGIN_EXCLUIDAS = ['/api/otp/login', '/api/otp/verify-otp', '/api/auth/login'];
 
+/**
+ * ¿La URL apunta a NUESTRO backend?
+ *
+ * El comentario de arriba siempre dijo "no APIs externas", pero el código no
+ * lo comprobaba: cualquier 401 de cualquier host (Ollama, Bitrix, un CDN con
+ * auth, etc.) cerraba la sesión del usuario. Aquí sí se comprueba.
+ *
+ * Se aceptan tanto URLs absolutas contra VITE_API_URL como rutas relativas
+ * que empiecen por /api (el gateway del mismo origen).
+ */
+function esNuestroBackend(url) {
+  if (!url) return false;
+  try {
+    const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    const absoluta = /^https?:\/\//i.test(url);
+
+    if (!absoluta) return url.startsWith('/api');
+    if (base && url.startsWith(base)) return true;
+
+    // Mismo origen que la app: también es nuestro backend.
+    return new URL(url).origin === window.location.origin;
+  } catch (_) {
+    return false;
+  }
+}
+
 let interceptorInstalado = false;
 
 export function instalarInterceptorSesion() {
@@ -64,13 +90,28 @@ export function instalarInterceptorSesion() {
       const esRutaExcluida = RUTAS_LOGIN_EXCLUIDAS.some(r => url.includes(r));
       const habiaSesion = !!localStorage.getItem('token');
 
-      if (respuesta.status === 401 && !esRutaExcluida && habiaSesion) {
+      if (
+        respuesta.status === 401 &&
+        !esRutaExcluida &&
+        habiaSesion &&
+        esNuestroBackend(url)
+      ) {
         cerrarSesionPorTokenExpirado('Tu sesión expiró. Inicia sesión de nuevo.');
       }
     } catch (_) { /* nunca romper el fetch original por esto */ }
 
     return respuesta;
   };
+}
+
+/**
+ * Cabeceras de autenticación para los fetch() sueltos que no pueden pasar
+ * por fetchConSesion (por ejemplo, los que van dentro de un Promise.all
+ * encadenado con .then). Devuelve {} si no hay token.
+ */
+export function cabecerasSesion() {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /**

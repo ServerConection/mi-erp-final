@@ -8,6 +8,7 @@
 // ║  ✅ Gauges score + tabla ranking con CPA                                 ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 import { useEffect, useState, useMemo, useRef } from "react";
+import { cabecerasSesion } from "../utils/sesion";
 import {
   BarChart, Bar, LineChart, Line,
   AreaChart, Area,
@@ -785,7 +786,8 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
     setLoading(true);
     const p=buildFiltroParams({ desde, hasta, canalesSel });
     Promise.all([
-      fetch(`${API}/api/indicadores/dashboard?fechaDesde=${desde}&fechaHasta=${hasta}`).then(r=>r.json()).catch(()=>null),
+      // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
+      fetch(`${API}/api/indicadores/dashboard?fechaDesde=${desde}&fechaHasta=${hasta}`, { headers: cabecerasSesion() }).then(r=>r.json()).catch(()=>null),
       fetch(`${API}/api/redes/monitoreo-redes?${p}`).then(r=>r.json()).catch(()=>null),
     ]).then(([a,r])=>{
       if(a?.success) setRawA(a);

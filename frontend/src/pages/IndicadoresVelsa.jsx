@@ -470,7 +470,9 @@ export default function ReporteVelsa() {
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
           .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
       ));
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${p}`, { signal: ctrl.signal });
+      // /dashboard exige JWT (verificarToken): tiene que ir con Bearer o el
+      // backend responde 401 y el interceptor global cierra la sesión.
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) {
         setApiError(null);

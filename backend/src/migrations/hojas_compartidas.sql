@@ -1,12 +1,19 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- MÓDULO ARCHIVOS COMPARTIDOS (hojas colaborativas)  ·  Migración v1
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Base de datos : erp_database (Render / PostgreSQL)
+-- Base de datos : bddgeneral (Render / PostgreSQL) — la misma que usa el resto
+--                 del ERP vía backend/src/config/db.js. NO es erp_database:
+--                 todo hojas.controller.js / hojasDatos.controller.js /
+--                 hojasAcceso.js / hojas.service.js apunta a ese pool.
+--                 (corregido 2026-08-11: el comentario original decía
+--                 erp_database por error — si corriste esta migración ahí,
+--                 vuelve a correrla en bddgeneral o el módulo tirará
+--                 "relation hoj_hojas does not exist")
 -- Esquema       : public
 -- Prefijo       : hoj_
 --
 -- CÓMO EJECUTARLO
---   1. Abre erp_database en pgAdmin / DBeaver con el usuario bdd_admin
+--   1. Abre bddgeneral en pgAdmin / DBeaver con el usuario bdd_admin
 --   2. Ejecuta primero el BLOQUE 0 (verificación) y revisa el resultado
 --   3. Ejecuta el resto del archivo completo, de una sola vez
 --

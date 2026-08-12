@@ -46,6 +46,8 @@ const tthhRoutes                   = require('./routes/tthh.routes');
 const llamadasRoutes                = require('./routes/llamadas.routes');
 const tareasRoutes                  = require('./routes/tareas.routes');
 const hojasRoutes                   = require('./routes/hojas.routes');
+const chatRoutes                    = require('./routes/chat.routes');
+const evaluacionesRoutes            = require('./routes/evaluaciones.routes');
 
 const app = express();
 
@@ -164,6 +166,8 @@ app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/tareas',   tareasRoutes);
 app.use('/api/hojas',    hojasRoutes);
+app.use('/api/chat',     chatRoutes);
+app.use('/api/evaluaciones', evaluacionesRoutes);
 
 // Handler 404
 app.use((req, res) => {

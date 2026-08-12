@@ -47,7 +47,7 @@ function validarPreguntas(preguntas) {
 /** POST /api/evaluaciones */
 exports.crear = async (req, res) => {
   try {
-    const { titulo, moduloTema, empresa, notaMinima } = req.body;
+    const { titulo, moduloTema, empresa, notaMinima, tiempoLimiteMin } = req.body;
 
     if (!titulo || String(titulo).trim().length < 3) {
       return res.status(400).json({ success: false, error: 'El título debe tener al menos 3 caracteres' });
@@ -58,6 +58,15 @@ exports.crear = async (req, res) => {
     }
     if (empresa && !['NOVONET', 'VELSA'].includes(String(empresa).toUpperCase())) {
       return res.status(400).json({ success: false, error: 'Empresa inválida' });
+    }
+
+    // Opcional: NULL/vacío = sin límite de tiempo
+    let tiempoLimite = null;
+    if (tiempoLimiteMin !== undefined && tiempoLimiteMin !== null && tiempoLimiteMin !== '') {
+      tiempoLimite = parseInt(tiempoLimiteMin, 10);
+      if (!Number.isInteger(tiempoLimite) || tiempoLimite < 1 || tiempoLimite > 180) {
+        return res.status(400).json({ success: false, error: 'El tiempo límite debe estar entre 1 y 180 minutos' });
+      }
     }
 
     const preguntas = (req.body.preguntas || []).map((p, i) => ({
@@ -72,14 +81,15 @@ exports.crear = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO eva_evaluaciones (titulo, modulo_tema, empresa, nota_minima, preguntas, creado_por)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-       RETURNING id, titulo, modulo_tema, empresa, nota_minima, activa, created_at`,
+      `INSERT INTO eva_evaluaciones (titulo, modulo_tema, empresa, nota_minima, tiempo_limite_min, preguntas, creado_por)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+       RETURNING id, titulo, modulo_tema, empresa, nota_minima, tiempo_limite_min, activa, created_at`,
       [
         String(titulo).trim(),
         moduloTema ? String(moduloTema).trim() : null,
         empresa ? String(empresa).toUpperCase() : null,
         nota,
+        tiempoLimite,
         JSON.stringify(preguntas),
         req.user.id,
       ]
@@ -116,7 +126,7 @@ exports.listar = async (req, res) => {
   try {
     const esAdmin = req.user.perfil === 'ADMINISTRADOR';
     const { rows } = await pool.query(
-      `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima, e.activa, e.created_at,
+      `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima, e.tiempo_limite_min, e.activa, e.created_at,
               jsonb_array_length(e.preguntas) AS total_preguntas,
               u.usuario, u.nombres, u.apellidos,
               (SELECT COUNT(*) FROM eva_intentos i WHERE i.evaluacion_id = e.id) AS total_intentos,
@@ -133,7 +143,7 @@ exports.listar = async (req, res) => {
       puedeCrear: req.puedeCrearEvaluaciones === true,
       data: rows.map(r => ({
         id: r.id, titulo: r.titulo, moduloTema: r.modulo_tema, empresa: r.empresa,
-        notaMinima: r.nota_minima, activa: r.activa, createdAt: r.created_at,
+        notaMinima: r.nota_minima, tiempoLimiteMin: r.tiempo_limite_min, activa: r.activa, createdAt: r.created_at,
         totalPreguntas: Number(r.total_preguntas),
         totalIntentos: Number(r.total_intentos),
         totalAprobados: Number(r.total_aprobados),
@@ -151,7 +161,7 @@ exports.misEvaluaciones = async (req, res) => {
   try {
     const esAdmin = req.user.perfil === 'ADMINISTRADOR';
     const { rows } = await pool.query(
-      `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima,
+      `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima, e.tiempo_limite_min,
               jsonb_array_length(e.preguntas) AS total_preguntas,
               i.nota, i.aprobado, i.created_at AS respondida_en
          FROM eva_evaluaciones e
@@ -166,7 +176,7 @@ exports.misEvaluaciones = async (req, res) => {
       success: true,
       data: rows.map(r => ({
         id: r.id, titulo: r.titulo, moduloTema: r.modulo_tema, empresa: r.empresa,
-        notaMinima: r.nota_minima, totalPreguntas: Number(r.total_preguntas),
+        notaMinima: r.nota_minima, tiempoLimiteMin: r.tiempo_limite_min, totalPreguntas: Number(r.total_preguntas),
         yaRespondida: r.respondida_en !== null,
         miNota: r.nota, miAprobado: r.aprobado, respondidaEn: r.respondida_en,
       })),
@@ -210,6 +220,8 @@ exports.detalleParaTomar = async (req, res) => {
         titulo: req.evaluacion.titulo,
         moduloTema: req.evaluacion.modulo_tema,
         notaMinima: req.evaluacion.nota_minima,
+        tiempoLimiteMin: req.evaluacion.tiempo_limite_min,
+        iniciadaEn: new Date().toISOString(),
         preguntas: sinRespuestas(req.evaluacion.preguntas),
       },
     });

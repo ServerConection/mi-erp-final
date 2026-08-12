@@ -19,11 +19,14 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
   const [moduloTema, setModuloTema] = useState('');
   const [empresa, setEmpresa]       = useState('');
   const [notaMinima, setNotaMinima] = useState(70);
+  const [tieneLimite, setTieneLimite]     = useState(false);
+  const [tiempoLimiteMin, setTiempoLimiteMin] = useState(20);
   const [preguntas, setPreguntas]   = useState([preguntaVacia()]);
   const [guardando, setGuardando]   = useState(false);
 
   const reset = () => {
     setTitulo(''); setModuloTema(''); setEmpresa(''); setNotaMinima(70);
+    setTieneLimite(false); setTiempoLimiteMin(20);
     setPreguntas([preguntaVacia()]);
   };
 
@@ -55,6 +58,9 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
 
   const guardar = async () => {
     if (titulo.trim().length < 3) return onError?.('El título debe tener al menos 3 caracteres');
+    if (tieneLimite && (!Number(tiempoLimiteMin) || tiempoLimiteMin < 1 || tiempoLimiteMin > 180)) {
+      return onError?.('El tiempo límite debe estar entre 1 y 180 minutos');
+    }
     for (let i = 0; i < preguntas.length; i++) {
       const p = preguntas[i];
       if (p.texto.trim().length < 3) return onError?.(`La pregunta ${i + 1} necesita un enunciado`);
@@ -68,6 +74,7 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
         moduloTema: moduloTema.trim() || undefined,
         empresa: empresa || undefined,
         notaMinima: Number(notaMinima),
+        tiempoLimiteMin: tieneLimite ? Number(tiempoLimiteMin) : null,
         preguntas: preguntas.map(p => ({
           texto: p.texto.trim(),
           opciones: p.opciones.map(o => o.trim()),
@@ -123,6 +130,25 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
               onChange={(e) => setNotaMinima(e.target.value)}
               className="w-full"
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-500">
+              <input
+                type="checkbox" checked={tieneLimite}
+                onChange={(e) => setTieneLimite(e.target.checked)}
+              />
+              Poner límite de tiempo
+            </label>
+            {tieneLimite && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  type="number" min={1} max={180} value={tiempoLimiteMin}
+                  onChange={(e) => setTiempoLimiteMin(e.target.value)}
+                  className="w-24 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+                <span className="text-xs text-slate-500">minutos — se envía sola al llegar a 0</span>
+              </div>
+            )}
           </div>
         </div>
 

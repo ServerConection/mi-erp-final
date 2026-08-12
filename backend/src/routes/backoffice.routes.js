@@ -111,93 +111,64 @@ router.get('/:id', async (req, res) => {
 });
 
 // ─── PUT /api/backoffice/:id ──────────────────────────────────────────────────
-// Editar SOLO los campos de auditoría
+// Editar CUALQUIER campo del registro
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar existencia
+    // 1. Verificar existencia
     const { rows: existing } = await pool.query(
-      'SELECT id FROM public.envios_ventas WHERE id = $1', [id]
+      'SELECT id FROM public.envios_ventas WHERE id = $1',
+      [id]
     );
-    if (existing.length === 0)
+    if (existing.length === 0) {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
-    const {
-      calidad_venta_analista,
-      novedades_atc,
-      venta_efectiva,
-      auditoria_documentos,
-      auditado_por,
-      inconsistencia_documental,
-      observacion_auditoria,
-      errores_telcos,
-      estatus_regularizacion,
-      detalle_regularizacion,
-      fecha_regularizacion_atc,
-      mes_regularizacion,
-      observacion_venta_original,
-      observacion_gestion_cobranza,
-    } = req.body;
-
-    // Auto-computo de campos derivados de fecha_regularizacion_atc
-    let año_reg = null, mes_reg_nom = null, dia_num_reg = null, dia_abc_reg = null;
-    if (fecha_regularizacion_atc) {
-      const d = new Date(fecha_regularizacion_atc + 'T00:00:00');
-      año_reg     = d.getFullYear();
-      mes_reg_nom = MESES[d.getMonth()];
-      dia_num_reg = d.getDate();
-      dia_abc_reg = DIAS[d.getDay()];
     }
 
-    const { rows } = await pool.query(`
-      UPDATE public.envios_ventas SET
-        calidad_venta_analista    = COALESCE($1,  calidad_venta_analista),
-        novedades_atc             = COALESCE($2,  novedades_atc),
-        venta_efectiva            = COALESCE($3,  venta_efectiva),
-        auditoria_documentos      = COALESCE($4,  auditoria_documentos),
-        auditado_por              = COALESCE($5,  auditado_por),
-        inconsistencia_documental = COALESCE($6,  inconsistencia_documental),
-        observacion_auditoria     = COALESCE($7,  observacion_auditoria),
-        errores_telcos            = COALESCE($8,  errores_telcos),
-        estatus_regularizacion    = COALESCE($9,  estatus_regularizacion),
-        detalle_regularizacion    = COALESCE($10, detalle_regularizacion),
-        fecha_regularizacion_atc  = COALESCE($11, fecha_regularizacion_atc),
-        año_regularizacion_atc    = COALESCE($12, año_regularizacion_atc),
-        mes_regularizacion_atc    = COALESCE($13, mes_regularizacion_atc),
-        dia_num_regularizacion_atc= COALESCE($14, dia_num_regularizacion_atc),
-        dia_abc_regularizacion_atc= COALESCE($15, dia_abc_regularizacion_atc),
-        mes_regularizacion        = COALESCE($16, mes_regularizacion),
-        observacion_venta_original    = COALESCE($17, observacion_venta_original),
-        observacion_gestion_cobranza  = COALESCE($18, observacion_gestion_cobranza)
-      WHERE id = $19
-      RETURNING *
-    `, [
-      calidad_venta_analista    || null,
-      novedades_atc             || null,
-      venta_efectiva            || null,
-      auditoria_documentos      || null,
-      auditado_por              || null,
-      inconsistencia_documental || null,
-      observacion_auditoria     || null,
-      errores_telcos            || null,
-      estatus_regularizacion    || null,
-      detalle_regularizacion    || null,
-      fecha_regularizacion_atc  || null,
-      año_reg,
-      mes_reg_nom,
-      dia_num_reg,
-      dia_abc_reg,
-      mes_regularizacion        || null,
-      observacion_venta_original    || null,
-      observacion_gestion_cobranza  || null,
-      id,
-    ]);
+    const payload = req.body;
 
-    console.log(`[BACKOFFICE] Auditoría actualizada id=${id} por ${req.user.usuario}`);
-    res.json({ success: true, data: rows[0], mensaje: 'Auditoría guardada correctamente' });
+    // 2. Si se proporciona fecha_regularizacion_atc, autocomputar campos de fecha
+    if (payload.fecha_regularizacion_atc) {
+      const d = new Date(payload.fecha_regularizacion_atc + 'T00:00:00');
+      payload.año_regularizacion_atc = d.getFullYear();
+      payload.mes_regularizacion_atc = MESES[d.getMonth()];
+      payload.dia_num_regularizacion_atc = d.getDate();
+      payload.dia_abc_regularizacion_atc = DIAS[d.getDay()];
+    }
+
+    // 3. Excluir campos sensibles/inmutables como 'id'
+    delete payload.id;
+
+    const fields = Object.keys(payload);
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No se enviaron datos para actualizar' });
+    }
+
+    // 4. Construcción dinámica del SET en SQL
+    const setClause = fields
+      .map((field, idx) => `"${field}" = $${idx + 1}`)
+      .join(', ');
+
+    const values = fields.map((field) => {
+      const val = payload[field];
+      return val === '' ? null : val; // Convertir strings vacíos a null
+    });
+
+    // Añadir el ID como último parámetro
+    values.push(id);
+    const query = `
+      UPDATE public.envios_ventas 
+      SET ${setClause} 
+      WHERE id = $${values.length} 
+      RETURNING *
+    `;
+
+    const { rows } = await pool.query(query, values);
+
+    console.log(`[BACKOFFICE] Registro id=${id} actualizado por ${req.user?.usuario || 'usuario'}`);
+    res.json({ success: true, data: rows[0], mensaje: 'Registro actualizado correctamente' });
   } catch (e) {
-    console.error('[BACKOFFICE] PUT audit:', e.message);
+    console.error('[BACKOFFICE] PUT update:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });

@@ -253,10 +253,9 @@ export default function VistaBackoffice() {
     setSaving(true);
     setAlert(null);
     try {
-      const payload = {};
-      editableFields.forEach((field) => {
-        payload[field] = detail[field] ?? "";
-      });
+      // Clonar el detalle y eliminar el ID para no sobreescribir la PK
+      const payload = { ...detail };
+      delete payload.id;
 
       const res = await fetch(`${API}/api/backoffice/${selectedId}`, {
         method: "PUT",
@@ -266,8 +265,10 @@ export default function VistaBackoffice() {
         },
         body: JSON.stringify(payload),
       });
+
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "No se pudo guardar");
+
       setAlert({ type: "success", msg: "Registro actualizado correctamente" });
       fetchRows(search);
       fetchDetail(selectedId);

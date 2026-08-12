@@ -32,6 +32,18 @@ function scoreColor(score) {
   return "#dc2626";
 }
 
+// El layout guarda el usuario logueado en "userProfile" (ver Backoffice.jsx).
+// Solo ADMINISTRADOR puede editar las reglas del prompt que usa el servicio
+// externo bot-auditor-service para clasificar/puntuar con Groq.
+function esAdministrador() {
+  try {
+    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
+    return (u.perfil || "").toUpperCase() === "ADMINISTRADOR";
+  } catch {
+    return false;
+  }
+}
+
 export default function BotAuditor() {
   const [filtros, setFiltros] = useState({ empresa: "", calificacion: "", canal: "", q: "", desde: "", hasta: "" });
   const [page, setPage] = useState(1);
@@ -43,6 +55,15 @@ export default function BotAuditor() {
   const [detalle, setDetalle] = useState(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const esAdmin = useMemo(() => esAdministrador(), []);
+  const [configAbierto, setConfigAbierto] = useState(false);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configGuardando, setConfigGuardando] = useState(false);
+  const [configError, setConfigError] = useState(null);
+  const [configMsg, setConfigMsg] = useState(null);
+  const [configForm, setConfigForm] = useState({ reglas_clasificacion: "", reglas_puntuacion_venta: "", reglas_puntuacion_atc: "" });
+  const [configMeta, setConfigMeta] = useState({ actualizado_por: null, actualizado_at: null });
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -104,6 +125,51 @@ export default function BotAuditor() {
 
   const fmtFecha = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" }) : "—");
 
+  const abrirConfig = async () => {
+    setConfigAbierto(true);
+    setConfigLoading(true);
+    setConfigError(null);
+    setConfigMsg(null);
+    try {
+      const r = await fetchJson(`/api/bot-auditor/config-prompt`);
+      setConfigForm({
+        reglas_clasificacion: r.data.reglas_clasificacion || "",
+        reglas_puntuacion_venta: r.data.reglas_puntuacion_venta || "",
+        reglas_puntuacion_atc: r.data.reglas_puntuacion_atc || "",
+      });
+      setConfigMeta({ actualizado_por: r.data.actualizado_por, actualizado_at: r.data.actualizado_at });
+    } catch (err) {
+      setConfigError(err.message || "Error al cargar la configuración");
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  const guardarConfig = async () => {
+    setConfigGuardando(true);
+    setConfigError(null);
+    setConfigMsg(null);
+    try {
+      const res = await fetch(`${API}/api/bot-auditor/config-prompt`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(configForm),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) {
+        throw new Error(json.error || json.message || `Error ${res.status}`);
+      }
+      setConfigMsg("Guardado. El servicio de auditoría aplica el cambio en su próximo ciclo (hasta ~15 min).");
+    } catch (err) {
+      setConfigError(err.message || "Error al guardar");
+    } finally {
+      setConfigGuardando(false);
+    }
+  };
+
   return (
     <div style={{ padding: 24, background: "#f8fafc", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       {/* HEADER */}
@@ -120,15 +186,28 @@ export default function BotAuditor() {
             Auditorías automáticas de conversaciones WhatsApp (IA) por lead en etapa ATC.
           </p>
         </div>
-        <button
-          onClick={() => setRefreshKey((k) => k + 1)}
-          style={{
-            background: "#1e293b", color: "white", border: "none",
-            borderRadius: 8, padding: "8px 18px", fontWeight: 700,
-            fontSize: 12, cursor: "pointer",
-          }}>
-          🔄 Actualizar
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {esAdmin && (
+            <button
+              onClick={abrirConfig}
+              style={{
+                background: "white", color: "#1e293b", border: "1px solid #cbd5e1",
+                borderRadius: 8, padding: "8px 18px", fontWeight: 700,
+                fontSize: 12, cursor: "pointer",
+              }}>
+              ⚙️ Configurar prompt
+            </button>
+          )}
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            style={{
+              background: "#1e293b", color: "white", border: "none",
+              borderRadius: 8, padding: "8px 18px", fontWeight: 700,
+              fontSize: 12, cursor: "pointer",
+            }}>
+            🔄 Actualizar
+          </button>
+        </div>
       </div>
 
       {/* STATS */}
@@ -313,6 +392,82 @@ export default function BotAuditor() {
                   }}>
                     {detalle.conversacion_anonimizada || "Sin conversación disponible."}
                   </pre>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIG PROMPT (solo ADMINISTRADOR) */}
+      {configAbierto && (
+        <div onClick={() => !configGuardando && setConfigAbierto(false)} style={{
+          position: "fixed", inset: 0, background: "rgba(15,23,42,.55)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20,
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "white", borderRadius: 16, padding: 24, maxWidth: 640, width: "100%",
+            maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>⚙️ Configurar prompt de auditoría</h2>
+              <button onClick={() => setConfigAbierto(false)} style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer", color: "#64748b" }}>✕</button>
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 16px" }}>
+              Edita las reglas que la IA usa para clasificar (VENTA/ATC) y puntuar cada conversación.
+              El formato de salida no es editable acá para no romper el guardado automático.
+            </p>
+
+            {configLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Cargando…</div>
+            ) : (
+              <>
+                {configMeta.actualizado_at && (
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>
+                    Última edición: {configMeta.actualizado_por || "—"} · {fmtFecha(configMeta.actualizado_at)}
+                  </div>
+                )}
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Reglas de clasificación (VENTA vs ATC)</label>
+                <textarea
+                  value={configForm.reglas_clasificacion}
+                  onChange={(e) => setConfigForm((f) => ({ ...f, reglas_clasificacion: e.target.value }))}
+                  rows={4}
+                  style={{ width: "100%", marginTop: 4, marginBottom: 14, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, fontFamily: "monospace", resize: "vertical" }}
+                />
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Rúbrica de puntuación VENTA (0-100)</label>
+                <textarea
+                  value={configForm.reglas_puntuacion_venta}
+                  onChange={(e) => setConfigForm((f) => ({ ...f, reglas_puntuacion_venta: e.target.value }))}
+                  rows={4}
+                  style={{ width: "100%", marginTop: 4, marginBottom: 14, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, fontFamily: "monospace", resize: "vertical" }}
+                />
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Rúbrica de puntuación ATC (0-100)</label>
+                <textarea
+                  value={configForm.reglas_puntuacion_atc}
+                  onChange={(e) => setConfigForm((f) => ({ ...f, reglas_puntuacion_atc: e.target.value }))}
+                  rows={4}
+                  style={{ width: "100%", marginTop: 4, marginBottom: 14, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, fontFamily: "monospace", resize: "vertical" }}
+                />
+
+                {configError && <div style={{ color: "#991b1b", fontSize: 12, marginBottom: 10 }}>⚠️ {configError}</div>}
+                {configMsg && <div style={{ color: "#166534", fontSize: 12, marginBottom: 10 }}>✓ {configMsg}</div>}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button
+                    onClick={() => setConfigAbierto(false)}
+                    disabled={configGuardando}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569" }}>
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={guardarConfig}
+                    disabled={configGuardando}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#1e293b", color: "white", fontSize: 12, fontWeight: 700, cursor: configGuardando ? "not-allowed" : "pointer" }}>
+                    {configGuardando ? "Guardando…" : "Guardar"}
+                  </button>
                 </div>
               </>
             )}

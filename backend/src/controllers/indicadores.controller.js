@@ -900,6 +900,16 @@ const getIndicadoresDashboard = async (req, res) => {
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
               AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= date_trunc('month', CURRENT_DATE)::date
               AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              -- FIX (bind mismatch): esta query no usa $1/$2 para el rango de fechas
+              -- (usa CURRENT_DATE a propósito), pero se ejecuta con pool.query(query, values)
+              -- y "values" siempre trae [desde, hasta] como $1/$2, más lo que agregue
+              -- filtersJoin numerado desde $3 en adelante. Sin esta línea, cuando no hay
+              -- filtros activos la query queda con 0 placeholders y Postgres revienta con
+              -- "bind message supplies 2 parameters, but prepared statement requires 0"
+              -- (tumbaba TODO el dashboard de Indicadores). Esta condición es un no-op:
+              -- $1 y $2 siempre son fechas válidas (desde/hasta ya vienen con default),
+              -- solo existe para que el conteo de placeholders cuadre con "values".
+              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
               ${filtersJoin}
             ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
             LIMIT 3000

@@ -58,7 +58,7 @@ const verificarToken = async (req, res, next) => {
 
     if (!user) {
       const result = await pool.query(
-        `SELECT id, usuario, empresa, perfil, activo
+        `SELECT id, usuario, empresa, perfil, activo, nombres, apellidos
          FROM usuarios
          WHERE id = $1`,
         [decoded.id]
@@ -88,7 +88,12 @@ const verificarToken = async (req, res, next) => {
       usuario: user.usuario,
       empresa: user.empresa?.toUpperCase(),
       perfil: user.perfil?.toUpperCase(),
-      activo: user.activo
+      activo: user.activo,
+      // Nombre completo del usuario logueado (mismo formato que login: "nombres apellidos").
+      // Se usa para forzar el filtro de "asesor" a su propio nombre en los
+      // dashboards de vista asesor (ver indicadores.controller.js / indicadoresVelsaMaterialized.controller.js),
+      // así el filtro nunca depende de lo que el cliente mande en la URL.
+      nombreCompleto: `${user.nombres || ''} ${user.apellidos || ''}`.trim()
     };
 
     next();

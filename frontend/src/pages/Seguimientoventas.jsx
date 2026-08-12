@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { fetchConSesion } from "../utils/sesion";
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -588,7 +589,8 @@ export default function Seguimientoventas() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta });
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)

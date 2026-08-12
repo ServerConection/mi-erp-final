@@ -84,8 +84,8 @@ export default function HomeModules() {
       desc: "Tablero personal de ventas: leads, ingresos CRM, Jotform y activas." },
     { title: "Vista Asesor Velsa", path: "/vista-asesor-velsa", icon: UserCircle2, accent: "naranja", cat: "ventas",
       desc: "Tablero personal de ventas Velsa: leads, ingresos CRM, Jotform y activas." },
-    { title: "Guía Planes Abril 2026", path: "/guia-planes-marzo", icon: ClipboardList, accent: "morado", cat: "ventas",
-      desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago." },
+    { title: "Guía de Planes", path: "/guia-planes", icon: ClipboardList, accent: "morado", cat: "ventas",
+      desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago. Se actualiza sola cada mes." },
     { title: "Cobertura", path: "/cobertura", icon: MapPin, accent: "cian", cat: "ventas",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps." },
 

@@ -7,7 +7,7 @@ const API = import.meta.env.VITE_API_URL;
 // ─────────────────────────────────────────────────────────────────────────────
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
-const RUTAS_PUBLICAS = ['/guia-planes-marzo', '/broadcast']; // ✅ FIX: era '/guia-comercial'
+const RUTAS_PUBLICAS = ['/guia-planes', '/broadcast']; // ✅ FIX: era '/guia-comercial'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET SINGLETON
@@ -404,7 +404,7 @@ const ALL_MENU_ITEMS = [
 
   // ── Formularios y guías ──────────────────────────────────────────────────
   { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },
-  { name: "Guía Comercial", path: "/guia-planes-marzo", icon: "📖", permiso: null, isChild: true, group: "formularios" },
+  { name: "Guía Comercial", path: "/guia-planes", icon: "📖", permiso: null, isChild: true, group: "formularios" },
   { name: "JOT Formulario", path: "/jot-formulario",    icon: "📋", permiso: null, isChild: true, group: "formularios" },
 
   // ── Broadcast por canal — acceso según empresa + perfil ─────────────────

@@ -114,7 +114,7 @@ export default function App() {
             <Route path="notificaciones"            element={<Notificaciones />} />
             <Route path="broadcast"                 element={<BroadcastPanel />} />
             <Route path="appsheet"                  element={<AppSheetModule />} />
-            <Route path="guia-planes-marzo"         element={<Guiaplanesmarzo />} />
+            <Route path="guia-planes"               element={<Guiaplanesmarzo />} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />

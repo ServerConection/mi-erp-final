@@ -25,20 +25,44 @@ const TIPOS_PLAN      = ["HOME", "TERCERA EDAD", "GAMER", "PRO", "PYME", SOLO_AD
 // Formas de pago que activan cada promoción del catálogo (EFECTIVO no tiene promo)
 const PAGO_TC   = "TARJETA DE CRÉDITO";
 const PAGOS_CTA = ["CUENTA CORRIENTE", "CUENTA AHORROS"];
-const ORIGENES        = [
-  "BASE 593-995211968", "API 484", "Base 593-979083368", "BASE 593-992827793",
+const ORIGENES_FALLBACK = [
+  "BASE 593-995211968", "API 484", "BASE 593-979083368", "BASE 593-992827793",
   "FORMULARIO LANDING 3", "LLAMADA LANDING 3", "WHATSAPP - ECUANET REGISTRO",
   "BASE 593-962881280", "POR RECOMENDACIÓN", "REFERIDO PERSONAL",
   "BASE 593-958993371", "BASE 593-999803743", "BASE 593-995967355",
   "WHATSAPP 593958993371", "BASE 593-987133635", "FORMULARIO LANDING 4",
   "BASE API 593963463480", "LLAMADA LANDING 4", "LLAMADA REMARKETING",
 ];
+const BANCOS = [
+  "BANCO PICHINCHA", "BANCO GUAYAQUIL", "BANCO PACÍFICO", "BANCO DE LOJA",
+  "BANCO INTERNACIONAL", "BANCO DEL AUSTRO", "BANCO PRODUBANCO",
+  "BANCO BOLÍVAR", "BANCO RUMINAHUI", "BANCO MI PUEBLO", "BANCO DE CREDITO",
+  "PRODUCE", "PROTO BANCO INTERNACIONAL", "BANCO AMÉRICA", "COOP. ANDALUCÍA",
+  "COOP. JEP", "COOP. CREATIVA", "COOP. CHONE", "COOP. 9 DE OCTUBRE",
+  "COOP. SAN FRANCISCO", "COOP. TULCÁN", "COOP. MANABÍ", "COOP. SOLIDARIA",
+  "COOP. DE AHORRO Y CRÉDITO ANDALUCÍA", "COOP. DE AHORRO Y CRÉDITO JEP"
+];
+const PROVINCIAS_ECUADOR = [
+  "AZUAY", "BOLÍVAR", "CAÑAR", "CARCHI", "CHIMBORAZO", "COTOPAXI", "EL ORO",
+  "ESMERALDAS", "GALÁPAGOS", "GUAYAS", "IMBABURA", "LOJA", "LOS RÍOS",
+  "MANABÍ", "MORONA SANTIAGO", "NAPO", "ORELLANA", "PASTAZA", "PICHINCHA",
+  "SANTA ELENA", "SANTO DOMINGO DE LOS TSÁCHILAS", "SUCRE", "TUNGURAHUA",
+  "ZAMORA CHINCHIPE"
+];
+const CIUDADES_ECUADOR = [
+  "QUITO", "GUAYAQUIL", "CUENCA", "LOJA", "AMBATO", "DURÁN", "MANTA",
+  "PORTOVIEJO", "ROCAFUERTE", "MACHALA", "SANTA ELENA", "SALINAS",
+  "TULCÁN", "IBARRA", "LATACUNGA", "RIOBAMBA", "CHONE", "BABAHOYO",
+  "QUEVEDO", "PASTO", "AZOGUES", "SANTO DOMINGO", "BIBLIAN", "EL TRIUNFO",
+  "NARANJAL", "VINCES", "PLAYAS", "HUAQUILLAS", "YANTZAZA", "PUYO",
+  "MONTUBIO", "OTAVALO", "CATAMAYO", "PASAJE", "JIPIJAPA", "TENA"
+];
 const CICLOS_FACT     = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
 const BENEFICIOS_LEY  = ["SI", "NO"];
 
 // Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
 const SUPERVISORES = {
-  NOVONET: ["RICARDO ECHEVERRÍA", "ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA"],
+  NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAY"],
   VELSA:   ["ALEXANDRA PACHECO", "DARIANA"],
 };
 
@@ -332,12 +356,18 @@ function Row({ label, required, children }) {
   );
 }
 
-function FIn({ value, onChange, placeholder, type = "text", readOnly = false }) {
+function FIn({ value, onChange, placeholder, type = "text", readOnly = false, list }) {
+  const handleChange = (e) => {
+    const nextValue = type === "file" ? e.target.files?.[0] : e.target.value;
+    onChange?.(typeof nextValue === "string" ? nextValue.toUpperCase() : nextValue);
+  };
+
   return (
     <input
       className="nv-input" type={type}
-      value={value} onChange={onChange}
+      value={value} onChange={handleChange}
       placeholder={placeholder} readOnly={readOnly}
+      list={list}
       style={readOnly ? { background: "#F5EDE6", color: "#B07A5A", cursor: "not-allowed" } : {}}
     />
   );
@@ -446,6 +476,7 @@ export default function NuevaVenta() {
   const [catalogo, setCatalogo]   = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
   const [vigenciaCat, setVigenciaCat] = useState(null);
   const [validandoBitrix, setValidandoBitrix] = useState(false);
+  const [bitrixOrigenes, setBitrixOrigenes] = useState([]);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -527,6 +558,23 @@ export default function NuevaVenta() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/bitrix/origenes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        if (d.success && Array.isArray(d.data)) {
+          const origenesValidos = d.data.filter(Boolean).map(v => String(v).toUpperCase());
+          if (origenesValidos.length) setBitrixOrigenes(origenesValidos);
+        }
+      } catch {
+        // si no responde Bitrix, se usa el fallback local
+      }
+    })();
+  }, [token]);
+
   const hayCatalogo = catalogo.length > 0;
   // Siempre se usa selección por lista (nunca texto libre) para los tipos con catálogo;
   // si el admin aún no carga el Excel del mes, las listas salen vacías con un aviso.
@@ -605,8 +653,9 @@ export default function NuevaVenta() {
 
   const set = k => e => {
     const v = e?.target ? e.target.value : e;
+    const normalizedValue = typeof v === "string" ? v.toUpperCase() : v;
     setForm(f => {
-      const next = { ...f, [k]: v };
+      const next = { ...f, [k]: normalizedValue };
       // Si cambia el distribuidor (caso admin sin lock), limpiar supervisor para evitar mezclas
       if (k === "distribuidor_autorizado" && v !== f.distribuidor_autorizado) {
         next.supervisor = "";
@@ -687,17 +736,35 @@ export default function NuevaVenta() {
     if (accion === "BORRADOR") { setErrs({}); return true; }
     const e = {};
     if (!form.distribuidor_autorizado)   e.distribuidor_autorizado = "Requerido";
+    if (!form.supervisor)                e.supervisor = "Requerido";
+    if (!form.biometrico)                e.biometrico = "Requerido";
     if (!form.tipo_cliente)              e.tipo_cliente = "Requerido";
     if (!form.tipo_documento)            e.tipo_documento = "Requerido";
     if (!form.numero_identificacion.trim()) e.numero_identificacion = "Requerido";
     if (!form.apellidos_cliente.trim())  e.apellidos_cliente = "Requerido";
     if (!form.nombres_cliente.trim())    e.nombres_cliente = "Requerido";
+    if (!form.genero_cliente)            e.genero_cliente = "Requerido";
+    if (!form.estado_civil)              e.estado_civil = "Requerido";
+    if (!form.fecha_nacimiento)          e.fecha_nacimiento = "Requerido";
+    if (!form.tipo_inmueble)             e.tipo_inmueble = "Requerido";
+    if (!form.aplica_descuento_3ra_edad) e.aplica_descuento_3ra_edad = "Requerido";
+    if (!form.regimen_vivienda)          e.regimen_vivienda = "Requerido";
     if (!form.calle_principal.trim())    e.calle_principal = "Requerido";
+    if (!form.provincia.trim())          e.provincia = "Requerido";
     if (!form.ciudad.trim())             e.ciudad = "Requerido";
+    if (!form.parroquia_barrio.trim())  e.parroquia_barrio = "Requerido";
     if (!form.telf_celular_pin.trim())   e.telf_celular_pin = "Requerido";
+    if (!form.email_cliente.trim())      e.email_cliente = "Requerido";
     if (!form.forma_pago)                e.forma_pago = "Requerido";
     if (!form.tipo_plan)                 e.tipo_plan = "Requerido";
+    if (!form.banco)                     e.banco = "Requerido";
+    if (!form.ciclo_facturacion)         e.ciclo_facturacion = "Requerido";
+    if (!form.costo_instalacion)         e.costo_instalacion = "Requerido";
+    if (!form.descuento_instalacion)     e.descuento_instalacion = "Requerido";
+    if (!form.beneficios_de_ley)         e.beneficios_de_ley = "Requerido";
+    if (!form.plazo_contrato_meses)      e.plazo_contrato_meses = "Requerido";
     if (!form.origen_venta)              e.origen_venta = "Requerido";
+    if (!form.turno)                     e.turno = "Requerido";
     setErrs(e);
     if (Object.keys(e).length > 0) {
       // Scroll al primer error
@@ -943,20 +1010,22 @@ export default function NuevaVenta() {
               )}
               {err("distribuidor_autorizado")}
             </Row>
-            <Row label="Supervisor">
+            <Row label="Supervisor" required>
               <FSel
                 value={form.supervisor}
                 onChange={set("supervisor")}
                 options={SUPERVISORES[form.distribuidor_autorizado] || []}
                 placeholder={form.distribuidor_autorizado ? "Selecciona supervisor…" : "Primero selecciona el distribuidor"}
               />
+              {err("supervisor")}
             </Row>
           </Seccion>
 
           {/* ── 2. Datos del cliente ── */}
           <Seccion num={2} icon="👤" label="Datos del cliente">
-            <Row label="Biométrico">
+            <Row label="Biométrico" required>
               <Chips value={form.biometrico} onChange={set("biometrico")} options={BIOMETRICO} />
+              {err("biometrico")}
             </Row>
             <Row label="Tipo de cliente" required>
               <Chips value={form.tipo_cliente} onChange={set("tipo_cliente")} options={TIPOS_CLI} />
@@ -978,38 +1047,44 @@ export default function NuevaVenta() {
               <FIn value={form.nombres_cliente} onChange={set("nombres_cliente")} placeholder="Primer y segundo nombre" />
               {err("nombres_cliente")}
             </Row>
-            <Row label="Género">
+            <Row label="Género" required>
               <Chips value={form.genero_cliente} onChange={set("genero_cliente")} options={GENEROS} />
+              {err("genero_cliente")}
             </Row>
-            <Row label="Estado civil">
+            <Row label="Estado civil" required>
               <FSel value={form.estado_civil} onChange={set("estado_civil")} options={ESTADOS_CIV} />
+              {err("estado_civil")}
             </Row>
-            <Row label="Fecha de nacimiento">
+            <Row label="Fecha de nacimiento" required>
               <FIn type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+              {err("fecha_nacimiento")}
               {edadCliente != null && (
                 <span style={{ fontSize: 11, color: calificaPara3raEdad ? "#15803d" : "#7C3A00", marginLeft: 8 }}>
                   {edadCliente} años{calificaPara3raEdad ? " · califica para 3ra edad" : ""}
                 </span>
               )}
             </Row>
-            <Row label="El cliente vive en">
+            <Row label="El cliente vive en" required>
               <FSel value={form.tipo_inmueble} onChange={set("tipo_inmueble")} options={TIPO_INMUEBLE} />
+              {err("tipo_inmueble")}
             </Row>
-            <Row label="Descuento 3ra edad">
+            <Row label="Descuento 3ra edad" required>
               <Chips
                 value={form.aplica_descuento_3ra_edad}
                 onChange={set("aplica_descuento_3ra_edad")}
                 options={DESCUENTO_3ERA}
                 disabledOptions={calificaPara3raEdad ? [] : ["SÍ — POR 3RA EDAD"]}
               />
+              {err("aplica_descuento_3ra_edad")}
               {!calificaPara3raEdad && (
                 <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                   Solo se habilita con fecha de nacimiento que indique 65 años o más.
                 </div>
               )}
             </Row>
-            <Row label="Tipo de vivienda">
+            <Row label="Tipo de vivienda" required>
               <Chips value={form.regimen_vivienda} onChange={set("regimen_vivienda")} options={TIPO_VIV} />
+              {err("regimen_vivienda")}
             </Row>
           </Seccion>
 
@@ -1022,15 +1097,23 @@ export default function NuevaVenta() {
             <Row label="Calle secundaria">
               <FIn value={form.calle_secundaria} onChange={set("calle_secundaria")} placeholder="Ej: Calle Colón" />
             </Row>
-            <Row label="Provincia">
-              <FIn value={form.provincia} onChange={set("provincia")} placeholder="Ej: Pichincha" />
+            <Row label="Provincia" required>
+              <FIn value={form.provincia} onChange={set("provincia")} placeholder="Ej: PICHINCHA" list="provincias-ecuador" />
+              <datalist id="provincias-ecuador">
+                {PROVINCIAS_ECUADOR.map(p => <option key={p} value={p} />)}
+              </datalist>
+              {err("provincia")}
             </Row>
             <Row label="Ciudad" required>
-              <FIn value={form.ciudad} onChange={set("ciudad")} placeholder="Ej: Quito" />
+              <FIn value={form.ciudad} onChange={set("ciudad")} placeholder="Ej: QUITO" list="ciudades-ecuador" />
+              <datalist id="ciudades-ecuador">
+                {CIUDADES_ECUADOR.map(c => <option key={c} value={c} />)}
+              </datalist>
               {err("ciudad")}
             </Row>
-            <Row label="Parroquia / Barrio">
-              <FIn value={form.parroquia_barrio} onChange={set("parroquia_barrio")} placeholder="Ej: La Mariscal" />
+            <Row label="Parroquia / Barrio" required>
+              <FIn value={form.parroquia_barrio} onChange={set("parroquia_barrio")} placeholder="Ej: LA MARISCAL" />
+              {err("parroquia_barrio")}
             </Row>
             <Row label="Manzana / Villa / Lote / Bloque">
               <FIn value={form.manzana_villa} onChange={set("manzana_villa")} placeholder="Ej: Mz. 4 Villa 12" />
@@ -1058,8 +1141,9 @@ export default function NuevaVenta() {
             <Row label="Celular para instalación">
               <FIn type="tel" value={form.telf_instalacion} onChange={set("telf_instalacion")} placeholder="09XXXXXXXX (puede ser diferente)" />
             </Row>
-            <Row label="Correo electrónico">
-              <FIn type="email" value={form.email_cliente} onChange={set("email_cliente")} placeholder="correo@ejemplo.com" />
+            <Row label="Correo electrónico" required>
+              <FIn type="email" value={form.email_cliente} onChange={set("email_cliente")} placeholder="CORREO@EJEMPLO.COM" />
+              {err("email_cliente")}
             </Row>
           </Seccion>
 
@@ -1164,48 +1248,63 @@ export default function NuevaVenta() {
           {/* ── 6. Cierre y origen ── */}
           <Seccion num={6} icon="✅" label="Cierre y origen de la venta">
             <Row label="Origen de la venta" required>
-              <FSel value={form.origen_venta} onChange={set("origen_venta")} options={ORIGENES} />
+              <FSel
+                value={form.origen_venta}
+                onChange={set("origen_venta")}
+                options={(bitrixOrigenes.length ? bitrixOrigenes : ORIGENES_FALLBACK).sort((a, b) => a.localeCompare(b))}
+                placeholder="Selecciona el origen de Bitrix"
+              />
               {err("origen_venta")}
             </Row>
             <Row label="Observación de la venta">
               <textarea
                 className="nv-textarea"
                 value={form.observacion_venta}
-                onChange={set("observacion_venta")}
-                placeholder="Notas importantes sobre esta venta, acuerdos especiales, pendientes…"
+                onChange={(e) => set("observacion_venta")({ target: { value: e.target.value.toUpperCase() } })}
+                placeholder="NOTAS IMPORTANTES SOBRE ESTA VENTA, ACUERDOS ESPECIALES, PENDIENTES…"
                 rows={3}
               />
+            </Row>
+            <Row label="Turno" required>
+              <FIn value={form.turno} onChange={set("turno")} placeholder="MAÑANA / TARDE / NOCHE" />
+              {err("turno")}
             </Row>
           </Seccion>
 
           {/* ── 7. Resumen de venta (se genera automáticamente, antes de subir documentos) ── */}
           <Seccion num={7} icon="📝" label="Banco, facturación y resumen de venta">
-            <Row label="Banco">
-              <FIn value={form.banco} onChange={set("banco")} placeholder="Ej: Banco Pichincha" />
+            <Row label="Banco" required>
+              <FSel value={form.banco} onChange={set("banco")} options={BANCOS} placeholder="Selecciona el banco principal" />
+              {err("banco")}
             </Row>
-            <Row label="Ciclo de facturación">
+            <Row label="Ciclo de facturación" required>
               <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion")} options={CICLOS_FACT} />
+              {err("ciclo_facturacion")}
             </Row>
-            <Row label="Costo de instalación">
-              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="Ej: 145" />
+            <Row label="Costo de instalación" required>
+              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="EJ: 145" />
+              {err("costo_instalacion")}
             </Row>
-            <Row label="Descuento en instalación">
-              <FIn value={form.descuento_instalacion} onChange={set("descuento_instalacion")} placeholder="Ej: 100% por contratar con Tarjeta de Crédito" />
+            <Row label="Descuento en instalación" required>
+              <FIn value={form.descuento_instalacion} onChange={set("descuento_instalacion")} placeholder="EJ: 100% POR CONTRATAR CON TARJETA DE CRÉDITO" />
+              {err("descuento_instalacion")}
             </Row>
             <Row label="Beneficios adicionales">
               <textarea
                 className="nv-textarea"
                 value={form.beneficios_adicionales}
-                onChange={set("beneficios_adicionales")}
-                placeholder={"Un beneficio por línea, ej:\n3 dispositivos con Licencia Kaspersky sin costo"}
+                onChange={(e) => set("beneficios_adicionales")({ target: { value: e.target.value.toUpperCase() } })}
+                placeholder={"UN BENEFICIO POR LÍNEA, EJ:\n3 DISPOSITIVOS CON LICENCIA KASPERSKY SIN COSTO"}
                 rows={2}
               />
             </Row>
-            <Row label="Beneficios de Ley">
+            <Row label="Beneficios de Ley" required>
               <Chips value={form.beneficios_de_ley} onChange={set("beneficios_de_ley")} options={BENEFICIOS_LEY} />
+              {err("beneficios_de_ley")}
             </Row>
-            <Row label="Plazo del contrato (meses)">
+            <Row label="Plazo del contrato (meses)" required>
               <FIn value={form.plazo_contrato_meses} onChange={set("plazo_contrato_meses")} placeholder="36" />
+              {err("plazo_contrato_meses")}
             </Row>
             <Row label="Resumen de venta (auto-generado)">
               <textarea

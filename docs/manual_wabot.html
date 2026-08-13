@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual WaBot — Módulo WhatsApp del ERP</title>
+<style>
+  :root{
+    --verde:#16a34a; --verde-claro:#dcfce7; --verde-borde:#bbf7d0;
+    --azul:#1A3A6E; --gris:#64748b; --gris-claro:#f8fafc;
+    --borde:#e2e8f0; --texto:#1e293b; --ambar:#b45309; --ambar-bg:#fffbeb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--texto); line-height:1.65; background:#fff;
+  }
+  .wrap{max-width:900px;margin:0 auto;padding:0 24px 80px}
+
+  /* Portada */
+  header{
+    background:linear-gradient(135deg,var(--azul) 0%,#0f2547 100%);
+    color:#fff;padding:56px 24px;margin-bottom:40px;
+  }
+  header .wrap{padding-bottom:0}
+  header .tag{
+    display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;padding:5px 12px;border-radius:20px;margin-bottom:18px;
+  }
+  header h1{font-size:38px;line-height:1.2;margin-bottom:12px;font-weight:800}
+  header p{font-size:17px;opacity:.9;max-width:620px}
+  header .meta{margin-top:24px;font-size:13px;opacity:.7}
+
+  /* Índice */
+  nav{
+    background:var(--gris-claro);border:1px solid var(--borde);border-radius:14px;
+    padding:22px 26px;margin-bottom:44px;
+  }
+  nav h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--gris);margin-bottom:14px}
+  nav ol{list-style:none;counter-reset:idx}
+  nav ol li{counter-increment:idx;margin:7px 0;padding-left:30px;position:relative}
+  nav ol li::before{
+    content:counter(idx);position:absolute;left:0;top:2px;width:20px;height:20px;
+    background:var(--azul);color:#fff;border-radius:50%;font-size:11px;
+    display:flex;align-items:center;justify-content:center;font-weight:700;
+  }
+  nav a{color:var(--texto);text-decoration:none;border-bottom:1px solid transparent}
+  nav a:hover{color:var(--verde);border-bottom-color:var(--verde)}
+
+  /* Secciones */
+  section{margin-bottom:52px;scroll-margin-top:20px}
+  h2.sec{
+    font-size:26px;font-weight:800;color:var(--azul);
+    padding-bottom:10px;border-bottom:3px solid var(--verde);margin-bottom:22px;
+  }
+  h3{font-size:18px;font-weight:700;margin:26px 0 10px;color:var(--azul)}
+  p{margin-bottom:14px}
+  ul,ol.pasos{margin:0 0 16px 22px}
+  li{margin-bottom:7px}
+
+  .parte{
+    display:inline-block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 12px;border-radius:20px;margin-bottom:10px;
+  }
+  .parte.eje{background:var(--verde-claro);color:#15803d;border:1px solid var(--verde-borde)}
+  .parte.ope{background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe}
+
+  /* Destacados */
+  .destacado{
+    background:var(--verde-claro);border:1px solid var(--verde-borde);
+    border-left:5px solid var(--verde);border-radius:10px;padding:20px 24px;margin:22px 0;
+  }
+  .destacado strong{color:#15803d}
+  .aviso{
+    background:var(--ambar-bg);border:1px solid #fde68a;border-left:5px solid #f59e0b;
+    border-radius:10px;padding:16px 20px;margin:20px 0;font-size:14.5px;
+  }
+  .aviso b{color:var(--ambar)}
+
+  /* Tarjetas */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:22px 0}
+  .card{border:1px solid var(--borde);border-radius:12px;padding:20px;background:#fff}
+  .card .ico{font-size:26px;margin-bottom:8px;display:block}
+  .card h4{font-size:15px;font-weight:700;margin-bottom:6px;color:var(--azul)}
+  .card p{font-size:13.5px;color:var(--gris);margin:0}
+
+  /* Tabla */
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14px}
+  th{background:var(--azul);color:#fff;text-align:left;padding:11px 14px;font-weight:600;font-size:13px}
+  td{padding:11px 14px;border-bottom:1px solid var(--borde);vertical-align:top}
+  tr:nth-child(even) td{background:var(--gris-claro)}
+  .chk{color:var(--verde);font-weight:700}
+  .no{color:#cbd5e1}
+
+  /* Pasos */
+  ol.pasos{counter-reset:p;list-style:none;margin-left:0}
+  ol.pasos>li{
+    counter-increment:p;position:relative;padding:2px 0 2px 42px;margin-bottom:14px;
+  }
+  ol.pasos>li::before{
+    content:counter(p);position:absolute;left:0;top:0;width:28px;height:28px;
+    background:var(--verde);color:#fff;border-radius:50%;font-weight:700;font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  ol.pasos>li b{color:var(--azul)}
+
+  .ruta{
+    display:inline-block;background:var(--gris-claro);border:1px solid var(--borde);
+    border-radius:6px;padding:2px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:13px;color:var(--azul);
+  }
+  .estado{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid}
+  .e-ok{background:#dcfce7;color:#15803d;border-color:#bbf7d0}
+  .e-qr{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
+  .e-err{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
+  .e-off{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+
+  footer{border-top:1px solid var(--borde);padding:26px 0;text-align:center;color:var(--gris);font-size:13px;margin-top:40px}
+
+  @media print{
+    header{background:var(--azul)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    nav{display:none}
+    section{page-break-inside:avoid}
+    body{font-size:12px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="tag">Módulo WhatsApp · ERP</span>
+    <h1>WaBot</h1>
+    <p>Gestión centralizada de WhatsApp con respaldo permanente de todas las conversaciones.</p>
+    <div class="meta">Manual de uso · Parte ejecutiva y parte operativa</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav>
+  <h2>Contenido</h2>
+  <ol>
+    <li><a href="#s1">Qué es WaBot y qué problema resuelve</a></li>
+    <li><a href="#s2">Respaldo de conversaciones</a></li>
+    <li><a href="#s3">Control y permisos por perfil</a></li>
+    <li><a href="#s4">Campañas masivas seguras</a></li>
+    <li><a href="#s5">Chatbots automáticos</a></li>
+    <li><a href="#s6">Integración con Bitrix</a></li>
+    <li><a href="#s7">Guía para el asesor: conectar tu línea</a></li>
+    <li><a href="#s8">Guía para el asesor: usar el Inbox</a></li>
+    <li><a href="#s9">Guía para el asesor: exportar un respaldo</a></li>
+    <li><a href="#s10">Preguntas frecuentes</a></li>
+  </ol>
+</nav>
+
+<!-- ══════════ PARTE EJECUTIVA ══════════ -->
+
+<section id="s1">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">1. Qué es WaBot y qué problema resuelve</h2>
+
+  <p>WaBot es el módulo de WhatsApp integrado al ERP. Permite que la empresa gestione, supervise y respalde toda la atención al cliente por WhatsApp desde un solo lugar, con el mismo usuario y los mismos perfiles del sistema.</p>
+
+  <h3>El problema antes de WaBot</h3>
+  <p>Cuando un asesor atendía desde su celular personal, esa conversación era invisible para la empresa:</p>
+  <ul>
+    <li>No había forma de verificar qué se le prometió a un cliente.</li>
+    <li>Si el asesor salía de la empresa, la información se iba con él.</li>
+    <li>La supervisión no podía revisar la calidad de la atención.</li>
+    <li>Un chat borrado era información perdida de forma definitiva.</li>
+  </ul>
+
+  <div class="destacado">
+    <strong>Lo que cambia con WaBot:</strong> cada mensaje que entra o sale se guarda en la base de datos de la empresa, no en el teléfono del asesor. La información deja de ser personal y pasa a ser un activo de la organización.
+  </div>
+
+  <div class="grid">
+    <div class="card"><span class="ico">🗂️</span><h4>Respaldo total</h4><p>Todo el historial guardado y exportable a PDF en cualquier momento.</p></div>
+    <div class="card"><span class="ico">🔐</span><h4>Control por perfil</h4><p>Cada quien ve lo que le corresponde según su rol y empresa.</p></div>
+    <div class="card"><span class="ico">📣</span><h4>Campañas seguras</h4><p>Envíos masivos con pausas y lotes para reducir bloqueos.</p></div>
+    <div class="card"><span class="ico">🤖</span><h4>Respuesta automática</h4><p>Chatbots con flujos visuales y traspaso a un humano.</p></div>
+  </div>
+</section>
+
+<section id="s2">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">2. Respaldo de conversaciones</h2>
+
+  <p>Es la función central del módulo y la de mayor valor para la empresa.</p>
+
+  <h3>Cómo funciona</h3>
+  <p>Cada mensaje enviado o recibido en cualquier línea conectada se almacena automáticamente en la base de datos del ERP, incluyendo el texto, la fecha y hora exacta, y los archivos adjuntos (imágenes y audios que envía el cliente).</p>
+
+  <h3>Qué se puede hacer con ese respaldo</h3>
+  <ul>
+    <li><b>Buscar por número o por nombre del cliente</b> y ver todas las conversaciones asociadas, sin importar qué asesor la atendió.</li>
+    <li><b>Exportar la conversación completa a PDF</b>, en formato de chat legible, con separadores por día, quién dijo qué y a qué hora.</li>
+    <li><b>Distinguir el origen de cada mensaje:</b> el respaldo indica si fue escrito por un asesor o enviado por una campaña automática.</li>
+  </ul>
+
+  <div class="destacado">
+    <strong>Continuidad garantizada.</strong> Si una línea se desvincula, se cambia de número o el asesor deja la empresa, el historial no se borra: permanece disponible para consulta y exportación.
+  </div>
+
+  <h3>Usos concretos</h3>
+  <table>
+    <tr><th>Situación</th><th>Cómo ayuda el respaldo</th></tr>
+    <tr><td>Un cliente reclama una promesa comercial</td><td>Se ubica la conversación y se verifica con fecha y hora exacta qué se le ofreció.</td></tr>
+    <tr><td>Auditoría de calidad de atención</td><td>Supervisión revisa conversaciones reales, no reportes de terceros.</td></tr>
+    <tr><td>Rotación de personal</td><td>El nuevo asesor retoma el historial completo del cliente.</td></tr>
+    <tr><td>Documentar un caso</td><td>Se exporta el PDF y se adjunta al expediente o al CRM.</td></tr>
+  </table>
+
+  <div class="aviso">
+    <b>Alcance real:</b> el respaldo cubre desde que la línea está conectada a WaBot. Los mensajes que hayan llegado mientras la línea estuvo desconectada no se recuperan de forma retroactiva, porque WhatsApp no los reenvía.
+  </div>
+</section>
+
+<section id="s3">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">3. Control y permisos por perfil</h2>
+
+  <p>La visibilidad está determinada por el perfil del usuario y por su empresa. Nadie ve información de otra empresa, salvo la administración del sistema.</p>
+
+  <table>
+    <tr><th>Perfil</th><th>Conversaciones que ve</th><th>Crear línea</th><th>Dar de baja línea</th></tr>
+    <tr><td><b>Asesor</b></td><td>Solo las suyas</td><td><span class="chk">✓</span> Una sola</td><td><span class="chk">✓</span> La suya</td></tr>
+    <tr><td><b>Supervisor</b></td><td>Todas las de su empresa</td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
+    <tr><td><b>Analista</b></td><td>Todas las de su empresa</td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
+    <tr><td><b>Gerencia</b></td><td>Todas las de su empresa</td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
+    <tr><td><b>Administrador</b></td><td>Todas, de todas las empresas</td><td><span class="chk">✓</span> Sin límite</td><td><span class="chk">✓</span> Todas</td></tr>
+  </table>
+
+  <h3>Panel de control de líneas</h3>
+  <p>En <span class="ruta">WaBot → Control de líneas</span> los perfiles de mando ven, agrupado por empresa y por asesor:</p>
+  <ul>
+    <li>Cuántas líneas tiene cada asesor y con qué número está vinculada.</li>
+    <li>El estado en tiempo real de cada una y la fecha de última conexión.</li>
+    <li>Un filtro para ver únicamente las líneas que no están conectadas.</li>
+  </ul>
+  <p>Los estados posibles son:
+    <span class="estado e-ok">Conectada</span>
+    <span class="estado e-qr">Esperando QR</span>
+    <span class="estado e-err">Error</span>
+    <span class="estado e-off">Desconectada</span>
+  </p>
+</section>
+
+<section id="s4">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">4. Campañas masivas seguras</h2>
+
+  <p>El módulo permite enviar mensajes a listas de contactos con mecanismos pensados para reducir el riesgo de bloqueo por parte de WhatsApp.</p>
+
+  <h3>Protecciones incorporadas</h3>
+  <ul>
+    <li><b>Tiempo variable entre mensajes.</b> El intervalo se define por rango (por ejemplo entre 8 y 20 segundos) y se elige al azar dentro de ese rango, evitando un patrón automático detectable.</li>
+    <li><b>Envío por lotes con pausa.</b> Cada cierto número de mensajes el sistema se detiene durante un tiempo configurable antes de continuar.</li>
+    <li><b>Variantes de mensaje.</b> Se pueden cargar varias redacciones del mismo mensaje para que no todos los destinatarios reciban un texto idéntico.</li>
+  </ul>
+
+  <h3>Seguimiento</h3>
+  <p>Durante el envío se ve el avance en vivo: enviados, entregados y fallidos. Se puede pausar, reanudar o cancelar una campaña en cualquier momento, reintentar solo los fallidos, y consultar el detalle destinatario por destinatario.</p>
+
+  <div class="aviso">
+    <b>Importante:</b> estas medidas reducen el riesgo, no lo eliminan. Los bloqueos dependen sobre todo de la antigüedad del número y de cuántos destinatarios lo reportan. Se recomienda usar números con historial de uso real y bases de contactos con consentimiento.
+  </div>
+</section>
+
+<section id="s5">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">5. Chatbots automáticos</h2>
+
+  <p>Cada línea puede tener asignado un bot que responde automáticamente según un flujo definido.</p>
+  <ul>
+    <li><b>Editor visual de flujos:</b> los pasos y sus conexiones se arman de forma gráfica, sin programar.</li>
+    <li><b>Traspaso a humano:</b> en cualquier punto de la conversación un asesor puede tomar el control; a partir de ahí el bot deja de responder.</li>
+    <li><b>Cierre por inactividad:</b> las conversaciones sin actividad se cierran automáticamente tras un tiempo definido.</li>
+  </ul>
+  <p>En el Inbox se distingue con una etiqueta si la conversación está siendo atendida por el bot o por una persona.</p>
+</section>
+
+<section id="s6">
+  <span class="parte eje">Parte 1 · Ejecutiva</span>
+  <h2 class="sec">6. Integración con Bitrix</h2>
+
+  <p>WaBot se conecta con el CRM para que la conversación y la negociación no vivan separadas.</p>
+  <ul>
+    <li><b>Iniciar chat desde el ID de negociación:</b> se ingresa el ID y el sistema obtiene el teléfono del contacto desde Bitrix y abre la conversación.</li>
+    <li><b>Vincular una conversación existente</b> a un ID de negociación.</li>
+    <li><b>Acceso directo al negocio</b> desde la conversación, con el enlace correcto según la empresa del usuario.</li>
+  </ul>
+</section>
+
+<!-- ══════════ PARTE OPERATIVA ══════════ -->
+
+<section id="s7">
+  <span class="parte ope">Parte 2 · Operativa</span>
+  <h2 class="sec">7. Guía para el asesor: conectar tu línea</h2>
+
+  <p>Una <b>línea</b> es tu número de WhatsApp vinculado al ERP. Cada asesor puede tener una.</p>
+
+  <ol class="pasos">
+    <li>Entra al menú <span class="ruta">WaBot → Líneas</span>.</li>
+    <li>Si aún no tienes línea, escribe un <b>nombre</b> para identificarla (por ejemplo tu nombre o el de tu zona) y presiona <b>+ Agregar</b>.</li>
+    <li>Presiona <b>Conectar QR</b>. Aparecerá un código en pantalla.</li>
+    <li>En tu celular abre <b>WhatsApp → Dispositivos vinculados → Vincular dispositivo</b> y escanea el código.</li>
+    <li>Cuando el estado cambie a <span class="estado e-ok">Conectado</span>, tu línea está lista.</li>
+  </ol>
+
+  <div class="aviso">
+    <b>Mantén el celular con internet.</b> WhatsApp vinculado funciona como WhatsApp Web: si tu teléfono queda mucho tiempo sin conexión, la sesión se cierra y tendrás que escanear el QR de nuevo.
+  </div>
+
+  <h3>Si tu línea aparece en Error o Sesión cerrada</h3>
+  <p>Simplemente presiona <b>Conectar QR</b> otra vez y vuelve a escanear. El sistema genera un código nuevo automáticamente. <b>Tus conversaciones anteriores no se pierden</b>: siguen en el Inbox tal como estaban.</p>
+
+  <h3>Dar de baja tu línea</h3>
+  <p>El botón 🗑️ desvincula el número y te deja libre para vincular otro. El historial de chats <b>no se borra</b> y permanece visible en tu Inbox.</p>
+</section>
+
+<section id="s8">
+  <span class="parte ope">Parte 2 · Operativa</span>
+  <h2 class="sec">8. Guía para el asesor: usar el Inbox</h2>
+
+  <p>El Inbox (<span class="ruta">WaBot → Inbox</span>) es tu bandeja de conversaciones. Los mensajes llegan en tiempo real, sin recargar la página.</p>
+
+  <h3>Responder a un cliente</h3>
+  <ol class="pasos">
+    <li>Selecciona la conversación en la lista de la izquierda.</li>
+    <li>Si la está atendiendo el bot, presiona <b>Tomar conversación</b> para que el bot deje de responder.</li>
+    <li>Escribe tu mensaje y envía. También puedes adjuntar imágenes o archivos.</li>
+  </ol>
+
+  <h3>Iniciar una conversación nueva</h3>
+  <p>Con el botón <b>+ Nueva</b> tienes dos opciones:</p>
+  <ul>
+    <li><b>Por número:</b> escribes el teléfono (por ejemplo <code>0987654321</code>) y opcionalmente el ID de negociación.</li>
+    <li><b>Por ID Bitrix:</b> escribes solo el ID y el sistema trae el teléfono del cliente automáticamente.</li>
+  </ul>
+
+  <h3>Filtros disponibles</h3>
+  <ul>
+    <li><b>Todos / Activos / Humano / Cerrados</b> según el estado de la conversación.</li>
+    <li><b>Buscador</b> por número o nombre del contacto.</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <span class="parte ope">Parte 2 · Operativa</span>
+  <h2 class="sec">9. Guía para el asesor: exportar un respaldo</h2>
+
+  <p>Sirve para documentar un caso, respaldar un acuerdo o adjuntar la conversación a un expediente.</p>
+
+  <ol class="pasos">
+    <li>Entra a <span class="ruta">WaBot → Respaldos</span>.</li>
+    <li>Escribe el <b>número</b> del cliente (ej. <code>593987654321</code>) o su <b>nombre</b>.</li>
+    <li>Presiona <b>🔍 Buscar</b>. Aparecerán las conversaciones encontradas.</li>
+    <li>Presiona <b>Exportar PDF</b> en la que necesites.</li>
+    <li>Se abrirá una ventana con la conversación en formato de chat. En el cuadro de impresión elige <b>Guardar como PDF</b>.</li>
+  </ol>
+
+  <div class="aviso">
+    <b>Permite las ventanas emergentes</b> en tu navegador. Si están bloqueadas, la exportación no podrá abrirse.
+  </div>
+
+  <p>El PDF incluye el nombre del contacto, el número, la línea que atendió, el total de mensajes, la fecha de generación, y la conversación completa separada por día indicando si cada mensaje fue del cliente, de un asesor o de una campaña.</p>
+</section>
+
+<section id="s10">
+  <h2 class="sec">10. Preguntas frecuentes</h2>
+
+  <h3>¿Si borro el chat en mi celular, se borra del sistema?</h3>
+  <p>No. El respaldo vive en la base de datos del ERP, es independiente de tu teléfono.</p>
+
+  <h3>¿Puedo ver las conversaciones de otro asesor?</h3>
+  <p>No, salvo que tu perfil sea de supervisión, análisis, gerencia o administración. Cada asesor ve únicamente lo suyo.</p>
+
+  <h3>¿Por qué mi línea dice "Error"?</h3>
+  <p>Ocurre cuando WhatsApp cerró la sesión o el número quedó restringido. El sistema deja de reintentar a propósito, para no aumentar el riesgo. Presiona <b>Conectar QR</b> y vuelve a escanear.</p>
+
+  <h3>¿Puedo tener dos líneas?</h3>
+  <p>Cada asesor puede tener una. Si necesitas otra, solicítala a la administración del sistema.</p>
+
+  <h3>¿Qué pasa con los mensajes que llegaron mientras estuve desconectado?</h3>
+  <p>Los mensajes recibidos durante una desconexión breve se sincronizan al reconectar. Si la línea estuvo caída mucho tiempo, ese período no se recupera, porque WhatsApp no reenvía ese historial.</p>
+
+  <h3>¿Puedo recuperar una línea que di de baja?</h3>
+  <p>La línea en sí requiere vincularse de nuevo con un QR, pero <b>sus conversaciones nunca se eliminan</b> y siguen disponibles en el Inbox y en Respaldos.</p>
+</section>
+
+<footer>
+  Manual WaBot · Módulo WhatsApp del ERP<br>
+  Área de Desarrollo
+</footer>
+
+</div>
+</body>
+</html>

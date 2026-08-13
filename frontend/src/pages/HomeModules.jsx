@@ -6,7 +6,7 @@ import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
-  CheckSquare,
+  CheckSquare, FileSpreadsheet, MessageCircle, GraduationCap,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -84,8 +84,8 @@ export default function HomeModules() {
       desc: "Tablero personal de ventas: leads, ingresos CRM, Jotform y activas." },
     { title: "Vista Asesor Velsa", path: "/vista-asesor-velsa", icon: UserCircle2, accent: "naranja", cat: "ventas",
       desc: "Tablero personal de ventas Velsa: leads, ingresos CRM, Jotform y activas." },
-    { title: "Guía Planes Abril 2026", path: "/guia-planes-marzo", icon: ClipboardList, accent: "morado", cat: "ventas",
-      desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago." },
+    { title: "Guía de Planes", path: "/guia-planes", icon: ClipboardList, accent: "morado", cat: "ventas",
+      desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago. Se actualiza sola cada mes." },
     { title: "Cobertura", path: "/cobertura", icon: MapPin, accent: "cian", cat: "ventas",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps." },
 
@@ -94,6 +94,10 @@ export default function HomeModules() {
     { title: "Tareas y Acuerdos", path: "/tareas", icon: CheckSquare, accent: "verde", cat: "equipo",
       desc: "Registra tareas y acuerdos, define responsable y fecha de entrega, y sigue el cumplimiento por área.",
       requiereTareas: true },
+    { title: "Archivos Compartidos", path: "/archivos-compartidos", icon: FileSpreadsheet, accent: "azul", cat: "equipo",
+      desc: "Planillas colaborativas tipo hoja de cálculo: comparte con quien elijas, edición en tiempo real y exporta a Excel." },
+    { title: "Evaluaciones", path: "/evaluaciones", icon: GraduationCap, accent: "verde", cat: "equipo",
+      desc: "Capacitación y evaluación por módulo: preguntas de opción múltiple, calificación automática y certificado por correo." },
     { title: "Recursos Humanos", path: "/rrhh", icon: Users, accent: "morado", cat: "equipo",
       desc: "Gestión de talento, vacaciones y expedientes del personal." },
     { title: "Control Horarios", path: "/horarios", icon: Clock, accent: "ambar", cat: "equipo",
@@ -113,6 +117,8 @@ export default function HomeModules() {
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
 
+    { title: "Chat Interno", path: "/chat", icon: MessageCircle, accent: "azul", cat: "comunicacion",
+      desc: "Mensajería directa y grupos con tu equipo, en tiempo real." },
     { title: "Notificaciones", path: "/notificaciones", icon: Bell, accent: "verde", cat: "comunicacion",
       desc: "Centro de alertas: WhatsApp, correo y ERP. Escanea QR y ve el historial." },
     { title: "Broadcast TV", path: "/broadcast", icon: Radio, accent: "rosa", cat: "comunicacion",

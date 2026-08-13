@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { StripCard, BarProgress } from "../components/kpi";
+import { fetchConSesion } from "../utils/sesion";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -482,6 +483,7 @@ export default function VistaAsesor() {
   const [asesores, setAsesores]             = useState([]);
   const [estadosNetlife, setEstadosNetlife] = useState([]);
   const [dataJotform, setDataJotform]       = useState([]);
+  const [ventasActivas, setVentasActivas]   = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   const [filtros, setFiltros] = useState({
@@ -505,12 +507,16 @@ export default function VistaAsesor() {
       const params = new URLSearchParams(
         Object.fromEntries(Object.entries(f).filter(([, v]) => v !== ""))
       );
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      // fetchConSesion agrega el Bearer del usuario logueado — el backend lo
+      // necesita para saber QUIÉN pide los datos y, si es perfil ASESOR,
+      // forzar el filtro a su propio nombre (ver indicadores.controller.js).
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         setAsesores(result.asesores || []);
         setEstadosNetlife(result.estadosNetlife || []);
         setDataJotform(result.dataNetlife || []);
+        setVentasActivas(result.ventasActivas || []);
       }
     } catch (e) {
       console.error("Error VistaAsesor:", e);
@@ -820,6 +826,53 @@ export default function VistaAsesor() {
             {asesoresEnriquecidos.map((a, i) => (
               <AsesorCard key={a.nombre_grupo} row={a} rank={i} />
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── VENTAS ACTIVAS (mes en curso, por fecha de activación) ── */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-8">
+        <div className="px-5 py-3 flex justify-between items-center border-b border-slate-100">
+          <div>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+              Ventas activas — mes en curso
+              <span className="text-slate-300 font-normal normal-case tracking-normal text-[9px]">
+                — por fecha de activación, sin importar cuándo se creó el registro
+              </span>
+            </p>
+            <p className="text-[8px] text-slate-400 mt-0.5 uppercase">
+              {ventasActivas.length} venta{ventasActivas.length === 1 ? "" : "s"} activada{ventasActivas.length === 1 ? "" : "s"} este mes
+            </p>
+          </div>
+        </div>
+        {ventasActivas.length === 0 ? (
+          <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
+            Sin ventas activadas este mes
+          </div>
+        ) : (
+          <div className="overflow-auto max-h-64">
+            <table className="text-[9px] w-full border-collapse font-mono">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-50 text-slate-400 font-black text-[8px] uppercase border-b border-slate-100">
+                  {Object.keys(ventasActivas[0] || {}).map((h) => (
+                    <th key={h} className="px-3 py-2 text-left border-r border-slate-100 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ventasActivas.map((row, i) => (
+                  <tr key={i} onClick={() => setClienteSeleccionado(row)}
+                    className="border-b border-slate-50 hover:bg-amber-50 transition-colors cursor-pointer group">
+                    {Object.values(row).map((v, j) => (
+                      <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
+                        {v ?? "—"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

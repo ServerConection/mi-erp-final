@@ -115,8 +115,11 @@ async function enviarOTP(correo, otp, nombre) {
   }
 }
 
-// Envío genérico — usado por FlowEngine (emailNode). No afecta el flujo OTP.
-async function send({ to, subject, body, html }) {
+// Envío genérico — usado por FlowEngine (emailNode) y por Evaluaciones
+// (resultado + certificado). `attachments` sigue el formato de nodemailer:
+// [{ filename, content, contentType }]. Opcional — nadie más lo manda hoy,
+// así que no cambia el comportamiento de los llamadores existentes.
+async function send({ to, subject, body, html, attachments }) {
   if (!to) throw new Error('email.send: destinatario requerido');
   const info = await transporter.sendMail({
     from: process.env.MAIL_FROM || process.env.MAIL_USER,
@@ -124,6 +127,7 @@ async function send({ to, subject, body, html }) {
     subject: subject || '(sin asunto)',
     text: body || '',
     html: html || undefined,
+    attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : undefined,
   });
   console.log('EMAIL enviado:', info.messageId, '→', to);
   return true;

@@ -277,6 +277,9 @@ export default function CoverageChecker() {
   // cobertura está repartida en muchos archivos y ninguno tiene el total);
   // "reemplazar" borra todo lo anterior y deja solo este archivo.
   const [modoCarga, setModoCarga] = useState("sumar");
+  const [detalleLinks, setDetalleLinks]       = useState(null);
+  const [verFaltantes, setVerFaltantes]       = useState(false);
+  const [cargandoFaltantes, setCargandoFaltantes] = useState(false);
 
   // ── Mapa ────────────────────────────────────────────────────────────────────
   const [zonasMapa, setZonasMapa]       = useState([]);   // zonas del área visible
@@ -356,6 +359,44 @@ export default function CoverageChecker() {
     } catch {
       // silencioso — no crítico
     }
+  }
+
+  // ── Mapas externos que no se pudieron descargar ─────────────────────────────
+  // Muestra QUÉ ciudades faltan, para poder pedírselas al supervisor por nombre.
+  async function cargarFaltantes() {
+    setCargandoFaltantes(true);
+    try {
+      const r = await fetch(`${API_URL}/links`, { headers: authHeaders() });
+      if (!r.ok) return;
+      setDetalleLinks(await r.json());
+      setVerFaltantes(true);
+    } catch {
+      /* silencioso */
+    } finally {
+      setCargandoFaltantes(false);
+    }
+  }
+
+  // Descarga la lista de faltantes para enviársela a quien administra los mapas
+  function exportarFaltantes() {
+    if (!detalleLinks?.faltantes?.length) return;
+    const filas = detalleLinks.faltantes.map(f => [
+      f.nombre,
+      f.error || "",
+      f.href,
+    ]);
+    const csv = [["Mapa / Ciudad", "Motivo", "Enlace"], ...filas]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mapas-faltantes-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   // ── Reintentar NetworkLinks fallidos (solo admin) ───────────────────────────
@@ -499,6 +540,7 @@ export default function CoverageChecker() {
         // Pregunta 1 — cobertura
         hasCoverage: data.hasCoverage,
         zoneName: data.zoneName || "—",
+        zonaMasCercana: data.zonaMasCercana || null,
         // Pregunta 2 — peligro (independiente de la cobertura)
         esZonaPeligrosa: !!data.esZonaPeligrosa,
         peligroTipo:     data.peligroTipo     || null,
@@ -601,12 +643,22 @@ export default function CoverageChecker() {
 
     // NetworkLinks: enlaces a mapas externos (Google My Maps, Telcodrive, etc.)
     // No se pueden resolver desde el navegador por CORS — se le pasan al backend.
+    //
+    // Se envía también el <name> del enlace, que suele ser la ciudad
+    // ("TABACUNDO", "CAYAMBE"). Sin ese dato, un mapa que falla solo se ve como
+    // un código y no hay forma de saber qué cobertura falta ni a quién pedirla.
     const networkLinks = [];
-    const nlReg = /<NetworkLink>[\s\S]*?<href>\s*([\s\S]*?)\s*<\/href>/g;
+    const nlReg = /<NetworkLink>([\s\S]*?)<\/NetworkLink>/g;
     let nm;
     while ((nm = nlReg.exec(kmlString)) !== null) {
-      const href = nm[1].replace(/&amp;/g, "&").trim();
-      if (href) networkLinks.push(href);
+      const bloque = nm[1];
+      const hrefM = bloque.match(/<href>\s*([\s\S]*?)\s*<\/href>/);
+      if (!hrefM) continue;
+      const href = hrefM[1].replace(/&amp;/g, "&").trim();
+      if (!href) continue;
+      const nameM = bloque.match(/<name>\s*([\s\S]*?)\s*<\/name>/);
+      const nombre = nameM ? nameM[1].replace(/<!\[CDATA\[|\]\]>/g, "").trim() : "";
+      networkLinks.push({ href, nombre });
     }
 
     return { zones, networkLinks };
@@ -851,14 +903,25 @@ export default function CoverageChecker() {
                     {coverageStatus.networkLinks.failed > 0 && (
                       <span className="text-amber-600"> ({coverageStatus.networkLinks.failed} fallidos)</span>
                     )}
-                    {isAdmin && !coverageStatus.networkLinks.loading && coverageStatus.networkLinks.failed > 0 && (
-                      <button
-                        onClick={retryLinks}
-                        disabled={retryingLinks}
-                        className="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold hover:bg-amber-200 disabled:opacity-50"
-                      >
-                        {retryingLinks ? "Reintentando..." : "🔁 Reintentar fallidos"}
-                      </button>
+                    {!coverageStatus.networkLinks.loading && coverageStatus.networkLinks.failed > 0 && (
+                      <>
+                        <button
+                          onClick={cargarFaltantes}
+                          disabled={cargandoFaltantes}
+                          className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold hover:bg-red-200 disabled:opacity-50"
+                        >
+                          {cargandoFaltantes ? "Consultando..." : "📋 Ver qué falta"}
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={retryLinks}
+                            disabled={retryingLinks}
+                            className="ml-1.5 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold hover:bg-amber-200 disabled:opacity-50"
+                          >
+                            {retryingLinks ? "Reintentando..." : "🔁 Reintentar"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -1295,6 +1358,30 @@ export default function CoverageChecker() {
                 {result.hasCoverage ? "✅ SÍ tiene cobertura" : "❌ NO tiene cobertura"}
               </h3>
 
+              {/* Sin cobertura: informar qué tan cerca está la más próxima.
+                  Ayuda a distinguir "está al lado, vale escalarlo" de
+                  "está lejísimos". NO otorga cobertura. */}
+              {!result.hasCoverage && result.zonaMasCercana && (
+                <div className={`mb-4 rounded-xl px-4 py-3 border ${
+                  result.zonaMasCercana.metros <= 100
+                    ? "bg-amber-50 border-amber-300 text-amber-900"
+                    : "bg-slate-50 border-slate-200 text-slate-600"
+                }`}>
+                  <p className="text-sm font-semibold">
+                    📏 Cobertura más cercana a{" "}
+                    <strong>{result.zonaMasCercana.metros.toLocaleString()} metros</strong>
+                    {result.zonaMasCercana.nombre && result.zonaMasCercana.nombre !== "Sin nombre" && (
+                      <span className="font-normal"> — {result.zonaMasCercana.nombre}</span>
+                    )}
+                  </p>
+                  <p className="text-xs mt-0.5">
+                    {result.zonaMasCercana.metros <= 100
+                      ? "Está muy cerca del borde de la red. Vale la pena escalarlo a factibilidad."
+                      : "Fuera del alcance de la red actual."}
+                  </p>
+                </div>
+              )}
+
               {/* ── ALERTA DE ZONA DE PELIGRO ──────────────────────────────
                   Se evalúa SIEMPRE, tenga o no cobertura: son dos preguntas
                   independientes. El estilo y el texto cambian según el tipo
@@ -1393,6 +1480,107 @@ export default function CoverageChecker() {
                   </a>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Modal: mapas externos que no se pudieron descargar.
+              Sirve para saber QUÉ cobertura falta y pedirla por nombre. */}
+          {verFaltantes && detalleLinks && (
+            <div className="fixed inset-0 z-[1000] bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+                  <h3 className="font-semibold text-slate-700 text-sm">
+                    Cobertura que falta por descargar
+                  </h3>
+                  <button
+                    onClick={() => setVerFaltantes(false)}
+                    className="text-slate-400 hover:text-slate-700 text-xl leading-none px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    {[
+                      { n: detalleLinks.total,     t: "Mapas totales", c: "text-slate-700" },
+                      { n: detalleLinks.resueltos, t: "Descargados",   c: "text-teal-600" },
+                      { n: detalleLinks.fallidos,  t: "Faltantes",     c: "text-red-600" },
+                    ].map(({ n, t, c }) => (
+                      <div key={t} className="bg-slate-50 rounded-xl p-3">
+                        <p className={`text-2xl font-extrabold ${c}`}>{n}</p>
+                        <p className="text-[11px] text-slate-500">{t}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {detalleLinks.motivosDeFallo?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 mb-1.5">Por qué fallan</p>
+                      {detalleLinks.motivosDeFallo.map((m) => (
+                        <div key={m.causa} className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-1.5">
+                          <p className="text-xs font-bold text-amber-900">
+                            {m.cantidad} mapa{m.cantidad > 1 ? "s" : ""} — {m.causa}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {detalleLinks.faltantes?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 mb-1.5">
+                        Mapas a solicitar ({detalleLinks.faltantes.length})
+                      </p>
+                      <div className="border border-slate-200 rounded-lg max-h-64 overflow-y-auto">
+                        {detalleLinks.faltantes.map((f, i) => (
+                          <div
+                            key={f.href}
+                            className={`px-3 py-2 text-xs flex items-start justify-between gap-3 ${
+                              i % 2 ? "bg-slate-50" : "bg-white"
+                            }`}
+                          >
+                            <span className="font-semibold text-slate-700">{f.nombre}</span>
+                            <span className="text-slate-400 text-[11px] text-right shrink-0 max-w-[45%]">
+                              {f.error}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-xs text-blue-900">
+                    <p className="font-bold mb-1">Cómo recuperar esta cobertura</p>
+                    <p>
+                      La mayoría falla porque el mapa de My Maps no está compartido públicamente y
+                      Google exige iniciar sesión — algo que el servidor no puede hacer. Pídele al
+                      responsable que abra cada mapa de la lista y lo comparta como{" "}
+                      <strong>&quot;Cualquier persona con el enlace&quot;</strong>. Después usa{" "}
+                      <strong>🔁 Reintentar</strong> y se cargan solos, sin resubir nada.
+                    </p>
+                    <p className="mt-1.5">
+                      Alternativa: que exporte esos mapas como KMZ desde My Maps y los cargues aquí
+                      en modo <strong>Sumar</strong>.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={exportarFaltantes}
+                      className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition"
+                    >
+                      ⬇ Descargar lista (CSV)
+                    </button>
+                    <button
+                      onClick={() => setVerFaltantes(false)}
+                      className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-200 transition"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

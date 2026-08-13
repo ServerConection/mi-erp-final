@@ -269,15 +269,27 @@ const getIndicadoresDashboard = async (req, res) => {
     try {
         const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
+        // ── FILTRO POR USUARIO LOGUEADO (seguridad) ─────────────────────────────
+        // Si el usuario autenticado tiene perfil ASESOR, se IGNORA cualquier
+        // "asesor" que venga en la query string (parámetro de URL o <select> del
+        // frontend) y se fuerza su propio nombre. Así un asesor nunca puede ver
+        // datos de otro asesor manipulando la URL o el filtro. Supervisores,
+        // administradores, analistas y gerentes conservan el comportamiento
+        // anterior (pueden filtrar libremente o ver a todos).
+        const esPerfilAsesor = !!(req.user && req.user.perfil === 'ASESOR');
+        const asesorQuery = esPerfilAsesor ? (req.user.nombreCompleto || '__SIN_NOMBRE__') : asesor;
+
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         // ── Caché de resultado: retorno inmediato si los mismos params ya fueron consultados ──
-        const cacheKey = JSON.stringify({ asesor, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta });
+        // Se incluye el id del usuario cuando es ASESOR (esPerfilAsesor) para que
+        // el caché nunca mezcle el resultado de un asesor con el de otro.
+        const cacheKey = JSON.stringify({ asesorQuery, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta, uid: esPerfilAsesor ? req.user.id : null });
         const cached = getDashboardCache(cacheKey);
         if (cached) {
-            console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesor||''} sup=${supervisor||''}`);
+            console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
             return res.json(cached);
         }
 
@@ -287,20 +299,23 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // Filtro ASESOR: soporta multi-selección. Acepta '?asesor=A,B,C' (lista
         // separada por comas) o '?asesor=A&asesor=B' (array desde el frontend).
-        // Match EXACTO (case-insensitive) cuando se envía lista; si llega un solo
-        // valor "suelto" (compatibilidad con integraciones viejas) se mantiene
-        // el comportamiento ILIKE parcial previo.
-        if (asesor) {
-            const listaAsesores = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
+        // Match EXACTO (case-insensitive) en TODOS los casos — antes, cuando
+        // llegaba un solo valor, se usaba ILIKE '%valor%' (coincidencia PARCIAL).
+        // BUG: eso hacía que, al seleccionar un asesor, también aparecieran
+        // registros de otro asesor cuyo nombre compartía una porción de texto
+        // (ej. un apellido/nombre en común), mezclando datos entre asesores.
+        // Ahora se usa el mismo match exacto que ya usaba la rama multi-selección.
+        if (asesorQuery) {
+            const listaAsesores = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
                 .map(a => a.trim()).filter(Boolean);
             if (listaAsesores.length > 1) {
                 const asesoresUpper = _sqlListaUpper(listaAsesores);
                 filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
                 filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
             } else if (listaAsesores.length === 1) {
-                values.push(`%${listaAsesores[0]}%`);
-                filtersJoin    += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
-                filtersNoJoin  += ` AND mb.b_persona_responsable ILIKE $${values.length}`;
+                values.push(listaAsesores[0]);
+                filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
+                filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
             }
         }
         if (supervisor) {
@@ -502,10 +517,15 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS venta_servicio,
-                -- ── ACTIVAS (definición de gerencia, 2026-08) ──────────────
+                -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ──
                 -- real_mes  = ACTIVAS TOTALES: todo lo que se activó en el rango
-                -- activa_mes= de esas, las que ADEMÁS se crearon en el rango
-                -- backlog   = TOTALES − MES  (se deriva, ya no se consulta aparte)
+                -- activa_mes= de esas, las que ADEMÁS se REGISTRARON EN JOTFORM
+                --             dentro del mismo rango (antes comparaba con la fecha
+                --             de creación en el CRM, no con el registro Jotform —
+                --             eran fechas distintas y desalineaba el cálculo).
+                -- backlog   = TOTALES − MES = activadas en el rango pero registradas
+                --             en Jotform en un mes ANTERIOR (se deriva, ya no se
+                --             consulta aparte).
                 --
                 -- OJO: antes el frontend hacía activas = real_mes + backlog, y
                 -- como real_mes ya incluía el backlog, se contaba DOBLE.
@@ -518,7 +538,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _jfact_date IS NOT NULL
                     AND _jfact_date BETWEEN $1::date AND $2::date
                     AND j_netlife_estatus_real = 'ACTIVO'
-                    AND _bc_date BETWEEN $1::date AND $2::date
+                    AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS activa_mes,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
@@ -858,7 +878,49 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
         `;
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash] = await Promise.all([
+        // ── VENTAS ACTIVAS (NUEVO) — mes en curso, por FECHA DE ACTIVACIÓN ──────
+        // Detalle (no solo conteo) de las ventas cuya FECHA DE ACTIVACIÓN cae
+        // dentro del mes calendario actual, sin importar cuándo se creó el
+        // registro de la venta (fecha de creación/registro Jotform). Es un
+        // filtro independiente del rango de fechas principal del dashboard.
+        // Reutiliza filtersJoin (asesor/supervisor/estado/etc, ya calculados
+        // arriba) y el mismo array `values`, para que respete la misma
+        // selección de asesor (incluida la que se fuerza por sesión cuando el
+        // usuario logueado es un ASESOR).
+        const queryVentasActivasMes = `
+            SELECT
+                mb.j_id_bitrix AS "ID_CRM",
+                mb.b_persona_responsable AS "ASESOR",
+                e.supervisor AS "SUPERVISOR_ASIGNADO",
+                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
+                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                mb.j_forma_pago AS "FORMA_PAGO",
+                mb.j_netlife_login AS "LOGIN",
+                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
+            FROM public.mestra_bitrix mb
+            ${joinEmpleadosDedup}
+            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+              AND mb.j_fecha_activacion_netlife IS NOT NULL
+              AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= date_trunc('month', CURRENT_DATE)::date
+              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              -- FIX (bind mismatch): esta query no usa $1/$2 para el rango de fechas
+              -- (usa CURRENT_DATE a propósito), pero se ejecuta con pool.query(query, values)
+              -- y "values" siempre trae [desde, hasta] como $1/$2, más lo que agregue
+              -- filtersJoin numerado desde $3 en adelante. Sin esta línea, cuando no hay
+              -- filtros activos la query queda con 0 placeholders y Postgres revienta con
+              -- "bind message supplies 2 parameters, but prepared statement requires 0"
+              -- (tumbaba TODO el dashboard de Indicadores). Esta condición es un no-op:
+              -- $1 y $2 siempre son fechas válidas (desde/hasta ya vienen con default),
+              -- solo existe para que el conteo de placeholders cuadre con "values".
+              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+              ${filtersJoin}
+            ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
+            LIMIT 3000
+        `;
+
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -869,6 +931,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryIngresosDiaSup, dateValues),
             pool.query(queryIngresosDiaAsesor, dateValues),
             pool.query(queryPlanesPorCategoria, values),
+            pool.query(queryVentasActivasMes, values),
         ]);
 
         // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
@@ -954,6 +1017,10 @@ const getIndicadoresDashboard = async (req, res) => {
                     adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
                 };
             })(),
+            // NUEVO: detalle de ventas activas del mes en curso (por fecha de
+            // activación, no por fecha de creación) — ver queryVentasActivasMes.
+            ventasActivas: resVentasActivasMes.rows,
+            ventasActivasTotal: resVentasActivasMes.rowCount,
         };
 
         // Guardar en caché para solicitudes idénticas en los próximos 2 minutos

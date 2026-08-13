@@ -143,7 +143,12 @@ const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${
 function buildFilters(q, values) {
   let f = '';
   const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta } = q;
-  if (asesor)               { values.push(`%${asesor}%`);               f += ` AND mv.asesor ILIKE $${values.length}`; }
+  // Match EXACTO (case-insensitive) para asesor. Antes usaba ILIKE '%valor%'
+  // (coincidencia PARCIAL): al seleccionar un asesor, también podían aparecer
+  // registros de OTRO asesor cuyo nombre compartiera una porción de texto con
+  // el seleccionado, mezclando datos entre asesores. Mismo fix aplicado en
+  // indicadores.controller.js (dashboard NOVONET).
+  if (asesor)               { values.push(asesor);                     f += ` AND UPPER(TRIM(mv.asesor)) = UPPER(TRIM($${values.length}))`; }
   if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); f += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
@@ -197,10 +202,13 @@ const queryKPI = (columna, filters) => `
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
     ) AS ingresos_del_dia,
-    -- ── ACTIVAS (definición de gerencia, 2026-08) ────────────────────────
+    -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ────
     -- real_mes   = ACTIVAS TOTALES: todo lo activado en el rango
-    -- activa_mes = de esas, las que ADEMÁS se crearon en el rango
-    -- backlog    = TOTALES − MES (se deriva, ya no se consulta aparte)
+    -- activa_mes = de esas, las que ADEMÁS se REGISTRARON EN JOTFORM dentro
+    --              del mismo rango (antes comparaba con fecha_creacion_crm,
+    --              no con fecha_registro_jotform — desalineaba el cálculo).
+    -- backlog    = TOTALES − MES = activadas en el rango pero registradas en
+    --              Jotform en un mes ANTERIOR (se deriva, ya no se consulta aparte).
     COUNT(*) FILTER (
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
@@ -210,7 +218,7 @@ const queryKPI = (columna, filters) => `
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
       AND mv.estado_venta = ${ESTADO_ACTIVO}
-      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS activa_mes,
     COUNT(*) FILTER (
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
@@ -292,19 +300,28 @@ function mergeBacklog(kpiRows, backlogRows) {
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 async function getIndicadoresDashboardVelsa(req, res) {
-  const cacheKey = 'dashboard:' + JSON.stringify(req.query);
+  // ── FILTRO POR USUARIO LOGUEADO (seguridad) ───────────────────────────────
+  // Si el usuario autenticado tiene perfil ASESOR, se IGNORA cualquier
+  // "asesor" que venga en la query string y se fuerza su propio nombre. Así
+  // un asesor nunca puede ver datos de otro asesor manipulando la URL o el
+  // filtro. Supervisores/administradores/analistas/gerentes no se ven afectados.
+  const esPerfilAsesor = !!(req.user && req.user.perfil === 'ASESOR');
+  const qEffective = { ...req.query };
+  if (esPerfilAsesor) qEffective.asesor = req.user.nombreCompleto || '__SIN_NOMBRE__';
+
+  const cacheKey = 'dashboard:' + JSON.stringify({ q: qEffective, uid: esPerfilAsesor ? req.user.id : null });
   const cached = getCacheVelsa(cacheKey);
   if (cached) return res.json(cached);
   try {
     const hoy   = getFechaEcuador();
-    const desde = req.query.fechaDesde || hoy;
-    const hasta = req.query.fechaHasta || hoy;
+    const desde = qEffective.fechaDesde || hoy;
+    const hasta = qEffective.fechaHasta || hoy;
 
     const valuesMain = [desde, hasta];
-    const filters    = buildFilters(req.query, valuesMain);
+    const filters    = buildFilters(qEffective, valuesMain);
 
     const valuesBk  = [desde, hasta];
-    const filtersBk = buildFilters(req.query, valuesBk);
+    const filtersBk = buildFilters(qEffective, valuesBk);
 
     const qEstados = `
       SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total
@@ -450,11 +467,43 @@ LIMIT 6000
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
 
+    // ── VENTAS ACTIVAS (NUEVO) — mes en curso, por FECHA DE ACTIVACIÓN ────────
+    // Detalle (no solo conteo) de las ventas cuya FECHA DE ACTIVACIÓN cae
+    // dentro del mes calendario actual, sin importar cuándo se creó el
+    // registro (fecha de creación/registro Jotform). Reutiliza `filters`
+    // (asesor/supervisor/etc, ya calculados arriba con qEffective) y
+    // `valuesMain`, para respetar la misma selección/forzado de asesor.
+    const qVentasActivasMes = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
+      FROM ${MV}
+      WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+        AND mv.fecha_activacion IS NOT NULL
+        AND mv.fecha_activacion::date >= date_trunc('month', CURRENT_DATE)::date
+        AND mv.fecha_activacion::date <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        -- FIX (bind mismatch, mismo bug que en Novonet): esta query no usa $1/$2
+        -- para fechas (usa CURRENT_DATE a propósito), pero se ejecuta con
+        -- pool.query(query, valuesMain) que siempre trae [desde, hasta]. Sin esto,
+        -- sin filtros activos la query queda con 0 placeholders y truena con
+        -- "bind message supplies 2 parameters, but prepared statement requires 0".
+        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+        ${filters}
+      ORDER BY mv.fecha_activacion DESC
+      LIMIT 3000
+    `;
+
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
-      resNetlife, resActivacionesDia, resPlanesDash,
+      resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -470,6 +519,7 @@ LIMIT 6000
       pool.query(qNetlife,   valuesMain),
       pool.query(qActivacionesPorDia, valuesMain), // NUEVO: activaciones por fecha_activacion_date
       pool.query(qPlanesDash, valuesMain),
+      pool.query(qVentasActivasMes, valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -506,6 +556,10 @@ LIMIT 6000
           adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
         };
       })(),
+      // NUEVO: detalle de ventas activas del mes en curso (por fecha de
+      // activación, no por fecha de creación) — ver qVentasActivasMes.
+      ventasActivas: resVentasActivasMes.rows,
+      ventasActivasTotal: resVentasActivasMes.rowCount,
     };
     setCacheVelsa(cacheKey, payload);
     res.json(payload);

@@ -37,6 +37,8 @@ const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 const Inventario           = lazy(() => import("./pages/Inventario"));
 const Tareas               = lazy(() => import("./pages/Tareas"));
 const ArchivosCompartidos  = lazy(() => import("./pages/Hojas"));
+const ChatInterno          = lazy(() => import("./pages/Chat"));
+const Evaluaciones         = lazy(() => import("./pages/Evaluaciones"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
@@ -113,7 +115,7 @@ export default function App() {
             <Route path="notificaciones"            element={<Notificaciones />} />
             <Route path="broadcast"                 element={<BroadcastPanel />} />
             <Route path="appsheet"                  element={<AppSheetModule />} />
-            <Route path="guia-planes-marzo"         element={<Guiaplanesmarzo />} />
+            <Route path="guia-planes"               element={<Guiaplanesmarzo />} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
@@ -123,6 +125,8 @@ export default function App() {
             <Route path="inventario"               element={<Inventario />} />
             <Route path="tareas"                   element={<Tareas />} />
             <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
+            <Route path="chat"                     element={<ChatInterno />} />
+            <Route path="evaluaciones"             element={<Evaluaciones />} />
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />

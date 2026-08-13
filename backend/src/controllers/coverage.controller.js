@@ -409,9 +409,11 @@ async function ensureCoverageTable() {
 
   // Registro de NetworkLinks (mapas externos) — permite reintentar los fallidos
   // sin volver a subir el KMZ, y sobrevive reinicios del servidor.
+  await pool.query(`ALTER TABLE IF EXISTS public.coverage_links ADD COLUMN IF NOT EXISTS nombre TEXT`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.coverage_links (
       href        TEXT PRIMARY KEY,
+      nombre      TEXT,
       status      TEXT DEFAULT 'pending',
       zones_count INT  DEFAULT 0,
       error       TEXT,
@@ -727,6 +729,62 @@ function findDangerZonesForPoint(longitude, latitude, zones, cells) {
   return out;
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// DISTANCIA A LA COBERTURA MÁS CERCANA
+// ────────────────────────────────────────────────────────────────────────────────
+// Cuando la respuesta es "sin cobertura", saber a cuántos metros está la zona
+// más próxima cambia la decisión comercial: no es lo mismo estar a 15 metros
+// (vale la pena escalarlo) que a 3 kilómetros (no hay nada que hacer).
+//
+// A propósito NO se usa esto para "dar por buena" la cobertura dentro de un
+// radio: eso generaría promesas falsas al cliente y, en las capas de peligro,
+// alertas equivocadas. Es solo información de diagnóstico.
+// ════════════════════════════════════════════════════════════════════════════════
+
+const METROS_POR_GRADO_LAT = 111320;
+
+// Distancia aproximada punto→segmento en metros (proyección plana local;
+// suficiente y muy rápida para distancias urbanas).
+function distanciaPuntoSegmento(px, py, ax, ay, bx, by, escalaLon) {
+  const axm = (ax - px) * escalaLon, aym = (ay - py) * METROS_POR_GRADO_LAT;
+  const bxm = (bx - px) * escalaLon, bym = (by - py) * METROS_POR_GRADO_LAT;
+  const dx = bxm - axm, dy = bym - aym;
+  const largo2 = dx * dx + dy * dy;
+  if (largo2 === 0) return Math.hypot(axm, aym);
+  let t = -(axm * dx + aym * dy) / largo2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(axm + t * dx, aym + t * dy);
+}
+
+/**
+ * Zona de cobertura más cercana al punto. Devuelve { nombre, metros } o null.
+ * `radioMax` limita la búsqueda para no recorrer todo el país.
+ */
+function zonaMasCercana(longitude, latitude, radioMax = 5000) {
+  if (!loadedZones || loadedZones.length === 0) return null;
+  const escalaLon = METROS_POR_GRADO_LAT * Math.cos(latitude * Math.PI / 180);
+  const margenGrados = radioMax / METROS_POR_GRADO_LAT;
+
+  let mejor = null;
+  for (const z of loadedZones) {
+    if (z.dangerType) continue;                 // solo cobertura
+    if (z.type && z.type !== 'Polygon') continue;
+    const b = z.bbox || buildBBox(z.coordinates);
+    // Descarte rápido por bounding box ampliado
+    if (b.minLon - margenGrados > longitude || b.maxLon + margenGrados < longitude) continue;
+    if (b.minLat - margenGrados > latitude  || b.maxLat + margenGrados < latitude)  continue;
+
+    const c = z.coordinates;
+    for (let i = 0, j = c.length - 1; i < c.length; j = i++) {
+      const d = distanciaPuntoSegmento(longitude, latitude, c[j][0], c[j][1], c[i][0], c[i][1], escalaLon);
+      if (!mejor || d < mejor.metros) mejor = { nombre: z.name, metros: d };
+      if (mejor.metros < 1) break;
+    }
+  }
+  if (!mejor || mejor.metros > radioMax) return null;
+  return { nombre: mejor.nombre, metros: Math.round(mejor.metros) };
+}
+
 // Gravedad: BLOQUEADO manda sobre HORARIO_RESTRINGIDO, y este sobre RESTRINGIDA
 const DANGER_SEVERITY = { [DANGER_BLOQUEADO]: 3, [DANGER_HORARIO]: 2, [DANGER_RESTRINGIDA]: 1 };
 
@@ -846,12 +904,25 @@ function parseKMLFast(kmlString) {
 
   // NetworkLinks: enlaces a mapas externos (Google My Maps "mid=...", Telcodrive, etc.)
   // Su contenido NO está embebido en este KML — hay que descargarlo aparte.
+  //
+  // Se captura también el <name> del NetworkLink, que suele ser la ciudad
+  // ("TABACUNDO", "CAYAMBE", "IBARRA"). Sin eso, un enlace fallido solo se ve
+  // como "mid=1yu03nEGl4..." y no hay forma de saber qué cobertura falta ni a
+  // quién pedírsela.
   const networkLinks = [];
-  const nlReg = /<NetworkLink>[\s\S]*?<href>\s*([\s\S]*?)\s*<\/href>/g;
+  const nlReg = /<NetworkLink>([\s\S]*?)<\/NetworkLink>/g;
   let nm;
   while ((nm = nlReg.exec(kmlString)) !== null) {
-    const href = nm[1].replace(/&amp;/g, '&').trim();
-    if (href) networkLinks.push(href);
+    const bloque = nm[1];
+    const hrefM = bloque.match(/<href>\s*([\s\S]*?)\s*<\/href>/);
+    if (!hrefM) continue;
+    const href = hrefM[1].replace(/&amp;/g, '&').trim();
+    if (!href) continue;
+    const nameM = bloque.match(/<name>\s*([\s\S]*?)\s*<\/name>/);
+    const nombre = nameM
+      ? nameM[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim()
+      : '';
+    networkLinks.push({ href, nombre });
   }
 
   const nPeligro = zones.filter(z => z.dangerType).length;
@@ -1026,14 +1097,16 @@ function mergeZonesIntoMemory(newZones) {
 }
 
 // Actualiza el registro de un enlace en coverage_links (para poder reintentar)
-async function upsertLinkStatus(href, status, zonesCount = 0, error = null) {
+async function upsertLinkStatus(href, status, zonesCount = 0, error = null, nombre = null) {
   try {
     await pool.query(
-      `INSERT INTO public.coverage_links (href, status, zones_count, error, updated_at)
-       VALUES ($1,$2,$3,$4,NOW())
+      `INSERT INTO public.coverage_links (href, nombre, status, zones_count, error, updated_at)
+       VALUES ($1,$2,$3,$4,$5,NOW())
        ON CONFLICT (href) DO UPDATE
-         SET status = $2, zones_count = $3, error = $4, updated_at = NOW()`,
-      [href, status, zonesCount, error]
+         SET status = $3, zones_count = $4, error = $5, updated_at = NOW(),
+             -- conservar el nombre si el nuevo viene vacío
+             nombre = COALESCE(NULLIF($2,''), public.coverage_links.nombre)`,
+      [href, nombre, status, zonesCount, error]
     );
   } catch (e) { /* no crítico */ }
 }
@@ -1041,12 +1114,22 @@ async function upsertLinkStatus(href, status, zonesCount = 0, error = null) {
 // Resuelve todos los NetworkLinks de un archivo en background, con concurrencia
 // limitada, y va fusionando resultados en memoria y en DB a medida que llegan.
 // `isRetry` = true cuando se reintentan solo los fallidos (no limpia el registro).
-async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
-  // Normalizar ANTES de deduplicar: el mismo mapa (mid) aparece muchas veces
-  // con parámetros distintos → sin normalizar se descargaba varias veces.
-  const unique = Array.from(new Set(
-    (hrefs || []).map(h => normalizeNetworkLinkUrl(h)).filter(Boolean)
-  ));
+async function resolveNetworkLinksBackground(entradas, isRetry = false) {
+  // Acepta strings o { href, nombre }. Se normaliza ANTES de deduplicar: el
+  // mismo mapa (mid) aparece muchas veces con parámetros distintos.
+  // El nombre se conserva porque es lo que permite saber QUÉ ciudad falta
+  // cuando un enlace no se puede descargar.
+  const porUrl = new Map();
+  for (const e of (entradas || [])) {
+    const href = typeof e === 'string' ? e : (e && e.href);
+    if (!href) continue;
+    const url = normalizeNetworkLinkUrl(href);
+    const nombre = (typeof e === 'object' && e.nombre) ? e.nombre : '';
+    if (!porUrl.has(url)) porUrl.set(url, nombre);
+    else if (!porUrl.get(url) && nombre) porUrl.set(url, nombre);
+  }
+
+  const unique = [...porUrl.keys()];
   if (unique.length === 0) return;
   if (networkLinksState.loading) {
     console.warn('[Coverage] Resolución de NetworkLinks ya en curso — se omite');
@@ -1061,7 +1144,7 @@ async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
     if (!isRetry) {
       // Nuevo archivo: limpiar registro anterior y registrar los enlaces actuales
       await pool.query('DELETE FROM public.coverage_links');
-      for (const href of unique) await upsertLinkStatus(href, 'pending');
+      for (const href of unique) await upsertLinkStatus(href, 'pending', 0, null, porUrl.get(href) || null);
     }
   } catch (e) { console.warn('[Coverage] No se pudo preparar coverage_links:', e.message); }
 
@@ -1079,11 +1162,11 @@ async function resolveNetworkLinksBackground(hrefs, isRetry = false) {
       pendingMerge = pendingMerge.concat(zones);
       networkLinksState.resolved++;
       networkLinksState.zonesAdded += zones.length;
-      upsertLinkStatus(href, 'resolved', zones.length);
+      upsertLinkStatus(href, 'resolved', zones.length, null, porUrl.get(href) || null);
     } catch (e) {
       networkLinksState.failed++;
-      upsertLinkStatus(href, 'failed', 0, e.message);
-      console.warn('[Coverage NetworkLink] Error en', href, '-', e.message);
+      upsertLinkStatus(href, 'failed', 0, e.message, porUrl.get(href) || null);
+      console.warn('[Coverage NetworkLink] Falló', porUrl.get(href) || href, '-', e.message);
     } finally {
       const done = networkLinksState.resolved + networkLinksState.failed;
       if (pendingMerge.length && (done % 10 === 0 || done === unique.length)) {
@@ -1235,11 +1318,16 @@ exports.checkCoverage = async (req, res) => {
     const zone    = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
     const peligro = evaluarPeligro(longitude, latitude);
 
+    // Diagnóstico: si no hay cobertura, ¿qué tan cerca está la más próxima?
+    // No otorga cobertura — solo informa, para decidir si vale escalarlo.
+    const cercana = zone ? null : zonaMasCercana(longitude, latitude);
+
     return res.status(200).json({
       latitude, longitude,
       // Pregunta 1 — cobertura
       hasCoverage: !!zone,
       zoneName:    zone ? zone.name : 'Sin cobertura',
+      zonaMasCercana: cercana,   // { nombre, metros } o null
       // Pregunta 2 — peligro (siempre presente, independiente de la cobertura)
       esZonaPeligrosa: peligro.esPeligrosa,
       peligroTipo:     peligro.tipo,      // BLOQUEADO | HORARIO_RESTRINGIDO | RESTRINGIDA | null
@@ -1483,8 +1571,8 @@ exports.getLinksDetail = async (req, res) => {
   try {
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      `SELECT href, status, zones_count, error, updated_at
-       FROM public.coverage_links ORDER BY status, href`
+      `SELECT href, nombre, status, zones_count, error, updated_at
+       FROM public.coverage_links ORDER BY status, nombre NULLS LAST, href`
     );
 
     // Agrupar los fallos por causa, en lenguaje entendible
@@ -1501,7 +1589,7 @@ exports.getLinksDetail = async (req, res) => {
       else                                                          causa = r.error || 'Error desconocido';
       if (!motivos[causa]) motivos[causa] = { causa, cantidad: 0, ejemplos: [] };
       motivos[causa].cantidad++;
-      if (motivos[causa].ejemplos.length < 3) motivos[causa].ejemplos.push(r.href);
+      if (motivos[causa].ejemplos.length < 5) motivos[causa].ejemplos.push(r.nombre || r.href);
     }
 
     return res.status(200).json({
@@ -1511,8 +1599,13 @@ exports.getLinksDetail = async (req, res) => {
       pendientes: rows.filter(r => r.status === 'pending').length,
       zonasAportadas: rows.reduce((a, r) => a + (r.zones_count || 0), 0),
       motivosDeFallo: Object.values(motivos).sort((a, b) => b.cantidad - a.cantidad),
+      // Lista de los que faltan, por nombre: es lo que se le pide al supervisor
+      faltantes: rows.filter(r => r.status !== 'resolved')
+        .map(r => ({ nombre: r.nombre || '(sin nombre)', href: r.href, error: r.error || null }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre)),
       enlaces: rows.map(r => ({
-        href: r.href, status: r.status, zonas: r.zones_count || 0, error: r.error || null
+        nombre: r.nombre || null, href: r.href, status: r.status,
+        zonas: r.zones_count || 0, error: r.error || null
       }))
     });
   } catch (error) {
@@ -1707,7 +1800,7 @@ exports.retryNetworkLinks = async (req, res) => {
 
     await ensureCoverageTable();
     const { rows } = await pool.query(
-      `SELECT href FROM public.coverage_links WHERE status IN ('failed','pending') ORDER BY href`
+      `SELECT href, nombre FROM public.coverage_links WHERE status IN ('failed','pending') ORDER BY nombre NULLS LAST, href`
     );
 
     if (!rows.length) {
@@ -1717,7 +1810,7 @@ exports.retryNetworkLinks = async (req, res) => {
     // Asegurar que las zonas base estén en memoria antes de fusionar las nuevas
     await ensureZonesLoaded();
 
-    const hrefs = rows.map(r => r.href);
+    const hrefs = rows.map(r => ({ href: r.href, nombre: r.nombre || '' }));
     resolveNetworkLinksBackground(hrefs, true)
       .catch(e => console.error('[Coverage] Error en reintento de NetworkLinks:', e.message));
 

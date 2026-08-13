@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guía de uso — Consulta de Cobertura</title>
+<style>
+  :root{
+    --azul:#0f4c81; --azul-claro:#e8f0f8; --teal:#0d9488; --teal-claro:#e6f7f5;
+    --rojo:#b91c1c; --rojo-claro:#fee2e2; --ambar:#b45309; --ambar-claro:#fef3c7;
+    --naranja:#c2410c; --naranja-claro:#ffedd5;
+    --gris:#475569; --gris-claro:#f1f5f9; --borde:#cbd5e1;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:#1e293b; line-height:1.6; background:#f8fafc; padding:24px 16px;
+  }
+  .hoja{max-width:860px;margin:0 auto;background:#fff;border-radius:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
+  header{background:linear-gradient(135deg,var(--azul),#1e6ba8);color:#fff;padding:32px 36px}
+  header h1{font-size:26px;font-weight:800;letter-spacing:-.3px}
+  header p{font-size:15px;opacity:.92;margin-top:6px}
+  .cuerpo{padding:32px 36px}
+  h2{font-size:19px;color:var(--azul);margin:34px 0 14px;padding-bottom:8px;
+    border-bottom:2px solid var(--azul-claro);font-weight:700}
+  h2:first-of-type{margin-top:0}
+  h3{font-size:15px;margin:20px 0 8px;font-weight:700;color:#334155}
+  p{margin-bottom:12px;font-size:14.5px}
+  ul,ol{margin:0 0 14px 22px}
+  li{margin-bottom:7px;font-size:14.5px}
+  .intro{background:var(--azul-claro);border-left:4px solid var(--azul);
+    padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:8px}
+  .intro p{margin:0;font-size:14.5px}
+  .pasos{counter-reset:paso;list-style:none;margin-left:0}
+  .pasos li{counter-increment:paso;position:relative;padding:12px 16px 12px 52px;
+    background:var(--gris-claro);border-radius:8px;margin-bottom:10px}
+  .pasos li::before{content:counter(paso);position:absolute;left:14px;top:12px;
+    width:26px;height:26px;background:var(--azul);color:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .tarjetas{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+  .tarjeta{border:1px solid var(--borde);border-radius:10px;padding:16px}
+  .tarjeta .tit{font-weight:700;font-size:14px;margin-bottom:6px}
+  .tarjeta p{font-size:13.5px;margin:0;color:var(--gris)}
+  .ok{background:var(--teal-claro);border-color:var(--teal)}
+  .ok .tit{color:#0f766e}
+  .no{background:#fef2f2;border-color:#f87171}
+  .no .tit{color:var(--rojo)}
+  .alerta{border-radius:10px;padding:16px 20px;margin:12px 0;border:2px solid}
+  .alerta .enc{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px;margin-bottom:6px}
+  .alerta p{margin:0;font-size:13.5px}
+  .a-bloq{background:var(--rojo-claro);border-color:var(--rojo);color:#7f1d1d}
+  .a-hora{background:var(--ambar-claro);border-color:#f59e0b;color:#78350f}
+  .a-restr{background:var(--naranja-claro);border-color:#f97316;color:#7c2d12}
+  .a-libre{background:var(--teal-claro);border-color:var(--teal);color:#115e59}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th{background:var(--azul);color:#fff;text-align:left;padding:10px 12px;font-weight:600}
+  td{padding:10px 12px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  .nota{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
+    padding:14px 18px;margin:14px 0;font-size:13.5px}
+  .nota strong{color:var(--ambar)}
+  .critico{background:var(--rojo-claro);border:2px solid var(--rojo);border-radius:8px;
+    padding:14px 18px;margin:14px 0;font-size:13.5px;color:#7f1d1d}
+  code{background:var(--gris-claro);padding:2px 7px;border-radius:4px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--azul)}
+  .admin{background:#fdf4ff;border:1px solid #e9d5ff;border-radius:10px;padding:20px 24px;margin-top:14px}
+  .admin h3{color:#7e22ce;margin-top:0}
+  .etq{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.6px;padding:3px 9px;border-radius:4px;background:#f3e8ff;
+    color:#7e22ce;border:1px solid #e9d5ff;vertical-align:middle;margin-left:8px}
+  footer{background:var(--gris-claro);padding:20px 36px;font-size:12.5px;color:var(--gris);
+    border-top:1px solid var(--borde)}
+  @media print{
+    body{background:#fff;padding:0}
+    .hoja{box-shadow:none;max-width:100%}
+    h2{page-break-after:avoid}
+    .alerta,.tarjeta,table{page-break-inside:avoid}
+  }
+  @media (max-width:640px){
+    .tarjetas{grid-template-columns:1fr}
+    header,.cuerpo,footer{padding-left:20px;padding-right:20px}
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <header>
+    <h1>Consulta de Cobertura</h1>
+    <p>Guía de uso — Módulo de Cobertura del ERP</p>
+  </header>
+
+  <div class="cuerpo">
+
+    <div class="intro">
+      <p><strong>¿Qué hace esta herramienta?</strong> Permite verificar en segundos si una dirección
+      tiene cobertura de servicio, y advierte automáticamente si esa ubicación está en una zona de
+      riesgo. Reemplaza la consulta manual en Google Earth, que requería abrir archivos pesados y
+      demoraba varios minutos por cada verificación.</p>
+    </div>
+
+    <h2>Cómo consultar una dirección</h2>
+
+    <p>Ingresa al ERP y abre la sección <strong>Cobertura</strong>. Tienes dos formas de consultar:</p>
+
+    <h3>Opción A — Pegar un enlace de ubicación</h3>
+    <ol class="pasos">
+      <li>Pídele al cliente que te envíe su ubicación por <strong>WhatsApp</strong>.</li>
+      <li>Copia ese enlace y pégalo en el campo <strong>"Pegar enlace"</strong>.</li>
+      <li>Presiona <strong>Parsear</strong>. El sistema extrae las coordenadas solo.</li>
+      <li>Presiona <strong>Consultar Cobertura</strong>.</li>
+    </ol>
+    <p>También funciona con enlaces de <strong>Google Maps</strong> y <strong>Apple Maps</strong>.</p>
+
+    <h3>Opción B — Ingresar coordenadas</h3>
+    <ol class="pasos">
+      <li>Cambia a la pestaña <strong>"Coordenadas"</strong>.</li>
+      <li>Escribe la latitud y la longitud (ejemplo: <code>-2.1894</code> y <code>-79.8891</code>).</li>
+      <li>Presiona <strong>Consultar Cobertura</strong>.</li>
+    </ol>
+
+    <h2>Cómo interpretar el resultado</h2>
+
+    <p>Cada consulta responde <strong>dos preguntas independientes</strong>. Es importante revisar
+    ambas, porque una dirección puede tener cobertura <em>y</em> al mismo tiempo estar en zona de riesgo.</p>
+
+    <h3>Pregunta 1 — ¿Hay cobertura?</h3>
+    <div class="tarjetas">
+      <div class="tarjeta ok">
+        <div class="tit">✅ SÍ tiene cobertura</div>
+        <p>La ubicación está dentro de una zona con servicio disponible. Se muestra el nombre de la zona.</p>
+      </div>
+      <div class="tarjeta no">
+        <div class="tit">❌ NO tiene cobertura</div>
+        <p>La ubicación está fuera de las zonas con servicio. No se puede comprometer instalación.</p>
+      </div>
+    </div>
+
+    <h3>Pregunta 2 — ¿Es zona de riesgo?</h3>
+    <p>Aparece en el campo <strong>Seguridad</strong>. Hay cuatro resultados posibles:</p>
+
+    <div class="alerta a-libre">
+      <div class="enc"><span>✅</span> SIN RESTRICCIÓN</div>
+      <p>La ubicación no está en ninguna zona de riesgo registrada. Se puede agendar con normalidad.</p>
+    </div>
+
+    <div class="alerta a-bloq">
+      <div class="enc"><span>⛔</span> ZONA BLOQUEADA</div>
+      <p><strong>No ingresar.</strong> Zona bloqueada por seguridad. No se debe agendar visita técnica
+      ni instalación. Escalar a supervisión antes de comprometer cualquier fecha con el cliente.</p>
+    </div>
+
+    <div class="alerta a-hora">
+      <div class="enc"><span>🕒</span> HORARIO RESTRINGIDO</div>
+      <p>Se puede ingresar <strong>únicamente en el horario autorizado</strong>. Confirma con supervisión
+      la franja permitida antes de agendar con el cliente.</p>
+    </div>
+
+    <div class="alerta a-restr">
+      <div class="enc"><span>⚠️</span> ZONA RESTRINGIDA</div>
+      <p>Zona clasificada como peligrosa. Proceder con precaución y coordinar con supervisión.</p>
+    </div>
+
+    <div class="critico">
+      <strong>Importante:</strong> la alerta de seguridad aparece <strong>tenga o no cobertura</strong>.
+      Que una dirección muestre "SÍ tiene cobertura" no significa que sea seguro asistir.
+      Revisa siempre el campo <strong>Seguridad</strong> antes de comprometer una visita.
+    </div>
+
+    <h2>Mapa de la ubicación</h2>
+
+    <p>Debajo del resultado aparece un <strong>mapa</strong> con la ubicación consultada. En él ves
+    las zonas de cobertura alrededor (en verde) y las zonas de riesgo (en rojo, ámbar o naranja según
+    el tipo). Puedes acercar, alejar y desplazarte; al hacer clic sobre una zona se muestra su nombre.</p>
+
+    <p>También está disponible la pestaña <strong>🗺 Mapa de coberturas</strong> en la parte superior,
+    que permite explorar todo el mapa sin necesidad de consultar una dirección específica. Reemplaza
+    el uso de Google Earth: no requiere instalar nada ni abrir archivos pesados, y funciona en
+    cualquier equipo porque solo dibuja las zonas del área que estás viendo en pantalla.</p>
+
+    <h2>Enviar el resultado al cliente</h2>
+
+    <p>En el resultado de la consulta encontrarás el botón <strong>📤 Vista para cliente</strong>.
+    Genera una tarjeta presentable con el mapa y la confirmación de cobertura, lista para enviar por
+    WhatsApp o correo. Puedes descargarla como imagen con <strong>⬇ Descargar imagen</strong> o tomar
+    una captura de pantalla.</p>
+
+    <div class="critico">
+      <strong>Nunca envíes una captura del mapa interno al cliente.</strong> Ese mapa muestra los
+      polígonos de cobertura —información comercial sensible, porque revela hasta dónde llega y hasta
+      dónde no llega nuestra red— y además las zonas de riesgo. Enviarle a un cliente una imagen donde
+      su sector aparece marcado como "Zona Bloqueada" genera un problema serio.
+      <br><br>
+      Usa siempre el botón <strong>Vista para cliente</strong>: esa tarjeta está diseñada para no
+      mostrar ninguno de esos datos.
+    </div>
+
+    <h2>Historial y reportes</h2>
+
+    <p>Todas tus consultas quedan registradas automáticamente en la tabla de <strong>Historial</strong>,
+    en la parte inferior de la pantalla.</p>
+
+    <table>
+      <tr><th style="width:32%">Columna</th><th>Qué muestra</th></tr>
+      <tr><td>Latitud / Longitud</td><td>Coordenadas consultadas</td></tr>
+      <tr><td>Cobertura</td><td>Si tiene servicio disponible o no</td></tr>
+      <tr><td>Zona</td><td>Nombre de la zona de cobertura</td></tr>
+      <tr><td>Seguridad</td><td>Tipo de restricción, si aplica</td></tr>
+      <tr><td>Fecha / Hora</td><td>Momento de la consulta</td></tr>
+    </table>
+
+    <p>Con el botón <strong>⬇ CSV</strong> puedes descargar todo el historial en Excel, incluyendo
+    las columnas de seguridad. Útil para reportes de gestión y seguimiento de prospectos.</p>
+
+    <div class="nota">
+      <strong>Nota:</strong> el historial se guarda en el navegador que estás usando. Si cambias de
+      equipo o limpias los datos del navegador, el historial anterior no estará disponible. Descarga
+      el CSV si necesitas conservarlo.
+    </div>
+
+    <h2>Preguntas frecuentes</h2>
+
+    <h3>El enlace de WhatsApp no se procesa</h3>
+    <p>Verifica que sea un enlace de <em>ubicación</em> y no una captura de pantalla. Si el enlace es
+    acortado (<code>maps.app.goo.gl</code>), el sistema intenta resolverlo automáticamente. Si aun así
+    falla, abre el enlace en el navegador, copia las coordenadas que aparecen en la barra de
+    direcciones e ingrésalas manualmente en la pestaña "Coordenadas".</p>
+
+    <h3>Dice "Sin zonas cargadas"</h3>
+    <p>Significa que el archivo de cobertura no está cargado en el servidor. Comunícate con el
+    administrador del sistema.</p>
+
+    <h3>Una dirección que antes tenía cobertura ahora aparece sin cobertura</h3>
+    <p>Repórtalo al administrador indicando las coordenadas exactas. Puede tratarse de una
+    actualización del mapa de cobertura o de un archivo pendiente de cargar.</p>
+
+    <h3>¿Puedo consultar varias direcciones a la vez?</h3>
+    <p>Sí, el sistema soporta validación por lote. Coordina con el área de sistemas para habilitarlo
+    según tu caso de uso.</p>
+
+    <div class="admin">
+      <h3>Carga de archivos de cobertura <span class="etq">Solo administrador</span></h3>
+      <p>Al subir un archivo KML o KMZ debes elegir el modo de carga:</p>
+      <table>
+        <tr><th style="width:32%">Modo</th><th>Qué hace</th></tr>
+        <tr>
+          <td><strong>➕ Sumar al acervo</strong><br><em>(recomendado)</em></td>
+          <td>Agrega las zonas del archivo a las que ya existen. No borra nada. Las zonas repetidas
+          se omiten automáticamente, así que puedes subir el mismo archivo dos veces sin duplicar.</td>
+        </tr>
+        <tr>
+          <td><strong>🔄 Reemplazar todo</strong></td>
+          <td>Borra toda la cobertura cargada y deja únicamente este archivo. Usar solo cuando se
+          quiere reconstruir el mapa desde cero.</td>
+        </tr>
+      </table>
+      <p>La cobertura está repartida en múltiples archivos y mapas externos; ningún archivo contiene
+      el total. Por eso el modo <strong>Sumar</strong> es el predeterminado.</p>
+      <p>Si el archivo contiene enlaces a mapas externos, el sistema los descarga en segundo plano y
+      muestra el avance. Los enlaces que fallen pueden reintentarse con el botón
+      <strong>🔁 Reintentar fallidos</strong>, sin necesidad de volver a subir el archivo.</p>
+    </div>
+
+  </div>
+
+  <footer>
+    Módulo de Cobertura — ERP · Guía de uso para el equipo comercial y operativo.<br>
+    Para reportar incidencias o solicitar accesos, contacta al Área de Desarrollo.
+  </footer>
+
+</div>
+</body>
+</html>

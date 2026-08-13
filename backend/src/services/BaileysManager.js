@@ -235,21 +235,34 @@ class BaileysManager {
     }
 
     if (line?.proxy_enabled && line?.proxy_config?.host) {
+      const pc = line.proxy_config
+      const protocolo = (pc.protocol || 'socks5').toLowerCase()
+      const proxyUrl = pc.username
+        ? `${protocolo}://${pc.username}:${pc.password}@${pc.host}:${pc.port}`
+        : `${protocolo}://${pc.host}:${pc.port}`
+
       try {
-        const { SocksProxyAgent } = require('socks-proxy-agent')
-        const { HttpsProxyAgent } = require('https-proxy-agent')
-        const pc = line.proxy_config
-        const proxyUrl = pc.username
-          ? `${pc.protocol || 'socks5'}://${pc.username}:${pc.password}@${pc.host}:${pc.port}`
-          : `${pc.protocol || 'socks5'}://${pc.host}:${pc.port}`
-        if ((pc.protocol || 'socks5').startsWith('socks')) {
+        // Cada protocolo carga SOLO su paquete. Antes se hacía require de los
+        // dos de golpe: si faltaba el de socks, fallaba también el modo HTTP.
+        if (protocolo.startsWith('socks')) {
+          const { SocksProxyAgent } = require('socks-proxy-agent')
           socketOptions.agent = new SocksProxyAgent(proxyUrl)
         } else {
+          const { HttpsProxyAgent } = require('https-proxy-agent')
           socketOptions.agent = new HttpsProxyAgent(proxyUrl)
         }
-        console.log(`[Line ${lineId}] Proxy configurado: ${pc.host}:${pc.port}`)
+        console.log(`[Line ${lineId}] 🛡️ Proxy activo: ${protocolo}://${pc.host}:${pc.port}`)
       } catch (e) {
-        console.warn(`[Line ${lineId}] Error configurando proxy:`, e.message)
+        // NO se conecta sin proxy. Hacerlo sacaría el número por la IP del
+        // servidor, que es justamente lo que el proxy viene a evitar: es
+        // preferible dejar la línea caída y visible a quemar el número.
+        const falta = /Cannot find module/.test(e.message)
+          ? ` Falta instalar el paquete: npm install ${protocolo.startsWith('socks') ? 'socks-proxy-agent' : 'https-proxy-agent'}`
+          : ''
+        console.error(`[Line ${lineId}] ⛔ Proxy configurado pero NO se pudo aplicar: ${e.message}.${falta} La línea no se conectará para no exponer el número por la IP del servidor.`)
+        await this._updateLineStatus(lineId, 'error')
+        this.io.emit('line:status', { lineId, status: 'error' })
+        throw new Error(`No se pudo aplicar el proxy de la línea: ${e.message}`)
       }
     }
 

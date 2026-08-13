@@ -112,7 +112,11 @@ async function getOne(req, res) {
   }
 }
 
-// Cupo de líneas por usuario no administrador (1 línea = 1 número por asesor)
+// Cupo de líneas por usuario (1 línea = 1 número por asesor).
+// AJUSTE 2026-08-13 (a pedido de gerencia): los perfiles gerenciales
+// (SUPERVISOR, GERENCIA, ANALISTA) ya NO están limitados a 1 línea — pueden
+// crear las que necesiten, igual que ADMINISTRADOR. El límite de 1 se
+// mantiene solo para el perfil ASESOR.
 const MAX_LINEAS_POR_USUARIO = 1
 
 // ── Proxy automático por línea ────────────────────────────────────────────
@@ -156,7 +160,7 @@ async function construirProxyAutomatico() {
 // ADMINISTRADOR: sin límite · Resto: solo si no tiene ninguna línea propia.
 async function create(req, res) {
   try {
-    if (!isAdmin(req)) {
+    if (!isAdmin(req) && !isSupervisor(req)) {
       const propias = await query(
         'SELECT COUNT(*)::int AS total FROM lines WHERE created_by = $1 AND deleted_at IS NULL',
         [req.user.id]

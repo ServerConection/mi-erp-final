@@ -6,13 +6,17 @@ import { io } from "socket.io-client";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 
-// Permisos: solo ADMINISTRADOR elimina líneas y crea sin límite.
-// El resto (asesores) puede crear su línea solo si aún no tiene ninguna.
+// Permisos: solo ADMINISTRADOR elimina líneas.
+// Crear líneas SIN límite: ADMINISTRADOR y perfiles gerenciales (SUPERVISOR,
+// GERENCIA, ANALISTA) — ajuste 2026-08-13 a pedido de gerencia.
+// El resto (ASESOR) puede crear su línea solo si aún no tiene ninguna.
+const PERFILES_GERENCIALES = ["SUPERVISOR", "GERENCIA", "ANALISTA"];
 const USER_PROFILE = (() => {
   try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
   catch { return {}; }
 })();
 const IS_ADMIN = (USER_PROFILE.perfil || "").toUpperCase() === "ADMINISTRADOR";
+const IS_SUPERVISOR = PERFILES_GERENCIALES.includes((USER_PROFILE.perfil || "").toUpperCase());
 const USER_ID  = USER_PROFILE.id || null;
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
@@ -56,10 +60,11 @@ export default function WaLineas() {
   const qrPollRef = useRef(null);
   const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
 
-  // El admin siempre puede crear. El asesor solo si no tiene ninguna línea propia
-  // (si se le eliminó la suya, el formulario vuelve a aparecer automáticamente).
+  // Admin y perfiles gerenciales siempre pueden crear (sin límite).
+  // El asesor solo si no tiene ninguna línea propia (si se le eliminó la
+  // suya, el formulario vuelve a aparecer automáticamente).
   const misLineas = USER_ID ? lines.filter(l => l.created_by === USER_ID).length : lines.length;
-  const canCreate = IS_ADMIN || misLineas === 0;
+  const canCreate = IS_ADMIN || IS_SUPERVISOR || misLineas === 0;
 
   const load = useCallback(async () => {
     try {

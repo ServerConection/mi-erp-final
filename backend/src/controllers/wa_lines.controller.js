@@ -130,6 +130,25 @@ const PROXY_PASS      = process.env.PROXY_PASS      || ''
 const PROXY_COUNTRY   = process.env.PROXY_COUNTRY   || 'ec'
 const PROXY_BASE_PORT = parseInt(process.env.PROXY_STICKY_BASE_PORT || '10000', 10)
 
+// Qué líneas reciben proxy automático, por su NOMBRE.
+// Por defecto solo las de envío masivo (ENVIO_1, ENVIO_2, ...), que son las que
+// más riesgo de bloqueo tienen. Las líneas de asesores siguen saliendo por la
+// IP del servidor, sin gastar el tráfico contratado.
+// Se ajusta con PROXY_PATRON_LINEA (expresión regular). Ejemplos:
+//   ^ENVIO           → solo las que empiezan con ENVIO   (valor por defecto)
+//   ^(ENVIO|PAUTA)   → las que empiezan con ENVIO o PAUTA
+//   .                → todas las líneas
+const PROXY_PATRON_LINEA = process.env.PROXY_PATRON_LINEA || '^ENVIO'
+
+function lineaLlevaProxy(nombre) {
+  try {
+    return new RegExp(PROXY_PATRON_LINEA, 'i').test(String(nombre || ''))
+  } catch (e) {
+    console.warn(`[wa_lines] PROXY_PATRON_LINEA inválido ("${PROXY_PATRON_LINEA}"):`, e.message)
+    return false   // ante un patrón mal escrito, no asignar proxy
+  }
+}
+
 async function construirProxyAutomatico() {
   if (!PROXY_USER || !PROXY_PASS) return null   // sin credenciales → sin proxy
   try {
@@ -175,15 +194,22 @@ async function create(req, res) {
     const { name, bot_id, proxy_enabled, proxy_config } = req.body
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
 
-    // Si no mandaron proxy explícito, se intenta asignar uno automáticamente
+    // Proxy automático: solo si no mandaron uno explícito Y el nombre de la
+    // línea coincide con el patrón configurado (por defecto, las ENVIO_*).
     let cfgProxy = proxy_config
     let usaProxy = proxy_enabled || false
     if (!cfgProxy || Object.keys(cfgProxy).length === 0) {
-      const auto = await construirProxyAutomatico()
-      if (auto) {
-        cfgProxy = auto
-        usaProxy = true
-        console.log(`[wa_lines] Línea "${name}" → proxy automático puerto ${auto.port}`)
+      if (lineaLlevaProxy(name)) {
+        const auto = await construirProxyAutomatico()
+        if (auto) {
+          cfgProxy = auto
+          usaProxy = true
+          console.log(`[wa_lines] Línea "${name}" → proxy automático ${auto.host}:${auto.port}`)
+        } else {
+          console.log(`[wa_lines] Línea "${name}" coincide con el patrón pero no hay credenciales de proxy (PROXY_USER/PROXY_PASS)`)
+        }
+      } else {
+        console.log(`[wa_lines] Línea "${name}" sin proxy (no coincide con ${PROXY_PATRON_LINEA})`)
       }
     }
 

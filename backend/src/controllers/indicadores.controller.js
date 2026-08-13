@@ -517,10 +517,15 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS venta_servicio,
-                -- ── ACTIVAS (definición de gerencia, 2026-08) ──────────────
+                -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ──
                 -- real_mes  = ACTIVAS TOTALES: todo lo que se activó en el rango
-                -- activa_mes= de esas, las que ADEMÁS se crearon en el rango
-                -- backlog   = TOTALES − MES  (se deriva, ya no se consulta aparte)
+                -- activa_mes= de esas, las que ADEMÁS se REGISTRARON EN JOTFORM
+                --             dentro del mismo rango (antes comparaba con la fecha
+                --             de creación en el CRM, no con el registro Jotform —
+                --             eran fechas distintas y desalineaba el cálculo).
+                -- backlog   = TOTALES − MES = activadas en el rango pero registradas
+                --             en Jotform en un mes ANTERIOR (se deriva, ya no se
+                --             consulta aparte).
                 --
                 -- OJO: antes el frontend hacía activas = real_mes + backlog, y
                 -- como real_mes ya incluía el backlog, se contaba DOBLE.
@@ -533,7 +538,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _jfact_date IS NOT NULL
                     AND _jfact_date BETWEEN $1::date AND $2::date
                     AND j_netlife_estatus_real = 'ACTIVO'
-                    AND _bc_date BETWEEN $1::date AND $2::date
+                    AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS activa_mes,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'

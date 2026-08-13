@@ -202,10 +202,13 @@ const queryKPI = (columna, filters) => `
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
     ) AS ingresos_del_dia,
-    -- ── ACTIVAS (definición de gerencia, 2026-08) ────────────────────────
+    -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ────
     -- real_mes   = ACTIVAS TOTALES: todo lo activado en el rango
-    -- activa_mes = de esas, las que ADEMÁS se crearon en el rango
-    -- backlog    = TOTALES − MES (se deriva, ya no se consulta aparte)
+    -- activa_mes = de esas, las que ADEMÁS se REGISTRARON EN JOTFORM dentro
+    --              del mismo rango (antes comparaba con fecha_creacion_crm,
+    --              no con fecha_registro_jotform — desalineaba el cálculo).
+    -- backlog    = TOTALES − MES = activadas en el rango pero registradas en
+    --              Jotform en un mes ANTERIOR (se deriva, ya no se consulta aparte).
     COUNT(*) FILTER (
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
@@ -215,7 +218,7 @@ const queryKPI = (columna, filters) => `
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
       AND mv.estado_venta = ${ESTADO_ACTIVO}
-      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS activa_mes,
     COUNT(*) FILTER (
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date

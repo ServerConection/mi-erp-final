@@ -235,6 +235,59 @@ LEFT JOIN LATERAL (
 ) e ON true`;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RESPONSABLE (ASESOR) DESDE EL WEBHOOK DE BITRIX — 2026-08-13
+// ─────────────────────────────────────────────────────────────────────────────
+// PROBLEMA: en el detalle Jotform la columna ASESOR salía casi siempre como
+// 'REVISAR'. Ese literal NO lo pone el backend: viene guardado tal cual en
+// mestra_bitrix.b_persona_responsable (la carga histórica lo dejó así cuando no
+// pudo resolver al dueño del lead). El responsable REAL sí existe, pero vive en
+// public.bitrix_webhook_leads.responsible, que se actualiza con cada webhook.
+//
+// SOLUCIÓN: cruzar mestra_bitrix.j_id_bitrix con bitrix_webhook_leads.bitrix_id
+// y preferir el responsable del webhook.
+//
+// POR QUÉ NO DUPLICA FILAS: bitrix_webhook_leads.bitrix_id tiene constraint
+// UNIQUE (ver db/migrations/bitrix_webhook_leads.sql), o sea 1 fila por lead.
+// El LEFT JOIN es 1:1 y los conteos del dashboard NO cambian.
+// El historial (bitrix_webhook_leads_historial) NO se toca justamente porque
+// ese sí tiene N filas por lead y rompería los totales.
+//
+// BTRIM en ambos lados: j_id_bitrix es numérico/texto según el origen y el
+// webhook guarda VARCHAR; sin normalizar, el cruce falla en silencio.
+const joinResponsableWebhook = `
+LEFT JOIN public.bitrix_webhook_leads bwl
+       ON BTRIM(bwl.bitrix_id::text) = BTRIM(mb.j_id_bitrix::text)`;
+
+// Expresión del ASESOR ya resuelto. Orden de prioridad:
+//   1) responsible del webhook (fuente viva)
+//   2) b_persona_responsable de mestra_bitrix (histórico), si NO es 'REVISAR'
+//   3) 'REVISAR' como último recurso (no hay dato en ninguna de las dos)
+// Si algún día se quiere invertir la prioridad, basta con cambiar el orden de
+// los dos primeros NULLIF de este COALESCE.
+const ASESOR_RESUELTO = `
+        COALESCE(
+            NULLIF(BTRIM(bwl.responsible), ''),
+            CASE WHEN UPPER(BTRIM(mb.b_persona_responsable)) = 'REVISAR'
+                 THEN NULL
+                 ELSE NULLIF(BTRIM(mb.b_persona_responsable), '')
+            END,
+            'REVISAR'
+        )`;
+
+// Supervisor recalculado a partir del asesor YA RESUELTO. Sin esto, el detalle
+// mostraría el asesor real del webhook pero el supervisor del nombre viejo
+// ('REVISAR'), que es justamente el desfase que se ve hoy en pantalla.
+// Se deja e.supervisor como fallback para no perder filas ya correctas.
+const joinSupervisorResuelto = `
+LEFT JOIN LATERAL (
+    SELECT e3.supervisor
+    FROM public.empleados e3
+    WHERE UPPER(BTRIM(e3.nombre_completo)) = UPPER(BTRIM(${ASESOR_RESUELTO}))
+    ORDER BY e3.codigo::int DESC
+    LIMIT 1
+) esup ON true`;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FILTRO supervisor con el mismo fallback para queries sin JOIN
 // ─────────────────────────────────────────────────────────────────────────────
 const supervisorExistsFilter = (paramIndex) =>
@@ -730,10 +783,15 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
-                mb.b_persona_responsable AS "ASESOR",
-                e.supervisor AS "SUPERVISOR_ASIGNADO"
+                -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
+                -- y solo cae al histórico si el webhook no tiene dato. Ver
+                -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
+                ${ASESOR_RESUELTO} AS "ASESOR",
+                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
+            ${joinResponsableWebhook}
+            ${joinSupervisorResuelto}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersJoin}
             LIMIT 6000
@@ -914,8 +972,9 @@ const getIndicadoresDashboard = async (req, res) => {
         const queryVentasActivasMes = `
             SELECT
                 mb.j_id_bitrix AS "ID_CRM",
-                mb.b_persona_responsable AS "ASESOR",
-                e.supervisor AS "SUPERVISOR_ASIGNADO",
+                -- ASESOR resuelto desde el webhook (mismo criterio que queryJotform)
+                ${ASESOR_RESUELTO} AS "ASESOR",
+                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
@@ -924,6 +983,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
             FROM public.mestra_bitrix mb
             ${joinEmpleadosDedup}
+            ${joinResponsableWebhook}
+            ${joinSupervisorResuelto}
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
               AND mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''

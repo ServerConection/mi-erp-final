@@ -739,14 +739,38 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 6000
         `;
 
+        // ── UNIFICADO con ACTIVAS TOTAL (real_mes) — ajustado 2026-08-13 ──────
+        // Antes el renglón "ACTIVO" de este panel se contaba por fecha de
+        // REGISTRO en Jotform, mientras que la tarjeta "ACTIVAS TOTAL" cuenta
+        // por fecha de ACTIVACIÓN. Eran dos bases de fecha distintas y por
+        // eso los números no coincidían aunque ambos fueran correctos.
+        // Ahora el renglón ACTIVO usa la MISMA base que real_mes (fecha de
+        // activación); el resto de estados (DESCARTADO, PEND. ACTIVACION,
+        // etc.) se mantiene por fecha de registro, que es lo que corresponde
+        // para leads que todavía no se activaron.
         const queryEstados = `
-            SELECT
-                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
-                COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
-            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-            ${filtersNoJoin}
-            GROUP BY 1
+            SELECT estado, SUM(total)::int AS total
+            FROM (
+                SELECT
+                    COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
+                    COUNT(*) AS total
+                FROM public.mestra_bitrix mb
+                WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                AND COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') <> 'ACTIVO'
+                ${filtersNoJoin}
+                GROUP BY 1
+
+                UNION ALL
+
+                SELECT
+                    'ACTIVO' AS estado,
+                    COUNT(*) AS total
+                FROM public.mestra_bitrix mb
+                WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
+                ${filtersNoJoin}
+            ) sub
+            GROUP BY estado
             ORDER BY total DESC
         `;
 

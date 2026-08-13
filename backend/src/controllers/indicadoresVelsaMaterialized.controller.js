@@ -485,6 +485,12 @@ LIMIT 6000
         AND mv.fecha_activacion IS NOT NULL
         AND mv.fecha_activacion::date >= date_trunc('month', CURRENT_DATE)::date
         AND mv.fecha_activacion::date <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        -- FIX (bind mismatch, mismo bug que en Novonet): esta query no usa $1/$2
+        -- para fechas (usa CURRENT_DATE a propósito), pero se ejecuta con
+        -- pool.query(query, valuesMain) que siempre trae [desde, hasta]. Sin esto,
+        -- sin filtros activos la query queda con 0 placeholders y truena con
+        -- "bind message supplies 2 parameters, but prepared statement requires 0".
+        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
         ${filters}
       ORDER BY mv.fecha_activacion DESC
       LIMIT 3000

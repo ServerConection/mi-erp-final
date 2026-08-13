@@ -8,7 +8,10 @@
  * Se ajusta con la variable de entorno JWT_EXPIRES_IN (en Render, en el
  * Environment Group `erp-shared`). No requiere tocar el código ni desplegar.
  *
- *   JWT_EXPIRES_IN=12h    ← valor por defecto: cubre una jornada completa
+ *   JWT_EXPIRES_IN=3d     ← valor por defecto (2026-08): pedido para que el
+ *                           usuario no tenga que reloguearse ni recibir avisos
+ *                           de cierre de sesión todos los días.
+ *   JWT_EXPIRES_IN=12h
  *   JWT_EXPIRES_IN=24h
  *   JWT_EXPIRES_IN=7d
  *
@@ -21,7 +24,7 @@
  * El riesgo real de alargarlo es un token robado de un equipo comprometido.
  */
 
-const POR_DEFECTO = '12h';
+const POR_DEFECTO = '3d';
 
 // Formatos válidos de la librería `ms` que usa jsonwebtoken
 const FORMATO = /^\d+(\.\d+)?\s?(ms|s|m|h|d|w|y)?$/i;

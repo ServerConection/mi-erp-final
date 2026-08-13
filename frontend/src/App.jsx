@@ -131,9 +131,7 @@ export default function App() {
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="backoffice"               element={<Backoffice />} />
             <Route path="vista-backoffice"         element={<VistaBackoffice />} />
-            <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
             <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />

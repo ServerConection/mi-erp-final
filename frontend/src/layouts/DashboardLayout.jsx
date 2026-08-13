@@ -377,7 +377,7 @@ const ALL_MENU_ITEMS = [
 
   // ── Backoffice ───────────────────────────────────────────────────────────
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
-  { name: "️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
+  { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
 
   // ── Reportes ─────────────────────────────────────────────────────────────

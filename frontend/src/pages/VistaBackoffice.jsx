@@ -2,6 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 
 const API = import.meta.env.VITE_API_URL;
 
+const CAMPOS_FECHA = [
+  "fecha_nacimiento", "fecha_regularizacion_atc", "fecha_agenda",
+  "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
+];
+
+function normalizarRegistro(row) {
+  const out = {};
+  for (const [k, v] of Object.entries(row || {})) {
+    if (v === null || v === undefined) { out[k] = ""; continue; }
+    out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
+  }
+  return out;
+}
+
 const FIELD_LABELS = {
   id: "ID",
   estatus_envio: "ESTATUS ENVÍO",
@@ -163,11 +177,6 @@ const initialDetail = {
   foto_carnet: "",
 };
 
-function fmtValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  return String(value);
-}
-
 function valueForField(row, key) {
   const v = row?.[key];
   if (v === null || v === undefined || v === "") return "—";
@@ -183,6 +192,7 @@ export default function VistaBackoffice() {
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [detailOriginal, setDetailOriginal] = useState({});
 
   const token = localStorage.getItem("token");
 
@@ -205,26 +215,36 @@ export default function VistaBackoffice() {
   };
 
   useEffect(() => {
-    fetchRows(search);
+    const t = setTimeout(() => fetchRows(search), 350);
+    return () => clearTimeout(t);
   }, [search]);
 
   const fetchDetail = async (id) => {
     try {
       const res = await fetch(`${API}/api/backoffice/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || "Registro no encontrado");
-      setDetail(json.data || initialDetail);
-      setShowModal(true);
+      if (json.success) {
+        const normalizado = normalizarRegistro(json.data);
+        setDetail(normalizado);
+        setDetailOriginal(normalizado); // Copia original para comparar
+        setShowModal(true);
+      } else {
+        setAlert({ type: "error", msg: json.error || "No se pudo cargar el registro" });
+      }
     } catch (e) {
-      setAlert({ type: "error", msg: e.message || "Error al cargar detalle" });
+      console.error(e);
+      setAlert({ type: "error", msg: "Error al cargar el registro" });
     }
   };
 
   const closeModal = () => {
     setShowModal(false);
     setSelectedId(null);
+    setDetail(null);
+    setDetailOriginal({});
+    setAlert(null);
   };
 
   const tableHeaders = useMemo(() => {
@@ -244,18 +264,30 @@ export default function VistaBackoffice() {
     "foto_cedula_frontal","foto_cedula_trasera","foto_carnet"
   ], []);
 
-  const handleInput = (key, value) => {
-    setDetail((prev) => ({ ...prev, [key]: value }));
-  };
-
   const handleSave = async () => {
     if (!selectedId) return;
     setSaving(true);
     setAlert(null);
+
     try {
-      // Clonar el detalle y eliminar el ID para no sobreescribir la PK
-      const payload = { ...detail };
-      delete payload.id;
+      const payload = {};
+      for (const campo of editableFields) {
+        let nuevo = detail?.[campo] ?? "";
+        const viejo = detailOriginal?.[campo] ?? "";
+
+        // 🔠 Convertir a mayúsculas todo el texto excepto las fotos
+        if (typeof nuevo === "string" && !campo.startsWith("foto_")) {
+          nuevo = nuevo.toUpperCase();
+        }
+
+        if (nuevo !== viejo) payload[campo] = nuevo;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        setAlert({ type: "success", msg: "No hay cambios que guardar" });
+        setSaving(false);
+        return;
+      }
 
       const res = await fetch(`${API}/api/backoffice/${selectedId}`, {
         method: "PUT",
@@ -278,21 +310,6 @@ export default function VistaBackoffice() {
       setSaving(false);
     }
   };
-
-  const fieldGroups = useMemo(() => {
-    const groups = [
-      ["estatus_envio","codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta"],
-      ["nombre_cliente_completo","numero_identificacion","tipo_cliente","genero_cliente","fecha_nacimiento","email_cliente"],
-      ["provincia","ciudad","parroquia_barrio","telf_celular_pin","telf_celular_2","direccion_calles"],
-      ["plan_contratado_final","servicios_digitales","forma_pago","banco","ciclo_facturacion","costo_instalacion"],
-      ["descuento_instalacion","beneficios_adicionales","beneficios_de_ley","plazo_contrato_meses","resumen_venta","referencia_ubicacion"],
-      ["estado_recaudacion","netlife_login","netlife_estatus_real","calidad_venta_analista","venta_efectiva","auditoria_documentos"],
-      ["auditado_por","inconsistencia_documental","observacion_auditoria","errores_telcos","estatus_regularizacion","detalle_regularizacion"],
-      ["fecha_regularizacion_atc","mes_regularizacion","novedades_atc","observacion_venta_original","observacion_gestion_cobranza","turno"],
-    ];
-
-    return groups;
-  }, []);
 
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -348,9 +365,9 @@ export default function VistaBackoffice() {
                         style={{ cursor: "pointer", background: "#fff", borderBottom: "1px solid #f1f5f9" }}
                       >
                         {tableHeaders.map((h) => (
-                          <td key={`${row.id}-${h.key}`} style={{ padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {fmtValue(valueForField(row, h.key))}
-                          </td>
+                        <td key={`${row.id}-${h.key}`} style={{ padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {valueForField(row, h.key)}
+                        </td>
                         ))}
                       </tr>
                     ))}
@@ -396,45 +413,62 @@ export default function VistaBackoffice() {
               {/* Contenido: Grid 2 columnas */}
               <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxHeight: "calc(85vh - 140px)", overflow: "auto" }}>
                 {editableFields.map((field) => (
-                  <div key={field}>
+                <div key={field}>
                     <label style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                      {FIELD_LABELS[field] || field}
+                    {FIELD_LABELS[field] || field}
                     </label>
-                    {field.includes("foto_") ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+                    {field.startsWith("foto_") ? (
+                    /* 📸 CASO 1: SUBIDA Y PREVISUALIZACIÓN DE IMÁGENES CON VALIDACIÓN DE TAMAÑO */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                            const MAX_IMG_MB = 2; // Límite de 2MB por imagen
                             const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (evt) => {
-                                setDetail((prev) => ({ ...prev, [field]: evt.target?.result }));
-                              };
-                              reader.readAsDataURL(file);
+                            if (!file) return;
+
+                            if (!file.type.startsWith("image/")) {
+                            setAlert({ type: "error", msg: "El archivo seleccionado debe ser una imagen" });
+                            e.target.value = "";
+                            return;
                             }
-                          }}
-                          style={{ display: "block", fontSize: 12, padding: "8px 0", color: "#111827" }}
+
+                            if (file.size > MAX_IMG_MB * 1024 * 1024) {
+                            setAlert({ type: "error", msg: `La imagen no debe superar los ${MAX_IMG_MB} MB` });
+                            e.target.value = "";
+                            return;
+                            }
+
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                            setDetail((prev) => ({ ...prev, [field]: evt.target?.result }));
+                            };
+                            reader.readAsDataURL(file);
+                        }}
+                        style={{ display: "block", fontSize: 12, padding: "8px 0", color: "#111827" }}
                         />
                         {detail?.[field] && (
-                          <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #dbe4f0", background: "#f8fafc", aspectRatio: "16/9" }}>
+                        <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #dbe4f0", background: "#f8fafc", aspectRatio: "16/9" }}>
                             <img 
-                              src={detail[field]} 
-                              alt={field}
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            src={detail[field]} 
+                            alt={field}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
                             />
-                          </div>
+                        </div>
                         )}
-                      </div>
+                    </div>
                     ) : (
-                      <input
+                    /* 📅 CASO 2 Y 3: INPUT DINÁMICO (TIPO "date" PARA FECHAS, "text" PARA EL RESTO) */
+                    <input
+                        type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
                         value={detail?.[field] ?? ""}
                         onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
                         style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
-                      />
+                    />
                     )}
-                  </div>
+                </div>
                 ))}
               </div>
 

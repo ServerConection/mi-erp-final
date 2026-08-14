@@ -107,7 +107,7 @@ const ETAPAS_NO_GESTIONABLES = [
     'DUPLICADO',
     'DUPLLICADO', // typo real encontrado en datos
     'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
+    //'INNEGOCIABLE',
     'ZONA PELIGROSA',
     'ZONAS PELIGROSAS',
     'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable
@@ -537,7 +537,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- COUNT(*), porque ahi cada fila es una venta distinta.
                 COUNT(DISTINCT b_id) FILTER (
     WHERE _bc_date BETWEEN $1::date AND $2::date
-    AND b_etapa_de_la_negociacion <> 'DUPLICADO'   -- ← línea nueva
+    AND UPPER(COALESCE(b_etapa_de_la_negociacion, '')) NOT IN ('DUPLICADO', 'REGULARIZACION', 'REMARKETING')
     AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS leads_totales,
                 COUNT(DISTINCT b_id) FILTER (

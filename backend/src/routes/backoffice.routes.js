@@ -79,7 +79,7 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: rows, total: countRows[0].total });
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
   }
 });
 
@@ -96,7 +96,7 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     console.error('[BACKOFFICE] GET detail:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    res.status(500).json({ success: false, error: 'Error interno al cargar el registro' });
   }
 });
 

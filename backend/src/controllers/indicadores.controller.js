@@ -1230,6 +1230,7 @@ LEFT JOIN LATERAL (
                     COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                         AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
+                        AND mb.j_netlife_estatus_real = 'ACTIVO'
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date

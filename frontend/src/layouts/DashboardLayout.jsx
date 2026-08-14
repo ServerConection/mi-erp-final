@@ -377,9 +377,7 @@ const ALL_MENU_ITEMS = [
 
   // ── Backoffice ───────────────────────────────────────────────────────────
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
-  { name: "🔍 Backoffice",         path: "/backoffice",         icon: "🔍",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
-  { name: "📋 Backoffice Jotform", path: "/backoffice-jotform", icon: "📋",
+  { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
 
   // ── Reportes ─────────────────────────────────────────────────────────────

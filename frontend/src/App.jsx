@@ -43,7 +43,7 @@ const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
-const Backoffice           = lazy(() => import("./pages/Backoffice"));
+const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const Mundialito           = lazy(() => import("./pages/Mundialito"));
 const PollaMundialista     = lazy(() => import("./pages/PollaMundialista"));
 const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
@@ -58,7 +58,6 @@ const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
-const BackofficeJotform    = lazy(() => import("./pages/BackofficeJotform"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const CumplimientoLeads    = lazy(() => import("./pages/CumplimientoLeads"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
@@ -130,8 +129,7 @@ export default function App() {
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="backoffice"               element={<Backoffice />} />
-            <Route path="backoffice-jotform"       element={<BackofficeJotform />} />
+            <Route path="vista-backoffice"         element={<VistaBackoffice />} />
             <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
             <Route path="mundialito"               element={<Mundialito />} />
             <Route path="polla-mundialista"        element={<PollaMundialista />} />

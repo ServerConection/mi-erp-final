@@ -14,16 +14,6 @@ const { verificarToken, noAsesor } = require('../middleware/auth');
 
 router.use(verificarToken, noAsesor);
 
-// ─── Helpers fecha Ecuador ────────────────────────────────────────────────────
-const MESES = {
-  0:'ENERO',1:'FEBRERO',2:'MARZO',3:'ABRIL',4:'MAYO',5:'JUNIO',
-  6:'JULIO',7:'AGOSTO',8:'SEPTIEMBRE',9:'OCTUBRE',10:'NOVIEMBRE',11:'DICIEMBRE'
-};
-const DIAS = {
-  0:'DOMINGO',1:'LUNES',2:'MARTES',3:'MIÉRCOLES',
-  4:'JUEVES',5:'VIERNES',6:'SÁBADO'
-};
-
 // ─── GET /api/backoffice ─────────────────────────────────────────────────────
 // Lista todos los registros con columnas clave para la tabla
 router.get('/', async (req, res) => {
@@ -89,7 +79,7 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: rows, total: countRows[0].total });
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
   }
 });
 
@@ -106,99 +96,115 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     console.error('[BACKOFFICE] GET detail:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    res.status(500).json({ success: false, error: 'Error interno al cargar el registro' });
   }
 });
 
+// Arriba, fuera de la ruta, declaras la whitelist
+const CAMPOS_EDITABLES = new Set([
+  'estatus_envio', 'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado',
+  'supervisor', 'origen_venta', 'venta_nueva_o_reingreso', 'turno',
+  'nombre_atc', 'clausulas', 'lider_comercial',
+  'tipo_cliente', 'genero_cliente', 'tipo_documento', 'numero_identificacion',
+  'nombre_cliente_completo', 'estado_civil', 'fecha_nacimiento', 'email_cliente',
+  'aplica_descuento_3ra_edad', 'telf_celular_pin', 'telf_celular_2', 'telf_fijo',
+  'provincia', 'ciudad', 'parroquia_barrio', 'direccion_calles',
+  'direccion_manzana_villa', 'referencia_ubicacion', 'coordenadas_gps',
+  'tipo_vivienda', 'regimen_vivienda',
+  'plan_contratado_final', 'servicios_digitales', 'forma_pago',
+  'detalle_bancario_ahorros', 'valor_pago', 'tipo_contrato', 'banco',
+  'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
+  'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
+  'resumen_venta',
+  'estado_recaudacion', 'netlife_login', 'netlife_estatus_real',
+  'calidad_venta_analista', 'novedades_atc', 'venta_efectiva',
+  'auditoria_documentos', 'auditado_por', 'inconsistencia_documental',
+  'observacion_auditoria', 'errores_telcos', 'estatus_regularizacion',
+  'detalle_regularizacion', 'fecha_regularizacion_atc', 'mes_regularizacion',
+  'observacion_venta_original', 'observacion_gestion_cobranza',
+  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
+  'archivo_resumen', 'links_documentos',
+]);
+
+const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
 // ─── PUT /api/backoffice/:id ──────────────────────────────────────────────────
-// Editar SOLO los campos de auditoría
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar existencia
-    const { rows: existing } = await pool.query(
-      'SELECT id FROM public.envios_ventas WHERE id = $1', [id]
-    );
-    if (existing.length === 0)
-      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
-    const {
-      calidad_venta_analista,
-      novedades_atc,
-      venta_efectiva,
-      auditoria_documentos,
-      auditado_por,
-      inconsistencia_documental,
-      observacion_auditoria,
-      errores_telcos,
-      estatus_regularizacion,
-      detalle_regularizacion,
-      fecha_regularizacion_atc,
-      mes_regularizacion,
-      observacion_venta_original,
-      observacion_gestion_cobranza,
-    } = req.body;
-
-    // Auto-computo de campos derivados de fecha_regularizacion_atc
-    let año_reg = null, mes_reg_nom = null, dia_num_reg = null, dia_abc_reg = null;
-    if (fecha_regularizacion_atc) {
-      const d = new Date(fecha_regularizacion_atc + 'T00:00:00');
-      año_reg     = d.getFullYear();
-      mes_reg_nom = MESES[d.getMonth()];
-      dia_num_reg = d.getDate();
-      dia_abc_reg = DIAS[d.getDay()];
+    // Validación del ID (solo números)
+    if (!/^\d+$/.test(String(id))) {
+      return res.status(400).json({ success: false, error: 'ID inválido' });
     }
 
-    const { rows } = await pool.query(`
-      UPDATE public.envios_ventas SET
-        calidad_venta_analista    = COALESCE($1,  calidad_venta_analista),
-        novedades_atc             = COALESCE($2,  novedades_atc),
-        venta_efectiva            = COALESCE($3,  venta_efectiva),
-        auditoria_documentos      = COALESCE($4,  auditoria_documentos),
-        auditado_por              = COALESCE($5,  auditado_por),
-        inconsistencia_documental = COALESCE($6,  inconsistencia_documental),
-        observacion_auditoria     = COALESCE($7,  observacion_auditoria),
-        errores_telcos            = COALESCE($8,  errores_telcos),
-        estatus_regularizacion    = COALESCE($9,  estatus_regularizacion),
-        detalle_regularizacion    = COALESCE($10, detalle_regularizacion),
-        fecha_regularizacion_atc  = COALESCE($11, fecha_regularizacion_atc),
-        año_regularizacion_atc    = COALESCE($12, año_regularizacion_atc),
-        mes_regularizacion_atc    = COALESCE($13, mes_regularizacion_atc),
-        dia_num_regularizacion_atc= COALESCE($14, dia_num_regularizacion_atc),
-        dia_abc_regularizacion_atc= COALESCE($15, dia_abc_regularizacion_atc),
-        mes_regularizacion        = COALESCE($16, mes_regularizacion),
-        observacion_venta_original    = COALESCE($17, observacion_venta_original),
-        observacion_gestion_cobranza  = COALESCE($18, observacion_gestion_cobranza)
-      WHERE id = $19
-      RETURNING *
-    `, [
-      calidad_venta_analista    || null,
-      novedades_atc             || null,
-      venta_efectiva            || null,
-      auditoria_documentos      || null,
-      auditado_por              || null,
-      inconsistencia_documental || null,
-      observacion_auditoria     || null,
-      errores_telcos            || null,
-      estatus_regularizacion    || null,
-      detalle_regularizacion    || null,
-      fecha_regularizacion_atc  || null,
-      año_reg,
-      mes_reg_nom,
-      dia_num_reg,
-      dia_abc_reg,
-      mes_regularizacion        || null,
-      observacion_venta_original    || null,
-      observacion_gestion_cobranza  || null,
-      id,
-    ]);
+    // Construcción del payload filtrando solo lo permitido
+    const payload = {};
+    for (const [clave, valor] of Object.entries(req.body || {})) {
+      if (!CAMPOS_EDITABLES.has(clave)) continue; // descarta id y todo lo no permitido
+      payload[clave] = valor === '' ? null : valor;
+    }
 
-    console.log(`[BACKOFFICE] Auditoría actualizada id=${id} por ${req.user.usuario}`);
-    res.json({ success: true, data: rows[0], mensaje: 'Auditoría guardada correctamente' });
+    // Manejo de la fecha y cálculo de campos derivados
+    if ('fecha_regularizacion_atc' in payload) {
+      const raw = payload.fecha_regularizacion_atc;
+
+      if (!raw) {
+        payload.fecha_regularizacion_atc   = null;
+        payload.año_regularizacion_atc     = null;
+        payload.mes_regularizacion_atc     = null;
+        payload.dia_num_regularizacion_atc = null;
+        payload.dia_abc_regularizacion_atc = null;
+      } else {
+        const soloFecha = String(raw).slice(0, 10);
+        const d = new Date(`${soloFecha}T00:00:00`);
+
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({
+            success: false,
+            error: 'fecha_regularizacion_atc debe tener formato YYYY-MM-DD',
+          });
+        }
+
+        payload.fecha_regularizacion_atc   = soloFecha;
+        payload.año_regularizacion_atc     = d.getFullYear();
+        payload.mes_regularizacion_atc     = MESES[d.getMonth()];
+        payload.dia_num_regularizacion_atc = d.getDate();
+        payload.dia_abc_regularizacion_atc = DIAS[d.getDay()];
+      }
+    }
+
+    const fields = Object.keys(payload);
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No hay datos válidos para actualizar' });
+    }
+
+    // Construcción dinámica y parametrizada del SET
+    const setClause = fields
+      .map((field, idx) => `"${field}" = $${idx + 1}`)
+      .join(', ');
+
+    const values = fields.map(field => payload[field]);
+    values.push(id);
+
+    const query = `
+      UPDATE public.envios_ventas 
+      SET ${setClause} 
+      WHERE id = $${values.length} 
+      RETURNING *
+    `;
+
+    const { rows } = await pool.query(query, values);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
+    }
+
+    res.json({ success: true, data: rows[0], mensaje: 'Registro actualizado correctamente' });
   } catch (e) {
-    console.error('[BACKOFFICE] PUT audit:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    // Se loguea el error real en servidor, se envía mensaje genérico al cliente
+    console.error('[BACKOFFICE] Error en PUT update:', e.message);
+    res.status(500).json({ success: false, error: 'Error interno al actualizar el registro' });
   }
 });
 

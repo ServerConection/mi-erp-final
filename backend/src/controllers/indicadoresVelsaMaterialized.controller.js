@@ -323,11 +323,32 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const valuesBk  = [desde, hasta];
     const filtersBk = buildFilters(qEffective, valuesBk);
 
+    // ── UNIFICADO con ACTIVAS TOTAL (real_mes) — ajustado 2026-08-13 ──────
+    // Mismo ajuste que en Novonet: el renglón "ACTIVO" ahora usa fecha de
+    // ACTIVACIÓN (igual que real_mes) en vez de fecha de registro en
+    // Jotform, para que esta tarjeta y "ACTIVAS TOTAL" siempre coincidan.
+    // El resto de estados se mantiene por fecha de registro.
     const qEstados = `
-      SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*)::int AS total
-      FROM ${MV}
-      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY 1 ORDER BY total DESC
+      SELECT estado, SUM(total)::int AS total
+      FROM (
+        SELECT COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') AS estado, COUNT(*) AS total
+        FROM ${MV}
+        WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+        AND COALESCE(NULLIF(TRIM(mv.estado_venta),''),'SIN ESTADO') <> ${ESTADO_ACTIVO}
+        ${filters}
+        GROUP BY 1
+
+        UNION ALL
+
+        SELECT ${ESTADO_ACTIVO} AS estado, COUNT(*) AS total
+        FROM ${MV}
+        WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+        AND mv.fecha_activacion IS NOT NULL
+        AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
+        ${filters}
+      ) sub
+      GROUP BY estado
+      ORDER BY total DESC
     `;
     const qEmbudo = `
       SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total

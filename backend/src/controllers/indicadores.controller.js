@@ -246,17 +246,31 @@ LEFT JOIN LATERAL (
 // SOLUCIÓN: cruzar mestra_bitrix.j_id_bitrix con bitrix_webhook_leads.bitrix_id
 // y preferir el responsable del webhook.
 //
-// POR QUÉ NO DUPLICA FILAS: bitrix_webhook_leads.bitrix_id tiene constraint
-// UNIQUE (ver db/migrations/bitrix_webhook_leads.sql), o sea 1 fila por lead.
-// El LEFT JOIN es 1:1 y los conteos del dashboard NO cambian.
-// El historial (bitrix_webhook_leads_historial) NO se toca justamente porque
-// ese sí tiene N filas por lead y rompería los totales.
+// ⚠ CRÍTICO — FILTRO POR EMPRESA:
+// La llave única de bitrix_webhook_leads es COMPUESTA: (empresa, bitrix_id),
+// NO bitrix_id solo. Novonet y Velsa son DOS cuentas Bitrix separadas y el
+// mismo número de negociación existe en ambas (ver la cabecera de
+// bitrixWebhook.controller.js y la migración, sección de llave compuesta).
+//
+// Sin "AND bwl.empresa = 'novonet'" pasan DOS cosas malas:
+//   1) el detalle muestra el asesor de VELSA en una venta de NOVONET
+//      (caso real: id 540625 salía con la asesora de Velsa en vez de la de
+//       Novonet), y
+//   2) si el id existe en las dos empresas, el LEFT JOIN devuelve 2 filas y
+//      DUPLICA el registro en el detalle.
+// Este controller es el de NOVONET (queryCRM lee public.vw_bitrix_novonet),
+// por eso se fija el literal 'novonet'. El equivalente de Velsa vive en
+// indicadoresVelsa*.controller.js y debe usar 'velsa'.
+//
+// El historial (bitrix_webhook_leads_historial) NO se toca: ese sí tiene N
+// filas por lead y rompería los totales.
 //
 // BTRIM en ambos lados: j_id_bitrix es numérico/texto según el origen y el
 // webhook guarda VARCHAR; sin normalizar, el cruce falla en silencio.
 const joinResponsableWebhook = `
 LEFT JOIN public.bitrix_webhook_leads bwl
-       ON BTRIM(bwl.bitrix_id::text) = BTRIM(mb.j_id_bitrix::text)`;
+       ON BTRIM(bwl.bitrix_id::text) = BTRIM(mb.j_id_bitrix::text)
+      AND bwl.empresa = 'novonet'`;
 
 // Expresión del ASESOR ya resuelto. Orden de prioridad:
 //   1) responsible del webhook (fuente viva)

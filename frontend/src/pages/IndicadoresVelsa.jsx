@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useContext, createContext } from "react";
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
+import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import { fetchConSesion } from "../utils/sesion";
 import { 
@@ -295,6 +296,8 @@ function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
 export default function ReporteVelsa() {
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
+  // Indicador de carga diferido: solo aparece si la consulta pasa de 250 ms.
+  const cargandoVisible = useCargaDiferida(loading);
   const [refreshing, setRefreshing] = useState(false);   // ← botón "Forzar Refresh"
   const abortRef = useRef(null);
   const abortCRMRef = useRef(null);   // ← ref independiente para fetchDetalleCRMData
@@ -1145,6 +1148,9 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   return (
     <div className="min-h-screen bg-stone-100 p-6 font-['Inter',_sans-serif] text-stone-900">
 
+      <EstilosCarga />
+      <BarraCarga activa={cargandoVisible} color="#ea580c" />
+
       {/* Alertas flotantes */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
         {alertas.map(alerta => (
@@ -1334,7 +1340,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 setFiltrosAplicados(filtros);
                 fetchDashboard(filtros);
                 fetchDetalleCRMData(filtros);  // ✅ Cargar datos CRM detallado
-              }} className="bg-orange-600 hover:bg-orange-500 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
+              }} disabled={loading} aria-busy={loading} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-70 disabled:cursor-wait text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
                 {loading ? "CARGANDO..." : "APLICAR FILTROS"}
               </button>
               <button onClick={generarInforme360} className="bg-stone-800 hover:bg-stone-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">
@@ -1351,6 +1357,14 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <button onClick={() => setApiError(null)} className="text-red-400 hover:text-red-600 font-black text-base leading-none">✕</button>
             </div>
           )}
+
+          {/* ── Zona de datos: se atenúa mientras llega la respuesta nueva ──
+              Los filtros quedan FUERA de este bloque a propósito, para que se
+              puedan seguir tocando mientras carga. */}
+          <div
+            className={`fc-datos ${cargandoVisible ? 'fc-datos--stale' : ''}`}
+            aria-busy={cargandoVisible}
+          >
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
@@ -1528,6 +1542,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <DataVisor title="DETALLE BASE CRM" data={dataCRMDetalle} onDownload={() => descargarExcel("CRM")} color="bg-stone-600" />
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-orange-600" />
           </div>
+
+          </div>{/* ── fin zona de datos ── */}
         </div>
 
       ) : tabActiva === "MONITOREO" ? (

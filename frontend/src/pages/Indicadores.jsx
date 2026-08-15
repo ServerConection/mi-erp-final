@@ -2,62 +2,12 @@ import { useEffect, useState, useMemo, useCallback, useRef, useContext, createCo
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
 import TablaKpiComercial from "../components/TablaKpiComercial";
+import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
-
-// ======================================================
-// FEEDBACK DE CARGA AL APLICAR FILTROS
-// ------------------------------------------------------
-// Patrón "stale-while-revalidate": mientras llegan los datos nuevos, los
-// anteriores SIGUEN visibles pero atenuados y sin poder interactuar, más una
-// barra de progreso arriba. Antes solo cambiaba el texto del botón a
-// "CARGANDO...", así que la tabla seguía mostrando el filtro ANTERIOR sin
-// ninguna señal — alguien podía leer esos números creyendo que ya eran los
-// del filtro nuevo.
-//
-// No cambia colores, tipografías ni layout: solo agrega el estado de carga.
-// ======================================================
-
-// Muestra el indicador SOLO si la carga supera el umbral (250 ms).
-// Si la respuesta vuelve del caché en 100-200 ms no se muestra nada y la
-// pantalla se siente instantánea, en vez de pegar un parpadeo.
-const useCargaDiferida = (cargando, retardo = 250) => {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    if (!cargando) { setVisible(false); return; }
-    const t = setTimeout(() => setVisible(true), retardo);
-    return () => clearTimeout(t);
-  }, [cargando, retardo]);
-  return visible;
-};
-
-const EstilosCarga = () => (
-  <style>{`
-    @keyframes d1-barra { 0% { transform: translateX(-100%) } 100% { transform: translateX(400%) } }
-    .d1-barra-pista {
-      position: fixed; top: 0; left: 0; right: 0; height: 3px;
-      background: rgba(37,99,235,.14); z-index: 60; overflow: hidden;
-    }
-    .d1-barra-pista > span {
-      display: block; width: 25%; height: 100%; background: #2563eb;
-      animation: d1-barra 1.1s cubic-bezier(.4,0,.2,1) infinite;
-    }
-    /* Easing distinto al entrar y al salir: entra suave, sale rápido. */
-    .d1-datos { transition: opacity .18s cubic-bezier(.2,0,0,1); }
-    .d1-datos--stale { opacity: .55; pointer-events: none; user-select: none; }
-    @media (prefers-reduced-motion: reduce) {
-      .d1-barra-pista > span { animation-duration: 2.4s }
-      .d1-datos { transition: none }
-    }
-  `}</style>
-);
-
-const BarraCarga = ({ activa }) => activa
-  ? <div className="d1-barra-pista" role="progressbar" aria-label="Cargando datos"><span /></div>
-  : null;
 
 // Contexto para saber si un gráfico está en modo expandido (modal)
 const ExpandedCtx = createContext({ isExpanded: false, modalHeight: 500 });
@@ -1663,7 +1613,7 @@ ${asesoresPDF.length>0?`
     <div className="min-h-screen bg-slate-100 p-6 font-['Inter',_sans-serif] text-slate-900">
 
       <EstilosCarga />
-      <BarraCarga activa={cargandoVisible} />
+      <BarraCarga activa={cargandoVisible} color="#2563eb" />
 
       {/* Alertas flotantes */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2">
@@ -1839,7 +1789,7 @@ ${asesoresPDF.length>0?`
               Los filtros quedan FUERA de este bloque a propósito, para que se
               puedan seguir tocando mientras carga. */}
           <div
-            className={`d1-datos ${cargandoVisible ? 'd1-datos--stale' : ''}`}
+            className={`fc-datos ${cargandoVisible ? 'fc-datos--stale' : ''}`}
             aria-busy={cargandoVisible}
           >
 

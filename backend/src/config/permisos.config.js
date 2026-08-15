@@ -31,6 +31,41 @@ const MODULOS_GERENCIALES = [
   MODULOS.COMISIONES,
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFIL TTHH (Talento Humano) — transversal a las dos empresas
+// ─────────────────────────────────────────────────────────────────────────────
+// Igual alcance que GERENCIA, pero NO queda atado a la empresa del usuario:
+// ve Novonet Y Velsa al mismo tiempo. Por eso se resuelve antes del lookup por
+// empresa en obtenerPermisosUsuario() — si dependiera del map por empresa,
+// un TTHH de Novonet no vería Velsa y viceversa.
+//
+// Antes de este cambio TTHH no existía en el map y caía al fallback USUARIO,
+// así que solo veía Vista Asesor / Seguimiento de su propia empresa.
+//
+// QUÉ NO INCLUYE, a propósito:
+//   - Broadcast y WaBot: son de ENVÍO masivo a clientes, no de consulta.
+//   - No se toca soloAdmin: TTHH sigue sin poder entrar a lo de administrador.
+// Si más adelante se quiere dar broadcast a TTHH, hay que tocar además
+// forEmpresa() en frontend/src/layouts/DashboardLayout.jsx.
+const MODULOS_TTHH = [
+  // Novonet
+  MODULOS.VISTA_ASESOR,
+  MODULOS.SEGUIMIENTO_VENTAS,
+  MODULOS.INDICADORES,
+  MODULOS.REDES,
+  MODULOS.RESUMEN_NOVONET,
+  // Velsa
+  MODULOS.VISTA_ASESOR_VELSA,
+  MODULOS.SEGUIMIENTO_VELSA,
+  MODULOS.INDICADORES_VELSA,
+  MODULOS.RESUMEN_VELSA,
+  // Transversales
+  MODULOS.VENTAS_FORMULARIO,
+  MODULOS.GUIA_COMERCIAL,
+  MODULOS.BOT_AUDITOR,
+  ...MODULOS_GERENCIALES,
+];
+
 const PERMISOS_POR_EMPRESA_PERFIL = {
   NOVONET: {
     USUARIO: [
@@ -155,6 +190,14 @@ function obtenerPermisosUsuario(empresa, perfil) {
 
   if (perfilNorm === 'ADMINISTRADOR') {
     return Object.values(MODULOS);
+  }
+
+  // TTHH es transversal: se resuelve ANTES del lookup por empresa, para que
+  // vea Novonet y Velsa sin importar a qué empresa pertenece su usuario.
+  // Se devuelve una copia para que nadie pueda mutar MODULOS_TTHH por
+  // referencia desde afuera.
+  if (perfilNorm === 'TTHH') {
+    return [...MODULOS_TTHH];
   }
 
   if (!PERMISOS_POR_EMPRESA_PERFIL[empresaNorm]) {

@@ -31,6 +31,8 @@
  */
 
 const pool = require('../config/db');
+// Fuente única de verdad de etapas (leads totales / gestionables / descarte):
+const { esLeadTotalExpr } = require('../shared/etapas');
 
 // ── Etapas que cuentan como GESTIONABLES ─────────────────────────────────────
 // Lista BLANCA definida por gerencia. Cualquier etapa fuera de aquí (ATC,
@@ -80,7 +82,11 @@ WITH datos AS (
 
         -- ── Lado Bitrix (por fecha de creación del lead) ──────────────────
         COUNT(DISTINCT mb.b_id) FILTER (
+            -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION
+            -- (shared/etapas.js). Sin esto el denominador de todos los % del
+            -- KPI comercial venía inflado.
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}
         )                                                  AS leads_total,
 
         COUNT(DISTINCT mb.b_id) FILTER (

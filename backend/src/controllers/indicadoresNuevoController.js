@@ -1,48 +1,19 @@
 const pool = require('../config/db');
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
-// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
 // ─────────────────────────────────────────────────────────────────────────────
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO',
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA',
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
-
-const ETAPAS_DESCARTE_SI = [
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OTRO PROVEEDOR',
-    'DESCARTE REMARKETIZADO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-];
-
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-const esGestionableExpr = (col) =>
-    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
-
-const esDescarteExpr = (col) =>
-    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+const {
+    esLeadTotalExpr,
+    esGestionableExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+} = require('../shared/etapas');
 
 // ─── helpers de fecha ───────────────────────────────────────────────────────
 const getFechaEcuador = () => {
@@ -65,8 +36,6 @@ const MV = `public.mv_indicadores_velsa_completo mv`;
 // ─── estado activo ──────────────────────────────────────────────────────────
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
-// GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
-// definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
@@ -95,7 +64,11 @@ async function getIndicadoresDashboardNuevo(req, res) {
             return `
                 SELECT
                     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-                    COUNT(*) FILTER (WHERE ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date) AS leads_totales,
+                    -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+                    COUNT(*) FILTER (
+                        WHERE ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date
+                        AND ${esLeadTotalExpr('mv.etapa_crm')}
+                    ) AS leads_totales,
                     COUNT(*) FILTER (
                         WHERE mv.etapa_crm = 'Venta Subida'
                         AND ${parseFecha('mv.fecha_creacion_crm')} BETWEEN $1::date AND $2::date

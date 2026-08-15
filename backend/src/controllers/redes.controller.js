@@ -1,49 +1,19 @@
 const pool = require('../config/db');
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
-// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
-// "negociables" en este archivo usa la misma definición de GESTIONABLE.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
 // ─────────────────────────────────────────────────────────────────────────────
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO',
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA',
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
-
-const ETAPAS_DESCARTE_SI = [
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OTRO PROVEEDOR',
-    'DESCARTE REMARKETIZADO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-];
-
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-const esGestionableExpr = (col) =>
-    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
-
-const esDescarteExpr = (col) =>
-    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+const {
+    esLeadTotalExpr,
+    esGestionableExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+} = require('../shared/etapas');
 
   const getFiltroFechas = (query) => {
     const hoy = new Date().toISOString().split('T')[0];
@@ -205,7 +175,10 @@ const esDescarteExpr = (col) =>
               WHEN 6 THEN 'Sábado'
             END AS dia_semana,
             (${canalExpr}) AS canal_inversion,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion NOT ILIKE '%DUPLICADO%' AND mb.b_etapa_de_la_negociacion NOT ILIKE '%REGULARIZA%') AS n_leads,
+            -- N LEADS: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+            -- Antes usaba ILIKE '%DUPLICADO%' / '%REGULARIZA%' (patrón parcial,
+            -- sin REMARKETING). Ahora usa la lista oficial de shared/etapas.js.
+            COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
               OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')                      AS atc_soporte,
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
@@ -366,11 +339,14 @@ const esDescarteExpr = (col) =>
       const totalesResult = await pool.query(`
         SELECT
           EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
-          COUNT(*) AS n_leads,
+          -- N LEADS por hora: excluye DUPLICADO / REMARKETING / REGULARIZACION
+          -- (también en el denominador del % ATC, para que el porcentaje no se
+          -- calcule sobre un total inflado).
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%') AS atc,
           ROUND(
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')::numeric
-            / NULLIF(COUNT(*), 0) * 100, 1
+            / NULLIF(COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}), 0) * 100, 1
           ) AS pct_atc_hora
         FROM public.mestra_bitrix mb
         WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
@@ -385,11 +361,14 @@ const esDescarteExpr = (col) =>
         SELECT
           mb.b_creado_el_fecha AS fecha,
           EXTRACT(HOUR FROM mb.b_creado_el_hora::time)::int AS hora,
-          COUNT(*) AS n_leads,
+          -- N LEADS por hora: excluye DUPLICADO / REMARKETING / REGULARIZACION
+          -- (también en el denominador del % ATC, para que el porcentaje no se
+          -- calcule sobre un total inflado).
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%') AS atc,
           ROUND(
             COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%' OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')::numeric
-            / NULLIF(COUNT(*), 0) * 100, 1
+            / NULLIF(COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}), 0) * 100, 1
           ) AS pct_atc_hora
         FROM public.mestra_bitrix mb
         WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
@@ -494,7 +473,8 @@ const esDescarteExpr = (col) =>
       // Leads y etapas desde Bitrix — solo filas de leads (j_id_bitrix IS NULL)
       const totalesRes = await pool.query(`
         SELECT b_origen,
-          COUNT(*) AS total_leads,
+          -- Excluye DUPLICADO / REMARKETING / REGULARIZACION del total de leads.
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('b_etapa_de_la_negociacion')}) AS total_leads,
           COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion ILIKE '%ATC%'
             OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%'
             OR b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%'
@@ -640,7 +620,8 @@ const esDescarteExpr = (col) =>
       // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
       const etapasRes = await pool.query(`
         SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
-          COUNT(*) AS total_leads,
+          -- Excluye DUPLICADO / REMARKETING / REGULARIZACION del total de leads.
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('b_etapa_de_la_negociacion')}) AS total_leads,
           COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion ILIKE '%ATC%' OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%') AS atc_soporte,
           COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
           COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%') AS zonas_peligrosas,

@@ -1,5 +1,23 @@
 const pool = require('../config/db');
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
+// ─────────────────────────────────────────────────────────────────────────────
+const {
+    esLeadTotalExpr,
+    esDescarteExpr,
+    sumaReporteExpr,
+    ETAPAS_NO_GESTIONABLES,
+    esGestionableExpr: _esGestionableExpr,
+    sqlListaUpper: _sqlListaUpper,
+} = require('../shared/etapas');
+// NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
+const esGestionableExpr = (col) => _esGestionableExpr(col, { innegociableEsGestionable: true });
 // ─────────────────────────────────────────────────────────────────────────────
 // VENTA DE SERVICIO: misma condición de "venta activa" (estatus = ACTIVO) PERO
 // solo cuenta si al menos uno de los campos de "plan" tiene datos reales. Si
@@ -82,84 +100,6 @@ const setDashboardCache = (key, data) => {
         for (const [k, v] of _cacheDashboard) if (ahora > v.ttl) _cacheDashboard.delete(k);
     }
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD
-// Aplica IGUAL para NOVONET y VELSA (las etapas del CRM son las mismas).
-// Comparación SIEMPRE case-insensitive (UPPER+TRIM) para que no importe si la
-// etapa viene en mayúsculas, minúsculas o mixta.
-//
-// NO GESTIONABLES (todo lo demás se considera gestionable = SI):
-//   ATC, ATC/SOPORTE, DUPLICADO, FUERA DE COBERTURA, INNEGOCIABLE,
-//   ZONA(S) PELIGROSA(S), POSTVENTA (exacto, no aplica a "POSTVENTA NOVONET"),
-//   REGULARIZACION, CONTRATO PARAMOUNT, PARAMOUNT SEGUIMIENTO POR CERRAR.
-//
-// DESCARTE = SI (subconjunto de las gestionables, el resto de gestionables es
-// DESCARTE = NO):
-//   CONTRATO NETLIFE, DESCARTE, DESISTE DE COMPRA, MANTIENE PROVEEDOR,
-//   NO INTERESA COSTO PLAN, NO VOLVER A CONTACTAR, OTRO PROVEEDOR,
-//   DESCARTE REMARKETIZADO, CONTRATO NETLIFE POR OTRO CANAL,
-//   DESCARTE PLAN DE 200, NO INTERESA COSTO INSTALACIÓN.
-// ─────────────────────────────────────────────────────────────────────────────
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO', // typo real encontrado en datos
-    'FUERA DE COBERTURA',
-    //'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
-
-const ETAPAS_DESCARTE_SI = [
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OTRO PROVEEDOR',
-    'DESCARTE REMARKETIZADO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-];
-
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-// gestionable = SI  ⇔  la etapa NO está en la lista de no-gestionables
-const esGestionableExpr = (col) =>
-    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
-
-// descarte = SI  ⇔  la etapa está en la lista blanca de descarte
-const esDescarteExpr = (col) =>
-    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ORÍGENES (SUMA A REPORTE SI/NO) — FUENTE ÚNICA DE VERDAD.
-// Según la tabla del usuario, el ÚNICO origen que NO suma a reporte es el
-// literal "REMARKETING" (match exacto). Todos los demás orígenes — incluidos
-// los que pertenecen al grupo/agrupación "REMARKETING" (BASE 593-958993371,
-// BASE 593-999803743, Base 593-995967355, Whatsapp 593958993371) y los del
-// grupo "VIDIKA GOOGLE" (BASE 593-962881280, etc.) — SÍ suman a reporte.
-// Comparación exacta (no substring) para evitar falsos positivos.
-// ─────────────────────────────────────────────────────────────────────────────
-const ORIGENES_NO_SUMAN_REPORTE = [
-    'REMARKETING',
-];
-
-// suma_a_reporte = SI  ⇔  el origen NO está en la lista de exclusión
-// (VENTA SUBIDA siempre suma, sin importar el origen — regla de negocio existente)
-const sumaReporteExpr = (origenCol, etapaCol) =>
-    `(${etapaCol} = 'VENTA SUBIDA' OR UPPER(TRIM(COALESCE(${origenCol}, ''))) NOT IN ${_sqlListaUpper(ORIGENES_NO_SUMAN_REPORTE)})`;
 
 const getEtapasCache = async () => {
   const ahora = Date.now();
@@ -479,9 +419,7 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersNoJoin += actFilter;
         }
 
-        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
-        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
-
+        
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
         // parseFecha genera una expresión CASE+regex que antes se evaluaba 12-14
         // veces por fila (en cada FILTER clause). Con MATERIALIZED CTE se evalúa
@@ -536,8 +474,13 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- Contar filas lo inflaria. Los conteos del lado Jotform SI usan
                 -- COUNT(*), porque ahi cada fila es una venta distinta.
                 COUNT(DISTINCT b_id) FILTER (
+    -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+    -- Antes la lista estaba hardcodeada aquí y no cubría las variantes reales
+    -- de los datos ('DUPLLICADO', 'REGULARIZACIÓN' con tilde) ni hacía TRIM,
+    -- por lo que esos registros seguían sumando e inflaban el total.
+    -- Ahora usa esLeadTotalExpr() de shared/etapas.js (fuente única de verdad).
     WHERE _bc_date BETWEEN $1::date AND $2::date
-    AND UPPER(COALESCE(b_etapa_de_la_negociacion, '')) NOT IN ('DUPLICADO', 'REGULARIZACION', 'REMARKETING')
+    AND ${esLeadTotalExpr('b_etapa_de_la_negociacion')}
     AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS leads_totales,
                 COUNT(DISTINCT b_id) FILTER (
@@ -1141,9 +1084,7 @@ const getMonitoreoDiario = async (req, res) => {
 
         console.log(`[MONITOREO] Consultando desde ${iniciomes} hasta ${hoy}`);
 
-        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
-        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
-
+        
         // JOIN con fallback igual que en dashboard
         const joinMonitoreo = `
 LEFT JOIN LATERAL (
@@ -1401,9 +1342,7 @@ const getReporte180 = async (req, res) => {
             filtersNoJoin += ` AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $${idxDesde180}::date AND $${idxHasta180}::date`;
         }
 
-        // GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
-        // definidas arriba (fuente única de verdad, tabla oficial de etapas).
-
+        
         const queryKPIs = `
             SELECT
                 COUNT(*) FILTER (

@@ -1,64 +1,19 @@
 const pool = require('../config/db');
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD
-// Aplica IGUAL para NOVONET y VELSA (las etapas del CRM son las mismas).
-// Comparación SIEMPRE case-insensitive (UPPER+TRIM) para que no importe si la
-// etapa viene en mayúsculas, minúsculas o mixta.
-//
-// NO GESTIONABLES (todo lo demás se considera gestionable = SI):
-//   ATC, ATC/SOPORTE, DUPLICADO, FUERA DE COBERTURA, INNEGOCIABLE,
-//   ZONA(S) PELIGROSA(S), POSTVENTA (exacto, no aplica a "POSTVENTA NOVONET"),
-//   REGULARIZACION, CONTRATO PARAMOUNT, PARAMOUNT SEGUIMIENTO POR CERRAR.
-//
-// DESCARTE = SI (subconjunto de las gestionables, el resto de gestionables es
-// DESCARTE = NO):
-//   CONTRATO NETLIFE, DESCARTE, DESISTE DE COMPRA, MANTIENE PROVEEDOR,
-//   NO INTERESA COSTO PLAN, NO VOLVER A CONTACTAR, OTRO PROVEEDOR,
-//   DESCARTE REMARKETIZADO, CONTRATO NETLIFE POR OTRO CANAL,
-//   DESCARTE PLAN DE 200, NO INTERESA COSTO INSTALACIÓN.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
 // ─────────────────────────────────────────────────────────────────────────────
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO', // typo real encontrado en datos
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
-
-const ETAPAS_DESCARTE_SI = [
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OTRO PROVEEDOR',
-    'DESCARTE REMARKETIZADO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-];
-
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-// gestionable = SI  ⇔  la etapa NO está en la lista de no-gestionables
-const esGestionableExpr = (col) =>
-    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
-
-// descarte = SI  ⇔  la etapa está en la lista blanca de descarte
-const esDescarteExpr = (col) =>
-    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+const {
+    esLeadTotalExpr,
+    esGestionableExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+} = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
@@ -136,8 +91,6 @@ const HAS_PLAN_VELSA_MV = `(
 )`;
 const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_MV})`;
 
-// GESTIONABLE / DESCARTE: usar esGestionableExpr() / esDescarteExpr()
-// definidas arriba (fuente única de verdad, tabla oficial de etapas).
 
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
@@ -178,7 +131,14 @@ function buildFilters(q, values) {
 const queryKPI = (columna, filters) => `
   SELECT
     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-    COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS leads_totales,
+    -- FIX (2026-08-15): LEADS TOTALES excluye DUPLICADO / REMARKETING /
+    -- REGULARIZACION. Antes contaba TODO (COUNT(*) sin filtro de etapa), así que
+    -- el REPORTE D-1 de VELSA venía inflado y no cuadraba con NOVONET, que sí
+    -- las excluía. Eso desviaba efectividad, descarte y tasa de instalación.
+    COUNT(*) FILTER (
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      AND ${esLeadTotalExpr('mv.etapa_crm')}
+    ) AS leads_totales,
     -- FIX (2026-06-23): antes este FILTER tenia una ventana de fecha MAS AMPLIA
     -- (fecha_creacion_crm OR fecha_registro_jotform) que la de "leads_totales"
     -- (que solo usa fecha_creacion_crm), permitiendo gestionables > leads_totales

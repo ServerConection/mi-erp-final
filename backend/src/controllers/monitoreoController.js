@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+// Fuente única de verdad de etapas (leads totales / gestionables / descarte):
+const { esLeadTotalExpr } = require('../shared/etapas');
 
 const getFiltroFechas = (query) => {
   const hoy = new Date().toISOString().split('T')[0];
@@ -284,7 +286,8 @@ const getMonitoreoMetas = async (req, res) => {
 
     const totalesRes = await pool.query(`
       SELECT b_origen,
-        COUNT(*) AS total_leads,
+        -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+        COUNT(*) FILTER (WHERE ${esLeadTotalExpr('b_etapa_de_la_negociacion')}) AS total_leads,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion IN (
           'ATC/SOPORTE','FUERA DE COBERTURA','ZONAS PELIGROSAS','INNEGOCIABLE'
         )) AS leads_sac,
@@ -422,7 +425,8 @@ const getReporteData = async (req, res) => {
     const { where: etapasWhereClause, params: etapasParams } = buildInWhere(origenesBitrix, baseParams, 'b_origen');
     const etapasRes = await pool.query(`
       SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
-        COUNT(*) AS total_leads,
+        -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+        COUNT(*) FILTER (WHERE ${esLeadTotalExpr('b_etapa_de_la_negociacion')}) AS total_leads,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'ATC/SOPORTE') AS atc_soporte,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'FUERA DE COBERTURA') AS fuera_cobertura,
         COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion = 'ZONAS PELIGROSAS') AS zonas_peligrosas,

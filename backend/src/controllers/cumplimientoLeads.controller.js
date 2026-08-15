@@ -22,29 +22,22 @@
  */
 const pool = require('../config/db');
 
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
-// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO',
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA',
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
 
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-const esGestionableExpr = (col) =>
-  `(${col} IS NULL OR (UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)}))`;
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
+// ─────────────────────────────────────────────────────────────────────────────
+const {
+    esLeadTotalExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+    esGestionableExpr: _esGestionableExpr,
+} = require('../shared/etapas');
+// Un lead sin etapa asignada SI cuenta como gestionable en este modulo.
+const esGestionableExpr = (col) => _esGestionableExpr(col, { tolerarNull: true });
 
 const ASESOR = `COALESCE(NULLIF(TRIM(mb.b_persona_responsable), ''), 'SIN ASIGNAR')`;
 const ETAPA  = `mb.b_etapa_de_la_negociacion`;

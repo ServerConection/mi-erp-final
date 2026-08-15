@@ -1,48 +1,19 @@
 const pool = require('../config/db');
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
-// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
 // ─────────────────────────────────────────────────────────────────────────────
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO',
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA',
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
-
-const ETAPAS_DESCARTE_SI = [
-    'CONTRATO NETLIFE',
-    'DESCARTE',
-    'DESISTE DE COMPRA',
-    'MANTIENE PROVEEDOR',
-    'NO INTERESA COSTO PLAN',
-    'NO VOLVER A CONTACTAR',
-    'OTRO PROVEEDOR',
-    'DESCARTE REMARKETIZADO',
-    'CONTRATO NETLIFE POR OTRO CANAL',
-    'DESCARTE PLAN DE 200',
-    'NO INTERESA COSTO INSTALACIÓN',
-    'NO INTERESA COSTO INSTALACION',
-];
-
-const _sqlListaUpper = (arr) => `(${arr.map(e => `'${e.toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
-
-const esGestionableExpr = (col) =>
-    `(UPPER(TRIM(${col})) NOT IN ${_sqlListaUpper(ETAPAS_NO_GESTIONABLES)})`;
-
-const esDescarteExpr = (col) =>
-    `(UPPER(TRIM(${col})) IN ${_sqlListaUpper(ETAPAS_DESCARTE_SI)})`;
+const {
+    esLeadTotalExpr,
+    esGestionableExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+} = require('../shared/etapas');
 
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -130,7 +101,9 @@ const getComparativaSupervisores = async (req, res) => {
       SELECT
         COALESCE(e.supervisor, 'SIN ASIGNAR') AS supervisor,
         COUNT(DISTINCT mb.b_id) FILTER (
+          -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
           WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
+          AND ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}
         ) AS leads_totales,
         COUNT(DISTINCT mb.b_id) FILTER (
           WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
@@ -194,7 +167,10 @@ const getComparativaSupervisores = async (req, res) => {
             WHEN ${parseFecha('mb.b_creado_el_fecha')} <= (SELECT pd + 21 FROM primer_dom) THEN 4
             ELSE 5
           END AS num_semana,
-          COUNT(DISTINCT mb.b_id) AS leads_totales,
+          -- LEADS TOTALES: excluye DUPLICADO / REMARKETING / REGULARIZACION.
+          COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}
+          ) AS leads_totales,
           COUNT(DISTINCT mb.b_id) FILTER (
             WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
           ) AS gestionables

@@ -12,6 +12,20 @@
  */
 const pool = require('../config/db');
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE / LEADS TOTALES)
+// FUENTE ÚNICA DE VERDAD: backend/src/shared/etapas.js
+// NO redefinir las listas aquí: si divergen, cada pantalla muestra un número
+// distinto para el mismo indicador (fue exactamente lo que pasó con las etapas
+// DUPLICADO / REMARKETING / REGULARIZACION).
+// ─────────────────────────────────────────────────────────────────────────────
+const {
+    esLeadTotalExpr,
+    esGestionableExpr,
+    esDescarteExpr,
+    ETAPAS_NO_GESTIONABLES,
+} = require('../shared/etapas');
 const parseFecha = (col) =>
   `CASE WHEN ${col} IS NULL OR TRIM(${col}::text) = '' THEN NULL ` +
   `WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN ${col}::text::date ` +
@@ -24,24 +38,6 @@ const parseHoraTxt = (col) =>
 const getFechaEcuador = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
-// TABLA OFICIAL DE ETAPAS (GESTIONABLE / DESCARTE) — FUENTE ÚNICA DE VERDAD,
-// igual que en indicadores.controller.js / indicadoresVelsa.controller.ACTUALIZADO.js.
-const ETAPAS_NO_GESTIONABLES = [
-    'ATC',
-    'ATC/SOPORTE',
-    'DUPLICADO',
-    'DUPLLICADO',
-    'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
-    'ZONA PELIGROSA',
-    'ZONAS PELIGROSAS',
-    'POSTVENTA',
-    'REGULARIZACION',
-    'REGULARIZACIÓN',
-    'CONTRATO PARAMOUNT',
-    'PARAMOUNT SEGUMIENTO POR CERRAR',
-    'PARAMOUNT SEGUIMIENTO POR CERRAR',
-];
 
 // ── Cubos por empresa ─────────────────────────────────────────
 const CUBO_SQL = {

@@ -12,6 +12,7 @@ const {
     esLeadTotalExpr,
     esGestionableExpr,
     esDescarteExpr,
+    sumaReporteExpr,
     ETAPAS_NO_GESTIONABLES,
 } = require('../shared/etapas');
 
@@ -127,41 +128,89 @@ function buildFilters(q, values) {
   return f;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPRESIONES DE FECHA — alineadas con indicadores.controller.js (NOVONET)
+// ─────────────────────────────────────────────────────────────────────────────
+// La MV guarda fecha_registro_jotform en UTC; NOVONET ya la recibe en hora
+// local. El -5h la normaliza a America/Guayaquil para que las dos empresas
+// corten el día en el mismo instante.
+const JF_DATE  = `(mv.fecha_registro_jotform - INTERVAL '5 hours')::date`;
+const CRM_DATE = `mv.fecha_creacion_crm::date`;
+
+// Denominador "gestionables" en ventana AMPLIA (registro Jotform O creación CRM).
+// Es el que usa NOVONET en descarte / efectividad_real / efectividad_activas_vs_pauta.
+// OJO: NO es el mismo número que la columna "gestionables" que se muestra en
+// pantalla (esa usa solo fecha de creación CRM). Se replica tal cual para que
+// Velsa dé idéntico a Novonet; unificar los dos criterios es una decisión de
+// gerencia pendiente (ver informe REVISION_VELSA_VS_NOVONET.md).
+const GEST_AMPLIO = `COUNT(*) FILTER (
+      WHERE (${JF_DATE} BETWEEN $1::date AND $2::date OR ${CRM_DATE} BETWEEN $1::date AND $2::date)
+      AND ${esGestionableExpr('mv.etapa_crm')}
+    )`;
+
 // ── Query KPI por columna de agrupación ──────────────────────────────────────
+// ESTRUCTURA ESPEJO DE NOVONET (indicadores.controller.js · queryKPI).
+// Cada indicador de abajo calcula EXACTAMENTE lo mismo que su equivalente
+// Novonet; lo único que cambia son las tablas de origen.
 const queryKPI = (columna, filters) => `
   SELECT
     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-    -- FIX (2026-08-15): LEADS TOTALES excluye DUPLICADO / REMARKETING /
-    -- REGULARIZACION. Antes contaba TODO (COUNT(*) sin filtro de etapa), así que
-    -- el REPORTE D-1 de VELSA venía inflado y no cuadraba con NOVONET, que sí
-    -- las excluía. Eso desviaba efectividad, descarte y tasa de instalación.
-    COUNT(*) FILTER (
-      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    -- ── LEADS TOTALES ────────────────────────────────────────────────────
+    -- Igual que NOVONET: COUNT(DISTINCT id del lado CRM) + excluye
+    -- DUPLICADO / REMARKETING / REGULARIZACION + excluye el origen que no
+    -- suma a reporte.
+    -- COUNT(DISTINCT mv.id_crm) y NO COUNT(*): la MV hace FULL OUTER JOIN
+    -- contra vw_jotform_velsa_netlife_completo, que tiene VARIAS filas por
+    -- negociación cuando el cliente contrató más de un servicio. Con COUNT(*)
+    -- ese lead se contaba 2, 3 o 5 veces. Novonet ya usaba COUNT(DISTINCT b_id)
+    -- por exactamente este motivo.
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
       AND ${esLeadTotalExpr('mv.etapa_crm')}
+      AND ${sumaReporteExpr('mv.origen', 'UPPER(TRIM(mv.etapa_crm))')}
     ) AS leads_totales,
-    -- FIX (2026-06-23): antes este FILTER tenia una ventana de fecha MAS AMPLIA
-    -- (fecha_creacion_crm OR fecha_registro_jotform) que la de "leads_totales"
-    -- (que solo usa fecha_creacion_crm), permitiendo gestionables > leads_totales
-    -- (imposible, ya que gestionables debe ser subconjunto de leads_totales).
-    -- Ahora usa la MISMA base de fecha que leads_totales.
-    COUNT(*) FILTER (
-      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    -- ── GESTIONABLES ─────────────────────────────────────────────────────
+    -- Misma base de fecha que leads_totales para que sea siempre un
+    -- subconjunto suyo (idéntico a Novonet).
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
       AND ${esGestionableExpr('mv.etapa_crm')}
+      AND ${sumaReporteExpr('mv.origen', 'UPPER(TRIM(mv.etapa_crm))')}
     ) AS gestionables,
-    COUNT(*) FILTER (
-      WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
-      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE UPPER(TRIM(mv.etapa_crm)) = 'VENTA SUBIDA'
+      AND ${CRM_DATE} BETWEEN $1::date AND $2::date
     ) AS ventas_crm,
-    COUNT(*) FILTER (
-      WHERE UPPER(mv.etapa_crm) = 'VENTA SUBIDA'
-      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-      AND mv.fecha_creacion_crm::date = mv.fecha_modificacion_crm::date
+    -- ── VENTAS DEL DÍA ───────────────────────────────────────────────────
+    -- Criterio NOVONET: lead en VENTA SUBIDA cuya fecha de creación en el CRM
+    -- coincide con la fecha de registro en Jotform.
+    -- Antes Velsa comparaba fecha_creacion_crm = fecha_modificacion_crm, que es
+    -- otra cosa (mide leads que no se volvieron a tocar, no ventas del día).
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE UPPER(TRIM(mv.etapa_crm)) = 'VENTA SUBIDA'
+      AND ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${CRM_DATE} = ${JF_DATE}
     ) AS ventas_del_dia,
-    COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_reales,
+    COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date) AS ingresos_reales,
     COUNT(*) FILTER (
-      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-      AND mv.fecha_creacion_crm::date = (mv.fecha_registro_jotform - INTERVAL '5 hours')::date
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${CRM_DATE} = ${JF_DATE}
     ) AS ingresos_del_dia,
+    -- POR REGULARIZAR (existe en Novonet, faltaba en Velsa)
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND UPPER(TRIM(mv.estado_regularizacion)) = 'POR REGULARIZAR'
+    ) AS por_regularizar,
+    -- ACTIVAS por FECHA DE REGISTRO JOTFORM (equivalente a "activas" de Novonet;
+    -- distinto de real_mes, que va por fecha de activación).
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND mv.estado_venta = ${ESTADO_ACTIVO}
+    ) AS activas,
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND mv.estado_venta = ${ESTADO_ACTIVO}
+    ) AS total_activas_calculada,
     -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ────
     -- real_mes   = ACTIVAS TOTALES: todo lo activado en el rango
     -- activa_mes = de esas, las que ADEMÁS se REGISTRARON EN JOTFORM dentro
@@ -186,29 +235,75 @@ const queryKPI = (columna, filters) => `
     ) AS venta_servicio,
     COUNT(*) FILTER (
       WHERE ${esDescarteExpr('mv.etapa_crm')}
-      AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      AND ${CRM_DATE} BETWEEN $1::date AND $2::date
     ) AS descarte_count,
     COUNT(*) FILTER (
       WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%'
-      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+      AND ${JF_DATE} BETWEEN $1::date AND $2::date
     ) AS tarjeta_credito,
     COUNT(*) FILTER (
       WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%'
       AND mv.estado_venta = ${ESTADO_ACTIVO}
-      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+      AND ${JF_DATE} BETWEEN $1::date AND $2::date
     ) AS tercera_edad,
+    -- REGULARIZACION: criterio NOVONET — excluye los estados que no aplican.
+    -- Antes Velsa contaba cualquier '%REGULARIZAR%' sin excluirlos.
     COUNT(*) FILTER (
-      WHERE mv.estado_regularizacion ILIKE '%REGULARIZAR%'
-      AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-    ) AS regularizacion
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND UPPER(TRIM(mv.estado_venta)) NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
+      AND UPPER(TRIM(mv.estado_regularizacion)) = 'POR REGULARIZAR'
+    ) AS regularizacion,
+
+    -- ── PORCENTAJES ──────────────────────────────────────────────────────
+    -- Se calculan en SQL con las MISMAS fórmulas que Novonet. Antes se
+    -- calculaban en JS (mergeBacklog) con denominadores distintos, y por eso
+    -- los % de Velsa nunca cuadraban con los de Novonet.
+    ROUND( COALESCE(
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
+      / NULLIF(COUNT(*) FILTER (
+          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr('mv.etapa_crm')}
+        ), 0)
+    , 0) * 100, 2) AS efectividad_realz,
+
+    (COUNT(*) FILTER (
+      WHERE ${esDescarteExpr('mv.etapa_crm')}
+      AND ${CRM_DATE} BETWEEN $1::date AND $2::date
+    )::numeric / NULLIF(${GEST_AMPLIO}, 0) * 100)::numeric(10,2) AS descarte,
+
+    ROUND( COALESCE(
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
+      / NULLIF(${GEST_AMPLIO}, 0)
+    , 0) * 100, 2) AS efectividad_real,
+
+    ROUND( COALESCE(
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
+      / NULLIF(COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date), 0)
+    , 0) * 100, 2) AS tasa_instalacion,
+
+    ROUND( COALESCE(
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
+      / NULLIF(${GEST_AMPLIO}, 0)
+    , 0) * 100, 2) AS efectividad_activas_vs_pauta,
+
+    ROUND( COALESCE(
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND UPPER(TRIM(mv.estado_venta)) NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
+      )::numeric
+      / NULLIF(COUNT(*) FILTER (
+          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr('mv.etapa_crm')}
+        ), 0)
+    , 0) * 100, 2) AS eficiencia
   FROM ${MV}
   ${JOIN_JF_VELSA_MV}
   WHERE (
-    mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-    OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+    ${CRM_DATE} BETWEEN $1::date AND $2::date
+    OR ${JF_DATE} BETWEEN $1::date AND $2::date
     OR mv.fecha_activacion::date BETWEEN $1::date AND $2::date
   ) ${filters}
-  GROUP BY 1 ORDER BY ingresos_reales DESC, ventas_crm DESC
+  GROUP BY 1 ORDER BY gestionables DESC
 `;
 
 // ── Query Backlog — solo usa $1 (desde) ──────────────────────────────────────
@@ -229,29 +324,28 @@ const queryBacklog = (columna, filters) => `
 // ── Merge KPI + Backlog + calcular campos derivados ──────────────────────────
 function mergeBacklog(kpiRows, backlogRows) {
   return kpiRows.map(r => {
-    const gest  = Number(r.gestionables   || 0);
     const jot   = Number(r.ingresos_reales || 0);
     const activ = Number(r.real_mes       || 0);
-    const desc  = Number(r.descarte_count || 0);
-    const leads = Number(r.leads_totales  || 0);
     const vdia  = Number(r.ventas_del_dia || 0);
     // BACKLOG = ACTIVAS TOTALES − ACTIVA MES. Antes venía de una consulta
     // aparte que filtraba por fecha de registro Jotform previa al período,
     // criterio distinto que hacía que Mes + Backlog no cuadrara con Totales.
     const bk    = Math.max(0, activ - Number(r.activa_mes || 0));
+    // Los PORCENTAJES ya NO se calculan aquí: vienen del SQL con las mismas
+    // fórmulas que Novonet. Recalcularlos en JS con otros denominadores era la
+    // causa de que Velsa y Novonet nunca cuadraran.
     return {
       ...r,
-      backlog:                    bk,
-      // TOTALES ya es "activ": no se le suma el backlog, que está DENTRO de él.
-      // Antes hacía activ + bk y contaba el backlog dos veces.
-      total_activas_calculada:    activ,
+      backlog:                      bk,
       // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
-      venta_seguimiento:          Math.max(0, jot - vdia),
-      descarte:                   gest  > 0 ? parseFloat(((desc  / gest)  * 100).toFixed(1)) : 0,
-      efectividad_real:           gest  > 0 ? parseFloat(((jot   / gest)  * 100).toFixed(1)) : 0,
-      tasa_instalacion:           jot   > 0 ? parseFloat(((activ / jot)   * 100).toFixed(1)) : 0,
-      eficiencia:                 leads > 0 ? parseFloat(((activ / leads) * 100).toFixed(1)) : 0,
-      efectividad_activas_vs_pauta: gest > 0 ? parseFloat(((activ / gest) * 100).toFixed(1)) : 0,
+      venta_seguimiento:            Math.max(0, jot - vdia),
+      descarte:                     Number(r.descarte                     || 0),
+      efectividad_real:             Number(r.efectividad_real             || 0),
+      efectividad_realz:            Number(r.efectividad_realz            || 0),
+      tasa_instalacion:             Number(r.tasa_instalacion             || 0),
+      eficiencia:                   Number(r.eficiencia                   || 0),
+      efectividad_activas_vs_pauta: Number(r.efectividad_activas_vs_pauta || 0),
+      total_activas_calculada:      Number(r.total_activas_calculada      || 0),
     };
   });
 }

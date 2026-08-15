@@ -239,11 +239,13 @@ async function remove(req, res) {
     try { if (bm) await bm.disconnect(id, { wipeAuth: true }) }
     catch (e) { console.warn('[wa_lines.remove] No se pudo desconectar limpio:', e.message) }
 
-    // Si la línea se da de baja porque el número se quemó, su IP pudo quedar
-    // marcada por WhatsApp. Se retira para no heredarla al siguiente número.
+    // La IP solo se retira si la línea venía de un bloqueo real ('error').
+    // Una baja administrativa (cambio de asesor, reorganización) no ensucia la
+    // IP: su puerto simplemente queda libre y lo reutilizará la próxima línea,
+    // porque el pool solo cuenta las líneas activas (deleted_at IS NULL).
     const cfg = owned.proxy_config || {}
-    if (owned.proxy_enabled && cfg.host && cfg.port) {
-      await quemarPuerto(cfg.host, cfg.port, id, 'baja_de_linea')
+    if (owned.proxy_enabled && cfg.host && cfg.port && owned.status === 'error') {
+      await quemarPuerto(cfg.host, cfg.port, id, 'baja_tras_bloqueo')
     }
 
     await query(

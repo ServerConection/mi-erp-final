@@ -203,14 +203,23 @@ class BaileysManager {
       console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}" → limpiando sesión para generar QR nuevo`)
       this._wipeAuth(lineId)
 
-      // Re-vinculación: se va a enlazar un número nuevo (o el mismo tras un
-      // bloqueo). Es el ÚNICO momento seguro para cambiar de IP — a mitad de
-      // sesión no, porque reconectar desde otra IP parece robo de sesión.
-      // La IP anterior se retira: pudo quedar marcada por WhatsApp.
-      try {
-        await rotarProxyDeLinea(lineId, estadoPrevio === 'logged_out' ? 'logged_out' : 'error')
-      } catch (e) {
-        console.warn(`[Line ${lineId}] No se pudo rotar la IP:`, e.message)
+      // Cambio de IP SOLO si la línea quedó en 'error' (bloqueo real de
+      // WhatsApp: 403 o reintentos agotados). Ahí la IP pudo quedar marcada y
+      // conviene retirarla y tomar una limpia.
+      //
+      // En 'logged_out' NO se toca la IP: ese estado es rutinario (alguien
+      // cerró sesión desde el celular o WhatsApp la expiró) y la IP no tuvo
+      // nada que ver. Quemarla desperdiciaría el pool — el de Ecuador tiene
+      // solo 30 IPs — y haría que el número reaparezca desde otra red sin
+      // motivo, que es justo lo que se quiere evitar.
+      if (estadoPrevio === 'error') {
+        try {
+          await rotarProxyDeLinea(lineId, 'error')
+        } catch (e) {
+          console.warn(`[Line ${lineId}] No se pudo rotar la IP:`, e.message)
+        }
+      } else {
+        console.log(`[Line ${lineId}] Sesión cerrada: se conserva la misma IP (no se quema el pool)`)
       }
     }
 

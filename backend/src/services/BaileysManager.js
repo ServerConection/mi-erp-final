@@ -12,6 +12,7 @@ const fs = require('fs')
 const pino = require('pino')
 const { query } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
+const { rotarProxyDeLinea, quemarPuerto } = require('./proxyPool.service')
 
 // WA_AUTH_DIR: variable usada en Render (disco persistente /var/data/auth_sessions)
 const AUTH_BASE = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions')
@@ -201,6 +202,16 @@ class BaileysManager {
     if (estadoPrevio === 'logged_out' || estadoPrevio === 'error') {
       console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}" → limpiando sesión para generar QR nuevo`)
       this._wipeAuth(lineId)
+
+      // Re-vinculación: se va a enlazar un número nuevo (o el mismo tras un
+      // bloqueo). Es el ÚNICO momento seguro para cambiar de IP — a mitad de
+      // sesión no, porque reconectar desde otra IP parece robo de sesión.
+      // La IP anterior se retira: pudo quedar marcada por WhatsApp.
+      try {
+        await rotarProxyDeLinea(lineId, estadoPrevio === 'logged_out' ? 'logged_out' : 'error')
+      } catch (e) {
+        console.warn(`[Line ${lineId}] No se pudo rotar la IP:`, e.message)
+      }
     }
 
     const authDir = path.join(AUTH_BASE, lineId)
@@ -367,6 +378,23 @@ class BaileysManager {
           this.io.emit('line:status', { lineId, status: st })
           this.io.emit(`line:status:${lineId}`, { lineId, status: st })
           if (statusCode === 403) console.warn(`[Line ${lineId}] ⛔ Código 403: número restringido por WhatsApp. Reconexión detenida — revisa el número.`)
+
+          // El número quedó bloqueado o con la sesión cerrada por WhatsApp.
+          // Se retira su IP del pool: reasignarla a otro número le heredaría
+          // la reputación dañada. Solo aplica al 403 (restricción real de
+          // WhatsApp); un logged_out puede ser alguien cerrando sesión desde
+          // el celular, y ahí la IP no tiene la culpa.
+          if (statusCode === 403) {
+            try {
+              const { rows } = await query('SELECT proxy_enabled, proxy_config FROM lines WHERE id = $1', [lineId])
+              const cfg = rows[0]?.proxy_config || {}
+              if (rows[0]?.proxy_enabled && cfg.host && cfg.port) {
+                await quemarPuerto(cfg.host, cfg.port, lineId, 'bloqueado_403')
+              }
+            } catch (e) {
+              console.warn(`[Line ${lineId}] No se pudo retirar la IP:`, e.message)
+            }
+          }
           return
         }
 

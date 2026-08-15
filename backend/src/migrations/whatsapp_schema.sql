@@ -264,6 +264,21 @@ CREATE TABLE IF NOT EXISTS conversation_reads (
   PRIMARY KEY (conversation_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_conv_reads_user ON conversation_reads(user_id);
+
+-- Puertos de proxy retirados / quemados (2026-08)
+-- Cada puerto sticky del proveedor equivale a una IP fija. Si un número fue
+-- bloqueado por WhatsApp usando cierta IP, esa IP queda marcada y NO se vuelve
+-- a asignar a otro número: heredar una IP contaminada arrastra el problema al
+-- número nuevo. Se registra el motivo para poder auditarlo después.
+CREATE TABLE IF NOT EXISTS proxy_puertos_quemados (
+  host        VARCHAR(120) NOT NULL,
+  puerto      INTEGER      NOT NULL,
+  line_id     UUID,
+  motivo      VARCHAR(40),          -- logged_out | bloqueado_403 | manual
+  quemado_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (host, puerto)
+);
+CREATE INDEX IF NOT EXISTS idx_proxy_quemados_host ON proxy_puertos_quemados(host);
 -- Índice para que el conteo de no leídos no recorra la tabla de mensajes
 CREATE INDEX IF NOT EXISTS idx_messages_conv_dir_ts
   ON messages(conversation_id, direction, timestamp DESC);

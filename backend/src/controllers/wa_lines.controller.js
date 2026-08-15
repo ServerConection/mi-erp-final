@@ -124,11 +124,10 @@ const MAX_LINEAS_POR_USUARIO = 1
 // Cada línea recibe un puerto propio → IP propia. Así un bloqueo en una línea
 // no arrastra a las demás. Si no hay credenciales configuradas, no se asigna
 // proxy y todo sigue funcionando igual que antes.
-const PROXY_HOST      = process.env.PROXY_HOST      || 'gw.dataimpulse.com'
-const PROXY_USER      = process.env.PROXY_USER      || ''
-const PROXY_PASS      = process.env.PROXY_PASS      || ''
-const PROXY_COUNTRY   = process.env.PROXY_COUNTRY   || 'ec'
-const PROXY_BASE_PORT = parseInt(process.env.PROXY_STICKY_BASE_PORT || '10000', 10)
+// La asignación de puertos/IPs vive en proxyPool.service (la comparten este
+// controlador y BaileysManager: evita huecos, salta IPs quemadas y rota al
+// re-vincular).
+const { construirProxyAutomatico, quemarPuerto } = require('../services/proxyPool.service')
 
 // Qué líneas reciben proxy automático, por su NOMBRE.
 // Por defecto solo las de envío masivo (ENVIO_1, ENVIO_2, ...), que son las que
@@ -146,32 +145,6 @@ function lineaLlevaProxy(nombre) {
   } catch (e) {
     console.warn(`[wa_lines] PROXY_PATRON_LINEA inválido ("${PROXY_PATRON_LINEA}"):`, e.message)
     return false   // ante un patrón mal escrito, no asignar proxy
-  }
-}
-
-async function construirProxyAutomatico() {
-  if (!PROXY_USER || !PROXY_PASS) return null   // sin credenciales → sin proxy
-  try {
-    // Siguiente puerto libre: el mayor ya usado + 1 (solo puertos numéricos)
-    const { rows } = await query(`
-      SELECT COALESCE(MAX((proxy_config->>'port')::int), $1 - 1) AS maxport
-      FROM lines
-      WHERE proxy_config->>'host' = $2
-        AND proxy_config->>'port' ~ '^[0-9]+$'
-    `, [PROXY_BASE_PORT, PROXY_HOST])
-
-    const port = (rows[0]?.maxport ?? (PROXY_BASE_PORT - 1)) + 1
-    return {
-      protocol: 'http',
-      host: PROXY_HOST,
-      port,
-      // Formato DataImpulse para fijar país: usuario__cr.ec
-      username: `${PROXY_USER}__cr.${PROXY_COUNTRY}`,
-      password: PROXY_PASS,
-    }
-  } catch (e) {
-    console.warn('[wa_lines] No se pudo asignar proxy automático:', e.message)
-    return null
   }
 }
 
@@ -265,6 +238,13 @@ async function remove(req, res) {
     // número quede realmente desvinculado (y no reviva en el próximo arranque).
     try { if (bm) await bm.disconnect(id, { wipeAuth: true }) }
     catch (e) { console.warn('[wa_lines.remove] No se pudo desconectar limpio:', e.message) }
+
+    // Si la línea se da de baja porque el número se quemó, su IP pudo quedar
+    // marcada por WhatsApp. Se retira para no heredarla al siguiente número.
+    const cfg = owned.proxy_config || {}
+    if (owned.proxy_enabled && cfg.host && cfg.port) {
+      await quemarPuerto(cfg.host, cfg.port, id, 'baja_de_linea')
+    }
 
     await query(
       `UPDATE lines SET deleted_at = NOW(), status = 'deleted', updated_at = NOW() WHERE id = $1`,

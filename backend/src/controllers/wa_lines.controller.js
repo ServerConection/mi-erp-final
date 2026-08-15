@@ -127,7 +127,7 @@ const MAX_LINEAS_POR_USUARIO = 1
 // La asignación de puertos/IPs vive en proxyPool.service (la comparten este
 // controlador y BaileysManager: evita huecos, salta IPs quemadas y rota al
 // re-vincular).
-const { construirProxyAutomatico, quemarPuerto } = require('../services/proxyPool.service')
+const { construirProxyAutomatico } = require('../services/proxyPool.service')
 
 // Qué líneas reciben proxy automático, por su NOMBRE.
 // Por defecto solo las de envío masivo (ENVIO_1, ENVIO_2, ...), que son las que
@@ -166,32 +166,92 @@ async function create(req, res) {
     }
     const { name, bot_id, proxy_enabled, proxy_config } = req.body
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
+    const nombre = String(name).trim()
+
+    // El nombre de la línea es un PUESTO FIJO, no un número: "ENVIO_4" existe
+    // siempre, aunque el número que tenga vinculado cambie. Si ya hay una línea
+    // activa con ese nombre, no se duplica.
+    const activa = await query(
+      `SELECT id FROM lines WHERE LOWER(name) = LOWER($1) AND deleted_at IS NULL LIMIT 1`,
+      [nombre]
+    )
+    if (activa.rows.length) {
+      return res.status(409).json({
+        success: false,
+        error: `Ya existe una línea llamada "${nombre}". Si el número se bloqueó, no la elimines: entra a esa misma línea y dale "Conectar QR" para vincular el número nuevo.`,
+      })
+    }
+
+    // Si existe una dada de baja con ese mismo nombre, se REACTIVA esa fila en
+    // lugar de crear otra. Es clave: las campañas y el historial de chats
+    // apuntan al id de la línea. Crear una fila nueva dejaría las campañas
+    // amarradas a la vieja, fallando con "línea no conectada".
+    const previa = await query(
+      `SELECT * FROM lines WHERE LOWER(name) = LOWER($1) AND deleted_at IS NOT NULL
+       ORDER BY updated_at DESC LIMIT 1`,
+      [nombre]
+    )
 
     // Proxy automático: solo si no mandaron uno explícito Y el nombre de la
     // línea coincide con el patrón configurado (por defecto, las ENVIO_*).
     let cfgProxy = proxy_config
     let usaProxy = proxy_enabled || false
+
+    // Al reactivar se conserva la misma IP, salvo que haya sido retirada por un
+    // bloqueo real de WhatsApp (403). Así no se gasta pool sin necesidad.
+    if ((!cfgProxy || Object.keys(cfgProxy).length === 0) && previa.rows.length) {
+      const anterior = previa.rows[0].proxy_config || {}
+      if (anterior.host && anterior.port) {
+        const quemada = await query(
+          'SELECT 1 FROM proxy_puertos_quemados WHERE host = $1 AND puerto = $2',
+          [anterior.host, parseInt(anterior.port, 10)]
+        )
+        if (!quemada.rows.length) {
+          cfgProxy = anterior
+          usaProxy = true
+        } else {
+          console.log(`[wa_lines] "${nombre}": su IP anterior (${anterior.port}) estaba retirada, se asignará otra`)
+        }
+      }
+    }
+
     if (!cfgProxy || Object.keys(cfgProxy).length === 0) {
-      if (lineaLlevaProxy(name)) {
+      if (lineaLlevaProxy(nombre)) {
         const auto = await construirProxyAutomatico()
         if (auto) {
           cfgProxy = auto
           usaProxy = true
-          console.log(`[wa_lines] Línea "${name}" → proxy automático ${auto.host}:${auto.port}`)
+          console.log(`[wa_lines] Línea "${nombre}" → proxy automático ${auto.host}:${auto.port}`)
         } else {
-          console.log(`[wa_lines] Línea "${name}" coincide con el patrón pero no hay credenciales de proxy (PROXY_USER/PROXY_PASS)`)
+          console.log(`[wa_lines] Línea "${nombre}" coincide con el patrón pero no hay credenciales de proxy (PROXY_USER/PROXY_PASS)`)
         }
       } else {
-        console.log(`[wa_lines] Línea "${name}" sin proxy (no coincide con ${PROXY_PATRON_LINEA})`)
+        console.log(`[wa_lines] Línea "${nombre}" sin proxy (no coincide con ${PROXY_PATRON_LINEA})`)
       }
     }
 
-    const result = await query(
-      `INSERT INTO lines (name, bot_id, proxy_enabled, proxy_config, created_by)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [name, bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), req.user.id]
-    )
-    res.status(201).json({ success: true, data: result.rows[0] })
+    let result
+    if (previa.rows.length) {
+      result = await query(
+        `UPDATE lines SET
+           deleted_at = NULL,
+           status = 'disconnected',
+           bot_id = $1,
+           proxy_enabled = $2,
+           proxy_config = $3,
+           updated_at = NOW()
+         WHERE id = $4 RETURNING *`,
+        [bot_id || previa.rows[0].bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), previa.rows[0].id]
+      )
+      console.log(`[wa_lines] Línea "${nombre}" reactivada (id ${previa.rows[0].id}) — campañas e historial intactos`)
+    } else {
+      result = await query(
+        `INSERT INTO lines (name, bot_id, proxy_enabled, proxy_config, created_by)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [nombre, bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), req.user.id]
+      )
+    }
+    res.status(201).json({ success: true, data: sanitizarLinea(result.rows[0]) })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
@@ -239,14 +299,10 @@ async function remove(req, res) {
     try { if (bm) await bm.disconnect(id, { wipeAuth: true }) }
     catch (e) { console.warn('[wa_lines.remove] No se pudo desconectar limpio:', e.message) }
 
-    // La IP solo se retira si la línea venía de un bloqueo real ('error').
-    // Una baja administrativa (cambio de asesor, reorganización) no ensucia la
-    // IP: su puerto simplemente queda libre y lo reutilizará la próxima línea,
-    // porque el pool solo cuenta las líneas activas (deleted_at IS NULL).
-    const cfg = owned.proxy_config || {}
-    if (owned.proxy_enabled && cfg.host && cfg.port && owned.status === 'error') {
-      await quemarPuerto(cfg.host, cfg.port, id, 'baja_tras_bloqueo')
-    }
+    // Dar de baja NO retira la IP: en esta operación el nombre es un puesto fijo
+    // (ENVIO_4 se vuelve a crear con el mismo número o con otro), así que la
+    // línea suele reactivarse y conviene que conserve su IP. Las IPs solo se
+    // retiran cuando WhatsApp bloquea de verdad (código 403, en BaileysManager).
 
     await query(
       `UPDATE lines SET deleted_at = NOW(), status = 'deleted', updated_at = NOW() WHERE id = $1`,

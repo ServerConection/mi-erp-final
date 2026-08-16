@@ -1,11 +1,327 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API = import.meta.env.VITE_API_URL;
+
+// ── Documentos de respaldo de la venta ───────────────────────────────────────
+// Son los CUATRO que carga el asesor en Nueva Venta (sección 8). Antes esta
+// pantalla detectaba los documentos con `field.startsWith("foto_")`, y por eso
+// "archivo_resumen" — que no empieza por "foto_" — se caía de la lista: en
+// Backoffice solo aparecían 3 de los 4 documentos que sí existían en la venta.
+// Con una lista explícita el criterio deja de depender del nombre del campo.
+const CAMPOS_DOCUMENTO = [
+  "foto_cedula_frontal",
+  "foto_cedula_trasera",
+  "foto_carnet",
+  "archivo_resumen",
+];
+const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 
 const CAMPOS_FECHA = [
   "fecha_nacimiento", "fecha_regularizacion_atc", "fecha_agenda",
   "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
 ];
+
+// ── Carga de un documento protegido ──────────────────────────────────────────
+// En la base de datos el documento se guarda como una RUTA interna
+// ("/api/envios-ventas/archivo/<carpeta>/<archivo>"), no como una imagen. Esa
+// ruta exige cabecera Authorization, y una etiqueta <img src="..."> NO envía el
+// token — por eso las fotos aquí salían rotas: el navegador pedía la imagen sin
+// credenciales y recibía un 401.
+//
+// La forma correcta es traerla con fetch() + token, convertirla en blob y usar
+// una object URL. El blob se libera al desmontar para no fugar memoria.
+function useDocumentoProtegido(ruta) {
+  const [estado, setEstado] = useState({ cargando: false, url: null, error: null, esPdf: false });
+
+  useEffect(() => {
+    if (!ruta) {
+      setEstado({ cargando: false, url: null, error: null, esPdf: false });
+      return;
+    }
+    // Valores que ya son directamente mostrables (recién subido en esta sesión,
+    // o registros antiguos que guardaron una URL absoluta).
+    if (/^(data:|blob:|https?:)/i.test(ruta)) {
+      setEstado({ cargando: false, url: ruta, error: null, esPdf: /pdf/i.test(ruta.slice(0, 60)) });
+      return;
+    }
+
+    let cancelado = false;
+    let objectUrl = null;
+    setEstado({ cargando: true, url: null, error: null, esPdf: false });
+
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const r = await fetch(`${API}${ruta}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) {
+          const detalle = await r.json().catch(() => ({}));
+          throw new Error(
+            r.status === 404 ? "El documento ya no está en el servidor de archivos."
+            : r.status === 503 ? "El servidor de documentos no está disponible ahora mismo."
+            : detalle.error || `No se pudo cargar el documento (HTTP ${r.status}).`
+          );
+        }
+        const blob = await r.blob();
+        if (cancelado) return;
+        objectUrl = URL.createObjectURL(blob);
+        setEstado({ cargando: false, url: objectUrl, error: null, esPdf: blob.type === "application/pdf" });
+      } catch (e) {
+        if (!cancelado) setEstado({ cargando: false, url: null, error: e.message, esPdf: false });
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [ruta]);
+
+  return estado;
+}
+
+// ── Visor a pantalla completa ────────────────────────────────────────────────
+// La miniatura usaba objectFit:"cover" dentro de un marco 16/9: recortaba la
+// foto por los lados, que en una cédula es justo donde está el número. Ahora la
+// miniatura usa "contain" (se ve entera) y al hacer clic se abre esto, que
+// permite acercar, rotar y descargar.
+function VisorDocumento({ url, titulo, esPdf, onCerrar }) {
+  const [zoom, setZoom] = useState(1);
+  const [giro, setGiro] = useState(0);
+
+  useEffect(() => {
+    const onTecla = (e) => {
+      if (e.key === "Escape") onCerrar();
+      if (e.key === "+" || e.key === "=") setZoom((z) => Math.min(z + 0.25, 6));
+      if (e.key === "-") setZoom((z) => Math.max(z - 0.25, 0.25));
+      if (e.key.toLowerCase() === "r") setGiro((g) => (g + 90) % 360);
+    };
+    window.addEventListener("keydown", onTecla);
+    // Bloquea el scroll del fondo mientras el visor está abierto.
+    const overflowPrevio = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onTecla);
+      document.body.style.overflow = overflowPrevio;
+    };
+  }, [onCerrar]);
+
+  const btn = {
+    background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.25)",
+    color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13,
+    fontWeight: 700, cursor: "pointer", lineHeight: 1,
+  };
+
+  return (
+    <div
+      onClick={onCerrar}
+      style={{
+        position: "fixed", inset: 0, zIndex: 4000, background: "rgba(2,6,23,.94)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      {/* Barra de herramientas */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute", top: 0, left: 0, right: 0, padding: "12px 16px",
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          background: "linear-gradient(rgba(2,6,23,.85), transparent)",
+        }}
+      >
+        <span style={{ color: "#fff", fontWeight: 800, fontSize: 13, marginRight: "auto" }}>{titulo}</span>
+
+        {!esPdf && (
+          <>
+            <button style={btn} onClick={() => setZoom((z) => Math.max(z - 0.25, 0.25))} title="Alejar (tecla -)">－</button>
+            <span style={{ color: "#cbd5e1", fontSize: 12, minWidth: 46, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button style={btn} onClick={() => setZoom((z) => Math.min(z + 0.25, 6))} title="Acercar (tecla +)">＋</button>
+            <button style={btn} onClick={() => { setZoom(1); setGiro(0); }} title="Restablecer">Ajustar</button>
+            <button style={btn} onClick={() => setGiro((g) => (g + 90) % 360)} title="Rotar (tecla R)">⟳ Rotar</button>
+          </>
+        )}
+
+        <a href={url} download={`${titulo}`} style={{ ...btn, textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+          ⭳ Descargar
+        </a>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+          ⧉ Nueva pestaña
+        </a>
+        <button style={{ ...btn, background: "rgba(239,68,68,.85)", borderColor: "transparent" }} onClick={onCerrar}>
+          ✕ Cerrar
+        </button>
+      </div>
+
+      {/* Contenido */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "94vw", maxHeight: "82vh", overflow: "auto", marginTop: 40 }}
+      >
+        {esPdf ? (
+          <iframe
+            title={titulo}
+            src={url}
+            style={{ width: "88vw", height: "80vh", border: "none", borderRadius: 10, background: "#fff" }}
+          />
+        ) : (
+          <img
+            src={url}
+            alt={titulo}
+            style={{
+              display: "block",
+              maxWidth: zoom === 1 ? "94vw" : "none",
+              maxHeight: zoom === 1 ? "80vh" : "none",
+              transform: `scale(${zoom}) rotate(${giro}deg)`,
+              transformOrigin: "center center",
+              transition: "transform .15s ease-out",
+              // "contain" real: nunca recorta la imagen.
+              objectFit: "contain",
+            }}
+          />
+        )}
+      </div>
+
+      <div style={{ position: "absolute", bottom: 14, color: "#94a3b8", fontSize: 11 }}>
+        Esc para cerrar · + / − para acercar · R para rotar
+      </div>
+    </div>
+  );
+}
+
+// ── Campo de documento dentro del detalle ────────────────────────────────────
+function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert }) {
+  const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
+  const [abierto, setAbierto] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const inputRef = useRef(null);
+
+  const MAX_MB = 15;
+
+  const subir = async (file) => {
+    if (!file) return;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      onAlert({ type: "error", msg: `El archivo pesa ${(file.size / 1048576).toFixed(1)} MB y el máximo es ${MAX_MB} MB.` });
+      return;
+    }
+    setSubiendo(true);
+    try {
+      // ANTES: el archivo se leía con FileReader y se guardaba como data URL
+      // (base64) DENTRO de la columna de la tabla. Eso hinchaba la fila hasta
+      // varios MB por registro, dejaba documentos de identidad sueltos en la
+      // base de datos y se saltaba por completo el servidor de almacenamiento
+      // — es decir, el documento del Backoffice terminaba en un sitio distinto
+      // al del asesor. Ahora usa el mismo endpoint que Nueva Venta y guarda
+      // únicamente la ruta.
+      const token = localStorage.getItem("token");
+      const fd = new FormData();
+      fd.append("archivo", file);
+      fd.append("numero_identificacion", numeroIdentificacion || "");
+
+      const r = await fetch(`${API}/api/envios-ventas/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const d = await r.json().catch(() => ({}));
+
+      if (r.ok && d.success) {
+        onCambio(d.url);
+        onAlert({ type: "success", msg: "Documento reemplazado. Recuerda pulsar GUARDAR." });
+      } else {
+        onAlert({ type: "error", msg: d.error || `No se pudo subir el documento (HTTP ${r.status}).` });
+      }
+    } catch {
+      onAlert({ type: "error", msg: "Error de conexión al subir el documento." });
+    } finally {
+      setSubiendo(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const marco = {
+    borderRadius: 8, border: "1px solid #dbe4f0", background: "#f8fafc",
+    height: 150, display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", position: "relative",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {valor ? (
+        <div style={marco}>
+          {cargando && <span style={{ fontSize: 11, color: "#64748b" }}>Cargando documento…</span>}
+
+          {!cargando && error && (
+            <span style={{ fontSize: 11, color: "#b91c1c", padding: 10, textAlign: "center" }}>{error}</span>
+          )}
+
+          {!cargando && url && esPdf && (
+            <button
+              type="button"
+              onClick={() => setAbierto(true)}
+              style={{ background: "none", border: "none", cursor: "pointer", textAlign: "center", color: "#0ea5e9", fontWeight: 800, fontSize: 12 }}
+            >
+              <div style={{ fontSize: 34 }}>📄</div>
+              Ver PDF completo
+            </button>
+          )}
+
+          {!cargando && url && !esPdf && (
+            <img
+              src={url}
+              alt={etiqueta}
+              onClick={() => setAbierto(true)}
+              title="Clic para ver completa"
+              style={{
+                width: "100%", height: "100%",
+                // "contain" en vez de "cover": la miniatura ya no recorta los
+                // bordes de la cédula.
+                objectFit: "contain",
+                cursor: "zoom-in", background: "#fff",
+              }}
+            />
+          )}
+        </div>
+      ) : (
+        <div style={{ ...marco, borderStyle: "dashed" }}>
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>Sin documento cargado</span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {valor && url && (
+          <button
+            type="button"
+            onClick={() => setAbierto(true)}
+            style={{ fontSize: 11, fontWeight: 800, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}
+          >
+            🔍 Ver completo
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={subiendo}
+          onClick={() => inputRef.current?.click()}
+          style={{ fontSize: 11, fontWeight: 700, color: "#475569", background: "#fff", border: "1px solid #dbe4f0", borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}
+        >
+          {subiendo ? "Subiendo…" : valor ? "Reemplazar" : "Subir documento"}
+        </button>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        style={{ display: "none" }}
+        onChange={(e) => subir(e.target.files?.[0])}
+      />
+
+      {abierto && url && (
+        <VisorDocumento url={url} titulo={etiqueta} esPdf={esPdf} onCerrar={() => setAbierto(false)} />
+      )}
+    </div>
+  );
+}
 
 function normalizarRegistro(row) {
   const out = {};
@@ -175,6 +491,7 @@ const initialDetail = {
   foto_cedula_frontal: "",
   foto_cedula_trasera: "",
   foto_carnet: "",
+  archivo_resumen: "",
 };
 
 function valueForField(row, key) {
@@ -343,7 +660,7 @@ export default function VistaBackoffice() {
     "netlife_estatus_real","calidad_venta_analista","venta_efectiva","auditoria_documentos","auditado_por",
     "inconsistencia_documental","observacion_auditoria","errores_telcos","estatus_regularizacion","detalle_regularizacion",
     "fecha_regularizacion_atc","mes_regularizacion","novedades_atc","observacion_venta_original","observacion_gestion_cobranza",
-    "foto_cedula_frontal","foto_cedula_trasera","foto_carnet"
+    ...CAMPOS_DOCUMENTO
   ], []);
 
   // ── Agrupación del detalle en secciones ────────────────────────────────
@@ -364,7 +681,7 @@ export default function VistaBackoffice() {
       { titulo: "Auditoría",      campos: ["calidad_venta_analista","venta_efectiva","auditoria_documentos","auditado_por","inconsistencia_documental","observacion_auditoria","errores_telcos"] },
       { titulo: "Regularización", campos: ["estatus_regularizacion","detalle_regularizacion","fecha_regularizacion_atc","mes_regularizacion","novedades_atc"] },
       { titulo: "Observaciones",  campos: ["observacion_venta_original","observacion_gestion_cobranza"] },
-      { titulo: "Documentos",     campos: ["foto_cedula_frontal","foto_cedula_trasera","foto_carnet"] },
+      { titulo: "Documentos",     campos: [...CAMPOS_DOCUMENTO] },
     ];
     const asignados = new Set(grupos.flatMap((g) => g.campos));
     const sobrantes = editableFields.filter((f) => !asignados.has(f));
@@ -386,8 +703,11 @@ export default function VistaBackoffice() {
         let nuevo = detail?.[campo] ?? "";
         const viejo = detailOriginal?.[campo] ?? "";
 
-        // 🔠 Convertir a mayúsculas todo el texto excepto las fotos
-        if (typeof nuevo === "string" && !campo.startsWith("foto_")) {
+        // 🔠 Convertir a mayúsculas todo el texto excepto los documentos.
+        // Con la comprobación anterior ("foto_"), "archivo_resumen" se pasaba a
+        // MAYÚSCULAS y la ruta guardada quedaba inservible: el servidor de
+        // archivos distingue mayúsculas de minúsculas en el nombre.
+        if (typeof nuevo === "string" && !esCampoDocumento(campo)) {
           nuevo = nuevo.toUpperCase();
         }
 
@@ -628,47 +948,18 @@ export default function VistaBackoffice() {
                     {FIELD_LABELS[field] || field}
                     </label>
 
-                    {field.startsWith("foto_") ? (
-                    /* 📸 CASO 1: SUBIDA Y PREVISUALIZACIÓN DE IMÁGENES CON VALIDACIÓN DE TAMAÑO */
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                            const MAX_IMG_MB = 2; // Límite de 2MB por imagen
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-
-                            if (!file.type.startsWith("image/")) {
-                            setAlert({ type: "error", msg: "El archivo seleccionado debe ser una imagen" });
-                            e.target.value = "";
-                            return;
-                            }
-
-                            if (file.size > MAX_IMG_MB * 1024 * 1024) {
-                            setAlert({ type: "error", msg: `La imagen no debe superar los ${MAX_IMG_MB} MB` });
-                            e.target.value = "";
-                            return;
-                            }
-
-                            const reader = new FileReader();
-                            reader.onload = (evt) => {
-                            setDetail((prev) => ({ ...prev, [field]: evt.target?.result }));
-                            };
-                            reader.readAsDataURL(file);
-                        }}
-                        style={{ display: "block", fontSize: 12, padding: "8px 0", color: "#111827" }}
-                        />
-                        {detail?.[field] && (
-                        <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #dbe4f0", background: "#f8fafc", aspectRatio: "16/9" }}>
-                            <img 
-                            src={detail[field]} 
-                            alt={field}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                        </div>
-                        )}
-                    </div>
+                    {esCampoDocumento(field) ? (
+                    /* 📸 CASO 1: DOCUMENTO DE RESPALDO — miniatura sin recorte,
+                       clic para verlo completo, y reemplazo vía el servidor de
+                       almacenamiento (no como base64 dentro de la fila). */
+                    <CampoDocumento
+                        field={field}
+                        etiqueta={FIELD_LABELS[field] || field}
+                        valor={detail?.[field] || ""}
+                        numeroIdentificacion={detail?.numero_identificacion}
+                        onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
+                        onAlert={setAlert}
+                    />
                     ) : (
                     /* 📅 CASO 2 Y 3: INPUT DINÁMICO (TIPO "date" PARA FECHAS, "text" PARA EL RESTO) */
                     <input

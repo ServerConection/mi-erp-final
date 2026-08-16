@@ -7,8 +7,9 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "multer": "^1.4.5-lts.1",
-    "dotenv": "^16.4.5"
-  }
+    "express": "^4.21.2",
+    "multer": "^2.0.1",
+    "dotenv": "^16.4.7"
+  },
+  "//seguridad": "multer 1.x está sin mantenimiento y arrastra vulnerabilidades de denegación de servicio (peticiones multipart malformadas tumban el proceso). Se sube a 2.x, que mantiene la misma API para el uso de este servicio. Tras actualizar: npm install && npm audit."
 }

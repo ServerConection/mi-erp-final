@@ -419,7 +419,7 @@ async function verArchivoAutenticado(url) {
   }
 }
 
-function FileUpload({ label, value, uploading, onPick }) {
+function FileUpload({ label, value, uploading, onPick, error, onRetry }) {
   const inputRef = useRef(null);
   return (
     <div>
@@ -445,6 +445,30 @@ function FileUpload({ label, value, uploading, onPick }) {
         >
           Ver archivo subido
         </button>
+      )}
+
+      {/* Si la subida falla, el archivo elegido NO se pierde: queda guardado en
+          memoria y se ofrece reintentar. Antes el input se limpiaba y el asesor
+          tenía que volver a buscar el archivo en cada intento. */}
+      {error && !uploading && (
+        <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, color: "#B42318", background: "#FEF3F2", border: "1px solid #FDA29B", borderRadius: 8, padding: "8px 10px" }}>
+          <div style={{ fontWeight: 700 }}>No se pudo subir "{error.nombreArchivo}"</div>
+          <div>{error.msg}</div>
+          {error.ref && (
+            <div style={{ opacity: 0.75, marginTop: 2 }}>
+              Referencia para soporte: <code>{error.ref}</code>
+            </div>
+          )}
+          {error.puedeReintentar && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#fff", background: "#B42318", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer" }}
+            >
+              🔄 Reintentar subida
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -472,6 +496,8 @@ export default function NuevaVenta() {
   const [alert, setAlert]   = useState(null);
   const [success, setSucc]  = useState(null);
   const [uploading, setUploading] = useState({}); // { campo: true }
+  const [uploadErr, setUploadErr] = useState({}); // { campo: {nombreArchivo,msg,ref,puedeReintentar} }
+  const uploadFilesRef = useRef({});              // { campo: File } — para reintentar sin re-seleccionar
   const [resumenEditado, setResumenEditado] = useState(false);
   const [catalogo, setCatalogo]   = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
   const [vigenciaCat, setVigenciaCat] = useState(null);
@@ -702,9 +728,38 @@ export default function NuevaVenta() {
   ]);
 
   // ── Subida de documentos (cédula frontal/trasera, carnet, resumen firmado) ──
+  // El archivo elegido se conserva en memoria (uploadFilesRef) hasta que la
+  // subida tenga éxito, para poder reintentar sin volver a buscarlo en el disco.
+  const MAX_ARCHIVO_MB = 15;
+  const TIPOS_ACEPTADOS = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "application/pdf"];
+
   const subirArchivo = async (campo, file) => {
     if (!file) return;
+
+    // Validación local rápida: evita gastar la subida (y el cupo de intentos)
+    // en algo que el servidor va a rechazar de todas formas. La validación que
+    // cuenta sigue siendo la del backend — esta es solo comodidad de UX.
+    if (file.size > MAX_ARCHIVO_MB * 1024 * 1024) {
+      setUploadErr(e => ({ ...e, [campo]: {
+        nombreArchivo: file.name,
+        msg: `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo es ${MAX_ARCHIVO_MB} MB. Reduce la resolución o comprime la imagen.`,
+        puedeReintentar: false,
+      }}));
+      return;
+    }
+    if (file.type && !TIPOS_ACEPTADOS.includes(file.type.toLowerCase())) {
+      setUploadErr(e => ({ ...e, [campo]: {
+        nombreArchivo: file.name,
+        msg: "Formato no admitido. Usa una foto (JPG, PNG, HEIC) o un PDF.",
+        puedeReintentar: false,
+      }}));
+      return;
+    }
+
+    uploadFilesRef.current[campo] = file;
+    setUploadErr(e => ({ ...e, [campo]: null }));
     setUploading(u => ({ ...u, [campo]: true }));
+
     try {
       const fd = new FormData();
       fd.append("archivo", file);
@@ -717,17 +772,38 @@ export default function NuevaVenta() {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      const d = await r.json();
-      if (d.success) {
+      const d = await r.json().catch(() => ({}));
+
+      if (r.ok && d.success) {
         setForm(f => ({ ...f, [campo]: d.url }));
+        setUploadErr(e => ({ ...e, [campo]: null }));
+        delete uploadFilesRef.current[campo];
       } else {
-        setAlert({ tipo: "err", msg: d.error || `No se pudo subir el archivo (${campo}).` });
+        // 503 = el servidor de almacenamiento está caído (el equipo local o su
+        // túnel). Reintentar tiene sentido. 415/400 = el archivo no sirve:
+        // reintentar el mismo archivo no va a cambiar nada.
+        const puedeReintentar = r.status >= 500 || r.status === 429;
+        setUploadErr(e => ({ ...e, [campo]: {
+          nombreArchivo: file.name,
+          msg: d.error || `No se pudo subir el archivo (HTTP ${r.status}).`,
+          ref: d.ref,
+          puedeReintentar,
+        }}));
       }
     } catch {
-      setAlert({ tipo: "err", msg: "Error de conexión al subir el archivo." });
+      setUploadErr(e => ({ ...e, [campo]: {
+        nombreArchivo: file.name,
+        msg: "Error de conexión. Revisa tu internet e intenta de nuevo.",
+        puedeReintentar: true,
+      }}));
     } finally {
       setUploading(u => ({ ...u, [campo]: false }));
     }
+  };
+
+  const reintentarSubida = (campo) => {
+    const file = uploadFilesRef.current[campo];
+    if (file) subirArchivo(campo, file);
   };
 
   // ── Validación ─────────────────────────────────────────────────────────────
@@ -1329,18 +1405,22 @@ export default function NuevaVenta() {
           <Seccion num={8} icon="📎" label="Documentos de respaldo">
             <Row label="Cédula (frontal)">
               <FileUpload label="cédula frontal" value={form.foto_cedula_frontal} uploading={uploading.foto_cedula_frontal}
+                error={uploadErr.foto_cedula_frontal} onRetry={() => reintentarSubida("foto_cedula_frontal")}
                 onPick={(file) => subirArchivo("foto_cedula_frontal", file)} />
             </Row>
             <Row label="Cédula (trasera)">
               <FileUpload label="cédula trasera" value={form.foto_cedula_trasera} uploading={uploading.foto_cedula_trasera}
+                error={uploadErr.foto_cedula_trasera} onRetry={() => reintentarSubida("foto_cedula_trasera")}
                 onPick={(file) => subirArchivo("foto_cedula_trasera", file)} />
             </Row>
             <Row label="Foto carnet">
               <FileUpload label="foto carnet" value={form.foto_carnet} uploading={uploading.foto_carnet}
+                error={uploadErr.foto_carnet} onRetry={() => reintentarSubida("foto_carnet")}
                 onPick={(file) => subirArchivo("foto_carnet", file)} />
             </Row>
             <Row label="Resumen firmado / foto resumen">
               <FileUpload label="resumen" value={form.archivo_resumen} uploading={uploading.archivo_resumen}
+                error={uploadErr.archivo_resumen} onRetry={() => reintentarSubida("archivo_resumen")}
                 onPick={(file) => subirArchivo("archivo_resumen", file)} />
             </Row>
           </Seccion>

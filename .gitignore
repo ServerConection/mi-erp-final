@@ -19,3 +19,6 @@ backend/err.txt
 bitrix_backfill_*.csv
 DEAL_*.csv
 *.kml
+
+# Configuracion de tuneles: contiene authtoken de ngrok en claro
+ngrok_tunnels.yml

@@ -23,7 +23,10 @@ const router  = express.Router();
 const multer  = require('multer');
 const pool    = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
-const { subirArchivo, obtenerArchivo, rutaInterna, configurado } = require('../utils/storageClient');
+const crypto  = require('crypto');
+const { subirArchivo, obtenerArchivo, rutaInterna, configurado, estado } = require('../utils/storageClient');
+const { validarArchivo, mimeSeguroPorExtension } = require('../utils/fileSignature');
+const { crearRateLimit } = require('../utils/rateLimit');
 
 // Todas las rutas requieren token válido
 router.use(verificarToken);
@@ -32,14 +35,92 @@ router.use(verificarToken);
 // Los archivos ya NO se guardan en disco del backend: se reciben en memoria y
 // se reenvían al servidor de almacenamiento local del cliente (carpeta por
 // cédula). Esto evita exponer PII vía una ruta estática pública.
+//
+// SEGURIDAD — el `fileFilter` de multer NO es una defensa real: solo ve el
+// Content-Type que declara el navegador, que el cliente controla. Se deja como
+// primer filtro barato (corta la subida antes de gastar memoria), pero la
+// validación que manda es la de firma binaria, más abajo en la ruta.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15 MB
+    files: 1,                   // un solo archivo por request
+    fields: 10,                 // techo de campos de texto (anti-abuso)
+    parts: 15,
+  },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') cb(null, true);
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
+      || file.mimetype === 'application/octet-stream') cb(null, true);
     else cb(new Error('Solo se permiten imágenes o PDF'));
   }
 });
+
+// Máximo 30 subidas cada 5 minutos por usuario: suficiente para una jornada
+// normal (4 documentos por venta) y corta scripts de abuso.
+const limiteSubidas = crearRateLimit({
+  ventanaMs: 5 * 60 * 1000,
+  maximo: 30,
+  mensaje: 'Demasiadas subidas seguidas. Espera un par de minutos e intenta otra vez.',
+});
+
+// Máximo 200 descargas cada 5 minutos: frena el escaneo masivo de documentos
+// por una cuenta comprometida.
+const limiteDescargas = crearRateLimit({
+  ventanaMs: 5 * 60 * 1000,
+  maximo: 200,
+  mensaje: 'Demasiadas descargas seguidas. Espera un momento.',
+});
+
+// ─── Trazabilidad de errores ────────────────────────────────────────────────
+// Al cliente se le devuelve SIEMPRE un mensaje neutro + una referencia corta.
+// El detalle técnico (stack, causa de red, URL del túnel) queda solo en el log
+// del servidor. Así el usuario puede decir "me salió el error 7f3a2b" y soporte
+// lo encuentra, sin que el navegador reciba información de infraestructura.
+function registrarError(contexto, err, extra = {}) {
+  const ref = crypto.randomBytes(4).toString('hex');
+  console.error(`[ENVIOS-VENTAS][${contexto}][ref:${ref}]`, {
+    codigo: err?.codigo,
+    causaRed: err?.causaRed,
+    mensaje: err?.message,
+    causa: err?.cause?.message || err?.cause?.code,
+    ...extra,
+  });
+  return ref;
+}
+
+function responderError(res, contexto, err, extra = {}) {
+  const ref = registrarError(contexto, err, extra);
+  const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+  return res.status(status).json({
+    success: false,
+    error: err?.publico || 'No se pudo completar la operación. Intenta de nuevo o avisa a soporte.',
+    codigo: err?.codigo || 'ERROR_INTERNO',
+    ref,
+  });
+}
+
+// ─── Registro efímero de subidas recientes (para previsualizar antes de guardar)
+// El asesor sube la cédula y quiere verla ANTES de guardar la venta, cuando
+// todavía no existe fila en la BD que lo vincule al archivo. Este mapa recuerda
+// qué usuario subió qué ruta durante 12 h para poder autorizar esa vista sin
+// tener que abrir el acceso a todo el mundo.
+const SUBIDAS_TTL_MS = 12 * 60 * 60 * 1000;
+const subidasRecientes = new Map(); // "carpeta/archivo" -> { userId, exp }
+
+function recordarSubida(clave, userId) {
+  subidasRecientes.set(clave, { userId, exp: Date.now() + SUBIDAS_TTL_MS });
+  if (subidasRecientes.size > 50_000) {
+    const ahora = Date.now();
+    for (const [k, v] of subidasRecientes) if (v.exp < ahora) subidasRecientes.delete(k);
+  }
+}
+
+function subioEsteUsuario(clave, userId) {
+  const e = subidasRecientes.get(clave);
+  if (!e) return false;
+  if (e.exp < Date.now()) { subidasRecientes.delete(clave); return false; }
+  return e.userId === userId;
+}
 
 const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
 
@@ -79,48 +160,178 @@ const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? nu
 // que solo se puede resolver a bytes reales a través de GET /archivo/:ruta,
 // que sí exige token + rol.
 // Campos esperados en el form-data: "archivo" (file), "numero_identificacion" (cédula)
-router.post('/upload', upload.single('archivo'), async (req, res) => {
+router.post('/upload', limiteSubidas, (req, res, next) => {
+  upload.single('archivo')(req, res, (err) => {
+    if (!err) return next();
+    // Errores de multer: se traducen a mensajes claros, sin filtrar internals.
+    const mapa = {
+      LIMIT_FILE_SIZE: 'El archivo supera el máximo de 15 MB. Comprime la imagen o usa menor resolución.',
+      LIMIT_FILE_COUNT: 'Solo se permite un archivo por subida.',
+      LIMIT_UNEXPECTED_FILE: 'Campo de archivo inesperado.',
+    };
+    const ref = registrarError('upload:multer', err, { code: err.code });
+    return res.status(400).json({
+      success: false,
+      error: mapa[err.code] || 'Solo se permiten imágenes o PDF.',
+      codigo: err.code || 'ARCHIVO_INVALIDO',
+      ref,
+    });
+  });
+}, async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No se recibió ningún archivo', codigo: 'SIN_ARCHIVO' });
+    }
     if (!configurado()) {
-      return res.status(503).json({ success: false, error: 'El servidor de almacenamiento local no está configurado todavía.' });
+      return res.status(503).json({
+        success: false,
+        error: 'El almacenamiento de documentos no está configurado. Contacta al administrador.',
+        codigo: 'STORAGE_NO_CONFIGURADO',
+      });
     }
 
-    const cedula = soloDigitos(req.body.numero_identificacion);
+    // ── Validación por FIRMA BINARIA (no por el Content-Type del cliente) ────
+    // Aquí se cae cualquier archivo disfrazado: .php/.html/.svg/.exe renombrados
+    // a .jpg, o enviados con un Content-Type falso desde curl/Postman.
+    const veredicto = validarArchivo({
+      buffer: req.file.buffer,
+      mimetypeDeclarado: req.file.mimetype,
+      pdfEstricto: process.env.UPLOAD_PDF_STRICT !== '0',
+    });
+
+    if (!veredicto.ok) {
+      console.warn('[ENVIOS-VENTAS][upload:rechazado]', {
+        usuario: req.user.id,
+        codigo: veredicto.codigo,
+        declarado: req.file.mimetype,
+        bytes: req.file.size,
+        detalle: veredicto.detalle,
+      });
+      return res.status(415).json({ success: false, error: veredicto.motivo, codigo: veredicto.codigo });
+    }
+
+    if (veredicto.incoherente) {
+      // No bloquea (hay navegadores que mienten sin malicia), pero queda auditado.
+      console.warn('[ENVIOS-VENTAS][upload:mime-incoherente]', {
+        usuario: req.user.id,
+        declarado: req.file.mimetype,
+        real: veredicto.mime,
+      });
+    }
+
+    const cedula  = soloDigitos(req.body.numero_identificacion);
+    // La carpeta solo puede ser dígitos o "temp_<id>": no hay forma de inyectar
+    // "../" ni nombres raros desde el cliente.
     const carpeta = cedula || `temp_${req.user.id}`;
+    if (!/^[0-9]{1,20}$|^temp_[0-9]{1,12}$/.test(carpeta)) {
+      return res.status(400).json({ success: false, error: 'Número de identificación inválido.', codigo: 'CARPETA_INVALIDA' });
+    }
 
     const resultado = await subirArchivo({
       buffer: req.file.buffer,
       originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
+      mimetype: veredicto.mime,   // el MIME real, no el declarado
+      extension: veredicto.ext,   // extensión canónica derivada de la firma
       carpeta,
     });
 
+    recordarSubida(rutaInterna(resultado.carpeta, resultado.archivo), req.user.id);
+
+    console.log('[ENVIOS-VENTAS][upload:ok]', {
+      usuario: req.user.id, carpeta: resultado.carpeta, tipo: veredicto.tipo, bytes: req.file.size,
+    });
+
     const url = `/api/envios-ventas/archivo/${resultado.carpeta}/${resultado.archivo}`;
-    res.json({ success: true, url, nombre: req.file.originalname });
+    res.json({ success: true, url, nombre: req.file.originalname, tipo: veredicto.tipo });
   } catch (e) {
-    console.error('[ENVIOS-VENTAS] upload:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    return responderError(res, 'upload', e, { usuario: req.user?.id });
   }
 });
 
+// ─── GET /api/envios-ventas/storage-estado ───────────────────────────────────
+// Diagnóstico para soporte: dice si el servidor de almacenamiento responde y,
+// si no, por qué (DNS, conexión rechazada, timeout, TLS). No revela la URL ni
+// la API key. Restringido a perfiles no-asesor.
+router.get('/storage-estado', noAsesor, async (req, res) => {
+  const info = await estado();
+  res.json({ success: true, ...info });
+});
+
 // ─── GET /api/envios-ventas/archivo/:carpeta/:archivo ────────────────────────
-// Proxy autenticado (requiere token válido, vía router.use arriba). Cualquier
-// usuario logueado puede ver un archivo si conoce su carpeta+nombre exactos
-// (el asesor necesita previsualizar su propia carga antes de enviar la venta;
-// Backoffice/admin/supervisor necesitan ver todo). Esto sigue siendo mucho más
-// seguro que la exposición pública anterior: ya no es accesible sin sesión, y
-// los nombres de archivo son aleatorios (no enumerables).
-router.get('/archivo/:carpeta/:archivo', async (req, res) => {
+// Proxy autenticado hacia el servidor de almacenamiento local.
+//
+// CONTROLES APLICADOS
+// -------------------
+// 1) AUTORIZACIÓN (antes solo autenticación). Antes, CUALQUIER usuario logueado
+//    podía leer la cédula de CUALQUIER cliente si conocía carpeta+archivo — un
+//    IDOR sobre datos personales (CWE-639). Ahora:
+//      · Perfiles no-asesor (backoffice/admin/supervisor/analista): ven todo,
+//        que es lo que su función exige.
+//      · ASESOR: solo archivos referenciados en ventas suyas, o que él mismo
+//        acaba de subir (ventana de 12 h para previsualizar antes de guardar).
+//    Se puede desactivar con ARCHIVO_STRICT_OWNERSHIP=0 si hiciera falta.
+// 2) VALIDACIÓN DE PARÁMETROS: se rechaza cualquier cosa que no sea
+//    [A-Za-z0-9._-] — corta path traversal antes de tocar la red.
+// 3) NEUTRALIZACIÓN DE CONTENIDO: el Content-Type ya no se copia del servidor
+//    de almacenamiento (dato no confiable). Se deriva de la extensión y se
+//    limita a una lista blanca; lo desconocido baja como descarga binaria.
+//    Con nosniff + CSP + sandbox, un archivo malicioso que llegara a colarse no
+//    puede ejecutar script en el dominio del ERP (XSS almacenado).
+const EXT_VALIDA = /^[A-Za-z0-9._-]{1,200}$/;
+const OWNERSHIP_ESTRICTO = process.env.ARCHIVO_STRICT_OWNERSHIP !== '0';
+
+async function puedeVerArchivo(user, ruta) {
+  if (!OWNERSHIP_ESTRICTO) return true;
+  if (user.perfil !== 'ASESOR') return true;              // backoffice/admin/etc.
+  if (subioEsteUsuario(ruta, user.id)) return true;       // recién subido por él
+
+  const url = `/api/envios-ventas/archivo/${ruta}`;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM public.envios_ventas
+      WHERE usuario_id = $1
+        AND $2 IN (foto_cedula_frontal, foto_cedula_trasera, foto_carnet, archivo_resumen)
+      LIMIT 1`,
+    [user.id, url]
+  );
+  return rows.length > 0;
+}
+
+router.get('/archivo/:carpeta/:archivo', limiteDescargas, async (req, res) => {
   try {
     const { carpeta, archivo } = req.params;
-    const { buffer, contentType } = await obtenerArchivo(carpeta, archivo);
-    res.set('Content-Type', contentType);
+
+    if (!EXT_VALIDA.test(carpeta) || !EXT_VALIDA.test(archivo) ||
+        carpeta.includes('..') || archivo.includes('..')) {
+      return res.status(400).json({ success: false, error: 'Parámetros inválidos', codigo: 'PARAMS_INVALIDOS' });
+    }
+
+    const ruta = rutaInterna(carpeta, archivo);
+
+    if (!(await puedeVerArchivo(req.user, ruta))) {
+      console.warn('[ENVIOS-VENTAS][archivo:denegado]', { usuario: req.user.id, perfil: req.user.perfil, ruta });
+      // 404 y no 403: no confirmamos al que sondea que el archivo existe.
+      return res.status(404).json({ success: false, error: 'Archivo no encontrado', codigo: 'NO_ENCONTRADO' });
+    }
+
+    const { buffer } = await obtenerArchivo(carpeta, archivo);
+
+    const punto = archivo.lastIndexOf('.');
+    const ext   = punto === -1 ? '' : archivo.slice(punto).toLowerCase();
+    const mime  = mimeSeguroPorExtension(ext);
+
+    // Lista blanca: si no reconocemos la extensión, se entrega como descarga
+    // binaria opaca en vez de dejar que el navegador la interprete.
+    res.set('Content-Type', mime || 'application/octet-stream');
+    res.set('Content-Disposition', `${mime ? 'inline' : 'attachment'}; filename="documento${ext || '.bin'}"`);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; object-src 'none'; sandbox");
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'no-referrer');
     res.set('Cache-Control', 'private, max-age=0, no-store');
+    res.set('Pragma', 'no-cache');
     res.send(buffer);
   } catch (e) {
-    console.error('[ENVIOS-VENTAS] archivo:', e.message);
-    res.status(e.status || 500).json({ success: false, error: e.message });
+    return responderError(res, 'archivo', e, { usuario: req.user?.id });
   }
 });
 

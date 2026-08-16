@@ -241,6 +241,8 @@ export default function VistaBackoffice() {
   // El buscador de texto se mantiene igual; estos se suman.
   const [filtros, setFiltros] = useState(FILTROS_VACIOS);
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
+  // false = se muestran TODAS las columnas de envios_ventas (con scroll horizontal)
+  const [vistaCompacta, setVistaCompacta] = useState(false);
   const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
   const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
   const filtrosActivos = Object.values(filtros).filter(Boolean).length;
@@ -316,9 +318,20 @@ export default function VistaBackoffice() {
     setAlert(null);
   };
 
+  // Columnas de la tabla. "completa" = todas las de envios_ventas.
+  // Se arma sobre las claves que REALMENTE vienen del backend, para que si
+  // mañana se agrega una columna a la tabla aparezca sola, sin tocar código.
   const tableHeaders = useMemo(() => {
-    return TABLE_COLUMNS.slice(0, 12).map((key) => ({ key, label: FIELD_LABELS[key] || key }));
-  }, []);
+    const delBackend = rows.length ? Object.keys(rows[0]) : [];
+    // TABLE_COLUMNS primero (mantiene el orden pensado), y al final las que
+    // el backend traiga y no estén listadas ahí.
+    const ordenadas = [
+      ...TABLE_COLUMNS.filter((k) => !delBackend.length || delBackend.includes(k)),
+      ...delBackend.filter((k) => !TABLE_COLUMNS.includes(k)),
+    ];
+    const cols = vistaCompacta ? ordenadas.slice(0, 12) : ordenadas;
+    return cols.map((key) => ({ key, label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase() }));
+  }, [rows, vistaCompacta]);
 
   const editableFields = useMemo(() => [
     "estatus_envio","codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta",
@@ -332,6 +345,35 @@ export default function VistaBackoffice() {
     "fecha_regularizacion_atc","mes_regularizacion","novedades_atc","observacion_venta_original","observacion_gestion_cobranza",
     "foto_cedula_frontal","foto_cedula_trasera","foto_carnet"
   ], []);
+
+  // ── Agrupación del detalle en secciones ────────────────────────────────
+  // Antes eran ~50 inputs seguidos en dos columnas, sin ningún corte: había
+  // que leer etiqueta por etiqueta para encontrar un campo. Agrupados por
+  // tema se ubican de un vistazo (Ley de proximidad).
+  //
+  // La sección "Otros datos" se calcula sola con lo que no quedó asignado,
+  // así que si mañana se agrega un campo a editableFields NO desaparece del
+  // formulario: aparece ahí hasta que se lo ubique en su grupo.
+  const seccionesDetalle = useMemo(() => {
+    const grupos = [
+      { titulo: "Registro",       campos: ["estatus_envio","codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta"] },
+      { titulo: "Cliente",        campos: ["nombre_cliente_completo","numero_identificacion","tipo_cliente","genero_cliente","fecha_nacimiento","email_cliente","telf_celular_pin","telf_celular_2"] },
+      { titulo: "Ubicación",      campos: ["provincia","ciudad","parroquia_barrio","direccion_calles","referencia_ubicacion"] },
+      { titulo: "Plan y pago",    campos: ["plan_contratado_final","servicios_digitales","forma_pago","banco","ciclo_facturacion","costo_instalacion","descuento_instalacion","beneficios_adicionales","beneficios_de_ley","plazo_contrato_meses","resumen_venta"] },
+      { titulo: "Netlife",        campos: ["estado_recaudacion","netlife_login","netlife_estatus_real"] },
+      { titulo: "Auditoría",      campos: ["calidad_venta_analista","venta_efectiva","auditoria_documentos","auditado_por","inconsistencia_documental","observacion_auditoria","errores_telcos"] },
+      { titulo: "Regularización", campos: ["estatus_regularizacion","detalle_regularizacion","fecha_regularizacion_atc","mes_regularizacion","novedades_atc"] },
+      { titulo: "Observaciones",  campos: ["observacion_venta_original","observacion_gestion_cobranza"] },
+      { titulo: "Documentos",     campos: ["foto_cedula_frontal","foto_cedula_trasera","foto_carnet"] },
+    ];
+    const asignados = new Set(grupos.flatMap((g) => g.campos));
+    const sobrantes = editableFields.filter((f) => !asignados.has(f));
+    const salida = grupos
+      .map((g) => ({ ...g, campos: g.campos.filter((f) => editableFields.includes(f)) }))
+      .filter((g) => g.campos.length);
+    if (sobrantes.length) salida.push({ titulo: "Otros datos", campos: sobrantes });
+    return salida;
+  }, [editableFields]);
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -469,15 +511,40 @@ export default function VistaBackoffice() {
               )}
             </div>
 
+            {/* Cambio de vista: 12 columnas clave vs. la tabla completa */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
+              <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                {tableHeaders.length} columnas · {rows.length} registros
+                {!vistaCompacta && <span style={{ color: "#94a3b8" }}> · desplazá en horizontal para ver el resto</span>}
+              </span>
+              <button
+                onClick={() => setVistaCompacta((v) => !v)}
+                style={{ padding: "7px 12px", borderRadius: 10, border: "1px solid #dbe4f0", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                {vistaCompacta ? "Ver todas las columnas" : "Vista compacta"}
+              </button>
+            </div>
+
             <div style={{ overflow: "auto", maxHeight: 700 }}>
               {loading ? (
                 <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                  <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+                <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
                     <tr style={{ background: "#f8fafc" }}>
-                      {tableHeaders.map((h) => (
-                        <th key={h.key} style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb", fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>
+                      {tableHeaders.map((h, i) => (
+                        <th
+                          key={h.key}
+                          title={h.key}
+                          style={{
+                            textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
+                            fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
+                            // Las 2 primeras columnas quedan fijas para no perder
+                            // la referencia del registro al desplazarse a lo ancho.
+                            ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 4, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
+                            ...(i === 0 ? { width: 60 } : {}),
+                          }}
+                        >
                           {h.label}
                         </th>
                       ))}
@@ -488,10 +555,19 @@ export default function VistaBackoffice() {
                       <tr
                         key={row.id}
                         onClick={() => { setSelectedId(row.id); fetchDetail(row.id); }}
-                        style={{ cursor: "pointer", background: "#fff", borderBottom: "1px solid #f1f5f9" }}
+                        style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}
                       >
-                        {tableHeaders.map((h) => (
-                        <td key={`${row.id}-${h.key}`} style={{ padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {tableHeaders.map((h, i) => (
+                        <td
+                          key={`${row.id}-${h.key}`}
+                          title={valueForField(row, h.key)}
+                          style={{
+                            padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
+                            maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                            background: selectedId === row.id ? "#eff6ff" : "#fff",
+                            ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 2, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
+                          }}
+                        >
                             {valueForField(row, h.key)}
                         </td>
                         ))}
@@ -507,9 +583,9 @@ export default function VistaBackoffice() {
         {/* ─── MODAL DETALLE ─────────────────────────────────────────────────────────────── */}
         {showModal && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-            <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxWidth: 700, width: "90%", maxHeight: "85vh", overflow: "auto" }}>
-              {/* Header del modal */}
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: 24, borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+            <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxWidth: 1100, width: "94%", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              {/* Header del modal — fijo, no se va con el scroll */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: 20, borderBottom: "1px solid #e5e7eb", background: "#fff", flex: "none" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#0ea5e9", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 20 }}>
                     {(detail?.nombre_cliente_completo || "?").split(" ").map(w => w[0]).slice(0, 2).join("")}
@@ -537,8 +613,16 @@ export default function VistaBackoffice() {
               </div>
 
               {/* Contenido: Grid 2 columnas */}
-              <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxHeight: "calc(85vh - 140px)", overflow: "auto" }}>
-                {editableFields.map((field) => (
+              <div style={{ padding: 20, maxHeight: "calc(90vh - 170px)", overflow: "auto", background: "#f8fafc" }}>
+                {seccionesDetalle.map((sec) => (
+                <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
+                    <span style={{ width: 4, height: 16, borderRadius: 4, background: "#0ea5e9", flex: "none" }} />
+                    <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: ".01em" }}>{sec.titulo}</h4>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
+                {sec.campos.map((field) => (
                 <div key={field}>
                     <label style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                     {FIELD_LABELS[field] || field}
@@ -596,10 +680,13 @@ export default function VistaBackoffice() {
                     )}
                 </div>
                 ))}
+                  </div>
+                </section>
+                ))}
               </div>
 
-              {/* Footer con alerta y botones */}
-              <div style={{ padding: 20, borderTop: "1px solid #e5e7eb", background: "#f8fafc" }}>
+              {/* Footer con alerta y botones — fijo abajo */}
+              <div style={{ padding: 16, borderTop: "1px solid #e5e7eb", background: "#fff", flex: "none" }}>
                 {alert && (
                   <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: alert.type === "success" ? "#ecfdf5" : "#fef2f2", color: alert.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${alert.type === "success" ? "#bbf7d0" : "#fecaca"}`, fontSize: 12, fontWeight: 700 }}>
                     {alert.msg}

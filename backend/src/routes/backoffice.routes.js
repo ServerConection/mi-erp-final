@@ -83,32 +83,12 @@ router.get('/', async (req, res) => {
     const limitParam  = params.length - 1;
     const offsetParam = params.length;
 
+    // SELECT * : la vista muestra TODAS las columnas de la tabla.
+    // Antes se devolvía un subconjunto fijo de 18 columnas, así que el resto
+    // ni siquiera llegaba al frontend. El límite de filas (LIMIT) sigue
+    // controlando el peso de la respuesta.
     const { rows } = await pool.query(`
-      SELECT
-        id,
-        estatus_envio,
-        fecha_registro_sistema,
-        codigo_asesor,
-        id_bitrix,
-        distribuidor_autorizado,
-        supervisor,
-        origen_venta,
-        venta_nueva_o_reingreso,
-        turno,
-        nombre_cliente_completo,
-        numero_identificacion,
-        plan_contratado_final,
-        -- campos auditoría (resumen para tabla)
-        venta_efectiva,
-        calidad_venta_analista,
-        auditoria_documentos,
-        estatus_regularizacion,
-        auditado_por,
-        -- Campos agregados para que la tabla muestre lo que ahora se filtra
-        netlife_login,
-        netlife_estatus_real,
-        fecha_activacion_netlife,
-        aplica_descuento_3ra_edad
+      SELECT *
       FROM public.envios_ventas
       ${whereClause}
       ORDER BY id DESC

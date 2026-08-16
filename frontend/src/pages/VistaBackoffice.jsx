@@ -544,7 +544,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver, idInicial }) {
+function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -557,7 +557,13 @@ function PanelRegistros({ onVolver, idInicial }) {
 
   // ── FILTROS ────────────────────────────────────────────────────────────
   // El buscador de texto se mantiene igual; estos se suman.
-  const [filtros, setFiltros] = useState(FILTROS_VACIOS);
+  // Cuando se entra desde el explorador de fechas (Año → Mes → Día), el día
+  // elegido llega como `fechaFija` y se precarga en el filtro de rango. El
+  // backend ya sabe filtrar por fechaDesde/fechaHasta, así que no hace falta
+  // filtrar en el navegador ni traer registros de más.
+  const [filtros, setFiltros] = useState(
+    fechaFija ? { ...FILTROS_VACIOS, fechaDesde: fechaFija, fechaHasta: fechaFija } : FILTROS_VACIOS
+  );
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
   // false = se muestran TODAS las columnas de envios_ventas (con scroll horizontal)
   const [vistaCompacta, setVistaCompacta] = useState(false);
@@ -769,7 +775,9 @@ function PanelRegistros({ onVolver, idInicial }) {
                 ← Volver a Backoffice
               </button>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: "#4f46e5", textTransform: "uppercase" }}>Backoffice · Registros</div>
-              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>Todos los registros</h2>
+              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
+                {etiquetaContexto || "Todos los registros"}
+              </h2>
             </div>
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
               {rows.length} registros
@@ -1210,6 +1218,279 @@ function EnConstruccion({ sub, onVolver }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// EXPLORADOR DE FECHAS  ·  Año → Mes → Día → registros
+// ═══════════════════════════════════════════════════════════════════════════
+// Navegación común a TODOS los submódulos de Backoffice. Se agrupa por
+// FECHA REGISTRO (`fecha_registro_sistema`), que es cuándo se cargó la venta.
+//
+// ⚠️ ZONA HORARIA — esto importa de verdad aquí.
+// La columna es un timestamp guardado en UTC. Una venta cargada el 15/08 a las
+// 20:30 en Ecuador (UTC-5) se almacena como 16/08 01:30 UTC. Si se agrupara
+// cortando el texto de la fecha, esa venta aparecería en el día equivocado y
+// los conteos diarios no cuadrarían con lo que vio el asesor.
+// Por eso la fecha calendario se calcula siempre en America/Guayaquil, igual
+// que hace el módulo de Jotform en SQL con `- INTERVAL '5 hours'`.
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const DIAS_ES  = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+
+const fmtFechaEC = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+/** Devuelve la fecha calendario en Ecuador como "YYYY-MM-DD", o null. */
+function fechaCalendarioEC(valor) {
+  if (!valor) return null;
+  const s = String(valor);
+  // Ya viene como fecha pura (sin hora): no hay nada que convertir.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return fmtFechaEC.format(d);
+}
+
+/** "2026-01-01" → "Martes 01/01/2026" */
+function etiquetaDia(iso) {
+  const [a, m, d] = iso.split("-");
+  // Mediodía para que ningún desfase horario cambie el día de la semana.
+  const fecha = new Date(`${iso}T12:00:00`);
+  return `${DIAS_ES[fecha.getDay()]} ${d}/${m}/${a}`;
+}
+
+/**
+ * Agrupa registros en años → meses → días, cada nivel con su cantidad.
+ * Los registros sin fecha válida no se pierden: se juntan en un grupo aparte
+ * para que nadie desaparezca del sistema sin que se note.
+ */
+function agruparPorFecha(rows, campo = "fecha_registro_sistema") {
+  const anios = new Map();
+  const sinFecha = [];
+
+  for (const row of rows) {
+    const iso = fechaCalendarioEC(row?.[campo]);
+    if (!iso) { sinFecha.push(row); continue; }
+    const [a, m] = iso.split("-");
+
+    if (!anios.has(a)) anios.set(a, { anio: a, cantidad: 0, meses: new Map() });
+    const anio = anios.get(a);
+    anio.cantidad++;
+
+    if (!anio.meses.has(m)) anio.meses.set(m, { mes: m, cantidad: 0, dias: new Map() });
+    const mes = anio.meses.get(m);
+    mes.cantidad++;
+
+    mes.dias.set(iso, (mes.dias.get(iso) || 0) + 1);
+  }
+
+  const lista = [...anios.values()]
+    .map((a) => ({
+      ...a,
+      meses: [...a.meses.values()]
+        .map((m) => ({
+          ...m,
+          dias: [...m.dias.entries()]
+            .map(([iso, cantidad]) => ({ iso, cantidad }))
+            .sort((x, y) => (x.iso < y.iso ? 1 : -1)), // día más reciente primero
+        }))
+        .sort((x, y) => Number(y.mes) - Number(x.mes)),
+    }))
+    .sort((x, y) => Number(y.anio) - Number(x.anio)); // año más reciente primero
+
+  return { anios: lista, sinFecha };
+}
+
+function BotonNivel({ titulo, cantidad, color, fondo, borde, onClick, ancho = 200 }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        textAlign: "left", background: "#fff",
+        border: `1px solid ${hover ? color : borde}`,
+        borderRadius: 14, padding: "16px 18px", cursor: "pointer",
+        minWidth: ancho, display: "flex", flexDirection: "column", gap: 8,
+        boxShadow: hover ? `0 12px 26px ${color}22` : "0 4px 14px rgba(15,23,42,.05)",
+        transform: hover ? "translateY(-2px)" : "none",
+        transition: "all .16s ease-out",
+      }}
+    >
+      <span style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>{titulo}</span>
+      <span style={{ alignSelf: "flex-start", fontSize: 12, fontWeight: 800, color, background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "3px 11px" }}>
+        {cantidad} {cantidad === 1 ? "registro" : "registros"}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Pantalla de navegación por fechas. Se muestra ANTES del contenido de cada
+ * submódulo: primero se elige el día (o «Ver todos») y recién ahí aparecen los
+ * registros. El nivel actual vive en la URL, así que el botón atrás del
+ * navegador retrocede de día → mes → año como uno espera.
+ */
+function ExploradorFechas({
+  rows, cargando, error, tituloModulo, migaModulo,
+  color = "#4f46e5", fondo = "#eef2ff", borde = "#c7d2fe",
+  nav, navegar, onVolver, onRecargar,
+}) {
+  const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows), [rows]);
+
+  const anioSel = nav.anio ? anios.find((a) => a.anio === nav.anio) : null;
+  const mesSel  = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
+
+  const nivel = mesSel ? "dias" : anioSel ? "meses" : "anios";
+
+  const miga = [
+    { texto: "Años", accion: () => navegar.aAnios(), activo: nivel === "anios" },
+    ...(anioSel ? [{ texto: anioSel.anio, accion: () => navegar.aMeses(anioSel.anio), activo: nivel === "meses" }] : []),
+    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => navegar.aDias(anioSel.anio, mesSel.mes), activo: nivel === "dias" }] : []),
+  ];
+
+  const total = rows.length;
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color, textTransform: "uppercase" }}>
+            {migaModulo}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>{tituloModulo}</h2>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => navegar.aTodos()}
+                style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${borde}`, background: fondo, color, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+              >
+                Ver todos ({total})
+              </button>
+              {onRecargar && (
+                <button
+                  onClick={onRecargar}
+                  style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  Refrescar
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Miga de pan: Años › 2026 › Enero */}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+            {miga.map((p, i) => (
+              <span key={p.texto} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                {i > 0 && <span style={{ color: "#cbd5e1", fontSize: 13 }}>›</span>}
+                <button
+                  onClick={p.accion}
+                  disabled={p.activo}
+                  style={{
+                    background: p.activo ? fondo : "transparent",
+                    border: `1px solid ${p.activo ? borde : "transparent"}`,
+                    borderRadius: 8, padding: "4px 11px", fontSize: 12.5,
+                    fontWeight: 800, color: p.activo ? color : "#64748b",
+                    cursor: p.activo ? "default" : "pointer",
+                  }}
+                >
+                  {p.texto}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: 22 }}>
+          {cargando && <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Cargando registros…</p>}
+
+          {error && (
+            <div style={{ padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+              {error}
+            </div>
+          )}
+
+          {!cargando && !error && anios.length === 0 && (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Todavía no hay registros con fecha para agrupar.</p>
+          )}
+
+          {!cargando && !error && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+              {nivel === "anios" && anios.map((a) => (
+                <BotonNivel
+                  key={a.anio} titulo={a.anio} cantidad={a.cantidad}
+                  color={color} fondo={fondo} borde={borde}
+                  onClick={() => navegar.aMeses(a.anio)}
+                />
+              ))}
+
+              {nivel === "meses" && anioSel.meses.map((m) => (
+                <BotonNivel
+                  key={m.mes} titulo={MESES_ES[Number(m.mes) - 1]} cantidad={m.cantidad}
+                  color={color} fondo={fondo} borde={borde}
+                  onClick={() => navegar.aDias(anioSel.anio, m.mes)}
+                />
+              ))}
+
+              {nivel === "dias" && mesSel.dias.map((d) => (
+                <BotonNivel
+                  key={d.iso} titulo={etiquetaDia(d.iso)} cantidad={d.cantidad}
+                  color={color} fondo={fondo} borde={borde} ancho={230}
+                  onClick={() => navegar.aDia(anioSel.anio, mesSel.mes, d.iso)}
+                />
+              ))}
+            </div>
+          )}
+
+          {!cargando && !error && nivel === "anios" && sinFecha.length > 0 && (
+            <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12.5, color: "#92400e", fontWeight: 700 }}>
+              ⚠ {sinFecha.length} registro{sinFecha.length > 1 ? "s" : ""} sin fecha de registro válida. No aparece{sinFecha.length > 1 ? "n" : ""} en ningún año — usa «Ver todos» para encontrarlo{sinFecha.length > 1 ? "s" : ""}.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Carga compartida de registros para el explorador y el tablero. */
+function useRegistrosBackoffice(limite = 1000) {
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const token = localStorage.getItem("token");
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/api/backoffice?limit=${limite}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
+      setRows(j.data || []);
+      setTotal(j.total ?? (j.data || []).length);
+    } catch (e) {
+      setError(e.message || "Error de conexión");
+    } finally {
+      setCargando(false);
+    }
+  }, [token, limite]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  return { rows, total, cargando, error, recargar: cargar };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SUBMÓDULO: VALIDACIÓN / REGULARIZACIÓN  (tablero kanban)
 // ═══════════════════════════════════════════════════════════════════════════
 // Tres bloques alimentados por la columna `estatus_regularizacion`:
@@ -1316,10 +1597,9 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
   );
 }
 
-function TableroValidacion({ onVolver, onAbrirRegistro }) {
+function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000);
   const [rows, setRows] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [arrastrando, setArrastrando] = useState(null);
   const [sobreBloque, setSobreBloque] = useState(null);
@@ -1327,34 +1607,36 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
   const [aviso, setAviso] = useState(null);
 
   const token = localStorage.getItem("token");
-  const LIMITE = 500;
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
-    try {
-      const r = await fetch(`${API}/api/backoffice?limit=${LIMITE}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const j = await r.json();
-      if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
-      setRows(j.data || []);
-      // Si hay más registros que el límite, se avisa en vez de mostrar
-      // silenciosamente un tablero incompleto.
-      if (j.total && j.total > (j.data || []).length) {
-        setAviso(`Mostrando los ${(j.data || []).length} más recientes de ${j.total}. Usa el buscador para encontrar los demás.`);
-      }
-    } catch (e) {
-      setError(e.message || "Error de conexión");
-    } finally {
-      setCargando(false);
+  // El tablero trabaja sobre una copia local para poder mover tarjetas al
+  // instante (actualización optimista) sin volver a pedir todo al servidor.
+  useEffect(() => {
+    const delDia = nav.dia ? todas.filter((r) => fechaCalendarioEC(r.fecha_registro_sistema) === nav.dia) : todas;
+    setRows(delDia);
+  }, [todas, nav.dia]);
+
+  useEffect(() => {
+    if (total > todas.length && todas.length > 0) {
+      setAviso(`Mostrando ${todas.length} de ${total} registros. Los más antiguos quedaron fuera del límite de carga.`);
     }
-  }, [token]);
+  }, [total, todas.length]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  // Mientras no se haya elegido un día (o «Ver todos»), se muestra el
+  // explorador Año → Mes → Día.
+  if (!nav.dia && !nav.todos) {
+    return (
+      <ExploradorFechas
+        rows={todas} cargando={cargando} error={error}
+        tituloModulo="Validación / Regularización"
+        migaModulo="Backoffice · Validación"
+        color="#7c3aed" fondo="#ede9fe" borde="#ddd6fe"
+        nav={nav} navegar={navegar} onVolver={onVolver} onRecargar={recargar}
+      />
+    );
+  }
 
   // Ordenadas de la MÁS ANTIGUA a la más reciente.
-  const ordenadas = useMemo(() => {
+  const ordenadas = (() => {
     const q = normalizarEstado(busqueda);
     const filtradas = !q ? rows : rows.filter((r) =>
       [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, String(r.id)]
@@ -1366,13 +1648,14 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
       if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
       return (a.id ?? 0) - (b.id ?? 0);
     });
-  }, [rows, busqueda]);
+  })();
 
-  const porBloque = useMemo(() => {
-    const mapa = { SIN_REVISAR: [], POR_REGULARIZAR: [], REGULARIZADO: [] };
-    for (const r of ordenadas) mapa[bloqueDeRegistro(r)].push(r);
-    return mapa;
-  }, [ordenadas]);
+  // OJO: de aquí para abajo NO puede haber hooks. El `return` temprano del
+  // explorador de fechas hace que este tramo no siempre se ejecute, y React
+  // exige que la cantidad de hooks sea idéntica en todos los renders. Por eso
+  // esto es un cálculo plano y no un useMemo.
+  const porBloque = { SIN_REVISAR: [], POR_REGULARIZAR: [], REGULARIZADO: [] };
+  for (const r of ordenadas) porBloque[bloqueDeRegistro(r)].push(r);
 
   const soltarEn = async (bloqueDestino, e) => {
     e.preventDefault();
@@ -1434,7 +1717,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
               />
               <button
-                onClick={cargar}
+                onClick={recargar}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
               >
                 Refrescar
@@ -1442,8 +1725,17 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
             </div>
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#64748b" }}>
+            {nav.dia
+              ? <>Mostrando <b>{etiquetaDia(nav.dia)}</b> · </>
+              : <>Mostrando <b>todos los registros</b> · </>}
             Ordenadas de la más antigua a la más reciente. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
           </p>
+          <button
+            onClick={() => navegar.aAnios()}
+            style={{ marginTop: 10, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 800, color: "#7c3aed", cursor: "pointer" }}
+          >
+            📅 Cambiar de fecha
+          </button>
         </div>
 
         {aviso && (
@@ -1516,10 +1808,63 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
   );
 }
 
+/**
+ * Registros = explorador de fechas + tabla completa.
+ * La tabla no filtra en el navegador: recibe el día elegido y deja que el
+ * backend haga el filtro con fechaDesde/fechaHasta, que ya existía.
+ */
+function ModuloRegistros({ onVolver, idInicial, nav, navegar }) {
+  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000);
+
+  // Si se llegó con un id concreto (clic en una tarjeta del kanban), se salta
+  // el explorador y se abre el detalle directamente.
+  if (!idInicial && !nav.dia && !nav.todos) {
+    return (
+      <ExploradorFechas
+        rows={rows} cargando={cargando} error={error}
+        tituloModulo="Registros"
+        migaModulo="Backoffice · Registros"
+        color="#0284c7" fondo="#e0f2fe" borde="#bae6fd"
+        nav={nav} navegar={navegar} onVolver={onVolver} onRecargar={recargar}
+      />
+    );
+  }
+
+  return (
+    <PanelRegistros
+      onVolver={onVolver}
+      idInicial={idInicial}
+      fechaFija={nav.dia || undefined}
+      etiquetaContexto={nav.dia ? etiquetaDia(nav.dia) : "Todos los registros"}
+    />
+  );
+}
+
 export default function VistaBackoffice() {
   const [params, setParams] = useSearchParams();
   const idActivo = params.get("m");
   const sub = SUBMODULOS.find((s) => s.id === idActivo);
+
+  // Estado de la navegación por fechas, todo en la URL.
+  //   ?m=validacion            → años
+  //   ?m=validacion&a=2026     → meses de 2026
+  //   ?m=validacion&a=2026&me=01        → días de enero
+  //   ?m=validacion&a=2026&me=01&d=2026-01-06  → registros de ese día
+  //   ?m=validacion&todos=1    → todos, sin filtro de fecha
+  const nav = {
+    anio:  params.get("a"),
+    mes:   params.get("me"),
+    dia:   params.get("d"),
+    todos: params.get("todos") === "1",
+  };
+
+  const navegar = useMemo(() => ({
+    aAnios: ()          => setParams({ m: idActivo }),
+    aMeses: (a)         => setParams({ m: idActivo, a }),
+    aDias:  (a, me)     => setParams({ m: idActivo, a, me }),
+    aDia:   (a, me, d)  => setParams({ m: idActivo, a, me, d }),
+    aTodos: ()          => setParams({ m: idActivo, todos: "1" }),
+  }), [idActivo, setParams]);
 
   const abrir = useCallback((id) => setParams({ m: id }), [setParams]);
   const volver = useCallback(() => setParams({}), [setParams]);
@@ -1533,11 +1878,11 @@ export default function VistaBackoffice() {
   if (!sub) return <HubBackoffice onAbrir={abrir} />;
 
   if (sub.id === "registros") {
-    return <PanelRegistros onVolver={volver} idInicial={params.get("id")} />;
+    return <ModuloRegistros onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar} />;
   }
 
   if (sub.id === "validacion") {
-    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} />;
+    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} nav={nav} navegar={navegar} />;
   }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;

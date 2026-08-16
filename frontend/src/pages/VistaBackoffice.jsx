@@ -1597,7 +1597,105 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
   );
 }
 
-function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
+// ── Filtro de fecha propio de cada bloque ────────────────────────────────────
+// Cada columna del kanban filtra por su cuenta: se puede estar viendo «Sin
+// revisar» de todo 2026 mientras «Por regularizar» muestra solo el 15/08. Las
+// opciones de cada selector se calculan con los registros de ESA columna, así
+// que nunca aparece un mes que en esa columna no tiene nada.
+const FILTRO_FECHA_VACIO = { anio: "", mes: "", dia: "" };
+
+function opcionesFechaDe(rows, f) {
+  const anios = new Map(), meses = new Map(), dias = new Map();
+  for (const r of rows) {
+    const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+    if (!iso) continue;
+    const [a, m] = iso.split("-");
+    anios.set(a, (anios.get(a) || 0) + 1);
+    if (f.anio && a !== f.anio) continue;
+    meses.set(m, (meses.get(m) || 0) + 1);
+    if (f.mes && m !== f.mes) continue;
+    dias.set(iso, (dias.get(iso) || 0) + 1);
+  }
+  const orden = (mapa, desc = true) =>
+    [...mapa.entries()].sort((x, y) => (desc ? String(y[0]).localeCompare(String(x[0])) : String(x[0]).localeCompare(String(y[0]))));
+  return { anios: orden(anios), meses: orden(meses), dias: orden(dias) };
+}
+
+function aplicarFiltroFecha(rows, f) {
+  if (!f.anio && !f.mes && !f.dia) return rows;
+  return rows.filter((r) => {
+    const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+    if (!iso) return false; // con filtro activo, lo que no tiene fecha no aplica
+    const [a, m] = iso.split("-");
+    if (f.anio && a !== f.anio) return false;
+    if (f.mes && m !== f.mes) return false;
+    if (f.dia && iso !== f.dia) return false;
+    return true;
+  });
+}
+
+function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
+  const op = opcionesFechaDe(rows, filtro);
+  const activo = Boolean(filtro.anio || filtro.mes || filtro.dia);
+
+  const estiloSelect = {
+    flex: 1, minWidth: 0, padding: "5px 7px", borderRadius: 7,
+    border: `1px solid ${activo ? borde : "#e2e8f0"}`,
+    background: "#fff", fontSize: 11, color: "#334155",
+    fontWeight: 700, outline: "none", cursor: "pointer",
+  };
+
+  return (
+    <div style={{ marginBottom: 12, padding: 9, borderRadius: 10, background: activo ? fondo : "#f8fafc", border: `1px solid ${activo ? borde : "#eef2f7"}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: activo ? color : "#94a3b8", textTransform: "uppercase" }}>
+          📅 Filtrar por fecha
+        </span>
+        {activo && (
+          <button
+            onClick={() => onCambiar(FILTRO_FECHA_VACIO)}
+            style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 10.5, fontWeight: 800, color, cursor: "pointer", textDecoration: "underline" }}
+          >
+            limpiar
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
+        <select
+          value={filtro.anio}
+          onChange={(e) => onCambiar({ anio: e.target.value, mes: "", dia: "" })}
+          style={estiloSelect}
+        >
+          <option value="">Año: todos</option>
+          {op.anios.map(([a, n]) => <option key={a} value={a}>{a} ({n})</option>)}
+        </select>
+
+        <select
+          value={filtro.mes}
+          disabled={!filtro.anio}
+          onChange={(e) => onCambiar({ ...filtro, mes: e.target.value, dia: "" })}
+          style={{ ...estiloSelect, opacity: filtro.anio ? 1 : 0.5, cursor: filtro.anio ? "pointer" : "not-allowed" }}
+        >
+          <option value="">Mes: todos</option>
+          {op.meses.map(([m, n]) => <option key={m} value={m}>{MESES_ES[Number(m) - 1]} ({n})</option>)}
+        </select>
+
+        <select
+          value={filtro.dia}
+          disabled={!filtro.mes}
+          onChange={(e) => onCambiar({ ...filtro, dia: e.target.value })}
+          style={{ ...estiloSelect, opacity: filtro.mes ? 1 : 0.5, cursor: filtro.mes ? "pointer" : "not-allowed" }}
+        >
+          <option value="">Día: todos</option>
+          {op.dias.map(([iso, n]) => <option key={iso} value={iso}>{etiquetaDia(iso)} ({n})</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function TableroValidacion({ onVolver, onAbrirRegistro }) {
   const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000);
   const [rows, setRows] = useState([]);
   const [busqueda, setBusqueda] = useState("");
@@ -1605,35 +1703,26 @@ function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
   const [sobreBloque, setSobreBloque] = useState(null);
   const [moviendo, setMoviendo] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [filtrosFecha, setFiltrosFecha] = useState({
+    SIN_REVISAR: FILTRO_FECHA_VACIO,
+    POR_REGULARIZAR: FILTRO_FECHA_VACIO,
+    REGULARIZADO: FILTRO_FECHA_VACIO,
+  });
 
   const token = localStorage.getItem("token");
 
+  const cambiarFiltro = (bloqueId, nuevo) =>
+    setFiltrosFecha((prev) => ({ ...prev, [bloqueId]: { ...FILTRO_FECHA_VACIO, ...nuevo } }));
+
   // El tablero trabaja sobre una copia local para poder mover tarjetas al
   // instante (actualización optimista) sin volver a pedir todo al servidor.
-  useEffect(() => {
-    const delDia = nav.dia ? todas.filter((r) => fechaCalendarioEC(r.fecha_registro_sistema) === nav.dia) : todas;
-    setRows(delDia);
-  }, [todas, nav.dia]);
+  useEffect(() => { setRows(todas); }, [todas]);
 
   useEffect(() => {
     if (total > todas.length && todas.length > 0) {
       setAviso(`Mostrando ${todas.length} de ${total} registros. Los más antiguos quedaron fuera del límite de carga.`);
     }
   }, [total, todas.length]);
-
-  // Mientras no se haya elegido un día (o «Ver todos»), se muestra el
-  // explorador Año → Mes → Día.
-  if (!nav.dia && !nav.todos) {
-    return (
-      <ExploradorFechas
-        rows={todas} cargando={cargando} error={error}
-        tituloModulo="Validación / Regularización"
-        migaModulo="Backoffice · Validación"
-        color="#7c3aed" fondo="#ede9fe" borde="#ddd6fe"
-        nav={nav} navegar={navegar} onVolver={onVolver} onRecargar={recargar}
-      />
-    );
-  }
 
   // Ordenadas de la MÁS ANTIGUA a la más reciente.
   const ordenadas = (() => {
@@ -1725,17 +1814,10 @@ function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
             </div>
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#64748b" }}>
-            {nav.dia
-              ? <>Mostrando <b>{etiquetaDia(nav.dia)}</b> · </>
-              : <>Mostrando <b>todos los registros</b> · </>}
             Ordenadas de la más antigua a la más reciente. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
+            <br />
+            Cada bloque tiene <b>su propio filtro de fecha</b>: puedes ver «Sin revisar» de todo el año mientras «Por regularizar» muestra un solo día.
           </p>
-          <button
-            onClick={() => navegar.aAnios()}
-            style={{ marginTop: 10, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 800, color: "#7c3aed", cursor: "pointer" }}
-          >
-            📅 Cambiar de fecha
-          </button>
         </div>
 
         {aviso && (
@@ -1752,7 +1834,10 @@ function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
 
         <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
           {BLOQUES_VALIDACION.map((bloque) => {
-            const lista = porBloque[bloque.id] || [];
+            const todasDelBloque = porBloque[bloque.id] || [];
+            const filtro = filtrosFecha[bloque.id];
+            const lista = aplicarFiltroFecha(todasDelBloque, filtro);
+            const hayFiltro = Boolean(filtro.anio || filtro.mes || filtro.dia);
             const activo = sobreBloque === bloque.id;
             return (
               <div
@@ -1774,17 +1859,34 @@ function TableroValidacion({ onVolver, onAbrirRegistro, nav, navegar }) {
                   <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
                     {bloque.titulo}
                   </h3>
-                  <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
-                    {lista.length}
+                  <span
+                    title={hayFiltro ? `${lista.length} de ${todasDelBloque.length} en total` : `${lista.length} en total`}
+                    style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}
+                  >
+                    {hayFiltro ? `${lista.length} / ${todasDelBloque.length}` : lista.length}
                   </span>
                 </div>
+
+                {/* Filtro de fecha propio de esta columna */}
+                <FiltroFechaBloque
+                  rows={todasDelBloque}
+                  filtro={filtro}
+                  onCambiar={(nuevo) => cambiarFiltro(bloque.id, nuevo)}
+                  color={bloque.color}
+                  fondo={bloque.fondo}
+                  borde={bloque.borde}
+                />
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
 
                   {!cargando && lista.length === 0 && (
                     <div style={{ padding: "26px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
-                      {arrastrando ? "Suelta aquí" : "Sin ventas en este bloque"}
+                      {arrastrando
+                        ? "Suelta aquí"
+                        : hayFiltro
+                          ? `Sin ventas con ese filtro (hay ${todasDelBloque.length} en el bloque)`
+                          : "Sin ventas en este bloque"}
                     </div>
                   )}
 
@@ -1881,8 +1983,10 @@ export default function VistaBackoffice() {
     return <ModuloRegistros onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar} />;
   }
 
+  // Validación entra directo al tablero: el filtro de fechas vive dentro de
+  // cada bloque, no antes del tablero.
   if (sub.id === "validacion") {
-    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} nav={nav} navegar={navegar} />;
+    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} />;
   }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;

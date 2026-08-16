@@ -12,7 +12,6 @@ const {
     esLeadTotalExpr,
     esGestionableExpr,
     esDescarteExpr,
-    sumaReporteExpr,
     ETAPAS_NO_GESTIONABLES,
 } = require('../shared/etapas');
 
@@ -156,9 +155,9 @@ const queryKPI = (columna, filters) => `
   SELECT
     COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
     -- ── LEADS TOTALES ────────────────────────────────────────────────────
-    -- Igual que NOVONET: COUNT(DISTINCT id del lado CRM) + excluye
-    -- DUPLICADO / REMARKETING / REGULARIZACION + excluye el origen que no
-    -- suma a reporte.
+    -- COUNT(DISTINCT id del lado CRM) + excluye las etapas DUPLICADO /
+    -- REMARKETING / REGULARIZACION. NO se filtra por ORIGEN: leads totales
+    -- trae TODO lo que entra; los filtros de origen se aplican en el D-1.
     -- COUNT(DISTINCT mv.id_crm) y NO COUNT(*): la MV hace FULL OUTER JOIN
     -- contra vw_jotform_velsa_netlife_completo, que tiene VARIAS filas por
     -- negociación cuando el cliente contrató más de un servicio. Con COUNT(*)
@@ -167,7 +166,6 @@ const queryKPI = (columna, filters) => `
     COUNT(DISTINCT mv.id_crm) FILTER (
       WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
       AND ${esLeadTotalExpr('mv.etapa_crm')}
-      AND ${sumaReporteExpr('mv.origen', 'UPPER(TRIM(mv.etapa_crm))')}
     ) AS leads_totales,
     -- ── GESTIONABLES ─────────────────────────────────────────────────────
     -- Misma base de fecha que leads_totales para que sea siempre un
@@ -175,7 +173,6 @@ const queryKPI = (columna, filters) => `
     COUNT(DISTINCT mv.id_crm) FILTER (
       WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
       AND ${esGestionableExpr('mv.etapa_crm')}
-      AND ${sumaReporteExpr('mv.origen', 'UPPER(TRIM(mv.etapa_crm))')}
     ) AS gestionables,
     COUNT(DISTINCT mv.id_crm) FILTER (
       WHERE UPPER(TRIM(mv.etapa_crm)) = 'VENTA SUBIDA'

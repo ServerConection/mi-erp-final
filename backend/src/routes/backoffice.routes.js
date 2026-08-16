@@ -16,25 +16,62 @@ router.use(verificarToken, noAsesor);
 
 // ─── GET /api/backoffice ─────────────────────────────────────────────────────
 // Lista todos los registros con columnas clave para la tabla
+// Comparación de fechas TOLERANTE AL TIPO DE COLUMNA.
+// En envios_ventas estas columnas pueden venir como date, timestamp o texto
+// ISO según el registro. Un ::date directo revienta con cualquier valor
+// malformado y tumba toda la consulta. LEFT(col::text, 10) devuelve siempre
+// 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
+const fechaCol = (col) => `LEFT(${col}::text, 10)`;
+
 router.get('/', async (req, res) => {
   try {
-    const { buscar = '', page = 1, limit = 100 } = req.query;
+    const {
+      buscar = '', page = 1, limit = 100,
+      // ── Filtros nuevos (todos opcionales: si no vienen, no se aplican) ──
+      fechaDesde = '', fechaHasta = '',                 // fecha_registro_sistema
+      activacionDesde = '', activacionHasta = '',       // fecha_activacion_netlife
+      login = '',                                        // netlife_login
+      estatusNetlife = '',                               // netlife_estatus_real
+      terceraEdad = '',                                  // aplica_descuento_3ra_edad
+      estatusRegularizacion = '',                        // estatus_regularizacion
+    } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = "WHERE estatus_envio != 'BORRADOR'";
     const params = [];
+    const P = (v) => { params.push(v); return `$${params.length}`; };
 
     if (buscar.trim()) {
-      params.push(`%${buscar.trim()}%`);
+      const p = P(`%${buscar.trim()}%`);
       whereClause += ` AND (
-        codigo_asesor            ILIKE $1 OR
-        id_bitrix                ILIKE $1 OR
-        nombre_cliente_completo  ILIKE $1 OR
-        numero_identificacion    ILIKE $1 OR
-        distribuidor_autorizado  ILIKE $1 OR
-        supervisor               ILIKE $1
+        codigo_asesor            ILIKE ${p} OR
+        id_bitrix                ILIKE ${p} OR
+        nombre_cliente_completo  ILIKE ${p} OR
+        numero_identificacion    ILIKE ${p} OR
+        distribuidor_autorizado  ILIKE ${p} OR
+        supervisor               ILIKE ${p}
       )`;
     }
+
+    // ── FECHA DE REGISTRO ────────────────────────────────────────────────
+    if (fechaDesde) whereClause += ` AND ${fechaCol('fecha_registro_sistema')} >= ${P(fechaDesde)}`;
+    if (fechaHasta) whereClause += ` AND ${fechaCol('fecha_registro_sistema')} <= ${P(fechaHasta)}`;
+
+    // ── FECHA DE ACTIVACIÓN ──────────────────────────────────────────────
+    if (activacionDesde) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} >= ${P(activacionDesde)}`;
+    if (activacionHasta) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} <= ${P(activacionHasta)}`;
+
+    // ── LOGIN NETLIFE (coincidencia parcial: se suele buscar por fragmento) ──
+    if (login.trim()) whereClause += ` AND netlife_login ILIKE ${P(`%${login.trim()}%`)}`;
+
+    // ── ESTATUS NETLIFE / REGULARIZACIÓN / 3RA EDAD ──────────────────────
+    // Match EXACTO (case-insensitive) porque vienen de un catálogo cerrado.
+    if (estatusNetlife.trim())
+      whereClause += ` AND UPPER(TRIM(netlife_estatus_real)) = UPPER(TRIM(${P(estatusNetlife.trim())}))`;
+    if (estatusRegularizacion.trim())
+      whereClause += ` AND UPPER(TRIM(estatus_regularizacion)) = UPPER(TRIM(${P(estatusRegularizacion.trim())}))`;
+    if (terceraEdad.trim())
+      whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
 
     const countParams = [...params];
     const { rows: countRows } = await pool.query(
@@ -43,11 +80,8 @@ router.get('/', async (req, res) => {
     );
 
     params.push(parseInt(limit), offset);
-    // params.length es 2 (sin buscar) o 3 (con buscar)
-    // El LIMIT es el penúltimo elemento → SQL param nº (length - 1)
-    // El OFFSET es el último elemento   → SQL param nº (length)
-    const limitParam  = params.length - 1;  // $1 o $2
-    const offsetParam = params.length;      // $2 o $3
+    const limitParam  = params.length - 1;
+    const offsetParam = params.length;
 
     const { rows } = await pool.query(`
       SELECT
@@ -69,7 +103,12 @@ router.get('/', async (req, res) => {
         calidad_venta_analista,
         auditoria_documentos,
         estatus_regularizacion,
-        auditado_por
+        auditado_por,
+        -- Campos agregados para que la tabla muestre lo que ahora se filtra
+        netlife_login,
+        netlife_estatus_real,
+        fecha_activacion_netlife,
+        aplica_descuento_3ra_edad
       FROM public.envios_ventas
       ${whereClause}
       ORDER BY id DESC
@@ -80,6 +119,39 @@ router.get('/', async (req, res) => {
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
     res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
+  }
+});
+
+// ─── GET /api/backoffice/opciones ────────────────────────────────────────────
+// Valores distintos que existen realmente en la tabla, para poblar los combos
+// de los filtros. Así el usuario elige de una lista en vez de adivinar cómo
+// está escrito el estado.
+//
+// OJO — ESTA RUTA VA ANTES QUE '/:id'. Si se declara después, Express hace
+// match de '/opciones' contra '/:id' (id = "opciones") y la consulta falla.
+router.get('/opciones', async (req, res) => {
+  try {
+    const distintos = async (col) => {
+      const { rows } = await pool.query(`
+        SELECT DISTINCT TRIM(${col}) AS v
+        FROM public.envios_ventas
+        WHERE ${col} IS NOT NULL AND TRIM(${col}) <> ''
+          AND estatus_envio != 'BORRADOR'
+        ORDER BY 1
+      `);
+      return rows.map(r => r.v);
+    };
+
+    const [estatusNetlife, estatusRegularizacion, terceraEdad] = await Promise.all([
+      distintos('netlife_estatus_real'),
+      distintos('estatus_regularizacion'),
+      distintos('aplica_descuento_3ra_edad'),
+    ]);
+
+    res.json({ success: true, data: { estatusNetlife, estatusRegularizacion, terceraEdad } });
+  } catch (e) {
+    console.error('[BACKOFFICE] GET opciones:', e.message);
+    res.status(500).json({ success: false, error: 'Error interno al cargar las opciones de filtro' });
   }
 });
 

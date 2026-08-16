@@ -183,6 +183,49 @@ function valueForField(row, key) {
   return String(v);
 }
 
+// ── Estado inicial de los filtros (las claves son los query params del API) ──
+const FILTROS_VACIOS = {
+  fechaDesde: "", fechaHasta: "",
+  activacionDesde: "", activacionHasta: "",
+  login: "",
+  estatusNetlife: "",
+  terceraEdad: "",
+  estatusRegularizacion: "",
+};
+
+const estilosFiltro = {
+  campo:  { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+  label:  { fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
+  ctl:    { padding: "8px 10px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", background: "#fff", color: "#0f172a", width: "100%" },
+  rango:  { display: "flex", alignItems: "center", gap: 6 },
+  guion:  { color: "#94a3b8", fontSize: 12 },
+};
+
+function CampoSelect({ label, valor, onChange, opciones, placeholder = "Todos" }) {
+  return (
+    <div style={estilosFiltro.campo}>
+      <label style={estilosFiltro.label}>{label}</label>
+      <select style={estilosFiltro.ctl} value={valor} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{placeholder}</option>
+        {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
+  return (
+    <div style={estilosFiltro.campo}>
+      <label style={estilosFiltro.label}>{label}</label>
+      <div style={estilosFiltro.rango}>
+        <input type="date" style={estilosFiltro.ctl} value={desde} onChange={(e) => onDesde(e.target.value)} />
+        <span style={estilosFiltro.guion}>–</span>
+        <input type="date" style={estilosFiltro.ctl} value={hasta} onChange={(e) => onHasta(e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
 export default function VistaBackoffice() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -194,12 +237,25 @@ export default function VistaBackoffice() {
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
 
+  // ── FILTROS ────────────────────────────────────────────────────────────
+  // El buscador de texto se mantiene igual; estos se suman.
+  const [filtros, setFiltros] = useState(FILTROS_VACIOS);
+  const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
+  const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
+  const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
+  const filtrosActivos = Object.values(filtros).filter(Boolean).length;
+
   const token = localStorage.getItem("token");
 
-  const fetchRows = async (q = "") => {
+  const fetchRows = async (q = "", f = filtros) => {
     try {
       setLoading(true);
-      const qs = q ? `?buscar=${encodeURIComponent(q)}` : "";
+      const p = new URLSearchParams();
+      if (q) p.set("buscar", q);
+      // Solo se mandan los filtros con valor: si están vacíos, el backend
+      // se comporta exactamente como antes.
+      Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
+      const qs = p.toString() ? `?${p.toString()}` : "";
       const res = await fetch(`${API}/api/backoffice${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -215,9 +271,22 @@ export default function VistaBackoffice() {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => fetchRows(search), 350);
+    const t = setTimeout(() => fetchRows(search, filtros), 350);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, filtros]);
+
+  // Opciones reales de los combos (una sola vez al montar)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/backoffice/opciones`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (json.success) setOpciones(json.data);
+      } catch { /* si falla, los combos quedan vacíos y se puede filtrar igual por fecha/login */ }
+    })();
+  }, []);
 
   const fetchDetail = async (id) => {
     try {
@@ -336,11 +405,68 @@ export default function VistaBackoffice() {
                 style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none" }}
               />
               <button
-                onClick={() => fetchRows(search)}
+                onClick={() => fetchRows(search, filtros)}
                 style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
               >
                 Refrescar
               </button>
+            </div>
+
+            {/* ── FILTROS ──────────────────────────────────────────────── */}
+            <div style={{ padding: 14, background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+                <CampoRangoFecha
+                  label="Fecha de registro"
+                  desde={filtros.fechaDesde} hasta={filtros.fechaHasta}
+                  onDesde={(v) => setFiltro("fechaDesde", v)} onHasta={(v) => setFiltro("fechaHasta", v)}
+                />
+                <CampoRangoFecha
+                  label="Fecha de activación"
+                  desde={filtros.activacionDesde} hasta={filtros.activacionHasta}
+                  onDesde={(v) => setFiltro("activacionDesde", v)} onHasta={(v) => setFiltro("activacionHasta", v)}
+                />
+                <div style={estilosFiltro.campo}>
+                  <label style={estilosFiltro.label}>Login Netlife</label>
+                  <input
+                    style={estilosFiltro.ctl}
+                    value={filtros.login}
+                    onChange={(e) => setFiltro("login", e.target.value)}
+                    placeholder="Login o parte del login"
+                  />
+                </div>
+                <CampoSelect
+                  label="Estatus Netlife"
+                  valor={filtros.estatusNetlife}
+                  onChange={(v) => setFiltro("estatusNetlife", v)}
+                  opciones={opciones.estatusNetlife}
+                />
+                <CampoSelect
+                  label="Estatus regularización"
+                  valor={filtros.estatusRegularizacion}
+                  onChange={(v) => setFiltro("estatusRegularizacion", v)}
+                  opciones={opciones.estatusRegularizacion}
+                />
+                <CampoSelect
+                  label="Tercera edad"
+                  valor={filtros.terceraEdad}
+                  onChange={(v) => setFiltro("terceraEdad", v)}
+                  opciones={opciones.terceraEdad}
+                />
+              </div>
+
+              {filtrosActivos > 0 && (
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
+                    {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} aplicado{filtrosActivos > 1 ? "s" : ""}
+                  </span>
+                  <button
+                    onClick={limpiarFiltros}
+                    style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                  >
+                    Limpiar filtros
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ overflow: "auto", maxHeight: 700 }}>

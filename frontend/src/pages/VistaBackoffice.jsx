@@ -544,7 +544,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver }) {
+function PanelRegistros({ onVolver, idInicial }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -635,6 +635,19 @@ function PanelRegistros({ onVolver }) {
     setDetailOriginal({});
     setAlert(null);
   };
+
+  // Cuando se llega aquí desde el tablero de Validación (?m=registros&id=123),
+  // el detalle de ese registro se abre solo. Se ejecuta una única vez por id
+  // para no reabrir el modal cada vez que el componente se vuelve a renderizar.
+  const idAbiertoRef = useRef(null);
+  useEffect(() => {
+    if (!idInicial) return;
+    if (idAbiertoRef.current === idInicial) return;
+    idAbiertoRef.current = idInicial;
+    setSelectedId(Number(idInicial));
+    fetchDetail(idInicial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idInicial]);
 
   // Columnas de la tabla. "completa" = todas las de envios_ventas.
   // Se arma sobre las claves que REALMENTE vienen del backend, para que si
@@ -1046,10 +1059,10 @@ const SUBMODULOS = [
     id: "validacion",
     nombre: "Validación / Regularización",
     icono: "✅",
-    descripcion: "Revisión de ventas con inconsistencias y seguimiento de su regularización.",
+    descripcion: "Tablero de ventas por estado de regularización, de la más antigua a la más reciente.",
     color: "#7c3aed",
     fondo: "#ede9fe",
-    listo: false,
+    listo: true,
   },
   {
     id: "welcome",
@@ -1196,6 +1209,313 @@ function EnConstruccion({ sub, onVolver }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO: VALIDACIÓN / REGULARIZACIÓN  (tablero kanban)
+// ═══════════════════════════════════════════════════════════════════════════
+// Tres bloques alimentados por la columna `estatus_regularizacion`:
+//
+//   (vacío)                        → SIN REVISAR
+//   "POR REGULARIZAR"              → POR REGULARIZAR
+//   "REGULARIZADO"                 → REGULARIZADO
+//   "NO NECESITA REGULARIZACIÓN"   → REGULARIZADO
+//
+// Las tarjetas se ordenan de la MÁS ANTIGUA a la más reciente: lo que lleva más
+// tiempo sin resolverse queda arriba de todo, que es donde tiene que mirar
+// primero quien valida.
+const BLOQUES_VALIDACION = [
+  { id: "SIN_REVISAR",     titulo: "Sin revisar",     color: "#475569", fondo: "#f1f5f9", borde: "#cbd5e1", valorBD: "" },
+  { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
+  { id: "REGULARIZADO",    titulo: "Regularizado",    color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
+];
+
+// Normaliza para comparar: sin tildes, sin espacios sobrantes, en mayúsculas.
+// Así "Regularizado", "REGULARIZADO " y "regularizado" caen en el mismo sitio.
+const normalizarEstado = (txt) =>
+  String(txt ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
+
+function bloqueDeRegistro(row) {
+  const v = normalizarEstado(row?.estatus_regularizacion);
+  if (!v) return "SIN_REVISAR";
+  if (v.includes("NO NECESITA") || v.startsWith("REGULARIZAD")) return "REGULARIZADO";
+  if (v.includes("REGULARIZAR")) return "POR_REGULARIZAR";
+  // Valor que no encaja en ninguna regla: se muestra en "Sin revisar" pero la
+  // tarjeta lleva su texto original visible, para que se note y se corrija.
+  return "SIN_REVISAR";
+}
+
+function diasDesde(fecha) {
+  if (!fecha) return null;
+  const d = new Date(String(fecha).slice(0, 10) + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
+  const dias = diasDesde(row.fecha_registro_sistema);
+  const estadoCrudo = String(row.estatus_regularizacion ?? "").trim();
+  // Solo se muestra el texto crudo cuando NO coincide con la etiqueta esperada
+  // del bloque (es decir, un valor raro que alguien escribió a mano).
+  const esperado = BLOQUES_VALIDACION.find((b) => b.id === bloqueActual)?.valorBD ?? "";
+  const estadoInesperado = estadoCrudo && normalizarEstado(estadoCrudo) !== normalizarEstado(esperado);
+
+  const colorAntiguedad = dias == null ? "#94a3b8" : dias >= 15 ? "#b91c1c" : dias >= 7 ? "#b45309" : "#64748b";
+
+  return (
+    <div
+      draggable={!moviendo}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", String(row.id));
+        e.dataTransfer.effectAllowed = "move";
+        onArrastrar(row.id);
+      }}
+      onDragEnd={() => onArrastrar(null)}
+      onClick={() => onAbrir(row.id)}
+      title="Clic para abrir el detalle · arrastra para cambiar de bloque"
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        padding: 13,
+        cursor: moviendo ? "wait" : "grab",
+        boxShadow: "0 2px 8px rgba(15,23,42,.05)",
+        opacity: moviendo ? 0.55 : 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.3 }}>
+          {row.nombre_cliente_completo || "Sin nombre"}
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>#{row.id}</span>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
+        <div>CI {row.numero_identificacion || "—"}</div>
+        {row.plan_contratado_final && <div>{row.plan_contratado_final}</div>}
+        <div>Asesor: {row.codigo_asesor || "—"}</div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: colorAntiguedad, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
+          {dias == null ? "sin fecha" : dias === 0 ? "hoy" : `${dias} día${dias > 1 ? "s" : ""}`}
+        </span>
+        {row.estatus_envio && (
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>
+            {row.estatus_envio}
+          </span>
+        )}
+        {estadoInesperado && (
+          <span title="Valor no reconocido en estatus_regularizacion" style={{ fontSize: 10, fontWeight: 800, color: "#7c2d12", background: "#ffedd5", border: "1px solid #fed7aa", borderRadius: 999, padding: "2px 8px" }}>
+            ⚠ {estadoCrudo}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TableroValidacion({ onVolver, onAbrirRegistro }) {
+  const [rows, setRows] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [arrastrando, setArrastrando] = useState(null);
+  const [sobreBloque, setSobreBloque] = useState(null);
+  const [moviendo, setMoviendo] = useState(null);
+  const [aviso, setAviso] = useState(null);
+
+  const token = localStorage.getItem("token");
+  const LIMITE = 500;
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/api/backoffice?limit=${LIMITE}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
+      setRows(j.data || []);
+      // Si hay más registros que el límite, se avisa en vez de mostrar
+      // silenciosamente un tablero incompleto.
+      if (j.total && j.total > (j.data || []).length) {
+        setAviso(`Mostrando los ${(j.data || []).length} más recientes de ${j.total}. Usa el buscador para encontrar los demás.`);
+      }
+    } catch (e) {
+      setError(e.message || "Error de conexión");
+    } finally {
+      setCargando(false);
+    }
+  }, [token]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Ordenadas de la MÁS ANTIGUA a la más reciente.
+  const ordenadas = useMemo(() => {
+    const q = normalizarEstado(busqueda);
+    const filtradas = !q ? rows : rows.filter((r) =>
+      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, String(r.id)]
+        .some((c) => normalizarEstado(c).includes(q))
+    );
+    return [...filtradas].sort((a, b) => {
+      const fa = String(a.fecha_registro_sistema || "");
+      const fb = String(b.fecha_registro_sistema || "");
+      if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
+      return (a.id ?? 0) - (b.id ?? 0);
+    });
+  }, [rows, busqueda]);
+
+  const porBloque = useMemo(() => {
+    const mapa = { SIN_REVISAR: [], POR_REGULARIZAR: [], REGULARIZADO: [] };
+    for (const r of ordenadas) mapa[bloqueDeRegistro(r)].push(r);
+    return mapa;
+  }, [ordenadas]);
+
+  const soltarEn = async (bloqueDestino, e) => {
+    e.preventDefault();
+    setSobreBloque(null);
+    const id = Number(e.dataTransfer.getData("text/plain"));
+    setArrastrando(null);
+    if (!id) return;
+
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    if (bloqueDeRegistro(row) === bloqueDestino) return; // no se movió de bloque
+
+    const destino = BLOQUES_VALIDACION.find((b) => b.id === bloqueDestino);
+    const valorPrevio = row.estatus_regularizacion;
+
+    // Actualización optimista: la tarjeta salta al instante y, si el guardado
+    // falla, vuelve a su sitio. Sin esto el kanban se siente lento.
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, estatus_regularizacion: destino.valorBD } : r)));
+    setMoviendo(id);
+    setAviso(null);
+
+    try {
+      const r = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ estatus_regularizacion: destino.valorBD }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
+      setAviso(`✅ #${id} movido a «${destino.titulo}».`);
+    } catch (err) {
+      setRows((prev) => prev.map((x) => (x.id === id ? { ...x, estatus_regularizacion: valorPrevio } : x)));
+      setAviso(`❌ No se pudo mover #${id}: ${err.message}. La tarjeta volvió a su bloque.`);
+    } finally {
+      setMoviendo(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
+            Backoffice · Validación
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Validación / Regularización</h2>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, asesor…"
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
+              />
+              <button
+                onClick={cargar}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
+              >
+                Refrescar
+              </button>
+            </div>
+          </div>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#64748b" }}>
+            Ordenadas de la más antigua a la más reciente. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
+          </p>
+        </div>
+
+        {aviso && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, fontWeight: 700, color: "#334155" }}>
+            {aviso}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+          {BLOQUES_VALIDACION.map((bloque) => {
+            const lista = porBloque[bloque.id] || [];
+            const activo = sobreBloque === bloque.id;
+            return (
+              <div
+                key={bloque.id}
+                onDragOver={(e) => { e.preventDefault(); setSobreBloque(bloque.id); }}
+                onDragLeave={() => setSobreBloque((b) => (b === bloque.id ? null : b))}
+                onDrop={(e) => soltarEn(bloque.id, e)}
+                style={{
+                  background: activo ? bloque.fondo : "#fafbfc",
+                  border: `2px ${activo ? "dashed" : "solid"} ${activo ? bloque.color : "#e5e7eb"}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  minHeight: 300,
+                  transition: "background .15s, border-color .15s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+                  <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                    {bloque.titulo}
+                  </h3>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
+                    {lista.length}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
+
+                  {!cargando && lista.length === 0 && (
+                    <div style={{ padding: "26px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
+                      {arrastrando ? "Suelta aquí" : "Sin ventas en este bloque"}
+                    </div>
+                  )}
+
+                  {lista.map((row) => (
+                    <TarjetaCliente
+                      key={row.id}
+                      row={row}
+                      bloqueActual={bloque.id}
+                      moviendo={moviendo === row.id}
+                      onArrastrar={setArrastrando}
+                      onAbrir={onAbrirRegistro}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function VistaBackoffice() {
   const [params, setParams] = useSearchParams();
   const idActivo = params.get("m");
@@ -1204,10 +1524,21 @@ export default function VistaBackoffice() {
   const abrir = useCallback((id) => setParams({ m: id }), [setParams]);
   const volver = useCallback(() => setParams({}), [setParams]);
 
+  // Desde el tablero de Validación se salta al detalle completo reutilizando el
+  // modal que ya existe en Registros: se navega a ?m=registros&id=<n> y el
+  // panel lo abre solo. Así no hay dos pantallas de detalle que mantener.
+  const abrirRegistro = useCallback((id) => setParams({ m: "registros", id: String(id) }), [setParams]);
+
   // Sin submódulo válido en la URL → menú de tarjetas.
   if (!sub) return <HubBackoffice onAbrir={abrir} />;
 
-  if (sub.id === "registros") return <PanelRegistros onVolver={volver} />;
+  if (sub.id === "registros") {
+    return <PanelRegistros onVolver={volver} idInicial={params.get("id")} />;
+  }
+
+  if (sub.id === "validacion") {
+    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} />;
+  }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;
 }

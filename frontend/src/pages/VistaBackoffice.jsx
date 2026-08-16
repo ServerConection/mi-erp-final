@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -543,7 +544,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-export default function VistaBackoffice() {
+function PanelRegistros({ onVolver }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -748,8 +749,14 @@ export default function VistaBackoffice() {
         <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: "#4f46e5", textTransform: "uppercase" }}>Backoffice</div>
-              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>Vista Backoffice</h2>
+              <button
+                onClick={onVolver}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
+              >
+                ← Volver a Backoffice
+              </button>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: "#4f46e5", textTransform: "uppercase" }}>Backoffice · Registros</div>
+              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>Todos los registros</h2>
             </div>
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
               {rows.length} registros
@@ -1005,4 +1012,202 @@ export default function VistaBackoffice() {
       </div>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HUB DE BACKOFFICE
+// ═══════════════════════════════════════════════════════════════════════════
+// Backoffice dejó de ser una sola pantalla: ahora es un menú de tarjetas y cada
+// una abre su propio submódulo a pantalla completa.
+//
+// El submódulo activo vive en la URL (?m=registros), no en un useState. Eso
+// permite compartir el enlace de un submódulo, recargar la página sin perder
+// dónde estabas, y que el botón "atrás" del navegador funcione como se espera.
+//
+// PARA AGREGAR UN SUBMÓDULO NUEVO: se añade una entrada a SUBMODULOS y, cuando
+// su pantalla exista, se enchufa en el switch de abajo. No hay que tocar nada
+// más — ni el menú lateral, ni las rutas de App.jsx.
+//
+// NOTA SOBRE LAS DOS EMPRESAS: hoy el hub es común. Cuando definas cómo separar
+// NOVONET y VELSA, el punto de corte natural es aquí: o un selector de empresa
+// en la cabecera del hub que se pase como prop a cada submódulo, o duplicar la
+// tarjeta por empresa. Se dejó `empresaUsuario` leído y disponible para eso.
+const SUBMODULOS = [
+  {
+    id: "registros",
+    nombre: "Registros",
+    icono: "🗂️",
+    descripcion: "Todas las ventas ingresadas, con filtros, detalle editable y documentos de respaldo.",
+    color: "#0ea5e9",
+    fondo: "#e0f2fe",
+    listo: true,
+  },
+  {
+    id: "validacion",
+    nombre: "Validación / Regularización",
+    icono: "✅",
+    descripcion: "Revisión de ventas con inconsistencias y seguimiento de su regularización.",
+    color: "#7c3aed",
+    fondo: "#ede9fe",
+    listo: false,
+  },
+  {
+    id: "welcome",
+    nombre: "Welcome",
+    icono: "👋",
+    descripcion: "Gestión de la llamada de bienvenida al cliente tras la activación.",
+    color: "#059669",
+    fondo: "#d1fae5",
+    listo: false,
+  },
+  {
+    id: "agendamientos",
+    nombre: "Agendamientos",
+    icono: "📅",
+    descripcion: "Programación y control de las visitas de instalación.",
+    color: "#ea580c",
+    fondo: "#ffedd5",
+    listo: false,
+  },
+  {
+    id: "preservicios",
+    nombre: "Preservicios",
+    icono: "🔧",
+    descripcion: "Verificaciones técnicas previas a la instalación del servicio.",
+    color: "#0891b2",
+    fondo: "#cffafe",
+    listo: false,
+  },
+];
+
+function TarjetaSubmodulo({ sub, onAbrir }) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onAbrir(sub.id)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        textAlign: "left",
+        background: "#fff",
+        border: `1px solid ${hover ? sub.color : "#e5e7eb"}`,
+        borderRadius: 18,
+        padding: 22,
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        minHeight: 190,
+        boxShadow: hover ? `0 16px 36px ${sub.color}22` : "0 6px 18px rgba(15,23,42,.06)",
+        transform: hover ? "translateY(-3px)" : "none",
+        transition: "all .18s ease-out",
+        position: "relative",
+      }}
+    >
+      {!sub.listo && (
+        <span style={{ position: "absolute", top: 16, right: 16, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 999, padding: "3px 9px" }}>
+          EN DESARROLLO
+        </span>
+      )}
+
+      <div style={{ width: 52, height: 52, borderRadius: 14, background: sub.fondo, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flex: "none" }}>
+        {sub.icono}
+      </div>
+
+      <div>
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: "#0f172a", lineHeight: 1.25 }}>{sub.nombre}</h3>
+        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.5, color: "#64748b" }}>{sub.descripcion}</p>
+      </div>
+
+      <span style={{ marginTop: "auto", fontSize: 12, fontWeight: 800, color: sub.color, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        Abrir <span style={{ transform: hover ? "translateX(3px)" : "none", transition: "transform .18s" }}>→</span>
+      </span>
+    </button>
+  );
+}
+
+function HubBackoffice({ onAbrir }) {
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 22, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
+            Backoffice
+          </div>
+          <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
+            ¿Qué quieres gestionar?
+          </h2>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
+            Elige un módulo para entrar.
+          </p>
+        </div>
+
+        <div
+          style={{
+            padding: 22,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 18,
+          }}
+        >
+          {SUBMODULOS.map((sub) => (
+            <TarjetaSubmodulo key={sub.id} sub={sub} onAbrir={onAbrir} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnConstruccion({ sub, onVolver }) {
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
+            Backoffice
+          </div>
+          <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>{sub.nombre}</h2>
+        </div>
+
+        <div style={{ padding: "70px 24px", textAlign: "center" }}>
+          <div style={{ width: 88, height: 88, borderRadius: 24, background: sub.fondo, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42, margin: "0 auto 20px" }}>
+            {sub.icono}
+          </div>
+          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>Módulo en desarrollo</h3>
+          <p style={{ margin: "10px auto 0", maxWidth: 460, fontSize: 13.5, lineHeight: 1.6, color: "#64748b" }}>
+            {sub.descripcion}
+          </p>
+          <p style={{ margin: "18px auto 0", maxWidth: 460, fontSize: 12.5, lineHeight: 1.6, color: "#94a3b8" }}>
+            La pantalla todavía no está construida. La navegación ya quedó lista, así que
+            cuando definamos qué debe mostrar solo se enchufa aquí.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function VistaBackoffice() {
+  const [params, setParams] = useSearchParams();
+  const idActivo = params.get("m");
+  const sub = SUBMODULOS.find((s) => s.id === idActivo);
+
+  const abrir = useCallback((id) => setParams({ m: id }), [setParams]);
+  const volver = useCallback(() => setParams({}), [setParams]);
+
+  // Sin submódulo válido en la URL → menú de tarjetas.
+  if (!sub) return <HubBackoffice onAbrir={abrir} />;
+
+  if (sub.id === "registros") return <PanelRegistros onVolver={volver} />;
+
+  return <EnConstruccion sub={sub} onVolver={volver} />;
 }

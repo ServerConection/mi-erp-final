@@ -901,6 +901,15 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       activaMes: totalActivaMes,   // creados y activados en el rango
       backlog: totalBacklog,
       ventaServicio: totalVentaServicio,
+      // Mismas metricas que NOVONET, para que las tarjetas sean identicas
+      pctGestionablesVsTotales: (() => {
+        const lt = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
+        return lt > 0 ? ((totalGestionables / lt) * 100).toFixed(1) : "0.0";
+      })(),
+      efectividadVsLeadsTotales: (() => {
+        const lt = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
+        return lt > 0 ? ((totalJotform / lt) * 100).toFixed(1) : "0.0";
+      })(),
     };
   }, [data]);
 
@@ -1368,24 +1377,33 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
 
           {/* KPIs Mini */}
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3 mb-6">
-            <KpiMini index={0} variant="stone" label="Leads Totales"   meta={metaDinamica(7050,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}          color="border-l-orange-500" />
-            <KpiMini index={1} variant="stone" label="Gestionables"    meta={metaDinamica(4230,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}               color="border-l-amber-500" />
-            <KpiMini index={2} variant="stone" label="Ingresos CRM"    meta={metaDinamica(1200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                color="border-l-orange-600" />
-            <KpiMini index={3} variant="stone" label="Ingresos JOT"    meta={metaDinamica(1050,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}            color="border-l-amber-600" />
-            <KpiMini index={4} variant="stone" label="Ventas del Día"  meta={metaDinamica(35,    filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}               color="border-l-green-600" />
-            <KpiMini index={4} variant="stone" label="V. Día (CRM+JOT)" meta={metaDinamica(35,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}              color="border-l-orange-500" />
-            <KpiMini index={4} variant="stone" label="V. Seguimiento"  meta={metaDinamica(0,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}           color="border-l-amber-500" />
-            <KpiMini index={5} variant="stone" label="Efectividad"     meta="90%"  real={`${stats.efectividad}%`}             color="border-l-orange-400" />
-            <KpiMini index={6} variant="stone" label="Tasa Inst."      meta="80%"  real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
-            <KpiMini index={7} variant="stone" label="Tarjeta %"       meta="30%"  real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
-            <KpiMini index={8} variant="stone" label="Descarte %"      meta="25%"  real={`${stats.descartePorc}%`}            color="border-l-red-500" />
-            <KpiMini index={9} variant="stone" label="Efic. Pauta"     meta="20%"  real={`${stats.efectividadActivasPauta}%`} color="border-l-orange-700" />
-            <KpiMini index={10} variant="stone" label="3ra Edad %"      meta="15%"  real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
-            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes}                  color="border-l-orange-500" />
-            <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(200,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}                    color="border-l-amber-500" />
-            <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(1000,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}                    color="border-l-yellow-600" />
-            <KpiMini index={15} variant="stone" label="Venta Servicio"  meta={metaDinamica(0,     filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaServicio}              color="border-l-emerald-600" />
-            <KpiMini index={14} variant="stone" label="Por Regularizar" value={stats.regularizar}                                          color="border-l-rose-500" />
+            {/* MISMO ORDEN Y NOMBRES QUE NOVONET (Indicadores.jsx).
+                FILA 1 — Comercial (leads -> efectividad -> ingresos)
+                FILA 2 — Activaciones y calidad
+                Solo cambia la paleta (variant="stone"), para conservar la
+                identidad visual de Velsa. */}
+            <KpiMini index={0}  variant="stone" label="Leads Totales"        meta={metaDinamica(7050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}               color="border-l-orange-500" />
+            <KpiMini index={1}  variant="stone" label="Gestionables"         meta={metaDinamica(4230, filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}                    color="border-l-amber-500" />
+            <KpiMini index={2}  variant="stone" label="% Gest. vs Totales"   meta="60%"                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" />
+            <KpiMini index={3}  variant="stone" label="Efect. vs Leads Tot." meta="15%"                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" />
+            <KpiMini index={4}  variant="stone" label="Efect. vs Gestion."   meta="90%"                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" />
+            <KpiMini index={5}  variant="stone" label="Descarte %"           meta="25%"                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" />
+            <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(1200, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" />
+            <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" />
+            <KpiMini index={8}  variant="stone" label="Ingresos Jot día"     meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}                   color="border-l-orange-500" />
+            <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" />
+            <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" />
+
+            {/* FILA 2 — Activaciones y calidad */}
+            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" />
+            <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}   color="border-l-amber-500" />
+            <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}   color="border-l-yellow-600" />
+            <KpiMini index={14} variant="stone" label="Tasa Inst."      meta="80%" real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
+            <KpiMini index={15} variant="stone" label="Tarjeta %"       meta="30%" real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
+            <KpiMini index={16} variant="stone" label="3ra Edad %"      meta="15%" real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
+            <KpiMini index={17} variant="stone" label="Efic. Pauta"     meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-orange-700" />
+            <KpiMini index={18} variant="stone" label="Venta Servicio"  meta={metaDinamica(0, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaServicio} color="border-l-emerald-600" />
+            <KpiMini index={19} variant="stone" label="Por Regularizar" value={stats.regularizar}                                       color="border-l-rose-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

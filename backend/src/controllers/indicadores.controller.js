@@ -429,7 +429,12 @@ const getIndicadoresDashboard = async (req, res) => {
             const groupCol     = columna === 'e.supervisor' ? 'supervisor' : 'b_persona_responsable';
             const esSupervisor = columna === 'e.supervisor';
             // Para asesores también devolvemos su supervisor (para agrupar en el frontend)
-            const extraSelect  = esSupervisor ? '' : ", COALESCE(supervisor, 'SIN ASIGNAR') AS sup_nombre";
+            // FIX duplicado en Ranking Asesores / selector: si el mismo asesor llega con
+            // espacios extra (ej. "OSCAR SANGUCHO SASIG " vs "OSCAR SANGUCHO SASIG"), antes
+            // el GROUP BY los trataba como dos grupos distintos que se veían idénticos en
+            // pantalla (una tarjeta con datos reales y otra "fantasma" casi vacía). BTRIM +
+            // NULLIF normaliza antes de agrupar.
+            const extraSelect  = esSupervisor ? '' : ", COALESCE(NULLIF(BTRIM(supervisor), ''), 'SIN ASIGNAR') AS sup_nombre";
             const extraGroup   = esSupervisor ? '' : ', 2';
             return `
             WITH _base AS MATERIALIZED (
@@ -466,7 +471,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
+                COALESCE(NULLIF(BTRIM(${groupCol}), ''), 'SIN ASIGNAR') AS nombre_grupo
                 ${extraSelect},
                 -- COUNT(DISTINCT b_id) y no COUNT(*): un lead puede aparecer en
                 -- varias filas cuando tiene mas de una venta Jotform asociada

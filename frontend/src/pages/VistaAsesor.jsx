@@ -28,6 +28,34 @@ const initials = (n) =>
 
 const fmtPct = (v) => `${Number(v || 0).toFixed(1)}%`;
 
+// Corrige errores tipográficos que vienen así almacenados en el origen de
+// datos (Jotform/Netlife) para que se vean bien en pantalla. Solo cambia la
+// ETIQUETA visible — el valor real (usado para comparar/filtrar contra la
+// base de datos) no se toca, así que los filtros siguen funcionando igual.
+const ETAPA_LABEL_FIX = { "PREPALNIFICADO": "PREPLANIFICADO" };
+const etapaLabel = (estado) => ETAPA_LABEL_FIX[estado] || estado;
+
+// Formatea celdas de las tablas genéricas (Ventas activas / Detalle Jotform):
+// fechas ISO (AAAA-MM-DD...) -> DD/MM/AAAA, y nombres de asesor/supervisor ->
+// Formato Título, para que se vean consistentes con el resto del panel.
+// No modifica el dato real, solo cómo se muestra en pantalla.
+const formatCellValue = (key, value) => {
+  if (value === null || value === undefined || value === "") return "—";
+  if (/FECHA/i.test(key) && typeof value === "string") {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  if ((key === "ASESOR" || key === "SUPERVISOR_ASIGNADO") && typeof value === "string") {
+    return value
+      .toLowerCase()
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return value;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // METAS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,7 +353,11 @@ function AsesorCard({ row, rank }) {
               {row.nombre_grupo}
             </div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              {row.supervisor || "Sin supervisor"}
+              {/* FIX: el backend devuelve el supervisor del asesor en
+                  "sup_nombre" (queryKPI), no en "supervisor" — por eso esta
+                  tarjeta siempre mostraba "Sin supervisor" aunque el dato
+                  existiera. Ver indicadores.controller.js → queryKPI(). */}
+              {row.sup_nombre && row.sup_nombre !== "SIN ASIGNAR" ? row.sup_nombre : "Sin supervisor"}
             </div>
           </div>
         </div>
@@ -461,7 +493,7 @@ function AsesorCard({ row, rank }) {
                   background: s.bg, color: s.color, border: `1px solid ${s.border}`,
                   whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 5,
                 }}>
-                  {estado}
+                  {etapaLabel(estado)}
                   <span style={{ fontWeight: 900, fontSize: 11 }}>{total}</span>
                 </span>
               );
@@ -485,6 +517,10 @@ export default function VistaAsesor() {
   const [dataJotform, setDataJotform]       = useState([]);
   const [ventasActivas, setVentasActivas]   = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  // Ranking Asesores puede traer 50+ tarjetas; para no renderizar todas de
+  // una sola vez (costoso en equipos/celulares modestos) se muestran de a
+  // tandas con un botón "Mostrar más".
+  const [visibleRanking, setVisibleRanking] = useState(15);
 
   const [filtros, setFiltros] = useState({
     fechaDesde:           getPrimerDiaMes(),
@@ -502,6 +538,7 @@ export default function VistaAsesor() {
 
   const fetchData = async (overrideFiltros) => {
     setLoading(true);
+    setVisibleRanking(15);
     try {
       const f = overrideFiltros || filtros;
       const params = new URLSearchParams(
@@ -578,10 +615,19 @@ export default function VistaAsesor() {
     };
   }, [asesoresEnriquecidos]);
 
-  const nombresAsesores = useMemo(
-    () => [...asesores].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
-    [asesores]
-  );
+  // Dedupe defensivo: si el mismo asesor llega con variantes de espacios o
+  // mayúsculas/minúsculas (dato de origen inconsistente), no se debe ver
+  // repetido en el selector. El fix real de fondo está en el GROUP BY del
+  // backend (queryKPI, indicadores.controller.js); esto es un resguardo
+  // adicional en el frontend.
+  const nombresAsesores = useMemo(() => {
+    const vistos = new Map();
+    asesores.forEach((a) => {
+      const clave = (a.nombre_grupo || "").trim().toUpperCase();
+      if (clave && !vistos.has(clave)) vistos.set(clave, a);
+    });
+    return [...vistos.values()].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1));
+  }, [asesores]);
 
   const exportarExcel = () => {
     if (!dataJotform.length) return;
@@ -791,7 +837,7 @@ export default function VistaAsesor() {
                     outline: activo ? `2px solid ${s.color}33` : "none",
                   }}
                   className="px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-                  <span>{estado}</span>
+                  <span>{etapaLabel(estado)}</span>
                   <span className="font-black text-sm">{total}</span>
                 </button>
               );
@@ -807,7 +853,7 @@ export default function VistaAsesor() {
             <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse inline-block" />
             Ranking asesores
             <span className="text-slate-300 font-normal text-[10px] normal-case tracking-normal">
-              ({asesoresEnriquecidos.length} {asesoresEnriquecidos.length === 1 ? "asesor" : "asesores"})
+              ({asesoresEnriquecidos.length} {asesoresEnriquecidos.length === 1 ? "asesor" : "asesores"} · ordenado por Ingresos Jotform)
             </span>
           </p>
           {loading && (
@@ -823,9 +869,19 @@ export default function VistaAsesor() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {asesoresEnriquecidos.map((a, i) => (
+            {asesoresEnriquecidos.slice(0, visibleRanking).map((a, i) => (
               <AsesorCard key={a.nombre_grupo} row={a} rank={i} />
             ))}
+          </div>
+        )}
+        {asesoresEnriquecidos.length > visibleRanking && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+            <button
+              onClick={() => setVisibleRanking((v) => v + 15)}
+              className="text-[10px] bg-slate-50 hover:bg-slate-100 px-5 py-2 rounded-full font-black border border-slate-200 text-slate-500 uppercase tracking-wider transition-all"
+            >
+              Mostrar más ({asesoresEnriquecidos.length - visibleRanking} restantes)
+            </button>
           </div>
         )}
       </div>
@@ -864,9 +920,9 @@ export default function VistaAsesor() {
                 {ventasActivas.map((row, i) => (
                   <tr key={i} onClick={() => setClienteSeleccionado(row)}
                     className="border-b border-slate-50 hover:bg-amber-50 transition-colors cursor-pointer group">
-                    {Object.values(row).map((v, j) => (
+                    {Object.entries(row).map(([k, v], j) => (
                       <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
-                        {v ?? "—"}
+                        {formatCellValue(k, v)}
                       </td>
                     ))}
                   </tr>
@@ -911,9 +967,9 @@ export default function VistaAsesor() {
                 {dataJotform.slice(0, 50).map((row, i) => (
                   <tr key={i} onClick={() => setClienteSeleccionado(row)}
                     className="border-b border-slate-50 hover:bg-sky-50 transition-colors cursor-pointer group">
-                    {Object.values(row).map((v, j) => (
+                    {Object.entries(row).map(([k, v], j) => (
                       <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
-                        {v ?? "—"}
+                        {formatCellValue(k, v)}
                       </td>
                     ))}
                   </tr>

@@ -77,7 +77,13 @@ const recibirLead = async (req, res) => {
     const empresa = slugify(req.query.empresa || '') || 'novonet'; // retro-compatibilidad
 
     // Valores de todos los campos Bitrix, en el mismo orden que CAMPOS_BITRIX
-    const valores = CAMPOS_BITRIX.map(campo => req.query[campo] || '');
+    // etapa_bitrix se guarda SIEMPRE en MAYUSCULAS. Bitrix la manda en
+    // "Titulo" y las cargas masivas usan el catalogo en MAYUSCULA: sin
+    // normalizar, la misma etapa aparece partida en dos al agrupar.
+    const valores = CAMPOS_BITRIX.map(campo => {
+      const v = req.query[campo] || '';
+      return campo === 'etapa_bitrix' ? String(v).trim().toUpperCase() : v;
+    });
 
     const columnas = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'raw_query'];
     const placeholders = columnas.map((_, i) => `$${i + 1}`).join(',');

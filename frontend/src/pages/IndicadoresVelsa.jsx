@@ -884,7 +884,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     return {
       ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
       gestionables: totalGestionables,
-      regularizar: s.reduce((acc, c) => acc + Number(c.regularizacion || 0), 0),
+      // POR REGULARIZAR — mismo campo que Novonet (por_regularizar).
+      // Velsa sumaba `regularizacion`, que aplica exclusiones de estado_venta
+      // adicionales, así que la tarjeta daba un número distinto al de Novonet
+      // aun con el mismo nombre.
+      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
       ingresosJotform: totalJotform,
       ventasDelDia:       s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
       ventasDiaForm:      s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0),
@@ -1401,9 +1405,18 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={14} variant="stone" label="Tasa Inst."      meta="80%" real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
             <KpiMini index={15} variant="stone" label="Tarjeta %"       meta="30%" real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
             <KpiMini index={16} variant="stone" label="3ra Edad %"      meta="15%" real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
-            <KpiMini index={17} variant="stone" label="Efic. Pauta"     meta="20%" real={`${stats.efectividadActivasPauta}%`} color="border-l-orange-700" />
-            <KpiMini index={18} variant="stone" label="Venta Servicio"  meta={metaDinamica(0, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaServicio} color="border-l-emerald-600" />
-            <KpiMini index={19} variant="stone" label="Por Regularizar" value={stats.regularizar}                                       color="border-l-rose-500" />
+            {/* ALINEACIÓN CON NOVONET (2026-08-17)
+                Velsa tenía DOS tarjetas que Novonet no tiene:
+                  · "Efic. Pauta" (efectividad_activas_vs_pauta) — Novonet la
+                    RETIRÓ y la reemplazó por "Efect. vs Leads Tot." (index 3),
+                    que ya está arriba. Tener las dos duplicaba el mismo
+                    concepto con dos denominadores distintos y por eso los
+                    números de Velsa nunca coincidían con los de Novonet.
+                  · "Venta Servicio" — no existe en Novonet.
+                Se reemplazan por la tarjeta 17 de Novonet para que ambas
+                empresas tengan EXACTAMENTE las mismas 19 tarjetas (0-18). */}
+            <KpiMini index={17} variant="stone" label="% Planes 150/200" meta="15%" real="0.0%"          color="border-l-lime-600" />
+            <KpiMini index={18} variant="stone" label="Por Regularizar"  value={stats.regularizar}       color="border-l-rose-500" />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

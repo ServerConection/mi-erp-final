@@ -516,6 +516,7 @@ export default function VistaAsesor() {
   const [estadosNetlife, setEstadosNetlife] = useState([]);
   const [dataJotform, setDataJotform]       = useState([]);
   const [ventasActivas, setVentasActivas]   = useState([]);
+  const [regularizaciones, setRegularizaciones] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   // Ranking Asesores puede traer 50+ tarjetas; para no renderizar todas de
   // una sola vez (costoso en equipos/celulares modestos) se muestran de a
@@ -554,6 +555,7 @@ export default function VistaAsesor() {
         setEstadosNetlife(result.estadosNetlife || []);
         setDataJotform(result.dataNetlife || []);
         setVentasActivas(result.ventasActivas || []);
+        setRegularizaciones(result.regularizaciones || []);
       }
     } catch (e) {
       console.error("Error VistaAsesor:", e);
@@ -920,6 +922,53 @@ export default function VistaAsesor() {
                 {ventasActivas.map((row, i) => (
                   <tr key={i} onClick={() => setClienteSeleccionado(row)}
                     className="border-b border-slate-50 hover:bg-amber-50 transition-colors cursor-pointer group">
+                    {Object.entries(row).map(([k, v], j) => (
+                      <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
+                        {formatCellValue(k, v)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── POR REGULARIZAR (worklist urgente, sin filtro de fecha) ── */}
+      <div className="bg-white border border-red-200 rounded-2xl overflow-hidden shadow-sm mb-8">
+        <div className="px-5 py-3 flex justify-between items-center border-b border-red-100 bg-red-50">
+          <div>
+            <p className="text-[10px] font-black text-red-700 uppercase tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
+              Por regularizar — pendientes
+              <span className="text-red-300 font-normal normal-case tracking-normal text-[9px]">
+                — todo lo que hoy está "POR REGULARIZAR", sin importar la fecha de registro o activación
+              </span>
+            </p>
+            <p className="text-[8px] text-red-400 mt-0.5 uppercase">
+              {regularizaciones.length} pendiente{regularizaciones.length === 1 ? "" : "s"} por regularizar
+            </p>
+          </div>
+        </div>
+        {regularizaciones.length === 0 ? (
+          <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
+            Sin pendientes por regularizar
+          </div>
+        ) : (
+          <div className="overflow-auto max-h-64">
+            <table className="text-[9px] w-full border-collapse font-mono">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-red-50 text-red-400 font-black text-[8px] uppercase border-b border-red-100">
+                  {Object.keys(regularizaciones[0] || {}).map((h) => (
+                    <th key={h} className="px-3 py-2 text-left border-r border-red-100 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {regularizaciones.map((row, i) => (
+                  <tr key={i} onClick={() => setClienteSeleccionado(row)}
+                    className="border-b border-slate-50 hover:bg-red-50 transition-colors cursor-pointer group">
                     {Object.entries(row).map(([k, v], j) => (
                       <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
                         {formatCellValue(k, v)}

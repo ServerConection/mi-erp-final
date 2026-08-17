@@ -60,34 +60,33 @@ const setCacheVelsa = (key, data) => {
 const clearCacheVelsa = () => { const n = _cacheVelsa.size; _cacheVelsa.clear(); return n; };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VENTA DE SERVICIO: la MV no expone columnas plan_* (no se modifica su esquema
-// por decisión del usuario — "Solo JOIN en el controller, sin tocar la MV").
-// Se obtienen vía LEFT JOIN directo a la vista base de Jotform Velsa.
+// VENTA DE SERVICIO / PLANES
 // ─────────────────────────────────────────────────────────────────────────────
-// FIX (2026-06-23): vw_jotform_velsa_netlife_completo puede tener varias
-// filas por id_negociacion_bitrix. Sin deduplicar, el LEFT JOIN multiplica
-// las filas de la MV y todos los COUNT(*) que lo usan (ingresos_jot, KPIs de
-// monitoreo diario, reporte180, consulta-descarga) quedan inflados.
-const JOIN_JF_VELSA_MV = `LEFT JOIN (
-    SELECT
-        id_negociacion_bitrix,
-        MAX(plan_casa)                  AS plan_casa,
-        MAX(plan_pyme)                   AS plan_pyme,
-        MAX(plan_profesional)            AS plan_profesional,
-        MAX(plan_hogar_adulto_mayor)     AS plan_hogar_adulto_mayor,
-        MAX(plan_pyme_corp)              AS plan_pyme_corp,
-        MAX(plan_centro_red_comercial)   AS plan_centro_red_comercial
-    FROM public.vw_jotform_velsa_netlife_completo
-    GROUP BY id_negociacion_bitrix
-) jf2 ON mv.id_jotform::text = jf2.id_negociacion_bitrix::text`;
+// FIX (2026-08-17) — LOS PLANES SALÍAN SIEMPRE EN 0.
+// Antes esto era un LEFT JOIN a vw_jotform_velsa_netlife_completo con la
+// condición:  mv.id_jotform = jf2.id_negociacion_bitrix
+// Ese ON estaba mal por DOS motivos independientes:
+//   1) id_negociacion_bitrix está 100% NULL en la vista Velsa (la llave real
+//      hacia Bitrix es id_bitrix_ghl), así que el JOIN nunca casaba: TODAS las
+//      columnas jf2.plan_* quedaban NULL.
+//   2) mv.id_jotform es el id de la FILA de Jotform (jf.id), no un id de
+//      Bitrix, con lo que ni con la llave correcta habría casado.
+// Resultado: HAS_PLAN_VELSA_MV era siempre falso → venta_servicio = 0 y las
+// tarjetas/tabla de planes (400 - 2000 Mbps) salían vacías.
+//
+// La MV mv_indicadores_velsa_completo YA trae las columnas plan_* propagadas
+// desde Jotform (ver VELSA_MV_WEBHOOK_V2.sql, líneas jf.plan_casa, jf.plan_pyme,
+// …), así que no hace falta ningún JOIN: se leen directo de mv. Eso además
+// elimina una subquery sobre la vista completa en cada request del dashboard.
+const JOIN_JF_VELSA_MV = ``;
 
 const HAS_PLAN_VELSA_MV = `(
-    (jf2.plan_casa IS NOT NULL AND TRIM(jf2.plan_casa::text) <> '') OR
-    (jf2.plan_pyme IS NOT NULL AND TRIM(jf2.plan_pyme::text) <> '') OR
-    (jf2.plan_profesional IS NOT NULL AND TRIM(jf2.plan_profesional::text) <> '') OR
-    (jf2.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(jf2.plan_hogar_adulto_mayor::text) <> '') OR
-    (jf2.plan_pyme_corp IS NOT NULL AND TRIM(jf2.plan_pyme_corp::text) <> '') OR
-    (jf2.plan_centro_red_comercial IS NOT NULL AND TRIM(jf2.plan_centro_red_comercial::text) <> '')
+    (mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> '') OR
+    (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
+    (mv.plan_profesional IS NOT NULL AND TRIM(mv.plan_profesional::text) <> '') OR
+    (mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> '') OR
+    (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '') OR
+    (mv.plan_centro_red_comercial IS NOT NULL AND TRIM(mv.plan_centro_red_comercial::text) <> '')
 )`;
 const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_MV})`;
 
@@ -334,6 +333,10 @@ function mergeBacklog(kpiRows, backlogRows) {
     return {
       ...r,
       backlog:                      bk,
+      // VENTAS DEL DÍA (JOTFORM) — mismo campo que Novonet expone en
+      // mergeVentasDia. La tarjeta "V. DÍA FORM" del dashboard lee
+      // ventas_dia_form; Velsa nunca lo devolvía y por eso salía siempre 0.
+      ventas_dia_form:              vdia,
       // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
       venta_seguimiento:            Math.max(0, jot - vdia),
       descarte:                     Number(r.descarte                     || 0),
@@ -853,8 +856,8 @@ async function getConsultaDescargaVelsa(req, res) {
         mv.etapa_crm, mv.estado_venta, mv.estado_regularizacion,
         mv.fecha_creacion_crm, mv.fecha_registro_jotform, mv.fecha_activacion,
         mv.forma_pago, mv.aplica_descuento, mv.ciudad, mv.origen,
-        jf2.plan_casa, jf2.plan_pyme, jf2.plan_profesional,
-        jf2.plan_hogar_adulto_mayor, jf2.plan_pyme_corp, jf2.plan_centro_red_comercial,
+        mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+        mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial,
         ${VENTA_SERVICIO_VELSA_MV} AS es_venta_servicio
       FROM ${MV}
       ${JOIN_JF_VELSA_MV}

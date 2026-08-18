@@ -65,6 +65,24 @@ export default function BotAuditor() {
   const [configForm, setConfigForm] = useState({ reglas_clasificacion: "", reglas_puntuacion_venta: "", reglas_puntuacion_atc: "" });
   const [configMeta, setConfigMeta] = useState({ actualizado_por: null, actualizado_at: null });
 
+  // ── Indicador de códigos de origen (NOVONET) ──────────────────────────────
+  const [indicadorVisible, setIndicadorVisible] = useState(false);
+  const [indicadorData, setIndicadorData] = useState([]);
+  const [indicadorMeta, setIndicadorMeta] = useState(null);
+  const [indicadorLoading, setIndicadorLoading] = useState(false);
+  const [indicadorError, setIndicadorError] = useState(null);
+  const [indicadorCargado, setIndicadorCargado] = useState(false);
+  // Vacío = el backend usa por defecto TODO el mes en curso hasta hoy.
+  const [indicadorDesde, setIndicadorDesde] = useState("");
+  const [indicadorHasta, setIndicadorHasta] = useState("");
+  const [indicadorConfigAbierto, setIndicadorConfigAbierto] = useState(false);
+  const [indicadorConfigLoading, setIndicadorConfigLoading] = useState(false);
+  const [indicadorConfigGuardando, setIndicadorConfigGuardando] = useState(false);
+  const [indicadorConfigError, setIndicadorConfigError] = useState(null);
+  const [indicadorConfigMsg, setIndicadorConfigMsg] = useState(null);
+  const [indicadorConfigForm, setIndicadorConfigForm] = useState({ codigos: "", origenes_sufijo: "" });
+  const [indicadorConfigMeta, setIndicadorConfigMeta] = useState({ actualizado_por: null, actualizado_at: null });
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (filtros.empresa) params.set("empresa", filtros.empresa);
@@ -167,6 +185,95 @@ export default function BotAuditor() {
       setConfigError(err.message || "Error al guardar");
     } finally {
       setConfigGuardando(false);
+    }
+  };
+
+  // ── Indicador de códigos de origen (NOVONET) ──────────────────────────────
+  const cargarIndicador = async () => {
+    setIndicadorLoading(true);
+    setIndicadorError(null);
+    try {
+      const params = new URLSearchParams();
+      if (indicadorDesde) params.set("desde", indicadorDesde);
+      if (indicadorHasta) params.set("hasta", indicadorHasta);
+      const qs = params.toString();
+      const r = await fetchJson(`/api/bot-auditor/indicador-codigos${qs ? `?${qs}` : ""}`);
+      setIndicadorData(r.data || []);
+      setIndicadorMeta(r.meta || null);
+      setIndicadorCargado(true);
+    } catch (err) {
+      setIndicadorError(err.message || "Error al calcular el indicador");
+    } finally {
+      setIndicadorLoading(false);
+    }
+  };
+
+  const descargarIndicadorCSV = () => {
+    const encabezado = ["ID Bitrix", "Origen", "Asesor", "Fecha creación", "Código detectado", "Conversación auditada"];
+    const escapar = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const filas = indicadorData.map((r) => [
+      r.id_bitrix,
+      r.origen || "",
+      r.asesor || "",
+      fmtFecha(r.fecha_creacion),
+      r.indicador || "SIN CÓDIGO",
+      r.tiene_conversacion ? "Sí" : "No",
+    ].map(escapar).join(","));
+    const csv = [encabezado.map(escapar).join(","), ...filas].join("\n");
+    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const hoy = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `indicador-codigos-origen-novonet-${hoy}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const abrirIndicadorConfig = async () => {
+    setIndicadorConfigAbierto(true);
+    setIndicadorConfigLoading(true);
+    setIndicadorConfigError(null);
+    setIndicadorConfigMsg(null);
+    try {
+      const r = await fetchJson(`/api/bot-auditor/indicador-codigos/config`);
+      setIndicadorConfigForm({
+        codigos: r.data.codigos || "",
+        origenes_sufijo: r.data.origenes_sufijo || "",
+      });
+      setIndicadorConfigMeta({ actualizado_por: r.data.actualizado_por, actualizado_at: r.data.actualizado_at });
+    } catch (err) {
+      setIndicadorConfigError(err.message || "Error al cargar la configuración");
+    } finally {
+      setIndicadorConfigLoading(false);
+    }
+  };
+
+  const guardarIndicadorConfig = async () => {
+    setIndicadorConfigGuardando(true);
+    setIndicadorConfigError(null);
+    setIndicadorConfigMsg(null);
+    try {
+      const res = await fetch(`${API}/api/bot-auditor/indicador-codigos/config`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(indicadorConfigForm),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) {
+        throw new Error(json.error || json.message || `Error ${res.status}`);
+      }
+      setIndicadorConfigMsg("Guardado. Los próximos cálculos del indicador usarán esta lista.");
+      if (indicadorCargado) cargarIndicador();
+    } catch (err) {
+      setIndicadorConfigError(err.message || "Error al guardar");
+    } finally {
+      setIndicadorConfigGuardando(false);
     }
   };
 
@@ -347,6 +454,171 @@ export default function BotAuditor() {
             style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "white", cursor: page >= pagination.totalPages ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
             Siguiente →
           </button>
+        </div>
+      )}
+
+      {/* INDICADOR DE CÓDIGOS DE ORIGEN (NOVONET) */}
+      <div style={{
+        background: "white", border: "1px solid #e2e8f0", borderRadius: 16,
+        padding: "18px 24px", marginTop: 24, boxShadow: "0 1px 3px rgba(15,23,42,.04)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>📌 Indicador de códigos de origen (NOVONET)</h2>
+            <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>
+              Deals cuyo origen termina en los sufijos configurados, revisando si el mensaje del cliente contiene alguno de los códigos.
+              Sin fechas, trae todo el mes en curso — se recalcula solo cada vez que lo abras.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>Desde</span>
+              <input type="date" value={indicadorDesde} max={indicadorHasta || undefined}
+                onChange={(e) => setIndicadorDesde(e.target.value)}
+                style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }} />
+              <span style={{ fontSize: 12, color: "#64748b" }}>hasta</span>
+              <input type="date" value={indicadorHasta} min={indicadorDesde || undefined}
+                onChange={(e) => setIndicadorHasta(e.target.value)}
+                style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }} />
+            </div>
+            {esAdmin && (
+              <button onClick={abrirIndicadorConfig}
+                style={{ background: "white", color: "#1e293b", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                ⚙️ Configurar códigos
+              </button>
+            )}
+            <button onClick={cargarIndicador} disabled={indicadorLoading}
+              style={{ background: "#1e293b", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: indicadorLoading ? "not-allowed" : "pointer" }}>
+              {indicadorLoading ? "Calculando…" : indicadorCargado ? "🔄 Actualizar" : "▶️ Calcular indicador"}
+            </button>
+            {indicadorCargado && indicadorData.length > 0 && (
+              <button onClick={descargarIndicadorCSV}
+                style={{ background: "#166534", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                ⬇️ Descargar CSV
+              </button>
+            )}
+          </div>
+        </div>
+
+        {indicadorError && (
+          <div style={{ marginTop: 14, color: "#991b1b", fontSize: 13 }}>⚠️ {indicadorError}</div>
+        )}
+
+        {indicadorCargado && !indicadorError && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+              {indicadorMeta?.total_deals ?? indicadorData.length} deal(s)
+              {indicadorMeta?.desde || indicadorMeta?.hasta
+                ? ` entre ${indicadorMeta?.desde || "…"} y ${indicadorMeta?.hasta || "hoy"}`
+                : " del mes en curso"} con origen en {(indicadorMeta?.sufijos || []).join(", ")}.
+            </div>
+            {indicadorData.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                No hay deals de NOVONET en ese rango con esos orígenes.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                      {["ID Bitrix", "Origen", "Asesor", "Creado", "Código detectado", "Conversación"].map((h) => (
+                        <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {indicadorData.map((row) => (
+                      <tr key={row.id_bitrix} style={{ borderTop: "1px solid #e2e8f0" }}>
+                        <td style={{ padding: "10px 14px" }}>{row.id_bitrix}</td>
+                        <td style={{ padding: "10px 14px" }}>{row.origen || "—"}</td>
+                        <td style={{ padding: "10px 14px" }}>{row.asesor || "—"}</td>
+                        <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{fmtFecha(row.fecha_creacion)}</td>
+                        <td style={{ padding: "10px 14px" }}>
+                          {row.indicador ? (
+                            <span style={{ background: "#dcfce7", color: "#166534", border: "1px solid #86efac", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>
+                              {row.indicador}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 14px", color: row.tiene_conversacion ? "#166534" : "#94a3b8" }}>
+                          {row.tiene_conversacion ? "Auditada" : "Aún sin auditar"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL CONFIG INDICADOR DE CÓDIGOS (solo ADMINISTRADOR) */}
+      {indicadorConfigAbierto && (
+        <div onClick={() => !indicadorConfigGuardando && setIndicadorConfigAbierto(false)} style={{
+          position: "fixed", inset: 0, background: "rgba(15,23,42,.55)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20,
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "white", borderRadius: 16, padding: 24, maxWidth: 560, width: "100%",
+            maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>⚙️ Configurar códigos de origen</h2>
+              <button onClick={() => setIndicadorConfigAbierto(false)} style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer", color: "#64748b" }}>✕</button>
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 16px" }}>
+              Un código o sufijo por línea. El indicador busca los códigos (sin importar mayúsculas/minúsculas) dentro del texto del lead.
+            </p>
+
+            {indicadorConfigLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Cargando…</div>
+            ) : (
+              <>
+                {indicadorConfigMeta.actualizado_at && (
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>
+                    Última edición: {indicadorConfigMeta.actualizado_por || "—"} · {fmtFecha(indicadorConfigMeta.actualizado_at)}
+                  </div>
+                )}
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Códigos a buscar en el mensaje (uno por línea)</label>
+                <textarea
+                  value={indicadorConfigForm.codigos}
+                  onChange={(e) => setIndicadorConfigForm((f) => ({ ...f, codigos: e.target.value }))}
+                  rows={10}
+                  style={{ width: "100%", marginTop: 4, marginBottom: 14, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, fontFamily: "monospace", resize: "vertical" }}
+                />
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Sufijos de origen que activan la revisión (uno por línea, ej. 484)</label>
+                <textarea
+                  value={indicadorConfigForm.origenes_sufijo}
+                  onChange={(e) => setIndicadorConfigForm((f) => ({ ...f, origenes_sufijo: e.target.value }))}
+                  rows={3}
+                  style={{ width: "100%", marginTop: 4, marginBottom: 14, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, fontFamily: "monospace", resize: "vertical" }}
+                />
+
+                {indicadorConfigError && <div style={{ color: "#991b1b", fontSize: 12, marginBottom: 10 }}>⚠️ {indicadorConfigError}</div>}
+                {indicadorConfigMsg && <div style={{ color: "#166534", fontSize: 12, marginBottom: 10 }}>✓ {indicadorConfigMsg}</div>}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button
+                    onClick={() => setIndicadorConfigAbierto(false)}
+                    disabled={indicadorConfigGuardando}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569" }}>
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={guardarIndicadorConfig}
+                    disabled={indicadorConfigGuardando}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#1e293b", color: "white", fontSize: 12, fontWeight: 700, cursor: indicadorConfigGuardando ? "not-allowed" : "pointer" }}>
+                    {indicadorConfigGuardando ? "Guardando…" : "Guardar"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

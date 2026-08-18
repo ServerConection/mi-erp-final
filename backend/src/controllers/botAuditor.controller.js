@@ -287,10 +287,184 @@ async function obtenerDetalle(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INDICADOR DE CÓDIGOS DE ORIGEN (NOVONET)
+// Cruza los deals de NOVONET creados HOY cuyo origen (b_origen en
+// vw_bitrix_novonet — vista en tiempo real alimentada por el webhook de
+// Bitrix, NO por el ETL de mestra_bitrix que va atrasado) termina en alguno
+// de los sufijos configurados (ej. 484, 9000), contra el texto ya guardado
+// en `auditorias.conversacion_anonimizada` (empieza con el mensaje del
+// cliente) para detectar si contiene alguno de los códigos de campaña
+// configurados. id_bitrix en `auditorias` es TEXT; b_id en la vista es el
+// id numérico de Bitrix, por eso se compara como texto.
+//
+// Códigos y sufijos son editables desde la pantalla (mismo patrón que
+// config-prompt) porque la lista de campañas cambia seguido y no debería
+// requerir un despliegue para actualizarse.
+//
+// LIMITACIÓN CONOCIDA: si el deal de hoy todavía no pasó por el bot de
+// auditoría (no llegó a ATC/DESCARTE), no habrá fila en `auditorias` y el
+// indicador queda en null con tiene_conversacion=false — no es que el
+// código no esté, es que aún no hay conversación auditada para revisar.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_CODIGOS_ORIGEN = [
+  'S2-Av-ug-av1', 'S2-Av-ug-av2', 'S2-Av-ug-av3',
+  'S2-Pr-av1', 'S2-Pr-c1', 'S2-Pr-cp',
+  'S2-UG-av1', 'S2-UG-im1',
+  'S3-UIO-cp', 's3-UIO-im1', 'S3 GYE IM1', 'S3-G-cp',
+  'da1-Ec-av1', 'DA1-Ec-im2', 'DA1-Ec-im1', 'da1-Ec-av2',
+].join('\n');
+
+const DEFAULT_SUFIJOS_ORIGEN = ['484', '9000'].join('\n');
+
+const CREAR_TABLA_INDICADOR_CONFIG_SQL = `
+  CREATE TABLE IF NOT EXISTS bot_auditor_indicador_config (
+    id                INTEGER PRIMARY KEY DEFAULT 1,
+    codigos           TEXT,
+    origenes_sufijo   TEXT,
+    actualizado_por   VARCHAR(255),
+    actualizado_at    TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT bot_auditor_indicador_config_single_row CHECK (id = 1)
+  )
+`;
+
+function splitLineas(texto) {
+  return (texto || '').split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+// GET /api/bot-auditor/indicador-codigos/config
+async function obtenerConfigIndicadorCodigos(req, res) {
+  try {
+    await pool.query(CREAR_TABLA_INDICADOR_CONFIG_SQL);
+    const result = await pool.query(`SELECT * FROM bot_auditor_indicador_config WHERE id = 1`);
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        codigos: row?.codigos || DEFAULT_CODIGOS_ORIGEN,
+        origenes_sufijo: row?.origenes_sufijo || DEFAULT_SUFIJOS_ORIGEN,
+        actualizado_por: row?.actualizado_por || null,
+        actualizado_at: row?.actualizado_at || null,
+      },
+    });
+  } catch (error) {
+    console.error('[botAuditor.controller] obtenerConfigIndicadorCodigos error:', error);
+    res.status(500).json({ success: false, error: 'Error al consultar la configuración del indicador' });
+  }
+}
+
+// PUT /api/bot-auditor/indicador-codigos/config — protegido con soloAdmin
+async function actualizarConfigIndicadorCodigos(req, res) {
+  try {
+    const { codigos, origenes_sufijo } = req.body || {};
+    if (!codigos?.trim() || !origenes_sufijo?.trim()) {
+      return res.status(400).json({ success: false, error: 'Los códigos y los sufijos de origen son obligatorios' });
+    }
+    await pool.query(CREAR_TABLA_INDICADOR_CONFIG_SQL);
+    await pool.query(
+      `INSERT INTO bot_auditor_indicador_config (id, codigos, origenes_sufijo, actualizado_por, actualizado_at)
+       VALUES (1, $1, $2, $3, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         codigos          = EXCLUDED.codigos,
+         origenes_sufijo  = EXCLUDED.origenes_sufijo,
+         actualizado_por  = EXCLUDED.actualizado_por,
+         actualizado_at   = NOW()`,
+      [codigos.trim(), origenes_sufijo.trim(), req.user?.usuario || 'admin']
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[botAuditor.controller] actualizarConfigIndicadorCodigos error:', error);
+    res.status(500).json({ success: false, error: 'Error al guardar la configuración del indicador' });
+  }
+}
+
+// GET /api/bot-auditor/indicador-codigos
+// Query params opcionales: desde, hasta (YYYY-MM-DD). Sin ellos, el rango por
+// defecto es TODO el mes en curso hasta hoy — se recalcula en cada corrida
+// (date_trunc('month', CURRENT_DATE)), así que el indicador sigue funcionando
+// mes tras mes sin tocar código ni desplegar de nuevo.
+async function listarIndicadorCodigos(req, res) {
+  try {
+    const { desde, hasta } = req.query;
+
+    await pool.query(CREAR_TABLA_INDICADOR_CONFIG_SQL);
+    const cfgResult = await pool.query(`SELECT * FROM bot_auditor_indicador_config WHERE id = 1`);
+    const cfgRow = cfgResult.rows[0];
+    const codigos = splitLineas(cfgRow?.codigos || DEFAULT_CODIGOS_ORIGEN);
+    const sufijos = splitLineas(cfgRow?.origenes_sufijo || DEFAULT_SUFIJOS_ORIGEN);
+
+    if (!sufijos.length) {
+      return res.json({ success: true, data: [], meta: { codigos, sufijos, total_deals: 0, desde: desde || null, hasta: hasta || null } });
+    }
+
+    const params = [];
+    let i = 1;
+    const condiciones = sufijos.map((s) => {
+      params.push(`%${s}`);
+      return `mb.b_origen ILIKE $${i++}`;
+    }).join(' OR ');
+
+    let fechaDesdeSql = `date_trunc('month', CURRENT_DATE)::date`;
+    if (desde) {
+      params.push(desde);
+      fechaDesdeSql = `$${i++}::date`;
+    }
+    let fechaHastaSql = `CURRENT_DATE`;
+    if (hasta) {
+      params.push(hasta);
+      fechaHastaSql = `$${i++}::date`;
+    }
+
+    // b_creado_el_fecha en vw_bitrix_novonet es TEXT (formato variable) —
+    // se normaliza con parse_fecha_flex(), igual que el resto del ERP.
+    const dealsResult = await pool.query(
+      `SELECT mb.b_id AS id_bitrix, mb.b_origen AS origen,
+              mb.b_persona_responsable AS asesor,
+              mb.b_creado_el_fecha AS fecha_creacion
+       FROM public.vw_bitrix_novonet mb
+       WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN ${fechaDesdeSql} AND ${fechaHastaSql}
+         AND (${condiciones})`,
+      params
+    );
+
+    if (dealsResult.rows.length === 0) {
+      return res.json({ success: true, data: [], meta: { codigos, sufijos, total_deals: 0, desde: desde || null, hasta: hasta || null } });
+    }
+
+    const ids = dealsResult.rows.map((r) => String(r.id_bitrix));
+    const audResult = await pool.query(
+      `SELECT id_bitrix, conversacion_anonimizada FROM auditorias WHERE id_bitrix = ANY($1)`,
+      [ids]
+    );
+    const convByLead = new Map(audResult.rows.map((r) => [String(r.id_bitrix), r.conversacion_anonimizada || '']));
+
+    const data = dealsResult.rows.map((d) => {
+      const texto = (convByLead.get(String(d.id_bitrix)) || '').toUpperCase();
+      const indicador = codigos.find((c) => texto.includes(c.toUpperCase())) || null;
+      return {
+        id_bitrix: d.id_bitrix,
+        origen: d.origen,
+        asesor: d.asesor,
+        fecha_creacion: d.fecha_creacion,
+        tiene_conversacion: convByLead.has(String(d.id_bitrix)),
+        indicador,
+      };
+    });
+
+    res.json({ success: true, data, meta: { codigos, sufijos, total_deals: dealsResult.rows.length, desde: desde || null, hasta: hasta || null } });
+  } catch (error) {
+    console.error('[botAuditor.controller] listarIndicadorCodigos error:', error);
+    res.status(500).json({ success: false, error: 'Error al calcular el indicador de códigos' });
+  }
+}
+
 module.exports = {
   listarAuditorias,
   obtenerEstadisticas,
   obtenerDetalle,
   obtenerConfigPrompt,
+  obtenerConfigIndicadorCodigos,
+  actualizarConfigIndicadorCodigos,
+  listarIndicadorCodigos,
   actualizarConfigPrompt,
 };

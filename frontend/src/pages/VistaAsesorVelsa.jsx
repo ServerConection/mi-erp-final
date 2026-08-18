@@ -50,6 +50,28 @@ const PILL_CONFIG = {
 };
 const pillStyle = (e) => PILL_CONFIG[e] || PILL_CONFIG["SIN ESTADO"];
 
+// Formatea celdas de las tablas genéricas (Ventas activas / Detalle Jotform /
+// Por regularizar): fechas ISO (AAAA-MM-DD...) -> DD/MM/AAAA, y nombres de
+// asesor/supervisor -> Formato Título, para que se vean consistentes con el
+// resto del panel. No modifica el dato real, solo cómo se muestra en pantalla.
+// Mismo helper que VistaAsesor.jsx (NOVONET).
+const formatCellValue = (key, value) => {
+  if (value === null || value === undefined || value === "") return "—";
+  if (/FECHA/i.test(key) && typeof value === "string") {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  if ((key === "ASESOR" || key === "SUPERVISOR_ASIGNADO") && typeof value === "string") {
+    return value
+      .toLowerCase()
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return value;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MODAL DETALLE CLIENTE — campos de Velsa (queryJotform del controller)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,7 +336,7 @@ function AsesorCard({ row, rank }) {
               {row.nombre_grupo}
             </div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              {row.supervisor || "Sin supervisor"}
+              {row.sup_nombre && row.sup_nombre !== "SIN ASIGNAR" ? row.sup_nombre : "Sin supervisor"}
             </div>
           </div>
         </div>
@@ -398,7 +420,9 @@ export default function VistaAsesorVelsa() {
   const [estadosNetlife, setEstadosNetlife]           = useState([]);
   const [dataJotform, setDataJotform]                 = useState([]);
   const [ventasActivas, setVentasActivas]             = useState([]);
+  const [regularizaciones, setRegularizaciones]       = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [visibleRanking, setVisibleRanking]           = useState(15);
 
   const [filtros, setFiltros] = useState({
     fechaDesde:           getPrimerDiaMes(),
@@ -417,6 +441,7 @@ export default function VistaAsesorVelsa() {
   // ── Fetch — endpoint Velsa ────────────────────────────────────────────────
   const fetchData = async (overrideFiltros) => {
     setLoading(true);
+    setVisibleRanking(15);
     try {
       const f = overrideFiltros || filtros;
       const params = new URLSearchParams(
@@ -432,6 +457,7 @@ export default function VistaAsesorVelsa() {
         setEstadosNetlife(result.estadosNetlife || []);
         setDataJotform(result.dataNetlife || []);
         setVentasActivas(result.ventasActivas || []);
+        setRegularizaciones(result.regularizaciones || []);
       }
     } catch (e) {
       console.error("Error VistaAsesorVelsa:", e);
@@ -446,7 +472,7 @@ export default function VistaAsesorVelsa() {
   const asesoresEnriquecidos = useMemo(() => {
     const lista = filtros.asesor
       ? asesores.filter(
-          (a) => a.nombre_grupo?.toUpperCase() === filtros.asesor.toUpperCase()
+          (a) => a.nombre_grupo?.trim().toUpperCase() === filtros.asesor.trim().toUpperCase()
         )
       : asesores;
 
@@ -455,7 +481,7 @@ export default function VistaAsesorVelsa() {
       .map((a) => {
         // dataJotform de Velsa usa campo "ASESOR" (t1_assigned_to en el SELECT AS)
         const registros = dataJotform.filter(
-          (r) => (r.ASESOR || "").toUpperCase() === (a.nombre_grupo || "").toUpperCase()
+          (r) => (r.ASESOR || "").trim().toUpperCase() === (a.nombre_grupo || "").trim().toUpperCase()
         );
         const conteo = {};
         registros.forEach((r) => {
@@ -492,10 +518,17 @@ export default function VistaAsesorVelsa() {
   }, [asesoresEnriquecidos]);
 
   // ── Dropdown nombres ──────────────────────────────────────────────────────
-  const nombresAsesores = useMemo(
-    () => [...asesores].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
-    [asesores]
-  );
+  // Dedup defensivo por nombre trim+upper (mismo fix que VistaAsesor.jsx de
+  // NOVONET) — el fix real va en el backend (BTRIM/NULLIF en queryKPI), esto
+  // es una segunda capa por si algún nombre llega con variantes de espacio.
+  const nombresAsesores = useMemo(() => {
+    const vistos = new Map();
+    asesores.forEach((a) => {
+      const clave = (a.nombre_grupo || "").trim().toUpperCase();
+      if (clave && !vistos.has(clave)) vistos.set(clave, a);
+    });
+    return [...vistos.values()].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1));
+  }, [asesores]);
 
   // ── Exportar Excel ────────────────────────────────────────────────────────
   const exportarExcel = () => {
@@ -709,7 +742,7 @@ export default function VistaAsesorVelsa() {
             <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse inline-block" />
             Ranking asesores
             <span className="text-slate-300 font-normal text-[10px] normal-case tracking-normal">
-              ({asesoresEnriquecidos.length} {asesoresEnriquecidos.length === 1 ? "asesor" : "asesores"})
+              ({asesoresEnriquecidos.length} {asesoresEnriquecidos.length === 1 ? "asesor" : "asesores"}) · ordenado por Ingresos Jotform
             </span>
           </p>
           {loading && (
@@ -724,11 +757,23 @@ export default function VistaAsesorVelsa() {
             SIN DATOS PARA EL PERÍODO SELECCIONADO
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {asesoresEnriquecidos.map((a, i) => (
-              <AsesorCard key={a.nombre_grupo} row={a} rank={i} />
-            ))}
-          </div>
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {asesoresEnriquecidos.slice(0, visibleRanking).map((a, i) => (
+                <AsesorCard key={a.nombre_grupo} row={a} rank={i} />
+              ))}
+            </div>
+            {visibleRanking < asesoresEnriquecidos.length && (
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={() => setVisibleRanking((v) => v + 15)}
+                  className="text-[9px] bg-purple-50 hover:bg-purple-100 px-5 py-2 rounded-full font-black border border-purple-200 text-purple-700 uppercase tracking-wider transition-all"
+                >
+                  Mostrar más ({asesoresEnriquecidos.length - visibleRanking} restantes)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -766,9 +811,56 @@ export default function VistaAsesorVelsa() {
                 {ventasActivas.map((row, i) => (
                   <tr key={i} onClick={() => setClienteSeleccionado(row)}
                     className="border-b border-slate-50 hover:bg-amber-50 transition-colors cursor-pointer group">
-                    {Object.values(row).map((v, j) => (
+                    {Object.entries(row).map(([k, v], j) => (
                       <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
-                        {v ?? "—"}
+                        {formatCellValue(k, v)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── POR REGULARIZAR — worklist urgente, SIN filtro de período ── */}
+      <div className="bg-white border border-red-200 rounded-2xl overflow-hidden shadow-sm mb-8">
+        <div className="px-5 py-3 flex justify-between items-center border-b border-red-100 bg-red-50">
+          <div>
+            <p className="text-[10px] font-black text-red-700 uppercase tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
+              Por regularizar — pendientes
+              <span className="text-red-300 font-normal normal-case tracking-normal text-[9px]">
+                — todos los pendientes actuales, sin importar la fecha
+              </span>
+            </p>
+            <p className="text-[8px] text-red-400 mt-0.5 uppercase">
+              {regularizaciones.length} pendiente{regularizaciones.length === 1 ? "" : "s"} por regularizar
+            </p>
+          </div>
+        </div>
+        {regularizaciones.length === 0 ? (
+          <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
+            Sin pendientes por regularizar
+          </div>
+        ) : (
+          <div className="overflow-auto max-h-64">
+            <table className="text-[9px] w-full border-collapse font-mono">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-red-50 text-red-400 font-black text-[8px] uppercase border-b border-red-100">
+                  {Object.keys(regularizaciones[0] || {}).map((h) => (
+                    <th key={h} className="px-3 py-2 text-left border-r border-red-100 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {regularizaciones.map((row, i) => (
+                  <tr key={i} onClick={() => setClienteSeleccionado(row)}
+                    className="border-b border-red-50 hover:bg-red-50 transition-colors cursor-pointer group">
+                    {Object.entries(row).map(([k, v], j) => (
+                      <td key={j} className="px-3 py-1.5 border-r border-red-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
+                        {formatCellValue(k, v)}
                       </td>
                     ))}
                   </tr>
@@ -817,9 +909,9 @@ export default function VistaAsesorVelsa() {
                     className="border-b border-slate-50 hover:bg-purple-50 transition-colors cursor-pointer group"
                     title="Click para ver detalle del cliente"
                   >
-                    {Object.values(row).map((v, j) => (
+                    {Object.entries(row).map(([k, v], j) => (
                       <td key={j} className="px-3 py-1.5 border-r border-slate-50 truncate max-w-[140px] text-slate-600 group-hover:text-slate-900">
-                        {v ?? "—"}
+                        {formatCellValue(k, v)}
                       </td>
                     ))}
                   </tr>

@@ -164,9 +164,24 @@ const GEST_AMPLIO = `COUNT(*) FILTER (
 // ESTRUCTURA ESPEJO DE NOVONET (indicadores.controller.js · queryKPI).
 // Cada indicador de abajo calcula EXACTAMENTE lo mismo que su equivalente
 // Novonet; lo único que cambia son las tablas de origen.
-const queryKPI = (columna, filters) => `
+const queryKPI = (columna, filters) => {
+  // FIX (2026-08-18) — mismo bug que Novonet tenía antes de su fix: si el
+  // mismo asesor/supervisor llega con espacios extra en mv.asesor/mv.supervisor
+  // (ej. "OSCAR SANGUCHO SASIG " vs "OSCAR SANGUCHO SASIG"), el GROUP BY los
+  // trata como dos grupos distintos → una tarjeta "fantasma" casi vacía en el
+  // ranking. BTRIM + NULLIF normaliza antes de agrupar (ver indicadores.controller.js,
+  // queryKPI, NOVONET).
+  // También se agrega sup_nombre cuando se agrupa por asesor: antes esta query
+  // no devolvía el supervisor del asesor en NINGÚN caso, así que el frontend
+  // (VistaAsesorVelsa.jsx, AsesorCard) siempre mostraba "Sin supervisor" —
+  // leía row.supervisor, un campo que esta consulta nunca generó.
+  const esSupervisor = columna === 'mv.supervisor';
+  const extraSelect  = esSupervisor ? '' : ", COALESCE(NULLIF(BTRIM(mv.supervisor::text), ''), 'SIN ASIGNAR') AS sup_nombre";
+  const extraGroup   = esSupervisor ? '' : ', 2';
+  return `
   SELECT
-    COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+    COALESCE(NULLIF(BTRIM(${columna}::text), ''), 'SIN ASIGNAR') AS nombre_grupo
+    ${extraSelect},
     -- ── LEADS TOTALES ────────────────────────────────────────────────────
     -- COUNT(DISTINCT id del lado CRM) + excluye las etapas DUPLICADO /
     -- REMARKETING / REGULARIZACION. NO se filtra por ORIGEN: leads totales
@@ -313,13 +328,16 @@ const queryKPI = (columna, filters) => `
     OR ${JF_DATE} BETWEEN $1::date AND $2::date
     OR mv.fecha_activacion::date BETWEEN $1::date AND $2::date
   ) ${filters}
-  GROUP BY 1 ORDER BY gestionables DESC
+  GROUP BY 1${extraGroup} ORDER BY gestionables DESC
 `;
+};
 
 // ── Query Backlog — solo usa $1 (desde) ──────────────────────────────────────
+// Mismo fix de normalización que queryKPI (BTRIM/NULLIF) para que no genere
+// grupos "fantasma" por espacios extra en mv.asesor/mv.supervisor.
 const queryBacklog = (columna, filters) => `
   SELECT
-    COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+    COALESCE(NULLIF(BTRIM(${columna}::text), ''), 'SIN ASIGNAR') AS nombre_grupo,
     COUNT(DISTINCT mv.id_jotform)::int AS backlog
   FROM ${MV}
   WHERE mv.id_jotform IS NOT NULL
@@ -490,8 +508,17 @@ SELECT
   mv.etapa_crm AS "ETAPA",
   mv.fecha_creacion_crm AS "FECHA_CREACION",
   mv.asesor AS "ASESOR",
-  mv.supervisor AS "SUPERVISOR",
+  -- FIX 2026-08-18: antes "SUPERVISOR" — el modal ClienteModal (frontend)
+  -- busca la clave "SUPERVISOR_ASIGNADO" (mismo nombre que usa qVentasActivasMes
+  -- más abajo); con el alias viejo el modal SIEMPRE mostraba "Sin supervisor"
+  -- para clientes abiertos desde la tabla "Detalle base Jotform Velsa", aunque
+  -- el dato sí venía en la fila bajo la clave equivocada.
+  mv.supervisor AS "SUPERVISOR_ASIGNADO",
   mv.origen AS "ORIGEN",
+  -- FIX 2026-08-18: faltaba esta columna (el modal la busca como
+  -- "FECHA_CREACION_JOT", igual que qVentasActivasMes) — sin ella, el modal
+  -- no mostraba la fecha de registro Jotform para clientes de esta tabla.
+  mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
   mv.payload_created_at AS "FECHA_CREADO_JOT",
   mv.codigo_asesor AS "COD_ASESOR_JOT",
   mv.inicio_sesion_netlife AS "LOGIN",
@@ -599,12 +626,43 @@ LIMIT 6000
       LIMIT 3000
     `;
 
+    // ── POR REGULARIZAR (NUEVO, 2026-08-18) — worklist urgente, SIN filtro de
+    // fecha, mismo criterio y mismo lugar que Novonet (indicadores.controller.js,
+    // queryRegularizaciones). A diferencia de "Detalle Jotform Velsa" (atado al
+    // Período) esta tabla es una lista de pendientes: todo lo que HOY está en
+    // estatus POR REGULARIZAR (esPorRegularizarExpr, fuente única de verdad en
+    // shared/etapas.js — mismo criterio que ya usa queryKPI arriba), sin
+    // importar cuándo se registró o activó. Respeta asesor/supervisor/etc. vía
+    // `filters` (las mismas que usa qVentasActivasMes).
+    const qPorRegularizar = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
+        mv.detalle_regularizacion AS "MOTIVO_REGULARIZAR",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.inicio_sesion_netlife AS "LOGIN"
+      FROM ${MV}
+      WHERE ${esPorRegularizarExpr('mv.estado_regularizacion')}
+        -- mismo no-op de conteo de placeholders que qVentasActivasMes: esta
+        -- query no acota por $1/$2, pero se ejecuta con "valuesMain" (que
+        -- siempre trae [desde, hasta] como $1/$2 + filters).
+        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+        ${filters}
+      ORDER BY mv.fecha_registro_jotform DESC
+      LIMIT 3000
+    `;
+
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
-      resOrigenes,
+      resOrigenes, resPorRegularizar,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -622,6 +680,7 @@ LIMIT 6000
       pool.query(qPlanesDash, valuesMain),
       pool.query(qVentasActivasMes, valuesMain),
       pool.query(qOrigenes),
+      pool.query(qPorRegularizar, valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -663,6 +722,9 @@ LIMIT 6000
       // activación, no por fecha de creación) — ver qVentasActivasMes.
       ventasActivas: resVentasActivasMes.rows,
       ventasActivasTotal: resVentasActivasMes.rowCount,
+      // NUEVO: worklist de "por regularizar" — ver qPorRegularizar.
+      regularizaciones: resPorRegularizar.rows,
+      regularizacionesTotal: resPorRegularizar.rowCount,
     };
     setCacheVelsa(cacheKey, payload);
     res.json(payload);

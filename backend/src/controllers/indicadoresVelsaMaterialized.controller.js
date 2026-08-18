@@ -434,6 +434,12 @@ async function getIndicadoresDashboardVelsa(req, res) {
         ${filters}
       ) sub
       GROUP BY estado
+      -- FIX (2026-08-18): igual que en Novonet — la rama ACTIVO del UNION ALL
+      -- siempre devuelve una fila (sin GROUP BY), aunque el conteo sea 0. El
+      -- HAVING la descarta cuando un filtro no tiene ningun dato Jotform en el
+      -- rango, para que el frontend muestre "SIN DATOS" en vez de una tarjeta
+      -- fantasma "ACTIVO: 0".
+      HAVING SUM(total) > 0
       ORDER BY total DESC
     `;
     const qEmbudo = `

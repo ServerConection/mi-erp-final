@@ -991,6 +991,13 @@ const getIndicadoresDashboard = async (req, res) => {
                 ${filtersNoJoin}
             ) sub
             GROUP BY estado
+            -- FIX (2026-08-18): la rama "ACTIVO" del UNION ALL siempre devuelve
+            -- una fila (aunque el conteo sea 0, porque no tiene GROUP BY). Antes
+            -- eso hacia que "Etapas Jotform" mostrara una tarjeta fantasma
+            -- "ACTIVO: 0" en vez del estado vacio real cuando un filtro (ej.
+            -- canal/origen) no tiene NINGUN dato Jotform en el rango — el
+            -- HAVING la descarta para que el frontend muestre "SIN DATOS".
+            HAVING SUM(total) > 0
             ORDER BY total DESC
         `;
 

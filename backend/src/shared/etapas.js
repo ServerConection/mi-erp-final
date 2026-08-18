@@ -151,9 +151,22 @@ const sumaReporteExpr = (origenCol, etapaCol) =>
 // mayúsculas y espacios, igual que se hace con las etapas.
 const ESTADO_POR_REGULARIZAR = 'POR REGULARIZAR';
 
+/**
+ * FIX (2026-08-18b) — el campo de Jotform llega envuelto como un array-string
+ * literal: en vez de guardar  POR REGULARIZAR  guarda  ["POR REGULARIZAR"]
+ * (corchetes + comillas incluidos en el texto). Con el match EXACTO de arriba
+ * esto daba SIEMPRE 0 resultados (confirmado: la tabla "Por regularizar"
+ * mostraba 0 pendientes con datos reales de sobra). TRIM(BOTH '[]"' FROM ...)
+ * pela corchetes y comillas de ambos extremos ANTES de comparar — si el dato
+ * viene limpio (sin corchetes) no cambia nada, así que es seguro para
+ * registros viejos y nuevos por igual.
+ */
+const _sinCorchetesExpr = (col) =>
+    `TRIM(BOTH '[]"' FROM UPPER(TRIM(COALESCE(${col}, ''))))`;
+
 /** por_regularizar = SI ⇔ el estatus de regularización es POR REGULARIZAR. */
 const esPorRegularizarExpr = (col) =>
-    `(UPPER(TRIM(COALESCE(${col}, ''))) = '${ESTADO_POR_REGULARIZAR}')`;
+    `(${_sinCorchetesExpr(col)} = '${ESTADO_POR_REGULARIZAR}')`;
 
 // Estados de venta que ANULAN la regularización: aunque el registro esté
 // marcado POR REGULARIZAR, ya no aplica porque la venta se cayó.

@@ -46,6 +46,50 @@ const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
   return Math.floor((metaMensual * dias) / total);
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// METAS COMERCIALES VELSA
+// ─────────────────────────────────────────────────────────────────────────────
+// MISMA ESTRUCTURA que METAS_COMERCIALES de Novonet (Indicadores.jsx), para que
+// los dos dashboards se lean igual y se cambien en un solo lugar por empresa.
+//
+// CALIBRACIÓN (2026-08-17) — antes estaban embebidas en cada tarjeta con los
+// valores de NOVONET (7050 leads / 4230 gestionables / 1200 CRM). Velsa no
+// mueve ese volumen, así que TODAS las tarjetas salían en rojo aunque el
+// equipo estuviera cumpliendo.
+//
+// Base: export Bitrix "VELSA VENTAS NETLIFE", 01→17 agosto 2026 (2.310 negoc.),
+// proyectado a mes de 31 días:
+//     leads totales   2.071 en 17 d  →  3.777/mes   → meta 3.800
+//     gestionables      835 en 17 d  →  1.523/mes   → meta 1.520
+//     venta subida      341 en 17 d  →    622/mes   → meta   620
+//     % gest/totales  40,3%   % efect/gest 40,8%   % efect/leads 16,5%
+//     % descarte/gest 27,1%
+//
+// OJO: las metas del lado NETLIFE/JOTFORM (activas, backlog, tasa inst.,
+// tarjeta, 3ra edad) NO salen de este export de Bitrix. Se derivaron del meta
+// de ingresos Jot aplicando la tasa de instalación objetivo (85%). CONFIRMAR
+// con gerencia antes de presentarlas como oficiales.
+const METAS_COMERCIALES_VELSA = {
+  leadsTotales:      3800,
+  gestionables:      1520,
+  pctGestionables:  '40%',    // 1520 / 3800
+  efectVsLeads:     '17%',
+  efectVsGestion:   '41%',
+  descarte:         '27%',
+  ingresosCRM:        620,
+  ingresosCRMDia:      20,    // 620 / 31
+  ingresosJotDia:      20,
+  ingresosJotSeg:       0,
+  ingresosTotJot:     620,
+  activasMes:         480,    // derivado (85% de 620, menos backlog) — CONFIRMAR
+  activasBacklog:      50,    // derivado — CONFIRMAR
+  activasTotal:       530,    // 480 + 50 — CONFIRMAR
+  tasaInstalacion:  '85%',
+  tarjeta:          '30%',
+  terceraEdad:      '15%',
+  planes150200:     '15%',
+};
+
 // ======================================================
 // MODAL FULLSCREEN PARA GRÁFICAS
 // ======================================================
@@ -348,6 +392,7 @@ export default function ReporteVelsa() {
     etapaCRM: "",
     etapaJotform: "",
     canal: [],
+    origen: [],
     idBitrix: "",
     gestionables: "",
     fechaActivacionDesde: "",
@@ -365,6 +410,7 @@ export default function ReporteVelsa() {
     etapaCRM: "",
     etapaJotform: "",
     canal: [],
+    origen: [],
     idBitrix: "",
     gestionables: "",
     fechaActivacionDesde: "",
@@ -1325,13 +1371,19 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 </select>
               </div>
 
-              {/* CAMPAÑA / ORIGEN */}
+              {/* ORIGEN (2026-08-18)
+                  Antes este combo leia data.canales, que el backend de Velsa
+                  NUNCA devolvia: la lista salia siempre vacia y el filtro no
+                  servia para nada. Ahora lee data.origenes, que son los valores
+                  reales de mv.origen (= bitrix_webhook_leads.source), ordenados
+                  por volumen de leads. Viaja como ?origen=a,b,c y el backend lo
+                  resuelve con match EXACTO. */}
               <div className="flex flex-col gap-2">
-                <label className="text-[9px] font-black text-orange-400 italic uppercase">📡 CAMPAÑA/ORIGEN</label>
+                <label className="text-[9px] font-black text-orange-400 italic uppercase">📡 ORIGEN</label>
                 <MultiSelectCanal
-                  value={filtros.canal}
-                  onChange={vals => updateFiltro('canal', vals)}
-                  options={data.canales || []}
+                  value={filtros.origen}
+                  onChange={vals => updateFiltro('origen', vals)}
+                  options={data.origenes || []}
                   accentColor="orange"
                 />
               </div>
@@ -1386,25 +1438,25 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 FILA 2 — Activaciones y calidad
                 Solo cambia la paleta (variant="stone"), para conservar la
                 identidad visual de Velsa. */}
-            <KpiMini index={0}  variant="stone" label="Leads Totales"        meta={metaDinamica(7050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}               color="border-l-orange-500" />
-            <KpiMini index={1}  variant="stone" label="Gestionables"         meta={metaDinamica(4230, filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}                    color="border-l-amber-500" />
-            <KpiMini index={2}  variant="stone" label="% Gest. vs Totales"   meta="60%"                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" />
-            <KpiMini index={3}  variant="stone" label="Efect. vs Leads Tot." meta="15%"                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" />
-            <KpiMini index={4}  variant="stone" label="Efect. vs Gestion."   meta="90%"                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" />
-            <KpiMini index={5}  variant="stone" label="Descarte %"           meta="25%"                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" />
-            <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(1200, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" />
-            <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" />
-            <KpiMini index={8}  variant="stone" label="Ingresos Jot día"     meta={metaDinamica(35,   filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}                   color="border-l-orange-500" />
-            <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(0,    filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" />
-            <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(1050, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" />
+            <KpiMini index={0}  variant="stone" label="Leads Totales"        meta={metaDinamica(METAS_COMERCIALES_VELSA.leadsTotales, filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}               color="border-l-orange-500" />
+            <KpiMini index={1}  variant="stone" label="Gestionables"         meta={metaDinamica(METAS_COMERCIALES_VELSA.gestionables, filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}                    color="border-l-amber-500" />
+            <KpiMini index={2}  variant="stone" label="% Gest. vs Totales"   meta={METAS_COMERCIALES_VELSA.pctGestionables}                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" />
+            <KpiMini index={3}  variant="stone" label="Efect. vs Leads Tot." meta={METAS_COMERCIALES_VELSA.efectVsLeads}                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" />
+            <KpiMini index={4}  variant="stone" label="Efect. vs Gestion."   meta={METAS_COMERCIALES_VELSA.efectVsGestion}                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" />
+            <KpiMini index={5}  variant="stone" label="Descarte %"           meta={METAS_COMERCIALES_VELSA.descarte}                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" />
+            <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRM, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" />
+            <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRMDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" />
+            <KpiMini index={8}  variant="stone" label="Ingresos Jot día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}                   color="border-l-orange-500" />
+            <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotSeg, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" />
+            <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosTotJot, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" />
 
             {/* FILA 2 — Activaciones y calidad */}
-            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" />
-            <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(200,  filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}   color="border-l-amber-500" />
-            <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(1000, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}   color="border-l-yellow-600" />
-            <KpiMini index={14} variant="stone" label="Tasa Inst."      meta="80%" real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
-            <KpiMini index={15} variant="stone" label="Tarjeta %"       meta="30%" real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
-            <KpiMini index={16} variant="stone" label="3ra Edad %"      meta="15%" real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
+            <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(METAS_COMERCIALES_VELSA.activasMes, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" />
+            <KpiMini index={12} variant="stone" label="Activas Backlog" meta={metaDinamica(METAS_COMERCIALES_VELSA.activasBacklog, filtros.fechaDesde, filtros.fechaHasta)} real={stats.backlog}   color="border-l-amber-500" />
+            <KpiMini index={13} variant="stone" label="Activas Total"   meta={metaDinamica(METAS_COMERCIALES_VELSA.activasTotal, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activas}   color="border-l-yellow-600" />
+            <KpiMini index={14} variant="stone" label="Tasa Inst."      meta={METAS_COMERCIALES_VELSA.tasaInstalacion} real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" />
+            <KpiMini index={15} variant="stone" label="Tarjeta %"       meta={METAS_COMERCIALES_VELSA.tarjeta} real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" />
+            <KpiMini index={16} variant="stone" label="3ra Edad %"      meta={METAS_COMERCIALES_VELSA.terceraEdad} real={`${stats.terceraEdad}%`}             color="border-l-rose-500" />
             {/* ALINEACIÓN CON NOVONET (2026-08-17)
                 Velsa tenía DOS tarjetas que Novonet no tiene:
                   · "Efic. Pauta" (efectividad_activas_vs_pauta) — Novonet la
@@ -1415,7 +1467,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   · "Venta Servicio" — no existe en Novonet.
                 Se reemplazan por la tarjeta 17 de Novonet para que ambas
                 empresas tengan EXACTAMENTE las mismas 19 tarjetas (0-18). */}
-            <KpiMini index={17} variant="stone" label="% Planes 150/200" meta="15%" real="0.0%"          color="border-l-lime-600" />
+            <KpiMini index={17} variant="stone" label="% Planes 150/200" meta={METAS_COMERCIALES_VELSA.planes150200} real="0.0%"          color="border-l-lime-600" />
             <KpiMini index={18} variant="stone" label="Por Regularizar"  value={stats.regularizar}       color="border-l-rose-500" />
           </div>
 
@@ -1812,7 +1864,7 @@ function ConsultaDescargaVelsa() {
 // ======================================================
 function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ETAPAS_JOTFORM }) {
   const { kpis, embudoCRM, embudoJotform, mapaCalor, planesPorCategoria } = data;
-  const METAS_BASE = { ingresos_jot: 1100, ventas_activas: 1000, ventas_servicio: 0, pct_descarte: 23, pct_efectividad: 90, pct_tercera_edad: 15 };
+  const METAS_BASE = { ingresos_jot: METAS_COMERCIALES_VELSA.ingresosTotJot, ventas_activas: METAS_COMERCIALES_VELSA.activasTotal, ventas_servicio: 0, pct_descarte: 27, pct_efectividad: 41, pct_tercera_edad: 15 };
   const METAS = {
     ingresos_jot:     metaDinamica(METAS_BASE.ingresos_jot,     filtros.fechaDesde, filtros.fechaHasta),
     ventas_activas:   metaDinamica(METAS_BASE.ventas_activas,   filtros.fechaDesde, filtros.fechaHasta),

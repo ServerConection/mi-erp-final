@@ -94,7 +94,7 @@ const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
   let f = '';
-  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta } = q;
+  const { asesor, supervisor, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta, origen } = q;
   // Match EXACTO (case-insensitive) para asesor. Antes usaba ILIKE '%valor%'
   // (coincidencia PARCIAL): al seleccionar un asesor, también podían aparecer
   // registros de OTRO asesor cuyo nombre compartiera una porción de texto con
@@ -107,6 +107,18 @@ function buildFilters(q, values) {
   if (etapaCRM)             { values.push(`%${etapaCRM}%`);             f += ` AND mv.etapa_crm ILIKE $${values.length}`; }
   if (etapaJotform)         { values.push(`%${etapaJotform}%`);         f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (idBitrix)             { values.push(idBitrix.toString());         f += ` AND (mv.id_crm::text = $${values.length} OR mv.id_jotform::text = $${values.length})`; }
+  // ORIGEN (2026-08-18) — Velsa no tenia este filtro y Novonet si.
+  // Match EXACTO case-insensitive: los origenes vienen de un catalogo cerrado
+  // (mv.origen = bitrix_webhook_leads.source), no de texto libre. Con ILIKE
+  // parcial, elegir "Whatsapp 1" tambien traia "Whatsapp 1 - 987001032".
+  // Acepta varios separados por coma, igual que el multi-select del front.
+  if (origen) {
+    const lista = String(origen).split(',').map(v => v.trim()).filter(Boolean);
+    if (lista.length) {
+      const ph = lista.map(v => { values.push(v); return `UPPER(TRIM($${values.length}))`; }).join(', ');
+      f += ` AND UPPER(TRIM(COALESCE(mv.origen, ''))) IN (${ph})`;
+    }
+  }
   // Filtro GESTIONABLES: 'si' = solo gestionables, 'no' = solo NO gestionables
   if (gestionables === 'si')      f += ` AND ${esGestionableExpr('mv.etapa_crm')}`;
   else if (gestionables === 'no') f += ` AND NOT ${esGestionableExpr('mv.etapa_crm')}`;
@@ -444,6 +456,17 @@ async function getIndicadoresDashboardVelsa(req, res) {
       WHERE mv.estado_venta IS NOT NULL AND TRIM(mv.estado_venta) <> ''
       ORDER BY mv.estado_venta ASC
     `;
+    // ORIGENES REALES presentes en la data de Velsa (2026-08-18).
+    // Mismo criterio que Novonet: no se hardcodea ninguna lista, se leen los
+    // valores que de verdad existen y se ordenan por volumen para que el
+    // usuario vea primero los canales que mas leads traen.
+    const qOrigenes = `
+      SELECT mv.origen AS origen, COUNT(*)::int AS total
+      FROM ${MV}
+      WHERE NULLIF(TRIM(mv.origen), '') IS NOT NULL
+      GROUP BY 1
+      ORDER BY total DESC, origen ASC
+    `;
     const qTercera = `
       SELECT
         COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO}) AS total_tercera,
@@ -579,6 +602,7 @@ LIMIT 6000
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
+      resOrigenes,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -595,6 +619,7 @@ LIMIT 6000
       pool.query(qActivacionesPorDia, valuesMain), // NUEVO: activaciones por fecha_activacion_date
       pool.query(qPlanesDash, valuesMain),
       pool.query(qVentasActivasMes, valuesMain),
+      pool.query(qOrigenes),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -621,6 +646,7 @@ LIMIT 6000
       graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por fecha_activacion_date
       etapasCRM:             resEtapasCRM.rows.map(r => r.etapa),
       etapasJotform:         resEtapasJot.rows.map(r => r.estado_venta),
+      origenes:              resOrigenes.rows.map(r => r.origen),
       porcentajeTerceraEdad,
       porcentajeTarjeta,
       planesPorCategoria: (() => {

@@ -525,19 +525,21 @@ export default function ReporteVelsa() {
       const result = await res.json();
       if (result.success) {
         setApiError(null);
+        // ALINEADO CON NOVONET (Indicadores.jsx:564) — 2026-08-18.
+        // ANTES esto era una LISTA BLANCA CERRADA de 12 claves: cualquier
+        // campo nuevo que agregara el backend se perdia en silencio, porque
+        // llegaba en la respuesta pero no se copiaba al estado.
+        // Asi se rompieron, sin dar ningun error:
+        //   · origenes           -> el combo ORIGEN mostraba "SIN OPCIONES"
+        //   · planesPorCategoria -> la tabla de planes salia toda en 0
+        //   · ventasActivas      -> el detalle del mes llegaba vacio
+        // Novonet nunca tuvo el problema porque usa spread. Ahora Velsa hace
+        // lo mismo: se copia TODA la respuesta y solo se normalizan los dos
+        // numericos, para que no vuelva a pasar con el proximo campo nuevo.
         setData({
-          supervisores: result.supervisores || [],
-          asesores: result.asesores || [],
-          dataCRM: result.dataCRM || [],
-          dataNetlife: result.dataNetlife || [],
-          estadosNetlife: result.estadosNetlife || [],
-          etapasCRM: result.etapasCRM || [],
-          etapasJotform: result.etapasJotform || [],
-          graficoEmbudo: result.graficoEmbudo || [],
-          graficoBarrasDia: result.graficoBarrasDia || [],
-          graficoActivacionesDia: result.graficoActivacionesDia || [],
-          porcentajeTarjeta: Number(result.porcentajeTarjeta ?? 0),
-          porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0)
+          ...result,
+          porcentajeTarjeta:     Number(result.porcentajeTarjeta ?? 0),
+          porcentajeTerceraEdad: Number(result.porcentajeTerceraEdad ?? 0),
         });
         mostrarAlertas(result.supervisores);
         // Pre-calentar las otras tabs en background (sin bloquear UI)

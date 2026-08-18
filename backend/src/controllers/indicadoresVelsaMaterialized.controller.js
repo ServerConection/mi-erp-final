@@ -626,6 +626,38 @@ LIMIT 6000
       LIMIT 3000
     `;
 
+    // ── BACKLOG (NUEVO, 2026-08-18) — detalle fila por fila, mismo criterio que
+    // Novonet (indicadores.controller.js, queryBacklogDetalle). Mismo universo
+    // que qVentasActivasMes (activada este mes por fecha de ACTIVACIÓN), pero
+    // SOLO la porción que la tarjeta KPI ya reporta como "backlog": registrada
+    // en Jotform en un mes ANTERIOR al de activación (ver activa_mes/real_mes
+    // en queryKPI arriba: backlog = real_mes − activa_mes). Reutiliza `filters`
+    // y `valuesMain`, igual que qVentasActivasMes.
+    const qBacklogDetalle = `
+      SELECT
+        mv.id_crm AS "ID_CRM",
+        mv.asesor AS "ASESOR",
+        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
+        mv.fecha_activacion AS "FECHA_ACTIVACION",
+        mv.estado_venta AS "ESTADO_NETLIFE",
+        mv.forma_pago AS "FORMA_PAGO",
+        mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
+      FROM ${MV}
+      WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+        AND mv.fecha_activacion IS NOT NULL
+        AND mv.fecha_activacion::date >= date_trunc('month', CURRENT_DATE)::date
+        AND mv.fecha_activacion::date <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        -- BACKLOG: registrada en Jotform ANTES del mes en curso (misma
+        -- normalización -5h que JF_DATE, arriba).
+        AND mv.fecha_registro_jotform IS NOT NULL
+        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < date_trunc('month', CURRENT_DATE)::date
+        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+        ${filters}
+      ORDER BY mv.fecha_activacion DESC
+      LIMIT 3000
+    `;
+
     // ── POR REGULARIZAR (NUEVO, 2026-08-18) — worklist urgente, SIN filtro de
     // fecha, mismo criterio y mismo lugar que Novonet (indicadores.controller.js,
     // queryRegularizaciones). A diferencia de "Detalle Jotform Velsa" (atado al
@@ -662,7 +694,7 @@ LIMIT 6000
       resEstados, resEmbudo, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
-      resOrigenes, resPorRegularizar,
+      resOrigenes, resPorRegularizar, resBacklogDetalle,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -681,6 +713,7 @@ LIMIT 6000
       pool.query(qVentasActivasMes, valuesMain),
       pool.query(qOrigenes),
       pool.query(qPorRegularizar, valuesMain),
+      pool.query(qBacklogDetalle, valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -725,6 +758,9 @@ LIMIT 6000
       // NUEVO: worklist de "por regularizar" — ver qPorRegularizar.
       regularizaciones: resPorRegularizar.rows,
       regularizacionesTotal: resPorRegularizar.rowCount,
+      // NUEVO: detalle fila por fila del backlog — ver qBacklogDetalle.
+      backlogDetalle: resBacklogDetalle.rows,
+      backlogDetalleTotal: resBacklogDetalle.rowCount,
     };
     setCacheVelsa(cacheKey, payload);
     res.json(payload);

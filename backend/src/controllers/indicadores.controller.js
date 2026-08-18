@@ -1062,7 +1062,45 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 3000
         `;
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones] = await Promise.all([
+        // ── BACKLOG (NUEVO, 2026-08-18) — detalle fila por fila ──────────────────
+        // Mismo universo que queryVentasActivasMes (activada este mes, por fecha
+        // de ACTIVACIÓN), pero SOLO la porción que la tarjeta KPI ya reporta como
+        // "backlog": activada este mes, REGISTRADA en Jotform en un mes ANTERIOR
+        // (ver mergeBacklog más abajo: backlog = real_mes − activa_mes). Antes ese
+        // número solo existía como conteo agregado; esto agrega el detalle.
+        // Reutiliza filtersJoinResuelto/values, igual que queryVentasActivasMes.
+        const queryBacklogDetalle = `
+            SELECT
+                mb.j_id_bitrix AS "ID_CRM",
+                ${ASESOR_RESUELTO} AS "ASESOR",
+                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
+                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
+                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                mb.j_forma_pago AS "FORMA_PAGO",
+                mb.j_netlife_login AS "LOGIN",
+                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
+            FROM public.mestra_bitrix mb
+            ${joinEmpleadosDedup}
+            ${joinResponsableWebhook}
+            ${joinSupervisorResuelto}
+            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+              AND mb.j_fecha_activacion_netlife IS NOT NULL
+              AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
+              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= date_trunc('month', CURRENT_DATE)::date
+              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              -- BACKLOG: registrada en Jotform ANTES del mes en curso (si no hay
+              -- fecha de registro parseable, no se puede saber si es backlog o no
+              -- → se excluye, mismo criterio implícito que activa_mes/real_mes).
+              AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) IS NOT NULL
+              AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) < date_trunc('month', CURRENT_DATE)::date
+              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+              ${filtersJoinResuelto}
+            ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
+            LIMIT 3000
+        `;
+
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones, resBacklogDetalle] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -1075,6 +1113,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryPlanesPorCategoria, values),
             pool.query(queryVentasActivasMes, values),
             pool.query(queryRegularizaciones, valuesRegularizar),
+            pool.query(queryBacklogDetalle, values),
         ]);
 
         // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
@@ -1168,6 +1207,10 @@ const getIndicadoresDashboard = async (req, res) => {
             // Antes este campo no existía en la respuesta y el bloque rojo
             // quedaba siempre vacío — ver queryRegularizaciones arriba.
             regularizaciones: resRegularizaciones.rows,
+            // NUEVO: detalle fila por fila del backlog (activada este mes, pero
+            // registrada en Jotform un mes anterior) — ver queryBacklogDetalle.
+            backlogDetalle: resBacklogDetalle.rows,
+            backlogDetalleTotal: resBacklogDetalle.rowCount,
         };
 
         // Guardar en caché para solicitudes idénticas en los próximos 2 minutos

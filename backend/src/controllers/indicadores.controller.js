@@ -313,18 +313,36 @@ const getIndicadoresDashboard = async (req, res) => {
         // registros de otro asesor cuyo nombre compartía una porción de texto
         // (ej. un apellido/nombre en común), mezclando datos entre asesores.
         // Ahora se usa el mismo match exacto que ya usaba la rama multi-selección.
+        //
+        // FIX 2026-08-18 — Hallazgo 5 del diagnóstico del equipo: este filtro
+        // comparaba contra mb.b_persona_responsable (columna histórica del CRM),
+        // que NO siempre coincide con el responsable real — ese solo vive en
+        // bitrix_webhook_leads.responsible (ver ASESOR_RESUELTO arriba). Eso
+        // dejaba fuera del detalle registros del asesor seleccionado cuyo dato
+        // correcto solo llegó por el webhook (caso reportado: DIEGO REYES
+        // PADILLA, ~7 registros de menos en "Ventas activas" y "Detalle Jotform").
+        // Se guarda también la versión "resuelta" del fragmento (fragmentoAsesorResuelto)
+        // para armar filtersJoinResuelto más abajo — SOLO se puede usar en queries
+        // que ya hacen ${"$"}{joinResponsableWebhook} (alias "bwl" disponible), porque
+        // ASESOR_RESUELTO depende de bwl.responsible. El resto del dashboard
+        // (KPIs, backlog, embudo, etc.) sigue con filtersJoin/filtersNoJoin tal
+        // cual, sin tocar, para no romperlas por falta de ese JOIN.
+        let fragmentoAsesorViejo = "";
+        let fragmentoAsesorResuelto = "";
         if (asesorQuery) {
             const listaAsesores = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
                 .map(a => a.trim()).filter(Boolean);
             if (listaAsesores.length > 1) {
                 const asesoresUpper = _sqlListaUpper(listaAsesores);
-                filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
-                filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
+                fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
+                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO})) IN ${asesoresUpper}`;
             } else if (listaAsesores.length === 1) {
                 values.push(listaAsesores[0]);
-                filtersJoin    += ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
-                filtersNoJoin  += ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
+                fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
+                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO})) = UPPER(TRIM($${values.length}))`;
             }
+            filtersJoin   += fragmentoAsesorViejo;
+            filtersNoJoin += fragmentoAsesorViejo;
         }
         if (supervisor) {
             values.push(`%${supervisor}%`);
@@ -420,7 +438,19 @@ const getIndicadoresDashboard = async (req, res) => {
             filtersNoJoin += actFilter;
         }
 
-        
+        // filtersJoinResuelto: idéntico a filtersJoin, pero con el fragmento de
+        // asesor reemplazado por la versión que compara contra ASESOR_RESUELTO
+        // en vez de mb.b_persona_responsable (ver el bloque del filtro ASESOR
+        // más arriba). Reemplazo por texto literal (no regex) porque conocemos
+        // exactamente el fragmento que se insertó — es seguro y no ambiguo.
+        // USAR SOLO en queries que ya hacen ${joinResponsableWebhook} (alias
+        // "bwl" disponible en el FROM): hoy son queryJotform y
+        // queryVentasActivasMes. El resto del dashboard sigue usando
+        // filtersJoin/filtersNoJoin normales.
+        const filtersJoinResuelto = fragmentoAsesorViejo
+            ? filtersJoin.replace(fragmentoAsesorViejo, fragmentoAsesorResuelto)
+            : filtersJoin;
+
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
         // parseFecha genera una expresión CASE+regex que antes se evaluaba 12-14
         // veces por fila (en cada FILTER clause). Con MATERIALIZED CTE se evalúa
@@ -751,7 +781,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-            ${filtersJoin}
+            ${filtersJoinResuelto}
             LIMIT 6000
         `;
 
@@ -958,7 +988,7 @@ const getIndicadoresDashboard = async (req, res) => {
               -- $1 y $2 siempre son fechas válidas (desde/hasta ya vienen con default),
               -- solo existe para que el conteo de placeholders cuadre con "values".
               AND $1::date IS NOT NULL AND $2::date IS NOT NULL
-              ${filtersJoin}
+              ${filtersJoinResuelto}
             ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
             LIMIT 3000
         `;

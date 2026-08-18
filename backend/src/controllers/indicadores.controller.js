@@ -1531,7 +1531,7 @@ LEFT JOIN LATERAL (
 
 const getReporte180 = async (req, res) => {
     try {
-        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, idBitrix, fechaActivacionDesde, fechaActivacionHasta } = req.query;
+        const { asesor, supervisor, fechaDesde, fechaHasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, fechaActivacionDesde, fechaActivacionHasta } = req.query;
 
         const hoy = getFechaEcuador();
         const desde = fechaDesde ? fechaDesde : hoy;
@@ -1587,6 +1587,31 @@ const getReporte180 = async (req, res) => {
         if (idBitrix) {
             values.push(idBitrix.toString());
             filtersNoJoin += ` AND (mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`;
+        }
+        // Filtro por canal de pauta → convierte a lista de b_origen. Idéntico al
+        // bloque de getIndicadoresDashboard (mismo CANAL_ORIGENES_MAP): también
+        // incluye filas JOT cuyo j_id_bitrix apunta a un deal con ese b_origen,
+        // para que embudoJotform/mapaCalor no queden en 0 al filtrar por canal.
+        // FIX (2026-08-18): este endpoint alimenta "Detalle Base CRM" / "Detalle
+        // Base Jotform" (TablaKpiComercial) y antes NO leía "canal" de la query
+        // string, así que el filtro de origen no afectaba estos datos.
+        if (canal) {
+            const seleccion180   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
+            const origenesSel180 = [...new Set(seleccion180.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
+            if (origenesSel180.length) {
+                const startIdx180 = values.length + 1;
+                const placeholders180 = origenesSel180.map((_, i) => `$${startIdx180 + i}`).join(', ');
+                values.push(...origenesSel180);
+                filtersNoJoin += ` AND (
+                    mb.b_origen IN (${placeholders180})
+                    OR mb.j_id_bitrix::text IN (
+                        SELECT mb2.b_id::text
+                        FROM mestra_bitrix mb2
+                        WHERE mb2.b_origen IN (${placeholders180})
+                          AND mb2.b_id IS NOT NULL
+                    )
+                )`;
+            }
         }
         // Filtro FECHA DE ACTIVACIÓN (opcional, ver getIndicadoresDashboard para
         // la explicación completa). Cero impacto si no se envía.

@@ -53,40 +53,47 @@ const metaDinamica = (metaMensual, fechaDesde, fechaHasta) => {
 // MISMA ESTRUCTURA que METAS_COMERCIALES de Novonet (Indicadores.jsx), para que
 // los dos dashboards se lean igual y se cambien en un solo lugar por empresa.
 //
-// CALIBRACIÓN (2026-08-17) — antes estaban embebidas en cada tarjeta con los
-// valores de NOVONET (7050 leads / 4230 gestionables / 1200 CRM). Velsa no
-// mueve ese volumen, así que TODAS las tarjetas salían en rojo aunque el
-// equipo estuviera cumpliendo.
+// CALIBRACIÓN (2026-08-18) — actualizado con el archivo oficial de gerencia
+// "metas y control diario velsa.xlsx" (hoja "meta velsa", fila TOTAL VELSA;
+// columnas "Pto"), que reemplaza la calibración anterior basada en el export
+// de Bitrix del 17-ago.
 //
-// Base: export Bitrix "VELSA VENTAS NETLIFE", 01→17 agosto 2026 (2.310 negoc.),
-// proyectado a mes de 31 días:
-//     leads totales   2.071 en 17 d  →  3.777/mes   → meta 3.800
-//     gestionables      835 en 17 d  →  1.523/mes   → meta 1.520
-//     venta subida      341 en 17 d  →    622/mes   → meta   620
-//     % gest/totales  40,3%   % efect/gest 40,8%   % efect/leads 16,5%
-//     % descarte/gest 27,1%
+// Fila TOTAL VELSA (meta velsa!D28:V28), redondeada al entero:
+//     leads totales      2.749,09  → 2.749
+//     gestionables        1.512,00 → 1.512   (55% de leads totales)
+//     % gest/totales      55%        efect/leads totales 23%   efect/gestion 50%
+//     % descarte                    27%
+//     ingresos totales jotform (Pto)   755,99 → 756
+//     activas totales (Pto = 85% de ingresos jotform)  642,60 → 643
+//     tasa instalación   85%
 //
-// OJO: las metas del lado NETLIFE/JOTFORM (activas, backlog, tasa inst.,
-// tarjeta, 3ra edad) NO salen de este export de Bitrix. Se derivaron del meta
-// de ingresos Jot aplicando la tasa de instalación objetivo (85%). CONFIRMAR
-// con gerencia antes de presentarlas como oficiales.
+// La columna "Ingresos CRM" (O) viene en 0 en el archivo (no se llena aparte);
+// se sigue la misma convención de la calibración anterior de igualarla al
+// ingreso total Jotform. Igual con "Activa Mes" / "Activas Backlog" (R y S),
+// que vienen en 0 sin desglose — se deja todo el objetivo en el total
+// (activasTotal) y backlog en 0. CONFIRMAR con gerencia si quieren desglose.
+//
+// Diario (hoja "control diario velsa", fila TOTAL VELSA, Pto):
+//     Ingresos Jot Lead día   29,08 → 29   (756 / 26 días hábiles)
+// Tarjeta/3ra edad/Planes 150-200 vienen de la nota "Meta %" de la hoja
+// (35% / 15% / 15%), antes 30% / 15% / 15%.
 const METAS_COMERCIALES_VELSA = {
-  leadsTotales:      3800,
-  gestionables:      1520,
-  pctGestionables:  '40%',    // 1520 / 3800
-  efectVsLeads:     '17%',
-  efectVsGestion:   '41%',
+  leadsTotales:      2749,
+  gestionables:      1512,
+  pctGestionables:  '55%',    // 1512 / 2749
+  efectVsLeads:     '23%',
+  efectVsGestion:   '50%',
   descarte:         '27%',
-  ingresosCRM:        620,
-  ingresosCRMDia:      20,    // 620 / 31
-  ingresosJotDia:      20,
+  ingresosCRM:        756,
+  ingresosCRMDia:      29,    // 756 / 26 días hábiles
+  ingresosJotDia:      29,
   ingresosJotSeg:       0,
-  ingresosTotJot:     620,
-  activasMes:         480,    // derivado (85% de 620, menos backlog) — CONFIRMAR
-  activasBacklog:      50,    // derivado — CONFIRMAR
-  activasTotal:       530,    // 480 + 50 — CONFIRMAR
+  ingresosTotJot:     756,
+  activasMes:         643,    // sin desglose en el archivo — CONFIRMAR
+  activasBacklog:       0,    // sin desglose en el archivo — CONFIRMAR
+  activasTotal:       643,    // 85% de 756 (Pto de ACTIVAS TOTALES)
   tasaInstalacion:  '85%',
-  tarjeta:          '30%',
+  tarjeta:          '35%',
   terceraEdad:      '15%',
   planes150200:     '15%',
 };

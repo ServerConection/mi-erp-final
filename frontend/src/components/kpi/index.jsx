@@ -424,7 +424,11 @@ export function KpiMini({ label, value, meta, real, color, index = 0, variant = 
       style={{
         background:    N.bg,
         borderRadius:  12,
-        overflow:      "hidden",
+        // NO "overflow: hidden" aquí: recortaba el cuadro del tooltip (que se
+        // dibuja fuera del borde de la tarjeta, ver .kpi-info-box) y lo dejaba
+        // invisible / "atrapado" dentro de la tarjeta. La barra de progreso de
+        // abajo ya tiene su propio overflow:hidden + borderRadius, así que no
+        // se pierde el redondeo visual al quitarlo de aquí.
         display:       "flex",
         flexDirection: "column",
         borderTop:     `3px solid ${c.from}`,

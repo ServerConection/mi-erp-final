@@ -134,6 +134,42 @@ const esDescarteExpr = (col) =>
 const sumaReporteExpr = (origenCol, etapaCol) =>
     `(${etapaCol} = 'VENTA SUBIDA' OR UPPER(TRIM(COALESCE(${origenCol}, ''))) NOT IN ${sqlListaUpper(ORIGENES_NO_SUMAN_REPORTE)})`;
 
+// ── (4) REGULARIZACIÓN ──────────────────────────────────────────────────────
+// Un registro está POR REGULARIZAR ⇔ su ESTATUS DE REGULARIZACIÓN es
+// exactamente "POR REGULARIZAR".
+//
+// FIX (2026-08-18) — había TRES criterios distintos conviviendo en el código,
+// y por eso el mismo indicador daba números distintos según la pantalla:
+//   · indicadores / comparativa : = 'POR REGULARIZAR'   (exacto, SIN upper ni
+//     trim → se perdía todo lo que viniera como "Por Regularizar" o con un
+//     espacio al final. Este era el bug de NOVONET.)
+//   · redes / monitoreo         : ILIKE '%POR REGULARIZAR%'  (parcial → también
+//     matchearía cualquier valor futuro que CONTENGA ese texto.)
+//   · kpiComercial / velsa      : UPPER(TRIM(...)) = ...   (el correcto)
+//
+// Se unifica en el criterio correcto: comparación EXACTA pero insensible a
+// mayúsculas y espacios, igual que se hace con las etapas.
+const ESTADO_POR_REGULARIZAR = 'POR REGULARIZAR';
+
+/** por_regularizar = SI ⇔ el estatus de regularización es POR REGULARIZAR. */
+const esPorRegularizarExpr = (col) =>
+    `(UPPER(TRIM(COALESCE(${col}, ''))) = '${ESTADO_POR_REGULARIZAR}')`;
+
+// Estados de venta que ANULAN la regularización: aunque el registro esté
+// marcado POR REGULARIZAR, ya no aplica porque la venta se cayó.
+const ESTADOS_ANULAN_REGULARIZACION = [
+    'FUERA DE COBERTURA',
+    'DESISTE DEL SERVICIO',
+    'RECHAZADO',
+];
+
+/**
+ * regularización "neta": POR REGULARIZAR y además la venta sigue viva.
+ * Es la que se muestra en la columna REGU. de la tabla KPI.
+ */
+const esRegularizacionNetaExpr = (colEstatus, colEstadoVenta) =>
+    `(${esPorRegularizarExpr(colEstatus)} AND UPPER(TRIM(COALESCE(${colEstadoVenta}, ''))) NOT IN ${sqlListaUpper(ESTADOS_ANULAN_REGULARIZACION)})`;
+
 module.exports = {
     ETAPAS_NO_SUMAN_LEAD,
     ETAPAS_NO_GESTIONABLES_BASE,
@@ -145,4 +181,8 @@ module.exports = {
     esGestionableExpr,
     esDescarteExpr,
     sumaReporteExpr,
+    ESTADO_POR_REGULARIZAR,
+    ESTADOS_ANULAN_REGULARIZACION,
+    esPorRegularizarExpr,
+    esRegularizacionNetaExpr,
 };

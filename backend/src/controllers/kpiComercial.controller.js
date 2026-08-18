@@ -32,7 +32,7 @@
 
 const pool = require('../config/db');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { esLeadTotalExpr } = require('../shared/etapas');
+const { esLeadTotalExpr , esPorRegularizarExpr} = require('../shared/etapas');
 
 // ── Etapas que cuentan como GESTIONABLES ─────────────────────────────────────
 // Lista BLANCA definida por gerencia. Cualquier etapa fuera de aquí (ATC,
@@ -157,7 +157,7 @@ WITH datos AS (
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
-              AND UPPER(TRIM(mb.j_estatus_regularizacion)) = 'POR REGULARIZAR'
+              AND ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
         )                                                  AS por_regularizar
     FROM public.__VISTA__ mb
     __JOIN_EMPLEADOS__

@@ -13,6 +13,7 @@ const {
     esGestionableExpr,
     esDescarteExpr,
     ETAPAS_NO_GESTIONABLES,
+    esPorRegularizarExpr
 } = require('../shared/etapas');
 
   const getFiltroFechas = (query) => {
@@ -745,8 +746,8 @@ const {
           COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%') AS desiste_servicio_jot,
           COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
             AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-            AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%') AS regularizados,
-          COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%') AS por_regularizar
+            AND NOT ${esPorRegularizarExpr('t1.j_estatus_regularizacion')}) AS regularizados,
+          COUNT(*) FILTER (WHERE ${esPorRegularizarExpr('t1.j_estatus_regularizacion')}) AS por_regularizar
         FROM public.mestra_bitrix t1
         JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix=t2.b_id
         WHERE t1.j_id_bitrix IS NOT NULL

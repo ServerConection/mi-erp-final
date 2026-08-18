@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { esLeadTotalExpr } = require('../shared/etapas');
+const { esLeadTotalExpr , esPorRegularizarExpr} = require('../shared/etapas');
 
 const getFiltroFechas = (query) => {
   const hoy = new Date().toISOString().split('T')[0];
@@ -512,8 +512,8 @@ const getReporteData = async (req, res) => {
         COUNT(*) FILTER (WHERE t1.j_netlife_estatus_real ILIKE '%DESISTE%') AS desiste_servicio_jot,
         COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%REGULARIZADO%'
           AND t1.j_estatus_regularizacion NOT ILIKE '%NO REQUIERE%'
-          AND t1.j_estatus_regularizacion NOT ILIKE '%POR REGULARIZAR%') AS regularizados,
-        COUNT(*) FILTER (WHERE t1.j_estatus_regularizacion ILIKE '%POR REGULARIZAR%') AS por_regularizar
+          AND NOT ${esPorRegularizarExpr('t1.j_estatus_regularizacion')}) AS regularizados,
+        COUNT(*) FILTER (WHERE ${esPorRegularizarExpr('t1.j_estatus_regularizacion')}) AS por_regularizar
       FROM public.mestra_bitrix t1
       JOIN public.mestra_bitrix t2 ON t1.j_id_bitrix = t2.b_id
       WHERE t1.j_id_bitrix IS NOT NULL

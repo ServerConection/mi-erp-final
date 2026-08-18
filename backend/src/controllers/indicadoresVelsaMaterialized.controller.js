@@ -13,6 +13,8 @@ const {
     esGestionableExpr,
     esDescarteExpr,
     ETAPAS_NO_GESTIONABLES,
+
+    esPorRegularizarExpr
 } = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -207,7 +209,7 @@ const queryKPI = (columna, filters) => `
     -- POR REGULARIZAR (existe en Novonet, faltaba en Velsa)
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-      AND UPPER(TRIM(mv.estado_regularizacion)) = 'POR REGULARIZAR'
+      AND ${esPorRegularizarExpr('mv.estado_regularizacion')}
     ) AS por_regularizar,
     -- ACTIVAS por FECHA DE REGISTRO JOTFORM (equivalente a "activas" de Novonet;
     -- distinto de real_mes, que va por fecha de activación).
@@ -259,7 +261,7 @@ const queryKPI = (columna, filters) => `
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND UPPER(TRIM(mv.estado_venta)) NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-      AND UPPER(TRIM(mv.estado_regularizacion)) = 'POR REGULARIZAR'
+      AND ${esPorRegularizarExpr('mv.estado_regularizacion')}
     ) AS regularizacion,
 
     -- ── PORCENTAJES ──────────────────────────────────────────────────────

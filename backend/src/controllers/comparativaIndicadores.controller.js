@@ -13,6 +13,7 @@ const {
     esGestionableExpr,
     esDescarteExpr,
     ETAPAS_NO_GESTIONABLES,
+    esPorRegularizarExpr
 } = require('../shared/etapas');
 
 const getFechaEcuador = () =>
@@ -136,7 +137,7 @@ const getComparativaSupervisores = async (req, res) => {
         ) AS pagos_tarjeta,
         COUNT(DISTINCT mb.j_id_bitrix) FILTER (
           WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-          AND mb.j_estatus_regularizacion = 'POR REGULARIZAR'
+          AND ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
         ) AS por_regularizar
       FROM mestra_bitrix mb
       ${joinEmpleados}

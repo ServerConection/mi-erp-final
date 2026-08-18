@@ -15,6 +15,7 @@ const {
     ETAPAS_NO_GESTIONABLES,
     esGestionableExpr: _esGestionableExpr,
     sqlListaUpper: _sqlListaUpper,
+    esPorRegularizarExpr
 } = require('../shared/etapas');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 const esGestionableExpr = (col) => _esGestionableExpr(col, { innegociableEsGestionable: true });
@@ -429,12 +430,7 @@ const getIndicadoresDashboard = async (req, res) => {
             const groupCol     = columna === 'e.supervisor' ? 'supervisor' : 'b_persona_responsable';
             const esSupervisor = columna === 'e.supervisor';
             // Para asesores también devolvemos su supervisor (para agrupar en el frontend)
-            // FIX duplicado en Ranking Asesores / selector: si el mismo asesor llega con
-            // espacios extra (ej. "OSCAR SANGUCHO SASIG " vs "OSCAR SANGUCHO SASIG"), antes
-            // el GROUP BY los trataba como dos grupos distintos que se veían idénticos en
-            // pantalla (una tarjeta con datos reales y otra "fantasma" casi vacía). BTRIM +
-            // NULLIF normaliza antes de agrupar.
-            const extraSelect  = esSupervisor ? '' : ", COALESCE(NULLIF(BTRIM(supervisor), ''), 'SIN ASIGNAR') AS sup_nombre";
+            const extraSelect  = esSupervisor ? '' : ", COALESCE(supervisor, 'SIN ASIGNAR') AS sup_nombre";
             const extraGroup   = esSupervisor ? '' : ', 2';
             return `
             WITH _base AS MATERIALIZED (
@@ -471,7 +467,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(NULLIF(BTRIM(${groupCol}), ''), 'SIN ASIGNAR') AS nombre_grupo
+                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
                 ${extraSelect},
                 -- COUNT(DISTINCT b_id) y no COUNT(*): un lead puede aparecer en
                 -- varias filas cuando tiene mas de una venta Jotform asociada
@@ -511,7 +507,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 , 0) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
-                    AND j_estatus_regularizacion = 'POR REGULARIZAR'
+                    AND ${esPorRegularizarExpr('j_estatus_regularizacion')}
                 ) AS por_regularizar,
                 COUNT(DISTINCT b_id) FILTER (
     -- FIX (2026-06-23): antes este FILTER usaba (_jf_parsed_date OR _bc_date) BETWEEN ...,
@@ -579,7 +575,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
                     AND j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-                    AND j_estatus_regularizacion = 'POR REGULARIZAR'
+                    AND ${esPorRegularizarExpr('j_estatus_regularizacion')}
                 ) AS regularizacion,
                 ROUND( COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
@@ -967,39 +963,7 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 3000
         `;
 
-        // ── POR REGULARIZAR (NUEVO) — worklist urgente, SIN filtro de fecha ──────
-        // A diferencia de "Detalle Jotform" (atado al Período) esta tabla es una
-        // lista de pendientes: todo lo que HOY está en estatus 'POR REGULARIZAR',
-        // sin importar cuándo se registró o activó. No tiene sentido acotarla al
-        // rango de fechas del dashboard porque un pendiente viejo sigue siendo
-        // un pendiente. Respeta asesor/supervisor/etc. vía filtersJoin.
-        const queryRegularizaciones = `
-            SELECT
-                mb.j_id_bitrix AS "ID_CRM",
-                ${ASESOR_RESUELTO} AS "ASESOR",
-                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
-                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
-                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
-                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
-                mb.j_forma_pago AS "FORMA_PAGO",
-                mb.j_netlife_login AS "LOGIN"
-            FROM public.mestra_bitrix mb
-            ${joinEmpleadosDedup}
-            ${joinResponsableWebhook}
-            ${joinSupervisorResuelto}
-            WHERE mb.j_estatus_regularizacion = 'POR REGULARIZAR'
-              -- mismo no-op de conteo de placeholders que queryVentasActivasMes:
-              -- esta query no acota por $1/$2, pero se ejecuta con "values"
-              -- (que siempre trae [desde, hasta] como $1/$2 + filtersJoin).
-              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
-              ${filtersJoin}
-            ORDER BY public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) DESC
-            LIMIT 3000
-        `;
-
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones] = await Promise.all([
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -1011,7 +975,6 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryIngresosDiaAsesor, dateValues),
             pool.query(queryPlanesPorCategoria, values),
             pool.query(queryVentasActivasMes, values),
-            pool.query(queryRegularizaciones, values),
         ]);
 
         // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
@@ -1101,9 +1064,6 @@ const getIndicadoresDashboard = async (req, res) => {
             // activación, no por fecha de creación) — ver queryVentasActivasMes.
             ventasActivas: resVentasActivasMes.rows,
             ventasActivasTotal: resVentasActivasMes.rowCount,
-            // NUEVO: worklist de "por regularizar" — ver queryRegularizaciones.
-            regularizaciones: resRegularizaciones.rows,
-            regularizacionesTotal: resRegularizaciones.rowCount,
         };
 
         // Guardar en caché para solicitudes idénticas en los próximos 2 minutos

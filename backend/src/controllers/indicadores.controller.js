@@ -451,6 +451,90 @@ const getIndicadoresDashboard = async (req, res) => {
             ? filtersJoin.replace(fragmentoAsesorViejo, fragmentoAsesorResuelto)
             : filtersJoin;
 
+        // ── FIX (2026-08-18): filtro para las queries "día" (VENTAS/INGRESOS
+        // DEL DÍA — self-join mb_jot + mb_crm, ver más abajo) ───────────────────
+        // Bug reportado: "Ingresos CRM día", "Ingresos Jot día" e "Ingresos Jot
+        // Seg." (que se calcula a partir de "Ingresos CRM día") NO respetaban
+        // NINGÚN filtro del dashboard — ni canal/origen, ni etapa, ni
+        // regularización, ni gestionables, ni idBitrix, ni fecha de activación.
+        // Solo usaban $1/$2 (rango de fecha) vía `dateValues`. Motivo: esas 4
+        // queries NO usan un único alias "mb" como el resto del dashboard — el
+        // lado CRM vive en `mb_crm` (vw_bitrix_novonet, columnas b_*) y el lado
+        // Jotform en `mb_jot` (mestra_bitrix, columnas j_*), por el self-join
+        // explicado en el comentario de queryVentasDiaAsesor. filtersJoin /
+        // filtersJoinResuelto no sirven tal cual porque están armados con el
+        // prefijo "mb." a secas.
+        //
+        // Se arma acá un fragmento EQUIVALENTE a filtersJoin (mismos filtros,
+        // mismo criterio, valores propios en `valuesDia` para no acoplar el
+        // conteo de placeholders al resto del dashboard), apuntando cada
+        // columna a su alias real: b_* → mb_crm, j_* → mb_jot. El filtro de
+        // asesor usa mb_crm.b_persona_responsable (igual que queryCRM/filtersJoin
+        // — NO el ASESOR_RESUELTO de queryJotform, porque estas queries no
+        // hacen JOIN al webhook de responsables).
+        let valuesDia = [desde, hasta];
+        let filtrosDia = "";
+        if (asesorQuery) {
+            const listaAsesoresDia = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesoresDia.length > 1) {
+                const asesoresUpperDia = _sqlListaUpper(listaAsesoresDia);
+                filtrosDia += ` AND UPPER(TRIM(mb_crm.b_persona_responsable)) IN ${asesoresUpperDia}`;
+            } else if (listaAsesoresDia.length === 1) {
+                valuesDia.push(listaAsesoresDia[0]);
+                filtrosDia += ` AND UPPER(TRIM(mb_crm.b_persona_responsable)) = UPPER(TRIM($${valuesDia.length}))`;
+            }
+        }
+        if (supervisor) {
+            valuesDia.push(`%${supervisor}%`);
+            filtrosDia += ` AND e.supervisor ILIKE $${valuesDia.length}`;
+        }
+        if (estadoNetlife) {
+            valuesDia.push(`%${estadoNetlife}%`);
+            filtrosDia += ` AND mb_jot.j_netlife_estatus_real ILIKE $${valuesDia.length}`;
+        }
+        if (estadoRegularizacion) {
+            valuesDia.push(`%${estadoRegularizacion}%`);
+            filtrosDia += ` AND mb_jot.j_estatus_regularizacion ILIKE $${valuesDia.length}`;
+        }
+        if (etapaCRM) {
+            const listaEtapasDia = (Array.isArray(etapaCRM) ? etapaCRM : String(etapaCRM).split(','))
+                .map(e => e.trim()).filter(Boolean);
+            if (listaEtapasDia.length) {
+                const etapasUpperDia = _sqlListaUpper(listaEtapasDia);
+                filtrosDia += ` AND UPPER(TRIM(mb_crm.b_etapa_de_la_negociacion)) IN ${etapasUpperDia}`;
+            }
+        }
+        if (etapaJotform) {
+            valuesDia.push(`%${etapaJotform}%`);
+            filtrosDia += ` AND mb_jot.j_netlife_estatus_real ILIKE $${valuesDia.length}`;
+        }
+        if (idBitrix) {
+            valuesDia.push(idBitrix.toString());
+            filtrosDia += ` AND (mb_crm.b_id::text = $${valuesDia.length} OR mb_jot.j_id_bitrix::text = $${valuesDia.length})`;
+        }
+        if (gestionables === 'si') {
+            filtrosDia += ` AND ${esGestionableExpr('mb_crm.b_etapa_de_la_negociacion')}`;
+        } else if (gestionables === 'no') {
+            filtrosDia += ` AND NOT ${esGestionableExpr('mb_crm.b_etapa_de_la_negociacion')}`;
+        }
+        if (canal) {
+            const seleccionDia   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
+            const origenesSelDia = [...new Set(seleccionDia.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
+            if (origenesSelDia.length) {
+                const startIdxDia = valuesDia.length + 1;
+                const placeholdersDia = origenesSelDia.map((_, i) => `$${startIdxDia + i}`).join(', ');
+                valuesDia.push(...origenesSelDia);
+                filtrosDia += ` AND mb_crm.b_origen IN (${placeholdersDia})`;
+            }
+        }
+        if (fechaActivacionDesde && fechaActivacionHasta) {
+            valuesDia.push(fechaActivacionDesde, fechaActivacionHasta);
+            const idxDesdeDia = valuesDia.length - 1;
+            const idxHastaDia = valuesDia.length;
+            filtrosDia += ` AND public.parse_fecha_flex(mb_jot.j_fecha_activacion_netlife::text) BETWEEN $${idxDesdeDia}::date AND $${idxHastaDia}::date`;
+        }
+
         // ── Optimización CTE MATERIALIZED ────────────────────────────────────────
         // parseFecha genera una expresión CASE+regex que antes se evaluaba 12-14
         // veces por fila (en cada FILTER clause). Con MATERIALIZED CTE se evalúa
@@ -643,7 +727,12 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // ── VENTAS DEL DÍA: lead creado en Bitrix + VENTA SUBIDA + Jotform mismo día ──
         // Self-join sobre mestra_bitrix: filas CRM (b_*) + filas JOT (j_*)
-        // Solo usa $1 y $2 (fecha_desde, fecha_hasta)
+        // FIX (2026-08-18): antes solo usaba $1/$2 (fecha_desde, fecha_hasta) y
+        // NINGÚN otro filtro del dashboard (canal/origen, etapa, regularización,
+        // gestionables, idBitrix, fecha de activación) se aplicaba acá — ver
+        // ${"$"}{filtrosDia} más arriba. Se agrega también el JOIN a "empleados"
+        // (alias e) que antes solo tenía la variante *Sup — hace falta para
+        // poder filtrar por supervisor también en la variante *Asesor.
         const queryVentasDiaAsesor = `
             SELECT
                 mb_crm.b_persona_responsable AS nombre_grupo,
@@ -655,10 +744,16 @@ const getIndicadoresDashboard = async (req, res) => {
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
             JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE e2.nombre_completo = mb_crm.b_persona_responsable
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
             AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
+            ${filtrosDia}
             GROUP BY 1
         `;
         const queryVentasDiaSup = `
@@ -680,11 +775,14 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
             AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            ${filtrosDia}
             GROUP BY 1
         `;
 
         // ── INGRESOS DEL DÍA: Jot registrado el MISMO día en que se creó el lead ──
         // (sin condición de etapa). VENTA SEGUIMIENTO = ingresos_reales − ingresos_del_dia
+        // FIX (2026-08-18): mismo bug/mismo fix que queryVentasDia* arriba —
+        // ver ${"$"}{filtrosDia}.
         const queryIngresosDiaAsesor = `
             SELECT
                 mb_crm.b_persona_responsable AS nombre_grupo,
@@ -696,9 +794,15 @@ const getIndicadoresDashboard = async (req, res) => {
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
             JOIN public.vw_bitrix_novonet mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
+            LEFT JOIN LATERAL (
+                SELECT e2.supervisor FROM public.empleados e2
+                WHERE e2.nombre_completo = mb_crm.b_persona_responsable
+                ORDER BY e2.codigo::int DESC LIMIT 1
+            ) e ON true
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
             AND mb_crm.b_persona_responsable IS NOT NULL
+            ${filtrosDia}
             GROUP BY 1
         `;
         const queryIngresosDiaSup = `
@@ -719,6 +823,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ) e ON true
             WHERE public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             AND mb_crm.b_creado_el_fecha = public.parse_fecha_flex(mb_jot.j_fecha_registro_sistema::text)
+            ${filtrosDia}
             GROUP BY 1
         `;
 
@@ -971,7 +1076,9 @@ const getIndicadoresDashboard = async (req, res) => {
         ]);
 
         // Lote 2: tablas + backlogs + activaciones + ventas del día (self-join)
-        const dateValues = [desde, hasta]; // solo $1 y $2 para queries de ventas del día
+        // NOTA: las queries de "ventas/ingresos del día" ya NO usan un array de
+        // valores propio solo-fecha — ver `valuesDia`/`filtrosDia` más arriba
+        // (fix 2026-08-18: ahora respetan TODOS los filtros del dashboard).
         // ─────────────────────────────────────────────────────────────────────
         // PLANES POR CATEGORIA (Hogar / Pymes / Adulto Mayor) - ingresados vs activos
         // Misma definicion usada en Reporte180: Hogar=plan_casa, Pymes=plan_pyme/plan_pyme_corp,
@@ -1106,10 +1213,10 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryBacklog('e.supervisor'), values),
             pool.query(queryBacklog('mb.b_persona_responsable'), values),
             pool.query(queryActivacionesPorDia, values),
-            pool.query(queryVentasDiaSup, dateValues),
-            pool.query(queryVentasDiaAsesor, dateValues),
-            pool.query(queryIngresosDiaSup, dateValues),
-            pool.query(queryIngresosDiaAsesor, dateValues),
+            pool.query(queryVentasDiaSup, valuesDia),
+            pool.query(queryVentasDiaAsesor, valuesDia),
+            pool.query(queryIngresosDiaSup, valuesDia),
+            pool.query(queryIngresosDiaAsesor, valuesDia),
             pool.query(queryPlanesPorCategoria, values),
             pool.query(queryVentasActivasMes, values),
             pool.query(queryRegularizaciones, valuesRegularizar),

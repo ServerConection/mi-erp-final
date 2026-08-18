@@ -1808,7 +1808,7 @@ ${asesoresPDF.length>0?`
                 No se prorratean por fecha: gerencia las quiere fijas. */}
             <KpiMini index={0} label="Leads Totales"        meta={METAS_COMERCIALES.leadsTotales}    real={stats.leadsGestionables}                color="border-l-emerald-500" tooltip={TIP.leadsTotales} />
             <KpiMini index={1} label="Gestionables"         meta={METAS_COMERCIALES.gestionables}    real={stats.gestionables}                     color="border-l-violet-500" tooltip={TIP.gestionables} />
-            <KpiMini index={2} label="% Gest. vs Totales"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
+            <KpiMini index={2} label="% Leads Gestionables"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
             <KpiMini index={3} label="Efect. vs Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
             <KpiMini index={4} label="Efect. vs Gestion."   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
             <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" tooltip={TIP.descarte} />

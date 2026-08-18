@@ -48,6 +48,63 @@ if (typeof document !== "undefined" && !document.getElementById(STYLES_ID)) {
       animation: kpiBarGrow .75s cubic-bezier(.4,0,.2,1) both;
       transition: width .7s cubic-bezier(.4,0,.2,1);
     }
+    /* ── Tooltip "¿cómo se calcula?" (KpiMini) ────────────────────────────── */
+    .kpi-info {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 12px;
+      height: 12px;
+      margin-left: 4px;
+      border-radius: 50%;
+      background: rgba(148,163,184,.22);
+      color: #64748b;
+      font-size: 8px;
+      font-weight: 900;
+      font-style: normal;
+      letter-spacing: 0;
+      text-transform: none;
+      cursor: help;
+      flex-shrink: 0;
+    }
+    .kpi-info-box {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%) translateY(4px);
+      width: 220px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.45;
+      letter-spacing: normal;
+      text-transform: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 12px 28px -6px rgba(15,23,42,.35);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+      z-index: 40;
+    }
+    .kpi-info-box::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: #0f172a;
+    }
+    .kpi-info:hover .kpi-info-box,
+    .kpi-info:focus .kpi-info-box {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -349,7 +406,7 @@ export function KpiCard180({
  * @param {number}  [index=0]
  * @param {"slate"|"stone"} [variant="slate"]
  */
-export function KpiMini({ label, value, meta, real, color, index = 0, variant = "slate" }) {
+export function KpiMini({ label, value, meta, real, color, index = 0, variant = "slate", tooltip }) {
   const N       = NEUTRAL[variant] || NEUTRAL.slate;
   const metaNum = meta !== undefined ? parseFloat(String(meta).replace("%", "")) : null;
   const realNum = real !== undefined ? parseFloat(String(real).replace("%", "")) : null;
@@ -380,8 +437,16 @@ export function KpiMini({ label, value, meta, real, color, index = 0, variant = 
         <span style={{
           fontSize: 8, fontWeight: 900, color: N.label,
           letterSpacing: ".1em", textTransform: "uppercase",
-          display: "block", marginBottom: 8, lineHeight: 1.3,
-        }}>{label}</span>
+          display: "flex", alignItems: "center", marginBottom: 8, lineHeight: 1.3,
+        }}>
+          {label}
+          {tooltip && (
+            <span className="kpi-info" tabIndex={0}>
+              i
+              <span className="kpi-info-box">{tooltip}</span>
+            </span>
+          )}
+        </span>
 
         {meta !== undefined ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>

@@ -4,6 +4,7 @@ import { KpiCard180, KpiMini } from "../components/kpi";
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
+import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -1805,32 +1806,32 @@ ${asesoresPDF.length>0?`
                ────────────────────────────────────────────────────────────── */}
             {/* Metas MENSUALES CONSTANTES — ver METAS_COMERCIALES arriba.
                 No se prorratean por fecha: gerencia las quiere fijas. */}
-            <KpiMini index={0} label="Leads Totales"        meta={METAS_COMERCIALES.leadsTotales}    real={stats.leadsGestionables}                color="border-l-emerald-500" />
-            <KpiMini index={1} label="Gestionables"         meta={METAS_COMERCIALES.gestionables}    real={stats.gestionables}                     color="border-l-violet-500" />
-            <KpiMini index={2} label="% Gest. vs Totales"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" />
-            <KpiMini index={3} label="Efect. vs Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" />
-            <KpiMini index={4} label="Efect. vs Gestion."   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" />
-            <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" />
-            <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" />
-            <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" />
+            <KpiMini index={0} label="Leads Totales"        meta={METAS_COMERCIALES.leadsTotales}    real={stats.leadsGestionables}                color="border-l-emerald-500" tooltip={TIP.leadsTotales} />
+            <KpiMini index={1} label="Gestionables"         meta={METAS_COMERCIALES.gestionables}    real={stats.gestionables}                     color="border-l-violet-500" tooltip={TIP.gestionables} />
+            <KpiMini index={2} label="% Gest. vs Totales"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
+            <KpiMini index={3} label="Efect. vs Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
+            <KpiMini index={4} label="Efect. vs Gestion."   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
+            <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" tooltip={TIP.descarte} />
+            <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" tooltip={TIP.ventasCRM} />
+            <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" tooltip={TIP.ventasDelDia} />
             {/* PENDIENTE BACKEND: ventas_dia_form devuelve hoy el mismo valor que
                 ventas_del_dia (indicadores.controller.js:830-831). Debe ser
                 ingresos Jotform del día SIN exigir que el lead se creara ese día. */}
-            <KpiMini index={8} label="Ingresos Jot día"     meta={METAS_COMERCIALES.ingresosJotDia}  real={stats.ventasDiaForm}                    color="border-l-orange-500" />
-            <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" />
-            <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" />
+            <KpiMini index={8} label="Ingresos Jot día"     meta={METAS_COMERCIALES.ingresosJotDia}  real={stats.ventasDiaForm}                    color="border-l-orange-500" tooltip={TIP.ventasDiaForm} />
+            <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
+            <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" tooltip={TIP.ingresosReales} />
 
             {/* FILA 2 — Activaciones y calidad */}
-            <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" />
-            <KpiMini index={12} label="Activas Backlog" meta={METAS_COMERCIALES.activasBacklog}  real={stats.backlog}                 color="border-l-cyan-500" />
-            <KpiMini index={13} label="Activas Total"   meta={METAS_COMERCIALES.activasTotal}    real={stats.activas}                 color="border-l-teal-500" />
-            <KpiMini index={14} label="Tasa Inst."      meta={METAS_COMERCIALES.tasaInstalacion} real={`${stats.tasaInstalacion}%`}   color="border-l-cyan-500" />
-            <KpiMini index={15} label="Tarjeta %"       meta={METAS_COMERCIALES.tarjeta}         real={`${stats.tarjetaCredito}%`}    color="border-l-amber-500" />
-            <KpiMini index={16} label="3ra Edad %"      meta={METAS_COMERCIALES.terceraEdad}     real={`${stats.terceraEdad}%`}       color="border-l-pink-500" />
+            <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" tooltip={TIP.activaMes} />
+            <KpiMini index={12} label="Activas Backlog" meta={METAS_COMERCIALES.activasBacklog}  real={stats.backlog}                 color="border-l-cyan-500" tooltip={TIP.backlog} />
+            <KpiMini index={13} label="Activas Total"   meta={METAS_COMERCIALES.activasTotal}    real={stats.activas}                 color="border-l-teal-500" tooltip={TIP.activasTotal} />
+            <KpiMini index={14} label="Tasa Inst."      meta={METAS_COMERCIALES.tasaInstalacion} real={`${stats.tasaInstalacion}%`}   color="border-l-cyan-500" tooltip={TIP.tasaInstalacion} />
+            <KpiMini index={15} label="Tarjeta %"       meta={METAS_COMERCIALES.tarjeta}         real={`${stats.tarjetaCredito}%`}    color="border-l-amber-500" tooltip={TIP.tarjeta} />
+            <KpiMini index={16} label="3ra Edad %"      meta={METAS_COMERCIALES.terceraEdad}     real={`${stats.terceraEdad}%`}       color="border-l-pink-500" tooltip={TIP.terceraEdad} />
             {/* NUEVA — pedida por gerencia. PENDIENTE BACKEND: no existe el dato
                 real de planes 150/200 Mbps, por ahora muestra 0%. */}
-            <KpiMini index={17} label="% Planes 150/200" meta={METAS_COMERCIALES.planes150200}   real="0.0%"                          color="border-l-lime-500" />
-            <KpiMini index={18} label="Por Regularizar" value={stats.regularizar}                                                     color="border-l-pink-500" />
+            <KpiMini index={17} label="% Planes 150/200" meta={METAS_COMERCIALES.planes150200}   real="0.0%"                          color="border-l-lime-500" tooltip={TIP.planes150200} />
+            <KpiMini index={18} label="Por Regularizar" value={stats.regularizar}                                                     color="border-l-pink-500" tooltip={TIP.porRegularizar} />
           </div>
 
           {/* Tarjetas Etapas Jotform */}

@@ -785,6 +785,75 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 6000
         `;
 
+        // ── POR REGULARIZAR — PENDIENTES (worklist, VistaAsesor) ────────────────
+        // Alimenta result.regularizaciones, que el frontend (VistaAsesor.jsx)
+        // pinta en el bloque rojo "Por regularizar — pendientes". Antes ese
+        // campo NUNCA llegaba desde el backend (el objeto `resultado` no lo
+        // incluía) y el bloque quedaba siempre vacío.
+        //
+        // Reglas de esta query, tal como se pidió:
+        //   1) SOLO entran filas con mb.j_estatus_regularizacion = 'POR
+        //      REGULARIZAR' (match exacto, no ILIKE parcial) — usa
+        //      esPorRegularizarExpr, la MISMA expresión que ya usan los
+        //      contadores "por_regularizar" / "regularizacion" del resto del
+        //      dashboard, para que el número de la tarjeta y el detalle
+        //      siempre cuadren.
+        //   2) SIN filtro de fecha — es una worklist de "lo que está pendiente
+        //      HOY", sin importar cuándo se registró o activó (mismo criterio
+        //      que ya describe el texto de VistaAsesor.jsx).
+        //   3) SOLO se acota por asesor/supervisor (scoping normal de
+        //      seguridad + el <select> del dashboard). A propósito NO reusa
+        //      filtersJoinResuelto: ese string ya trae pegado el filtro del
+        //      dropdown "REGULARIZACIÓN" (estadoRegularizacion) y el resto de
+        //      filtros del dashboard (etapa, canal, gestionables, fecha de
+        //      activación...) — si el usuario tuviera seleccionado, por
+        //      ejemplo, "REGULARIZADO" en ese dropdown, este worklist se
+        //      vaciaría por contradicción con la condición #1. Por eso arma
+        //      su propio arreglo de valores (valuesRegularizar), en vez de
+        //      compartir "values", así el conteo de placeholders no se
+        //      acopla al resto de filtros del dashboard.
+        let valuesRegularizar = [];
+        let filtrosRegularizar = "";
+        if (asesorQuery) {
+            const listaAsesoresReg = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
+                .map(a => a.trim()).filter(Boolean);
+            if (listaAsesoresReg.length > 1) {
+                const asesoresUpperReg = _sqlListaUpper(listaAsesoresReg);
+                filtrosRegularizar += ` AND UPPER(TRIM(${ASESOR_RESUELTO})) IN ${asesoresUpperReg}`;
+            } else if (listaAsesoresReg.length === 1) {
+                valuesRegularizar.push(listaAsesoresReg[0]);
+                filtrosRegularizar += ` AND UPPER(TRIM(${ASESOR_RESUELTO})) = UPPER(TRIM($${valuesRegularizar.length}))`;
+            }
+        }
+        if (supervisor) {
+            valuesRegularizar.push(`%${supervisor}%`);
+            filtrosRegularizar += ` AND e.supervisor ILIKE $${valuesRegularizar.length}`;
+        }
+
+        const queryRegularizaciones = `
+            SELECT
+                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_id_bitrix AS "ID_CRM",
+                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
+                mb.j_novedades_atc AS "NOVEDADES_ATC",
+                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
+                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
+                mb.j_forma_pago AS "FORMA_PAGO",
+                mb.j_netlife_login AS "LOGIN",
+                mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
+                ${ASESOR_RESUELTO} AS "ASESOR",
+                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
+            FROM mestra_bitrix mb
+            ${joinEmpleadosDedup}
+            ${joinResponsableWebhook}
+            ${joinSupervisorResuelto}
+            WHERE ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
+            ${filtrosRegularizar}
+            ORDER BY public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) DESC
+            LIMIT 3000
+        `;
+
         // ── UNIFICADO con ACTIVAS TOTAL (real_mes) — ajustado 2026-08-13 ──────
         // Antes el renglón "ACTIVO" de este panel se contaba por fecha de
         // REGISTRO en Jotform, mientras que la tarjeta "ACTIVAS TOTAL" cuenta
@@ -993,7 +1062,7 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 3000
         `;
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes] = await Promise.all([
+        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones] = await Promise.all([
             pool.query(queryCRM, values),
             pool.query(queryJotform, values),
             pool.query(queryBacklog('e.supervisor'), values),
@@ -1005,6 +1074,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryIngresosDiaAsesor, dateValues),
             pool.query(queryPlanesPorCategoria, values),
             pool.query(queryVentasActivasMes, values),
+            pool.query(queryRegularizaciones, valuesRegularizar),
         ]);
 
         // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
@@ -1094,6 +1164,10 @@ const getIndicadoresDashboard = async (req, res) => {
             // activación, no por fecha de creación) — ver queryVentasActivasMes.
             ventasActivas: resVentasActivasMes.rows,
             ventasActivasTotal: resVentasActivasMes.rowCount,
+            // NUEVO: worklist "Por regularizar — pendientes" (VistaAsesor.jsx).
+            // Antes este campo no existía en la respuesta y el bloque rojo
+            // quedaba siempre vacío — ver queryRegularizaciones arriba.
+            regularizaciones: resRegularizaciones.rows,
         };
 
         // Guardar en caché para solicitudes idénticas en los próximos 2 minutos

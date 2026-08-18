@@ -93,8 +93,11 @@ async function listarAuditorias(req, res) {
     const dataResult = await pool.query(
       `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
               puntuacion_venta, puntuacion_atc, observacion, stage_id,
+              COALESCE(be.nombre, ben.nombre, stage_id) AS etapa,
               fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
        FROM auditorias
+       LEFT JOIN bitrix_etapas         be  ON be.status_id  = stage_id
+       LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = stage_id
        ${whereSql}
        ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
        LIMIT $${i++} OFFSET $${i++}`,
@@ -262,12 +265,16 @@ async function obtenerDetalle(req, res) {
     let scope = '';
     const empresa = empresaVisible(req, null);
     if (empresa) {
-      scope = ' AND UPPER(empresa) = UPPER($2)';
+      scope = ' AND UPPER(a.empresa) = UPPER($2)';
       params.push(empresa);
     }
 
     const result = await pool.query(
-      `SELECT * FROM auditorias WHERE id = $1${scope}`,
+      `SELECT a.*, COALESCE(be.nombre, ben.nombre, a.stage_id) AS etapa
+       FROM auditorias a
+       LEFT JOIN bitrix_etapas         be  ON be.status_id  = a.stage_id
+       LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = a.stage_id
+       WHERE a.id = $1${scope}`,
       params
     );
     if (result.rows.length === 0) {

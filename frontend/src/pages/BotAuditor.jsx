@@ -295,7 +295,7 @@ export default function BotAuditor() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
-                {["Lead", "Creado", "Empresa", "Asesor", "Canal", "Calif.", "Venta", "ATC", "Últ. mensaje", "Auditado", "Detalle"].map((h) => (
+                {["Lead", "Creado", "Empresa", "Asesor", "Etapa", "Canal", "Calif.", "Venta", "ATC", "Últ. mensaje", "Auditado", "Detalle"].map((h) => (
                   <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -309,6 +309,7 @@ export default function BotAuditor() {
                     <td style={{ padding: "10px 14px", color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtFecha(row.fecha_creacion_lead)}</td>
                     <td style={{ padding: "10px 14px" }}>{row.empresa || "—"}</td>
                     <td style={{ padding: "10px 14px" }}>{row.asesor || "—"}</td>
+                    <td style={{ padding: "10px 14px" }}>{row.etapa || "—"}</td>
                     <td style={{ padding: "10px 14px" }}>{row.tipo_canal || "—"}</td>
                     <td style={{ padding: "10px 14px" }}>
                       <span style={{ background: cal.bg, color: cal.color, border: `1px solid ${cal.border}`, borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>
@@ -373,6 +374,7 @@ export default function BotAuditor() {
                   <div><strong>Empresa:</strong> {detalle.empresa || "—"}</div>
                   <div><strong>Canal:</strong> {detalle.tipo_canal || "—"}</div>
                   <div><strong>Asesor:</strong> {detalle.asesor || "—"}</div>
+                  <div><strong>Etapa:</strong> {detalle.etapa || "—"}</div>
                   <div><strong>Calificación:</strong> {detalle.calificacion || "—"}</div>
                   <div><strong>Puntuación Venta:</strong> {detalle.puntuacion_venta ?? "—"}</div>
                   <div><strong>Puntuación ATC:</strong> {detalle.puntuacion_atc ?? "—"}</div>

@@ -1685,7 +1685,7 @@ const getReporte180 = async (req, res) => {
         const queryEmbudoCRM = `
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
-                COUNT(*)::int AS total
+                COUNT(DISTINCT mb.b_id)::int AS total
             FROM public.vw_bitrix_novonet mb
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion

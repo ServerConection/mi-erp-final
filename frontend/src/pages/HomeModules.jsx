@@ -109,10 +109,16 @@ export default function HomeModules() {
     { title: "Inventario", path: "/inventario", icon: Boxes, accent: "morado", cat: "equipo",
       desc: "Gestión de equipos, materiales y planos. Control de stock, movimientos y alertas de mínimos.",
       rolesPermitidos: ['ADMINISTRADOR'] },
-    // OCULTO por decisión de gerencia (2026-08). Código conservado.
-    // { title: "Redes", path: "/redes", icon: Flag, accent: "ambar", cat: "equipo",
-    //   desc: "Monitoreo y gestión de redes.",
-    //   rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
+    // Reactivado (Redes, 2026-08-19). Había quedado oculto por decisión de
+    // gerencia (2026-08).
+    { title: "Redes", path: "/redes", icon: Flag, accent: "ambar", cat: "equipo",
+      desc: "Monitoreo y gestión de redes NOVONET.",
+      rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
+    // Redes VELSA no existía en este catálogo (solo en el menú lateral).
+    // Agregado junto con la reactivación de arriba (Redes, 2026-08-19).
+    { title: "Redes VELSA", path: "/redes-velsa", icon: Flag, accent: "naranja", cat: "equipo",
+      desc: "Monitoreo y gestión de redes VELSA — orígenes, agencias e inversión.",
+      rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },

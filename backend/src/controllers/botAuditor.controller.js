@@ -90,19 +90,43 @@ async function listarAuditorias(req, res) {
     );
     const total = totalResult.rows[0]?.total || 0;
 
-    const dataResult = await pool.query(
-      `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
-              puntuacion_venta, puntuacion_atc, observacion, stage_id,
-              COALESCE(be.nombre, ben.nombre, stage_id) AS etapa,
-              fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
-       FROM auditorias
-       LEFT JOIN bitrix_etapas         be  ON be.status_id  = stage_id
-       LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = stage_id
-       ${whereSql}
-       ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
-       LIMIT $${i++} OFFSET $${i++}`,
-      [...params, limitNum, offset]
-    );
+    const limitIdx = i++;
+    const offsetIdx = i++;
+    const queryParams = [...params, limitNum, offset];
+
+    // El cruce con los catálogos de etapas es solo para MOSTRAR el nombre en
+    // vez del código crudo — nunca debe poder tumbar la vista principal. Si
+    // el JOIN falla por lo que sea (tabla/columna distinta en prod, tipo
+    // incompatible), se reintenta sin él y se loguea aparte para diagnosticar.
+    let dataResult;
+    try {
+      dataResult = await pool.query(
+        `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
+                puntuacion_venta, puntuacion_atc, observacion, stage_id,
+                COALESCE(be.nombre, ben.nombre, stage_id) AS etapa,
+                fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
+         FROM auditorias
+         LEFT JOIN bitrix_etapas         be  ON be.status_id  = stage_id
+         LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = stage_id
+         ${whereSql}
+         ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        queryParams
+      );
+    } catch (joinError) {
+      console.error('[botAuditor.controller] listarAuditorias: JOIN de etapas falló, usando fallback sin nombre de etapa:', joinError.message);
+      dataResult = await pool.query(
+        `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
+                puntuacion_venta, puntuacion_atc, observacion, stage_id,
+                stage_id AS etapa,
+                fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
+         FROM auditorias
+         ${whereSql}
+         ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        queryParams
+      );
+    }
 
     res.json({
       success: true,
@@ -269,14 +293,25 @@ async function obtenerDetalle(req, res) {
       params.push(empresa);
     }
 
-    const result = await pool.query(
-      `SELECT a.*, COALESCE(be.nombre, ben.nombre, a.stage_id) AS etapa
-       FROM auditorias a
-       LEFT JOIN bitrix_etapas         be  ON be.status_id  = a.stage_id
-       LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = a.stage_id
-       WHERE a.id = $1${scope}`,
-      params
-    );
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT a.*, COALESCE(be.nombre, ben.nombre, a.stage_id) AS etapa
+         FROM auditorias a
+         LEFT JOIN bitrix_etapas         be  ON be.status_id  = a.stage_id
+         LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = a.stage_id
+         WHERE a.id = $1${scope}`,
+        params
+      );
+    } catch (joinError) {
+      console.error('[botAuditor.controller] obtenerDetalle: JOIN de etapas falló, usando fallback sin nombre de etapa:', joinError.message);
+      result = await pool.query(
+        `SELECT a.*, a.stage_id AS etapa
+         FROM auditorias a
+         WHERE a.id = $1${scope}`,
+        params
+      );
+    }
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Auditoría no encontrada' });
     }

@@ -45,10 +45,12 @@ const ETAPAS_GESTIONABLES = [
   'ENVIO REQUISITOS/DOCUMENTOS PENDIENTES',
   'VOLVER A LLAMAR NO CONTESTA',
   'MAS DE 15 DIAS PARA CIERRE',
-  'INNEGOCIABLE',
   'URGENTE GESTION SUPERVISOR',
   'VENTA SUBIDA',
   'DESCARTE',
+  // FIX (2026-08-19): INNEGOCIABLE quitado — no es gestionable ni en Novonet
+  // ni en Velsa (esta lista se usa para las 2 empresas). Unificado con
+  // shared/etapas.js, que ya lo excluye por default.
 ];
 
 const listaSql = (arr) => `(${arr.map(v => `'${v.replace(/'/g, "''")}'`).join(',')})`;

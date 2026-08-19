@@ -57,13 +57,20 @@ const iniciarWhatsApp = async (appInstance) => {
 
     await campaignEngine.resumePendingOnBoot();
 
-    // Restaurar TODAS las líneas con sesión previa, no solo las 'connected'.
-    // Si el server se reinició cuando una línea estaba 'disconnected'/'connecting',
-    // antes quedaba caída para siempre. Con la sesión en disco se levantan sin QR.
-    // Se excluyen 'logged_out' y 'error' (requieren acción manual / QR nuevo).
+    // Restaurar TODAS las líneas con sesión previa en disco.
+    //
+    // Se incluye 'error' a propósito: ese estado no significa solo "bloqueada
+    // por WhatsApp", también aparece al agotar los reintentos por un corte de
+    // red, y en ese caso la sesión guardada sigue siendo válida. Excluirlas
+    // hacía que se acumularan decenas de líneas caídas esperando un QR manual
+    // que en realidad no hacía falta.
+    //
+    // Si la sesión ya no sirve, WhatsApp responde 401 y ahí sí se limpian las
+    // credenciales y se pide QR (ver BaileysManager, manejo de 'close').
+    // Solo se excluye 'logged_out': ahí la sesión fue cerrada explícitamente.
     const { rows } = await pool.query(
       `SELECT id, name FROM lines
-       WHERE status IN ('connected','disconnected','connecting','qr_ready')
+       WHERE status IN ('connected','disconnected','connecting','qr_ready','error')
          AND last_connected IS NOT NULL
          AND deleted_at IS NULL`
     );

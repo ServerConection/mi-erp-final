@@ -12,7 +12,7 @@ const fs = require('fs')
 const pino = require('pino')
 const { query } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
-const { rotarProxyDeLinea, quemarPuerto } = require('./proxyPool.service')
+const { quemarPuerto } = require('./proxyPool.service')
 
 // WA_AUTH_DIR: variable usada en Render (disco persistente /var/data/auth_sessions)
 const AUTH_BASE = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions')
@@ -192,35 +192,27 @@ class BaileysManager {
       return
     }
 
-    // FIX "Conectar QR no conecta": si la línea quedó en logged_out/error, las
-    // credenciales en disco ya no sirven. Baileys intentaría reusarlas, WhatsApp
-    // responde 401 y el QR nunca se emite → el usuario ve el modal colgado.
-    // Se limpian antes de conectar para forzar un emparejamiento nuevo.
+    // Credenciales: NUNCA se borran por adelantado.
+    //
+    // Antes se limpiaban en cuanto la línea estaba en 'error' o 'logged_out'.
+    // Eso destruía sesiones que seguían siendo válidas: 'error' también aparece
+    // cuando se agotan los reintentos por un corte de red, y ahí las
+    // credenciales del disco funcionan perfectamente. El resultado era que
+    // líneas recuperables quedaban exigiendo un QR manual, y se acumulaban.
+    //
+    // Ahora se intenta conectar con lo que haya. Si WhatsApp responde 401
+    // (credenciales inválidas de verdad), el manejador de 'close' las borra y
+    // reintenta una vez para emitir un QR nuevo. Así:
+    //   - caída de red / reintentos agotados → se reconecta sola, sin QR
+    //   - sesión realmente cerrada          → QR nuevo, igual que antes
     const estadoPrevio = await query('SELECT status FROM lines WHERE id = $1', [lineId])
       .then(r => r.rows[0]?.status)
       .catch(() => null)
-    if (estadoPrevio === 'logged_out' || estadoPrevio === 'error') {
-      console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}" → limpiando sesión para generar QR nuevo`)
-      this._wipeAuth(lineId)
 
-      // Cambio de IP SOLO si la línea quedó en 'error' (bloqueo real de
-      // WhatsApp: 403 o reintentos agotados). Ahí la IP pudo quedar marcada y
-      // conviene retirarla y tomar una limpia.
-      //
-      // En 'logged_out' NO se toca la IP: ese estado es rutinario (alguien
-      // cerró sesión desde el celular o WhatsApp la expiró) y la IP no tuvo
-      // nada que ver. Quemarla desperdiciaría el pool — el de Ecuador tiene
-      // solo 30 IPs — y haría que el número reaparezca desde otra red sin
-      // motivo, que es justo lo que se quiere evitar.
-      if (estadoPrevio === 'error') {
-        try {
-          await rotarProxyDeLinea(lineId, 'error')
-        } catch (e) {
-          console.warn(`[Line ${lineId}] No se pudo rotar la IP:`, e.message)
-        }
-      } else {
-        console.log(`[Line ${lineId}] Sesión cerrada: se conserva la misma IP (no se quema el pool)`)
-      }
+    const authDirPrevio = path.join(AUTH_BASE, lineId)
+    const teniaCredenciales = fs.existsSync(path.join(authDirPrevio, 'creds.json'))
+    if ((estadoPrevio === 'logged_out' || estadoPrevio === 'error') && teniaCredenciales) {
+      console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}": se intenta reusar la sesión guardada antes de pedir QR`)
     }
 
     const authDir = path.join(AUTH_BASE, lineId)
@@ -379,6 +371,25 @@ class BaileysManager {
         console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect} (intento ${attempts}/${MAX_RETRIES})`)
         delete this.instances[lineId]
         if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+
+        // 401 = las credenciales del disco ya no valen. Es AQUÍ (y solo aquí)
+        // donde se borran: WhatsApp lo acaba de confirmar. Se hace un único
+        // reintento para que Baileys emita el QR nuevo — sin esto, el modal se
+        // queda en "Generando QR…" para siempre.
+        if (statusCode === DisconnectReason.loggedOut && !this.qrRelink?.[lineId]) {
+          this.qrRelink = this.qrRelink || {}
+          this.qrRelink[lineId] = true
+          console.log(`[Line ${lineId}] Credenciales rechazadas (401) → se limpian y se pide QR nuevo`)
+          this._wipeAuth(lineId)
+          this._updateLineStatus(lineId, 'logged_out')
+          this.io.emit('line:status', { lineId, status: 'logged_out' })
+          setTimeout(() => {
+            delete this.qrRelink[lineId]
+            this.connect(lineId, this.lineOwners[lineId])
+              .catch(e => console.warn(`[Line ${lineId}] No se pudo pedir QR nuevo:`, e.message))
+          }, 2000)
+          return
+        }
 
         if (fatal || attempts >= MAX_RETRIES) {
           // Detener el bucle. Requiere reconexión manual (escanear QR de nuevo).

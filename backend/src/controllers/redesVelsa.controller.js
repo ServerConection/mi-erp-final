@@ -629,21 +629,29 @@ const getReporteData = async (req, res) => {
 // que ya hace NOVONET, pero editable desde el ERP en vez de hardcodeado.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 10. Catálogo actual: cada origen real (con su volumen de leads en el rango)
-//     junto con la agencia asignada hoy (null si todavía no se asignó).
+// 10. Catálogo actual: cada origen real, con su agencia asignada hoy (null si
+//     todavía no se asignó).
+//
+// IMPORTANTE (2026-08-19): la lista de orígenes sale DIRECTO de
+// bitrix_webhook_leads (la tabla cruda, en vivo), NO de mv_monitoreo_redes_velsa
+// ni de mv_indicadores_velsa_completo. Esas dos vistas materializadas no se
+// refrescan solas hoy (VELSA_MV_AUTOREFRESH está apagado por defecto), así que
+// si se leyera de ahí esta pantalla solo mostraría los orígenes que existían
+// la última vez que alguien las refrescó a mano — quedando ciega a campañas
+// / orígenes nuevos. Pedido explícito: "los mismos orígenes que tengo en
+// Bitrix actualmente desde la tabla webhook_leads".
 const getAgenciasCanal = async (req, res) => {
   try {
-    const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
     const result = await pool.query(
-      `SELECT v.canal_publicidad AS origen,
-              SUM(v.n_leads) AS n_leads,
+      `SELECT NULLIF(BTRIM(w.source), '') AS origen,
+              COUNT(*) AS n_leads,
               MAX(m.agencia) AS agencia
-       FROM mv_monitoreo_redes_velsa v
-       LEFT JOIN velsa_lineas_canal m ON m.origen = v.canal_publicidad
-       WHERE v.fecha BETWEEN $1 AND $2
-       GROUP BY v.canal_publicidad
-       ORDER BY n_leads DESC`,
-      [fechaDesde, fechaHasta]
+       FROM bitrix_webhook_leads w
+       LEFT JOIN velsa_lineas_canal m ON m.origen = NULLIF(BTRIM(w.source), '')
+       WHERE w.empresa = 'velsa'
+         AND NULLIF(BTRIM(w.source), '') IS NOT NULL
+       GROUP BY NULLIF(BTRIM(w.source), '')
+       ORDER BY n_leads DESC`
     );
     res.json({ success: true, origenes: result.rows });
   } catch (error) {

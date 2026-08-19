@@ -4,12 +4,17 @@ const pool = require('../config/db');
 // MONITOREO REDES VELSA
 // Fuente: mv_monitoreo_redes_velsa (creada sobre mv_indicadores_velsa_completo).
 //
-// A diferencia del módulo "Redes" de NOVONET, aquí NO existe un catálogo de
-// canal/inversión (no hay velsa_lineas_canal ni mapeo origen→grupo).
 // Se trabaja directamente con "canal_publicidad" = origen_venta/origen crudo
-// tal como llega de Bitrix/GHL/JotForm. Instrucción explícita del cliente:
-// "no generamos un catalogo de pautas, todos los origenes son diferentes,
-// asi vamos".
+// tal como llega de Bitrix/GHL/JotForm (instrucción original: "no generamos
+// un catalogo de pautas, todos los origenes son diferentes, asi vamos").
+//
+// (2026-08-19) Pedido de Redes: agrupar esos orígenes crudos por AGENCIA
+// (igual que NOVONET hace con GRUPO_A_ORIGENES, pero editable desde el ERP
+// en vez de hardcodeado). Se agrega la tabla velsa_lineas_canal
+// (origen -> agencia), un catálogo simple y editable desde la pestaña
+// "Agencias": se selecciona un origen de la lista real y se le asigna una
+// agencia (texto libre, se puede reutilizar el mismo nombre para agrupar
+// varios orígenes). Ver migración CATALOGO_AGENCIAS_VELSA.sql.
 //
 // SÍ se permite cargar el monto de inversión/pauta diario por origen,
 // directamente sobre el valor crudo de canal_publicidad (sin catálogo),
@@ -616,6 +621,143 @@ const getReporteData = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CATÁLOGO DE AGENCIAS (origen -> agencia)
+// Tabla: velsa_lineas_canal (id, origen UNIQUE, agencia, creado_por, fechas).
+// Permite agrupar los orígenes crudos de Bitrix/GHL/JotForm bajo el nombre
+// de la agencia de publicidad que los genera (ej: ARTS, VIDIKA...), igual
+// que ya hace NOVONET, pero editable desde el ERP en vez de hardcodeado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 10. Catálogo actual: cada origen real (con su volumen de leads en el rango)
+//     junto con la agencia asignada hoy (null si todavía no se asignó).
+const getAgenciasCanal = async (req, res) => {
+  try {
+    const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+    const result = await pool.query(
+      `SELECT v.canal_publicidad AS origen,
+              SUM(v.n_leads) AS n_leads,
+              MAX(m.agencia) AS agencia
+       FROM mv_monitoreo_redes_velsa v
+       LEFT JOIN velsa_lineas_canal m ON m.origen = v.canal_publicidad
+       WHERE v.fecha BETWEEN $1 AND $2
+       GROUP BY v.canal_publicidad
+       ORDER BY n_leads DESC`,
+      [fechaDesde, fechaHasta]
+    );
+    res.json({ success: true, origenes: result.rows });
+  } catch (error) {
+    console.error('Error en getAgenciasCanal (RedesVelsa):', error);
+    res.status(500).json({ success: false, message: 'Error al obtener catálogo de agencias', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// 11. Asignar/reasignar un origen a una agencia (upsert por origen).
+// Body acepta un solo registro { origen, agencia } o { items: [...] }.
+// agencia = '' o null borra la asignación (vuelve a "sin agencia").
+const upsertAgenciaCanal = async (req, res) => {
+  const items = Array.isArray(req.body.items) ? req.body.items : [req.body];
+  const creadoPor = req.user?.usuario || 'desconocido';
+
+  if (!items.length) {
+    return res.status(400).json({ success: false, message: 'No se recibieron datos para guardar' });
+  }
+  for (const item of items) {
+    if (!item.origen) {
+      return res.status(400).json({ success: false, message: 'Cada registro requiere origen' });
+    }
+  }
+
+  try {
+    const guardados = [];
+    for (const item of items) {
+      const agencia = (item.agencia || '').trim();
+      if (!agencia) {
+        await pool.query(`DELETE FROM velsa_lineas_canal WHERE origen = $1`, [item.origen]);
+        guardados.push({ origen: item.origen, agencia: null });
+        continue;
+      }
+      const result = await pool.query(
+        `INSERT INTO velsa_lineas_canal (origen, agencia, creado_por, actualizado_en)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (origen) DO UPDATE SET
+           agencia        = EXCLUDED.agencia,
+           creado_por     = EXCLUDED.creado_por,
+           actualizado_en = now()
+         RETURNING origen, agencia, creado_por, actualizado_en`,
+        [item.origen, agencia, creadoPor]
+      );
+      guardados.push(result.rows[0]);
+    }
+    res.json({ success: true, data: guardados });
+  } catch (error) {
+    console.error('Error en upsertAgenciaCanal (RedesVelsa):', error);
+    res.status(500).json({ success: false, message: 'Error al guardar agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// 12. Resumen agregado por agencia (los orígenes sin agencia asignada se
+//     agrupan bajo "SIN AGENCIA ASIGNADA" para que no se pierdan del total).
+const getResumenPorAgencia = async (req, res) => {
+  try {
+    const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+    const canalesRaw = req.query.canales || '';
+    const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+    const { where: canalWhere, params: canalParams } = buildInWhere(canalesSel, 2, 'v.canal_publicidad');
+
+    const result = await pool.query(
+      `SELECT
+         COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+         SUM(v.n_leads) AS n_leads,
+         SUM(v.atc) AS atc,
+         SUM(v.venta_subida) AS venta_subida,
+         SUM(v.fuera_cobertura + v.zona_peligrosa + v.innegociable + v.duplicado + v.descarte) AS descartados
+       FROM mv_monitoreo_redes_velsa v
+       LEFT JOIN velsa_lineas_canal m ON m.origen = v.canal_publicidad
+       WHERE v.fecha BETWEEN $1 AND $2
+       ${canalWhere}
+       GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')
+       ORDER BY n_leads DESC`,
+      [fechaDesde, fechaHasta, ...canalParams]
+    );
+
+    const inversionResult = await pool.query(
+      `SELECT
+         COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+         SUM(i.monto_usd) AS inversion
+       FROM velsa_inversion_redes i
+       LEFT JOIN velsa_lineas_canal m ON m.origen = i.canal_publicidad
+       WHERE i.fecha BETWEEN $1 AND $2
+       GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')`,
+      [fechaDesde, fechaHasta]
+    );
+    const inversionPorAgencia = {};
+    inversionResult.rows.forEach((r) => { inversionPorAgencia[r.agencia] = Number(r.inversion || 0); });
+
+    const porAgencia = result.rows.map((row) => {
+      const n_leads = Number(row.n_leads || 0);
+      const venta_subida = Number(row.venta_subida || 0);
+      const inversion = inversionPorAgencia[row.agencia] || 0;
+      return {
+        agencia: row.agencia,
+        n_leads,
+        atc: Number(row.atc || 0),
+        venta_subida,
+        descartados: Number(row.descartados || 0),
+        pct_venta_subida: n_leads > 0 ? +((venta_subida / n_leads) * 100).toFixed(1) : 0,
+        inversion,
+        cpl: n_leads > 0 && inversion > 0 ? +(inversion / n_leads).toFixed(2) : null,
+        costo_venta: venta_subida > 0 && inversion > 0 ? +(inversion / venta_subida).toFixed(2) : null,
+      };
+    });
+
+    res.json({ success: true, porAgencia });
+  } catch (error) {
+    console.error('Error en getResumenPorAgencia (RedesVelsa):', error);
+    res.status(500).json({ success: false, message: 'Error al obtener resumen por agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
 module.exports = {
   getCanalesDisponibles,
   getMonitoreoRedesVelsa,
@@ -626,4 +768,7 @@ module.exports = {
   getMonitoreoHora,
   getMonitoreoAtc,
   getReporteData,
+  getAgenciasCanal,
+  upsertAgenciaCanal,
+  getResumenPorAgencia,
 };

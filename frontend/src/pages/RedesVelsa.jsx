@@ -136,6 +136,7 @@ function InversionForm({ canalesDisponibles, onGuardado }) {
 function TabSwitcher({ tab, setTab }) {
   const tabs = [
     { id: "resumen", label: "📊 Resumen" },
+    { id: "agencias", label: "🏢 Agencias" },
     { id: "ciudad", label: "🌎 Ciudad" },
     { id: "hora", label: "🕐 Hora" },
     { id: "atc", label: "🎧 Motivos ATC" },
@@ -497,6 +498,177 @@ function TabReporte({ fechaDesde, fechaHasta, canalesSel }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Tab Agencias: cataloga los orígenes reales bajo una agencia (ARTS, VIDIKA,
+// etc.) igual que ya hace NOVONET, pero editable acá en vez de hardcodeado.
+// Arriba: lista de orígenes con su agencia asignada (o "sin asignar") y un
+// selector para asignar/reasignar. Abajo: totales ya agrupados por agencia.
+// ─────────────────────────────────────────────────────────────────────────
+function TabAgencias({ fechaDesde, fechaHasta, canalesSel, refreshTick, onCambio }) {
+  const [origenes, setOrigenes] = useState([]);
+  const [resumen, setResumen] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [guardandoOrigen, setGuardandoOrigen] = useState(null);
+  const [borradores, setBorradores] = useState({});
+
+  const cargarOrigenes = () => {
+    const params = new URLSearchParams({ fechaDesde, fechaHasta });
+    fetch(apiUrl("agencias", params.toString()), { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(d.message); })
+      .catch((e) => setError(e.message));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    cargarOrigenes();
+    const params = new URLSearchParams({ fechaDesde, fechaHasta });
+    if (canalesSel.length) params.set("canales", canalesSel.join(","));
+    fetch(apiUrl("resumen-agencias", params.toString()), { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(d.message); })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fechaDesde, fechaHasta, canalesSel, refreshTick]);
+
+  const agenciasExistentes = useMemo(
+    () => [...new Set(origenes.map((o) => o.agencia).filter(Boolean))].sort(),
+    [origenes]
+  );
+
+  const asignar = (origen, agencia) => {
+    setGuardandoOrigen(origen);
+    fetch(apiUrl("agencias", ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ origen, agencia }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          cargarOrigenes();
+          onCambio?.();
+        } else {
+          setError(d.message || "Error al asignar agencia");
+        }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setGuardandoOrigen(null));
+  };
+
+  return (
+    <>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
+        ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix/GHL/JotForm). Puedes escribir el nombre de una
+        agencia nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
+      </div>
+      {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>{error}</div>}
+      {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20, overflowX: "auto" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Orígenes y su agencia asignada</h3>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
+              <th style={{ padding: "8px 6px" }}>Origen</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px" }}>Agencia asignada</th>
+              <th style={{ padding: "8px 6px" }}>Asignar / cambiar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {origenes.map((o) => (
+              <tr key={o.origen} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "8px 6px", fontWeight: 600 }}>{o.origen}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(o.n_leads)}</td>
+                <td style={{ padding: "8px 6px" }}>
+                  {o.agencia
+                    ? <span style={{ background: "#dbeafe", color: C.primary, borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>{o.agencia}</span>
+                    : <span style={{ color: C.muted }}>— sin asignar —</span>}
+                </td>
+                <td style={{ padding: "8px 6px" }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <select
+                      value={borradores[o.origen] ?? ""}
+                      onChange={(e) => setBorradores((prev) => ({ ...prev, [o.origen]: e.target.value }))}
+                      style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 6px", fontSize: 12, minWidth: 140 }}>
+                      <option value="">— nueva / escribir —</option>
+                      {agenciasExistentes.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <input type="text" placeholder="Nombre agencia" defaultValue=""
+                      onChange={(e) => setBorradores((prev) => ({ ...prev, [o.origen]: e.target.value }))}
+                      value={borradores[o.origen] ?? ""}
+                      style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 6px", fontSize: 12, width: 120 }} />
+                    <button
+                      disabled={guardandoOrigen === o.origen || !(borradores[o.origen] ?? "").trim()}
+                      onClick={() => asignar(o.origen, (borradores[o.origen] || "").trim())}
+                      style={{ background: C.primary, color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {guardandoOrigen === o.origen ? "…" : "Asignar"}
+                    </button>
+                    {o.agencia && (
+                      <button
+                        disabled={guardandoOrigen === o.origen}
+                        onClick={() => asignar(o.origen, "")}
+                        title="Quitar agencia asignada"
+                        style={{ background: "transparent", color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {origenes.length === 0 && !loading && (
+              <tr><td colSpan={4} style={{ padding: 12, color: C.muted, textAlign: "center" }}>No hay orígenes en este rango de fechas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, overflowX: "auto" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Resumen por agencia</h3>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
+              <th style={{ padding: "8px 6px" }}>Agencia</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Descartados</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>% Venta Subida</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Inversión</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>CPL</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Costo x Venta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumen.map((row) => (
+              <tr key={row.agencia} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>
+                  {row.agencia === "SIN AGENCIA ASIGNADA"
+                    ? <span style={{ color: C.muted, fontWeight: 600 }}>{row.agencia}</span>
+                    : row.agencia}
+                </td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.danger }}>{fmtNum(row.descartados)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.pct_venta_subida)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtUsd(row.inversion)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan, fontWeight: 700 }}>{fmtUsd(row.cpl)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan }}>{fmtUsd(row.costo_venta)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export default function RedesVelsa() {
   const hoy = getFechaHoy();
   const [fechaDesde, setFechaDesde] = useState(hoy);
@@ -597,6 +769,15 @@ export default function RedesVelsa() {
 
       <TabSwitcher tab={tab} setTab={setTab} />
 
+      {tab === "agencias" && (
+        <TabAgencias
+          fechaDesde={fechaDesde}
+          fechaHasta={fechaHasta}
+          canalesSel={canalesSel}
+          refreshTick={refreshTick}
+          onCambio={() => setRefreshTick((t) => t + 1)}
+        />
+      )}
       {tab === "ciudad" && <TabCiudad fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
       {tab === "hora" && <TabHora fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
       {tab === "atc" && <TabAtc fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}

@@ -359,11 +359,11 @@ const ALL_MENU_ITEMS = [
   { name: "Seguimiento VELSA",   path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa",  isChild: true, group: "seguimiento" },
 
   // ── Redes ────────────────────────────────────────────────────────────────
-  // Solo queda WinTracker (gerencia, 2026-08). Redes NOVONET y Redes VELSA
-  // siguen ocultos; su código y sus rutas en App.jsx están intactos.
+  // Reactivados (Redes, 2026-08-19). Habían quedado ocultos desde gerencia,
+  // 2026-08, dejando solo WinTracker visible.
   { name: "WinTracker", path: "/redes-wintracker", icon: "📺", permiso: "Redes" },
-  // { name: "Redes NOVONET", path: "/redes",       icon: "🚩", permiso: "Redes" },
-  // { name: "Redes VELSA",   path: "/redes-velsa", icon: "🚩", permiso: "RedesVelsa" },
+  { name: "Redes NOVONET", path: "/redes",       icon: "🚩", permiso: "Redes" },
+  { name: "Redes VELSA",   path: "/redes-velsa", icon: "🚩", permiso: "RedesVelsa" },
 
   // ── Ventas ───────────────────────────────────────────────────────────────
   { name: "Ventas", path: null, icon: "📝", isGroup: true, groupId: "ventas" },

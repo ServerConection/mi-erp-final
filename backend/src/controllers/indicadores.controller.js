@@ -18,7 +18,9 @@ const {
     esPorRegularizarExpr
 } = require('../shared/etapas');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
-const esGestionableExpr = (col) => _esGestionableExpr(col, { innegociableEsGestionable: true });
+// FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
+// unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
+const esGestionableExpr = (col) => _esGestionableExpr(col, { innegociableEsGestionable: false });
 // ─────────────────────────────────────────────────────────────────────────────
 // VENTA DE SERVICIO: misma condición de "venta activa" (estatus = ACTIVO) PERO
 // solo cuenta si al menos uno de los campos de "plan" tiene datos reales. Si

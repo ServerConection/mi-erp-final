@@ -7,8 +7,8 @@
  * más arriba para dejar este espacio libre).
  *
  * Orden de abajo hacia arriba:
- *   1. Chat interno   (bottom-6)    → badge = mensajes no leídos, tiempo real (socket)
- *   2. WhatsApp        (bottom-[92px], ver WhatsAppSupportButton.jsx)
+ *   1. WhatsApp         (bottom-6, ver WhatsAppSupportButton.jsx)
+ *   2. Chat interno     (bottom-[92px])  → badge = mensajes no leídos, tiempo real (socket)
  *   3. Tareas asignadas (bottom-[160px]) → solo visible si hay tareas asignadas
  *
  * Ambos botones solo se montan si hay sesión iniciada (token en localStorage)
@@ -64,7 +64,7 @@ function BotonChatInterno() {
       onClick={() => navigate("/chat")}
       aria-label={noLeidos > 0 ? `Chat interno, ${noLeidos} sin leer` : "Abrir chat interno"}
       title="Chat interno"
-      className="fixed bottom-6 left-6 z-[999] group"
+      className="fixed bottom-[92px] left-6 z-[999] group"
     >
       <span
         className="relative flex items-center justify-center w-14 h-14 rounded-full text-white

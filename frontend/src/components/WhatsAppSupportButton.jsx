@@ -1,34 +1,35 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
 const NUMERO_SOPORTE = "593960288044"; // sin "+" ni espacios (formato wa.me)
-const MENSAJE_DEFAULT = "Hola, necesito ayuda";
-const LEADS_STORAGE_KEY = "erp_wa_support_leads";
 
-// Guardamos el lead nosotros mismos (nombre + número) ANTES de abrir WhatsApp.
-// Motivo: si WhatsApp deja de exponer el número real del contacto y solo
-// entrega un "chat ID" / ID de conversación, igual conservamos el dato crudo
-// que el cliente nos dio en este formulario.
-function guardarLead({ nombre, numero }) {
-  try {
-    const lead = {
-      nombre: nombre.trim(),
-      numero: numero.trim(),
-      fecha: new Date().toISOString(),
-      pagina: typeof window !== "undefined" ? window.location.pathname : "",
-      origen: "boton_whatsapp_flotante",
-    };
-    const actuales = JSON.parse(localStorage.getItem(LEADS_STORAGE_KEY) || "[]");
-    actuales.push(lead);
-    localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(actuales));
-    return lead;
-  } catch (err) {
-    console.warn("[WhatsAppSupportButton] No se pudo guardar el lead localmente:", err);
-    return null;
-  }
-}
+// El formulario de nombre + número queda suspendido por pedido del usuario
+// (2026-08-20). En su lugar, el primer mensaje es un menú de opciones: se
+// elige una con un clic y se abre WhatsApp con el texto ya armado. Si algún
+// día se quiere recuperar el formulario, está en el historial de git de
+// este archivo.
+const OPCIONES = [
+  {
+    id: "reporte-erp",
+    icono: "📋",
+    titulo: "Deseo reportar un problema del ERP",
+    mensaje: "Hola, deseo reportar un problema del ERP.",
+  },
+  {
+    id: "problema-pc",
+    icono: "🖥️",
+    titulo: "Tengo problemas en mi PC",
+    mensaje: "Hola, tengo problemas con mi PC.",
+  },
+  {
+    id: "soporte-ti",
+    icono: "🎧",
+    titulo: "Necesito conversar con Soporte TI",
+    mensaje: "Hola, necesito conversar con Soporte TI.",
+  },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ICONO WHATSAPP (SVG inline — lucide-react no trae logos de marca)
@@ -46,65 +47,40 @@ function WhatsAppIcon({ className }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WhatsAppSupportButton() {
   const [abierto, setAbierto] = useState(false);
-  const [nombre, setNombre] = useState("");
-  const [numero, setNumero] = useState("");
-  const [errores, setErrores] = useState({});
-  const [enviando, setEnviando] = useState(false);
-  const primerInputRef = useRef(null);
+  const [opcionElegida, setOpcionElegida] = useState(null);
 
   useEffect(() => {
     if (abierto) {
-      const t = setTimeout(() => primerInputRef.current?.focus(), 150);
       const onEsc = (e) => e.key === "Escape" && setAbierto(false);
       window.addEventListener("keydown", onEsc);
-      return () => {
-        clearTimeout(t);
-        window.removeEventListener("keydown", onEsc);
-      };
+      return () => window.removeEventListener("keydown", onEsc);
     }
   }, [abierto]);
 
-  const validar = useCallback(() => {
-    const errs = {};
-    if (!nombre.trim() || nombre.trim().length < 2) {
-      errs.nombre = "Ingresa tu nombre";
-    }
-    const soloDigitos = numero.replace(/\D/g, "");
-    if (soloDigitos.length < 7) {
-      errs.numero = "Ingresa un número válido";
-    }
-    setErrores(errs);
-    return Object.keys(errs).length === 0;
-  }, [nombre, numero]);
+  const elegirOpcion = (opcion) => {
+    setOpcionElegida(opcion.id);
 
-  const iniciarChat = (e) => {
-    e.preventDefault();
-    if (!validar()) return;
-
-    setEnviando(true);
-    guardarLead({ nombre, numero });
-
-    const url = `https://wa.me/${NUMERO_SOPORTE}?text=${encodeURIComponent(MENSAJE_DEFAULT)}`;
+    const url = `https://wa.me/${NUMERO_SOPORTE}?text=${encodeURIComponent(opcion.mensaje)}`;
     window.open(url, "_blank", "noopener,noreferrer");
 
-    // Pequeño respiro visual antes de cerrar, para que el usuario vea la confirmación
+    // Pequeño respiro visual antes de cerrar, para que se vea qué se eligió
     setTimeout(() => {
-      setEnviando(false);
       setAbierto(false);
-      setNombre("");
-      setNumero("");
-      setErrores({});
-    }, 900);
+      setOpcionElegida(null);
+    }, 500);
   };
 
   return (
     <>
-      {/* ── Botón flotante ─────────────────────────────────────────────── */}
+      {/* ── Botón flotante ─────────────────────────────────────────────────
+          Orden de la pila (de abajo hacia arriba), lado derecho: WhatsApp
+          (aquí, bottom-6) → Chat interno (bottom-[92px]) → Tareas asignadas
+          (bottom-[160px]), ver components/ChatTareasFloatingButtons.jsx. ── */}
       <button
         type="button"
         onClick={() => setAbierto(true)}
         aria-label="Abrir chat de soporte por WhatsApp"
-        className="fixed bottom-6 left-6 z-[999] group"
+        className="fixed bottom-6 right-6 z-[999] group"
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 animate-ping" />
         <span
@@ -120,7 +96,7 @@ export default function WhatsAppSupportButton() {
       {/* ── Popup / mini-landing ───────────────────────────────────────── */}
       {abierto && (
         <div
-          className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-start sm:justify-start
+          className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-start sm:justify-end
                      p-0 sm:p-6"
           onClick={() => setAbierto(false)}
         >
@@ -132,7 +108,7 @@ export default function WhatsAppSupportButton() {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full sm:w-[360px] max-w-full bg-white sm:rounded-2xl rounded-t-2xl
                        shadow-card-hover overflow-hidden animate-fade-in-up
-                       sm:ml-6 sm:mb-6 mx-auto sm:mx-0"
+                       sm:mr-6 sm:mb-6 mx-auto sm:mx-0"
           >
             {/* header estilo WhatsApp */}
             <div className="relative bg-gradient-to-br from-[#128C7E] to-[#075E54] px-5 pt-5 pb-8 text-white">
@@ -162,73 +138,39 @@ export default function WhatsAppSupportButton() {
             {/* burbuja de mensaje simulada */}
             <div className="px-5 -mt-4">
               <div className="bg-[#e9fbe6] border border-emerald-100 rounded-xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-slate-700 shadow-sm">
-                ¡Hola! 👋 Cuéntanos tu nombre y tu número para iniciar el chat con un asesor.
+                ¡Hola! 👋 ¿En qué te ayudamos? Elige una opción:
               </div>
             </div>
 
-            {/* formulario */}
-            <form onSubmit={iniciarChat} className="p-5 pt-4 space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
-                  Nombre
-                </label>
-                <input
-                  ref={primerInputRef}
-                  type="text"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  placeholder="Ej: María Pérez"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-colors
-                              focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20
-                              ${errores.nombre ? "border-rose-400" : "border-slate-200"}`}
-                />
-                {errores.nombre && (
-                  <p className="text-[11px] text-rose-500 mt-1">{errores.nombre}</p>
-                )}
-              </div>
+            {/* menú de opciones — un clic abre WhatsApp con el mensaje ya listo */}
+            <div className="p-5 pt-4 space-y-2">
+              {OPCIONES.map((opcion) => {
+                const activa = opcionElegida === opcion.id;
+                return (
+                  <button
+                    key={opcion.id}
+                    type="button"
+                    onClick={() => elegirOpcion(opcion)}
+                    disabled={!!opcionElegida}
+                    className={`w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium
+                                transition-all disabled:cursor-not-allowed
+                                ${activa
+                                  ? "border-[#25D366] bg-[#e9fbe6] text-emerald-800"
+                                  : "border-slate-200 text-slate-700 hover:border-[#25D366] hover:bg-[#f3fef1] active:scale-[0.98]"}`}
+                  >
+                    <span className="text-lg leading-none shrink-0">{opcion.icono}</span>
+                    <span className="flex-1">{opcion.titulo}</span>
+                    {activa && (
+                      <span className="text-[11px] font-semibold text-emerald-600 shrink-0">Abriendo…</span>
+                    )}
+                  </button>
+                );
+              })}
 
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
-                  Número de contacto
-                </label>
-                <input
-                  type="tel"
-                  inputMode="tel"
-                  value={numero}
-                  onChange={(e) => setNumero(e.target.value)}
-                  placeholder="Ej: 0991234567"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-colors
-                              focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20
-                              ${errores.numero ? "border-rose-400" : "border-slate-200"}`}
-                />
-                {errores.numero && (
-                  <p className="text-[11px] text-rose-500 mt-1">{errores.numero}</p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={enviando}
-                className="w-full flex items-center justify-center gap-2 mt-2 py-2.5 rounded-xl
-                           bg-gradient-to-br from-[#25D366] to-[#128C7E] text-white font-bold text-sm
-                           shadow-[0_4px_14px_rgba(18,140,126,0.35)]
-                           hover:brightness-105 active:scale-[0.98] transition-all
-                           disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {enviando ? (
-                  "Abriendo WhatsApp…"
-                ) : (
-                  <>
-                    <WhatsAppIcon className="w-4 h-4" />
-                    Iniciar chat
-                  </>
-                )}
-              </button>
-
-              <p className="text-[10px] text-slate-400 text-center leading-relaxed pt-1">
-                Se abrirá WhatsApp con tu mensaje listo para enviar.
+              <p className="text-[10px] text-slate-400 text-center leading-relaxed pt-2">
+                Se abrirá WhatsApp con el mensaje correspondiente ya listo para enviar.
               </p>
-            </form>
+            </div>
           </div>
         </div>
       )}

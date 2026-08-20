@@ -684,7 +684,7 @@ export default function RedesVelsa() {
   const [tab, setTab] = useState("resumen");
 
   useEffect(() => {
-    fetch(apiUrl("canales", `fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`))
+    fetch(apiUrl("canales", `fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`), { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => { if (d.success) setCanalesDisponibles(d.canales || []); })
       .catch(() => {});

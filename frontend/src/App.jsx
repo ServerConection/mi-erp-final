@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
+import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -156,6 +157,9 @@ export default function App() {
 
       {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas */}
       <WhatsAppSupportButton />
+
+      {/* Botones flotantes de Chat interno y Tareas asignadas — solo con sesión activa */}
+      <ChatTareasFloatingButtons />
     </BrowserRouter>
   );
 }

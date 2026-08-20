@@ -149,16 +149,14 @@ function buildFilters(q, values) {
 const JF_DATE  = `(mv.fecha_registro_jotform - INTERVAL '5 hours')::date`;
 const CRM_DATE = `mv.fecha_creacion_crm::date`;
 
-// Denominador "gestionables" en ventana AMPLIA (registro Jotform O creación CRM).
-// Es el que usa NOVONET en descarte / efectividad_real / efectividad_activas_vs_pauta.
-// OJO: NO es el mismo número que la columna "gestionables" que se muestra en
-// pantalla (esa usa solo fecha de creación CRM). Se replica tal cual para que
-// Velsa dé idéntico a Novonet; unificar los dos criterios es una decisión de
-// gerencia pendiente (ver informe REVISION_VELSA_VS_NOVONET.md).
-const GEST_AMPLIO = `COUNT(*) FILTER (
-      WHERE (${JF_DATE} BETWEEN $1::date AND $2::date OR ${CRM_DATE} BETWEEN $1::date AND $2::date)
-      AND ${esGestionableExpr('mv.etapa_crm')}
-    )`;
+// (2026-08-19) Se eliminó GEST_AMPLIO — el denominador "gestionables" en
+// ventana AMPLIA (registro Jotform O creación CRM) que usaban descarte /
+// efectividad_real / efectividad_activas_vs_pauta. Daba un número distinto
+// al de la columna "gestionables" (esa siempre usó solo fecha de creación
+// CRM, igual que las tarjetas). Pedido explícito: las tablas deben medir
+// igual que las tarjetas. Unificado al denominador angosto (solo CRM_DATE)
+// en las 3 fórmulas de abajo. Ver REVISION_VELSA_VS_NOVONET.md sección 4a
+// para el detalle de dónde salió la inconsistencia. NOVONET no se toca.
 
 // ── Query KPI por columna de agrupación ──────────────────────────────────────
 // ESTRUCTURA ESPEJO DE NOVONET (indicadores.controller.js · queryKPI).
@@ -291,14 +289,28 @@ const queryKPI = (columna, filters) => {
         ), 0)
     , 0) * 100, 2) AS efectividad_realz,
 
+    -- FIX (2026-08-19): estos 3 dividían por GEST_AMPLIO (ventana ancha:
+    -- creación CRM O registro Jotform) mientras que la columna "gestionables"
+    -- de esta misma fila (arriba) y las tarjetas usan solo fecha de creación
+    -- CRM (ventana angosta). Quedaba un descarte %/efectividad calculado
+    -- sobre un denominador distinto al "gestionables" que se ve en pantalla.
+    -- Unificado al mismo denominador angosto que ya usan efectividad_realz
+    -- y eficiencia (líneas de arriba/abajo) — pedido explícito: tablas deben
+    -- medir igual que las tarjetas. NOVONET no se toca.
     (COUNT(*) FILTER (
       WHERE ${esDescarteExpr('mv.etapa_crm')}
       AND ${CRM_DATE} BETWEEN $1::date AND $2::date
-    )::numeric / NULLIF(${GEST_AMPLIO}, 0) * 100)::numeric(10,2) AS descarte,
+    )::numeric / NULLIF(COUNT(*) FILTER (
+          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr('mv.etapa_crm')}
+        ), 0) * 100)::numeric(10,2) AS descarte,
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
-      / NULLIF(${GEST_AMPLIO}, 0)
+      / NULLIF(COUNT(*) FILTER (
+          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr('mv.etapa_crm')}
+        ), 0)
     , 0) * 100, 2) AS efectividad_real,
 
     ROUND( COALESCE(
@@ -308,7 +320,10 @@ const queryKPI = (columna, filters) => {
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
-      / NULLIF(${GEST_AMPLIO}, 0)
+      / NULLIF(COUNT(*) FILTER (
+          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr('mv.etapa_crm')}
+        ), 0)
     , 0) * 100, 2) AS efectividad_activas_vs_pauta,
 
     ROUND( COALESCE(
@@ -442,11 +457,26 @@ async function getIndicadoresDashboardVelsa(req, res) {
       HAVING SUM(total) > 0
       ORDER BY total DESC
     `;
+    // FIX (2026-08-19): COUNT(*) -> COUNT(DISTINCT mv.id_crm). Mismo bug que
+    // se corrigió hoy en Novonet (queryEmbudo, commit 3cee6a0): la MV hace
+    // FULL OUTER JOIN contra Jotform, que trae varias filas por negociación
+    // cuando el cliente contrató más de un servicio. COUNT(*) contaba esa
+    // negociación 2 o 3 veces en el embudo, aunque etapa_crm es un campo del
+    // lado CRM (uno solo por negociación) — por eso el embudo daba más que
+    // la tarjeta "Ventas Ingreso CRM" (399 vs 391).
+    //
+    // FIX (2026-08-20): el GROUP BY usaba mv.etapa_crm crudo (sin normalizar),
+    // así que "Gestión Diaria" y "gestión diaria " (mayúscula/espacio distinto)
+    // caían en dos filas separadas y el embudo mostraba la misma etapa
+    // duplicada. shared/etapas.js ya deja la regla clara: la comparación de
+    // etapas SIEMPRE es UPPER+TRIM en todo el resto del ERP; el embudo de
+    // Novonet no tenía este problema porque vw_bitrix_novonet ya normaliza
+    // la etapa en la vista. Acá se normaliza en la query.
     const qEmbudo = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.etapa_crm ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
     `;
     const qPorDia = `
       SELECT
@@ -858,13 +888,16 @@ async function getReporte180Velsa(req, res) {
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_servicio,
+        -- FIX (2026-08-19): denominador unificado a solo fecha de creación CRM
+        -- (antes: creación CRM O registro Jotform). Mismo criterio de queryKPI
+        -- y de las tarjetas. NOVONET no se toca.
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE ${esDescarteExpr('mv.etapa_crm')} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND ${esGestionableExpr('mv.etapa_crm')}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE ((mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date OR mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AND ${esGestionableExpr('mv.etapa_crm')}),0)
+          / NULLIF(COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
@@ -874,15 +907,26 @@ async function getReporte180Velsa(req, res) {
       ${JOIN_JF_VELSA_MV}
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) ${filters}
     `;
+    // FIX (2026-08-19): mismo bug y mismo arreglo que qEmbudo de arriba y que
+    // queryEmbudoCRM de Novonet (commit 68a823b) — etapa_crm es del lado CRM,
+    // se dedupe por id_crm. qEmbudoJot (abajo) NO se toca: estado_venta es un
+    // campo del lado Jotform, y ahí sí interesa contar cada servicio/registro
+    // por separado (igual que ingresos_jot y el resto de métricas Jotform de
+    // este archivo, que ya usan COUNT(*) a propósito).
+    //
+    // FIX (2026-08-20): mismo arreglo de normalización (UPPER+TRIM) que
+    // qEmbudo — ver la nota completa ahí. Se aplica igual a estado_venta en
+    // qEmbudoJot: es el mismo tipo de columna de texto libre y le pasa lo
+    // mismo si llega con distinto uso de mayúsculas o un espacio de más.
     const qEmbudoCRM = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV} WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.etapa_crm ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
     `;
     const qEmbudoJot = `
-      SELECT COALESCE(mv.estado_venta,'SIN ESTADO') AS etapa, COUNT(*)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.estado_venta,'SIN ESTADO'))) AS etapa, COUNT(*)::int AS total
       FROM ${MV} WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.estado_venta ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.estado_venta,'SIN ESTADO'))) ORDER BY total DESC
     `;
 
     // ─────────────────────────────────────────────────────────────────────

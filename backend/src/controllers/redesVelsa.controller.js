@@ -16,6 +16,17 @@ const pool = require('../config/db');
 // agencia (texto libre, se puede reutilizar el mismo nombre para agrupar
 // varios orígenes). Ver migración CATALOGO_AGENCIAS_VELSA.sql.
 //
+// (2026-08-20) Regla de negocio confirmada por Bryan: en VELSA, TODOS los
+// orígenes pertenecen a la agencia VELSA (WinTracker solo trackea una
+// agencia para Velsa, a diferencia de Novonet que tiene Arts y Vidika por
+// separado). Por eso el default de "sin asignar" cambia de
+// 'SIN AGENCIA ASIGNADA' a 'VELSA': así cualquier origen nuevo que llegue
+// (y son literalmente ilimitados, uno distinto por campaña/número) cae
+// automáticamente en el bucket correcto sin que alguien tenga que
+// asignarlo a mano. Si algún día Velsa trabaja con una segunda agencia,
+// esos orígenes puntuales se pueden seguir reasignando desde la pestaña
+// "Agencias" — el default 'VELSA' solo aplica a lo que nadie reasignó.
+//
 // SÍ se permite cargar el monto de inversión/pauta diario por origen,
 // directamente sobre el valor crudo de canal_publicidad (sin catálogo),
 // en la tabla velsa_inversion_redes (fecha, canal_publicidad, monto_usd).
@@ -645,7 +656,7 @@ const getAgenciasCanal = async (req, res) => {
     const result = await pool.query(
       `SELECT NULLIF(BTRIM(w.source), '') AS origen,
               COUNT(*) AS n_leads,
-              MAX(m.agencia) AS agencia
+              COALESCE(MAX(m.agencia), 'VELSA') AS agencia
        FROM bitrix_webhook_leads w
        LEFT JOIN velsa_lineas_canal m ON m.origen = NULLIF(BTRIM(w.source), '')
        WHERE w.empresa = 'velsa'
@@ -705,7 +716,8 @@ const upsertAgenciaCanal = async (req, res) => {
 };
 
 // 12. Resumen agregado por agencia (los orígenes sin agencia asignada se
-//     agrupan bajo "SIN AGENCIA ASIGNADA" para que no se pierdan del total).
+//     agrupan bajo "VELSA" — ver nota 2026-08-20 arriba: en Velsa todo
+//     origen pertenece a VELSA salvo que se reasigne explícitamente).
 const getResumenPorAgencia = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -715,7 +727,7 @@ const getResumenPorAgencia = async (req, res) => {
 
     const result = await pool.query(
       `SELECT
-         COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+         COALESCE(m.agencia, 'VELSA') AS agencia,
          SUM(v.n_leads) AS n_leads,
          SUM(v.atc) AS atc,
          SUM(v.venta_subida) AS venta_subida,
@@ -724,19 +736,19 @@ const getResumenPorAgencia = async (req, res) => {
        LEFT JOIN velsa_lineas_canal m ON m.origen = v.canal_publicidad
        WHERE v.fecha BETWEEN $1 AND $2
        ${canalWhere}
-       GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')
+       GROUP BY COALESCE(m.agencia, 'VELSA')
        ORDER BY n_leads DESC`,
       [fechaDesde, fechaHasta, ...canalParams]
     );
 
     const inversionResult = await pool.query(
       `SELECT
-         COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+         COALESCE(m.agencia, 'VELSA') AS agencia,
          SUM(i.monto_usd) AS inversion
        FROM velsa_inversion_redes i
        LEFT JOIN velsa_lineas_canal m ON m.origen = i.canal_publicidad
        WHERE i.fecha BETWEEN $1 AND $2
-       GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')`,
+       GROUP BY COALESCE(m.agencia, 'VELSA')`,
       [fechaDesde, fechaHasta]
     );
     const inversionPorAgencia = {};

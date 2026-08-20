@@ -915,7 +915,224 @@ const {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CATÁLOGO DE AGENCIAS (origen -> agencia) — NOVONET
+  // (2026-08-20) Mismo pedido que ya se resolvió para VELSA (ver
+  // redesVelsa.controller.js): agrupar los orígenes reales de Bitrix bajo el
+  // nombre de la AGENCIA de publicidad que los genera, pero editable desde el
+  // ERP (pestaña "Agencias") en vez de hardcodeado.
+  //
+  // IMPORTANTE: esto NO reemplaza ORIGEN_A_CANAL_INV / GRUPO_A_ORIGENES de
+  // arriba — esos mapeos siguen intactos y los sigue usando "Metas vs Logros"
+  // y el Forecast (mv_monitoreo_publicidad). Este catálogo es un mecanismo
+  // NUEVO, aditivo, con su propia tabla (novonet_lineas_canal) y su propia
+  // inversión cargada por origen (novonet_inversion_redes) — no toca nada de
+  // lo que ya funciona.
+  //
+  // Tabla novonet_lineas_canal: un registro por ORIGEN (único), con la AGENCIA
+  // asignada. Ver migración CATALOGO_AGENCIAS_NOVONET.sql.
+  //
+  // Los orígenes salen EN VIVO de public.mestra_bitrix (igual razón que VELSA:
+  // no depender de una vista materializada que puede estar desactualizada).
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // 8. Catálogo actual: cada origen real, con su agencia asignada hoy (null si
+  //    todavía no se asignó).
+  const getAgenciasCanal = async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
+                COUNT(*) AS n_leads,
+                MAX(m.agencia) AS agencia
+         FROM public.mestra_bitrix mb
+         LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
+         WHERE mb.j_id_bitrix IS NULL
+           AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
+         GROUP BY NULLIF(BTRIM(mb.b_origen), '')
+         ORDER BY n_leads DESC`
+      );
+      res.json({ success: true, origenes: result.rows });
+    } catch (error) {
+      console.error('Error en getAgenciasCanal:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener catálogo de agencias', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+    }
+  };
+
+  // 9. Asignar/reasignar un origen a una agencia (upsert por origen).
+  // Body acepta un solo registro { origen, agencia } o { items: [...] }.
+  // agencia = '' o null borra la asignación (vuelve a "sin agencia").
+  const upsertAgenciaCanal = async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items : [req.body];
+    const creadoPor = req.user?.usuario || 'desconocido';
+
+    if (!items.length) {
+      return res.status(400).json({ success: false, message: 'No se recibieron datos para guardar' });
+    }
+    for (const item of items) {
+      if (!item.origen) {
+        return res.status(400).json({ success: false, message: 'Cada registro requiere origen' });
+      }
+    }
+
+    try {
+      const guardados = [];
+      for (const item of items) {
+        const agencia = (item.agencia || '').trim();
+        if (!agencia) {
+          await pool.query(`DELETE FROM novonet_lineas_canal WHERE origen = $1`, [item.origen]);
+          guardados.push({ origen: item.origen, agencia: null });
+          continue;
+        }
+        const result = await pool.query(
+          `INSERT INTO novonet_lineas_canal (origen, agencia, creado_por, actualizado_en)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (origen) DO UPDATE SET
+             agencia        = EXCLUDED.agencia,
+             creado_por     = EXCLUDED.creado_por,
+             actualizado_en = now()
+           RETURNING origen, agencia, creado_por, actualizado_en`,
+          [item.origen, agencia, creadoPor]
+        );
+        guardados.push(result.rows[0]);
+      }
+      res.json({ success: true, data: guardados });
+    } catch (error) {
+      console.error('Error en upsertAgenciaCanal:', error);
+      res.status(500).json({ success: false, message: 'Error al guardar agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+    }
+  };
+
+  // 10. Inversión / pauta cargada por origen — lectura por rango.
+  //     Se llena manualmente desde la pestaña "Agencias" O automáticamente
+  //     por el sync de WinTracker (ver services/wintracker.service.js) —
+  //     misma tabla, columna "fuente" distingue el origen del dato.
+  const getInversionAgencias = async (req, res) => {
+    try {
+      const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+      const result = await pool.query(
+        `SELECT id, fecha, origen, monto_usd, fuente, creado_por, updated_at
+         FROM novonet_inversion_redes
+         WHERE fecha BETWEEN $1 AND $2
+         ORDER BY fecha DESC, origen ASC`,
+        [fechaDesde, fechaHasta]
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (error) {
+      console.error('Error en getInversionAgencias:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+    }
+  };
+
+  // 11. Inversión — carga manual (upsert por fecha + origen).
+  // Body acepta un solo registro { fecha, origen, monto_usd } o un arreglo
+  // { items: [...] }.
+  const upsertInversionAgencias = async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items : [req.body];
+    const creadoPor = req.user?.usuario || 'desconocido';
+
+    if (!items.length) {
+      return res.status(400).json({ success: false, message: 'No se recibieron datos para guardar' });
+    }
+    for (const item of items) {
+      if (!item.fecha || !item.origen || item.monto_usd === undefined || item.monto_usd === null) {
+        return res.status(400).json({ success: false, message: 'Cada registro requiere fecha, origen y monto_usd' });
+      }
+      if (Number.isNaN(Number(item.monto_usd)) || Number(item.monto_usd) < 0) {
+        return res.status(400).json({ success: false, message: `monto_usd inválido para ${item.origen} (${item.fecha})` });
+      }
+    }
+
+    try {
+      const guardados = [];
+      for (const item of items) {
+        const result = await pool.query(
+          `INSERT INTO novonet_inversion_redes (fecha, origen, monto_usd, fuente, creado_por, updated_at)
+           VALUES ($1, $2, $3, 'manual', $4, now())
+           ON CONFLICT (fecha, origen) DO UPDATE SET
+             monto_usd  = EXCLUDED.monto_usd,
+             fuente     = 'manual',
+             creado_por = EXCLUDED.creado_por,
+             updated_at = now()
+           RETURNING id, fecha, origen, monto_usd, fuente, creado_por, updated_at`,
+          [item.fecha, item.origen, Number(item.monto_usd), creadoPor]
+        );
+        guardados.push(result.rows[0]);
+      }
+      res.json({ success: true, data: guardados });
+    } catch (error) {
+      console.error('Error en upsertInversionAgencias:', error);
+      res.status(500).json({ success: false, message: 'Error al guardar inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+    }
+  };
+
+  // 12. Resumen agregado por agencia: leads en vivo (mestra_bitrix) + inversión
+  //     (novonet_inversion_redes), ambos unidos vía novonet_lineas_canal.
+  //     Los orígenes sin agencia asignada se agrupan bajo "SIN AGENCIA ASIGNADA"
+  //     para que no se pierdan del total.
+  const getResumenPorAgencia = async (req, res) => {
+    try {
+      const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
+
+      const leadsRes = await pool.query(
+        `SELECT
+           COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+           COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
+           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
+             OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%'
+             OR mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%'
+             OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
+             OR mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%'
+           ) AS atc,
+           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida
+         FROM public.mestra_bitrix mb
+         LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
+         WHERE mb.j_id_bitrix IS NULL
+           AND mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+         GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')
+         ORDER BY n_leads DESC`,
+        [fechaDesde, fechaHasta]
+      );
+
+      const inversionRes = await pool.query(
+        `SELECT
+           COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+           SUM(i.monto_usd) AS inversion
+         FROM novonet_inversion_redes i
+         LEFT JOIN novonet_lineas_canal m ON m.origen = i.origen
+         WHERE i.fecha BETWEEN $1 AND $2
+         GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')`,
+        [fechaDesde, fechaHasta]
+      );
+      const inversionPorAgencia = {};
+      inversionRes.rows.forEach((r) => { inversionPorAgencia[r.agencia] = Number(r.inversion || 0); });
+
+      const porAgencia = leadsRes.rows.map((row) => {
+        const n_leads = Number(row.n_leads || 0);
+        const venta_subida = Number(row.venta_subida || 0);
+        const inversion = inversionPorAgencia[row.agencia] || 0;
+        return {
+          agencia: row.agencia,
+          n_leads,
+          atc: Number(row.atc || 0),
+          venta_subida,
+          pct_venta_subida: n_leads > 0 ? +((venta_subida / n_leads) * 100).toFixed(1) : 0,
+          inversion,
+          cpl: n_leads > 0 && inversion > 0 ? +(inversion / n_leads).toFixed(2) : null,
+          costo_venta: venta_subida > 0 && inversion > 0 ? +(inversion / venta_subida).toFixed(2) : null,
+        };
+      });
+
+      res.json({ success: true, porAgencia });
+    } catch (error) {
+      console.error('Error en getResumenPorAgencia:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener resumen por agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+    }
+  };
+
   module.exports = {
     getMonitoreoRedes, getMonitoreoCiudad, getMonitoreoHora,
     getMonitoreoAtc, getMonitoreoCosto, getMonitoreoMetas, getReporteData,
+    getAgenciasCanal, upsertAgenciaCanal,
+    getInversionAgencias, upsertInversionAgencias,
+    getResumenPorAgencia,
   };

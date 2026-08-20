@@ -82,6 +82,11 @@ const safe     = (v) => isFinite(n(v)) ? n(v) : 0;
 const pctColor = (v) => { const x = n(v); return x >= 15 ? C.success : x >= 8 ? C.warning : C.danger; };
 const API      = import.meta.env.VITE_API_URL;
 const apiUrl   = (r, p) => `${API}/api/redes/${r}?${p}`;
+const fmtNum   = (v) => n(v).toLocaleString("es-EC");
+function authHeaders() {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AGREGADORES
@@ -1617,6 +1622,178 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB AGENCIAS — catálogo editable origen -> agencia (ARTS, VIDIKA, etc.),
+// igual patrón que ya existe en RedesVelsa.jsx. Arriba: cada origen real de
+// mestra_bitrix con su agencia asignada (o "sin asignar") y un selector para
+// asignar/reasignar. Abajo: leads + inversión ya agrupados por agencia.
+// NO usa ORIGEN_A_CANAL_INV / GRUPO_A_ORIGENES de arriba — es un catálogo
+// nuevo, editable, independiente del mapeo fijo que ya usan Metas y Forecast.
+// ─────────────────────────────────────────────────────────────────────────────
+function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
+  const [origenes, setOrigenes] = useState([]);
+  const [resumen, setResumen] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [guardandoOrigen, setGuardandoOrigen] = useState(null);
+  const [borradores, setBorradores] = useState({});
+
+  const cargarOrigenes = () => {
+    fetch(apiUrl("agencias", ""), { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(d.message); })
+      .catch((e) => setError(e.message));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    cargarOrigenes();
+    const params = new URLSearchParams({ fechaDesde, fechaHasta });
+    fetch(apiUrl("resumen-agencias", params.toString()), { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(d.message); })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fechaDesde, fechaHasta, refreshTick]);
+
+  const agenciasExistentes = useMemo(
+    () => [...new Set(origenes.map((o) => o.agencia).filter(Boolean))].sort(),
+    [origenes]
+  );
+
+  const asignar = (origen, agencia) => {
+    setGuardandoOrigen(origen);
+    fetch(apiUrl("agencias", ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ origen, agencia }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          cargarOrigenes();
+          onCambio?.();
+        } else {
+          setError(d.message || "Error al asignar agencia");
+        }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setGuardandoOrigen(null));
+  };
+
+  return (
+    <>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
+        ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix). Puedes escribir el nombre de una agencia
+        nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
+      </div>
+      {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>{error}</div>}
+      {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20, overflowX: "auto" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Orígenes y su agencia asignada</h3>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
+              <th style={{ padding: "8px 6px" }}>Origen</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px" }}>Agencia asignada</th>
+              <th style={{ padding: "8px 6px" }}>Asignar / cambiar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {origenes.map((o) => (
+              <tr key={o.origen} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "8px 6px", fontWeight: 600 }}>{o.origen}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(o.n_leads)}</td>
+                <td style={{ padding: "8px 6px" }}>
+                  {o.agencia
+                    ? <span style={{ background: "#dbeafe", color: C.primary, borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>{o.agencia}</span>
+                    : <span style={{ color: C.muted }}>— sin asignar —</span>}
+                </td>
+                <td style={{ padding: "8px 6px" }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <select
+                      value={borradores[o.origen] ?? ""}
+                      onChange={(e) => setBorradores((prev) => ({ ...prev, [o.origen]: e.target.value }))}
+                      style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 6px", fontSize: 12, minWidth: 140 }}>
+                      <option value="">— nueva / escribir —</option>
+                      {agenciasExistentes.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <input type="text" placeholder="Nombre agencia"
+                      onChange={(e) => setBorradores((prev) => ({ ...prev, [o.origen]: e.target.value }))}
+                      value={borradores[o.origen] ?? ""}
+                      style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 6px", fontSize: 12, width: 120 }} />
+                    <button
+                      disabled={guardandoOrigen === o.origen || !(borradores[o.origen] ?? "").trim()}
+                      onClick={() => asignar(o.origen, (borradores[o.origen] || "").trim())}
+                      style={{ background: C.primary, color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {guardandoOrigen === o.origen ? "…" : "Asignar"}
+                    </button>
+                    {o.agencia && (
+                      <button
+                        disabled={guardandoOrigen === o.origen}
+                        onClick={() => asignar(o.origen, "")}
+                        title="Quitar agencia asignada"
+                        style={{ background: "transparent", color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {origenes.length === 0 && !loading && (
+              <tr><td colSpan={4} style={{ padding: 12, color: C.muted, textAlign: "center" }}>No hay orígenes en este rango de fechas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, overflowX: "auto" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Resumen por agencia</h3>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
+              <th style={{ padding: "8px 6px" }}>Agencia</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>% Venta Subida</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Inversión</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>CPL</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Costo x Venta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumen.map((row) => (
+              <tr key={row.agencia} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>
+                  {row.agencia === "SIN AGENCIA ASIGNADA"
+                    ? <span style={{ color: C.muted, fontWeight: 600 }}>{row.agencia}</span>
+                    : row.agencia}
+                </td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.pct_venta_subida)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{row.inversion ? fmtUsd2(row.inversion) : "—"}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan, fontWeight: 700 }}>{row.cpl ? fmtUsd2(row.cpl) : "—"}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan }}>{row.costo_venta ? fmtUsd2(row.costo_venta) : "—"}</td>
+              </tr>
+            ))}
+            {resumen.length === 0 && !loading && (
+              <tr><td colSpan={8} style={{ padding: 12, color: C.muted, textAlign: "center" }}>Sin datos en este rango de fechas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -1627,6 +1804,7 @@ const TABS = [
   { id: "comparativo",   label: "Comparativo",          icon: "🔀" },
   { id: "pautas",        label: "Análisis Pautas",      icon: "🔬" },
   { id: "reporte",       label: "Reporte Data",         icon: "📑" },
+  { id: "agencias",      label: "Agencias",             icon: "🏢" },
   { id: "proximamente",  label: "Próximamente",         icon: "🚀" },
 ];
 
@@ -1638,6 +1816,7 @@ export default function Redes() {
   const [filtro,     setFiltro]     = useState({ desde: hoy, hasta: hoy });
   const [canalesSel, setCanalesSel] = useState([]);
   const [applying,   setApplying]   = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel);
 
@@ -1739,6 +1918,14 @@ export default function Redes() {
       {tab === "comparativo"  && <TabComparativo filtro={filtro} />}
       {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} />}
       {tab === "reporte"      && <TabReporteData filtro={filtro} />}
+      {tab === "agencias"     && (
+        <TabAgencias
+          fechaDesde={filtro.desde}
+          fechaHasta={filtro.hasta}
+          refreshTick={refreshTick}
+          onCambio={() => setRefreshTick((t) => t + 1)}
+        />
+      )}
       {tab === "proximamente" && (
         <div className="flex flex-col items-center justify-center py-28 gap-5">
           <div className="w-20 h-20 rounded-3xl bg-slate-100 flex items-center justify-center text-4xl shadow-inner">🚀</div>

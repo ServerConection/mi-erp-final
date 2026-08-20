@@ -2,9 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * BOTONES FLOTANTES: Chat interno + Tareas asignadas
  * ═══════════════════════════════════════════════════════════════════════════════
- * Se muestran apilados en la esquina inferior izquierda, junto al botón de
- * WhatsApp (ver components/WhatsAppSupportButton.jsx, que se movió un poco
- * más arriba para dejar este espacio libre).
+ * Se muestran apilados en la esquina inferior derecha, junto al botón de
+ * WhatsApp (ver components/WhatsAppSupportButton.jsx).
  *
  * Orden de abajo hacia arriba:
  *   1. WhatsApp         (bottom-6, ver WhatsAppSupportButton.jsx)
@@ -64,7 +63,7 @@ function BotonChatInterno() {
       onClick={() => navigate("/chat")}
       aria-label={noLeidos > 0 ? `Chat interno, ${noLeidos} sin leer` : "Abrir chat interno"}
       title="Chat interno"
-      className="fixed bottom-[92px] left-6 z-[999] group"
+      className="fixed bottom-[92px] right-6 z-[999] group"
     >
       <span
         className="relative flex items-center justify-center w-14 h-14 rounded-full text-white
@@ -117,7 +116,7 @@ function BotonTareasAsignadas() {
       onClick={() => navigate("/tareas")}
       aria-label={`Tareas asignadas, ${total} pendientes`}
       title="Tareas asignadas"
-      className="fixed bottom-[160px] left-6 z-[999] group"
+      className="fixed bottom-[160px] right-6 z-[999] group"
     >
       <span
         className="relative flex items-center justify-center w-14 h-14 rounded-full text-white

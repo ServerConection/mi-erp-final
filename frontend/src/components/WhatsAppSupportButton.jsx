@@ -73,14 +73,14 @@ export default function WhatsAppSupportButton() {
   return (
     <>
       {/* ── Botón flotante ─────────────────────────────────────────────────
-          Orden de la pila (de abajo hacia arriba): WhatsApp (aquí, bottom-6)
-          → Chat interno (bottom-[92px]) → Tareas asignadas (bottom-[160px]),
-          ver components/ChatTareasFloatingButtons.jsx. ─────────────────── */}
+          Orden de la pila (de abajo hacia arriba), lado derecho: WhatsApp
+          (aquí, bottom-6) → Chat interno (bottom-[92px]) → Tareas asignadas
+          (bottom-[160px]), ver components/ChatTareasFloatingButtons.jsx. ── */}
       <button
         type="button"
         onClick={() => setAbierto(true)}
         aria-label="Abrir chat de soporte por WhatsApp"
-        className="fixed bottom-6 left-6 z-[999] group"
+        className="fixed bottom-6 right-6 z-[999] group"
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 animate-ping" />
         <span
@@ -96,7 +96,7 @@ export default function WhatsAppSupportButton() {
       {/* ── Popup / mini-landing ───────────────────────────────────────── */}
       {abierto && (
         <div
-          className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-start sm:justify-start
+          className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-start sm:justify-end
                      p-0 sm:p-6"
           onClick={() => setAbierto(false)}
         >
@@ -108,7 +108,7 @@ export default function WhatsAppSupportButton() {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full sm:w-[360px] max-w-full bg-white sm:rounded-2xl rounded-t-2xl
                        shadow-card-hover overflow-hidden animate-fade-in-up
-                       sm:ml-6 sm:mb-6 mx-auto sm:mx-0"
+                       sm:mr-6 sm:mb-6 mx-auto sm:mx-0"
           >
             {/* header estilo WhatsApp */}
             <div className="relative bg-gradient-to-br from-[#128C7E] to-[#075E54] px-5 pt-5 pb-8 text-white">

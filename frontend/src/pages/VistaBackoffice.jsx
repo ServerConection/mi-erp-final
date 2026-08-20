@@ -58,8 +58,8 @@ function useDocumentoProtegido(ruta) {
           const detalle = await r.json().catch(() => ({}));
           throw new Error(
             r.status === 404 ? "El documento ya no está en el servidor de archivos."
-            : r.status === 503 ? "El servidor de documentos no está disponible ahora mismo."
-            : detalle.error || `No se pudo cargar el documento (HTTP ${r.status}).`
+              : r.status === 503 ? "El servidor de documentos no está disponible ahora mismo."
+                : detalle.error || `No se pudo cargar el documento (HTTP ${r.status}).`
           );
         }
         const blob = await r.blob();
@@ -424,20 +424,20 @@ const FIELD_LABELS = {
 };
 
 const TABLE_COLUMNS = [
-  "id","estatus_envio","ip_origen","fecha_registro_sistema","mes_registro_sistema","dia_abc_registro_sistema",
-  "codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta","venta_nueva_o_reingreso","turno",
-  "nombre_atc","clausulas","lider_comercial","tipo_cliente","genero_cliente","tipo_documento","numero_identificacion",
-  "nombre_cliente_completo","estado_civil","fecha_nacimiento","mes_nacimiento","dia_abc_nacimiento","email_cliente",
-  "aplica_descuento_3ra_edad","telf_celular_pin","telf_celular_2","telf_fijo","provincia","ciudad","parroquia_barrio",
-  "direccion_calles","direccion_manzana_villa","referencia_ubicacion","coordenadas_gps","tipo_vivienda","regimen_vivienda",
-  "plan_contratado_final","servicios_digitales","forma_pago","detalle_bancario_ahorros","valor_pago","tipo_contrato",
-  "links_documentos","estado_recaudacion","fecha_recaudada","mes_recaudada","dia_abc_recaudada","netlife_login","netlife_estatus_real",
-  "fecha_activacion_netlife","mes_activacion_netlife","dia_abc_activacion_netlife","calidad_venta_analista","novedades_atc",
-  "venta_efectiva","auditoria_documentos","auditado_por","inconsistencia_documental","observacion_auditoria","errores_telcos",
-  "estatus_regularizacion","detalle_regularizacion","fecha_regularizacion_atc","mes_regularizacion_atc","dia_abc_regularizacion_atc",
-  "mes_regularizacion","observacion_venta_original","observacion_gestion_cobranza","turno_agendado","fecha_agenda","mes_agenda",
-  "dia_abc_agenda","banco","ciclo_facturacion","costo_instalacion","descuento_instalacion","beneficios_adicionales",
-  "beneficios_de_ley","plazo_contrato_meses","resumen_venta","foto_cedula_frontal","foto_cedula_trasera","foto_carnet","archivo_resumen"
+  "id", "estatus_envio", "ip_origen", "fecha_registro_sistema", "mes_registro_sistema", "dia_abc_registro_sistema",
+  "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
+  "nombre_atc", "clausulas", "lider_comercial", "tipo_cliente", "genero_cliente", "tipo_documento", "numero_identificacion",
+  "nombre_cliente_completo", "estado_civil", "fecha_nacimiento", "mes_nacimiento", "dia_abc_nacimiento", "email_cliente",
+  "aplica_descuento_3ra_edad", "telf_celular_pin", "telf_celular_2", "telf_fijo", "provincia", "ciudad", "parroquia_barrio",
+  "direccion_calles", "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps", "tipo_vivienda", "regimen_vivienda",
+  "plan_contratado_final", "servicios_digitales", "forma_pago", "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
+  "links_documentos", "estado_recaudacion", "fecha_recaudada", "mes_recaudada", "dia_abc_recaudada", "netlife_login", "netlife_estatus_real",
+  "fecha_activacion_netlife", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc",
+  "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
+  "estatus_regularizacion", "detalle_regularizacion", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
+  "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
+  "dia_abc_agenda", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
+  "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet", "archivo_resumen"
 ];
 
 const initialDetail = {
@@ -512,11 +512,11 @@ const FILTROS_VACIOS = {
 };
 
 const estilosFiltro = {
-  campo:  { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
-  label:  { fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
-  ctl:    { padding: "8px 10px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", background: "#fff", color: "#0f172a", width: "100%" },
-  rango:  { display: "flex", alignItems: "center", gap: 6 },
-  guion:  { color: "#94a3b8", fontSize: 12 },
+  campo: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+  label: { fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
+  ctl: { padding: "8px 10px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", background: "#fff", color: "#0f172a", width: "100%" },
+  rango: { display: "flex", alignItems: "center", gap: 6 },
+  guion: { color: "#94a3b8", fontSize: 12 },
 };
 
 function CampoSelect({ label, valor, onChange, opciones, placeholder = "Todos" }) {
@@ -544,7 +544,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
+function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, soloDetalle = false }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -640,9 +640,17 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
     setDetail(null);
     setDetailOriginal({});
     setAlert(null);
+
+    // En Validación/Welcome el detalle vive dentro del tablero.
+    // Al cerrar debemos desmontar PanelRegistros para que el tablero
+    // vuelva a quedar totalmente clickeable y el mismo registro pueda
+    // abrirse nuevamente todas las veces que sea necesario.
+    if (soloDetalle) {
+      onVolver?.();
+    }
   };
 
-  // Cuando se llega aquí desde el tablero de Validación (?m=registros&id=123),
+  // Cuando se abre el detalle desde un módulo mediante idInicial,
   // el detalle de ese registro se abre solo. Se ejecuta una única vez por id
   // para no reabrir el modal cada vez que el componente se vuelve a renderizar.
   const idAbiertoRef = useRef(null);
@@ -671,15 +679,26 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
   }, [rows, vistaCompacta]);
 
   const editableFields = useMemo(() => [
-    "estatus_envio","codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta",
-    "nombre_cliente_completo","numero_identificacion","tipo_cliente","genero_cliente","fecha_nacimiento",
-    "email_cliente","provincia","ciudad","parroquia_barrio","telf_celular_pin","telf_celular_2",
-    "direccion_calles","referencia_ubicacion","plan_contratado_final","servicios_digitales","forma_pago",
-    "banco","ciclo_facturacion","costo_instalacion","descuento_instalacion","beneficios_adicionales",
-    "beneficios_de_ley","plazo_contrato_meses","resumen_venta","estado_recaudacion","netlife_login",
-    "netlife_estatus_real","calidad_venta_analista","venta_efectiva","auditoria_documentos","auditado_por",
-    "inconsistencia_documental","observacion_auditoria","errores_telcos","estatus_regularizacion","detalle_regularizacion",
-    "fecha_regularizacion_atc","mes_regularizacion","novedades_atc","observacion_venta_original","observacion_gestion_cobranza",
+    "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta",
+    "nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente", "fecha_nacimiento",
+    "email_cliente", "provincia", "ciudad", "parroquia_barrio", "telf_celular_pin", "telf_celular_2",
+    "direccion_calles", "referencia_ubicacion", "plan_contratado_final", "servicios_digitales", "forma_pago",
+    "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
+    "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "estado_recaudacion", "netlife_login",
+    "netlife_estatus_real", "calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por",
+    "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion",
+    "fecha_regularizacion_atc",
+    "mes_regularizacion",
+    "novedades_atc",
+
+    // Agendamiento
+    "turno_agendado",
+    "fecha_agenda",
+    "mes_agenda",
+    "dia_abc_agenda",
+
+    "observacion_venta_original",
+    "observacion_gestion_cobranza",
     ...CAMPOS_DOCUMENTO
   ], []);
 
@@ -693,15 +712,39 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
   // formulario: aparece ahí hasta que se lo ubique en su grupo.
   const seccionesDetalle = useMemo(() => {
     const grupos = [
-      { titulo: "Registro",       campos: ["estatus_envio","codigo_asesor","id_bitrix","distribuidor_autorizado","supervisor","origen_venta"] },
-      { titulo: "Cliente",        campos: ["nombre_cliente_completo","numero_identificacion","tipo_cliente","genero_cliente","fecha_nacimiento","email_cliente","telf_celular_pin","telf_celular_2"] },
-      { titulo: "Ubicación",      campos: ["provincia","ciudad","parroquia_barrio","direccion_calles","referencia_ubicacion"] },
-      { titulo: "Plan y pago",    campos: ["plan_contratado_final","servicios_digitales","forma_pago","banco","ciclo_facturacion","costo_instalacion","descuento_instalacion","beneficios_adicionales","beneficios_de_ley","plazo_contrato_meses","resumen_venta"] },
-      { titulo: "Netlife",        campos: ["estado_recaudacion","netlife_login","netlife_estatus_real"] },
-      { titulo: "Auditoría",      campos: ["calidad_venta_analista","venta_efectiva","auditoria_documentos","auditado_por","inconsistencia_documental","observacion_auditoria","errores_telcos"] },
-      { titulo: "Regularización", campos: ["estatus_regularizacion","detalle_regularizacion","fecha_regularizacion_atc","mes_regularizacion","novedades_atc"] },
-      { titulo: "Observaciones",  campos: ["observacion_venta_original","observacion_gestion_cobranza"] },
-      { titulo: "Documentos",     campos: [...CAMPOS_DOCUMENTO] },
+      { titulo: "Registro", campos: ["estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta"] },
+      { titulo: "Cliente", campos: ["nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente", "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2"] },
+      { titulo: "Ubicación", campos: ["provincia", "ciudad", "parroquia_barrio", "direccion_calles", "referencia_ubicacion"] },
+      { titulo: "Plan y pago", campos: ["plan_contratado_final", "servicios_digitales", "forma_pago", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales", "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta"] },
+      { titulo: "Netlife", campos: ["estado_recaudacion", "netlife_login", "netlife_estatus_real", "fecha_regularizacion_atc", "novedades_atc"] },
+      { titulo: "Auditoría", campos: ["calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos"] },
+      {
+        titulo: "Regularización",
+        campos: [
+          "estatus_regularizacion",
+          "detalle_regularizacion",
+          "mes_regularizacion"
+        ]
+      },
+
+      {
+        titulo: "Agendamiento",
+        campos: [
+          "turno_agendado",
+          "fecha_agenda",
+          "mes_agenda",
+          "dia_abc_agenda"
+        ]
+      },
+
+      {
+        titulo: "Observaciones",
+        campos: [
+          "observacion_venta_original",
+          "observacion_gestion_cobranza"
+        ]
+      },
+      { titulo: "Documentos", campos: [...CAMPOS_DOCUMENTO] },
     ];
     const asignados = new Set(grupos.flatMap((g) => g.campos));
     const sobrantes = editableFields.filter((f) => !asignados.has(f));
@@ -714,49 +757,151 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
 
   const handleSave = async () => {
     if (!selectedId) return;
+
     setSaving(true);
     setAlert(null);
 
     try {
       const payload = {};
+
       for (const campo of editableFields) {
         let nuevo = detail?.[campo] ?? "";
         const viejo = detailOriginal?.[campo] ?? "";
 
-        // 🔠 Convertir a mayúsculas todo el texto excepto los documentos.
-        // Con la comprobación anterior ("foto_"), "archivo_resumen" se pasaba a
-        // MAYÚSCULAS y la ruta guardada quedaba inservible: el servidor de
-        // archivos distingue mayúsculas de minúsculas en el nombre.
-        if (typeof nuevo === "string" && !esCampoDocumento(campo)) {
+        /*
+         * Las fechas NO se convierten a mayúsculas.
+         *
+         * Ejemplo:
+         * fecha_agenda = "2026-08-17"
+         */
+        if (
+          typeof nuevo === "string" &&
+          !esCampoDocumento(campo) &&
+          !CAMPOS_FECHA.includes(campo)
+        ) {
           nuevo = nuevo.toUpperCase();
         }
 
-        if (nuevo !== viejo) payload[campo] = nuevo;
+        if (nuevo !== viejo) {
+          payload[campo] = nuevo;
+        }
       }
 
+      /*
+       * ============================================================
+       * AGENDAMIENTO
+       * ============================================================
+       *
+       * Nos aseguramos de que fecha_agenda se envíe cuando realmente
+       * fue modificada, incluso si en algún cambio futuro alguien
+       * olvida agregarla a editableFields.
+       */
+      const fechaAgendaNueva = detail?.fecha_agenda ?? "";
+      const fechaAgendaVieja = detailOriginal?.fecha_agenda ?? "";
+
+      if (fechaAgendaNueva !== fechaAgendaVieja) {
+        payload.fecha_agenda = fechaAgendaNueva;
+      }
+
+      const turnoNuevo = detail?.turno_agendado ?? "";
+      const turnoViejo = detailOriginal?.turno_agendado ?? "";
+
+      if (turnoNuevo !== turnoViejo) {
+        payload.turno_agendado = turnoNuevo;
+      }
+
+      /*
+       * Si no hay cambios, no hacemos PUT.
+       */
       if (Object.keys(payload).length === 0) {
-        setAlert({ type: "success", msg: "No hay cambios que guardar" });
+        setAlert({
+          type: "success",
+          msg: "No hay cambios que guardar",
+        });
+
         setSaving(false);
         return;
       }
 
-      const res = await fetch(`${API}/api/backoffice/${selectedId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+      /*
+       * DEBUG:
+       * Puedes ver exactamente qué está enviando el frontend.
+       */
+      console.log(
+        "[BACKOFFICE] PUT payload:",
+        JSON.stringify(payload, null, 2)
+      );
+
+      const res = await fetch(
+        `${API}/api/backoffice/${selectedId}`,
+        {
+          method: "PUT",
+
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify(payload),
+        }
+      );
+
+      /*
+       * Intentamos leer JSON.
+       */
+      let json;
+
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(
+          `El servidor respondió ${res.status} pero no devolvió JSON`
+        );
+      }
+
+      console.log(
+        "[BACKOFFICE] PUT response:",
+        res.status,
+        json
+      );
+
+      /*
+       * IMPORTANTE:
+       * Si el backend devuelve 400, ahora veremos el mensaje real.
+       */
+      if (!res.ok || !json.success) {
+        throw new Error(
+          json.error ||
+          `Error ${res.status} al actualizar el registro`
+        );
+      }
+
+      /*
+       * Actualización correcta.
+       */
+      setAlert({
+        type: "success",
+        msg: "Registro actualizado correctamente",
       });
 
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || "No se pudo guardar");
+      /*
+       * Recargamos ambos.
+       */
+      await fetchRows(search);
+      await fetchDetail(selectedId);
 
-      setAlert({ type: "success", msg: "Registro actualizado correctamente" });
-      fetchRows(search);
-      fetchDetail(selectedId);
     } catch (e) {
-      setAlert({ type: "error", msg: e.message || "Error al guardar" });
+
+      console.error(
+        "[BACKOFFICE] Error actualizando registro:",
+        e
+      );
+
+      setAlert({
+        type: "error",
+        msg: e.message || "Error al guardar",
+      });
+
     } finally {
       setSaving(false);
     }
@@ -765,172 +910,177 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <button
-                onClick={onVolver}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
-              >
-                ← Volver a Backoffice
-              </button>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: "#4f46e5", textTransform: "uppercase" }}>Backoffice · Registros</div>
-              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
-                {etiquetaContexto || "Todos los registros"}
-              </h2>
-            </div>
-            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
-              {rows.length} registros
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 18, padding: 18, minHeight: 760 }}>
-          <div style={{ flex: 1, border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, background: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por asesor, cliente, ID, CI..."
-                style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none" }}
-              />
-              <button
-                onClick={() => fetchRows(search, filtros)}
-                style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
-              >
-                Refrescar
-              </button>
-            </div>
-
-            {/* ── FILTROS ──────────────────────────────────────────────── */}
-            <div style={{ padding: 14, background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-                <CampoRangoFecha
-                  label="Fecha de registro"
-                  desde={filtros.fechaDesde} hasta={filtros.fechaHasta}
-                  onDesde={(v) => setFiltro("fechaDesde", v)} onHasta={(v) => setFiltro("fechaHasta", v)}
-                />
-                <CampoRangoFecha
-                  label="Fecha de activación"
-                  desde={filtros.activacionDesde} hasta={filtros.activacionHasta}
-                  onDesde={(v) => setFiltro("activacionDesde", v)} onHasta={(v) => setFiltro("activacionHasta", v)}
-                />
-                <div style={estilosFiltro.campo}>
-                  <label style={estilosFiltro.label}>Login Netlife</label>
-                  <input
-                    style={estilosFiltro.ctl}
-                    value={filtros.login}
-                    onChange={(e) => setFiltro("login", e.target.value)}
-                    placeholder="Login o parte del login"
-                  />
-                </div>
-                <CampoSelect
-                  label="Estatus Netlife"
-                  valor={filtros.estatusNetlife}
-                  onChange={(v) => setFiltro("estatusNetlife", v)}
-                  opciones={opciones.estatusNetlife}
-                />
-                <CampoSelect
-                  label="Estatus regularización"
-                  valor={filtros.estatusRegularizacion}
-                  onChange={(v) => setFiltro("estatusRegularizacion", v)}
-                  opciones={opciones.estatusRegularizacion}
-                />
-                <CampoSelect
-                  label="Tercera edad"
-                  valor={filtros.terceraEdad}
-                  onChange={(v) => setFiltro("terceraEdad", v)}
-                  opciones={opciones.terceraEdad}
-                />
-              </div>
-
-              {filtrosActivos > 0 && (
-                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
-                    {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} aplicado{filtrosActivos > 1 ? "s" : ""}
-                  </span>
+        {!soloDetalle && (
+          <>
+            <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
                   <button
-                    onClick={limpiarFiltros}
-                    style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                    onClick={onVolver}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
                   >
-                    Limpiar filtros
+                    ← Volver a Backoffice
+                  </button>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: "#4f46e5", textTransform: "uppercase" }}>Backoffice · Registros</div>
+                  <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
+                    {etiquetaContexto || "Todos los registros"}
+                  </h2>
+                </div>
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
+                  {rows.length} registros
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 18, padding: 18, minHeight: 760 }}>
+              <div style={{ flex: 1, border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, background: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar por asesor, cliente, ID, CI..."
+                    style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none" }}
+                  />
+                  <button
+                    onClick={() => fetchRows(search, filtros)}
+                    style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Refrescar
                   </button>
                 </div>
-              )}
-            </div>
 
-            {/* Cambio de vista: 12 columnas clave vs. la tabla completa */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
-              <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
-                {tableHeaders.length} columnas · {rows.length} registros
-                {!vistaCompacta && <span style={{ color: "#94a3b8" }}> · desplazá en horizontal para ver el resto</span>}
-              </span>
-              <button
-                onClick={() => setVistaCompacta((v) => !v)}
-                style={{ padding: "7px 12px", borderRadius: 10, border: "1px solid #dbe4f0", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
-              >
-                {vistaCompacta ? "Ver todas las columnas" : "Vista compacta"}
-              </button>
-            </div>
+                {/* ── FILTROS ──────────────────────────────────────────────── */}
+                <div style={{ padding: 14, background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+                    <CampoRangoFecha
+                      label="Fecha de registro"
+                      desde={filtros.fechaDesde} hasta={filtros.fechaHasta}
+                      onDesde={(v) => setFiltro("fechaDesde", v)} onHasta={(v) => setFiltro("fechaHasta", v)}
+                    />
+                    <CampoRangoFecha
+                      label="Fecha de activación"
+                      desde={filtros.activacionDesde} hasta={filtros.activacionHasta}
+                      onDesde={(v) => setFiltro("activacionDesde", v)} onHasta={(v) => setFiltro("activacionHasta", v)}
+                    />
+                    <div style={estilosFiltro.campo}>
+                      <label style={estilosFiltro.label}>Login Netlife</label>
+                      <input
+                        style={estilosFiltro.ctl}
+                        value={filtros.login}
+                        onChange={(e) => setFiltro("login", e.target.value)}
+                        placeholder="Login o parte del login"
+                      />
+                    </div>
+                    <CampoSelect
+                      label="Estatus Netlife"
+                      valor={filtros.estatusNetlife}
+                      onChange={(v) => setFiltro("estatusNetlife", v)}
+                      opciones={opciones.estatusNetlife}
+                    />
+                    <CampoSelect
+                      label="Estatus regularización"
+                      valor={filtros.estatusRegularizacion}
+                      onChange={(v) => setFiltro("estatusRegularizacion", v)}
+                      opciones={opciones.estatusRegularizacion}
+                    />
+                    <CampoSelect
+                      label="Tercera edad"
+                      valor={filtros.terceraEdad}
+                      onChange={(v) => setFiltro("terceraEdad", v)}
+                      opciones={opciones.terceraEdad}
+                    />
+                  </div>
 
-            <div style={{ overflow: "auto", maxHeight: 700 }}>
-              {loading ? (
-                <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
-              ) : (
-                <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
-                  <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
-                    <tr style={{ background: "#f8fafc" }}>
-                      {tableHeaders.map((h, i) => (
-                        <th
-                          key={h.key}
-                          title={h.key}
-                          style={{
-                            textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
-                            fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
-                            // Las 2 primeras columnas quedan fijas para no perder
-                            // la referencia del registro al desplazarse a lo ancho.
-                            ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 4, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
-                            ...(i === 0 ? { width: 60 } : {}),
-                          }}
-                        >
-                          {h.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => { setSelectedId(row.id); fetchDetail(row.id); }}
-                        style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}
+                  {filtrosActivos > 0 && (
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
+                        {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} aplicado{filtrosActivos > 1 ? "s" : ""}
+                      </span>
+                      <button
+                        onClick={limpiarFiltros}
+                        style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                       >
-                        {tableHeaders.map((h, i) => (
-                        <td
-                          key={`${row.id}-${h.key}`}
-                          title={valueForField(row, h.key)}
-                          style={{
-                            padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
-                            maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
-                            background: selectedId === row.id ? "#eff6ff" : "#fff",
-                            ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 2, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
-                          }}
-                        >
-                            {valueForField(row, h.key)}
-                        </td>
+                        Limpiar filtros
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cambio de vista: 12 columnas clave vs. la tabla completa */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
+                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                    {tableHeaders.length} columnas · {rows.length} registros
+                    {!vistaCompacta && <span style={{ color: "#94a3b8" }}> · desplazá en horizontal para ver el resto</span>}
+                  </span>
+                  <button
+                    onClick={() => setVistaCompacta((v) => !v)}
+                    style={{ padding: "7px 12px", borderRadius: 10, border: "1px solid #dbe4f0", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                  >
+                    {vistaCompacta ? "Ver todas las columnas" : "Vista compacta"}
+                  </button>
+                </div>
+
+                <div style={{ overflow: "auto", maxHeight: 700 }}>
+                  {loading ? (
+                    <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+                      <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
+                        <tr style={{ background: "#f8fafc" }}>
+                          {tableHeaders.map((h, i) => (
+                            <th
+                              key={h.key}
+                              title={h.key}
+                              style={{
+                                textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
+                                fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
+                                // Las 2 primeras columnas quedan fijas para no perder
+                                // la referencia del registro al desplazarse a lo ancho.
+                                ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 4, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
+                                ...(i === 0 ? { width: 60 } : {}),
+                              }}
+                            >
+                              {h.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr
+                            key={row.id}
+                            onClick={() => { setSelectedId(row.id); fetchDetail(row.id); }}
+                            style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}
+                          >
+                            {tableHeaders.map((h, i) => (
+                              <td
+                                key={`${row.id}-${h.key}`}
+                                title={valueForField(row, h.key)}
+                                style={{
+                                  padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
+                                  maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                                  background: selectedId === row.id ? "#eff6ff" : "#fff",
+                                  ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 2, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
+                                }}
+                              >
+                                {valueForField(row, h.key)}
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+
+          </>
+        )}
 
         {/* ─── MODAL DETALLE ─────────────────────────────────────────────────────────────── */}
         {showModal && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
             <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxWidth: 1100, width: "94%", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
               {/* Header del modal — fijo, no se va con el scroll */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: 20, borderBottom: "1px solid #e5e7eb", background: "#fff", flex: "none" }}>
@@ -963,44 +1113,67 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto }) {
               {/* Contenido: Grid 2 columnas */}
               <div style={{ padding: 20, maxHeight: "calc(90vh - 170px)", overflow: "auto", background: "#f8fafc" }}>
                 {seccionesDetalle.map((sec) => (
-                <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
-                    <span style={{ width: 4, height: 16, borderRadius: 4, background: "#0ea5e9", flex: "none" }} />
-                    <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: ".01em" }}>{sec.titulo}</h4>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
-                {sec.campos.map((field) => (
-                <div key={field}>
-                    <label style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                    {FIELD_LABELS[field] || field}
-                    </label>
+                  <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ width: 4, height: 16, borderRadius: 4, background: "#0ea5e9", flex: "none" }} />
+                      <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: ".01em" }}>{sec.titulo}</h4>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
+                      {sec.campos.map((field) => (
+                        <div key={field}>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                            {FIELD_LABELS[field] || field}
+                          </label>
 
-                    {esCampoDocumento(field) ? (
-                    /* 📸 CASO 1: DOCUMENTO DE RESPALDO — miniatura sin recorte,
-                       clic para verlo completo, y reemplazo vía el servidor de
-                       almacenamiento (no como base64 dentro de la fila). */
-                    <CampoDocumento
-                        field={field}
-                        etiqueta={FIELD_LABELS[field] || field}
-                        valor={detail?.[field] || ""}
-                        numeroIdentificacion={detail?.numero_identificacion}
-                        onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
-                        onAlert={setAlert}
-                    />
-                    ) : (
-                    /* 📅 CASO 2 Y 3: INPUT DINÁMICO (TIPO "date" PARA FECHAS, "text" PARA EL RESTO) */
-                    <input
-                        type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
-                        value={detail?.[field] ?? ""}
-                        onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
-                    />
-                    )}
-                </div>
-                ))}
-                  </div>
-                </section>
+                          {esCampoDocumento(field) ? (
+                            /* 📸 CASO 1: DOCUMENTO DE RESPALDO — miniatura sin recorte,
+                               clic para verlo completo, y reemplazo vía el servidor de
+                               almacenamiento (no como base64 dentro de la fila). */
+                            <CampoDocumento
+                              field={field}
+                              etiqueta={FIELD_LABELS[field] || field}
+                              valor={detail?.[field] || ""}
+                              numeroIdentificacion={detail?.numero_identificacion}
+                              onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
+                              onAlert={setAlert}
+                            />
+                          ) : field === "novedades_atc" ? (
+                            /* 🔔 NOVEDADES: solo una opción por ahora.
+                               Vacío = Sin notificar / Notificado = NOTIFICADO. */
+                            <select
+                              value={detail?.[field] ?? ""}
+                              onChange={(e) =>
+                                setDetail((prev) => ({ ...prev, [field]: e.target.value }))
+                              }
+                              style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: "1px solid #dbe4f0",
+                                fontSize: 12,
+                                outline: "none",
+                                color: "#111827",
+                                background: "#fff",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <option value="">Seleccionar...</option>
+                              <option value="NOTIFICADO">Notificado</option>
+                            </select>
+                          ) : (
+                            /* 📅 CASO 2 Y 3: INPUT DINÁMICO (TIPO "date" PARA FECHAS, "text" PARA EL RESTO) */
+                            <input
+                              type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
+                              value={detail?.[field] ?? ""}
+                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
 
@@ -1079,7 +1252,7 @@ const SUBMODULOS = [
     descripcion: "Gestión de la llamada de bienvenida al cliente tras la activación.",
     color: "#059669",
     fondo: "#d1fae5",
-    listo: false,
+    listo: true,
   },
   {
     id: "agendamientos",
@@ -1088,7 +1261,7 @@ const SUBMODULOS = [
     descripcion: "Programación y control de las visitas de instalación.",
     color: "#ea580c",
     fondo: "#ffedd5",
-    listo: false,
+    listo: true,
   },
   {
     id: "preservicios",
@@ -1230,8 +1403,8 @@ function EnConstruccion({ sub, onVolver }) {
 // los conteos diarios no cuadrarían con lo que vio el asesor.
 // Por eso la fecha calendario se calcula siempre en America/Guayaquil, igual
 // que hace el módulo de Jotform en SQL con `- INTERVAL '5 hours'`.
-const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const DIAS_ES  = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const DIAS_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 const fmtFechaEC = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit",
@@ -1256,6 +1429,69 @@ function etiquetaDia(iso) {
   return `${DIAS_ES[fecha.getDay()]} ${d}/${m}/${a}`;
 }
 
+const ETAPAS_JOTFORM_RESUMEN = [
+  "ACTIVO",
+  "PREPLANIFICADO",
+  "ASIGNADO",
+  "PRESERVICIO",
+  "FACTIBLE",
+];
+
+function crearContadoresEtapas() {
+  return Object.fromEntries(
+    ETAPAS_JOTFORM_RESUMEN.map((etapa) => [etapa, 0])
+  );
+}
+
+function sumarEtapa(contadores, row) {
+  const norm = (v) =>
+    String(v || "")
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  // Priorizamos netlife_estatus_real (v2); si viene vacío, usamos estatus_envio (v1)
+  const v2 = norm(row?.netlife_estatus_real);
+  const v1 = norm(row?.estatus_envio);
+  const val = v2 || v1;
+
+  if (!val) return;
+
+  const check = (valor, target) => {
+    // 1. Coincidencia exacta
+    if (valor === target) return true;
+
+    // 2. Coincidencias flexibles / parciales específicas por etapa
+    if (target === "PREPLANIFICADO") {
+      return valor.includes("PLANIF") || valor.includes("PALNIF");
+    }
+    if (target === "PRESERVICIO") {
+      return valor.includes("PRESERV") || valor.includes("PRESE");
+    }
+    if (target === "FACTIBLE") {
+      return valor.includes("FACTIB");
+    }
+    if (target === "ASIGNADO") {
+      return valor.includes("ASIGN");
+    }
+    if (target === "ACTIVO") {
+      // Evita falsos positivos con "INACTIVO" o "DESACTIVADO"
+      return valor.includes("ACTIV") && !valor.includes("INACTIV") && !valor.includes("DESACTIV");
+    }
+
+    return valor.includes(target);
+  };
+
+  for (const s of ETAPAS_JOTFORM_RESUMEN) {
+    const sNorm = norm(s);
+    if (check(val, sNorm)) {
+      contadores[s]++;
+      return; // Suma en la primera etapa que coincida y sale
+    }
+  }
+}
+
 /**
  * Agrupa registros en años → meses → días, cada nivel con su cantidad.
  * Los registros sin fecha válida no se pierden: se juntan en un grupo aparte
@@ -1267,39 +1503,99 @@ function agruparPorFecha(rows, campo = "fecha_registro_sistema") {
 
   for (const row of rows) {
     const iso = fechaCalendarioEC(row?.[campo]);
-    if (!iso) { sinFecha.push(row); continue; }
+
+    if (!iso) {
+      sinFecha.push(row);
+      continue;
+    }
+
     const [a, m] = iso.split("-");
 
-    if (!anios.has(a)) anios.set(a, { anio: a, cantidad: 0, meses: new Map() });
+    // ─────────────────────────────────────────────
+    // AÑO
+    // ─────────────────────────────────────────────
+    if (!anios.has(a)) {
+      anios.set(a, {
+        anio: a,
+        cantidad: 0,
+        etapas: crearContadoresEtapas(),
+        meses: new Map(),
+      });
+    }
+
     const anio = anios.get(a);
+
     anio.cantidad++;
+    sumarEtapa(anio.etapas, row);
 
-    if (!anio.meses.has(m)) anio.meses.set(m, { mes: m, cantidad: 0, dias: new Map() });
+    // ─────────────────────────────────────────────
+    // MES
+    // ─────────────────────────────────────────────
+    if (!anio.meses.has(m)) {
+      anio.meses.set(m, {
+        mes: m,
+        cantidad: 0,
+        etapas: crearContadoresEtapas(),
+        dias: new Map(),
+      });
+    }
+
     const mes = anio.meses.get(m);
-    mes.cantidad++;
 
-    mes.dias.set(iso, (mes.dias.get(iso) || 0) + 1);
+    mes.cantidad++;
+    sumarEtapa(mes.etapas, row);
+
+    // ─────────────────────────────────────────────
+    // DÍA
+    // ─────────────────────────────────────────────
+    if (!mes.dias.has(iso)) {
+      mes.dias.set(iso, {
+        iso,
+        cantidad: 0,
+        etapas: crearContadoresEtapas(),
+      });
+    }
+
+    const dia = mes.dias.get(iso);
+
+    dia.cantidad++;
+    sumarEtapa(dia.etapas, row);
   }
 
   const lista = [...anios.values()]
     .map((a) => ({
       ...a,
+
       meses: [...a.meses.values()]
         .map((m) => ({
           ...m,
-          dias: [...m.dias.entries()]
-            .map(([iso, cantidad]) => ({ iso, cantidad }))
-            .sort((x, y) => (x.iso < y.iso ? 1 : -1)), // día más reciente primero
+
+          dias: [...m.dias.values()]
+            .sort((x, y) => (x.iso < y.iso ? 1 : -1)),
         }))
         .sort((x, y) => Number(y.mes) - Number(x.mes)),
     }))
-    .sort((x, y) => Number(y.anio) - Number(x.anio)); // año más reciente primero
+    .sort((x, y) => Number(y.anio) - Number(x.anio));
 
-  return { anios: lista, sinFecha };
+  return {
+    anios: lista,
+    sinFecha,
+  };
 }
 
-function BotonNivel({ titulo, cantidad, color, fondo, borde, onClick, ancho = 200 }) {
+function BotonNivel({
+  titulo,
+  cantidad,
+  etapas,
+  color,
+  fondo,
+  borde,
+  onClick,
+  ancho = 240,
+  mostrarEtapas = false,
+}) {
   const [hover, setHover] = useState(false);
+
   return (
     <button
       type="button"
@@ -1307,19 +1603,121 @@ function BotonNivel({ titulo, cantidad, color, fondo, borde, onClick, ancho = 20
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        textAlign: "left", background: "#fff",
+        textAlign: "left",
+        background: "#fff",
         border: `1px solid ${hover ? color : borde}`,
-        borderRadius: 14, padding: "16px 18px", cursor: "pointer",
-        minWidth: ancho, display: "flex", flexDirection: "column", gap: 8,
-        boxShadow: hover ? `0 12px 26px ${color}22` : "0 4px 14px rgba(15,23,42,.05)",
-        transform: hover ? "translateY(-2px)" : "none",
+        borderRadius: 10,
+        padding: "11px 14px",
+        cursor: "pointer",
+
+        width: mostrarEtapas ? 620 : ancho,
+        minWidth: mostrarEtapas ? 620 : ancho,
+
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 18,
+
+        boxShadow: hover
+          ? `0 8px 18px ${color}22`
+          : "0 3px 10px rgba(15,23,42,.04)",
+
+        transform: hover ? "translateY(-1px)" : "none",
         transition: "all .16s ease-out",
       }}
     >
-      <span style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>{titulo}</span>
-      <span style={{ alignSelf: "flex-start", fontSize: 12, fontWeight: 800, color, background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "3px 11px" }}>
-        {cantidad} {cantidad === 1 ? "registro" : "registros"}
-      </span>
+      {/* IZQUIERDA */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          minWidth: 150,
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: "#0f172a",
+          }}
+        >
+          {titulo}
+        </span>
+
+        <span
+          style={{
+            alignSelf: "flex-start",
+            fontSize: 11,
+            fontWeight: 800,
+            color,
+            background: fondo,
+            border: `1px solid ${borde}`,
+            borderRadius: 999,
+            padding: "3px 9px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {cantidad} {cantidad === 1 ? "registro" : "registros"}
+        </span>
+      </div>
+
+      {/* DERECHA — ETAPAS */}
+      {mostrarEtapas && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, auto)",
+            alignItems: "center",
+            gap: 6,
+            marginLeft: "auto",
+          }}
+        >
+          {ETAPAS_JOTFORM_RESUMEN.map((etapa) => (
+            <div
+              key={etapa}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 68,
+                padding: "5px 6px",
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+              }}
+              title={`${etapa}: ${etapas?.[etapa] ?? 0}`}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  color: "#64748b",
+                  textAlign: "center",
+                  lineHeight: 1.1,
+                }}
+              >
+                {etapa}
+              </span>
+
+              <span
+                style={{
+                  marginTop: 3,
+                  fontSize: 14,
+                  fontWeight: 900,
+                  color: "#2563eb",
+                }}
+              >
+                {etapas?.[etapa] ?? 0}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </button>
   );
 }
@@ -1338,7 +1736,7 @@ function ExploradorFechas({
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows), [rows]);
 
   const anioSel = nav.anio ? anios.find((a) => a.anio === nav.anio) : null;
-  const mesSel  = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
+  const mesSel = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
 
   const nivel = mesSel ? "dias" : anioSel ? "meses" : "anios";
 
@@ -1421,28 +1819,49 @@ function ExploradorFechas({
           )}
 
           {!cargando && !error && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
               {nivel === "anios" && anios.map((a) => (
                 <BotonNivel
                   key={a.anio} titulo={a.anio} cantidad={a.cantidad}
                   color={color} fondo={fondo} borde={borde}
                   onClick={() => navegar.aMeses(a.anio)}
+                  ancho={200}
                 />
               ))}
 
               {nivel === "meses" && anioSel.meses.map((m) => (
                 <BotonNivel
-                  key={m.mes} titulo={MESES_ES[Number(m.mes) - 1]} cantidad={m.cantidad}
-                  color={color} fondo={fondo} borde={borde}
+                  key={m.mes}
+                  titulo={MESES_ES[Number(m.mes) - 1]}
+                  cantidad={m.cantidad}
+                  etapas={m.etapas}
+                  color={color}
+                  fondo={fondo}
+                  borde={borde}
                   onClick={() => navegar.aDias(anioSel.anio, m.mes)}
+                  ancho={520}
+                  mostrarEtapas={true}
                 />
               ))}
 
               {nivel === "dias" && mesSel.dias.map((d) => (
                 <BotonNivel
-                  key={d.iso} titulo={etiquetaDia(d.iso)} cantidad={d.cantidad}
-                  color={color} fondo={fondo} borde={borde} ancho={230}
-                  onClick={() => navegar.aDia(anioSel.anio, mesSel.mes, d.iso)}
+                  key={d.iso}
+                  titulo={etiquetaDia(d.iso)}
+                  cantidad={d.cantidad}
+                  etapas={d.etapas}
+                  color={color}
+                  fondo={fondo}
+                  borde={borde}
+                  ancho={520}
+                  mostrarEtapas={true}
+                  onClick={() =>
+                    navegar.aDia(
+                      anioSel.anio,
+                      mesSel.mes,
+                      d.iso
+                    )
+                  }
                 />
               ))}
             </div>
@@ -1490,6 +1909,823 @@ function useRegistrosBackoffice(limite = 1000) {
   return { rows, total, cargando, error, recargar: cargar };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO: WELCOME
+// ═══════════════════════════════════════════════════════════════════════════
+// Solo entran registros con `netlife_estatus_real = ACTIVO`.
+// Se ordenan por `fecha_activacion_netlife` de la más antigua a la más reciente,
+// para dar prioridad a las activaciones que llevan más tiempo esperando.
+// `novedades_atc` funciona como discriminador:
+//   vacío              → SIN NOTIFICAR
+//   "NOTIFICADO"       → NOTIFICADOS
+const BLOQUES_WELCOME = [
+  { id: "SIN_NOTIFICAR", titulo: "Sin notificar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "" },
+  { id: "NOTIFICADOS", titulo: "Notificados", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "NOTIFICADO" },
+];
+
+function estadoWelcome(row) {
+  const v = normalizarEstado(row?.novedades_atc);
+  return v === "NOTIFICADO" ? "NOTIFICADOS" : "SIN_NOTIFICAR";
+}
+
+function ordenarWelcome(rows) {
+  return [...rows].sort((a, b) => {
+    const fa = String(a?.fecha_activacion_netlife || "");
+    const fb = String(b?.fecha_activacion_netlife || "");
+
+    // Los que sí tienen fecha siempre van primero; dentro de ellos,
+    // la fecha más antigua tiene prioridad.
+    if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
+    if (fa && !fb) return -1;
+    if (!fa && fb) return 1;
+
+    // Desempate estable por ID.
+    return (Number(a?.id) || 0) - (Number(b?.id) || 0);
+  });
+}
+
+function TarjetaWelcome({ row, onAbrir, onArrastrar, arrastrando, moviendo }) {
+  const estaMoviendose = moviendo === row.id;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      draggable={!estaMoviendose}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(row.id));
+        onArrastrar(row.id);
+      }}
+      onDragEnd={() => {
+        onArrastrar(null);
+      }}
+      onClick={() => onAbrir?.(row.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onAbrir?.(row.id);
+        }
+      }}
+      title="Clic para abrir el detalle · arrastra para cambiar de bloque"
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        textAlign: "left",
+        background: arrastrando === row.id ? "#f8fafc" : "#fff",
+        border: `1px solid ${arrastrando === row.id ? "#10b981" : "#e5e7eb"}`,
+        borderRadius: 12,
+        padding: 13,
+        cursor: estaMoviendose ? "wait" : "grab",
+        opacity: estaMoviendose ? 0.6 : 1,
+        boxShadow: "0 2px 8px rgba(15,23,42,.05)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+        userSelect: "none",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
+          {row.nombre_cliente_completo || "Sin nombre"}
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>
+          #{row.id}
+        </span>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#475569" }}>
+          📅 Activación: {row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "Sin fecha"}
+        </div>
+        <div>CI {row.numero_identificacion || "—"}</div>
+        {row.netlife_login && <div>Login: {row.netlife_login}</div>}
+        {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
+      </div>
+    </div>
+  );
+}
+
+function BloqueWelcome({
+  bloque, rows, onAbrir, onMarcarNotificado,
+  onArrastrar, onSoltar, arrastrando, sobreBloque, onSobreBloque, moviendo,
+}) {
+  const activo = sobreBloque === bloque.id;
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (sobreBloque !== bloque.id) onSobreBloque?.(bloque.id);
+      }}
+      onDragLeave={() => {
+        onSobreBloque?.((b) => (b === bloque.id ? null : b));
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onSoltar(bloque.id, e);
+      }}
+      style={{
+        background: activo ? bloque.fondo : "#fafbfc",
+        border: `2px ${activo ? "dashed" : "solid"} ${activo ? bloque.color : "#e5e7eb"}`,
+        borderRadius: 14,
+        padding: 14,
+        minHeight: 360,
+        transition: "background .15s, border-color .15s",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+        <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+          {bloque.titulo}
+        </h3>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: 11.5,
+            fontWeight: 800,
+            color: bloque.color,
+            background: bloque.fondo,
+            border: `1px solid ${bloque.borde}`,
+            borderRadius: 999,
+            padding: "2px 10px",
+          }}
+        >
+          {rows.length}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.length === 0 ? (
+          <div
+            style={{
+              padding: "30px 12px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "#94a3b8",
+              border: "1px dashed #e2e8f0",
+              borderRadius: 10,
+            }}
+          >
+            No hay registros en este bloque.
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div key={row.id} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <TarjetaWelcome
+                row={row}
+                onAbrir={onAbrir}
+                onArrastrar={onArrastrar}
+                arrastrando={arrastrando}
+                moviendo={moviendo}
+              />
+              {bloque.id === "SIN_NOTIFICAR" && (
+                <button
+                  type="button"
+                  onClick={() => onMarcarNotificado(row.id)}
+                  style={{
+                    alignSelf: "stretch",
+                    padding: "8px 10px",
+                    borderRadius: 9,
+                    border: "1px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    color: "#166534",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✓ Marcar como notificado
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TableroWelcome({ onVolver, onAbrirRegistro }) {
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000);
+  const [rows, setRows] = useState([]);
+  const [detalleId, setDetalleId] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [aviso, setAviso] = useState(null);
+  const [arrastrando, setArrastrando] = useState(null);
+  const [sobreBloque, setSobreBloque] = useState(null);
+  const [moviendo, setMoviendo] = useState(null);
+  const token = localStorage.getItem("token");
+
+  useEffect(() => {
+    // Welcome solo trabaja con activaciones que ya están ACTIVAS.
+    const activas = (todas || []).filter(
+      (r) => normalizarEstado(r?.netlife_estatus_real) === "ACTIVO"
+    );
+    setRows(ordenarWelcome(activas));
+  }, [todas]);
+
+  const filtradas = (() => {
+    const q = normalizarEstado(busqueda);
+    if (!q) return rows;
+
+    return rows.filter((r) =>
+      [
+        r.nombre_cliente_completo,
+        r.numero_identificacion,
+        r.codigo_asesor,
+        r.id_bitrix,
+        r.netlife_login,
+        String(r.id),
+      ].some((c) => normalizarEstado(c).includes(q))
+    );
+  })();
+
+  const porBloque = { SIN_NOTIFICAR: [], NOTIFICADOS: [] };
+  for (const row of filtradas) {
+    porBloque[estadoWelcome(row)].push(row);
+  }
+
+  const soltarWelcome = async (bloqueDestino, e) => {
+    e.preventDefault();
+    setSobreBloque(null);
+
+    const idStr = e.dataTransfer.getData("text/plain");
+
+    setArrastrando(null);
+    if (!idStr) {
+      setAviso("❌ No se pudo identificar el registro arrastrado.");
+      return;
+    }
+
+    // Comparación como string: evita el mismatch number vs string
+    // que ocurre si `id` en la BD es BIGINT (Postgres lo devuelve como string).
+    const row = rows.find((r) => String(r.id) === idStr);
+    if (!row) return;
+
+    const id = row.id; // usamos el id tal como viene en el row (string o number)
+
+    const bloqueActual = estadoWelcome(row);
+    if (bloqueActual === bloqueDestino) return;
+
+    const destino = BLOQUES_WELCOME.find((b) => b.id === bloqueDestino);
+    if (!destino) return;
+
+    const valorPrevio = row.novedades_atc ?? "";
+
+    setRows((prev) =>
+      prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: destino.valorBD } : r))
+    );
+    setMoviendo(id);
+    setAviso(null);
+
+    try {
+      const r = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ novedades_atc: destino.valorBD }),
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) {
+        throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
+      }
+
+      await recargar();
+      setAviso(`✅ #${id} movido a «${destino.titulo}».`);
+    } catch (e) {
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: valorPrevio } : r))
+      );
+      setAviso(`❌ No se pudo mover #${id}: ${e.message}. La tarjeta volvió a su bloque.`);
+    } finally {
+      setMoviendo(null);
+    }
+  };
+
+  const marcarNotificado = async (id) => {
+    setAviso(null);
+
+    // Actualización optimista: el registro pasa inmediatamente al bloque
+    // "Notificados"; si el servidor falla, vuelve a "Sin notificar".
+    const anterior = rows;
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, novedades_atc: "NOTIFICADO" } : r))
+    );
+
+    try {
+      const r = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ novedades_atc: "NOTIFICADO" }),
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) {
+        throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
+      }
+
+      await recargar();
+      setAviso(`✅ #${id} marcado como NOTIFICADO.`);
+    } catch (e) {
+      setRows(anterior);
+      setAviso(`❌ No se pudo marcar #${id}: ${e.message}`);
+    }
+  };
+
+  const total = filtradas.length;
+  const sinNotificar = porBloque.SIN_NOTIFICAR.length;
+  const notificados = porBloque.NOTIFICADOS.length;
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfdf5)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#047857", cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#059669", textTransform: "uppercase" }}>
+            Backoffice · Welcome
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>
+                Welcome
+              </h2>
+              <p style={{ margin: "7px 0 0", fontSize: 12.5, color: "#64748b" }}>
+                Solo activaciones con <b>Status NetLife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, login, asesor…"
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 250 }}
+              />
+              <button
+                onClick={recargar}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
+              >
+                Refrescar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {aviso && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, fontWeight: 700, color: "#334155" }}>
+            {aviso}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Tres bloques: TOTAL, SIN NOTIFICAR y NOTIFICADOS */}
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+          <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Registros totales
+            </div>
+            <div style={{ marginTop: 8, fontSize: 32, lineHeight: 1, fontWeight: 900, color: "#065f46" }}>
+              {total}
+            </div>
+            <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
+              Activaciones con Status NetLife activo
+            </div>
+          </div>
+
+          <div style={{ padding: 18, borderRadius: 14, background: "#fffbeb", border: "1px solid #fde68a" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Sin notificar
+            </div>
+            <div style={{ marginTop: 8, fontSize: 32, lineHeight: 1, fontWeight: 900, color: "#92400e" }}>
+              {sinNotificar}
+            </div>
+            <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
+              Novedades ATC vacío
+            </div>
+          </div>
+
+          <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #86efac" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Notificados
+            </div>
+            <div style={{ marginTop: 8, fontSize: 32, lineHeight: 1, fontWeight: 900, color: "#166534" }}>
+              {notificados}
+            </div>
+            <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
+              Novedades ATC = NOTIFICADO
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: "0 18px 18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+            {BLOQUES_WELCOME.map((bloque) => {
+              const activo = sobreBloque === bloque.id;
+              const listaBloque = porBloque[bloque.id];
+
+              return (
+                <div
+                  key={bloque.id}
+                  onDragOver={(e) => { e.preventDefault(); setSobreBloque(bloque.id); }}
+                  onDragLeave={() => setSobreBloque((b) => (b === bloque.id ? null : b))}
+                  onDrop={(e) => soltarWelcome(bloque.id, e)}
+                  style={{
+                    background: activo ? bloque.fondo : "#fafbfc",
+                    border: `2px ${activo ? "dashed" : "solid"} ${activo ? bloque.color : "#e5e7eb"}`,
+                    borderRadius: 14,
+                    padding: 14,
+                    minHeight: 360,
+                    transition: "background .15s, border-color .15s",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+                    <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                      {bloque.titulo}
+                    </h3>
+                    <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
+                      {listaBloque.length}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {listaBloque.length === 0 ? (
+                      <div style={{ padding: "30px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
+                        {arrastrando ? "Suelta aquí" : "No hay registros en este bloque."}
+                      </div>
+                    ) : (
+                      listaBloque.map((row) => (
+                        <div key={row.id} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          <TarjetaWelcome
+                            row={row}
+                            onAbrir={onAbrirRegistro || ((id) => setDetalleId(id))}
+                            onArrastrar={setArrastrando}
+                            arrastrando={arrastrando}
+                            moviendo={moviendo}
+                          />
+                          {bloque.id === "SIN_NOTIFICAR" && (
+                            <button
+                              type="button"
+                              onClick={() => marcarNotificado(row.id)}
+                              style={{
+                                alignSelf: "stretch", padding: "8px 10px", borderRadius: 9,
+                                border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534",
+                                fontSize: 11, fontWeight: 800, cursor: "pointer",
+                              }}
+                            >
+                              ✓ Marcar como notificado
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 11.5, color: "#64748b" }}>
+            <b>Prioridad:</b> los registros de Welcome están ordenados por <b>Fecha de activación</b>, del más antiguo al más reciente.
+            <br />
+            <b>Drag &amp; drop:</b> arrastra cualquier tarjeta entre «Sin notificar» y «Notificados». El cambio actualiza <b>NOVEDADES</b> automáticamente; también puedes cambiarlo desde el select del detalle.
+          </div>
+        </div>
+        {detalleId && (
+          <PanelRegistros
+            soloDetalle
+            idInicial={detalleId}
+            etiquetaContexto="Detalle de Welcome"
+            onVolver={() => setDetalleId(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO: AGENDAMIENTOS  ·  Año → Mes → Calendario → detalle del día
+// ═══════════════════════════════════════════════════════════════════════════
+// Se agrupa por `fecha_agenda` (cuándo se le prometió al cliente la
+// instalación), no por fecha de registro. Año y mes se navegan con la misma
+// lista de botones que ya usa Registros; el último nivel es un calendario de
+// verdad — cada día muestra su cantidad entre paréntesis — para que de un
+// vistazo se vea la carga de trabajo de la semana.
+
+const DIAS_CORTOS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+/** Cantidad de días que tiene un mes (anio: "2026", mes: "08" o 8). */
+function diasEnMes(anio, mes) {
+  return new Date(Number(anio), Number(mes), 0).getDate();
+}
+
+/** Día de la semana (0=domingo) del día 1 de ese mes, calculado a mediodía
+ *  para que ningún desfase horario lo mueva al día anterior/siguiente. */
+function primerDiaSemanaMes(anio, mes) {
+  const mesStr = String(mes).padStart(2, "0");
+  return new Date(`${anio}-${mesStr}-01T12:00:00`).getDay();
+}
+
+function CalendarioMes({ anio, mes, mapaDias, color, fondo, borde, onDiaClick }) {
+  const totalDias = diasEnMes(anio, mes);
+  const offset = primerDiaSemanaMes(anio, mes);
+  const mesStr = String(mes).padStart(2, "0");
+  const hoyIso = fmtFechaEC.format(new Date());
+
+  const celdas = [];
+  for (let i = 0; i < offset; i++) celdas.push(null);
+  for (let d = 1; d <= totalDias; d++) celdas.push(d);
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
+        {DIAS_CORTOS_ES.map((d) => (
+          <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase" }}>
+            {d}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+        {celdas.map((d, i) => {
+          if (d === null) return <div key={`vacio-${i}`} />;
+          const iso = `${anio}-${mesStr}-${String(d).padStart(2, "0")}`;
+          const cantidad = mapaDias.get(iso) || 0;
+          const esHoy = iso === hoyIso;
+          const tieneAgendamientos = cantidad > 0;
+          return (
+            <button
+              key={iso}
+              type="button"
+              onClick={() => tieneAgendamientos && onDiaClick(iso)}
+              disabled={!tieneAgendamientos}
+              title={tieneAgendamientos ? `${cantidad} agendamiento${cantidad > 1 ? "s" : ""}` : "Sin agendamientos"}
+              style={{
+                aspectRatio: "1",
+                minHeight: 62,
+                borderRadius: 10,
+                border: `1px solid ${esHoy ? color : tieneAgendamientos ? borde : "#eef2f7"}`,
+                background: tieneAgendamientos ? fondo : "#fafbfc",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                cursor: tieneAgendamientos ? "pointer" : "default",
+                boxShadow: esHoy ? `0 0 0 2px ${color}33` : "none",
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: esHoy ? 900 : 700, color: esHoy ? color : tieneAgendamientos ? "#0f172a" : "#cbd5e1" }}>
+                {d}
+              </span>
+              {tieneAgendamientos && (
+                <span style={{ fontSize: 10.5, fontWeight: 800, color }}>({cantidad})</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Modal que lista los agendamientos de un día. Cada fila abre el detalle
+ *  completo del registro (reutilizando PanelRegistros). */
+function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, color }) {
+  return (
+    <div
+      onClick={onCerrar}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxWidth: 560, width: "94%", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+      >
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color, textTransform: "uppercase" }}>Agendamientos</div>
+            <h3 style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 900, color: "#111827" }}>{etiquetaDia(iso)}</h3>
+          </div>
+          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+
+        <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+          {registros.length === 0 && (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No hay agendamientos este día.</p>
+          )}
+          {registros.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => onAbrirRegistro(row.id)}
+              style={{
+                textAlign: "left", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 12,
+                padding: 12, cursor: "pointer", display: "flex", flexDirection: "column", gap: 4,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
+                  {row.nombre_cliente_completo || "Sin nombre"}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "#64748b" }}>
+                CI {row.numero_identificacion || "—"}
+                {row.turno_agendado && <> · Turno: {row.turno_agendado}</>}
+              </div>
+              {row.direccion_calles && (
+                <div style={{ fontSize: 11.5, color: "#64748b" }}>{row.direccion_calles}</div>
+              )}
+              {row.codigo_asesor && (
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>Asesor: {row.codigo_asesor}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TableroAgendamientos({ onVolver, nav, navegar }) {
+  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000);
+  const [diaModal, setDiaModal] = useState(null);   // iso del día abierto en la lista
+  const [detalleId, setDetalleId] = useState(null); // registro abierto en detalle completo
+
+  const color = "#ea580c", fondo = "#ffedd5", borde = "#fed7aa";
+
+  const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows, "fecha_agenda"), [rows]);
+
+  const anioSel = nav.anio ? anios.find((a) => a.anio === nav.anio) : null;
+  const mesSel = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
+
+  const mapaDias = useMemo(() => {
+    if (!mesSel) return new Map();
+    return new Map(mesSel.dias.map((d) => [d.iso, d.cantidad]));
+  }, [mesSel]);
+
+  const registrosDelDia = useMemo(() => {
+    if (!diaModal) return [];
+    return rows.filter((r) => fechaCalendarioEC(r.fecha_agenda) === diaModal);
+  }, [diaModal, rows]);
+
+  const nivel = mesSel ? "calendario" : anioSel ? "meses" : "anios";
+  const total = useMemo(() => rows.filter((r) => fechaCalendarioEC(r.fecha_agenda)).length, [rows]);
+
+  const miga = [
+    { texto: "Años", accion: () => navegar.aAnios(), activo: nivel === "anios" },
+    ...(anioSel ? [{ texto: anioSel.anio, accion: () => navegar.aMeses(anioSel.anio), activo: nivel === "meses" }] : []),
+    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => { }, activo: nivel === "calendario" }] : []),
+  ];
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#fff7ed)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color, cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color, textTransform: "uppercase" }}>
+            Backoffice · Agendamientos
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Agendamientos</h2>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color }}>
+                {total} agendamientos
+              </div>
+              <button
+                onClick={recargar}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+              >
+                Refrescar
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+            {miga.map((p, i) => (
+              <span key={p.texto} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                {i > 0 && <span style={{ color: "#cbd5e1", fontSize: 13 }}>›</span>}
+                <button
+                  onClick={p.accion}
+                  disabled={p.activo}
+                  style={{
+                    background: p.activo ? fondo : "transparent",
+                    border: `1px solid ${p.activo ? borde : "transparent"}`,
+                    borderRadius: 8, padding: "4px 11px", fontSize: 12.5,
+                    fontWeight: 800, color: p.activo ? color : "#64748b",
+                    cursor: p.activo ? "default" : "pointer",
+                  }}
+                >
+                  {p.texto}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: 22 }}>
+          {cargando && <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Cargando registros…</p>}
+
+          {error && (
+            <div style={{ padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+              {error}
+            </div>
+          )}
+
+          {!cargando && !error && nivel === "anios" && anios.length === 0 && (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Todavía no hay agendamientos con fecha para agrupar.</p>
+          )}
+
+          {!cargando && !error && nivel === "anios" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+              {anios.map((a) => (
+                <BotonNivel
+                  key={a.anio} titulo={a.anio} cantidad={a.cantidad}
+                  color={color} fondo={fondo} borde={borde}
+                  onClick={() => navegar.aMeses(a.anio)}
+                  ancho={240}
+                />
+              ))}
+            </div>
+          )}
+
+          {!cargando && !error && nivel === "meses" && anioSel && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+              {anioSel.meses.map((m) => (
+                <BotonNivel
+                  key={m.mes} titulo={MESES_ES[Number(m.mes) - 1]} cantidad={m.cantidad}
+                  color={color} fondo={fondo} borde={borde}
+                  onClick={() => navegar.aDias(anioSel.anio, m.mes)}
+                  ancho={240}
+                />
+              ))}
+            </div>
+          )}
+
+          {!cargando && !error && nivel === "calendario" && mesSel && (
+            <CalendarioMes
+              anio={anioSel.anio}
+              mes={mesSel.mes}
+              mapaDias={mapaDias}
+              color={color} fondo={fondo} borde={borde}
+              onDiaClick={(iso) => setDiaModal(iso)}
+            />
+          )}
+
+          {!cargando && !error && nivel === "anios" && sinFecha.length > 0 && (
+            <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12.5, color: "#92400e", fontWeight: 700 }}>
+              ⚠ {sinFecha.length} registro{sinFecha.length > 1 ? "s" : ""} sin fecha de agenda válida.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {diaModal && (
+        <ModalDiaAgendamientos
+          iso={diaModal}
+          registros={registrosDelDia}
+          color={color}
+          onCerrar={() => setDiaModal(null)}
+          onAbrirRegistro={(id) => { setDiaModal(null); setDetalleId(id); }}
+        />
+      )}
+
+      {detalleId && (
+        <PanelRegistros
+          soloDetalle
+          idInicial={detalleId}
+          etiquetaContexto="Detalle de Agendamiento"
+          onVolver={() => setDetalleId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SUBMÓDULO: VALIDACIÓN / REGULARIZACIÓN  (tablero kanban)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1504,9 +2740,9 @@ function useRegistrosBackoffice(limite = 1000) {
 // tiempo sin resolverse queda arriba de todo, que es donde tiene que mirar
 // primero quien valida.
 const BLOQUES_VALIDACION = [
-  { id: "SIN_REVISAR",     titulo: "Sin revisar",     color: "#475569", fondo: "#f1f5f9", borde: "#cbd5e1", valorBD: "" },
+  { id: "SIN_REVISAR", titulo: "Sin revisar", color: "#475569", fondo: "#f1f5f9", borde: "#cbd5e1", valorBD: "" },
   { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
-  { id: "REGULARIZADO",    titulo: "Regularizado",    color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
+  { id: "REGULARIZADO", titulo: "Regularizado", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
 ];
 
 // Normaliza para comparar: sin tildes, sin espacios sobrantes, en mayúsculas.
@@ -1566,17 +2802,21 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.3 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
           {row.nombre_cliente_completo || "Sin nombre"}
         </span>
         <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>#{row.id}</span>
       </div>
 
       <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 2, display: "flex", alignItems: "center", gap: 4 }}>
+          <span>📅</span> {row.fecha_registro_sistema ? String(row.fecha_registro_sistema).slice(0, 10) : "Sin fecha"}
+        </div>
         <div>CI {row.numero_identificacion || "—"}</div>
         {row.plan_contratado_final && <div>{row.plan_contratado_final}</div>}
         <div>Asesor: {row.codigo_asesor || "—"}</div>
       </div>
+
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
         <span style={{ fontSize: 10.5, fontWeight: 800, color: colorAntiguedad, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
@@ -1634,62 +2874,94 @@ function aplicarFiltroFecha(rows, f) {
   });
 }
 
+function BotonFiltroCard({ titulo, cantidad, color, fondo, borde, onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        textAlign: "left", background: "#fff",
+        border: `1px solid ${hover ? color : borde}`,
+        borderRadius: 10, padding: "10px 12px", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        boxShadow: hover ? `0 4px 12px ${color}15` : "none",
+        transition: "all .15s",
+        width: "100%"
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 800, color: "#1e293b", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {titulo}
+      </span>
+      <span style={{ fontSize: 11, fontWeight: 800, color, background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "2px 8px", flex: "none" }}>
+        ({cantidad})
+      </span>
+    </button>
+  );
+}
+
 function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
   const op = opcionesFechaDe(rows, filtro);
   const activo = Boolean(filtro.anio || filtro.mes || filtro.dia);
 
-  const estiloSelect = {
-    flex: 1, minWidth: 0, padding: "5px 7px", borderRadius: 7,
-    border: `1px solid ${activo ? borde : "#e2e8f0"}`,
-    background: "#fff", fontSize: 11, color: "#334155",
-    fontWeight: 700, outline: "none", cursor: "pointer",
-  };
+  // Determinamos el nivel de navegación actual
+  const nivel = filtro.dia ? "dia" : filtro.mes ? "mes" : filtro.anio ? "anio" : "inicio";
 
   return (
-    <div style={{ marginBottom: 12, padding: 9, borderRadius: 10, background: activo ? fondo : "#f8fafc", border: `1px solid ${activo ? borde : "#eef2f7"}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+    <div style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: activo ? fondo : "#f8fafc", border: `1px solid ${activo ? borde : "#eef2f7"}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: activo ? color : "#94a3b8", textTransform: "uppercase" }}>
-          📅 Filtrar por fecha
+          📅 Navegar fechas
         </span>
         {activo && (
           <button
             onClick={() => onCambiar(FILTRO_FECHA_VACIO)}
-            style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 10.5, fontWeight: 800, color, cursor: "pointer", textDecoration: "underline" }}
+            style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 10, fontWeight: 800, color, cursor: "pointer", textDecoration: "underline" }}
           >
             limpiar
           </button>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
-        <select
-          value={filtro.anio}
-          onChange={(e) => onCambiar({ anio: e.target.value, mes: "", dia: "" })}
-          style={estiloSelect}
-        >
-          <option value="">Año: todos</option>
-          {op.anios.map(([a, n]) => <option key={a} value={a}>{a} ({n})</option>)}
-        </select>
+      {/* Navegación (Breadcrumbs / Botón Volver) */}
+      {nivel !== "inicio" && (
+        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <button
+            onClick={() => {
+              if (nivel === "dia") onCambiar({ ...filtro, dia: "" });
+              else if (nivel === "mes") onCambiar({ ...filtro, mes: "" });
+              else if (nivel === "anio") onCambiar(FILTRO_FECHA_VACIO);
+            }}
+            style={{ background: "#fff", border: `1px solid ${borde}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 800, color, cursor: "pointer" }}
+          >
+            ← Volver
+          </button>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+            {filtro.anio}{filtro.mes && ` / ${MESES_ES[Number(filtro.mes) - 1]}`}{filtro.dia && ` / ${filtro.dia.split("-")[2]}`}
+          </span>
+        </div>
+      )}
 
-        <select
-          value={filtro.mes}
-          disabled={!filtro.anio}
-          onChange={(e) => onCambiar({ ...filtro, mes: e.target.value, dia: "" })}
-          style={{ ...estiloSelect, opacity: filtro.anio ? 1 : 0.5, cursor: filtro.anio ? "pointer" : "not-allowed" }}
-        >
-          <option value="">Mes: todos</option>
-          {op.meses.map(([m, n]) => <option key={m} value={m}>{MESES_ES[Number(m) - 1]} ({n})</option>)}
-        </select>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
+        {nivel === "inicio" && op.anios.map(([a, n]) => (
+          <BotonFiltroCard key={a} titulo={a} cantidad={n} color={color} fondo={fondo} borde={borde} onClick={() => onCambiar({ anio: a, mes: "", dia: "" })} />
+        ))}
 
-        <select
-          value={filtro.dia}
-          disabled={!filtro.mes}
-          onChange={(e) => onCambiar({ ...filtro, dia: e.target.value })}
-          style={{ ...estiloSelect, opacity: filtro.mes ? 1 : 0.5, cursor: filtro.mes ? "pointer" : "not-allowed" }}
-        >
-          <option value="">Día: todos</option>
-          {op.dias.map(([iso, n]) => <option key={iso} value={iso}>{etiquetaDia(iso)} ({n})</option>)}
-        </select>
+        {nivel === "anio" && op.meses.map(([m, n]) => (
+          <BotonFiltroCard key={m} titulo={MESES_ES[Number(m) - 1]} cantidad={n} color={color} fondo={fondo} borde={borde} onClick={() => onCambiar({ ...filtro, mes: m, dia: "" })} />
+        ))}
+
+        {nivel === "mes" && op.dias.map(([iso, n]) => (
+          <BotonFiltroCard key={iso} titulo={etiquetaDia(iso)} cantidad={n} color={color} fondo={fondo} borde={borde} onClick={() => onCambiar({ ...filtro, dia: iso })} />
+        ))}
+
+        {nivel === "dia" && (
+          <div style={{ padding: "10px", textAlign: "center", background: "#fff", border: `1px solid ${borde}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#1e293b" }}>
+            Filtrando día: {etiquetaDia(filtro.dia)}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1698,6 +2970,7 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
 function TableroValidacion({ onVolver, onAbrirRegistro }) {
   const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000);
   const [rows, setRows] = useState([]);
+  const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [arrastrando, setArrastrando] = useState(null);
   const [sobreBloque, setSobreBloque] = useState(null);
@@ -1749,12 +3022,18 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
   const soltarEn = async (bloqueDestino, e) => {
     e.preventDefault();
     setSobreBloque(null);
-    const id = Number(e.dataTransfer.getData("text/plain"));
-    setArrastrando(null);
-    if (!id) return;
 
-    const row = rows.find((r) => r.id === id);
+    const idStr = e.dataTransfer.getData("text/plain");
+    setArrastrando(null);
+    if (!idStr) return;
+
+    // Comparación como string: evita el mismatch number vs string
+    // que ocurre si `id` en la BD es BIGINT (Postgres lo devuelve como string).
+    const row = rows.find((r) => String(r.id) === idStr);
     if (!row) return;
+
+    const id = row.id; // usamos el id tal como viene en el row (string o number)
+
     if (bloqueDeRegistro(row) === bloqueDestino) return; // no se movió de bloque
 
     const destino = BLOQUES_VALIDACION.find((b) => b.id === bloqueDestino);
@@ -1762,7 +3041,9 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
 
     // Actualización optimista: la tarjeta salta al instante y, si el guardado
     // falla, vuelve a su sitio. Sin esto el kanban se siente lento.
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, estatus_regularizacion: destino.valorBD } : r)));
+    setRows((prev) =>
+      prev.map((r) => (String(r.id) === idStr ? { ...r, estatus_regularizacion: destino.valorBD } : r))
+    );
     setMoviendo(id);
     setAviso(null);
 
@@ -1776,7 +3057,9 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
       if (!r.ok || !j.success) throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
       setAviso(`✅ #${id} movido a «${destino.titulo}».`);
     } catch (err) {
-      setRows((prev) => prev.map((x) => (x.id === id ? { ...x, estatus_regularizacion: valorPrevio } : x)));
+      setRows((prev) =>
+        prev.map((x) => (String(x.id) === idStr ? { ...x, estatus_regularizacion: valorPrevio } : x))
+      );
       setAviso(`❌ No se pudo mover #${id}: ${err.message}. La tarjeta volvió a su bloque.`);
     } finally {
       setMoviendo(null);
@@ -1817,6 +3100,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
             Ordenadas de la más antigua a la más reciente. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
             <br />
             Cada bloque tiene <b>su propio filtro de fecha</b>: puedes ver «Sin revisar» de todo el año mientras «Por regularizar» muestra un solo día.
+            Los <b>contadores se actualizan automáticamente</b> con la búsqueda y los filtros seleccionados.
           </p>
         </div>
 
@@ -1831,6 +3115,113 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
             {error}
           </div>
         )}
+
+        {/* ── CONTADORES DINÁMICOS ─────────────────────────────────────────
+            Los contadores usan exactamente las listas que se muestran en cada
+            columna después de aplicar búsqueda + filtro de fecha. Por eso se
+            actualizan inmediatamente cada vez que cambia cualquier filtro.
+        */}
+        {(() => {
+          const conteosVisibles = BLOQUES_VALIDACION.map((bloque) => {
+            const todasDelBloque = porBloque[bloque.id] || [];
+            const filtro = filtrosFecha[bloque.id];
+            return aplicarFiltroFecha(todasDelBloque, filtro).length;
+          });
+
+          const totalVisible = conteosVisibles.reduce((sum, n) => sum + n, 0);
+
+          const contadorCards = [
+            {
+              titulo: "Registros totales",
+              cantidad: totalVisible,
+              color: "#047857",
+              fondo: "#f0fdf4",
+              borde: "#86efac",
+              detalle: "Registros visibles según los filtros",
+            },
+            {
+              titulo: "Sin revisar",
+              cantidad: conteosVisibles[0],
+              color: "#475569",
+              fondo: "#f1f5f9",
+              borde: "#cbd5e1",
+              detalle: "Pendientes de revisión",
+            },
+            {
+              titulo: "Por regularizar",
+              cantidad: conteosVisibles[1],
+              color: "#b45309",
+              fondo: "#fffbeb",
+              borde: "#fcd34d",
+              detalle: "Requieren regularización",
+            },
+            {
+              titulo: "Regularizados",
+              cantidad: conteosVisibles[2],
+              color: "#047857",
+              fondo: "#f0fdf4",
+              borde: "#86efac",
+              detalle: "Ya regularizados",
+            },
+          ];
+
+          return (
+            <div
+              style={{
+                padding: "0 18px 18px",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {contadorCards.map((card) => (
+                <div
+                  key={card.titulo}
+                  style={{
+                    padding: 18,
+                    borderRadius: 14,
+                    background: card.fondo,
+                    border: `1px solid ${card.borde}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: card.color,
+                      textTransform: "uppercase",
+                      letterSpacing: ".08em",
+                    }}
+                  >
+                    {card.titulo}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 32,
+                      lineHeight: 1,
+                      fontWeight: 900,
+                      color: card.color,
+                    }}
+                  >
+                    {card.cantidad}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 7,
+                      fontSize: 11.5,
+                      color: "#64748b",
+                    }}
+                  >
+                    {card.detalle}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
           {BLOQUES_VALIDACION.map((bloque) => {
@@ -1897,7 +3288,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
                       bloqueActual={bloque.id}
                       moviendo={moviendo === row.id}
                       onArrastrar={setArrastrando}
-                      onAbrir={onAbrirRegistro}
+                      onAbrir={(id) => setDetalleId(id)}
                     />
                   ))}
                 </div>
@@ -1905,6 +3296,14 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
             );
           })}
         </div>
+        {detalleId && (
+          <PanelRegistros
+            soloDetalle
+            idInicial={detalleId}
+            etiquetaContexto="Detalle de Validación / Regularización"
+            onVolver={() => setDetalleId(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -1954,18 +3353,18 @@ export default function VistaBackoffice() {
   //   ?m=validacion&a=2026&me=01&d=2026-01-06  → registros de ese día
   //   ?m=validacion&todos=1    → todos, sin filtro de fecha
   const nav = {
-    anio:  params.get("a"),
-    mes:   params.get("me"),
-    dia:   params.get("d"),
+    anio: params.get("a"),
+    mes: params.get("me"),
+    dia: params.get("d"),
     todos: params.get("todos") === "1",
   };
 
   const navegar = useMemo(() => ({
-    aAnios: ()          => setParams({ m: idActivo }),
-    aMeses: (a)         => setParams({ m: idActivo, a }),
-    aDias:  (a, me)     => setParams({ m: idActivo, a, me }),
-    aDia:   (a, me, d)  => setParams({ m: idActivo, a, me, d }),
-    aTodos: ()          => setParams({ m: idActivo, todos: "1" }),
+    aAnios: () => setParams({ m: idActivo }),
+    aMeses: (a) => setParams({ m: idActivo, a }),
+    aDias: (a, me) => setParams({ m: idActivo, a, me }),
+    aDia: (a, me, d) => setParams({ m: idActivo, a, me, d }),
+    aTodos: () => setParams({ m: idActivo, todos: "1" }),
   }), [idActivo, setParams]);
 
   const abrir = useCallback((id) => setParams({ m: id }), [setParams]);
@@ -1986,7 +3385,19 @@ export default function VistaBackoffice() {
   // Validación entra directo al tablero: el filtro de fechas vive dentro de
   // cada bloque, no antes del tablero.
   if (sub.id === "validacion") {
-    return <TableroValidacion onVolver={volver} onAbrirRegistro={abrirRegistro} />;
+    return <TableroValidacion onVolver={volver} />;
+  }
+
+  // Welcome: solo activos, prioridad por fecha de activación y
+  // discriminación por novedades_atc (vacío / NOTIFICADO).
+  if (sub.id === "welcome") {
+    return <TableroWelcome onVolver={volver} />;
+  }
+
+  // Agendamientos: se agrupa por fecha_agenda y el último nivel es un
+  // calendario real (no una lista plana), con clic por día → modal.
+  if (sub.id === "agendamientos") {
+    return <TableroAgendamientos onVolver={volver} nav={nav} navegar={navegar} />;
   }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;

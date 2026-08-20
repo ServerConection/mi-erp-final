@@ -8,8 +8,8 @@
 // ============================================================
 
 const express = require('express');
-const router  = express.Router();
-const pool    = require('../config/db');
+const router = express.Router();
+const pool = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 
 router.use(verificarToken, noAsesor);
@@ -80,7 +80,7 @@ router.get('/', async (req, res) => {
     );
 
     params.push(parseInt(limit), offset);
-    const limitParam  = params.length - 1;
+    const limitParam = params.length - 1;
     const offsetParam = params.length;
 
     // SELECT * : la vista muestra TODAS las columnas de la tabla.
@@ -175,7 +175,14 @@ const CAMPOS_EDITABLES = new Set([
   'detalle_regularizacion', 'fecha_regularizacion_atc', 'mes_regularizacion',
   'observacion_venta_original', 'observacion_gestion_cobranza',
   'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
-  'archivo_resumen', 'links_documentos',
+  'archivo_resumen',
+  'links_documentos',
+
+  // Agendamiento
+  'turno_agendado',
+  'fecha_agenda',
+  'mes_agenda',
+  'dia_abc_agenda',
 ]);
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -203,9 +210,9 @@ router.put('/:id', async (req, res) => {
       const raw = payload.fecha_regularizacion_atc;
 
       if (!raw) {
-        payload.fecha_regularizacion_atc   = null;
-        payload.año_regularizacion_atc     = null;
-        payload.mes_regularizacion_atc     = null;
+        payload.fecha_regularizacion_atc = null;
+        payload.año_regularizacion_atc = null;
+        payload.mes_regularizacion_atc = null;
         payload.dia_num_regularizacion_atc = null;
         payload.dia_abc_regularizacion_atc = null;
       } else {
@@ -219,11 +226,38 @@ router.put('/:id', async (req, res) => {
           });
         }
 
-        payload.fecha_regularizacion_atc   = soloFecha;
-        payload.año_regularizacion_atc     = d.getFullYear();
-        payload.mes_regularizacion_atc     = MESES[d.getMonth()];
+        payload.fecha_regularizacion_atc = soloFecha;
+        payload.año_regularizacion_atc = d.getFullYear();
+        payload.mes_regularizacion_atc = MESES[d.getMonth()];
         payload.dia_num_regularizacion_atc = d.getDate();
         payload.dia_abc_regularizacion_atc = DIAS[d.getDay()];
+      }
+    }
+
+    // ─── Manejo de fecha de agenda ────────────────────────────────
+    if ('fecha_agenda' in payload) {
+      const raw = payload.fecha_agenda;
+
+      // Si el usuario borra la fecha
+      if (!raw) {
+        payload.fecha_agenda = null;
+        payload.mes_agenda = null;
+        payload.dia_abc_agenda = null;
+      } else {
+        // El frontend envía YYYY-MM-DD
+        const soloFecha = String(raw).slice(0, 10);
+        const d = new Date(`${soloFecha}T00:00:00`);
+
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({
+            success: false,
+            error: 'fecha_agenda debe tener formato YYYY-MM-DD',
+          });
+        }
+
+        payload.fecha_agenda = soloFecha;
+        payload.mes_agenda = MESES[d.getMonth()];
+        payload.dia_abc_agenda = DIAS[d.getDay()];
       }
     }
 
@@ -254,9 +288,17 @@ router.put('/:id', async (req, res) => {
 
     res.json({ success: true, data: rows[0], mensaje: 'Registro actualizado correctamente' });
   } catch (e) {
-    // Se loguea el error real en servidor, se envía mensaje genérico al cliente
-    console.error('[BACKOFFICE] Error en PUT update:', e.message);
-    res.status(500).json({ success: false, error: 'Error interno al actualizar el registro' });
+    console.error(
+      '[BACKOFFICE] Error en PUT update:',
+      e
+    );
+
+    res.status(500).json({
+      success: false,
+      error: e.message || 'Error interno al actualizar el registro',
+      code: e.code || null,
+      detail: e.detail || null,
+    });
   }
 });
 

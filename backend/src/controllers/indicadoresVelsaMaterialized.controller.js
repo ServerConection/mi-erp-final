@@ -457,8 +457,15 @@ async function getIndicadoresDashboardVelsa(req, res) {
       HAVING SUM(total) > 0
       ORDER BY total DESC
     `;
+    // FIX (2026-08-19): COUNT(*) -> COUNT(DISTINCT mv.id_crm). Mismo bug que
+    // se corrigió hoy en Novonet (queryEmbudo, commit 3cee6a0): la MV hace
+    // FULL OUTER JOIN contra Jotform, que trae varias filas por negociación
+    // cuando el cliente contrató más de un servicio. COUNT(*) contaba esa
+    // negociación 2 o 3 veces en el embudo, aunque etapa_crm es un campo del
+    // lado CRM (uno solo por negociación) — por eso el embudo daba más que
+    // la tarjeta "Ventas Ingreso CRM" (399 vs 391).
     const qEmbudo = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.etapa_crm ORDER BY total DESC
@@ -892,8 +899,14 @@ async function getReporte180Velsa(req, res) {
       ${JOIN_JF_VELSA_MV}
       WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) ${filters}
     `;
+    // FIX (2026-08-19): mismo bug y mismo arreglo que qEmbudo de arriba y que
+    // queryEmbudoCRM de Novonet (commit 68a823b) — etapa_crm es del lado CRM,
+    // se dedupe por id_crm. qEmbudoJot (abajo) NO se toca: estado_venta es un
+    // campo del lado Jotform, y ahí sí interesa contar cada servicio/registro
+    // por separado (igual que ingresos_jot y el resto de métricas Jotform de
+    // este archivo, que ya usan COUNT(*) a propósito).
     const qEmbudoCRM = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(*)::int AS total
+      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV} WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.etapa_crm ORDER BY total DESC
     `;

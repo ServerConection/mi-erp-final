@@ -99,12 +99,15 @@ export default function WhatsAppSupportButton() {
 
   return (
     <>
-      {/* ── Botón flotante ─────────────────────────────────────────────── */}
+      {/* ── Botón flotante ─────────────────────────────────────────────────
+          Nota: se subió de bottom-6 a bottom-[92px] para dejar libre la
+          esquina inferior izquierda para el botón de Chat interno (ver
+          components/ChatTareasFloatingButtons.jsx). ─────────────────── */}
       <button
         type="button"
         onClick={() => setAbierto(true)}
         aria-label="Abrir chat de soporte por WhatsApp"
-        className="fixed bottom-6 left-6 z-[999] group"
+        className="fixed bottom-[92px] left-6 z-[999] group"
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 animate-ping" />
         <span

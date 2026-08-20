@@ -464,11 +464,19 @@ async function getIndicadoresDashboardVelsa(req, res) {
     // negociación 2 o 3 veces en el embudo, aunque etapa_crm es un campo del
     // lado CRM (uno solo por negociación) — por eso el embudo daba más que
     // la tarjeta "Ventas Ingreso CRM" (399 vs 391).
+    //
+    // FIX (2026-08-20): el GROUP BY usaba mv.etapa_crm crudo (sin normalizar),
+    // así que "Gestión Diaria" y "gestión diaria " (mayúscula/espacio distinto)
+    // caían en dos filas separadas y el embudo mostraba la misma etapa
+    // duplicada. shared/etapas.js ya deja la regla clara: la comparación de
+    // etapas SIEMPRE es UPPER+TRIM en todo el resto del ERP; el embudo de
+    // Novonet no tenía este problema porque vw_bitrix_novonet ya normaliza
+    // la etapa en la vista. Acá se normaliza en la query.
     const qEmbudo = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.etapa_crm ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
     `;
     const qPorDia = `
       SELECT
@@ -905,15 +913,20 @@ async function getReporte180Velsa(req, res) {
     // campo del lado Jotform, y ahí sí interesa contar cada servicio/registro
     // por separado (igual que ingresos_jot y el resto de métricas Jotform de
     // este archivo, que ya usan COUNT(*) a propósito).
+    //
+    // FIX (2026-08-20): mismo arreglo de normalización (UPPER+TRIM) que
+    // qEmbudo — ver la nota completa ahí. Se aplica igual a estado_venta en
+    // qEmbudoJot: es el mismo tipo de columna de texto libre y le pasa lo
+    // mismo si llega con distinto uso de mayúsculas o un espacio de más.
     const qEmbudoCRM = `
-      SELECT COALESCE(mv.etapa_crm,'SIN ETAPA') AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV} WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.etapa_crm ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
     `;
     const qEmbudoJot = `
-      SELECT COALESCE(mv.estado_venta,'SIN ESTADO') AS etapa, COUNT(*)::int AS total
+      SELECT UPPER(TRIM(COALESCE(mv.estado_venta,'SIN ESTADO'))) AS etapa, COUNT(*)::int AS total
       FROM ${MV} WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.estado_venta ORDER BY total DESC
+      GROUP BY UPPER(TRIM(COALESCE(mv.estado_venta,'SIN ESTADO'))) ORDER BY total DESC
     `;
 
     // ─────────────────────────────────────────────────────────────────────

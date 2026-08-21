@@ -505,8 +505,16 @@ export default function VistaAsesorVelsa() {
       gestionables:    base.reduce((a, r) => a + Number(r.gestionables || 0), 0),
       ingresos_crm:    base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
       ingresos_jot:    base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
-      activas_mes:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
-      activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
+      // FIX 2026-08-18: "real_mes" YA incluye el backlog (activadas este mes sin
+      // importar cuándo se registraron). "Activas mes" ahora muestra SOLO lo
+      // activado Y registrado este mes (real_mes − backlog = activa_mes);
+      // "Activas + backlog" muestra el total real_mes tal cual (activa_mes +
+      // backlog), sin volver a sumarle el backlog encima (antes se contaba doble).
+      activas_mes:     Math.max(0,
+        base.reduce((a, r) => a + Number(r.real_mes || 0), 0) -
+        base.reduce((a, r) => a + Number(r.backlog  || 0), 0)
+      ),
+      activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
       regularizacion:  base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
       pct_descarte:    (base.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
       pct_efectividad: (base.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),

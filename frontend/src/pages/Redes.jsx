@@ -1,5 +1,5 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  Redes.jsx — Monitoreo Redes VELSA NETLIFE                              ║
+// ║  Redes.jsx — Monitoreo Redes NOVONET                                    ║
 // ║  ✅ TODO el código original preservado                                  ║
 // ║  ✅ + Filtros globales Canal en todos los tabs                          ║
 // ║  ✅ + Labels siempre visibles en gráficos                               ║
@@ -1629,6 +1629,81 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
 // NO usa ORIGEN_A_CANAL_INV / GRUPO_A_ORIGENES de arriba — es un catálogo
 // nuevo, editable, independiente del mapeo fijo que ya usan Metas y Forecast.
 // ─────────────────────────────────────────────────────────────────────────────
+function InversionForm({ origenesDisponibles, onGuardado }) {
+  const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
+  const [origen, setOrigen] = useState("");
+  const [monto, setMonto] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const guardar = () => {
+    if (!fecha || !origen || monto === "") {
+      setMsg({ tipo: "error", texto: "Completa fecha, origen y monto" });
+      return;
+    }
+    setGuardando(true);
+    setMsg(null);
+    fetch(apiUrl("inversion", ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ fecha, origen, monto_usd: Number(monto) }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setMsg({ tipo: "ok", texto: "Inversión guardada" });
+          setMonto("");
+          onGuardado?.();
+        } else {
+          setMsg({ tipo: "error", texto: `${d.message || "Error al guardar"}${d.codigo ? ` (codigo: ${d.codigo})` : ""}` });
+        }
+      })
+      .catch((e) => setMsg({ tipo: "error", texto: e.message }))
+      .finally(() => setGuardando(false));
+  };
+
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>💰 Cargar inversión / pauta diaria (manual)</h3>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div>
+          <label style={{ display: "block", fontSize: 11, color: C.muted, marginBottom: 4 }}>Fecha</label>
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
+                 style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 11, color: C.muted, marginBottom: 4 }}>Origen</label>
+          <select value={origen} onChange={(e) => setOrigen(e.target.value)}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, minWidth: 220 }}>
+            <option value="">— Selecciona —</option>
+            {origenesDisponibles.map((o) => (
+              <option key={o.origen} value={o.origen}>{o.origen}{o.agencia ? ` (${o.agencia})` : ""}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 11, color: C.muted, marginBottom: 4 }}>Monto USD</label>
+          <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}
+                 placeholder="0.00"
+                 style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, width: 120 }} />
+        </div>
+        <button onClick={guardar} disabled={guardando}
+          style={{ background: C.primary, color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: guardando ? "default" : "pointer", opacity: guardando ? 0.6 : 1 }}>
+          {guardando ? "Guardando…" : "Guardar"}
+        </button>
+        {msg && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: msg.tipo === "ok" ? C.success : C.danger }}>{msg.texto}</span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+        Usa esto para cargar a mano la inversión de un día mientras no haya sync automático por API (ej. Vidika, hasta que
+        tengamos su apikey de WinTracker) — elige cualquier origen ya asignado a la agencia y registra el gasto total del día
+        ahí. Se guarda una sola línea por (fecha + origen): si ya existe, se actualiza el monto.
+      </div>
+    </div>
+  );
+}
+
 function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const [origenes, setOrigenes] = useState([]);
   const [resumen, setResumen] = useState([]);
@@ -1636,11 +1711,19 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const [error, setError] = useState(null);
   const [guardandoOrigen, setGuardandoOrigen] = useState(null);
   const [borradores, setBorradores] = useState({});
+  const [catalogoDisponible, setCatalogoDisponible] = useState(true);
 
   const cargarOrigenes = () => {
     fetch(apiUrl("agencias", ""), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(d.message); })
+      .then((d) => {
+        if (d.success) {
+          setOrigenes(d.origenes || []);
+          if (d.catalogoDisponible === false) setCatalogoDisponible(false);
+        } else {
+          setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
+        }
+      })
       .catch((e) => setError(e.message));
   };
 
@@ -1651,7 +1734,14 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     fetch(apiUrl("resumen-agencias", params.toString()), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(d.message); })
+      .then((d) => {
+        if (d.success) {
+          setResumen(d.porAgencia || []);
+          if (d.catalogoDisponible === false) setCatalogoDisponible(false);
+        } else {
+          setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1675,7 +1765,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
           cargarOrigenes();
           onCambio?.();
         } else {
-          setError(d.message || "Error al asignar agencia");
+          setError(`${d.message || "Error al asignar agencia"}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
         }
       })
       .catch((e) => setError(e.message))
@@ -1688,8 +1778,16 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
         ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix). Puedes escribir el nombre de una agencia
         nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
       </div>
+      {!catalogoDisponible && (
+        <div style={{ fontSize: 12, color: "#92400e", marginBottom: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
+          ⚠️ Todavía no se puede asignar agencias ni cargar inversión: falta correr <code>CATALOGO_AGENCIAS_NOVONET.sql</code> en la
+          base de datos. Los leads de abajo sí son reales — solo faltan agrupados por agencia hasta que corras ese script.
+        </div>
+      )}
       {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>{error}</div>}
       {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
+
+      <InversionForm origenesDisponibles={origenes} onGuardado={() => { cargarOrigenes(); onCambio?.(); }} />
 
       <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20, overflowX: "auto" }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Orígenes y su agencia asignada</h3>
@@ -1758,6 +1856,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
             <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
               <th style={{ padding: "8px 6px" }}>Agencia</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Gestionables</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>% Venta Subida</th>
@@ -1775,6 +1874,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
                     : row.agencia}
                 </td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.gestionables)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.pct_venta_subida)}</td>
@@ -1784,7 +1884,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
               </tr>
             ))}
             {resumen.length === 0 && !loading && (
-              <tr><td colSpan={8} style={{ padding: 12, color: C.muted, textAlign: "center" }}>Sin datos en este rango de fechas.</td></tr>
+              <tr><td colSpan={9} style={{ padding: 12, color: C.muted, textAlign: "center" }}>Sin datos en este rango de fechas.</td></tr>
             )}
           </tbody>
         </table>
@@ -1837,7 +1937,7 @@ export default function Redes() {
             <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
             <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase" style={{ background: `${C.success}15`, color: C.success }}>● Live</span>
           </div>
-          <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>VELSA NETLIFE — Actualización cada 15 minutos</p>
+          <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>NOVONET — Actualización cada 15 minutos</p>
           <div className="flex flex-wrap gap-1.5 ml-12 mt-2">
             {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg]) => (
               <span key={canal} className="text-[8px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"

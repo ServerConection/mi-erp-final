@@ -635,6 +635,7 @@ function TabAgencias({ fechaDesde, fechaHasta, canalesSel, refreshTick, onCambio
             <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
               <th style={{ padding: "8px 6px" }}>Agencia</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Gestionables</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Descartados</th>
@@ -653,6 +654,7 @@ function TabAgencias({ fechaDesde, fechaHasta, canalesSel, refreshTick, onCambio
                     : row.agencia}
                 </td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.gestionables)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.danger }}>{fmtNum(row.descartados)}</td>

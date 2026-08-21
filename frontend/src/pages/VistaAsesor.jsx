@@ -593,6 +593,7 @@ export default function VistaAsesor() {
     const base = asesoresEnriquecidos;
     const totalJot = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
     const totalActivas = base.reduce((a, r) => a + Number(r.real_mes || 0), 0);
+    const totalBacklog = base.reduce((a, r) => a + Number(r.backlog || 0), 0);
     const totalTarjeta = base.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
     const totalGest    = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
 
@@ -608,8 +609,13 @@ export default function VistaAsesor() {
       gestionables:   totalGest,
       ingresos_crm:   base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
       ingresos_jot:   totalJot,
-      activas_mes:    totalActivas,
-      activas_tot:    base.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
+      // FIX 2026-08-18: "real_mes" (totalActivas) YA incluye el backlog (activadas
+      // este mes sin importar cuándo se registraron). "Activas mes" ahora muestra
+      // SOLO lo activado Y registrado este mes (real_mes − backlog = activa_mes);
+      // "Activas + backlog" muestra el total real_mes tal cual (activa_mes +
+      // backlog), sin volver a sumarle el backlog encima (antes se contaba doble).
+      activas_mes:    Math.max(0, totalActivas - totalBacklog),
+      activas_tot:    totalActivas,
       regularizacion: base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
       // Nuevos
       pct_descarte:    pctDescarte,

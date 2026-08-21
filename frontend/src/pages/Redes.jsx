@@ -1711,11 +1711,19 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const [error, setError] = useState(null);
   const [guardandoOrigen, setGuardandoOrigen] = useState(null);
   const [borradores, setBorradores] = useState({});
+  const [catalogoDisponible, setCatalogoDisponible] = useState(true);
 
   const cargarOrigenes = () => {
     fetch(apiUrl("agencias", ""), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`); })
+      .then((d) => {
+        if (d.success) {
+          setOrigenes(d.origenes || []);
+          if (d.catalogoDisponible === false) setCatalogoDisponible(false);
+        } else {
+          setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
+        }
+      })
       .catch((e) => setError(e.message));
   };
 
@@ -1726,7 +1734,14 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     fetch(apiUrl("resumen-agencias", params.toString()), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`); })
+      .then((d) => {
+        if (d.success) {
+          setResumen(d.porAgencia || []);
+          if (d.catalogoDisponible === false) setCatalogoDisponible(false);
+        } else {
+          setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1750,7 +1765,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
           cargarOrigenes();
           onCambio?.();
         } else {
-          setError(d.message || "Error al asignar agencia");
+          setError(`${d.message || "Error al asignar agencia"}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`);
         }
       })
       .catch((e) => setError(e.message))
@@ -1763,6 +1778,12 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
         ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix). Puedes escribir el nombre de una agencia
         nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
       </div>
+      {!catalogoDisponible && (
+        <div style={{ fontSize: 12, color: "#92400e", marginBottom: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
+          ⚠️ Todavía no se puede asignar agencias ni cargar inversión: falta correr <code>CATALOGO_AGENCIAS_NOVONET.sql</code> en la
+          base de datos. Los leads de abajo sí son reales — solo faltan agrupados por agencia hasta que corras ese script.
+        </div>
+      )}
       {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>{error}</div>}
       {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
 
@@ -1835,6 +1856,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
             <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
               <th style={{ padding: "8px 6px" }}>Agencia</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
+              <th style={{ padding: "8px 6px", textAlign: "right" }}>Gestionables</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>% Venta Subida</th>
@@ -1852,6 +1874,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
                     : row.agencia}
                 </td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.gestionables)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.pct_venta_subida)}</td>
@@ -1861,7 +1884,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
               </tr>
             ))}
             {resumen.length === 0 && !loading && (
-              <tr><td colSpan={8} style={{ padding: 12, color: C.muted, textAlign: "center" }}>Sin datos en este rango de fechas.</td></tr>
+              <tr><td colSpan={9} style={{ padding: 12, color: C.muted, textAlign: "center" }}>Sin datos en este rango de fechas.</td></tr>
             )}
           </tbody>
         </table>

@@ -940,18 +940,36 @@ const {
   //    todavía no se asignó).
   const getAgenciasCanal = async (req, res) => {
     try {
-      const result = await pool.query(
-        `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
-                COUNT(*) AS n_leads,
-                MAX(m.agencia) AS agencia
-         FROM public.mestra_bitrix mb
-         LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
-         WHERE mb.j_id_bitrix IS NULL
-           AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
-         GROUP BY NULLIF(BTRIM(mb.b_origen), '')
-         ORDER BY n_leads DESC`
-      );
-      res.json({ success: true, origenes: result.rows });
+      let result;
+      let catalogoDisponible = true;
+      try {
+        result = await pool.query(
+          `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
+                  COUNT(*) AS n_leads,
+                  MAX(m.agencia) AS agencia
+           FROM public.mestra_bitrix mb
+           LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
+           WHERE mb.j_id_bitrix IS NULL
+             AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
+           GROUP BY NULLIF(BTRIM(mb.b_origen), '')
+           ORDER BY n_leads DESC`
+        );
+      } catch (err) {
+        if (err.code !== '42P01') throw err;
+        catalogoDisponible = false;
+        console.warn('⚠️  getAgenciasCanal: novonet_lineas_canal no existe todavía (corre CATALOGO_AGENCIAS_NOVONET.sql) — orígenes sin agencia por ahora.');
+        result = await pool.query(
+          `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
+                  COUNT(*) AS n_leads,
+                  NULL AS agencia
+           FROM public.mestra_bitrix mb
+           WHERE mb.j_id_bitrix IS NULL
+             AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
+           GROUP BY NULLIF(BTRIM(mb.b_origen), '')
+           ORDER BY n_leads DESC`
+        );
+      }
+      res.json({ success: true, origenes: result.rows, catalogoDisponible });
     } catch (error) {
       console.error('Error en getAgenciasCanal:', error);
       res.status(500).json({ success: false, message: 'Error al obtener catálogo de agencias', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
@@ -1073,10 +1091,16 @@ const {
     try {
       const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
 
-      const leadsRes = await pool.query(
-        `SELECT
-           COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+      // Leads/gestionables/ventas SIEMPRE deben poder verse, con o sin el
+      // catálogo novonet_lineas_canal (que puede no existir todavía si la
+      // migración CATALOGO_AGENCIAS_NOVONET.sql no corrió en esta base) —
+      // si el JOIN falla por tabla inexistente (42P01), reintenta sin él:
+      // todo cae en "SIN AGENCIA ASIGNADA" pero el conteo real no se pierde.
+      const leadsQuery = (conCatalogo) => `
+        SELECT
+           ${conCatalogo ? "COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')" : "'SIN AGENCIA ASIGNADA'"} AS agencia,
            COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
+           COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS gestionables,
            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
              OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%'
              OR mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%'
@@ -1085,26 +1109,42 @@ const {
            ) AS atc,
            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida
          FROM public.mestra_bitrix mb
-         LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
+         ${conCatalogo ? "LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')" : ""}
          WHERE mb.j_id_bitrix IS NULL
            AND mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-         GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')
-         ORDER BY n_leads DESC`,
-        [fechaDesde, fechaHasta]
-      );
+         GROUP BY ${conCatalogo ? "COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')" : "1"}
+         ORDER BY n_leads DESC`;
 
-      const inversionRes = await pool.query(
-        `SELECT
-           COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
-           SUM(i.monto_usd) AS inversion
-         FROM novonet_inversion_redes i
-         LEFT JOIN novonet_lineas_canal m ON m.origen = i.origen
-         WHERE i.fecha BETWEEN $1 AND $2
-         GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')`,
-        [fechaDesde, fechaHasta]
-      );
-      const inversionPorAgencia = {};
-      inversionRes.rows.forEach((r) => { inversionPorAgencia[r.agencia] = Number(r.inversion || 0); });
+      let leadsRes;
+      let catalogoDisponible = true;
+      try {
+        leadsRes = await pool.query(leadsQuery(true), [fechaDesde, fechaHasta]);
+      } catch (err) {
+        if (err.code !== '42P01') throw err;
+        catalogoDisponible = false;
+        console.warn('⚠️  getResumenPorAgencia: novonet_lineas_canal no existe todavía (corre CATALOGO_AGENCIAS_NOVONET.sql) — mostrando leads sin desglose por agencia.');
+        leadsRes = await pool.query(leadsQuery(false), [fechaDesde, fechaHasta]);
+      }
+
+      let inversionPorAgencia = {};
+      if (catalogoDisponible) {
+        try {
+          const inversionRes = await pool.query(
+            `SELECT
+               COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA') AS agencia,
+               SUM(i.monto_usd) AS inversion
+             FROM novonet_inversion_redes i
+             LEFT JOIN novonet_lineas_canal m ON m.origen = i.origen
+             WHERE i.fecha BETWEEN $1 AND $2
+             GROUP BY COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')`,
+            [fechaDesde, fechaHasta]
+          );
+          inversionRes.rows.forEach((r) => { inversionPorAgencia[r.agencia] = Number(r.inversion || 0); });
+        } catch (err) {
+          if (err.code !== '42P01') throw err;
+          console.warn('⚠️  getResumenPorAgencia: novonet_inversion_redes no existe todavía — inversión queda en 0.');
+        }
+      }
 
       const porAgencia = leadsRes.rows.map((row) => {
         const n_leads = Number(row.n_leads || 0);
@@ -1113,6 +1153,7 @@ const {
         return {
           agencia: row.agencia,
           n_leads,
+          gestionables: Number(row.gestionables || 0),
           atc: Number(row.atc || 0),
           venta_subida,
           pct_venta_subida: n_leads > 0 ? +((venta_subida / n_leads) * 100).toFixed(1) : 0,
@@ -1122,7 +1163,7 @@ const {
         };
       });
 
-      res.json({ success: true, porAgencia });
+      res.json({ success: true, porAgencia, catalogoDisponible });
     } catch (error) {
       console.error('Error en getResumenPorAgencia:', error);
       res.status(500).json({ success: false, message: 'Error al obtener resumen por agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });

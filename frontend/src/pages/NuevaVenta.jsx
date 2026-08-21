@@ -8,22 +8,22 @@ import { useNavigate } from "react-router-dom";
 const API = import.meta.env.VITE_API_URL;
 
 // ─── Catálogos exactos del proceso comercial ─────────────────────────────────
-const DISTRIBUIDORES  = ["NOVONET", "VELSA"];
-const BIOMETRICO      = ["FALTA BIOMÉTRICO", "FIRMÓ BIOMÉTRICO"];
-const TIPOS_CLI       = ["NATURAL", "JURÍDICO"];
-const TIPOS_DOC       = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"];
-const GENEROS         = ["HOMBRE", "MUJER"];
-const ESTADOS_CIV     = ["SOLTERO/A", "CASADO/A", "DIVORCIADO/A", "VIUDO/A", "UNIÓN LIBRE"];
-const TIPO_INMUEBLE   = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA"];
+const DISTRIBUIDORES = ["NOVONET", "VELSA"];
+const BIOMETRICO = ["FALTA BIOMÉTRICO", "FIRMÓ BIOMÉTRICO"];
+const TIPOS_CLI = ["NATURAL", "JURÍDICO"];
+const TIPOS_DOC = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"];
+const GENEROS = ["HOMBRE", "MUJER"];
+const ESTADOS_CIV = ["SOLTERO/A", "CASADO/A", "DIVORCIADO/A", "VIUDO/A", "UNIÓN LIBRE"];
+const TIPO_INMUEBLE = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA"];
 // Ya no se vende con motivo "discapacidad" — única opción afirmativa es 3ra edad (>=65 años)
-const DESCUENTO_3ERA  = ["NO", "SÍ — POR 3RA EDAD"];
-const TIPO_VIV        = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
-const FORMAS_PAGO     = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
+const DESCUENTO_3ERA = ["NO", "SÍ — POR 3RA EDAD"];
+const TIPO_VIV = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
+const FORMAS_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 // Tipos de plan = pestañas del Excel de precios + venta de solo servicio adicional
-const SOLO_ADICIONAL  = "SOLO SERVICIO ADICIONAL";
-const TIPOS_PLAN      = ["HOME", "TERCERA EDAD", "GAMER", "PRO", "PYME", SOLO_ADICIONAL];
+const SOLO_ADICIONAL = "SOLO SERVICIO ADICIONAL";
+const TIPOS_PLAN = ["HOME", "TERCERA EDAD", "GAMER", "PRO", "PYME", SOLO_ADICIONAL];
 // Formas de pago que activan cada promoción del catálogo (EFECTIVO no tiene promo)
-const PAGO_TC   = "TARJETA DE CRÉDITO";
+const PAGO_TC = "TARJETA DE CRÉDITO";
 const PAGOS_CTA = ["CUENTA CORRIENTE", "CUENTA AHORROS"];
 const ORIGENES_FALLBACK = [
   "BASE 593-995211968", "API 484", "BASE 593-979083368", "BASE 593-992827793",
@@ -57,13 +57,13 @@ const CIUDADES_ECUADOR = [
   "NARANJAL", "VINCES", "PLAYAS", "HUAQUILLAS", "YANTZAZA", "PUYO",
   "MONTUBIO", "OTAVALO", "CATAMAYO", "PASAJE", "JIPIJAPA", "TENA"
 ];
-const CICLOS_FACT     = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
-const BENEFICIOS_LEY  = ["SI", "NO"];
+const CICLOS_FACT = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
+const BENEFICIOS_LEY = ["SI", "NO"];
 
 // Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
 const SUPERVISORES = {
   NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAY"],
-  VELSA:   ["ALEXANDRA PACHECO", "DARIANA"],
+  VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
 };
 
 // Edad mínima para aplicar descuento de 3ra edad
@@ -95,7 +95,7 @@ const INIT = {
   forma_pago: "",
   tipo_plan: "", plan_contratado_final: "",
   servicios_digitales: "", servicio_adicional: "",
-  origen_venta: "", turno: "",
+  origen_venta: "",
   observacion_venta: "",
   // ── Datos para el resumen de venta auto-generado ──
   precio_regular_sin_imp: "", precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
@@ -143,19 +143,19 @@ function generarResumenVenta(form, user) {
 }
 
 // ─── Colores Netlife ──────────────────────────────────────────────────────────
-const O  = "#FF6B00";
+const O = "#FF6B00";
 const OL = "#FF8533";
 const OP = "#FFF3E8";
 const OB = "#FFCBA0";
 
 // ─── Secciones del formulario ────────────────────────────────────────────────
 const SECCIONES = [
-  { id: "asesor",    label: "Datos del asesor",     icon: "🧑‍💼", color: "#FF6B00" },
-  { id: "cliente",   label: "Datos del cliente",    icon: "👤",  color: "#FF8533" },
-  { id: "direccion", label: "Dirección",            icon: "📍",  color: "#E85D00" },
-  { id: "contacto",  label: "Contacto",             icon: "📞",  color: "#FF6B00" },
-  { id: "plan",      label: "Plan y pago",          icon: "📡",  color: "#FF8533" },
-  { id: "cierre",    label: "Cierre y origen",      icon: "✅",  color: "#E85D00" },
+  { id: "asesor", label: "Datos del asesor", icon: "🧑‍💼", color: "#FF6B00" },
+  { id: "cliente", label: "Datos del cliente", icon: "👤", color: "#FF8533" },
+  { id: "direccion", label: "Dirección", icon: "📍", color: "#E85D00" },
+  { id: "contacto", label: "Contacto", icon: "📞", color: "#FF6B00" },
+  { id: "plan", label: "Plan y pago", icon: "📡", color: "#FF8533" },
+  { id: "cierre", label: "Cierre y origen", icon: "✅", color: "#E85D00" },
 ];
 
 // ─── Estilos ─────────────────────────────────────────────────────────────────
@@ -356,7 +356,7 @@ function Row({ label, required, children }) {
   );
 }
 
-function FIn({ value, onChange, placeholder, type = "text", readOnly = false, list }) {
+function FIn({ value, onChange, placeholder, type = "text", readOnly = false, list, onBlur, disabled }) {
   const handleChange = (e) => {
     const nextValue = type === "file" ? e.target.files?.[0] : e.target.value;
     onChange?.(typeof nextValue === "string" ? nextValue.toUpperCase() : nextValue);
@@ -366,6 +366,7 @@ function FIn({ value, onChange, placeholder, type = "text", readOnly = false, li
     <input
       className="nv-input" type={type}
       value={value} onChange={handleChange}
+      onBlur={onBlur} disabled={disabled}
       placeholder={placeholder} readOnly={readOnly}
       list={list}
       style={readOnly ? { background: "#F5EDE6", color: "#B07A5A", cursor: "not-allowed" } : {}}
@@ -490,26 +491,27 @@ function Seccion({ num, icon, label, children }) {
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function NuevaVenta() {
   const navigate = useNavigate();
-  const [form, setForm]     = useState(INIT);
-  const [errs, setErrs]     = useState({});
-  const [loading, setLoad]  = useState(null); // null | "CARGAR" | "BORRADOR"
-  const [alert, setAlert]   = useState(null);
-  const [success, setSucc]  = useState(null);
+  const [form, setForm] = useState(INIT);
+  const [errs, setErrs] = useState({});
+  const [loading, setLoad] = useState(null); // null | "CARGAR" | "BORRADOR"
+  const [alert, setAlert] = useState(null);
+  const [success, setSucc] = useState(null);
   const [uploading, setUploading] = useState({}); // { campo: true }
   const [uploadErr, setUploadErr] = useState({}); // { campo: {nombreArchivo,msg,ref,puedeReintentar} }
   const uploadFilesRef = useRef({});              // { campo: File } — para reintentar sin re-seleccionar
   const [resumenEditado, setResumenEditado] = useState(false);
-  const [catalogo, setCatalogo]   = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
+  const [catalogo, setCatalogo] = useState([]);   // catálogo mensual de planes (Excel cargado por admin)
   const [vigenciaCat, setVigenciaCat] = useState(null);
   const [validandoBitrix, setValidandoBitrix] = useState(false);
   const [bitrixOrigenes, setBitrixOrigenes] = useState([]);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
-  const user    = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
-  const token   = localStorage.getItem("token");
+  const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
+  const token = localStorage.getItem("token");
 
   // Si la URL trae ?id=123, estamos continuando un borrador propio
   const borradorId = new URLSearchParams(window.location.search).get("id");
+  const [origenVentaLocked, setOrigenVentaLocked] = useState(false);
 
   useEffect(() => {
     if (!borradorId) return;
@@ -530,13 +532,13 @@ export default function NuevaVenta() {
             // formulario (por el mapeo hecho en handleSubmit). Sin este segundo
             // paso, estos campos siempre volvían vacíos al continuar un borrador.
             const RENOMBRADOS_DB_A_FORM = {
-              clausulas:               'biometrico',
-              tipo_vivienda:           'regimen_vivienda',
-              regimen_vivienda:        'tipo_inmueble',
+              clausulas: 'biometrico',
+              tipo_vivienda: 'regimen_vivienda',
+              regimen_vivienda: 'tipo_inmueble',
               direccion_manzana_villa: 'manzana_villa',
-              telf_celular_2:          'telf_instalacion',
-              tipo_contrato:           'servicio_adicional',
-              novedades_atc:           'observacion_venta',
+              telf_celular_2: 'telf_instalacion',
+              tipo_contrato: 'servicio_adicional',
+              novedades_atc: 'observacion_venta',
             };
             Object.entries(RENOMBRADOS_DB_A_FORM).forEach(([dbCol, formKey]) => {
               if (data[dbCol] !== undefined && data[dbCol] !== null) next[formKey] = String(data[dbCol]);
@@ -620,7 +622,7 @@ export default function NuevaVenta() {
     catalogo
       .filter(c => c.tipo_plan === form.tipo_plan && c.plan_base === form.plan_contratado_final)
       .map(c => c.empaquetado),
-  [catalogo, form.tipo_plan, form.plan_contratado_final]);
+    [catalogo, form.tipo_plan, form.plan_contratado_final]);
 
   // Registro exacto seleccionado (tipo + plan + empaquetado) → de aquí salen los precios
   const opcionSel = useMemo(() =>
@@ -629,7 +631,7 @@ export default function NuevaVenta() {
       c.plan_base === form.plan_contratado_final &&
       c.empaquetado === form.servicios_digitales
     ) || null,
-  [catalogo, form.tipo_plan, form.plan_contratado_final, form.servicios_digitales]);
+    [catalogo, form.tipo_plan, form.plan_contratado_final, form.servicios_digitales]);
 
   // Si el plan tiene un solo empaquetado, se selecciona automáticamente
   useEffect(() => {
@@ -647,18 +649,18 @@ export default function NuevaVenta() {
     const fmt = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? "" : Number(v).toFixed(2);
     let precio_promocion = "", meses_promocion = "", porcentaje_descuento = "";
     if (form.forma_pago === PAGO_TC && opcionSel.tc_pvp != null && Number(opcionSel.tc_dsto) > 0) {
-      precio_promocion     = fmt(opcionSel.tc_pvp);
-      meses_promocion      = opcionSel.tc_facturas != null ? String(opcionSel.tc_facturas) : "";
+      precio_promocion = fmt(opcionSel.tc_pvp);
+      meses_promocion = opcionSel.tc_facturas != null ? String(opcionSel.tc_facturas) : "";
       porcentaje_descuento = String(Math.round(Number(opcionSel.tc_dsto) * 100));
     } else if (PAGOS_CTA.includes(form.forma_pago) && opcionSel.cta_pvp != null && Number(opcionSel.cta_dsto) > 0) {
-      precio_promocion     = fmt(opcionSel.cta_pvp);
-      meses_promocion      = opcionSel.cta_facturas != null ? String(opcionSel.cta_facturas) : "";
+      precio_promocion = fmt(opcionSel.cta_pvp);
+      meses_promocion = opcionSel.cta_facturas != null ? String(opcionSel.cta_facturas) : "";
       porcentaje_descuento = String(Math.round(Number(opcionSel.cta_dsto) * 100));
     }
     setForm(f => ({
       ...f,
       precio_regular_sin_imp: fmt(opcionSel.precio_sin_iva),
-      precio_regular:         fmt(opcionSel.precio_con_iva),
+      precio_regular: fmt(opcionSel.precio_con_iva),
       precio_promocion, meses_promocion, porcentaje_descuento,
     }));
   }, [opcionSel, form.forma_pago, usaCatalogo]);
@@ -672,7 +674,7 @@ export default function NuevaVenta() {
     setForm(f => ({
       ...f,
       codigo_asesor: f.codigo_asesor || user.usuario || user.codigo || "",
-      nombre_atc:    f.nombre_atc    || user.nombre  || user.usuario || "",
+      nombre_atc: f.nombre_atc || user.nombre || user.usuario || "",
       distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : f.distribuidor_autorizado,
     }));
   }, []);
@@ -680,6 +682,7 @@ export default function NuevaVenta() {
   const set = k => e => {
     const v = e?.target ? e.target.value : e;
     const normalizedValue = typeof v === "string" ? v.toUpperCase() : v;
+    if (k === "id_bitrix") setOrigenVentaLocked(false); // se re-valida en el blur
     setForm(f => {
       const next = { ...f, [k]: normalizedValue };
       // Si cambia el distribuidor (caso admin sin lock), limpiar supervisor para evitar mezclas
@@ -740,19 +743,23 @@ export default function NuevaVenta() {
     // en algo que el servidor va a rechazar de todas formas. La validación que
     // cuenta sigue siendo la del backend — esta es solo comodidad de UX.
     if (file.size > MAX_ARCHIVO_MB * 1024 * 1024) {
-      setUploadErr(e => ({ ...e, [campo]: {
-        nombreArchivo: file.name,
-        msg: `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo es ${MAX_ARCHIVO_MB} MB. Reduce la resolución o comprime la imagen.`,
-        puedeReintentar: false,
-      }}));
+      setUploadErr(e => ({
+        ...e, [campo]: {
+          nombreArchivo: file.name,
+          msg: `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo es ${MAX_ARCHIVO_MB} MB. Reduce la resolución o comprime la imagen.`,
+          puedeReintentar: false,
+        }
+      }));
       return;
     }
     if (file.type && !TIPOS_ACEPTADOS.includes(file.type.toLowerCase())) {
-      setUploadErr(e => ({ ...e, [campo]: {
-        nombreArchivo: file.name,
-        msg: "Formato no admitido. Usa una foto (JPG, PNG, HEIC) o un PDF.",
-        puedeReintentar: false,
-      }}));
+      setUploadErr(e => ({
+        ...e, [campo]: {
+          nombreArchivo: file.name,
+          msg: "Formato no admitido. Usa una foto (JPG, PNG, HEIC) o un PDF.",
+          puedeReintentar: false,
+        }
+      }));
       return;
     }
 
@@ -783,19 +790,23 @@ export default function NuevaVenta() {
         // túnel). Reintentar tiene sentido. 415/400 = el archivo no sirve:
         // reintentar el mismo archivo no va a cambiar nada.
         const puedeReintentar = r.status >= 500 || r.status === 429;
-        setUploadErr(e => ({ ...e, [campo]: {
-          nombreArchivo: file.name,
-          msg: d.error || `No se pudo subir el archivo (HTTP ${r.status}).`,
-          ref: d.ref,
-          puedeReintentar,
-        }}));
+        setUploadErr(e => ({
+          ...e, [campo]: {
+            nombreArchivo: file.name,
+            msg: d.error || `No se pudo subir el archivo (HTTP ${r.status}).`,
+            ref: d.ref,
+            puedeReintentar,
+          }
+        }));
       }
     } catch {
-      setUploadErr(e => ({ ...e, [campo]: {
-        nombreArchivo: file.name,
-        msg: "Error de conexión. Revisa tu internet e intenta de nuevo.",
-        puedeReintentar: true,
-      }}));
+      setUploadErr(e => ({
+        ...e, [campo]: {
+          nombreArchivo: file.name,
+          msg: "Error de conexión. Revisa tu internet e intenta de nuevo.",
+          puedeReintentar: true,
+        }
+      }));
     } finally {
       setUploading(u => ({ ...u, [campo]: false }));
     }
@@ -811,36 +822,35 @@ export default function NuevaVenta() {
   const validar = (accion) => {
     if (accion === "BORRADOR") { setErrs({}); return true; }
     const e = {};
-    if (!form.distribuidor_autorizado)   e.distribuidor_autorizado = "Requerido";
-    if (!form.supervisor)                e.supervisor = "Requerido";
-    if (!form.biometrico)                e.biometrico = "Requerido";
-    if (!form.tipo_cliente)              e.tipo_cliente = "Requerido";
-    if (!form.tipo_documento)            e.tipo_documento = "Requerido";
+    if (!form.distribuidor_autorizado) e.distribuidor_autorizado = "Requerido";
+    if (!form.supervisor) e.supervisor = "Requerido";
+    if (!form.biometrico) e.biometrico = "Requerido";
+    if (!form.tipo_cliente) e.tipo_cliente = "Requerido";
+    if (!form.tipo_documento) e.tipo_documento = "Requerido";
     if (!form.numero_identificacion.trim()) e.numero_identificacion = "Requerido";
-    if (!form.apellidos_cliente.trim())  e.apellidos_cliente = "Requerido";
-    if (!form.nombres_cliente.trim())    e.nombres_cliente = "Requerido";
-    if (!form.genero_cliente)            e.genero_cliente = "Requerido";
-    if (!form.estado_civil)              e.estado_civil = "Requerido";
-    if (!form.fecha_nacimiento)          e.fecha_nacimiento = "Requerido";
-    if (!form.tipo_inmueble)             e.tipo_inmueble = "Requerido";
+    if (!form.apellidos_cliente.trim()) e.apellidos_cliente = "Requerido";
+    if (!form.nombres_cliente.trim()) e.nombres_cliente = "Requerido";
+    if (!form.genero_cliente) e.genero_cliente = "Requerido";
+    if (!form.estado_civil) e.estado_civil = "Requerido";
+    if (!form.fecha_nacimiento) e.fecha_nacimiento = "Requerido";
+    if (!form.tipo_inmueble) e.tipo_inmueble = "Requerido";
     if (!form.aplica_descuento_3ra_edad) e.aplica_descuento_3ra_edad = "Requerido";
-    if (!form.regimen_vivienda)          e.regimen_vivienda = "Requerido";
-    if (!form.calle_principal.trim())    e.calle_principal = "Requerido";
-    if (!form.provincia.trim())          e.provincia = "Requerido";
-    if (!form.ciudad.trim())             e.ciudad = "Requerido";
-    if (!form.parroquia_barrio.trim())  e.parroquia_barrio = "Requerido";
-    if (!form.telf_celular_pin.trim())   e.telf_celular_pin = "Requerido";
-    if (!form.email_cliente.trim())      e.email_cliente = "Requerido";
-    if (!form.forma_pago)                e.forma_pago = "Requerido";
-    if (!form.tipo_plan)                 e.tipo_plan = "Requerido";
-    if (!form.banco)                     e.banco = "Requerido";
-    if (!form.ciclo_facturacion)         e.ciclo_facturacion = "Requerido";
-    if (!form.costo_instalacion)         e.costo_instalacion = "Requerido";
-    if (!form.descuento_instalacion)     e.descuento_instalacion = "Requerido";
-    if (!form.beneficios_de_ley)         e.beneficios_de_ley = "Requerido";
-    if (!form.plazo_contrato_meses)      e.plazo_contrato_meses = "Requerido";
-    if (!form.origen_venta)              e.origen_venta = "Requerido";
-    if (!form.turno)                     e.turno = "Requerido";
+    if (!form.regimen_vivienda) e.regimen_vivienda = "Requerido";
+    if (!form.calle_principal.trim()) e.calle_principal = "Requerido";
+    if (!form.provincia.trim()) e.provincia = "Requerido";
+    if (!form.ciudad.trim()) e.ciudad = "Requerido";
+    if (!form.parroquia_barrio.trim()) e.parroquia_barrio = "Requerido";
+    if (!form.telf_celular_pin.trim()) e.telf_celular_pin = "Requerido";
+    if (!form.email_cliente.trim()) e.email_cliente = "Requerido";
+    if (!form.forma_pago) e.forma_pago = "Requerido";
+    if (!form.tipo_plan) e.tipo_plan = "Requerido";
+    if (!form.banco) e.banco = "Requerido";
+    if (!form.ciclo_facturacion) e.ciclo_facturacion = "Requerido";
+    if (!form.costo_instalacion) e.costo_instalacion = "Requerido";
+    if (!form.descuento_instalacion) e.descuento_instalacion = "Requerido";
+    if (!form.beneficios_de_ley) e.beneficios_de_ley = "Requerido";
+    if (!form.plazo_contrato_meses) e.plazo_contrato_meses = "Requerido";
+    if (!form.origen_venta) e.origen_venta = "Requerido";
     setErrs(e);
     if (Object.keys(e).length > 0) {
       // Scroll al primer error
@@ -853,6 +863,7 @@ export default function NuevaVenta() {
   // ── Validar ID Bitrix ──────────────────────────────────────────────────────
   const validarIdBitrix = async (idBitrix) => {
     if (!idBitrix || idBitrix.trim() === "") {
+      setOrigenVentaLocked(false);
       return true; // No validar si está vacío
     }
 
@@ -864,23 +875,24 @@ export default function NuevaVenta() {
       const data = await res.json();
 
       if (!data.existe) {
+        setOrigenVentaLocked(false);
         setAlert({
           tipo: "err",
-          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa \"VENTA SUBIDA\"_Error`
+          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa "VENTA SUBIDA"`
         });
         return false;
       } else {
+        const origen = (data.data.source || "").toUpperCase();
+        setForm(f => ({ ...f, origen_venta: origen || f.origen_venta }));
+        setOrigenVentaLocked(!!origen);
         setAlert({
           tipo: "ok",
-          msg: `✓ Lead verificado (Empresa: ${data.data.empresa.toUpperCase()}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})`
+          msg: `✓ Lead verificado (Empresa: ${data.data.empresa.toUpperCase()}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""}`
         });
         return true;
       }
     } catch (error) {
-      setAlert({
-        tipo: "err",
-        msg: `Error al validar ID Bitrix: ${error.message}`
-      });
+      setAlert({ tipo: "err", msg: `Error al validar ID Bitrix: ${error.message}` });
       return false;
     } finally {
       setValidandoBitrix(false);
@@ -914,61 +926,60 @@ export default function NuevaVenta() {
       const payload = {
         accion,
         // asesor
-        codigo_asesor:              form.codigo_asesor    || null,
-        id_bitrix:                  form.id_bitrix        || null,
-        distribuidor_autorizado:    form.distribuidor_autorizado || null,
-        supervisor:                 form.supervisor       || null,
-        clausulas:                  form.biometrico       || null,  // biométrico → clausulas
-        nombre_atc:                 user.nombre || user.usuario || null,
+        codigo_asesor: form.codigo_asesor || null,
+        id_bitrix: form.id_bitrix || null,
+        distribuidor_autorizado: form.distribuidor_autorizado || null,
+        supervisor: form.supervisor || null,
+        clausulas: form.biometrico || null,  // biométrico → clausulas
+        nombre_atc: user.nombre || user.usuario || null,
         // cliente
-        tipo_cliente:               form.tipo_cliente     || null,
-        tipo_documento:             form.tipo_documento   || null,
-        numero_identificacion:      form.numero_identificacion || null,
+        tipo_cliente: form.tipo_cliente || null,
+        tipo_documento: form.tipo_documento || null,
+        numero_identificacion: form.numero_identificacion || null,
         nombre_cliente_completo,
-        genero_cliente:             form.genero_cliente   || null,
-        estado_civil:               form.estado_civil     || null,
-        fecha_nacimiento:           form.fecha_nacimiento || null,
-        aplica_descuento_3ra_edad:  form.aplica_descuento_3ra_edad || null,
-        tipo_vivienda:              form.regimen_vivienda || null,
-        regimen_vivienda:           form.tipo_inmueble    || null,
+        genero_cliente: form.genero_cliente || null,
+        estado_civil: form.estado_civil || null,
+        fecha_nacimiento: form.fecha_nacimiento || null,
+        aplica_descuento_3ra_edad: form.aplica_descuento_3ra_edad || null,
+        tipo_vivienda: form.regimen_vivienda || null,
+        regimen_vivienda: form.tipo_inmueble || null,
         // dirección
         direccion_calles,
-        provincia:                  form.provincia        || null,
-        ciudad:                     form.ciudad           || null,
-        parroquia_barrio:           form.parroquia_barrio || null,
-        direccion_manzana_villa:    form.manzana_villa    || null,
-        referencia_ubicacion:       form.referencia_ubicacion || null,
-        coordenadas_gps:            form.coordenadas_gps  || null,
+        provincia: form.provincia || null,
+        ciudad: form.ciudad || null,
+        parroquia_barrio: form.parroquia_barrio || null,
+        direccion_manzana_villa: form.manzana_villa || null,
+        referencia_ubicacion: form.referencia_ubicacion || null,
+        coordenadas_gps: form.coordenadas_gps || null,
         // contacto
-        telf_celular_pin:           form.telf_celular_pin || null,
-        telf_celular_2:             form.telf_instalacion || null,
-        email_cliente:              form.email_cliente    || null,
+        telf_celular_pin: form.telf_celular_pin || null,
+        telf_celular_2: form.telf_instalacion || null,
+        email_cliente: form.email_cliente || null,
         // plan
-        forma_pago:                 form.forma_pago       || null,
-        plan_contratado_final:      [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
-        servicios_digitales:        form.servicios_digitales || null,
-        tipo_contrato:              form.servicio_adicional || null,
+        forma_pago: form.forma_pago || null,
+        plan_contratado_final: [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
+        servicios_digitales: form.servicios_digitales || null,
+        tipo_contrato: form.servicio_adicional || null,
         // resumen de venta
-        banco:                      form.banco || null,
-        ciclo_facturacion:          form.ciclo_facturacion || null,
-        costo_instalacion:          form.costo_instalacion || null,
-        descuento_instalacion:      form.descuento_instalacion || null,
-        beneficios_adicionales:     form.beneficios_adicionales || null,
-        beneficios_de_ley:          form.beneficios_de_ley || null,
-        plazo_contrato_meses:       form.plazo_contrato_meses || null,
-        resumen_venta:              resumenFinal || null,
-        foto_cedula_frontal:        form.foto_cedula_frontal || null,
-        foto_cedula_trasera:        form.foto_cedula_trasera || null,
-        foto_carnet:                form.foto_carnet || null,
-        archivo_resumen:            form.archivo_resumen || null,
+        banco: form.banco || null,
+        ciclo_facturacion: form.ciclo_facturacion || null,
+        costo_instalacion: form.costo_instalacion || null,
+        descuento_instalacion: form.descuento_instalacion || null,
+        beneficios_adicionales: form.beneficios_adicionales || null,
+        beneficios_de_ley: form.beneficios_de_ley || null,
+        plazo_contrato_meses: form.plazo_contrato_meses || null,
+        resumen_venta: resumenFinal || null,
+        foto_cedula_frontal: form.foto_cedula_frontal || null,
+        foto_cedula_trasera: form.foto_cedula_trasera || null,
+        foto_carnet: form.foto_carnet || null,
+        archivo_resumen: form.archivo_resumen || null,
         // cierre
-        origen_venta:               form.origen_venta     || null,
-        turno:                      form.turno            || null,
-        venta_nueva_o_reingreso:    "NUEVA",
-        novedades_atc:              form.observacion_venta || null,
+        origen_venta: form.origen_venta || null,
+        venta_nueva_o_reingreso: "NUEVA",
+        novedades_atc: form.observacion_venta || null,
       };
 
-      const url    = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;
+      const url = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;
       const method = borradorId ? "PUT" : "POST";
 
       const r = await fetch(url, {
@@ -983,9 +994,9 @@ export default function NuevaVenta() {
           setTimeout(() => navigate("/mis-ventas-pendientes"), 900);
         } else {
           setSucc({
-            id:     d.data.id,
+            id: d.data.id,
             nombre: nombre_cliente_completo,
-            plan:   payload.plan_contratado_final,
+            plan: payload.plan_contratado_final,
           });
           setForm(INIT);
           setResumenEditado(false);
@@ -1067,9 +1078,9 @@ export default function NuevaVenta() {
               <FIn value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
             </Row>
             <Row label="ID Bitrix">
-              <FIn 
-                value={form.id_bitrix} 
-                onChange={set("id_bitrix")} 
+              <FIn
+                value={form.id_bitrix}
+                onChange={set("id_bitrix")}
                 onBlur={() => validarIdBitrix(form.id_bitrix)}
                 placeholder="Ej: 12345"
                 disabled={validandoBitrix}
@@ -1286,8 +1297,8 @@ export default function NuevaVenta() {
                 {opcionSel && (opcionSel.velocidad || opcionSel.equipo || opcionSel.plan_promocion) && (
                   <Row label="Incluye">
                     <div style={{ fontSize: 12, color: "#8B5E3C", fontWeight: 600, lineHeight: 1.6 }}>
-                      {opcionSel.velocidad     && <div>⚡ Velocidad: {opcionSel.velocidad}</div>}
-                      {opcionSel.equipo        && <div>📶 Equipo: {opcionSel.equipo}</div>}
+                      {opcionSel.velocidad && <div>⚡ Velocidad: {opcionSel.velocidad}</div>}
+                      {opcionSel.equipo && <div>📶 Equipo: {opcionSel.equipo}</div>}
                       {opcionSel.plan_promocion && <div>🎁 Promo del plan: {opcionSel.plan_promocion}</div>}
                     </div>
                   </Row>
@@ -1324,12 +1335,19 @@ export default function NuevaVenta() {
           {/* ── 6. Cierre y origen ── */}
           <Seccion num={6} icon="✅" label="Cierre y origen de la venta">
             <Row label="Origen de la venta" required>
-              <FSel
-                value={form.origen_venta}
-                onChange={set("origen_venta")}
-                options={(bitrixOrigenes.length ? bitrixOrigenes : ORIGENES_FALLBACK).sort((a, b) => a.localeCompare(b))}
-                placeholder="Selecciona el origen de Bitrix"
-              />
+              {origenVentaLocked ? (
+                <div className="nv-auto">
+                  🔒 {form.origen_venta}
+                  <span style={{ fontWeight: 400, marginLeft: 4 }}>(autocompletado desde Bitrix)</span>
+                </div>
+              ) : (
+                <FSel
+                  value={form.origen_venta}
+                  onChange={set("origen_venta")}
+                  options={(bitrixOrigenes.length ? bitrixOrigenes : ORIGENES_FALLBACK).sort((a, b) => a.localeCompare(b))}
+                  placeholder="Selecciona el origen de Bitrix"
+                />
+              )}
               {err("origen_venta")}
             </Row>
             <Row label="Observación de la venta">
@@ -1340,10 +1358,6 @@ export default function NuevaVenta() {
                 placeholder="NOTAS IMPORTANTES SOBRE ESTA VENTA, ACUERDOS ESPECIALES, PENDIENTES…"
                 rows={3}
               />
-            </Row>
-            <Row label="Turno" required>
-              <FIn value={form.turno} onChange={set("turno")} placeholder="MAÑANA / TARDE / NOCHE" />
-              {err("turno")}
             </Row>
           </Seccion>
 

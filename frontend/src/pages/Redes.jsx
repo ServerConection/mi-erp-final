@@ -1640,7 +1640,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const cargarOrigenes = () => {
     fetch(apiUrl("agencias", ""), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(d.message); })
+      .then((d) => { if (d.success) setOrigenes(d.origenes || []); else setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`); })
       .catch((e) => setError(e.message));
   };
 
@@ -1651,7 +1651,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     fetch(apiUrl("resumen-agencias", params.toString()), { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(d.message); })
+      .then((d) => { if (d.success) setResumen(d.porAgencia || []); else setError(`${d.message}${d.codigo ? ` (codigo: ${d.codigo})` : ""}`); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps

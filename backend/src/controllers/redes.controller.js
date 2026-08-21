@@ -954,7 +954,7 @@ const {
       res.json({ success: true, origenes: result.rows });
     } catch (error) {
       console.error('Error en getAgenciasCanal:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener catálogo de agencias', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+      res.status(500).json({ success: false, message: 'Error al obtener catálogo de agencias', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
     }
   };
 
@@ -998,7 +998,7 @@ const {
       res.json({ success: true, data: guardados });
     } catch (error) {
       console.error('Error en upsertAgenciaCanal:', error);
-      res.status(500).json({ success: false, message: 'Error al guardar agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+      res.status(500).json({ success: false, message: 'Error al guardar agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
     }
   };
 
@@ -1019,7 +1019,7 @@ const {
       res.json({ success: true, data: result.rows });
     } catch (error) {
       console.error('Error en getInversionAgencias:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+      res.status(500).json({ success: false, message: 'Error al obtener inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
     }
   };
 
@@ -1061,7 +1061,7 @@ const {
       res.json({ success: true, data: guardados });
     } catch (error) {
       console.error('Error en upsertInversionAgencias:', error);
-      res.status(500).json({ success: false, message: 'Error al guardar inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+      res.status(500).json({ success: false, message: 'Error al guardar inversión', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
     }
   };
 
@@ -1125,7 +1125,7 @@ const {
       res.json({ success: true, porAgencia });
     } catch (error) {
       console.error('Error en getResumenPorAgencia:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener resumen por agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+      res.status(500).json({ success: false, message: 'Error al obtener resumen por agencia', error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message), codigo: error.code || null });
     }
   };
 

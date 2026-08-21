@@ -679,18 +679,15 @@ export default function NuevaVenta() {
     }));
   }, []);
 
-  const set = k => e => {
+  const set = (k, { preserveCase = false } = {}) => e => {
     const v = e?.target ? e.target.value : e;
-    const normalizedValue = typeof v === "string" ? v.toUpperCase() : v;
-    if (k === "id_bitrix") setOrigenVentaLocked(false); // se re-valida en el blur
+    const normalizedValue = typeof v === "string" && !preserveCase ? v.toUpperCase() : v;
+    if (k === "id_bitrix") setOrigenVentaLocked(false);
     setForm(f => {
       const next = { ...f, [k]: normalizedValue };
-      // Si cambia el distribuidor (caso admin sin lock), limpiar supervisor para evitar mezclas
       if (k === "distribuidor_autorizado" && v !== f.distribuidor_autorizado) {
         next.supervisor = "";
       }
-      // Cascada del catálogo: cambiar el tipo de plan reinicia plan/empaquetado/precios,
-      // y cambiar el plan reinicia el empaquetado y sus precios
       if (k === "tipo_plan" && v !== f.tipo_plan) {
         next.plan_contratado_final = ""; next.servicios_digitales = "";
         next.precio_regular_sin_imp = ""; next.precio_regular = "";
@@ -1283,13 +1280,13 @@ export default function NuevaVenta() {
             ) : (
               <>
                 <Row label="Plan contratado (detalle)">
-                  <FSel value={form.plan_contratado_final} onChange={set("plan_contratado_final")}
+                  <FSel value={form.plan_contratado_final} onChange={set("plan_contratado_final", { preserveCase: true })}
                     options={planesDelTipo}
                     placeholder={!form.tipo_plan ? "Primero elige el tipo de plan"
                       : planesDelTipo.length ? "Selecciona el plan…" : "Sin planes cargados (falta el Excel del mes)"} />
                 </Row>
                 <Row label="Servicio empaquetado">
-                  <FSel value={form.servicios_digitales} onChange={set("servicios_digitales")}
+                  <FSel value={form.servicios_digitales} onChange={set("servicios_digitales", { preserveCase: true })}
                     options={empaquetadosDelPlan}
                     placeholder={!form.plan_contratado_final ? "Primero selecciona el plan"
                       : empaquetadosDelPlan.length ? "Selecciona el empaquetado…" : "Sin opciones cargadas"} />

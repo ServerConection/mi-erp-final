@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { esLeadTotalExpr, esGestionableExpr, esDescarteExpr } = require('../shared/etapas');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MONITOREO REDES VELSA
@@ -718,27 +719,45 @@ const upsertAgenciaCanal = async (req, res) => {
 // 12. Resumen agregado por agencia (los orígenes sin agencia asignada se
 //     agrupan bajo "VELSA" — ver nota 2026-08-20 arriba: en Velsa todo
 //     origen pertenece a VELSA salvo que se reasigne explícitamente).
+//
+// FUENTE (2026-08-21): bitrix_webhook_leads EN VIVO, filtrado por
+// empresa='velsa' — NO mv_monitoreo_redes_velsa. Esa vista se construye
+// sobre mv_indicadores_velsa_completo, cuyo auto-refresh está apagado desde
+// hace tiempo (ver refreshVelsaMaterialized.cron.js — se desactivó porque
+// bloqueaba la base >90s en horario laboral y nunca se reactivó de forma
+// segura). Resultado: esa cadena de vistas quedaba congelada en el día que
+// se creó y el resumen por agencia nunca reflejaba leads nuevos, sin
+// importar qué rango de fechas se filtrara. bitrix_webhook_leads es la
+// tabla cruda que sí se actualiza en cada webhook — mismo patrón que ya usa
+// getAgenciasCanal de este archivo y que usa NOVONET con mestra_bitrix.
 const getResumenPorAgencia = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
     const canalesRaw = req.query.canales || '';
     const canalesSel = canalesRaw ? canalesRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-    const { where: canalWhere, params: canalParams } = buildInWhere(canalesSel, 2, 'v.canal_publicidad');
+    const { where: origWhere, params: origParams } = buildInWhere(canalesSel, 2, 'w.source');
 
     const result = await pool.query(
       `SELECT
          COALESCE(m.agencia, 'VELSA') AS agencia,
-         SUM(v.n_leads) AS n_leads,
-         SUM(v.atc) AS atc,
-         SUM(v.venta_subida) AS venta_subida,
-         SUM(v.fuera_cobertura + v.zona_peligrosa + v.innegociable + v.duplicado + v.descarte) AS descartados
-       FROM mv_monitoreo_redes_velsa v
-       LEFT JOIN velsa_lineas_canal m ON m.origen = v.canal_publicidad
-       WHERE v.fecha BETWEEN $1 AND $2
-       ${canalWhere}
+         COUNT(*) FILTER (WHERE ${esLeadTotalExpr('w.etapa_bitrix')}) AS n_leads,
+         COUNT(*) FILTER (WHERE ${esGestionableExpr('w.etapa_bitrix')}) AS gestionables,
+         COUNT(*) FILTER (WHERE w.etapa_bitrix ILIKE '%ATC%' OR w.etapa_bitrix ILIKE '%SOPORTE%') AS atc,
+         COUNT(*) FILTER (WHERE w.etapa_bitrix ILIKE '%VENTA SUBIDA%') AS venta_subida,
+         COUNT(*) FILTER (WHERE ${esDescarteExpr('w.etapa_bitrix')}
+           OR w.etapa_bitrix ILIKE '%FUERA DE COBERTURA%'
+           OR w.etapa_bitrix ILIKE '%ZONA%PELIGRO%'
+           OR w.etapa_bitrix ILIKE '%INNEGOCIABLE%'
+           OR w.etapa_bitrix ILIKE '%DUPLICADO%'
+         ) AS descartados
+       FROM bitrix_webhook_leads w
+       LEFT JOIN velsa_lineas_canal m ON m.origen = NULLIF(BTRIM(w.source), '')
+       WHERE w.empresa = 'velsa'
+         AND w.created_at_ecuador::date BETWEEN $1::date AND $2::date
+       ${origWhere}
        GROUP BY COALESCE(m.agencia, 'VELSA')
        ORDER BY n_leads DESC`,
-      [fechaDesde, fechaHasta, ...canalParams]
+      [fechaDesde, fechaHasta, ...origParams]
     );
 
     const inversionResult = await pool.query(
@@ -761,6 +780,7 @@ const getResumenPorAgencia = async (req, res) => {
       return {
         agencia: row.agencia,
         n_leads,
+        gestionables: Number(row.gestionables || 0),
         atc: Number(row.atc || 0),
         venta_subida,
         descartados: Number(row.descartados || 0),

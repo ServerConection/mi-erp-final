@@ -938,20 +938,26 @@ const {
 
   // 8. Catálogo actual: cada origen real, con su agencia asignada hoy (null si
   //    todavía no se asignó).
+  // FUENTE (2026-08-21): bitrix_webhook_leads EN VIVO (empresa='novonet'),
+  // NO mestra_bitrix. mestra_bitrix dejó de recibir leads nuevos (se quedó
+  // congelada a inicios de agosto — es la tabla vieja); bitrix_webhook_leads
+  // es la que sí se actualiza con cada webhook de Bitrix, para las dos
+  // empresas (columna "empresa" las distingue). Mismo patrón que ya usa
+  // Redes VELSA en este mismo archivo.
   const getAgenciasCanal = async (req, res) => {
     try {
       let result;
       let catalogoDisponible = true;
       try {
         result = await pool.query(
-          `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
+          `SELECT NULLIF(BTRIM(w.source), '') AS origen,
                   COUNT(*) AS n_leads,
                   MAX(m.agencia) AS agencia
-           FROM public.mestra_bitrix mb
-           LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')
-           WHERE mb.j_id_bitrix IS NULL
-             AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
-           GROUP BY NULLIF(BTRIM(mb.b_origen), '')
+           FROM bitrix_webhook_leads w
+           LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(w.source), '')
+           WHERE w.empresa = 'novonet'
+             AND NULLIF(BTRIM(w.source), '') IS NOT NULL
+           GROUP BY NULLIF(BTRIM(w.source), '')
            ORDER BY n_leads DESC`
         );
       } catch (err) {
@@ -959,13 +965,13 @@ const {
         catalogoDisponible = false;
         console.warn('⚠️  getAgenciasCanal: novonet_lineas_canal no existe todavía (corre CATALOGO_AGENCIAS_NOVONET.sql) — orígenes sin agencia por ahora.');
         result = await pool.query(
-          `SELECT NULLIF(BTRIM(mb.b_origen), '') AS origen,
+          `SELECT NULLIF(BTRIM(w.source), '') AS origen,
                   COUNT(*) AS n_leads,
                   NULL AS agencia
-           FROM public.mestra_bitrix mb
-           WHERE mb.j_id_bitrix IS NULL
-             AND NULLIF(BTRIM(mb.b_origen), '') IS NOT NULL
-           GROUP BY NULLIF(BTRIM(mb.b_origen), '')
+           FROM bitrix_webhook_leads w
+           WHERE w.empresa = 'novonet'
+             AND NULLIF(BTRIM(w.source), '') IS NOT NULL
+           GROUP BY NULLIF(BTRIM(w.source), '')
            ORDER BY n_leads DESC`
         );
       }
@@ -1083,10 +1089,15 @@ const {
     }
   };
 
-  // 12. Resumen agregado por agencia: leads en vivo (mestra_bitrix) + inversión
-  //     (novonet_inversion_redes), ambos unidos vía novonet_lineas_canal.
+  // 12. Resumen agregado por agencia: leads en vivo (bitrix_webhook_leads) +
+  //     inversión (novonet_inversion_redes), unidos vía novonet_lineas_canal.
   //     Los orígenes sin agencia asignada se agrupan bajo "SIN AGENCIA ASIGNADA"
   //     para que no se pierdan del total.
+  //
+  // FUENTE (2026-08-21): bitrix_webhook_leads (empresa='novonet') EN VIVO, NO
+  // mestra_bitrix. mestra_bitrix dejó de recibir leads nuevos hace semanas —
+  // por eso filtrando "hoy" siempre daba cero aunque hubiera leads reales
+  // entrando. bitrix_webhook_leads sí se actualiza con cada webhook.
   const getResumenPorAgencia = async (req, res) => {
     try {
       const { fechaDesde, fechaHasta } = getFiltroFechas(req.query);
@@ -1099,19 +1110,19 @@ const {
       const leadsQuery = (conCatalogo) => `
         SELECT
            ${conCatalogo ? "COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')" : "'SIN AGENCIA ASIGNADA'"} AS agencia,
-           COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
-           COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS gestionables,
-           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
-             OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%'
-             OR mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%'
-             OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
-             OR mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%'
+           COUNT(*) FILTER (WHERE ${esLeadTotalExpr('w.etapa_bitrix')}) AS n_leads,
+           COUNT(*) FILTER (WHERE ${esGestionableExpr('w.etapa_bitrix')}) AS gestionables,
+           COUNT(*) FILTER (WHERE w.etapa_bitrix ILIKE '%ATC%'
+             OR w.etapa_bitrix ILIKE '%SOPORTE%'
+             OR w.etapa_bitrix ILIKE '%FUERA DE COBERTURA%'
+             OR w.etapa_bitrix ILIKE '%ZONA%PELIGRO%'
+             OR w.etapa_bitrix ILIKE '%INNEGOCIABLE%'
            ) AS atc,
-           COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida
-         FROM public.mestra_bitrix mb
-         ${conCatalogo ? "LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(mb.b_origen), '')" : ""}
-         WHERE mb.j_id_bitrix IS NULL
-           AND mb.b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+           COUNT(*) FILTER (WHERE w.etapa_bitrix ILIKE '%VENTA SUBIDA%') AS venta_subida
+         FROM bitrix_webhook_leads w
+         ${conCatalogo ? "LEFT JOIN novonet_lineas_canal m ON m.origen = NULLIF(BTRIM(w.source), '')" : ""}
+         WHERE w.empresa = 'novonet'
+           AND w.created_at_ecuador::date BETWEEN $1::date AND $2::date
          GROUP BY ${conCatalogo ? "COALESCE(m.agencia, 'SIN AGENCIA ASIGNADA')" : "1"}
          ORDER BY n_leads DESC`;
 

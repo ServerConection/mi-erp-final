@@ -34,6 +34,7 @@ router.get('/', async (req, res) => {
       estatusNetlife = '',                               // netlife_estatus_real
       terceraEdad = '',                                  // aplica_descuento_3ra_edad
       estatusRegularizacion = '',                        // estatus_regularizacion
+      empresa = '',
     } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -72,6 +73,9 @@ router.get('/', async (req, res) => {
       whereClause += ` AND UPPER(TRIM(estatus_regularizacion)) = UPPER(TRIM(${P(estatusRegularizacion.trim())}))`;
     if (terceraEdad.trim())
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
+    // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
+    if (empresa.trim() && empresa.trim().toUpperCase() !== 'TODOS')
+      whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = UPPER(TRIM(${P(empresa.trim())}))`;
 
     const countParams = [...params];
     const { rows: countRows } = await pool.query(

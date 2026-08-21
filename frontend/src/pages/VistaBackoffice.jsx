@@ -544,7 +544,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, soloDetalle = false }) {
+function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, soloDetalle = false, empresa, onCambiarEmpresa }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -578,9 +578,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       setLoading(true);
       const p = new URLSearchParams();
       if (q) p.set("buscar", q);
-      // Solo se mandan los filtros con valor: si están vacíos, el backend
-      // se comporta exactamente como antes.
       Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
+      if (empresa && empresa !== "TODOS") p.set("empresa", empresa);   // ← NUEVO
       const qs = p.toString() ? `?${p.toString()}` : "";
       const res = await fetch(`${API}/api/backoffice${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -599,7 +598,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   useEffect(() => {
     const t = setTimeout(() => fetchRows(search, filtros), 350);
     return () => clearTimeout(t);
-  }, [search, filtros]);
+  }, [search, filtros, empresa]);
 
   // Opciones reales de los combos (una sola vez al montar)
   useEffect(() => {
@@ -926,6 +925,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                     {etiquetaContexto || "Todos los registros"}
                   </h2>
                 </div>
+                {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
                   {rows.length} registros
                 </div>
@@ -1322,20 +1322,30 @@ function TarjetaSubmodulo({ sub, onAbrir }) {
   );
 }
 
-function HubBackoffice({ onAbrir }) {
+function HubBackoffice({ onAbrir, empresa, onCambiarEmpresa }) {
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
         <div style={{ padding: 22, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
-            Backoffice
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
+                Backoffice
+              </div>
+              <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
+                ¿Qué quieres gestionar?
+              </h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
+                Elige un módulo para entrar.
+              </p>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#94a3b8", textTransform: "uppercase", marginBottom: 6, textAlign: "right" }}>
+                Empresa
+              </div>
+              <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />
+            </div>
           </div>
-          <h2 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, color: "#111827" }}>
-            ¿Qué quieres gestionar?
-          </h2>
-          <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
-            Elige un módulo para entrar.
-          </p>
         </div>
 
         <div
@@ -1386,6 +1396,43 @@ function EnConstruccion({ sub, onVolver }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+const EMPRESAS_FILTRO = [
+  { id: "TODOS", label: "Todos" },
+  { id: "NOVONET", label: "Novonet" },
+  { id: "VELSA", label: "Velsa" },
+];
+
+function FiltroEmpresa({ valor, onCambiar }) {
+  return (
+    <div style={{ display: "inline-flex", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: 4, gap: 4 }}>
+      {EMPRESAS_FILTRO.map((e) => {
+        const activo = (valor || "TODOS") === e.id;
+        return (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => onCambiar(e.id)}
+            style={{
+              padding: "7px 16px",
+              borderRadius: 999,
+              border: "none",
+              background: activo ? "#4f46e5" : "transparent",
+              color: activo ? "#fff" : "#475569",
+              fontWeight: 800,
+              fontSize: 12.5,
+              cursor: "pointer",
+              transition: "all .15s",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {e.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1610,8 +1657,8 @@ function BotonNivel({
         padding: "11px 14px",
         cursor: "pointer",
 
-        width: mostrarEtapas ? 620 : ancho,
-        minWidth: mostrarEtapas ? 620 : ancho,
+        width: mostrarEtapas ? "100%" : ancho,
+        minWidth: mostrarEtapas ? 340 : ancho,
 
         display: "flex",
         alignItems: "center",
@@ -1670,10 +1717,11 @@ function BotonNivel({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(5, auto)",
+            gridTemplateColumns: "repeat(5, minmax(76px, 1fr))",
             alignItems: "center",
-            gap: 6,
-            marginLeft: "auto",
+            gap: 8,
+            flex: 1,
+            marginLeft: 24,
           }}
         >
           {ETAPAS_JOTFORM_RESUMEN.map((etapa) => (
@@ -1732,6 +1780,7 @@ function ExploradorFechas({
   rows, cargando, error, tituloModulo, migaModulo,
   color = "#4f46e5", fondo = "#eef2ff", borde = "#c7d2fe",
   nav, navegar, onVolver, onRecargar,
+  empresa, onCambiarEmpresa,
 }) {
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows), [rows]);
 
@@ -1762,9 +1811,10 @@ function ExploradorFechas({
             {migaModulo}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>{tituloModulo}</h2>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <button
                 onClick={() => navegar.aTodos()}
                 style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${borde}`, background: fondo, color, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
@@ -1819,7 +1869,7 @@ function ExploradorFechas({
           )}
 
           {!cargando && !error && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: nivel === "anios" ? "flex-start" : "stretch" }}>
               {nivel === "anios" && anios.map((a) => (
                 <BotonNivel
                   key={a.anio} titulo={a.anio} cantidad={a.cantidad}
@@ -1879,7 +1929,7 @@ function ExploradorFechas({
 }
 
 /** Carga compartida de registros para el explorador y el tablero. */
-function useRegistrosBackoffice(limite = 1000) {
+function useRegistrosBackoffice(limite = 1000, empresa = "TODOS") {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [cargando, setCargando] = useState(true);
@@ -1890,7 +1940,9 @@ function useRegistrosBackoffice(limite = 1000) {
     setCargando(true);
     setError(null);
     try {
-      const r = await fetch(`${API}/api/backoffice?limit=${limite}`, {
+      const qs = new URLSearchParams({ limit: String(limite) });
+      if (empresa && empresa !== "TODOS") qs.set("empresa", empresa);
+      const r = await fetch(`${API}/api/backoffice?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const j = await r.json();
@@ -1902,7 +1954,7 @@ function useRegistrosBackoffice(limite = 1000) {
     } finally {
       setCargando(false);
     }
-  }, [token, limite]);
+  }, [token, limite, empresa]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -2108,8 +2160,8 @@ function BloqueWelcome({
   );
 }
 
-function TableroWelcome({ onVolver, onAbrirRegistro }) {
-  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000);
+function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }) {
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
   const [rows, setRows] = useState([]);
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -2271,6 +2323,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro }) {
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -2565,8 +2618,8 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
   );
 }
 
-function TableroAgendamientos({ onVolver, nav, navegar }) {
-  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000);
+function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpresa }) {
+  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
   const [diaModal, setDiaModal] = useState(null);   // iso del día abierto en la lista
   const [detalleId, setDetalleId] = useState(null); // registro abierto en detalle completo
 
@@ -2613,6 +2666,7 @@ function TableroAgendamientos({ onVolver, nav, navegar }) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Agendamientos</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color }}>
                 {total} agendamientos
               </div>
@@ -2967,8 +3021,8 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
   );
 }
 
-function TableroValidacion({ onVolver, onAbrirRegistro }) {
-  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000);
+function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }) {
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
   const [rows, setRows] = useState([]);
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -3082,6 +3136,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Validación / Regularización</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -3314,11 +3369,9 @@ function TableroValidacion({ onVolver, onAbrirRegistro }) {
  * La tabla no filtra en el navegador: recibe el día elegido y deja que el
  * backend haga el filtro con fechaDesde/fechaHasta, que ya existía.
  */
-function ModuloRegistros({ onVolver, idInicial, nav, navegar }) {
-  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000);
+function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiarEmpresa }) {
+  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
 
-  // Si se llegó con un id concreto (clic en una tarjeta del kanban), se salta
-  // el explorador y se abre el detalle directamente.
   if (!idInicial && !nav.dia && !nav.todos) {
     return (
       <ExploradorFechas
@@ -3327,6 +3380,7 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar }) {
         migaModulo="Backoffice · Registros"
         color="#0284c7" fondo="#e0f2fe" borde="#bae6fd"
         nav={nav} navegar={navegar} onVolver={onVolver} onRecargar={recargar}
+        empresa={empresa} onCambiarEmpresa={onCambiarEmpresa}
       />
     );
   }
@@ -3337,6 +3391,8 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar }) {
       idInicial={idInicial}
       fechaFija={nav.dia || undefined}
       etiquetaContexto={nav.dia ? etiquetaDia(nav.dia) : "Todos los registros"}
+      empresa={empresa}
+      onCambiarEmpresa={onCambiarEmpresa}
     />
   );
 }
@@ -3346,12 +3402,12 @@ export default function VistaBackoffice() {
   const idActivo = params.get("m");
   const sub = SUBMODULOS.find((s) => s.id === idActivo);
 
-  // Estado de la navegación por fechas, todo en la URL.
-  //   ?m=validacion            → años
-  //   ?m=validacion&a=2026     → meses de 2026
-  //   ?m=validacion&a=2026&me=01        → días de enero
-  //   ?m=validacion&a=2026&me=01&d=2026-01-06  → registros de ese día
-  //   ?m=validacion&todos=1    → todos, sin filtro de fecha
+  // Filtro de empresa: vive en un state simple (no en la URL) para no tener
+  // que arrastrarlo en cada setParams de la navegación por fechas. Se
+  // mantiene mientras la persona navega entre submódulos porque
+  // VistaBackoffice nunca se desmonta; se resetea a "Todos" al recargar la página.
+  const [empresa, setEmpresa] = useState("TODOS");
+
   const nav = {
     anio: params.get("a"),
     mes: params.get("me"),
@@ -3369,35 +3425,34 @@ export default function VistaBackoffice() {
 
   const abrir = useCallback((id) => setParams({ m: id }), [setParams]);
   const volver = useCallback(() => setParams({}), [setParams]);
-
-  // Desde el tablero de Validación se salta al detalle completo reutilizando el
-  // modal que ya existe en Registros: se navega a ?m=registros&id=<n> y el
-  // panel lo abre solo. Así no hay dos pantallas de detalle que mantener.
   const abrirRegistro = useCallback((id) => setParams({ m: "registros", id: String(id) }), [setParams]);
 
-  // Sin submódulo válido en la URL → menú de tarjetas.
-  if (!sub) return <HubBackoffice onAbrir={abrir} />;
+  if (!sub) return <HubBackoffice onAbrir={abrir} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
 
   if (sub.id === "registros") {
-    return <ModuloRegistros onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar} />;
+    return (
+      <ModuloRegistros
+        onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar}
+        empresa={empresa} onCambiarEmpresa={setEmpresa}
+      />
+    );
   }
 
-  // Validación entra directo al tablero: el filtro de fechas vive dentro de
-  // cada bloque, no antes del tablero.
   if (sub.id === "validacion") {
-    return <TableroValidacion onVolver={volver} />;
+    return <TableroValidacion onVolver={volver} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
   }
 
-  // Welcome: solo activos, prioridad por fecha de activación y
-  // discriminación por novedades_atc (vacío / NOTIFICADO).
   if (sub.id === "welcome") {
-    return <TableroWelcome onVolver={volver} />;
+    return <TableroWelcome onVolver={volver} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
   }
 
-  // Agendamientos: se agrupa por fecha_agenda y el último nivel es un
-  // calendario real (no una lista plana), con clic por día → modal.
   if (sub.id === "agendamientos") {
-    return <TableroAgendamientos onVolver={volver} nav={nav} navegar={navegar} />;
+    return (
+      <TableroAgendamientos
+        onVolver={volver} nav={nav} navegar={navegar}
+        empresa={empresa} onCambiarEmpresa={setEmpresa}
+      />
+    );
   }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;

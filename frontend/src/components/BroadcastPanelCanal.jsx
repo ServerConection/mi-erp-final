@@ -150,6 +150,21 @@ function AudioPlayer({ src, name, accent }) {
 function PreviewScreen({ form, imagen, audioPreviewSrc, tipoActual, label, accent }) {
   const efecto = form.efecto;
 
+  const [ocultarPlaceholders, setOcultarPlaceholders] = useState(false);
+
+  useEffect(() => {
+    setOcultarPlaceholders(false);
+
+    if (!imagen) return;
+
+    const timer = setTimeout(() => {
+      setOcultarPlaceholders(true);
+    }, 6500);
+
+    return () => clearTimeout(timer);
+  }, [imagen]);
+
+
   // Partículas decorativas para preview
   const particles = useMemo(() => {
     if (!["confeti","fuego","nieve","estrellas","explosion"].includes(efecto)) return [];
@@ -212,13 +227,22 @@ function PreviewScreen({ form, imagen, audioPreviewSrc, tipoActual, label, accen
     <>
       {/* Keyframes solo para preview */}
       <style>{`
-        @keyframes prevAlertFlash { 0%,100%{opacity:.3} 50%{opacity:1} }
-        @keyframes prevRainbow { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(360deg)} }
-        @keyframes prevRainbowText { 0%{filter:hue-rotate(0deg) saturate(2)} 100%{filter:hue-rotate(360deg) saturate(2)} }
-        @keyframes prevPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.97)} }
-        @keyframes prevGlitch { 0%,100%{transform:translate(0);filter:none} 30%{transform:translate(-2px,1px);filter:hue-rotate(90deg)} 60%{transform:translate(2px,-1px);filter:hue-rotate(200deg)} }
-        @keyframes prevFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-      `}</style>
+  @keyframes prevAlertFlash { 0%,100%{opacity:.3} 50%{opacity:1} }
+  @keyframes prevRainbow { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(360deg)} }
+  @keyframes prevRainbowText { 0%{filter:hue-rotate(0deg) saturate(2)} 100%{filter:hue-rotate(360deg) saturate(2)} }
+  @keyframes prevPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.97)} }
+  @keyframes prevGlitch { 0%,100%{transform:translate(0);filter:none} 30%{transform:translate(-2px,1px);filter:hue-rotate(90deg)} 60%{transform:translate(2px,-1px);filter:hue-rotate(200deg)} }
+  @keyframes prevFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+  @keyframes prevImageFade {
+    from {
+      opacity: .2;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+`}</style>
 
       <div style={{
         width:"100%", aspectRatio:"16/9",
@@ -230,14 +254,14 @@ function PreviewScreen({ form, imagen, audioPreviewSrc, tipoActual, label, accen
         {imagen && (
           <img src={URL.createObjectURL(imagen)} alt=""
             style={{ position:"absolute", inset:0, width:"100%", height:"100%",
-              objectFit:"cover", opacity:.2, zIndex:0 }} />
+             objectFit:"cover",opacity:1,zIndex:0,animation:"prevImageFade 7s linear forwards",zIndex:0}} />
         )}
 
         {/* Overlay efecto */}
-        <div style={overlayEfecto()} />
+        {!ocultarPlaceholders && <div style={overlayEfecto()} />}
 
         {/* Partículas decorativas */}
-        {particles.map(p => (
+       {!ocultarPlaceholders && particles.map(p => (
           <div key={p.key} style={{
             position:"absolute", left:p.x, top:p.y,
             fontSize:p.size, animation:`prevFloat ${1 + p.key * 0.15}s ${p.key * 0.1}s ease-in-out infinite`,
@@ -260,57 +284,77 @@ function PreviewScreen({ form, imagen, audioPreviewSrc, tipoActual, label, accen
         )}
 
         {/* Chip canal */}
-        <div style={{ position:"absolute", top:7, right:7, zIndex:10,
-          fontSize:8, fontWeight:900, letterSpacing:".1em",
-          padding:"2px 7px", borderRadius:4, textTransform:"uppercase",
-          background:`${accent}28`, color:accent, border:`1px solid ${accent}50` }}>
-          {label}
-        </div>
+       {!ocultarPlaceholders && (
+  <div style={{ position:"absolute", top:7, right:7, zIndex:10,
+    fontSize:8, fontWeight:900, letterSpacing:".1em",
+    padding:"2px 7px", borderRadius:4, textTransform:"uppercase",
+    background:`${accent}28`, color:accent, border:`1px solid ${accent}50` }}>
+    {label}
+  </div>
+)}
 
-        {/* Chip tipo */}
-        <div style={{ position:"absolute", top:7, left:7, zIndex:10,
-          fontSize:8, fontWeight:700, padding:"2px 7px", borderRadius:4,
-          background:tipoActual.bg, color:tipoActual.text,
-          border:`1px solid ${tipoActual.border}40` }}>
-          {tipoActual.emoji} {tipoActual.label}
-        </div>
+       {/* Chip tipo */}
+{!ocultarPlaceholders && (
+  <div style={{ position:"absolute", top:7, left:7, zIndex:10,
+    fontSize:8, fontWeight:700, padding:"2px 7px", borderRadius:4,
+    background:tipoActual.bg, color:tipoActual.text,
+    border:`1px solid ${tipoActual.border}40` }}>
+    {tipoActual.emoji} {tipoActual.label}
+  </div>
+)}
 
-        {/* Contenido */}
-        <div style={{
-          position:"absolute", inset:0, display:"flex", flexDirection:"column",
-          alignItems:"center", justifyContent:"center", padding:20,
-          textAlign:"center", zIndex:8,
-          animation: contentAnim,
-        }}>
-          <div style={{ fontSize:28, marginBottom:8 }}>{tipoActual.emoji}</div>
-          <div style={{
-            fontSize:15, fontWeight:900, color:form.color_texto,
-            textTransform:"uppercase", letterSpacing:".03em", lineHeight:1.15,
-            marginBottom:6, wordBreak:"break-word",
-            textShadow:"0 2px 10px rgba(0,0,0,.6)", maxWidth:"90%",
-          }}>
-            {form.titulo || "TÍTULO DEL MENSAJE"}
-          </div>
-          <div style={{ fontSize:10, color:form.color_texto, opacity:.8,
-            lineHeight:1.6, wordBreak:"break-word", maxWidth:"85%" }}>
-            {form.mensaje || "El mensaje aparecerá aquí…"}
-          </div>
-          {form.datos_vivos && (
-            <div style={{ marginTop:8, padding:"4px 10px",
-              background:"rgba(255,255,255,.12)", borderRadius:20,
-              fontSize:9, color:form.color_texto, fontWeight:700,
-              border:"1px solid rgba(255,255,255,.2)" }}>
-              {DATOS_VIVOS.find(d => d.id === form.datos_vivos)?.emoji} {DATOS_VIVOS.find(d => d.id === form.datos_vivos)?.label}
-            </div>
-          )}
+       {/* Contenido */}
+<div style={{
+  position:"absolute", inset:0, display:"flex", flexDirection:"column",
+  alignItems:"center", justifyContent:"center", padding:20,
+  textAlign:"center", zIndex:8,
+  animation: contentAnim,
+  opacity: ocultarPlaceholders ? 0 : 1,
+  transition:"opacity 1s ease-in-out",
+}}>
+{!ocultarPlaceholders && (
+  <>
+    {!ocultarPlaceholders && (
+  <div style={{ fontSize:28, marginBottom:8 }}>{tipoActual.emoji}</div>
+)}
+
+    <div style={{
+      fontSize:15,
+      fontWeight:900,
+      color:form.color_texto,
+      textTransform:"uppercase",
+      letterSpacing:".03em",
+      lineHeight:1.15,
+      marginBottom:6,
+      wordBreak:"break-word",
+      textShadow:"0 2px 10px rgba(0,0,0,.6)",
+      maxWidth:"90%",
+    }}>
+      {form.titulo || "TÍTULO DEL MENSAJE"}
+    </div>
+
+    <div style={{
+      fontSize:10,
+      color:form.color_texto,
+      opacity:.8,
+      lineHeight:1.6,
+      wordBreak:"break-word",
+      maxWidth:"85%"
+    }}>
+      {form.mensaje || "El mensaje aparecerá aquí…"}
+    </div>
+  </>
+)}
         </div>
 
         {/* Barra progreso */}
-        <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3,
-          background:"rgba(255,255,255,.08)", zIndex:9 }}>
-          <div style={{ width:"55%", height:"100%", background:accent,
-            boxShadow:`0 0 6px ${accent}` }} />
-        </div>
+        {!ocultarPlaceholders && (
+  <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3,
+    background:"rgba(255,255,255,.08)", zIndex:9 }}>
+    <div style={{ width:"55%", height:"100%", background:accent,
+      boxShadow:`0 0 6px ${accent}` }} />
+  </div>
+)}
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { construirFiltroOrigenes, normalizarOrigenSql, canalOrigenSql } = require('../shared/origenesRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,35 +96,23 @@ const {
       const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
       const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-      // Con canal → filtrar por origenesBitrix. Sin canal → usar TODOS los conocidos
-      // (así excluimos MAL INGRESO/SIN MAPEO que no están en TODOS_ORIGENES_CONOCIDOS)
-      const origParaWhere = gruposSel.length > 0 ? origenesBitrix : TODOS_ORIGENES_CONOCIDOS;
-      const { where: origWhere, params: origParams } = buildInWhere(origParaWhere, 2, 'mb.b_origen');
-
-      // Expresión CASE para derivar canal_inversion desde b_origen (igual que ORIGEN_A_CANAL_INV)
-      const canalExpr = `CASE mb.b_origen
-        WHEN 'BASE 593-979083368'    THEN 'ARTS'
-        WHEN 'BASE 593-995211968'    THEN 'ARTS FACEBOOK'
-        WHEN 'BASE 593-992827793'    THEN 'ARTS GOOGLE'
-        WHEN 'FORMULARIO LANDING 3'  THEN 'ARTS GOOGLE'
-        WHEN 'LLAMADA LANDING 3'     THEN 'ARTS GOOGLE'
-        WHEN 'POR RECOMENDACIÓN'     THEN 'POR RECOMENDACIÓN'
-        WHEN 'REFERIDO PERSONAL'     THEN 'POR RECOMENDACIÓN'
-        WHEN 'TIENDA ONLINE'         THEN 'POR RECOMENDACIÓN'
-        WHEN 'BASE 593-958993371'    THEN 'REMARKETING'
-        WHEN 'BASE 593-984414273'    THEN 'REMARKETING'
-        WHEN 'BASE 593-995967355'    THEN 'REMARKETING'
-        WHEN 'WHATSAPP 593958993371' THEN 'REMARKETING'
-        WHEN 'BASE 593-962881280'    THEN 'VIDIKA GOOGLE'
-        WHEN 'BASE 593-987133635'    THEN 'VIDIKA GOOGLE'
-        WHEN 'BASE API 593963463480' THEN 'VIDIKA GOOGLE'
-        WHEN 'FORMULARIO LANDING 4'  THEN 'VIDIKA GOOGLE'
-        WHEN 'LLAMADA'               THEN 'VIDIKA GOOGLE'
-        WHEN 'LLAMADA LANDING 4'     THEN 'VIDIKA GOOGLE'
-        ELSE NULL
+      // Sin canal se muestran TODOS los orígenes vivos del webhook. Un origen
+      // nuevo nunca debe desaparecer solo por no estar en el catálogo histórico.
+      const { where: origWhere, params: origParams } = construirFiltroOrigenes(
+        gruposSel.length > 0 ? origenesBitrix : [], 2, 'w.source'
+      );
+      const origenNormalizadoExpr = normalizarOrigenSql('w.source');
+      const etapaWebhookExpr = `CASE
+        WHEN LOWER(TRIM(COALESCE(w.etapa, ''))) IN ('inegociable', 'innegociable') THEN 'INNEGOCIABLE'
+        WHEN LOWER(TRIM(COALESCE(w.etapa, ''))) = 'regularizacion' THEN 'REGULARIZACION'
+        ELSE UPPER(TRIM(COALESCE(w.etapa_bitrix, w.etapa, '')))
       END`;
 
-      // ── Detalle: leads y métricas desde mestra_bitrix (SIEMPRE datos frescos) ──
+      // Los orígenes históricos mantienen su grupo; cualquier origen nuevo se
+      // conserva con su propio nombre normalizado en vez de ocultarse.
+      const canalExpr = canalOrigenSql('w.source');
+
+      // ── Detalle CRM: fuente oficial en vivo del webhook de Bitrix ───────────
       const detalleResult = await pool.query(`
         SELECT
           fecha,
@@ -169,8 +158,8 @@ const {
           0         AS inversion_usd
         FROM (
           SELECT
-            mb.b_creado_el_fecha::date AS fecha,
-            CASE EXTRACT(DOW FROM mb.b_creado_el_fecha::date)
+            (w.created_at AT TIME ZONE 'America/Guayaquil')::date AS fecha,
+            CASE EXTRACT(DOW FROM (w.created_at AT TIME ZONE 'America/Guayaquil')::date)
               WHEN 0 THEN 'Domingo' WHEN 1 THEN 'Lunes'   WHEN 2 THEN 'Martes'
               WHEN 3 THEN 'Miércoles' WHEN 4 THEN 'Jueves' WHEN 5 THEN 'Viernes'
               WHEN 6 THEN 'Sábado'
@@ -179,23 +168,21 @@ const {
             -- N LEADS: excluye DUPLICADO / REMARKETING / REGULARIZACION.
             -- Antes usaba ILIKE '%DUPLICADO%' / '%REGULARIZA%' (patrón parcial,
             -- sin REMARKETING). Ahora usa la lista oficial de shared/etapas.js.
-            COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
-              OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')                      AS atc_soporte,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
-              OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA PELIGROSA%')               AS zonas_peligrosas,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%') AS innegociable,
-            COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS negociables,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%SEGUIMIENTO%')  AS seguimiento_negociacion
-          FROM public.mestra_bitrix mb
-          WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
-            AND mb.j_id_bitrix IS NULL
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${esLeadTotalExpr(etapaWebhookExpr)}) AS n_leads,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%ATC%' OR ${etapaWebhookExpr} ILIKE '%SOPORTE%') AS atc_soporte,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%ZONA%PELIGRO%' OR ${etapaWebhookExpr} ILIKE '%ZONA PELIGROSA%') AS zonas_peligrosas,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%INNEGOCIABLE%') AS innegociable,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${esGestionableExpr(etapaWebhookExpr)}) AS negociables,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%SEGUIMIENTO%') AS seguimiento_negociacion
+          FROM public.bitrix_webhook_leads w
+          WHERE w.empresa = 'novonet'
+            AND (w.created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1 AND $2
+            AND NULLIF(TRIM(w.source), '') IS NOT NULL
             ${origWhere}
-          GROUP BY mb.b_creado_el_fecha::date, (${canalExpr})
+          GROUP BY (w.created_at AT TIME ZONE 'America/Guayaquil')::date, (${canalExpr})
         ) sub
-        WHERE canal_inversion IS NOT NULL
         GROUP BY fecha, dia_semana, canal_inversion
         ORDER BY fecha DESC, canal_inversion ASC
       `, [fechaDesde, fechaHasta, ...origParams]);

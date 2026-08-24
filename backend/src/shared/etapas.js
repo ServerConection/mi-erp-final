@@ -171,6 +171,22 @@ const esDescarteExpr = (col) =>
 const sumaReporteExpr = (origenCol, etapaCol) =>
     `(${etapaCol} = 'VENTA SUBIDA' OR UPPER(TRIM(COALESCE(${origenCol}, ''))) NOT IN ${sqlListaUpper(ORIGENES_NO_SUMAN_REPORTE)})`;
 
+/**
+ * Porcentaje de descarte para las tarjetas de Indicadores. Numerador y
+ * denominador usan IDs únicos, fecha de creación CRM y la misma población
+ * reportable, igual que el total visible de gestionables.
+ */
+const descarteIndicadoresExpr = ({ idCol, etapaCol, fechaCol, origenCol }) => `
+    (COUNT(DISTINCT ${idCol}) FILTER (
+        WHERE ${esDescarteExpr(etapaCol)}
+          AND ${fechaCol} BETWEEN $1::date AND $2::date
+          AND ${sumaReporteExpr(origenCol, etapaCol)}
+    )::numeric /
+    NULLIF(COUNT(DISTINCT ${idCol}) FILTER (
+        WHERE ${fechaCol} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr(etapaCol)}
+          AND ${sumaReporteExpr(origenCol, etapaCol)}
+    ), 0) * 100)::numeric(10,2)`;
 // ── (4) REGULARIZACIÓN ──────────────────────────────────────────────────────
 // Un registro está POR REGULARIZAR ⇔ su ESTATUS DE REGULARIZACIÓN es
 // exactamente "POR REGULARIZAR".
@@ -234,6 +250,7 @@ module.exports = {
     esGestionableExpr,
     esDescarteExpr,
     sumaReporteExpr,
+    descarteIndicadoresExpr,
     ESTADO_POR_REGULARIZAR,
     ESTADOS_ANULAN_REGULARIZACION,
     esPorRegularizarExpr,

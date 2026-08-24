@@ -5,6 +5,7 @@ import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/Feedba
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
+import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
@@ -925,53 +926,9 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const stats = useMemo(() => {
-    const s = data.supervisores || [];
-    const crm = data.dataCRM || [];
-    const n = s.length || 1;
-    const totalJotform = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    const totalBacklog = s.reduce((acc, c) => acc + Number(c.backlog || 0), 0);
-    // ACTIVAS TOTALES = real_mes. Antes se sumaba real_mes + backlog, pero
-    // real_mes YA incluye el backlog → se contaba doble.
-    const totalActivos   = s.reduce((acc, c) => acc + Number(c.real_mes   || 0), 0);
-    const totalActivaMes = s.reduce((acc, c) => acc + Number(c.activa_mes || 0), 0);
-    const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
-    const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
-    return {
-      ingresosCRM: s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0),
-      gestionables: totalGestionables,
-      // POR REGULARIZAR — mismo campo que Novonet (por_regularizar).
-      // Velsa sumaba `regularizacion`, que aplica exclusiones de estado_venta
-      // adicionales, así que la tarjeta daba un número distinto al de Novonet
-      // aun con el mismo nombre.
-      regularizar: s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
-      ingresosJotform: totalJotform,
-      ventasDelDia:       s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
-      ventasDiaForm:      s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0),
-      // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
-      ventaSeguimiento:   Math.max(0, totalJotform - s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0)),
-      descartePorc: (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
-      leadsGestionables: s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
-      tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
-      tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
-      terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      efectividadActivasPauta: (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas:   totalActivos,     // ACTIVAS TOTALES
-      activaMes: totalActivaMes,   // creados y activados en el rango
-      backlog: totalBacklog,
-      ventaServicio: totalVentaServicio,
-      // Mismas metricas que NOVONET, para que las tarjetas sean identicas
-      pctGestionablesVsTotales: (() => {
-        const lt = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
-        return lt > 0 ? ((totalGestionables / lt) * 100).toFixed(1) : "0.0";
-      })(),
-      efectividadVsLeadsTotales: (() => {
-        const lt = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
-        return lt > 0 ? ((totalJotform / lt) * 100).toFixed(1) : "0.0";
-      })(),
-    };
-  }, [data]);
+  // Mismo cálculo ponderado que Novonet: suma absolutos por asesor y
+  // divide una sola vez. Evita promediar porcentajes de supervisores.
+  const stats = useMemo(() => calcularStatsIndicadores(data), [data]);
 
   const COLORES_EMBUDO = ['#f97316','#fb923c','#fdba74','#fbbf24','#34d399','#10b981'];
 

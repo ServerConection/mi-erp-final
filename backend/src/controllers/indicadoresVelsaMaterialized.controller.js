@@ -12,6 +12,8 @@ const {
     esLeadTotalExpr,
     esGestionableExpr,
     esDescarteExpr,
+    esDescarteExactoExpr,
+    descarteIndicadoresExpr,
     ETAPAS_NO_GESTIONABLES,
 
     esPorRegularizarExpr
@@ -256,8 +258,8 @@ const queryKPI = (columna, filters) => {
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
       AND ${VENTA_SERVICIO_VELSA_MV}
     ) AS venta_servicio,
-    COUNT(*) FILTER (
-      WHERE ${esDescarteExpr('mv.etapa_crm')}
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE ${esDescarteExactoExpr('mv.etapa_crm')}
       AND ${CRM_DATE} BETWEEN $1::date AND $2::date
     ) AS descarte_count,
     COUNT(*) FILTER (
@@ -283,7 +285,7 @@ const queryKPI = (columna, filters) => {
     -- los % de Velsa nunca cuadraban con los de Novonet.
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
-      / NULLIF(COUNT(*) FILTER (
+      / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
         ), 0)
@@ -296,18 +298,16 @@ const queryKPI = (columna, filters) => {
     -- sobre un denominador distinto al "gestionables" que se ve en pantalla.
     -- Unificado al mismo denominador angosto que ya usan efectividad_realz
     -- y eficiencia (líneas de arriba/abajo) — pedido explícito: tablas deben
-    -- medir igual que las tarjetas. NOVONET no se toca.
-    (COUNT(*) FILTER (
-      WHERE ${esDescarteExpr('mv.etapa_crm')}
-      AND ${CRM_DATE} BETWEEN $1::date AND $2::date
-    )::numeric / NULLIF(COUNT(*) FILTER (
-          WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
-          AND ${esGestionableExpr('mv.etapa_crm')}
-        ), 0) * 100)::numeric(10,2) AS descarte,
+    -- medir igual que las tarjetas en ambas empresas.
+    ${descarteIndicadoresExpr({
+      idCol: 'mv.id_crm',
+      etapaCol: 'mv.etapa_crm',
+      fechaCol: CRM_DATE,
+    })} AS descarte,
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
-      / NULLIF(COUNT(*) FILTER (
+      / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
         ), 0)
@@ -320,7 +320,7 @@ const queryKPI = (columna, filters) => {
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
-      / NULLIF(COUNT(*) FILTER (
+      / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
         ), 0)
@@ -331,7 +331,7 @@ const queryKPI = (columna, filters) => {
         WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
         AND UPPER(TRIM(mv.estado_venta)) NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
       )::numeric
-      / NULLIF(COUNT(*) FILTER (
+      / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
         ), 0)
@@ -820,12 +820,12 @@ async function getMonitoreoDiarioVelsa(req, res) {
     const qMon = (columna) => `
       SELECT
         COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS real_dia_leads,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) = 'VENTA SUBIDA') AS v_subida_crm_hoy,
-        COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS gestionables
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS real_dia_leads,
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date) AS crm_dia,
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND UPPER(mv.etapa_crm) = 'VENTA SUBIDA') AS v_subida_crm_hoy,
+        COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS gestionables
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY real_mes_leads DESC
@@ -892,12 +892,12 @@ async function getReporte180Velsa(req, res) {
         -- (antes: creación CRM O registro Jotform). Mismo criterio de queryKPI
         -- y de las tarjetas. NOVONET no se toca.
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE ${esDescarteExpr('mv.etapa_crm')} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
+          COUNT(DISTINCT mv.id_crm) FILTER (WHERE ${esDescarteExactoExpr('mv.etapa_crm')} AND mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
+          / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
           COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric

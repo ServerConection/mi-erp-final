@@ -13,6 +13,7 @@ test('descarte de tarjetas usa IDs únicos y la misma base CRM de gestionables',
 
   assert.equal(typeof sql, 'string');
   assert.match(sql, /COUNT\(DISTINCT b_id\)/);
+  assert.match(sql, /UPPER\(TRIM\(etapa\)\) = 'DESCARTE'/);
   assert.doesNotMatch(sql, /_jf_parsed_date/);
   assert.match(sql, /_bc_date BETWEEN \$1::date AND \$2::date/);
   assert.match(sql, /NULLIF\(COUNT\(DISTINCT b_id\)/);

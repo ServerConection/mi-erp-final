@@ -16,7 +16,8 @@ const {
     esGestionableExpr: _esGestionableExpr,
     sqlListaUpper: _sqlListaUpper,
     esPorRegularizarExpr,
-    descarteIndicadoresExpr
+    descarteIndicadoresExpr,
+    esDescarteExactoExpr
 } = require('../shared/etapas');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 // FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
@@ -681,6 +682,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND j_netlife_estatus_real = 'ACTIVO'
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS tercera_edad,
+                COUNT(DISTINCT b_id) FILTER (
+                    WHERE ${esDescarteExactoExpr('b_etapa_de_la_negociacion')}
+                    AND _bc_date BETWEEN $1::date AND $2::date
+                    AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                ) AS descarte_count,
                 ${descarteIndicadoresExpr({
                     idCol: 'b_id',
                     etapaCol: 'b_etapa_de_la_negociacion',

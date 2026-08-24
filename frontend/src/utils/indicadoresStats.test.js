@@ -22,3 +22,15 @@ test('las tarjetas se calculan desde asesores y no desde supervisores divergente
   assert.equal(stats.efectividad, '50.0');
   assert.equal(stats.pctGestionablesVsTotales, '66.7');
 });
+
+test('descarte total es ponderado: descartes totales sobre gestionables totales', () => {
+  const stats = calcularStatsIndicadores({
+    asesores: [
+      { gestionables: 100, descarte_count: 20, descarte: 20 },
+      { gestionables: 2167, descarte_count: 1000, descarte: 40 },
+    ],
+  });
+
+  assert.equal(stats.gestionables, 2267);
+  assert.equal(stats.descartePorc, '45.0');
+});

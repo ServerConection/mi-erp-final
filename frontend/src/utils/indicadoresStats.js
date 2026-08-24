@@ -17,7 +17,8 @@ export function calcularStatsIndicadores(data = {}) {
     ventasDelDia: suma('ventas_del_dia'),
     ventasDiaForm: suma('ventas_dia_form'),
     ventaSeguimiento: Math.max(0, totalJotform - suma('ventas_del_dia')),
-    descartePorc: (suma('descarte') / n).toFixed(1),
+    descartePorc: totalGestionables > 0
+      ? ((suma('descarte_count') / totalGestionables) * 100).toFixed(1) : '0.0',
     leadsGestionables: totalLeadsTotales,
     efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : '0.0',
     tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : '0.0',

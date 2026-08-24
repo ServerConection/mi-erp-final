@@ -15,6 +15,7 @@ const { initConsultorVelsaRefresh }  = require('../jobs/refreshConsultorVelsa.cr
 const { runInitialRefresh: refreshRedesMVs } = require('../jobs/refreshRedesMaterialized.cron');
 const { initJotformSync }            = require('../jobs/jotformSync.cron');
 const { initCierreDiario }           = require('../jobs/cierreDiario.cron');
+const { initWinTrackerSync }         = require('../jobs/syncWinTracker.cron');
 
 (async () => {
   console.log('[workers] iniciando jobs programados...');
@@ -23,6 +24,7 @@ const { initCierreDiario }           = require('../jobs/cierreDiario.cron');
     initConsultorVelsaRefresh();  // refresco del MV pequeño de consultor externo
     await refreshRedesMVs();      // refresco inicial de MVs de redes
     initJotformSync();            // sync programado de Jotform
+    initWinTrackerSync();         // inversión Arts/Velsa al arrancar y cada 30 minutos
     initCierreDiario();           // cierre diario 23:30 (America/Guayaquil) -> reportegeneral_d1
     console.log('[workers] jobs activos');
   } catch (e) {

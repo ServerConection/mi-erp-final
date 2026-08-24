@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { construirFiltroOrigenes, normalizarOrigenSql, canalOrigenSql } = require('../shared/origenesRedes');
+const { normalizarFechaInversion, resolverCanalInversion, agregarFilasSoloInversion } = require('../shared/inversionRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,13 +188,30 @@ const {
         ORDER BY fecha DESC, canal_inversion ASC
       `, [fechaDesde, fechaHasta, ...origParams]);
 
-      // ── Inversión desde MV (solo inversion_usd, dato externo a mestra_bitrix) ──
+      // ── Inversión: tabla viva de agencias primero; MV como respaldo ─────────
       const { where: invCanalWhere, params: invCanalParams } = buildInWhere(
         canalesInversion.length > 0 ? canalesInversion : [],
         2,
         "SPLIT_PART(mv.canal_inversion, ' -', 1)"
       );
       let inversionMap = {}; // clave: "YYYY-MM-DD__CANAL"
+      try {
+        const inversionViva = await pool.query(`
+          SELECT i.fecha::date AS fecha, i.origen, i.monto_usd
+          FROM public.novonet_inversion_redes i
+          WHERE i.fecha BETWEEN $1 AND $2
+          ORDER BY i.fecha, i.origen
+        `, [fechaDesde, fechaHasta]);
+        inversionViva.rows.forEach((r) => {
+          const canal = resolverCanalInversion(r.origen);
+          if (canalesInversion.length > 0 && !canalesInversion.includes(canal)) return;
+          const key = `${normalizarFechaInversion(r.fecha)}__${canal}`;
+          inversionMap[key] = (inversionMap[key] || 0) + Number(r.monto_usd || 0);
+        });
+      } catch (err) {
+        if (err.code !== '42P01') console.warn('⚠️ Inversión viva no disponible:', err.message);
+      }
+
       try {
         const invResult = await pool.query(`
           SELECT
@@ -207,15 +225,17 @@ const {
           GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
         `, [fechaDesde, fechaHasta, ...invCanalParams]);
         invResult.rows.forEach(r => {
-          inversionMap[`${r.fecha}__${r.canal}`] = Number(r.inversion_usd || 0);
+          const key = `${r.fecha}__${r.canal}`;
+          if (!inversionMap[key]) inversionMap[key] = Number(r.inversion_usd || 0);
         });
       } catch (_) { /* MV puede fallar — inversión quedará en 0 */ }
 
       // ── Merge: attach inversion_usd a cada fila del detalle ──────────────────
-      const data = detalleResult.rows.map(row => ({
+      const dataConDetalle = detalleResult.rows.map(row => ({
         ...row,
-        inversion_usd: inversionMap[`${row.fecha}__${row.canal_inversion}`] || 0,
+        inversion_usd: inversionMap[`${normalizarFechaInversion(row.fecha)}__${row.canal_inversion}`] || 0,
       }));
+      const data = agregarFilasSoloInversion(dataConDetalle, inversionMap);
 
       // ── Totales: agregar desde data (con inversion_usd ya mergeada) ──────────
       const sum = (f) => data.reduce((s, r) => s + Number(r[f] || 0), 0);

@@ -59,6 +59,11 @@ const ETAPAS_NO_GESTIONABLES_BASE = [
     'CONTRATO PARAMOUNT',
     'PARAMOUNT SEGUMIENTO POR CERRAR',
     'PARAMOUNT SEGUIMIENTO POR CERRAR',
+    'INNEGOCIABLE',
+    'DUPLICADO',
+    'REMARKETING',
+    'REGULARIZACION',
+
     // Las que no suman como lead tampoco son gestionables:
     ...ETAPAS_NO_SUMAN_LEAD,
 ];

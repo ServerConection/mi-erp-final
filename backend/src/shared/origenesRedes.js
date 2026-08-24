@@ -34,6 +34,19 @@ const canalOrigenSql = (columna) => {
     .join('\n        ');
   return `CASE ${origen}\n        ${casos}\n        ELSE ${origen}\n      END`;
 };
+const normalizarAgencia = (agencia) => {
+  const normalizada = normalizarOrigen(agencia);
+  if (normalizada === 'ARST') return 'ARTS';
+  return normalizada;
+};
+
+const agenciaSql = (columna) => {
+  const normalizada = normalizarOrigenSql(columna);
+  return `CASE ${normalizada} WHEN 'ARST' THEN 'ARTS' ELSE ${normalizada} END`;
+};
+
+const canalAsignadoSql = (columnaAgencia, columnaOrigen) =>
+  `COALESCE(NULLIF(${agenciaSql(columnaAgencia)}, ''), ${canalOrigenSql(columnaOrigen)})`;
 const resolverCanalOrigen = (origen) => {
   const normalizado = normalizarOrigen(origen);
   if (!normalizado) return 'SIN ORIGEN';
@@ -55,7 +68,9 @@ module.exports = {
   ORIGEN_A_CANAL,
   normalizarOrigen,
   normalizarOrigenSql,
+  normalizarAgencia,
   canalOrigenSql,
+  canalAsignadoSql,
   resolverCanalOrigen,
   construirFiltroOrigenes,
 };

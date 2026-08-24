@@ -22,3 +22,11 @@ test('conserva inversion aunque ese dia no exista una fila CRM del canal', () =>
 test('normaliza fechas de PostgreSQL sin cambiar el dia de Ecuador', () => {
   assert.equal(normalizarFechaInversion(new Date(2026, 7, 24)), '2026-08-24');
 });
+test('no duplica inversion cuando la fila CRM usa una fecha PostgreSQL', () => {
+  const fechaPg = new Date(2026, 7, 24);
+  const filas = agregarFilasSoloInversion([
+    { fecha: fechaPg, canal_inversion: 'ARTS', inversion_usd: 264.92 },
+  ], { '2026-08-24__ARTS': 264.92 });
+
+  assert.equal(filas.length, 1);
+});

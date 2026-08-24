@@ -1,6 +1,6 @@
 const ORIGEN_SINTETICO_A_CANAL = Object.freeze({
   '__WINTRACKER_ARTS__': 'ARTS',
-  '__WINTRACKER_VIDIKA__': 'VIDIKA GOOGLE',
+  '__WINTRACKER_VIDIKA__': 'VIDIKA',
 });
 
 function normalizarFechaInversion(fecha) {
@@ -19,7 +19,7 @@ function resolverCanalInversion(origen) {
 
 function agregarFilasSoloInversion(data, inversionMap) {
   const resultado = [...data];
-  const presentes = new Set(data.map((row) => `${String(row.fecha).split('T')[0]}__${row.canal_inversion}`));
+  const presentes = new Set(data.map((row) => `${normalizarFechaInversion(row.fecha)}__${row.canal_inversion}`));
 
   Object.entries(inversionMap).forEach(([key, monto]) => {
     if (presentes.has(key) || Number(monto) <= 0) return;

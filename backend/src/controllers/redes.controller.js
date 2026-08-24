@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const { construirFiltroOrigenes, normalizarOrigenSql, canalOrigenSql } = require('../shared/origenesRedes');
+const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql } = require('../shared/origenesRedes');
 const { normalizarFechaInversion, resolverCanalInversion, agregarFilasSoloInversion } = require('../shared/inversionRedes');
 
 
@@ -111,7 +111,8 @@ const {
 
       // Los orígenes históricos mantienen su grupo; cualquier origen nuevo se
       // conserva con su propio nombre normalizado en vez de ocultarse.
-      const canalExpr = canalOrigenSql('w.source');
+      const catalogoOrigenExpr = normalizarOrigenSql('lc.origen');
+      const canalExpr = canalAsignadoSql('m.agencia', 'w.source');
 
       // ── Detalle CRM: fuente oficial en vivo del webhook de Bitrix ───────────
       const detalleResult = await pool.query(`
@@ -178,6 +179,14 @@ const {
             COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
             COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%SEGUIMIENTO%') AS seguimiento_negociacion
           FROM public.bitrix_webhook_leads w
+          LEFT JOIN LATERAL (
+            SELECT lc.agencia
+            FROM public.novonet_lineas_canal lc
+            WHERE ${catalogoOrigenExpr} = ${origenNormalizadoExpr}
+            ORDER BY (BTRIM(lc.origen) = BTRIM(w.source)) DESC,
+                     lc.actualizado_en DESC NULLS LAST
+            LIMIT 1
+          ) m ON TRUE
           WHERE w.empresa = 'novonet'
             AND (w.created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1 AND $2
             AND NULLIF(TRIM(w.source), '') IS NOT NULL

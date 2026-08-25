@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql } = require('../shared/origenesRedes');
-const { normalizarFechaInversion, resolverCanalInversion, agregarFilasSoloInversion } = require('../shared/inversionRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion } = require('../shared/inversionRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,7 +234,8 @@ const {
           GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
         `, [fechaDesde, fechaHasta, ...invCanalParams]);
         invResult.rows.forEach(r => {
-          const key = `${r.fecha}__${r.canal}`;
+          const canal = resolverCanalRespaldo(r.canal);
+          const key = `${normalizarFechaInversion(r.fecha)}__${canal}`;
           if (!inversionMap[key]) inversionMap[key] = Number(r.inversion_usd || 0);
         });
       } catch (_) { /* MV puede fallar — inversión quedará en 0 */ }

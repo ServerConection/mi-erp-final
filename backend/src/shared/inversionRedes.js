@@ -12,6 +12,16 @@ function normalizarFechaInversion(fecha) {
   }
   return String(fecha || '').split('T')[0];
 }
+const CANAL_HISTORICO_A_AGENCIA = Object.freeze({
+  'VIDIKA GOOGLE': 'VIDIKA',
+  'ARTS GOOGLE': 'ARTS',
+  'ARTS FACEBOOK': 'ARTS',
+});
+
+function resolverCanalRespaldo(canal) {
+  const normalizado = String(canal || '').trim().toUpperCase();
+  return CANAL_HISTORICO_A_AGENCIA[normalizado] || normalizado;
+}
 function resolverCanalInversion(origen) {
   const normalizado = String(origen || '').trim().toUpperCase();
   return ORIGEN_SINTETICO_A_CANAL[normalizado] || normalizado;
@@ -47,4 +57,4 @@ function agregarFilasSoloInversion(data, inversionMap) {
   return resultado;
 }
 
-module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, agregarFilasSoloInversion };
+module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion };

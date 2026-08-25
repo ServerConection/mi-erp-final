@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normalizarFechaInversion, resolverCanalInversion, agregarFilasSoloInversion } = require('../src/shared/inversionRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion } = require('../src/shared/inversionRedes');
 
 test('asigna la inversion diaria de WinTracker Arts una sola vez al canal Arts', () => {
   assert.equal(resolverCanalInversion('__WINTRACKER_ARTS__'), 'ARTS');
@@ -29,4 +29,9 @@ test('no duplica inversion cuando la fila CRM usa una fecha PostgreSQL', () => {
   ], { '2026-08-24__ARTS': 264.92 });
 
   assert.equal(filas.length, 1);
+});
+test('unifica canales historicos con la agencia asignada para no separar la inversion', () => {
+  assert.equal(resolverCanalRespaldo('VIDIKA GOOGLE'), 'VIDIKA');
+  assert.equal(resolverCanalRespaldo('ARTS GOOGLE'), 'ARTS');
+  assert.equal(resolverCanalRespaldo('ARTS FACEBOOK'), 'ARTS');
 });

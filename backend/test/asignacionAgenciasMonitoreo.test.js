@@ -9,4 +9,5 @@ test('monitoreo agrupa por la agencia asignada usando origen normalizado', () =>
   assert.match(controller, /canalAsignadoSql\('m\.agencia', 'w\.source'\)/);
   assert.match(controller, /LEFT JOIN LATERAL/);
   assert.match(controller, /normalizarOrigenSql\('lc\.origen'\)/);
+  assert.match(controller, /const canal = resolverCanalRespaldo\(r\.canal\)/);
 });

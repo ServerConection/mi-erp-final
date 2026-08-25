@@ -57,4 +57,37 @@ function agregarFilasSoloInversion(data, inversionMap) {
   return resultado;
 }
 
-module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion };
+function agregarInversionDiaria(filasVivas = [], filasRespaldo = [], canalesSeleccionados = []) {
+  const canalesFiltro = new Set(canalesSeleccionados.map(resolverCanalRespaldo));
+  const porCanalDia = new Map();
+  const incluirCanal = (canal) => canalesFiltro.size === 0 || canalesFiltro.has(canal);
+
+  filasVivas.forEach((row) => {
+    const canal = resolverCanalRespaldo(resolverCanalInversion(row.origen));
+    if (!incluirCanal(canal)) return;
+    const fecha = normalizarFechaInversion(row.fecha);
+    const key = `${fecha}__${canal}`;
+    porCanalDia.set(key, (porCanalDia.get(key) || 0) + Number(row.monto_usd || 0));
+  });
+
+  filasRespaldo.forEach((row) => {
+    const canal = resolverCanalRespaldo(row.canal || row.canal_inversion);
+    if (!incluirCanal(canal)) return;
+    const fecha = normalizarFechaInversion(row.fecha);
+    const key = `${fecha}__${canal}`;
+    if (!porCanalDia.has(key)) porCanalDia.set(key, Number(row.inversion_usd || 0));
+  });
+
+  const porDia = new Map();
+  porCanalDia.forEach((monto, key) => {
+    const fecha = key.slice(0, key.indexOf('__'));
+    const dia = Number(fecha.slice(-2));
+    porDia.set(dia, (porDia.get(dia) || 0) + monto);
+  });
+
+  return [...porDia.entries()]
+    .sort(([diaA], [diaB]) => diaA - diaB)
+    .map(([dia, inversion_usd]) => ({ dia, inversion_usd: Number(inversion_usd.toFixed(2)) }));
+}
+
+module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria };

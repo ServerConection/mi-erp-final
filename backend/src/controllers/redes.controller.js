@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql } = require('../shared/origenesRedes');
-const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion } = require('../shared/inversionRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria } = require('../shared/inversionRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -620,21 +620,37 @@ const {
       const bitWhereClause = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').where        : '';
       const bitParamsExtra = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').params       : [];
 
-      // FIX: Inversión diaria — SPLIT_PART para normalizar canal antes de agrupar
-      const inversionRes = await pool.query(`
-        SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
-        FROM (
-          SELECT fecha, SPLIT_PART(canal_inversion, ' -', 1) AS canal_normalizado, MAX(inversion_usd) AS max_inv
+      // Inversión diaria: fuente viva primero; la vista materializada queda como respaldo.
+      // Esto mantiene Reporte Data alineado con Monitoreo General y evita duplicar
+      // ARTS/VIDIKA cuando existen nombres históricos por canal.
+      const inversionVivaRes = await pool.query(`
+        SELECT i.fecha::date AS fecha, i.origen, i.monto_usd
+        FROM public.novonet_inversion_redes i
+        WHERE i.fecha BETWEEN $1::date AND $2::date
+        ORDER BY i.fecha, i.origen
+      `, [desde, hasta]);
+
+      let inversionRespaldoRows = [];
+      try {
+        const inversionRespaldoRes = await pool.query(`
+          SELECT
+            fecha::date AS fecha,
+            SPLIT_PART(canal_inversion, ' -', 1) AS canal,
+            MAX(inversion_usd) AS inversion_usd
           FROM public.mv_monitoreo_publicidad
           WHERE fecha BETWEEN $1::date AND $2::date
             AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
             ${invWhereClause}
-          GROUP BY fecha, SPLIT_PART(canal_inversion, ' -', 1)
-        ) sub
-        GROUP BY EXTRACT(DAY FROM fecha)::int
-        ORDER BY dia ASC
-      `, [desde, hasta, ...invParamsExtra]);
+          GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
+        `, [desde, hasta, ...invParamsExtra]);
+        inversionRespaldoRows = inversionRespaldoRes.rows;
+      } catch (_) { /* La vista puede estar refrescando; la tabla viva sigue disponible. */ }
 
+      const inversionRows = agregarInversionDiaria(
+        inversionVivaRes.rows,
+        inversionRespaldoRows,
+        canalesInversion
+      );
       // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
       const etapasRes = await pool.query(`
         SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
@@ -880,7 +896,7 @@ const {
 
       // ── Combinar en finalArray ────────────────────────────────────────────────
       const invMap = {};
-      inversionRes.rows.forEach(r => { const dia=Number(r.dia); invMap[dia]={ dia, inversion_usd: Number(r.inversion_usd||0) }; });
+      inversionRows.forEach(r => { const dia=Number(r.dia); invMap[dia]={ dia, inversion_usd: Number(r.inversion_usd||0) }; });
       etapasRes.rows.forEach(r => {
         const dia=Number(r.dia);
         if (!invMap[dia]) invMap[dia]={ dia, inversion_usd:0 };

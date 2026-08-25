@@ -1,14 +1,16 @@
 function crearClienteBitrix({ request }) {
   if (typeof request !== 'function') throw new TypeError('request es requerido');
 
-  async function listarDeals(crm, { desde, start = 0 }) {
+  async function listarDeals(crm, { desde, hasta, start = 0 }) {
     const select = [
       'ID', 'TITLE', 'DATE_CREATE', 'STAGE_ID', 'ASSIGNED_BY_ID',
       'CONTACT_ID', 'SOURCE_ID',
     ];
     if (crm.campoChat) select.push(crm.campoChat);
+    const filter = { CATEGORY_ID: crm.categoryId, '>=DATE_CREATE': desde };
+    if (hasta) filter['<=DATE_CREATE'] = `${hasta}T23:59:59`;
     return request(crm, 'crm.deal.list', {
-      filter: { CATEGORY_ID: crm.categoryId, '>=DATE_CREATE': desde },
+      filter,
       select,
       order: { DATE_CREATE: 'ASC' },
       start,

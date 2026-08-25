@@ -24,7 +24,18 @@ function crearClienteBitrix({ request }) {
       LIMIT: limit,
     });
 
-  return { listarDeals, obtenerContacto, obtenerChat };
+  async function resolverChatLead(crm, deal) {
+    const last = await request(crm, 'imopenlines.crm.chat.getLastId', {
+      CRM_ENTITY_TYPE: 'deal',
+      CRM_ENTITY: String(deal.ID),
+    });
+    if (!last?.result) return null;
+    const chatId = String(last.result);
+    const data = await obtenerChat(crm, chatId);
+    return { chatId, messages: data?.result?.messages || [], users: data?.result?.users || [] };
+  }
+
+  return { listarDeals, obtenerContacto, obtenerChat, resolverChatLead };
 }
 
 module.exports = { crearClienteBitrix };

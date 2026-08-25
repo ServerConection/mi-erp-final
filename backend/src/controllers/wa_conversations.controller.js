@@ -2,10 +2,9 @@ const { query } = require('../config/db')
 const fs = require('fs')
 const path = require('path')
 
-// ── Bitrix: webhook por empresa (usa env si existe, si no las URLs por defecto) ──
+// ── Bitrix: solo NOVONET; la credencial vive exclusivamente en el entorno ──
 const BITRIX_WEBHOOKS = {
-  VELSA:   (process.env.BITRIX_VELSA_URL   || process.env.BITRIX_WEBHOOK || 'https://aclopecuador.bitrix24.es/rest/34852/9yzfguq80owrc8wv').replace(/\/$/, ''),
-  NOVONET: (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, ''),
+  NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
 }
 
 // Llama a un método REST de Bitrix según la empresa del usuario

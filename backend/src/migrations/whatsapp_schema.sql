@@ -282,3 +282,10 @@ CREATE INDEX IF NOT EXISTS idx_proxy_quemados_host ON proxy_puertos_quemados(hos
 -- Índice para que el conteo de no leídos no recorra la tabla de mensajes
 CREATE INDEX IF NOT EXISTS idx_messages_conv_dir_ts
   ON messages(conversation_id, direction, timestamp DESC);
+
+-- Idempotencia para eventos nuevos sin alterar, fusionar ni borrar el historial.
+-- Los mensajes históricos conservan NULL y quedan fuera de la restricción.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(100);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_line_dedupe_key
+  ON messages(line_id, dedupe_key)
+  WHERE dedupe_key IS NOT NULL;

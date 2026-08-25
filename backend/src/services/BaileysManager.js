@@ -10,7 +10,7 @@ const { Boom } = require('@hapi/boom')
 const path = require('path')
 const fs = require('fs')
 const pino = require('pino')
-const { query } = require('../config/db')
+const { query, transaction } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
 const { quemarPuerto } = require('./proxyPool.service')
 
@@ -888,15 +888,22 @@ class BaileysManager {
     }
 
     try {
-      await query(
+      const saved = await query(
         `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, media_url, timestamp)
-         VALUES ($1,$2,$3,'in',$4,$5,$6,$7,NOW())`,
+          (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, dedupe_key, media_url, timestamp)
+         VALUES ($1,$2,$3,'in',$4,$5,$6,$6,$7,NOW())
+         ON CONFLICT (line_id, dedupe_key) WHERE dedupe_key IS NOT NULL
+         DO NOTHING RETURNING id`,
         [conv.id, lineId, waNumber, msgType, text, msg.key.id, mediaUrl]
       )
+      if (!saved.rows.length) {
+        console.info(`[Line ${lineId}] Mensaje duplicado ignorado: ${msg.key.id}`)
+        return
+      }
       await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
     } catch (e) {
-      console.error('[BaileysManager] Error guardando mensaje:', e.message)
+      console.error(`[BaileysManager] Error guardando mensaje entrante line=${lineId} wa=${waNumber} msg=${msg.key.id}:`, e.message)
+      return
     }
 
     this.io.emit('message:new', {
@@ -1084,31 +1091,37 @@ class BaileysManager {
     if (waNumber && this.lidMap && this.lidMap[waNumber]) {
       waNumber = this.lidMap[waNumber]
     }
-    // Reusar cualquier conversación abierta (activa o en manos de humano) — evita duplicados
-    const existing = await query(
-      `SELECT * FROM conversations
-       WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
-       ORDER BY started_at DESC LIMIT 1`,
-      [lineId, waNumber]
-    )
-    if (existing.rows.length > 0) return existing.rows[0]
 
-    const contactRes = await query(
-      `INSERT INTO contacts (wa_number, line_id)
-       VALUES ($1,$2)
-       ON CONFLICT (wa_number, line_id) DO UPDATE SET last_seen=NOW()
-       RETURNING id`,
-      [waNumber, lineId]
-    )
+    return transaction(async client => {
+      const lockKey = `${lineId}:${waNumber}`
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey])
 
-    const lineRow = await query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
-    const newConv = await query(
-      `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [lineId, contactRes.rows[0].id, waNumber, lineRow.rows[0]?.bot_id]
-    )
-    console.log(`[BaileysManager] Nueva conversación creada para ${waNumber}`)
-    return newConv.rows[0]
+      // Reusar cualquier conversación abierta después de adquirir el bloqueo.
+      const existing = await client.query(
+        `SELECT * FROM conversations
+         WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
+         ORDER BY started_at DESC LIMIT 1`,
+        [lineId, waNumber]
+      )
+      if (existing.rows.length > 0) return existing.rows[0]
+
+      const contactRes = await client.query(
+        `INSERT INTO contacts (wa_number, line_id)
+         VALUES ($1,$2)
+         ON CONFLICT (wa_number, line_id) DO UPDATE SET last_seen=NOW()
+         RETURNING id`,
+        [waNumber, lineId]
+      )
+
+      const lineRow = await client.query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
+      const newConv = await client.query(
+        `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [lineId, contactRes.rows[0].id, waNumber, lineRow.rows[0]?.bot_id]
+      )
+      console.log(`[BaileysManager] Nueva conversación creada para ${waNumber}`)
+      return newConv.rows[0]
+    })
   }
 
   async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null) {

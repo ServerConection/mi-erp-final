@@ -17,7 +17,10 @@
  */
 require('dotenv').config();
 
-const WEBHOOK_NOVONET = (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, '');
+const WEBHOOK_NOVONET = (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, '');
+if (!WEBHOOK_NOVONET) {
+  throw new Error('BITRIX_NOVONET_URL no configurado en backend/.env o en el entorno de Render');
+}
 const NOMBRE_PIPELINE = process.env.GESTIONABLES_PIPELINE_NAME || 'NETLIFE NUEVO';
 const NOMBRE_ETAPA    = process.env.GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO';
 const FIELD_NAME       = 'UF_CRM_GESTIONABLES';

@@ -341,8 +341,8 @@ const getTablaBitrix = async (req, res) => {
 
 // ── Configuración de APIs Bitrix24 ────────────────────────────────────────────
 const BITRIX_APIS = {
-  NOVONET: (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, ''),
-  VELSA:   (process.env.BITRIX_VELSA_URL   || 'https://aclopecuador.bitrix24.es/rest/34852/0sl0qc3ccg3agc9x').replace(/\/$/, ''),
+  NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
+  VELSA:   (process.env.BITRIX_VELSA_URL || '').replace(/\/+$/, ''),
 };
 
 // Campos de deals que pedimos a la API

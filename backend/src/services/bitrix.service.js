@@ -8,7 +8,7 @@ const pool = require('../config/db');
 const WEBHOOK         = process.env.BITRIX_WEBHOOK;
 // Cuenta NOVONET — usada SOLO por el módulo de llamadas (Automarcador).
 // Las tablas bitrix_usuarios/bitrix_deals (sin sufijo) son SOLO VELSA; no tocar.
-const WEBHOOK_NOVONET = (process.env.BITRIX_NOVONET_URL || 'https://novonet.bitrix24.es/rest/87387/vcca209sfcjflxp8').replace(/\/$/, '');
+const WEBHOOK_NOVONET = (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, '');
 const CAT_VELSA = [8];   // pipelines a sincronizar; agregar más si se necesita
 
 // ── Cliente HTTP con reintentos ───────────────────────────────────────────────

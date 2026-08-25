@@ -3,7 +3,11 @@
  * Ejecutar: node bitrix-explore.js
  */
 
-const WEBHOOK = "https://aclopecuador.bitrix24.es/rest/34852/00em2r3oa8igj2yt";
+require('./backend/node_modules/dotenv').config({ path: './backend/.env' });
+const WEBHOOK = (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, '');
+if (!WEBHOOK) {
+  throw new Error('BITRIX_NOVONET_URL no configurado en backend/.env');
+}
 
 const call = async (method, params = {}) => {
   const qs = new URLSearchParams();

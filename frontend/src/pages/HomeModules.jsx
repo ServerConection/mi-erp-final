@@ -73,6 +73,9 @@ export default function HomeModules() {
     { title: "BotAuditor", path: "/bot-auditor", icon: ShieldCheck, accent: "rosa", cat: "analitica",
       desc: "Auditorías automáticas (IA) de conversaciones WhatsApp por lead en etapa ATC, NOVONET y VELSA.",
       rolesPermitidos: ['CONSULTOR', 'SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
+    { title: "Contactabilidad", path: "/bot-auditor/contactabilidad", icon: ShieldCheck, accent: "azul", cat: "analitica",
+      desc: "Mensajes de cliente y asesor, tiempos de respuesta, pendientes, orígenes y etapas.",
+      rolesPermitidos: ['CONSULTOR', 'SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
 
     { title: "Ventas CRM", path: "/ventas", icon: TrendingUp, accent: "verde", cat: "ventas",
       desc: "Pipeline comercial, seguimiento de leads y cierre de negocios." },

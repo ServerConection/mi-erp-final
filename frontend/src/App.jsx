@@ -60,6 +60,7 @@ const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
+const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const CumplimientoLeads    = lazy(() => import("./pages/CumplimientoLeads"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 
@@ -136,6 +137,7 @@ export default function App() {
             <Route path="polla-mundialista"        element={<PollaMundialista />} />
             <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
+            <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
 
             {/* ── Módulo WhatsApp ──────────────────────────────── */}
             <Route path="whatsapp/lineas"           element={<WaLineas />} />

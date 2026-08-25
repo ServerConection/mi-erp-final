@@ -25,6 +25,9 @@ router.get('/indicador-codigos/config', C.obtenerConfigIndicadorCodigos);
 router.put('/indicador-codigos/config', soloAdmin, C.actualizarConfigIndicadorCodigos);
 router.get('/indicador-codigos', C.listarIndicadorCodigos);
 
+// Analítica operativa de mensajes cliente/asesor.
+router.use('/contactabilidad', require('./contactabilidad.routes'));
+
 router.get('/:id', C.obtenerDetalle);
 router.get('/', C.listarAuditorias);
 

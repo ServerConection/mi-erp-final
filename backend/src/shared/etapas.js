@@ -76,6 +76,29 @@ const ETAPAS_NO_GESTIONABLES = [
 ];
 
 // ── (3) Descarte ────────────────────────────────────────────────────────────
+const PATRONES_NO_GESTIONABLES = [
+    /^DUPL+ICADO$/,
+    /^ATC(?:[ /-]?SOPORTE)?$/,
+    /^FUERA DE COBERTURA$/,
+    /^ZONAS? PELIGROSAS?$/,
+    /^IN+EGOCIABLE$/,
+    /^REMARKETING(?:\b.*)?$/,
+    /^REGULARIZA/,
+];
+
+const normalizarEtapa = (etapa) => String(etapa ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+const esEtapaGestionable = (etapa) => {
+    const normalizada = normalizarEtapa(etapa);
+    if (!normalizada) return false;
+    if (PATRONES_NO_GESTIONABLES.some(patron => patron.test(normalizada))) return false;
+    return !ETAPAS_NO_GESTIONABLES.some(item => normalizarEtapa(item) === normalizada);
+};
 const ETAPAS_DESCARTE_SI = [
     'CONTRATO NETLIFE',
     'DESCARTE',
@@ -104,6 +127,9 @@ const ORIGENES_NO_SUMAN_REPORTE = [
 // ── Helpers SQL ─────────────────────────────────────────────────────────────
 const sqlListaUpper = (arr) =>
     `(${arr.map(e => `'${String(e).toUpperCase().replace(/'/g, "''")}'`).join(', ')})`;
+const normalizarEtapaSql = (col) =>
+    `REGEXP_REPLACE(TRANSLATE(UPPER(TRIM(COALESCE(${col}, ''))), ` +
+    `'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '\\s+', ' ', 'g')`;
 
 /**
  * Cuenta como LEAD TOTAL ⇔ la etapa NO está en ETAPAS_NO_SUMAN_LEAD.
@@ -116,18 +142,29 @@ const esLeadTotalExpr = (col) =>
  * gestionable = SI ⇔ la etapa NO está en la lista de no gestionables.
  * @param {string}  col
  * @param {object}  [opts]
- * @param {boolean} [opts.innegociableEsGestionable=false] true solo para el
- *        dashboard NOVONET, que históricamente cuenta INNEGOCIABLE como gestionable.
  * @param {boolean} [opts.tolerarNull=false] true = un registro sin etapa cuenta
  *        como gestionable (comportamiento de cumplimientoLeads).
  */
 const esGestionableExpr = (col, opts = {}) => {
-    const { innegociableEsGestionable = false, tolerarNull = false } = opts;
-    const lista = innegociableEsGestionable
-        ? ETAPAS_NO_GESTIONABLES_BASE
-        : ETAPAS_NO_GESTIONABLES;
-    const base = `UPPER(TRIM(${col})) NOT IN ${sqlListaUpper(lista)}`;
-    return tolerarNull ? `(${col} IS NULL OR (${base}))` : `(${base})`;
+    const { tolerarNull = false } = opts;
+    const lista = ETAPAS_NO_GESTIONABLES;
+    const etapa = normalizarEtapaSql(col);
+    const exactas = lista.filter(item => ![
+        'DUPLICADO', 'DUPLLICADO', 'REGULARIZACION', 'REGULARIZACIÓN',
+        'REMARKETING', 'ATC', 'ATC/SOPORTE', 'FUERA DE COBERTURA',
+        'ZONA PELIGROSA', 'ZONAS PELIGROSAS', 'INNEGOCIABLE',
+    ].includes(item));
+    const base = [
+        `${etapa} !~ '^DUPL+ICADO$'`,
+        `${etapa} !~ '^ATC([ /-]?SOPORTE)?$'`,
+        `${etapa} <> 'FUERA DE COBERTURA'`,
+        `${etapa} !~ '^ZONAS? PELIGROSAS?$'`,
+        `${etapa} !~ '^IN+EGOCIABLE$'`,
+        `${etapa} !~ '^REMARKETING( .*)?$'`,
+        `${etapa} !~ '^REGULARIZA'`,
+        `${etapa} NOT IN ${sqlListaUpper(exactas)}`,
+    ].join(' AND ');
+    return tolerarNull ? `(${col} IS NULL OR (${base}))` : `(${col} IS NOT NULL AND ${base})`;
 };
 
 /** descarte = SI ⇔ la etapa está en la lista blanca de descarte. */
@@ -141,6 +178,27 @@ const esDescarteExpr = (col) =>
 const sumaReporteExpr = (origenCol, etapaCol) =>
     `(${etapaCol} = 'VENTA SUBIDA' OR UPPER(TRIM(COALESCE(${origenCol}, ''))) NOT IN ${sqlListaUpper(ORIGENES_NO_SUMAN_REPORTE)})`;
 
+/**
+ * Porcentaje de descarte para las tarjetas de Indicadores. Numerador y
+ * denominador usan IDs únicos, fecha de creación CRM y la misma población
+ * reportable, igual que el total visible de gestionables.
+ */
+const esDescarteExactoExpr = (col) => `(UPPER(TRIM(${col})) = 'DESCARTE')`;
+
+const descarteIndicadoresExpr = ({ idCol, etapaCol, fechaCol, origenCol }) => {
+    const filtroReporte = origenCol ? `AND ${sumaReporteExpr(origenCol, etapaCol)}` : '';
+    return `
+    (COUNT(DISTINCT ${idCol}) FILTER (
+        WHERE ${esDescarteExactoExpr(etapaCol)}
+          AND ${fechaCol} BETWEEN $1::date AND $2::date
+          ${filtroReporte}
+    )::numeric /
+    NULLIF(COUNT(DISTINCT ${idCol}) FILTER (
+        WHERE ${fechaCol} BETWEEN $1::date AND $2::date
+          AND ${esGestionableExpr(etapaCol)}
+          ${filtroReporte}
+    ), 0) * 100)::numeric(10,2)`;
+};
 // ── (4) REGULARIZACIÓN ──────────────────────────────────────────────────────
 // Un registro está POR REGULARIZAR ⇔ su ESTATUS DE REGULARIZACIÓN es
 // exactamente "POR REGULARIZAR".
@@ -198,9 +256,14 @@ module.exports = {
     ORIGENES_NO_SUMAN_REPORTE,
     sqlListaUpper,
     esLeadTotalExpr,
+    normalizarEtapa,
+    esEtapaGestionable,
+    normalizarEtapaSql,
     esGestionableExpr,
     esDescarteExpr,
     sumaReporteExpr,
+    esDescarteExactoExpr,
+    descarteIndicadoresExpr,
     ESTADO_POR_REGULARIZAR,
     ESTADOS_ANULAN_REGULARIZACION,
     esPorRegularizarExpr,

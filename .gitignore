@@ -22,3 +22,6 @@ DEAL_*.csv
 
 # Configuracion de tuneles: contiene authtoken de ngrok en claro
 ngrok_tunnels.yml
+
+# Worktrees locales aislados
+.worktrees/

@@ -48,7 +48,7 @@ const DIAS_VENTANA = 4;
 // Cada entrada = una agencia sincronizable. Agregar 'vidika' aquí cuando
 // llegue su apikey (agency se omite en la URL para Vidika, es el default
 // del proveedor — ver correo original).
-const AGENCIAS = [
+const AGENCIAS_SOPORTADAS = [
   {
     agency: 'arts',
     apikeyEnv: 'WINTRACKER_APIKEY_ARTS',
@@ -57,14 +57,26 @@ const AGENCIAS = [
     origenSintetico: '__WINTRACKER_ARTS__',
   },
   {
+    agency: 'vidika',
+    apikeyEnv: 'WINTRACKER_APIKEY_VIDIKA',
+    tabla: 'novonet_inversion_redes',
+    columnaOrigen: 'origen',
+    origenSintetico: '__WINTRACKER_VIDIKA__',
+  },
+  {
     agency: 'velsa',
     apikeyEnv: 'WINTRACKER_APIKEY_VELSA',
     tabla: 'velsa_inversion_redes',
     columnaOrigen: 'canal_publicidad',
     origenSintetico: '__WINTRACKER_VELSA__',
   },
-  // { agency: 'vidika', apikeyEnv: 'WINTRACKER_APIKEY_VIDIKA', tabla: 'novonet_inversion_redes', columnaOrigen: 'origen', origenSintetico: '__WINTRACKER_VIDIKA__' },
 ];
+
+function crearConfiguracionAgencias(env = process.env) {
+  return AGENCIAS_SOPORTADAS
+    .filter((cfg) => Boolean(env[cfg.apikeyEnv]?.trim()))
+    .map((cfg) => ({ ...cfg, apikey: env[cfg.apikeyEnv].trim() }));
+}
 
 function restarDias(fechaISO, dias) {
   const d = new Date(`${fechaISO}T00:00:00Z`);
@@ -89,13 +101,7 @@ async function fetchInversion({ agency, apikey, from, to }) {
 }
 
 async function syncAgencia(cfg, { from, to }) {
-  const apikey = process.env[cfg.apikeyEnv];
-  if (!apikey) {
-    console.log(`  ⚠️  WinTracker: falta ${cfg.apikeyEnv} en .env — se omite "${cfg.agency}".`);
-    return;
-  }
-
-  const payload = await fetchInversion({ agency: cfg.agency, apikey, from, to });
+  const payload = await fetchInversion({ agency: cfg.agency, apikey: cfg.apikey, from, to });
   const dias = Array.isArray(payload.consolidado_diario) ? payload.consolidado_diario : [];
 
   if (!dias.length) {
@@ -133,7 +139,7 @@ async function syncTodasLasAgencias({ from, to } = {}) {
   const desdeFinal  = from || restarDias(hastaFinal, DIAS_VENTANA);
   const rango = { from: desdeFinal, to: hastaFinal };
 
-  for (const cfg of AGENCIAS) {
+  for (const cfg of crearConfiguracionAgencias()) {
     try {
       await syncAgencia(cfg, rango);
     } catch (err) {
@@ -142,4 +148,4 @@ async function syncTodasLasAgencias({ from, to } = {}) {
   }
 }
 
-module.exports = { syncTodasLasAgencias };
+module.exports = { crearConfiguracionAgencias, syncTodasLasAgencias };

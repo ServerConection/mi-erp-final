@@ -5,6 +5,7 @@ import TablaKpiComercial from "../components/TablaKpiComercial";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
+import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -1257,51 +1258,9 @@ ${asesoresPDF.length>0?`
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const stats = useMemo(() => {
-    const s = data.supervisores || [];
-    const n = s.length || 1;
-    const totalJotform      = s.reduce((acc, c) => acc + Number(c.ingresos_reales || 0), 0);
-    // ACTIVAS TOTALES = real_mes (todo lo activado en el rango).
-    // Antes se sumaba real_mes + backlog, pero real_mes YA incluía el backlog
-    // → se contaba doble. ACTIVA MES y BACKLOG salen de ahí.
-    const totalActivos      = s.reduce((acc, c) => acc + Number(c.real_mes   || 0), 0);
-    const totalActivaMes    = s.reduce((acc, c) => acc + Number(c.activa_mes || 0), 0);
-    const totalBacklog      = Math.max(0, totalActivos - totalActivaMes);
-    const totalGestionables = s.reduce((acc, c) => acc + Number(c.gestionables || 0), 0);
-    const totalLeadsTotales = s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0);
-    const totalIngresosCRM  = s.reduce((acc, c) => acc + Number(c.ventas_crm || 0), 0);
-    const totalVentaServicio = s.reduce((acc, c) => acc + Number(c.venta_servicio || 0), 0);
-    return {
-      ingresosCRM:              totalIngresosCRM,
-      gestionables:             totalGestionables,
-      regularizar:              s.reduce((acc, c) => acc + Number(c.por_regularizar || 0), 0),
-      ingresosJotform:          totalJotform,
-      ventasDelDia:             s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0),
-      ventasDiaForm:            s.reduce((acc, c) => acc + Number(c.ventas_dia_form || 0), 0),
-      // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
-      ventaSeguimiento:         Math.max(0, totalJotform - s.reduce((acc, c) => acc + Number(c.ventas_del_dia || 0), 0)),
-      descartePorc:             (s.reduce((acc, c) => acc + Number(c.descarte || 0), 0) / n).toFixed(1),
-      leadsGestionables:        s.reduce((acc, c) => acc + Number(c.leads_totales || 0), 0),
-      // Efectividad = Ingresos JOT / Gestionables
-      efectividad:              totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : "0.0",
-      tasaInstalacion:          totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : "0.0",
-      tarjetaCredito:           Number(data.porcentajeTarjeta || 0).toFixed(1),
-      terceraEdad:              Number(data.porcentajeTerceraEdad || 0).toFixed(1),
-      efectividadActivasPauta:  (s.reduce((acc, c) => acc + Number(c.efectividad_activas_vs_pauta || 0), 0) / n).toFixed(1),
-      activas:                  totalActivos,     // ACTIVAS TOTALES
-      activaMes:                totalActivaMes,   // creados y activados en el rango
-      backlog:                  totalBacklog,     // TOTALES − MES
-      ventaServicio:            totalVentaServicio,
-      // ── Indicadores pedidos por gerencia (hoja "visual comercial ERP") ──
-      // % Leads Gestionables vs Totales — indicador NUEVO
-      pctGestionablesVsTotales: totalLeadsTotales > 0
-        ? ((totalGestionables / totalLeadsTotales) * 100).toFixed(1) : "0.0",
-      // Efectividad vs Leads Totales — reemplaza a "Efic. Pauta".
-      // Antes mostraba efectividad_activas_vs_pauta, que medía otra cosa.
-      efectividadVsLeadsTotales: totalLeadsTotales > 0
-        ? ((totalJotform / totalLeadsTotales) * 100).toFixed(1) : "0.0",
-    };
-  }, [data]);
+  // Las tarjetas usan el mismo nivel de detalle que la tabla por asesor,
+  // referencia operativa validada. Evita divergencias por mapeos de supervisor.
+  const stats = useMemo(() => calcularStatsIndicadores(data), [data]);
 
   const META_DIA = 65;
   const ETAPAS_JOTFORM  = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];

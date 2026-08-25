@@ -32,6 +32,7 @@ const CANALES = {
   "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
   "ARTS GOOGLE":        { color: "#ea4335", bg: "#fee2e2", icon: "🔍", label: "ARTS GG" },
   "REMARKETING":        { color: "#7c3aed", bg: "#ede9fe", icon: "🔁", label: "REMARKETING" },
+  "VIDIKA":             { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA" },
   "VIDIKA GOOGLE":      { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA GG" },
   "POR RECOMENDACIÓN":  { color: "#f59e0b", bg: "#fef3c7", icon: "🤝", label: "RECOMEND." },
   "MAL INGRESO":        { color: "#94a3b8", bg: "#f1f5f9", icon: "⚠️", label: "MAL ING." },
@@ -1948,30 +1949,7 @@ export default function Redes() {
           </div>
         </div>
         <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
-          {/* Fila 1 — Canal / Origen */}
-          <div className="px-5 py-3 flex flex-wrap items-center gap-3" style={{ background: "#f8fafc", borderBottom: `1px solid ${C.border}` }}>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
-              <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal / Origen</span>
-            </div>
-            <CanalSelector canalesSel={canalesSel} onChange={setCanalesSel} compact />
-            {canalesSel.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {canalesSel.map(c => {
-                  const cfg = getCanalCfg(c);
-                  return (
-                    <span key={c} style={{
-                      padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
-                      color: cfg.color, fontWeight: 900, fontSize: "8px",
-                      border: `1px solid ${cfg.color}30`,
-                      display: "inline-flex", alignItems: "center", gap: "4px",
-                    }}>{cfg.icon} {cfg.label}</span>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          {/* Fila 2 — Período y botón Aplicar */}
+          {/* Período y botón Aplicar */}
           <div className="px-5 py-3 flex flex-wrap items-end gap-3">
             {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
               <div key={key} className="flex flex-col gap-1">

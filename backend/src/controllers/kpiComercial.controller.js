@@ -13,7 +13,7 @@
  *
  * DEFINICIONES (dadas por el usuario, 2026-08)
  *   N Leads Total      = leads creados en el rango
- *   N Leads Gestion    = solo las etapas de ETAPAS_GESTIONABLES
+ *   N Leads Gestion    = toda etapa salvo familias no gestionables centralizadas
  *   % Gest vs Totales  = gestion / total
  *   Efect. vs Leads    = Venta Subida / total
  *   Efect. vs Gestion  = Venta Subida / gestion
@@ -32,28 +32,7 @@
 
 const pool = require('../config/db');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { esLeadTotalExpr , esPorRegularizarExpr} = require('../shared/etapas');
-
-// ── Etapas que cuentan como GESTIONABLES ─────────────────────────────────────
-// Lista BLANCA definida por gerencia. Cualquier etapa fuera de aquí (ATC,
-// Duplicado, Fuera de Cobertura, Zona Peligrosa, Regularización, OPORTUNIDADES)
-// suma a Leads Totales pero NO a Gestionables.
-const ETAPAS_GESTIONABLES = [
-  'CONTACTO NUEVO',
-  'GESTION DIARIA/PENDIENTE CIERRE',
-  'SEGUIMIENTO NEGOCIACION',
-  'ENVIO REQUISITOS/DOCUMENTOS PENDIENTES',
-  'VOLVER A LLAMAR NO CONTESTA',
-  'MAS DE 15 DIAS PARA CIERRE',
-  'URGENTE GESTION SUPERVISOR',
-  'VENTA SUBIDA',
-  'DESCARTE',
-  // FIX (2026-08-19): INNEGOCIABLE quitado — no es gestionable ni en Novonet
-  // ni en Velsa (esta lista se usa para las 2 empresas). Unificado con
-  // shared/etapas.js, que ya lo excluye por default.
-];
-
-const listaSql = (arr) => `(${arr.map(v => `'${v.replace(/'/g, "''")}'`).join(',')})`;
+const { esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr } = require('../shared/etapas');
 
 const errorResponse = (res, etiqueta, err) => {
   console.error(`[KpiComercial][${etiqueta}]`, err.message);
@@ -93,7 +72,7 @@ WITH datos AS (
 
         COUNT(DISTINCT mb.b_id) FILTER (
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
-              AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) IN __GESTIONABLES__
+              AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
         )                                                  AS leads_gestion,
 
         COUNT(DISTINCT mb.b_id) FILTER (
@@ -279,7 +258,6 @@ async function getKpiComercial(req, res) {
         };
 
     const sql = SQL_BASE
-      .replace('__GESTIONABLES__', listaSql(ETAPAS_GESTIONABLES))
       .replace('__VISTA__', cfg.vista)
       .replace('__SUPERVISOR__', cfg.supervisor)
       .replace('__JOIN_EMPLEADOS__', cfg.joinEmpleados);
@@ -323,4 +301,4 @@ async function getKpiComercial(req, res) {
   }
 }
 
-module.exports = { getKpiComercial, ETAPAS_GESTIONABLES };
+module.exports = { getKpiComercial };

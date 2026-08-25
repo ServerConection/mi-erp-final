@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql } = require('../shared/origenesRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria } = require('../shared/inversionRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,35 +97,24 @@ const {
       const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
       const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-      // Con canal → filtrar por origenesBitrix. Sin canal → usar TODOS los conocidos
-      // (así excluimos MAL INGRESO/SIN MAPEO que no están en TODOS_ORIGENES_CONOCIDOS)
-      const origParaWhere = gruposSel.length > 0 ? origenesBitrix : TODOS_ORIGENES_CONOCIDOS;
-      const { where: origWhere, params: origParams } = buildInWhere(origParaWhere, 2, 'mb.b_origen');
-
-      // Expresión CASE para derivar canal_inversion desde b_origen (igual que ORIGEN_A_CANAL_INV)
-      const canalExpr = `CASE mb.b_origen
-        WHEN 'BASE 593-979083368'    THEN 'ARTS'
-        WHEN 'BASE 593-995211968'    THEN 'ARTS FACEBOOK'
-        WHEN 'BASE 593-992827793'    THEN 'ARTS GOOGLE'
-        WHEN 'FORMULARIO LANDING 3'  THEN 'ARTS GOOGLE'
-        WHEN 'LLAMADA LANDING 3'     THEN 'ARTS GOOGLE'
-        WHEN 'POR RECOMENDACIÓN'     THEN 'POR RECOMENDACIÓN'
-        WHEN 'REFERIDO PERSONAL'     THEN 'POR RECOMENDACIÓN'
-        WHEN 'TIENDA ONLINE'         THEN 'POR RECOMENDACIÓN'
-        WHEN 'BASE 593-958993371'    THEN 'REMARKETING'
-        WHEN 'BASE 593-984414273'    THEN 'REMARKETING'
-        WHEN 'BASE 593-995967355'    THEN 'REMARKETING'
-        WHEN 'WHATSAPP 593958993371' THEN 'REMARKETING'
-        WHEN 'BASE 593-962881280'    THEN 'VIDIKA GOOGLE'
-        WHEN 'BASE 593-987133635'    THEN 'VIDIKA GOOGLE'
-        WHEN 'BASE API 593963463480' THEN 'VIDIKA GOOGLE'
-        WHEN 'FORMULARIO LANDING 4'  THEN 'VIDIKA GOOGLE'
-        WHEN 'LLAMADA'               THEN 'VIDIKA GOOGLE'
-        WHEN 'LLAMADA LANDING 4'     THEN 'VIDIKA GOOGLE'
-        ELSE NULL
+      // Sin canal se muestran TODOS los orígenes vivos del webhook. Un origen
+      // nuevo nunca debe desaparecer solo por no estar en el catálogo histórico.
+      const { where: origWhere, params: origParams } = construirFiltroOrigenes(
+        gruposSel.length > 0 ? origenesBitrix : [], 2, 'w.source'
+      );
+      const origenNormalizadoExpr = normalizarOrigenSql('w.source');
+      const etapaWebhookExpr = `CASE
+        WHEN LOWER(TRIM(COALESCE(w.etapa, ''))) IN ('inegociable', 'innegociable') THEN 'INNEGOCIABLE'
+        WHEN LOWER(TRIM(COALESCE(w.etapa, ''))) = 'regularizacion' THEN 'REGULARIZACION'
+        ELSE UPPER(TRIM(COALESCE(w.etapa_bitrix, w.etapa, '')))
       END`;
 
-      // ── Detalle: leads y métricas desde mestra_bitrix (SIEMPRE datos frescos) ──
+      // Los orígenes históricos mantienen su grupo; cualquier origen nuevo se
+      // conserva con su propio nombre normalizado en vez de ocultarse.
+      const catalogoOrigenExpr = normalizarOrigenSql('lc.origen');
+      const canalExpr = canalAsignadoSql('m.agencia', 'w.source');
+
+      // ── Detalle CRM: fuente oficial en vivo del webhook de Bitrix ───────────
       const detalleResult = await pool.query(`
         SELECT
           fecha,
@@ -169,8 +160,8 @@ const {
           0         AS inversion_usd
         FROM (
           SELECT
-            mb.b_creado_el_fecha::date AS fecha,
-            CASE EXTRACT(DOW FROM mb.b_creado_el_fecha::date)
+            (w.created_at AT TIME ZONE 'America/Guayaquil')::date AS fecha,
+            CASE EXTRACT(DOW FROM (w.created_at AT TIME ZONE 'America/Guayaquil')::date)
               WHEN 0 THEN 'Domingo' WHEN 1 THEN 'Lunes'   WHEN 2 THEN 'Martes'
               WHEN 3 THEN 'Miércoles' WHEN 4 THEN 'Jueves' WHEN 5 THEN 'Viernes'
               WHEN 6 THEN 'Sábado'
@@ -179,34 +170,57 @@ const {
             -- N LEADS: excluye DUPLICADO / REMARKETING / REGULARIZACION.
             -- Antes usaba ILIKE '%DUPLICADO%' / '%REGULARIZA%' (patrón parcial,
             -- sin REMARKETING). Ahora usa la lista oficial de shared/etapas.js.
-            COUNT(*) FILTER (WHERE ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}) AS n_leads,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ATC%'
-              OR mb.b_etapa_de_la_negociacion ILIKE '%SOPORTE%')                      AS atc_soporte,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%ZONA%PELIGRO%'
-              OR mb.b_etapa_de_la_negociacion ILIKE '%ZONA PELIGROSA%')               AS zonas_peligrosas,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%INNEGOCIABLE%') AS innegociable,
-            COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}) AS negociables,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
-            COUNT(*) FILTER (WHERE mb.b_etapa_de_la_negociacion ILIKE '%SEGUIMIENTO%')  AS seguimiento_negociacion
-          FROM public.mestra_bitrix mb
-          WHERE mb.b_creado_el_fecha::date BETWEEN $1 AND $2
-            AND mb.j_id_bitrix IS NULL
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${esLeadTotalExpr(etapaWebhookExpr)}) AS n_leads,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%ATC%' OR ${etapaWebhookExpr} ILIKE '%SOPORTE%') AS atc_soporte,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%ZONA%PELIGRO%' OR ${etapaWebhookExpr} ILIKE '%ZONA PELIGROSA%') AS zonas_peligrosas,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%INNEGOCIABLE%') AS innegociable,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${esGestionableExpr(etapaWebhookExpr)}) AS negociables,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%VENTA SUBIDA%') AS venta_subida_bitrix,
+            COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%SEGUIMIENTO%') AS seguimiento_negociacion
+          FROM public.bitrix_webhook_leads w
+          LEFT JOIN LATERAL (
+            SELECT lc.agencia
+            FROM public.novonet_lineas_canal lc
+            WHERE ${catalogoOrigenExpr} = ${origenNormalizadoExpr}
+            ORDER BY (BTRIM(lc.origen) = BTRIM(w.source)) DESC,
+                     lc.actualizado_en DESC NULLS LAST
+            LIMIT 1
+          ) m ON TRUE
+          WHERE w.empresa = 'novonet'
+            AND (w.created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1 AND $2
+            AND NULLIF(TRIM(w.source), '') IS NOT NULL
             ${origWhere}
-          GROUP BY mb.b_creado_el_fecha::date, (${canalExpr})
+          GROUP BY (w.created_at AT TIME ZONE 'America/Guayaquil')::date, (${canalExpr})
         ) sub
-        WHERE canal_inversion IS NOT NULL
         GROUP BY fecha, dia_semana, canal_inversion
         ORDER BY fecha DESC, canal_inversion ASC
       `, [fechaDesde, fechaHasta, ...origParams]);
 
-      // ── Inversión desde MV (solo inversion_usd, dato externo a mestra_bitrix) ──
+      // ── Inversión: tabla viva de agencias primero; MV como respaldo ─────────
       const { where: invCanalWhere, params: invCanalParams } = buildInWhere(
         canalesInversion.length > 0 ? canalesInversion : [],
         2,
         "SPLIT_PART(mv.canal_inversion, ' -', 1)"
       );
       let inversionMap = {}; // clave: "YYYY-MM-DD__CANAL"
+      try {
+        const inversionViva = await pool.query(`
+          SELECT i.fecha::date AS fecha, i.origen, i.monto_usd
+          FROM public.novonet_inversion_redes i
+          WHERE i.fecha BETWEEN $1 AND $2
+          ORDER BY i.fecha, i.origen
+        `, [fechaDesde, fechaHasta]);
+        inversionViva.rows.forEach((r) => {
+          const canal = resolverCanalInversion(r.origen);
+          if (canalesInversion.length > 0 && !canalesInversion.includes(canal)) return;
+          const key = `${normalizarFechaInversion(r.fecha)}__${canal}`;
+          inversionMap[key] = (inversionMap[key] || 0) + Number(r.monto_usd || 0);
+        });
+      } catch (err) {
+        if (err.code !== '42P01') console.warn('⚠️ Inversión viva no disponible:', err.message);
+      }
+
       try {
         const invResult = await pool.query(`
           SELECT
@@ -220,15 +234,18 @@ const {
           GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
         `, [fechaDesde, fechaHasta, ...invCanalParams]);
         invResult.rows.forEach(r => {
-          inversionMap[`${r.fecha}__${r.canal}`] = Number(r.inversion_usd || 0);
+          const canal = resolverCanalRespaldo(r.canal);
+          const key = `${normalizarFechaInversion(r.fecha)}__${canal}`;
+          if (!inversionMap[key]) inversionMap[key] = Number(r.inversion_usd || 0);
         });
       } catch (_) { /* MV puede fallar — inversión quedará en 0 */ }
 
       // ── Merge: attach inversion_usd a cada fila del detalle ──────────────────
-      const data = detalleResult.rows.map(row => ({
+      const dataConDetalle = detalleResult.rows.map(row => ({
         ...row,
-        inversion_usd: inversionMap[`${row.fecha}__${row.canal_inversion}`] || 0,
+        inversion_usd: inversionMap[`${normalizarFechaInversion(row.fecha)}__${row.canal_inversion}`] || 0,
       }));
+      const data = agregarFilasSoloInversion(dataConDetalle, inversionMap);
 
       // ── Totales: agregar desde data (con inversion_usd ya mergeada) ──────────
       const sum = (f) => data.reduce((s, r) => s + Number(r[f] || 0), 0);
@@ -603,21 +620,37 @@ const {
       const bitWhereClause = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').where        : '';
       const bitParamsExtra = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').params       : [];
 
-      // FIX: Inversión diaria — SPLIT_PART para normalizar canal antes de agrupar
-      const inversionRes = await pool.query(`
-        SELECT EXTRACT(DAY FROM fecha)::int AS dia, SUM(max_inv) AS inversion_usd
-        FROM (
-          SELECT fecha, SPLIT_PART(canal_inversion, ' -', 1) AS canal_normalizado, MAX(inversion_usd) AS max_inv
+      // Inversión diaria: fuente viva primero; la vista materializada queda como respaldo.
+      // Esto mantiene Reporte Data alineado con Monitoreo General y evita duplicar
+      // ARTS/VIDIKA cuando existen nombres históricos por canal.
+      const inversionVivaRes = await pool.query(`
+        SELECT i.fecha::date AS fecha, i.origen, i.monto_usd
+        FROM public.novonet_inversion_redes i
+        WHERE i.fecha BETWEEN $1::date AND $2::date
+        ORDER BY i.fecha, i.origen
+      `, [desde, hasta]);
+
+      let inversionRespaldoRows = [];
+      try {
+        const inversionRespaldoRes = await pool.query(`
+          SELECT
+            fecha::date AS fecha,
+            SPLIT_PART(canal_inversion, ' -', 1) AS canal,
+            MAX(inversion_usd) AS inversion_usd
           FROM public.mv_monitoreo_publicidad
           WHERE fecha BETWEEN $1::date AND $2::date
             AND canal_inversion NOT IN ('MAL INGRESO','SIN MAPEO')
             ${invWhereClause}
-          GROUP BY fecha, SPLIT_PART(canal_inversion, ' -', 1)
-        ) sub
-        GROUP BY EXTRACT(DAY FROM fecha)::int
-        ORDER BY dia ASC
-      `, [desde, hasta, ...invParamsExtra]);
+          GROUP BY fecha::date, SPLIT_PART(canal_inversion, ' -', 1)
+        `, [desde, hasta, ...invParamsExtra]);
+        inversionRespaldoRows = inversionRespaldoRes.rows;
+      } catch (_) { /* La vista puede estar refrescando; la tabla viva sigue disponible. */ }
 
+      const inversionRows = agregarInversionDiaria(
+        inversionVivaRes.rows,
+        inversionRespaldoRows,
+        canalesInversion
+      );
       // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
       const etapasRes = await pool.query(`
         SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
@@ -863,7 +896,7 @@ const {
 
       // ── Combinar en finalArray ────────────────────────────────────────────────
       const invMap = {};
-      inversionRes.rows.forEach(r => { const dia=Number(r.dia); invMap[dia]={ dia, inversion_usd: Number(r.inversion_usd||0) }; });
+      inversionRows.forEach(r => { const dia=Number(r.dia); invMap[dia]={ dia, inversion_usd: Number(r.inversion_usd||0) }; });
       etapasRes.rows.forEach(r => {
         const dia=Number(r.dia);
         if (!invMap[dia]) invMap[dia]={ dia, inversion_usd:0 };

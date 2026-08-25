@@ -2,7 +2,7 @@
  * Cron: sincroniza la inversión/pauta diaria desde WinTracker (Vidika) para
  * las agencias con apikey configurada — ver services/wintracker.service.js.
  *
- * Corre cada hora en el minuto :15 (el número de "hoy" en WinTracker puede
+ * Corre cada 30 minutos (el número de "hoy" en WinTracker puede
  * seguir subiendo durante el día, así que se refresca varias veces, no solo
  * una vez al día). También corre una vez al arrancar el servidor.
  */
@@ -15,7 +15,7 @@ function initWinTrackerSync() {
     console.error('💥 [WinTracker] Error en sync inicial:', err.message)
   );
 
-  cron.schedule('15 * * * *', () => {
+  cron.schedule('*/30 * * * *', () => {
     console.log('🔄 [WinTracker] Sincronizando inversión...');
     syncTodasLasAgencias().catch((err) =>
       console.error('💥 [WinTracker] Error:', err.message)

@@ -890,7 +890,7 @@ ${horaData.length > 0 ? `
           <div className="flex items-stretch">
             <div className="flex-1 px-5 py-3 flex flex-wrap items-center gap-2">
               <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
-                Canal de Publicidad:
+                Agencia:
               </span>
 
               {/* Chip "Todos" */}
@@ -935,7 +935,7 @@ ${horaData.length > 0 ? `
 
               {canalesSel.length > 0 && (
                 <span className="text-[8px] font-medium ml-1" style={{ color: C.muted }}>
-                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
+                  {canalesSel.length} agencia{canalesSel.length !== 1 ? "s" : ""}
                   {" · "}
                   <button onClick={limpiarCanales} className="underline hover:no-underline" style={{ color: C.danger }}>
                     limpiar

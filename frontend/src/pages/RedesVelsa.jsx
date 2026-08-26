@@ -737,11 +737,10 @@ export default function RedesVelsa() {
       </div>
 
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
-        ℹ️ Este módulo agrupa por <b>origen real</b> de cada lead (Bitrix / GHL / JotForm), sin catálogo de campañas —
-        cada origen de Velsa es distinto y se muestra tal cual llega.
+        ℹ️ El filtro usa las <b>agencias asignadas</b> en el catálogo y agrupa automáticamente todas sus líneas de origen.
       </div>
 
-      {/* Filtro de canales */}
+      {/* Filtro de agencias */}
       {canalesDisponibles.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
           {canalesDisponibles.map((c) => {

@@ -405,7 +405,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
       <div className="px-5 py-3 flex flex-wrap items-center gap-4" style={{ background: "#f8fafc" }}>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
-          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
+          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
         </div>
         <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
         {canalesSel.length > 0 && (
@@ -1564,7 +1564,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setCanalesSel([])} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"

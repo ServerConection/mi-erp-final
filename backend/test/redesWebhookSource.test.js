@@ -19,3 +19,11 @@ test('las rutas activan los controladores webhook', () => {
   assert.match(novo, /redesWebhook\.controller/);
   assert.match(velsa, /redesVelsaWebhook\.controller/);
 });
+test('VELSA filtra las metricas por agencia asignada y no por origen crudo', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'controllers', 'redesVelsaWebhook.controller.js'), 'utf8');
+  assert.match(source, /const filtroAgencia/);
+  assert.match(source, /\$\$\{offset \+ i \+ 1\}/);
+  assert.match(source, /velsa_lineas_canal/);
+  assert.match(source, /canal_publicidad,\s*COUNT\(\*\)/);
+  assert.doesNotMatch(source, /const filtroOrigen/);
+});

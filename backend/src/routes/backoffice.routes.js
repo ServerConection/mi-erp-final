@@ -187,6 +187,9 @@ const CAMPOS_EDITABLES = new Set([
   'fecha_agenda',
   'mes_agenda',
   'dia_abc_agenda',
+
+  // Ingreso a Telcos (preservicios)
+  'fecha_ingreso_telcos',
 ]);
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];

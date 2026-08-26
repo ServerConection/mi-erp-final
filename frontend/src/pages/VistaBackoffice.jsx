@@ -20,6 +20,7 @@ const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 const CAMPOS_FECHA = [
   "fecha_nacimiento", "fecha_regularizacion_atc", "fecha_agenda",
   "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
+  "fecha_ingreso_telcos",
 ];
 
 // ── Carga de un documento protegido ──────────────────────────────────────────
@@ -421,6 +422,7 @@ const FIELD_LABELS = {
   foto_cedula_trasera: "FOTO CÉDULA TRASERA",
   foto_carnet: "FOTO CARNET",
   archivo_resumen: "ARCHIVO RESUMEN",
+  fecha_ingreso_telcos: "FECHA INGRESO TELCOS",
 };
 
 const TABLE_COLUMNS = [
@@ -432,7 +434,7 @@ const TABLE_COLUMNS = [
   "direccion_calles", "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps", "tipo_vivienda", "regimen_vivienda",
   "plan_contratado_final", "servicios_digitales", "forma_pago", "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
   "links_documentos", "estado_recaudacion", "fecha_recaudada", "mes_recaudada", "dia_abc_recaudada", "netlife_login", "netlife_estatus_real",
-  "fecha_activacion_netlife", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc",
+  "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc",
   "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
   "estatus_regularizacion", "detalle_regularizacion", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
   "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
@@ -493,6 +495,7 @@ const initialDetail = {
   foto_cedula_trasera: "",
   foto_carnet: "",
   archivo_resumen: "",
+  fecha_ingreso_telcos: "",
 };
 
 function valueForField(row, key) {
@@ -695,6 +698,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
     "fecha_agenda",
     "mes_agenda",
     "dia_abc_agenda",
+    // Ingreso a Telcos
+    "fecha_ingreso_telcos",
 
     "observacion_venta_original",
     "observacion_gestion_cobranza",
@@ -715,7 +720,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       { titulo: "Cliente", campos: ["nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente", "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2"] },
       { titulo: "Ubicación", campos: ["provincia", "ciudad", "parroquia_barrio", "direccion_calles", "referencia_ubicacion"] },
       { titulo: "Plan y pago", campos: ["plan_contratado_final", "servicios_digitales", "forma_pago", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales", "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta"] },
-      { titulo: "Netlife", campos: ["estado_recaudacion", "netlife_login", "netlife_estatus_real", "fecha_regularizacion_atc", "novedades_atc"] },
+      { titulo: "Netlife", campos: ["estado_recaudacion", "netlife_login", "netlife_estatus_real", "fecha_regularizacion_atc", "fecha_ingreso_telcos", "novedades_atc"] },
       { titulo: "Auditoría", campos: ["calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos"] },
       {
         titulo: "Regularización",
@@ -1270,7 +1275,7 @@ const SUBMODULOS = [
     descripcion: "Verificaciones técnicas previas a la instalación del servicio.",
     color: "#0891b2",
     fondo: "#cffafe",
-    listo: false,
+    listo: true,
   },
 ];
 
@@ -1460,9 +1465,10 @@ const fmtFechaEC = new Intl.DateTimeFormat("en-CA", {
 /** Devuelve la fecha calendario en Ecuador como "YYYY-MM-DD", o null. */
 function fechaCalendarioEC(valor) {
   if (!valor) return null;
-  const s = String(valor);
-  // Ya viene como fecha pura (sin hora): no hay nada que convertir.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const s = String(valor).trim();
+  const match = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return null;
   return fmtFechaEC.format(d);
@@ -2506,51 +2512,163 @@ function CalendarioMes({ anio, mes, mapaDias, color, fondo, borde, onDiaClick })
   const totalDias = diasEnMes(anio, mes);
   const offset = primerDiaSemanaMes(anio, mes);
   const mesStr = String(mes).padStart(2, "0");
-  const hoyIso = fmtFechaEC.format(new Date());
+  const hoyIso = fechaCalendarioEC(new Date());
 
   const celdas = [];
   for (let i = 0; i < offset; i++) celdas.push(null);
   for (let d = 1; d <= totalDias; d++) celdas.push(d);
 
   return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
-        {DIAS_CORTOS_ES.map((d) => (
-          <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase" }}>
+    <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: 18, boxShadow: "0 4px 20px rgba(15,23,42,0.03)" }}>
+      {/* Cabecera de días de la semana */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10, marginBottom: 10 }}>
+        {DIAS_CORTOS_ES.map((d, idx) => (
+          <div
+            key={d}
+            style={{
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+              color: idx === 0 || idx === 6 ? "#ea580c" : "#64748b",
+              textTransform: "uppercase",
+              letterSpacing: ".06em",
+              padding: "6px 0",
+              background: "#f8fafc",
+              borderRadius: 8,
+            }}
+          >
             {d}
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+
+      {/* Cuadrícula de Días */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
         {celdas.map((d, i) => {
-          if (d === null) return <div key={`vacio-${i}`} />;
+          if (d === null) {
+            return (
+              <div
+                key={`vacio-${i}`}
+                style={{
+                  minHeight: 82,
+                  background: "#f8fafc",
+                  borderRadius: 12,
+                  border: "1px dashed #e2e8f0",
+                  opacity: 0.45,
+                }}
+              />
+            );
+          }
+
           const iso = `${anio}-${mesStr}-${String(d).padStart(2, "0")}`;
           const cantidad = mapaDias.get(iso) || 0;
           const esHoy = iso === hoyIso;
           const tieneAgendamientos = cantidad > 0;
+
           return (
             <button
               key={iso}
               type="button"
               onClick={() => tieneAgendamientos && onDiaClick(iso)}
               disabled={!tieneAgendamientos}
-              title={tieneAgendamientos ? `${cantidad} agendamiento${cantidad > 1 ? "s" : ""}` : "Sin agendamientos"}
               style={{
-                aspectRatio: "1",
-                minHeight: 62,
-                borderRadius: 10,
-                border: `1px solid ${esHoy ? color : tieneAgendamientos ? borde : "#eef2f7"}`,
-                background: tieneAgendamientos ? fondo : "#fafbfc",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                minHeight: 84,
+                borderRadius: 14,
+                border: esHoy
+                  ? `2px solid ${color}`
+                  : tieneAgendamientos
+                    ? `1px solid ${borde}`
+                    : "1px solid #edf2f7",
+                background: tieneAgendamientos ? "#ffffff" : "#fbfcfe",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                padding: "10px 12px",
                 cursor: tieneAgendamientos ? "pointer" : "default",
-                boxShadow: esHoy ? `0 0 0 2px ${color}33` : "none",
+                transition: "all .18s ease-out",
+                boxShadow: tieneAgendamientos
+                  ? "0 4px 14px rgba(234, 88, 12, 0.08)"
+                  : "none",
+                position: "relative",
+              }}
+              onMouseEnter={(e) => {
+                if (tieneAgendamientos) {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.borderColor = color;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (tieneAgendamientos) {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.borderColor = borde;
+                }
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: esHoy ? 900 : 700, color: esHoy ? color : tieneAgendamientos ? "#0f172a" : "#cbd5e1" }}>
-                {d}
-              </span>
-              {tieneAgendamientos && (
-                <span style={{ fontSize: 10.5, fontWeight: 800, color }}>({cantidad})</span>
+              {/* Encabezado de la celda: Número grande + Indicador Hoy */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    color: esHoy ? color : tieneAgendamientos ? "#0f172a" : "#94a3b8",
+                  }}
+                >
+                  {d}
+                </span>
+
+                {esHoy && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 900,
+                      color: "#fff",
+                      background: color,
+                      borderRadius: 999,
+                      padding: "2px 7px",
+                      textTransform: "uppercase",
+                      letterSpacing: ".04em",
+                    }}
+                  >
+                    Hoy
+                  </span>
+                )}
+              </div>
+
+              {/* Conteo / Citas agendadas */}
+              {tieneAgendamientos ? (
+                <div
+                  style={{
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "5px 8px",
+                    background: fondo,
+                    borderRadius: 8,
+                    border: `1px solid ${borde}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#9a3412" }}>
+                    Agendamientos
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 900,
+                      color,
+                    }}
+                  >
+                    {cantidad}
+                  </span>
+                </div>
+              ) : (
+                <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600, marginTop: "auto" }}>
+                  —
+                </span>
               )}
             </button>
           );
@@ -2566,23 +2684,65 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
   return (
     <div
       onClick={onCerrar}
-      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200 }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.72)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1200,
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "#fff", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxWidth: 560, width: "94%", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        style={{
+          background: "#fff",
+          borderRadius: 18,
+          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+          maxWidth: 620,
+          width: "94%",
+          maxHeight: "85vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
       >
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f8fafc" }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color, textTransform: "uppercase" }}>Agendamientos</div>
-            <h3 style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 900, color: "#111827" }}>{etiquetaDia(iso)}</h3>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", color, textTransform: "uppercase" }}>
+              Agenda de Instalación
+            </div>
+            <h3 style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+              {etiquetaDia(iso)}
+            </h3>
           </div>
-          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748b" }}>✕</button>
+          <button
+            onClick={onCerrar}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              fontSize: 14,
+              cursor: "pointer",
+              color: "#64748b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ✕
+          </button>
         </div>
 
-        <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ padding: 18, overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {registros.length === 0 && (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No hay agendamientos este día.</p>
+            <p style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>
+              No hay agendamientos para este día.
+            </p>
           )}
           {registros.map((row) => (
             <button
@@ -2590,25 +2750,52 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
               type="button"
               onClick={() => onAbrirRegistro(row.id)}
               style={{
-                textAlign: "left", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 12,
-                padding: 12, cursor: "pointer", display: "flex", flexDirection: "column", gap: 4,
+                textAlign: "left",
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: 14,
+                padding: "14px 16px",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                boxShadow: "0 2px 8px rgba(15,23,42,.04)",
+                transition: "border-color .15s, transform .15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = color;
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#e5e7eb";
+                e.currentTarget.style.transform = "none";
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
                   {row.nombre_cliente_completo || "Sin nombre"}
                 </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#ea580c", background: "#ffedd5", border: "1px solid #fed7aa", borderRadius: 999, padding: "2px 8px" }}>
+                  #{row.id}
+                </span>
               </div>
-              <div style={{ fontSize: 11.5, color: "#64748b" }}>
-                CI {row.numero_identificacion || "—"}
-                {row.turno_agendado && <> · Turno: {row.turno_agendado}</>}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#475569", flexWrap: "wrap", marginTop: 2 }}>
+                <span><b>CI:</b> {row.numero_identificacion || "—"}</span>
+                {row.turno_agendado && (
+                  <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontWeight: 800, color: "#334155" }}>
+                    🕒 Turno: {row.turno_agendado}
+                  </span>
+                )}
+                {row.codigo_asesor && (
+                  <span style={{ color: "#64748b" }}>Asesor: {row.codigo_asesor}</span>
+                )}
               </div>
+
               {row.direccion_calles && (
-                <div style={{ fontSize: 11.5, color: "#64748b" }}>{row.direccion_calles}</div>
-              )}
-              {row.codigo_asesor && (
-                <div style={{ fontSize: 11, color: "#94a3b8" }}>Asesor: {row.codigo_asesor}</div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  📍 {row.direccion_calles}
+                </div>
               )}
             </button>
           ))}
@@ -2620,10 +2807,10 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
 
 function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpresa }) {
   const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
-  const [diaModal, setDiaModal] = useState(null);   // iso del día abierto en la lista
-  const [detalleId, setDetalleId] = useState(null); // registro abierto en detalle completo
+  const [diaModal, setDiaModal] = useState(null);
+  const [detalleId, setDetalleId] = useState(null);
 
-  const color = "#ea580c", fondo = "#ffedd5", borde = "#fed7aa";
+  const color = "#ea580c", fondo = "#fff7ed", borde = "#fed7aa";
 
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows, "fecha_agenda"), [rows]);
 
@@ -2646,7 +2833,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
   const miga = [
     { texto: "Años", accion: () => navegar.aAnios(), activo: nivel === "anios" },
     ...(anioSel ? [{ texto: anioSel.anio, accion: () => navegar.aMeses(anioSel.anio), activo: nivel === "meses" }] : []),
-    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => { }, activo: nivel === "calendario" }] : []),
+    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => {}, activo: nivel === "calendario" }] : []),
   ];
 
   return (
@@ -2664,10 +2851,17 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
           </div>
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
-            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Agendamientos</h2>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>
+                {mesSel ? `Agendamientos · ${MESES_ES[Number(mesSel.mes) - 1]} ${anioSel.anio}` : "Agendamientos"}
+              </h2>
+              <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "#64748b" }}>
+                Organizado según <b>fecha de agenda</b> de la cita técnica.
+              </p>
+            </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
-              <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, color }}>
+              <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 800, color }}>
                 {total} agendamientos
               </div>
               <button
@@ -2679,6 +2873,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
             </div>
           </div>
 
+          {/* Miga de Pan */}
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
             {miga.map((p, i) => (
               <span key={p.texto} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
@@ -2701,17 +2896,13 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
           </div>
         </div>
 
-        <div style={{ padding: 22 }}>
+        <div style={{ padding: 20 }}>
           {cargando && <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Cargando registros…</p>}
 
           {error && (
             <div style={{ padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
               {error}
             </div>
-          )}
-
-          {!cargando && !error && nivel === "anios" && anios.length === 0 && (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Todavía no hay agendamientos con fecha para agrupar.</p>
           )}
 
           {!cargando && !error && nivel === "anios" && (
@@ -2776,6 +2967,352 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
           onVolver={() => setDetalleId(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO: PRESERVICIOS (Filtrado estricto por netlife_estatus_real)
+// ═══════════════════════════════════════════════════════════════════════════
+const CAMPO_FECHA_INGRESO_TELCOS = "fecha_ingreso_telcos";
+
+const BLOQUES_PRESERVICIOS = [
+  {
+    id: "PRESERVICIO",
+    titulo: "Preservicios",
+    color: "#0891b2",
+    fondo: "#ecfeff",
+    borde: "#a5f3fc",
+    valorBD: "PRESERVICIO",
+    match: (v) => v.includes("PRESERV") || v.includes("PRESE"),
+  },
+  {
+    id: "DETENIDO",
+    titulo: "Detenidos",
+    color: "#b45309",
+    fondo: "#fffbeb",
+    borde: "#fcd34d",
+    valorBD: "DETENIDO",
+    match: (v) => v.includes("DETENID"),
+  },
+  {
+    id: "REPLANIFICADO",
+    titulo: "Replanificados",
+    color: "#7c3aed",
+    fondo: "#ede9fe",
+    borde: "#ddd6fe",
+    valorBD: "REPLANIFICADO",
+    match: (v) => v.includes("REPLANIFIC"),
+  },
+];
+
+/** Determina a qué bloque pertenece basándose EXCLUSIVAMENTE en netlife_estatus_real */
+function clasificarPreservicio(row) {
+  const v = normalizarEstado(row?.netlife_estatus_real);
+  if (!v) return null;
+  for (const b of BLOQUES_PRESERVICIOS) {
+    if (b.match(v)) return b.id;
+  }
+  return null; // Si no es ninguno de los 3 estados, se descarta
+}
+
+function TarjetaPreservicio({ row, onAbrir, onArrastrar, moviendo }) {
+  const dias = diasDesde(row[CAMPO_FECHA_INGRESO_TELCOS]);
+  const colorDias = dias == null ? "#94a3b8" : dias === 0 ? "#059669" : dias >= 5 ? "#b91c1c" : "#b45309";
+
+  return (
+    <div
+      draggable={!moviendo}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", String(row.id));
+        e.dataTransfer.effectAllowed = "move";
+        onArrastrar(row.id);
+      }}
+      onDragEnd={() => onArrastrar(null)}
+      onClick={() => onAbrir(row.id)}
+      title="Clic para abrir detalle · Arrastra para cambiar de bloque"
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        padding: 13,
+        cursor: moviendo ? "wait" : "grab",
+        boxShadow: "0 2px 8px rgba(15,23,42,.05)",
+        opacity: moviendo ? 0.55 : 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
+          {row.nombre_cliente_completo || "Sin nombre"}
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>#{row.id}</span>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 2, display: "flex", alignItems: "center", gap: 4 }}>
+          <span>📥 Telcos:</span> {row[CAMPO_FECHA_INGRESO_TELCOS] ? String(row[CAMPO_FECHA_INGRESO_TELCOS]).slice(0, 10) : "Sin fecha"}
+        </div>
+        <div>CI {row.numero_identificacion || "—"}</div>
+        {row.netlife_login && <div>Login: {row.netlife_login}</div>}
+        {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: colorDias, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
+          {dias == null ? "Sin fecha Telcos" : dias === 0 ? "0 días pendientes (Hoy)" : `${dias} día${dias > 1 ? "s" : ""} pendiente${dias > 1 ? "s" : ""}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const [rows, setRows] = useState([]);
+  const [detalleId, setDetalleId] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [arrastrando, setArrastrando] = useState(null);
+  const [sobreBloque, setSobreBloque] = useState(null);
+  const [moviendo, setMoviendo] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [filtrosFecha, setFiltrosFecha] = useState({
+    PRESERVICIO: FILTRO_FECHA_VACIO,
+    DETENIDO: FILTRO_FECHA_VACIO,
+    REPLANIFICADO: FILTRO_FECHA_VACIO,
+  });
+
+  const token = localStorage.getItem("token");
+
+  // FILTRADO ESTRICTO: Solo pasan los que tienen match en netlife_estatus_real
+  useEffect(() => {
+    const soloPreservicios = (todas || []).filter((r) => clasificarPreservicio(r) !== null);
+    setRows(soloPreservicios);
+  }, [todas]);
+
+  const cambiarFiltro = (bloqueId, nuevo) =>
+    setFiltrosFecha((prev) => ({ ...prev, [bloqueId]: { ...FILTRO_FECHA_VACIO, ...nuevo } }));
+
+  // Ordenamiento por fecha_ingreso_telcos
+  const ordenadas = useMemo(() => {
+    const q = normalizarEstado(busqueda);
+    const filtradas = !q ? rows : rows.filter((r) =>
+      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, r.netlife_login, String(r.id)]
+        .some((c) => normalizarEstado(c).includes(q))
+    );
+    return [...filtradas].sort((a, b) => {
+      const fa = String(a[CAMPO_FECHA_INGRESO_TELCOS] || "");
+      const fb = String(b[CAMPO_FECHA_INGRESO_TELCOS] || "");
+      if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
+      return (a.id ?? 0) - (b.id ?? 0);
+    });
+  }, [rows, busqueda]);
+
+  const porBloque = { PRESERVICIO: [], DETENIDO: [], REPLANIFICADO: [] };
+  for (const r of ordenadas) {
+    const bloque = clasificarPreservicio(r);
+    if (bloque && porBloque[bloque]) {
+      porBloque[bloque].push(r);
+    }
+  }
+
+  const soltarEn = async (bloqueDestino, e) => {
+    e.preventDefault();
+    setSobreBloque(null);
+
+    const idStr = e.dataTransfer.getData("text/plain");
+    setArrastrando(null);
+    if (!idStr) return;
+
+    const row = rows.find((r) => String(r.id) === idStr);
+    if (!row) return;
+
+    const id = row.id;
+    if (clasificarPreservicio(row) === bloqueDestino) return;
+
+    const destino = BLOQUES_PRESERVICIOS.find((b) => b.id === bloqueDestino);
+    const valorPrevio = row.netlife_estatus_real;
+
+    setRows((prev) =>
+      prev.map((r) => (String(r.id) === idStr ? { ...r, netlife_estatus_real: destino.valorBD } : r))
+    );
+    setMoviendo(id);
+    setAviso(null);
+
+    try {
+      const r = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ netlife_estatus_real: destino.valorBD }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
+      setAviso(`✅ #${id} actualizado a «${destino.titulo}».`);
+    } catch (err) {
+      setRows((prev) =>
+        prev.map((x) => (String(x.id) === idStr ? { ...x, netlife_estatus_real: valorPrevio } : x))
+      );
+      setAviso(`❌ Error al mover #${id}: ${err.message}`);
+    } finally {
+      setMoviendo(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfeff)" }}>
+          <button
+            onClick={onVolver}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#0891b2", cursor: "pointer" }}
+          >
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#0891b2", textTransform: "uppercase" }}>
+            Backoffice · Preservicios
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Preservicios</h2>
+              <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#64748b" }}>
+                Gestión de casos en Preservicio, Detenidos y Replanificados por <b>fecha de ingreso a Telcos.</b>
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, asesor, login..."
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
+              />
+              <button
+                onClick={recargar}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a5f3fc", background: "#ecfeff", color: "#0891b2", fontWeight: 700, cursor: "pointer" }}
+              >
+                Refrescar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {aviso && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, fontWeight: 700, color: "#334155" }}>
+            {aviso}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+            {error}
+          </div>
+        )}
+
+        {/* ── CONTADORES SUPERIORES ── */}
+        {(() => {
+          const conteos = BLOQUES_PRESERVICIOS.map((b) => {
+            const list = porBloque[b.id] || [];
+            return aplicarFiltroFecha(list, filtrosFecha[b.id], CAMPO_FECHA_INGRESO_TELCOS).length;
+          });
+          const totalVis = conteos.reduce((a, b) => a + b, 0);
+
+          return (
+            <div style={{ padding: "18px 18px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+              <div style={{ padding: 16, borderRadius: 14, background: "#f0fdf4", border: "1px solid #86efac" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase" }}>Total Registros</div>
+                <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: "#065f46" }}>{totalVis}</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>Filtrados por status real</div>
+              </div>
+              {BLOQUES_PRESERVICIOS.map((b, idx) => (
+                <div key={b.id} style={{ padding: 16, borderRadius: 14, background: b.fondo, border: `1px solid ${b.borde}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: b.color, textTransform: "uppercase" }}>{b.titulo}</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: b.color }}>{conteos[idx]}</div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>Status NetLife correspondiente</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ── 3 COLUMNAS KANBAN ── */}
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+          {BLOQUES_PRESERVICIOS.map((bloque) => {
+            const todasDelBloque = porBloque[bloque.id] || [];
+            const filtro = filtrosFecha[bloque.id];
+            const lista = aplicarFiltroFecha(todasDelBloque, filtro, CAMPO_FECHA_INGRESO_TELCOS);
+            const hayFiltro = Boolean(filtro.anio || filtro.mes || filtro.dia);
+            const activo = sobreBloque === bloque.id;
+
+            return (
+              <div
+                key={bloque.id}
+                onDragOver={(e) => { e.preventDefault(); setSobreBloque(bloque.id); }}
+                onDragLeave={() => setSobreBloque((b) => (b === bloque.id ? null : b))}
+                onDrop={(e) => soltarEn(bloque.id, e)}
+                style={{
+                  background: activo ? bloque.fondo : "#fafbfc",
+                  border: `2px ${activo ? "dashed" : "solid"} ${activo ? bloque.color : "#e5e7eb"}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  minHeight: 360,
+                  transition: "background .15s, border-color .15s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+                  <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                    {bloque.titulo}
+                  </h3>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
+                    {hayFiltro ? `${lista.length} / ${todasDelBloque.length}` : lista.length}
+                  </span>
+                </div>
+
+                <FiltroFechaBloque
+                  rows={todasDelBloque}
+                  filtro={filtro}
+                  campoFecha={CAMPO_FECHA_INGRESO_TELCOS}
+                  onCambiar={(nuevo) => cambiarFiltro(bloque.id, nuevo)}
+                  color={bloque.color}
+                  fondo={bloque.fondo}
+                  borde={bloque.borde}
+                />
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
+
+                  {!cargando && lista.length === 0 && (
+                    <div style={{ padding: "26px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
+                      {arrastrando ? "Suelta aquí" : "No hay registros con este estado"}
+                    </div>
+                  )}
+
+                  {lista.map((row) => (
+                    <TarjetaPreservicio
+                      key={row.id}
+                      row={row}
+                      moviendo={moviendo === row.id}
+                      onArrastrar={setArrastrando}
+                      onAbrir={(id) => setDetalleId(id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {detalleId && (
+          <PanelRegistros
+            soloDetalle
+            idInicial={detalleId}
+            etiquetaContexto="Detalle de Preservicio"
+            onVolver={() => setDetalleId(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -2898,10 +3435,10 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
 // que nunca aparece un mes que en esa columna no tiene nada.
 const FILTRO_FECHA_VACIO = { anio: "", mes: "", dia: "" };
 
-function opcionesFechaDe(rows, f) {
+function opcionesFechaDe(rows, f, campoFecha = "fecha_registro_sistema") {
   const anios = new Map(), meses = new Map(), dias = new Map();
   for (const r of rows) {
-    const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+    const iso = fechaCalendarioEC(r[campoFecha]);
     if (!iso) continue;
     const [a, m] = iso.split("-");
     anios.set(a, (anios.get(a) || 0) + 1);
@@ -2915,11 +3452,11 @@ function opcionesFechaDe(rows, f) {
   return { anios: orden(anios), meses: orden(meses), dias: orden(dias) };
 }
 
-function aplicarFiltroFecha(rows, f) {
+function aplicarFiltroFecha(rows, f, campoFecha = "fecha_registro_sistema") {
   if (!f.anio && !f.mes && !f.dia) return rows;
   return rows.filter((r) => {
-    const iso = fechaCalendarioEC(r.fecha_registro_sistema);
-    if (!iso) return false; // con filtro activo, lo que no tiene fecha no aplica
+    const iso = fechaCalendarioEC(r[campoFecha]);
+    if (!iso) return false;
     const [a, m] = iso.split("-");
     if (f.anio && a !== f.anio) return false;
     if (f.mes && m !== f.mes) return false;
@@ -2956,11 +3493,9 @@ function BotonFiltroCard({ titulo, cantidad, color, fondo, borde, onClick }) {
   );
 }
 
-function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
-  const op = opcionesFechaDe(rows, filtro);
+function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde, campoFecha = "fecha_registro_sistema" }) {
+  const op = opcionesFechaDe(rows, filtro, campoFecha);
   const activo = Boolean(filtro.anio || filtro.mes || filtro.dia);
-
-  // Determinamos el nivel de navegación actual
   const nivel = filtro.dia ? "dia" : filtro.mes ? "mes" : filtro.anio ? "anio" : "inicio";
 
   return (
@@ -2979,7 +3514,6 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde }) {
         )}
       </div>
 
-      {/* Navegación (Breadcrumbs / Botón Volver) */}
       {nivel !== "inicio" && (
         <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <button
@@ -3449,6 +3983,15 @@ export default function VistaBackoffice() {
   if (sub.id === "agendamientos") {
     return (
       <TableroAgendamientos
+        onVolver={volver} nav={nav} navegar={navegar}
+        empresa={empresa} onCambiarEmpresa={setEmpresa}
+      />
+    );
+  }
+
+  if (sub.id === "preservicios") {
+    return (
+      <TableroPreservicios
         onVolver={volver} nav={nav} navegar={navegar}
         empresa={empresa} onCambiarEmpresa={setEmpresa}
       />

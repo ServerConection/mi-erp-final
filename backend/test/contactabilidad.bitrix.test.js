@@ -62,3 +62,17 @@ test('consulta contacto y mensajes sin exponer el webhook en parametros', async 
     { method: 'im.dialog.messages.get', params: { DIALOG_ID: 'chat99', LIMIT: 200 } },
   ]);
 });
+
+test('usa fecha de modificacion para ciclos incrementales', async () => {
+  const llamadas = [];
+  const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {
+    llamadas.push({ method, params });
+    return { result: [], total: 0 };
+  } });
+
+  await bitrix.listarDeals({ categoryId: '19' }, { desde: '2026-08-23', hasta: '2026-08-25', campoFecha: 'DATE_MODIFY' });
+
+  assert.equal(llamadas[0].params.filter['>=DATE_MODIFY'], '2026-08-23');
+  assert.equal(llamadas[0].params.filter['<=DATE_MODIFY'], '2026-08-25T23:59:59');
+  assert.equal(Object.hasOwn(llamadas[0].params.filter, '>=DATE_CREATE'), false);
+});

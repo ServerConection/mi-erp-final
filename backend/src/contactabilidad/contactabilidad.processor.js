@@ -5,23 +5,34 @@ function nombreCompleto(contact) {
     .filter(Boolean).join(' ').trim() || null;
 }
 
-function crearProcesadorCrm({ bitrix, repository, pool }) {
+function crearProcesadorCrm({ bitrix, repository, pool, logger = console }) {
   return async function procesarCrm(crm, rango) {
     let start = 0;
     let total = Infinity;
     let leads = 0;
     let mensajes = 0;
+    let errores = 0;
+    let omitidos = 0;
+    const existentes = rango.soloNuevos
+      ? new Set((await pool.query('SELECT id_bitrix FROM contactabilidad_leads WHERE empresa = $1', [crm.empresa])).rows.map((row) => String(row.id_bitrix)))
+      : new Set();
+
     const etapas = typeof bitrix.listarEtapas === 'function' ? await bitrix.listarEtapas(crm) : [];
     const etapasPorId = new Map(etapas.map((etapa) => [String(etapa.STATUS_ID), etapa.NAME || etapa.STATUS_ID]));
     const usuariosPorId = new Map();
 
 
     while (start < total) {
-      const page = await bitrix.listarDeals(crm, { desde: rango.desde, hasta: rango.hasta, start });
+      const page = await bitrix.listarDeals(crm, { desde: rango.desde, hasta: rango.hasta, start, campoFecha: rango.campoFecha });
       const deals = page.result || [];
       total = Number(page.total ?? deals.length);
 
       for (const deal of deals) {
+        if (existentes.has(String(deal.ID))) {
+          omitidos += 1;
+          continue;
+        }
+        try {
         const contactData = deal.CONTACT_ID
           ? await bitrix.obtenerContacto(crm, deal.CONTACT_ID)
           : { result: null };
@@ -61,11 +72,15 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
         });
         leads += 1;
         mensajes += normalizados.length;
+        } catch (error) {
+          errores += 1;
+          logger.error(`[contactabilidad:${crm.empresa}:${deal.ID}] ${error.message}`);
+        }
       }
       start += deals.length;
       if (!deals.length || deals.length < 50) break;
     }
-    return { leads, mensajes };
+    return { leads, mensajes, errores, omitidos };
   };
 }
 

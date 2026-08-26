@@ -8,6 +8,7 @@ const { initConsultorVelsaRefresh } = require('./jobs/refreshConsultorVelsa.cron
 const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
+const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
 
 // SEGURIDAD: Verifica variables de entorno criticas al arrancar
 const requiredEnv = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'PORT'];
@@ -44,6 +45,7 @@ server.listen(process.env.PORT, async () => {
   initConsultorVelsaRefresh();
   await refreshRedesMVs();
   initJotformSync();
+  initContactabilidadSync();
   initWinTrackerSync();
   iniciarWhatsApp();
 });

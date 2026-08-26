@@ -38,3 +38,48 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   assert.equal(guardados[0][1].etapa_nombre, 'Negociación nueva');
   assert.equal(guardados[0][1].asesor_nombre, 'Asesor');
 });
+
+test('continua con los demas leads cuando uno falla', async () => {
+  const guardados = [];
+  const bitrix = {
+    listarEtapas: async () => [],
+    listarDeals: async () => ({ result: [
+      { ID: '1', CONTACT_ID: '1', STAGE_ID: 'NUEVO' },
+      { ID: '2', CONTACT_ID: '2', STAGE_ID: 'NUEVO' },
+    ], total: 2 }),
+    obtenerContacto: async (_crm, id) => {
+      if (id === '1') throw new Error('Bitrix temporal');
+      return { result: { NAME: 'Cliente dos' } };
+    },
+    resolverChatLead: async () => null,
+  };
+  const repository = { upsertLead: async (_client, lead) => guardados.push(lead), insertarMensaje: async () => {} };
+  const pool = { transaction: async (fn) => fn({}) };
+  const procesar = crearProcesadorCrm({ bitrix, repository, pool, logger: { error() {} } });
+
+  const resultado = await procesar({ empresa: 'NOVONET' }, { desde: '2026-07-01' });
+
+  assert.equal(resultado.leads, 1);
+  assert.equal(resultado.errores, 1);
+  assert.equal(guardados[0].id_bitrix, '2');
+});
+
+test('en historico omite leads que ya fueron auditados', async () => {
+  let contactos = 0;
+  const bitrix = {
+    listarEtapas: async () => [],
+    listarDeals: async () => ({ result: [{ ID: '1', CONTACT_ID: '1' }], total: 1 }),
+    obtenerContacto: async () => { contactos += 1; return { result: {} }; },
+    resolverChatLead: async () => null,
+  };
+  const pool = {
+    query: async () => ({ rows: [{ id_bitrix: '1' }] }),
+    transaction: async (fn) => fn({}),
+  };
+  const procesar = crearProcesadorCrm({ bitrix, repository: {}, pool, logger: { error() {} } });
+
+  const resultado = await procesar({ empresa: 'NOVONET' }, { desde: '2026-07-01', soloNuevos: true });
+
+  assert.equal(contactos, 0);
+  assert.equal(resultado.omitidos, 1);
+});

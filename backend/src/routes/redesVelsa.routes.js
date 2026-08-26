@@ -13,7 +13,7 @@ const {
   getAgenciasCanal,
   upsertAgenciaCanal,
   getResumenPorAgencia,
-} = require('../controllers/redesVelsa.controller');
+} = require('../controllers/redesVelsaWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 
 router.use(verificarToken);

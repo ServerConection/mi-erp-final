@@ -94,6 +94,7 @@ module.exports = {
   normalizarOrigen,
   normalizarOrigenSql,
   normalizarAgencia,
+  agenciaSql,
   canalOrigenSql,
   canalAsignadoSql,
   resolverCanalOrigen,

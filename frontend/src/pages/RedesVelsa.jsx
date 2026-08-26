@@ -221,7 +221,7 @@ function TabCiudad({ fechaDesde, fechaHasta, canalesSel }) {
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
-                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -293,7 +293,7 @@ function TabHora({ fechaDesde, fechaHasta, canalesSel }) {
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
-                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -871,7 +871,7 @@ export default function RedesVelsa() {
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.danger }}>{fmtNum(row.descartados)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                      {fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}
+                      {fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}
                     </td>
                     <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtUsd(row.inversion)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan, fontWeight: 700 }}>{fmtUsd(row.cpl)}</td>

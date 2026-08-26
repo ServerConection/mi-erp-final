@@ -14,7 +14,7 @@ const {
   getInversionAgencias,
   upsertInversionAgencias,
   getResumenPorAgencia,
-} = require('../controllers/redes.controller');
+} = require('../controllers/redesWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 const { forceSyncInversion } = require('../controllers/redesWintracker.controller');
 

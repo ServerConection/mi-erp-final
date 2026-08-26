@@ -235,7 +235,7 @@ function useMonitoreoData(desde, hasta, canalesSel, refreshKey = 0) {
     const p = buildFiltroParams({ desde, hasta, canalesSel });
 
     const fetchJson = (endpoint) =>
-      fetch(apiUrl(endpoint, p), { signal })
+      fetch(apiUrl(endpoint, p), { signal, cache: "no-store" })
         .then(r => r.json())
         .catch(e => (e.name === "AbortError" ? "aborted" : null));
 
@@ -496,7 +496,7 @@ function CanalDetalleCard({ canalData, totalLeads }) {
   const [expandido, setExpandido] = useState(false);
   const cfg = getCfg(canalData.canal);
   const cpl = canalData.n_leads > 0 && canalData.inversion_usd > 0 ? canalData.inversion_usd / canalData.n_leads : null;
-  const ef  = canalData.n_leads > 0 ? (canalData.activos_mes / canalData.n_leads) * 100 : 0;
+  const ef  = canalData.negociables > 0 ? (canalData.venta_subida_bitrix / canalData.negociables) * 100 : 0;
   const pctNeg = canalData.n_leads > 0 ? (canalData.negociables / canalData.n_leads) * 100 : 0;
   const pctAtc = canalData.n_leads > 0 ? (canalData.atc_soporte / canalData.n_leads) * 100 : 0;
   const pctVta = canalData.negociables > 0 ? (canalData.venta_subida_bitrix / canalData.negociables) * 100 : 0;
@@ -813,7 +813,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
   const totalVta     = porCanal.reduce((s, c) => s + c.venta_subida_bitrix, 0);
   const totalAtc     = porCanal.reduce((s, c) => s + c.atc_soporte, 0);
   const totalBacklog = filasAgr.reduce((s, r) => s + n(r.activo_backlog), 0);
-  const efect        = totalNeg > 0 ? (totalJot / totalNeg) * 100 : 0;
+  const efect        = totalNeg > 0 ? (totalVta / totalNeg) * 100 : 0;
   const pctAtcGral   = totalLeads > 0 ? (totalAtc / totalLeads) * 100 : 0;
   const cplGral      = totalLeads > 0 && totalInv > 0 ? totalInv / totalLeads : null;
 
@@ -1958,6 +1958,11 @@ export default function Redes() {
   const [applying,   setApplying]   = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
+  useEffect(() => {
+    const intervalId = setInterval(() => setRefreshTick((t) => t + 1), 15 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel, refreshTick);
 
   const handleAplicar = () => {
@@ -2004,7 +2009,7 @@ export default function Redes() {
               style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
               {applying || loading ? "Cargando..." : "Aplicar"}
             </button>
-            <SyncInversionButton onSuccess={() => setRefreshTick((t) => t + 1)} />
+            <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
             <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
               Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
             </p>

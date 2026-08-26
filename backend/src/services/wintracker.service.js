@@ -87,9 +87,11 @@ function restarDias(fechaISO, dias) {
 async function fetchInversion({ agency, apikey, from, to, fetchImpl = fetch }) {
   const params = new URLSearchParams({ apikey, from, to });
   if (agency && agency !== 'vidika') params.set('agency', agency);
+  params.set('_ts', String(Date.now()));
   const url = `${BASE_URL}/api/v1/netlife.php?${params.toString()}`;
+  const signal = typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(15_000) : undefined;
 
-  const resp = await fetchImpl(url);
+  const resp = await fetchImpl(url, { signal, cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
   if (!resp.ok) {
     throw new Error(`WinTracker respondió HTTP ${resp.status} para agency=${agency}`);
   }
@@ -100,9 +102,23 @@ async function fetchInversion({ agency, apikey, from, to, fetchImpl = fetch }) {
   return payload;
 }
 
+function diasConRescateKpi(payload, fechaUnica) {
+  const dias = Array.isArray(payload?.consolidado_diario) ? [...payload.consolidado_diario] : [];
+  const inversionKpi = payload?.kpis?.inversion;
+  if (!dias.some((dia) => dia?.fecha === fechaUnica) && fechaUnica && inversionKpi !== undefined && inversionKpi !== null && Number.isFinite(Number(inversionKpi))) {
+    dias.push({ fecha: fechaUnica, inversion: Number(inversionKpi) });
+  }
+  return dias;
+}
+
 async function syncAgencia(cfg, { from, to }, { fetchImpl = fetch, db = pool } = {}) {
   const payload = await fetchInversion({ agency: cfg.agency, apikey: cfg.apikey, from, to, fetchImpl });
-  const dias = Array.isArray(payload.consolidado_diario) ? payload.consolidado_diario : [];
+  let dias = Array.isArray(payload.consolidado_diario) ? [...payload.consolidado_diario] : [];
+  if (!dias.some((dia) => dia?.fecha === to)) {
+    const payloadHoy = from === to ? payload : await fetchInversion({ agency: cfg.agency, apikey: cfg.apikey, from: to, to, fetchImpl });
+    const rescateHoy = diasConRescateKpi(payloadHoy, to).filter((dia) => dia?.fecha === to);
+    dias = [...dias.filter((dia) => dia?.fecha !== to), ...rescateHoy];
+  }
 
   if (!dias.length) {
     console.log(`  ⚠️  WinTracker "${cfg.agency}": la respuesta no trajo "consolidado_diario" para ${from}..${to}.`);
@@ -158,15 +174,16 @@ async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = f
   const configuradas = crearConfiguracionAgencias(env);
   const resultados = [];
 
-  for (const cfg of configuradas) {
+  const sincronizaciones = configuradas.map(async (cfg) => {
     try {
-      resultados.push(await syncAgencia(cfg, rango, { fetchImpl, db }));
+      return await syncAgencia(cfg, rango, { fetchImpl, db });
     } catch (err) {
       const error = String(err?.message || 'Error desconocido').slice(0, 300);
-      console.error(`  💥 Error sincronizando WinTracker ("${cfg.agency}"):`, error);
-      resultados.push({ agency: cfg.agency, ok: false, guardados: 0, error });
+      console.error(`  💥 Error sincronizando WinTracker ("${cfg.agency}"): `, error);
+      return { agency: cfg.agency, ok: false, guardados: 0, error };
     }
-  }
+  });
+  resultados.push(...await Promise.all(sincronizaciones));
 
   return { from: desdeFinal, to: hastaFinal, agencias: configuradas.length, resultados };
 }

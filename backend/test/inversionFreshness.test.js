@@ -29,3 +29,12 @@ test('comparte una sola sincronización entre solicitudes concurrentes', async (
   liberar(); await Promise.all([a, b]);
   assert.equal(syncs, 1);
 });
+
+
+test('sincroniza aunque updated_at sea reciente si falta la inversion del dia actual', async () => {
+  let syncs = 0;
+  const db = { query: async () => ({ rows: [{ ultima: new Date('2026-08-26T10:55:00Z'), faltantes_hoy: 1 }] }) };
+  const asegurar = crearAseguradorInversion({ db, sync: async () => { syncs++; }, now: () => new Date('2026-08-26T11:00:00Z'), maxAgeMs: 20 * 60_000 });
+  await asegurar();
+  assert.equal(syncs, 1);
+});

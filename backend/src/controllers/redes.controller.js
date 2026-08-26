@@ -1,6 +1,6 @@
 const pool = require('../config/db');
-const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql } = require('../shared/origenesRedes');
-const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria } = require('../shared/inversionRedes');
+const { construirFiltroOrigenes, normalizarOrigenSql, canalAsignadoSql, agruparLineasPorAgencia, resolverAgenciasSeleccionadas } = require('../shared/origenesRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria, construirForecastAgencias } = require('../shared/inversionRedes');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -613,13 +613,28 @@ const {
 
       const gruposRaw = req.query.canales || '';
       const gruposSel = gruposRaw ? gruposRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-      const { origenesBitrix, canalesInversion } = resolverGrupos(gruposSel);
 
-      const invWhereClause = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,'SPLIT_PART(canal_inversion, \' -\', 1)').where  : '';
-      const invParamsExtra = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,'SPLIT_PART(canal_inversion, \' -\', 1)').params : [];
-      const bitWhereClause = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').where        : '';
-      const bitParamsExtra = origenesBitrix.length>0   ? buildInWhere(origenesBitrix,  2,'b_origen').params       : [];
+      let catalogoAgencias = [];
+      try {
+        const catalogoRes = await pool.query(`
+          SELECT origen, agencia FROM public.novonet_lineas_canal
+          WHERE agencia IS NOT NULL AND BTRIM(agencia) <> ''
+          ORDER BY agencia, origen
+        `);
+        catalogoAgencias = agruparLineasPorAgencia(catalogoRes.rows);
+      } catch (error) {
+        if (error.code !== '42P01') console.warn('No se pudo leer catálogo dinámico de agencias:', error.message);
+      }
 
+      let { origenesBitrix, canalesInversion } = resolverAgenciasSeleccionadas(gruposSel, catalogoAgencias);
+      if (gruposSel.length > 0 && origenesBitrix.length === 0) {
+        ({ origenesBitrix, canalesInversion } = resolverGrupos(gruposSel));
+      }
+
+      const invWhereClause = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,"SPLIT_PART(canal_inversion, ' -', 1)").where : '';
+      const invParamsExtra = canalesInversion.length>0 ? buildInWhere(canalesInversion,2,"SPLIT_PART(canal_inversion, ' -', 1)").params : [];
+      const bitWhereClause = origenesBitrix.length>0 ? buildInWhere(origenesBitrix,2,normalizarOrigenSql('b_origen')).where : '';
+      const bitParamsExtra = origenesBitrix.length>0 ? buildInWhere(origenesBitrix,2,normalizarOrigenSql('b_origen')).params : [];
       // Inversión diaria: fuente viva primero; la vista materializada queda como respaldo.
       // Esto mantiene Reporte Data alineado con Monitoreo General y evita duplicar
       // ARTS/VIDIKA cuando existen nombres históricos por canal.
@@ -650,6 +665,14 @@ const {
         inversionVivaRes.rows,
         inversionRespaldoRows,
         canalesInversion
+      );
+      const hoyEcuador = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date());
+      const hoyPeriodo = hoyEcuador < desde ? desde : (hoyEcuador > hasta ? hasta : hoyEcuador);
+      const forecastAgencias = construirForecastAgencias(
+        inversionVivaRes.rows,
+        { desde, hasta, hoy: hoyPeriodo }
       );
       // ── Leads + Etapas Bitrix ─────────────────────────────────────────────────
       const etapasRes = await pool.query(`
@@ -685,7 +708,7 @@ const {
       // activos_mes  = ACTIVO + fecha_activacion DENTRO del rango (igual que dashboards.js)
       // activo_backlog = ACTIVO + registrado ANTES del rango + activado DENTRO del rango
       const jotOrigenWhere = origenesBitrix.length>0
-        ? `AND t2.b_origen IN (${origenesBitrix.map((_,i)=>`$${3+i}`).join(', ')})`
+        ? `AND ${normalizarOrigenSql('t2.b_origen')} IN (${origenesBitrix.map((_,i)=>`$${3+i}`).join(', ')})`
         : '';
 
       const jotDenomsRes = await pool.query(`
@@ -847,20 +870,36 @@ const {
         GROUP BY ciudad, dia ORDER BY ciudad, dia
       `, [desde, hasta]);
 
-      // ── Hora ──────────────────────────────────────────────────────────────────
+      // ── Hora: fuente directa para respetar agencias dinámicas ───────────────
       const horaRes = await pool.query(`
-        SELECT hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc,
-          ROUND(SUM(atc)::numeric/NULLIF(SUM(n_leads),0)*100,1) AS pct_atc
-        FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
-        GROUP BY hora ORDER BY hora ASC
-      `, [desde, hasta]);
+        WITH base AS (
+          SELECT LEFT(b_creado_el_hora, 2)::int AS hora, b_etapa_de_la_negociacion AS etapa
+          FROM public.mestra_bitrix
+          WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+            AND j_id_bitrix IS NULL AND b_creado_el_hora ~ '^[0-9]{2}:'
+            ${bitWhereClause}
+        )
+        SELECT hora,
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('etapa')}) AS n_leads,
+          COUNT(*) FILTER (WHERE etapa ILIKE '%ATC%' OR etapa ILIKE '%SOPORTE%') AS atc,
+          ROUND(COUNT(*) FILTER (WHERE etapa ILIKE '%ATC%' OR etapa ILIKE '%SOPORTE%')::numeric / NULLIF(COUNT(*) FILTER (WHERE ${esLeadTotalExpr('etapa')}),0)*100,1) AS pct_atc
+        FROM base GROUP BY hora ORDER BY hora ASC
+      `, [desde, hasta, ...bitParamsExtra]);
 
       const horaDiaRes = await pool.query(`
-        SELECT EXTRACT(DAY FROM fecha)::int AS dia, hora, SUM(n_leads) AS n_leads, SUM(atc) AS atc
-        FROM public.mv_monitoreo_hora WHERE fecha BETWEEN $1::date AND $2::date
-        GROUP BY dia, hora ORDER BY dia, hora
-      `, [desde, hasta]);
-
+        WITH base AS (
+          SELECT EXTRACT(DAY FROM b_creado_el_fecha::date)::int AS dia,
+                 LEFT(b_creado_el_hora, 2)::int AS hora, b_etapa_de_la_negociacion AS etapa
+          FROM public.mestra_bitrix
+          WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
+            AND j_id_bitrix IS NULL AND b_creado_el_hora ~ '^[0-9]{2}:'
+            ${bitWhereClause}
+        )
+        SELECT dia, hora,
+          COUNT(*) FILTER (WHERE ${esLeadTotalExpr('etapa')}) AS n_leads,
+          COUNT(*) FILTER (WHERE etapa ILIKE '%ATC%' OR etapa ILIKE '%SOPORTE%') AS atc
+        FROM base GROUP BY dia, hora ORDER BY dia, hora
+      `, [desde, hasta, ...bitParamsExtra]);
       // ── ATC ───────────────────────────────────────────────────────────────────
       const atcRes = await pool.query(`
         SELECT motivo_atc, EXTRACT(DAY FROM fecha)::int AS dia, SUM(cantidad) AS cantidad
@@ -873,22 +912,10 @@ const {
         WHERE fecha BETWEEN $1::date AND $2::date GROUP BY motivo_atc ORDER BY cantidad DESC
       `, [desde, hasta]);
 
-      // ── Canales disponibles ───────────────────────────────────────────────────
-      const origenesDispRes = await pool.query(`
-        SELECT DISTINCT b_origen FROM public.mestra_bitrix
-        WHERE b_creado_el_fecha::date BETWEEN $1::date AND $2::date
-          AND b_origen IS NOT NULL AND b_origen<>'' AND j_id_bitrix IS NULL
-        ORDER BY b_origen ASC
-      `, [desde, hasta]);
-
-      const gruposEncontrados = new Set();
-      origenesDispRes.rows.forEach(r => {
-        const origenRaw = (r.b_origen||'').trim();
-        const g = ORIGEN_A_CANAL_INV[origenRaw] || ORIGEN_A_CANAL_INV[origenRaw.toUpperCase()];
-        if (g) gruposEncontrados.add(g);
-      });
-      const canalesDisponibles = [...gruposEncontrados].sort().map(g => ({ canal: g, lineas: GRUPO_A_ORIGENES[g]||[] }));
-
+      // ── Agencias disponibles: catálogo editable real ───────────────────────
+      const canalesDisponibles = catalogoAgencias.length > 0
+        ? catalogoAgencias
+        : GRUPOS_DISPONIBLES.map((canal) => ({ canal, lineas: GRUPO_A_ORIGENES[canal] || [] }));
       // ── Días del mes ──────────────────────────────────────────────────────────
       const diasMes = [];
       const DIAS_NOMBRE = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
@@ -931,6 +958,7 @@ const {
         meta: { anio: y, mes: m, dias: diasMes },
         canales_disponibles: canalesDisponibles,
         inversion:   finalArray,
+        forecast_agencias: forecastAgencias,
         etapas:      etapasRes.rows,
         status_jot:  statusJotRes.rows,
         pago:        pagoRes.rows,
@@ -1200,7 +1228,9 @@ const {
           gestionables: Number(row.gestionables || 0),
           atc: Number(row.atc || 0),
           venta_subida,
-          pct_venta_subida: n_leads > 0 ? +((venta_subida / n_leads) * 100).toFixed(1) : 0,
+          pct_venta_subida: Number(row.gestionables || 0) > 0
+            ? +((venta_subida / Number(row.gestionables || 0)) * 100).toFixed(1)
+            : 0,
           inversion,
           cpl: n_leads > 0 && inversion > 0 ? +(inversion / n_leads).toFixed(2) : null,
           costo_venta: venta_subida > 0 && inversion > 0 ? +(inversion / venta_subida).toFixed(2) : null,

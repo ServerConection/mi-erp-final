@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria } = require('../src/shared/inversionRedes');
+const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria, construirForecastAgencias } = require('../src/shared/inversionRedes');
 
 test('asigna la inversion diaria de WinTracker Arts una sola vez al canal Arts', () => {
   assert.equal(resolverCanalInversion('__WINTRACKER_ARTS__'), 'ARTS');
@@ -62,4 +62,27 @@ test('Reporte Data reconoce filtros historicos como agencias ARTS y VIDIKA', () 
     ['VIDIKA GOOGLE']
   );
   assert.deepEqual(filas, [{ dia: 25, inversion_usd: 40.13 }]);
+});
+
+test('construye forecast mensual independiente para ARTS y VIDIKA', () => {
+  const forecast = construirForecastAgencias([
+    { fecha: '2026-08-01', origen: '__WINTRACKER_ARTS__', monto_usd: 10 },
+    { fecha: '2026-08-02', origen: '__WINTRACKER_ARTS__', monto_usd: 20 },
+    { fecha: '2026-08-25', origen: '__WINTRACKER_VIDIKA__', monto_usd: 40.13 },
+  ], { desde: '2026-08-01', hasta: '2026-08-31', hoy: '2026-08-25' });
+
+  assert.deepEqual(forecast, [
+    {
+      agencia: 'ARTS', inversion_acumulada: 30, dias_con_datos: 2,
+      primera_fecha: '2026-08-01', ultima_fecha: '2026-08-02', promedio_diario: 15,
+      dias_transcurridos: 25, dias_restantes: 6, proyeccion_cierre: 465,
+      gasto_proyectado_restante: 435, atrasada: true,
+    },
+    {
+      agencia: 'VIDIKA', inversion_acumulada: 40.13, dias_con_datos: 1,
+      primera_fecha: '2026-08-25', ultima_fecha: '2026-08-25', promedio_diario: 40.13,
+      dias_transcurridos: 25, dias_restantes: 6, proyeccion_cierre: 1244.03,
+      gasto_proyectado_restante: 1203.9, atrasada: false,
+    },
+  ]);
 });

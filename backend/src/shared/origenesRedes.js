@@ -64,6 +64,31 @@ const construirFiltroOrigenes = (origenes, offsetInicial, field) => {
   };
 };
 
+const agruparLineasPorAgencia = (filas = []) => {
+  const grupos = new Map();
+  filas.forEach((fila) => {
+    const agencia = normalizarAgencia(fila.agencia);
+    const origen = normalizarOrigen(fila.origen);
+    if (!agencia || !origen) return;
+    if (!grupos.has(agencia)) grupos.set(agencia, new Set());
+    grupos.get(agencia).add(origen);
+  });
+  return [...grupos.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([canal, lineas]) => ({ canal, lineas: [...lineas].sort() }));
+};
+
+const resolverAgenciasSeleccionadas = (seleccionadas = [], catalogo = []) => {
+  if (!seleccionadas.length) return { origenesBitrix: [], canalesInversion: [] };
+  const normalizadas = [...new Set(seleccionadas.map(normalizarAgencia).filter(Boolean))];
+  const origenesBitrix = catalogo
+    .filter((grupo) => normalizadas.includes(normalizarAgencia(grupo.canal)))
+    .flatMap((grupo) => grupo.lineas || []);
+  return {
+    origenesBitrix: [...new Set(origenesBitrix)],
+    canalesInversion: normalizadas,
+  };
+};
 module.exports = {
   ORIGEN_A_CANAL,
   normalizarOrigen,
@@ -73,4 +98,6 @@ module.exports = {
   canalAsignadoSql,
   resolverCanalOrigen,
   construirFiltroOrigenes,
+  agruparLineasPorAgencia,
+  resolverAgenciasSeleccionadas,
 };

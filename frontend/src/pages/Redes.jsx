@@ -19,6 +19,7 @@ import TabAnalisisPautas from "./TabAnalisisPautas";
 import TabComparativo    from "./TabComparativo";
 import TabAsesorVsPauta  from "./TabAsesorVsPauta";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
+import { forzarSyncInversion } from "../utils/redesSync";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -89,6 +90,32 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function SyncInversionButton({ from, to, onSuccess, compact = false }) {
+  const [syncing, setSyncing] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+  const ejecutar = async () => {
+    if (syncing) return;
+    setSyncing(true); setSyncError(null);
+    try {
+      const payload = await forzarSyncInversion({ apiBase: API, token: localStorage.getItem("token"), from, to });
+      setResultado(payload.resultados || []); onSuccess?.(payload);
+    } catch (error) { setSyncError(error.message); }
+    finally { setSyncing(false); }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: compact ? "flex-start" : "flex-end" }}>
+      <button onClick={ejecutar} disabled={syncing} className="px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all disabled:opacity-60"
+        style={{ background: syncing ? C.muted : `linear-gradient(135deg,${C.violet},#5b21b6)` }}>
+        {syncing ? "Consultando agencias…" : "↻ Forzar inversión"}
+      </button>
+      {resultado && <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, maxWidth: 430, textAlign: compact ? "left" : "right" }}>
+        {resultado.map((r) => `${String(r.agency).toUpperCase()}: ${r.ok ? `${fmtUsd2(r.ultimoMonto)} (${r.ultimaFecha || "sin fecha"})` : `ERROR: ${r.error}`}`).join(" · ")}
+      </div>}
+      {syncError && <div style={{ fontSize: 10, fontWeight: 700, color: C.danger }}>{syncError}</div>}
+    </div>
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // AGREGADORES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +217,7 @@ function agregarPorOrigenDia(filas) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HOOK CENTRAL
 // ─────────────────────────────────────────────────────────────────────────────
-function useMonitoreoData(desde, hasta, canalesSel) {
+function useMonitoreoData(desde, hasta, canalesSel, refreshKey = 0) {
   const [data, setData]       = useState({ principal: null, ciudad: null, hora: null, atc: null });
   const [loading, setLoading] = useState(false);
   const abortRef = useRef(null);
@@ -230,7 +257,7 @@ function useMonitoreoData(desde, hasta, canalesSel) {
     });
 
     return () => controller.abort();
-  }, [desde, hasta, JSON.stringify(canalesSel)]);
+  }, [desde, hasta, JSON.stringify(canalesSel), refreshKey]);
 
   return { data, loading };
 }
@@ -470,7 +497,7 @@ function CanalDetalleCard({ canalData, totalLeads }) {
   const ef  = canalData.n_leads > 0 ? (canalData.activos_mes / canalData.n_leads) * 100 : 0;
   const pctNeg = canalData.n_leads > 0 ? (canalData.negociables / canalData.n_leads) * 100 : 0;
   const pctAtc = canalData.n_leads > 0 ? (canalData.atc_soporte / canalData.n_leads) * 100 : 0;
-  const pctVta = canalData.n_leads > 0 ? (canalData.venta_subida_bitrix / canalData.n_leads) * 100 : 0;
+  const pctVta = canalData.negociables > 0 ? (canalData.venta_subida_bitrix / canalData.negociables) * 100 : 0;
   const shareLeads = totalLeads > 0 ? (canalData.n_leads / totalLeads) * 100 : 0;
   const origenes = CANAL_A_ORIGENES[canalData.canal] || [];
   const etapas = [
@@ -1713,6 +1740,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const [guardandoOrigen, setGuardandoOrigen] = useState(null);
   const [borradores, setBorradores] = useState({});
   const [catalogoDisponible, setCatalogoDisponible] = useState(true);
+  const [actualizandoLineas, setActualizandoLineas] = useState(false);
 
   const cargarOrigenes = () => {
     fetch(apiUrl("agencias", ""), { headers: authHeaders() })
@@ -1778,6 +1806,15 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
         ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix). Puedes escribir el nombre de una agencia
         nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+        <button disabled={actualizandoLineas} onClick={() => {
+          setActualizandoLineas(true); setError(null); cargarOrigenes(); onCambio?.();
+          setTimeout(() => setActualizandoLineas(false), 700);
+        }} style={{ background: "#fff", color: C.primary, border: `1px solid ${C.primary}`, borderRadius: 10, padding: "8px 14px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+          {actualizandoLineas ? "Actualizando…" : "↻ Actualizar líneas"}
+        </button>
+        <SyncInversionButton compact onSuccess={() => { cargarOrigenes(); onCambio?.(); }} />
       </div>
       {!catalogoDisponible && (
         <div style={{ fontSize: 12, color: "#92400e", marginBottom: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
@@ -1919,7 +1956,7 @@ export default function Redes() {
   const [applying,   setApplying]   = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel);
+  const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel, refreshTick);
 
   const handleAplicar = () => {
     setApplying(true);
@@ -1965,6 +2002,7 @@ export default function Redes() {
               style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
               {applying || loading ? "Cargando..." : "Aplicar"}
             </button>
+            <SyncInversionButton onSuccess={() => setRefreshTick((t) => t + 1)} />
             <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
               Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
             </p>
@@ -1995,7 +2033,7 @@ export default function Redes() {
       {tab === "metas"        && <TabMetas filtro={filtro} canalesSel={canalesSel} />}
       {tab === "comparativo"  && <TabComparativo filtro={filtro} />}
       {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} />}
-      {tab === "reporte"      && <TabReporteData filtro={filtro} />}
+      {tab === "reporte"      && <TabReporteData key={refreshTick} filtro={filtro} />}
       {tab === "agencias"     && (
         <TabAgencias
           fechaDesde={filtro.desde}

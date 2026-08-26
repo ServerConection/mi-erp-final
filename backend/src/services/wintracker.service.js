@@ -84,12 +84,12 @@ function restarDias(fechaISO, dias) {
   return d.toISOString().split('T')[0];
 }
 
-async function fetchInversion({ agency, apikey, from, to }) {
+async function fetchInversion({ agency, apikey, from, to, fetchImpl = fetch }) {
   const params = new URLSearchParams({ apikey, from, to });
   if (agency && agency !== 'vidika') params.set('agency', agency);
   const url = `${BASE_URL}/api/v1/netlife.php?${params.toString()}`;
 
-  const resp = await fetch(url);
+  const resp = await fetchImpl(url);
   if (!resp.ok) {
     throw new Error(`WinTracker respondió HTTP ${resp.status} para agency=${agency}`);
   }
@@ -100,22 +100,24 @@ async function fetchInversion({ agency, apikey, from, to }) {
   return payload;
 }
 
-async function syncAgencia(cfg, { from, to }) {
-  const payload = await fetchInversion({ agency: cfg.agency, apikey: cfg.apikey, from, to });
+async function syncAgencia(cfg, { from, to }, { fetchImpl = fetch, db = pool } = {}) {
+  const payload = await fetchInversion({ agency: cfg.agency, apikey: cfg.apikey, from, to, fetchImpl });
   const dias = Array.isArray(payload.consolidado_diario) ? payload.consolidado_diario : [];
 
   if (!dias.length) {
     console.log(`  ⚠️  WinTracker "${cfg.agency}": la respuesta no trajo "consolidado_diario" para ${from}..${to}.`);
-    return;
+    return { agency: cfg.agency, ok: true, guardados: 0, ultimaFecha: null, ultimoMonto: null };
   }
 
   let guardados = 0;
+  let ultimaFecha = null;
+  let ultimoMonto = null;
   for (const dia of dias) {
     const fecha = dia?.fecha;
     const monto = Number(dia?.inversion);
     if (!fecha || Number.isNaN(monto)) continue;
 
-    await pool.query(
+    await db.query(
       `INSERT INTO ${cfg.tabla} (fecha, ${cfg.columnaOrigen}, monto_usd, fuente, creado_por, updated_at)
        VALUES ($1, $2, $3, 'wintracker_api', 'wintracker-sync', now())
        ON CONFLICT (fecha, ${cfg.columnaOrigen}) DO UPDATE SET
@@ -125,27 +127,48 @@ async function syncAgencia(cfg, { from, to }) {
       [fecha, cfg.origenSintetico, monto]
     );
     guardados++;
+    if (!ultimaFecha || fecha >= ultimaFecha) {
+      ultimaFecha = fecha;
+      ultimoMonto = monto;
+    }
   }
   console.log(`  ✅ WinTracker "${cfg.agency}": ${guardados} día(s) sincronizados (${from} a ${to}).`);
+  return { agency: cfg.agency, ok: true, guardados, ultimaFecha, ultimoMonto };
 }
-
 // Sincroniza todas las agencias configuradas para una ventana de fechas (por
 // defecto: los últimos DIAS_VENTANA días, incluido hoy). Cada agencia se
 // sincroniza de forma independiente — si una falla (ej. key inválida) no
 // bloquea a las demás.
-async function syncTodasLasAgencias({ from, to } = {}) {
-  const hoy = new Date().toISOString().split('T')[0];
-  const hastaFinal  = to || hoy;
-  const desdeFinal  = from || restarDias(hastaFinal, DIAS_VENTANA);
-  const rango = { from: desdeFinal, to: hastaFinal };
-
-  for (const cfg of crearConfiguracionAgencias()) {
-    try {
-      await syncAgencia(cfg, rango);
-    } catch (err) {
-      console.error(`  💥 Error sincronizando WinTracker ("${cfg.agency}"):`, err.message);
-    }
-  }
+function fechaEcuador(now = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Guayaquil',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const valor = (tipo) => partes.find((p) => p.type === tipo)?.value;
+  return `${valor('year')}-${valor('month')}-${valor('day')}`;
 }
 
-module.exports = { crearConfiguracionAgencias, syncTodasLasAgencias };
+async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = fetch, db = pool, now = new Date() } = {}) {
+  const hoy = fechaEcuador(now);
+  const hastaFinal = to || hoy;
+  const desdeFinal = from || restarDias(hastaFinal, DIAS_VENTANA);
+  const rango = { from: desdeFinal, to: hastaFinal };
+  const configuradas = crearConfiguracionAgencias(env);
+  const resultados = [];
+
+  for (const cfg of configuradas) {
+    try {
+      resultados.push(await syncAgencia(cfg, rango, { fetchImpl, db }));
+    } catch (err) {
+      const error = String(err?.message || 'Error desconocido').slice(0, 300);
+      console.error(`  💥 Error sincronizando WinTracker ("${cfg.agency}"):`, error);
+      resultados.push({ agency: cfg.agency, ok: false, guardados: 0, error });
+    }
+  }
+
+  return { from: desdeFinal, to: hastaFinal, agencias: configuradas.length, resultados };
+}
+
+module.exports = { crearConfiguracionAgencias, fechaEcuador, syncTodasLasAgencias };

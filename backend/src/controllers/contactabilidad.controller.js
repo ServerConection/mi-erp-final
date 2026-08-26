@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { obtenerAnalytics } = require('../contactabilidad/contactabilidad.analytics');
 
 async function listar(req, res) {
   try {
@@ -64,5 +65,22 @@ async function stats(req, res) {
   }
 }
 
-module.exports = { listar, stats };
+module.exports = { listar, stats, analytics };
 
+
+async function analytics(req, res, deps = {}) {
+  const obtener = deps.obtener || ((query) => obtenerAnalytics(pool, query));
+  try {
+    const data = await obtener(req.query);
+    res.json({ success: true, data });
+  } catch (error) {
+    const status = error instanceof TypeError ? 400 : 500;
+    console.error('[contactabilidad] analytics:', error.message);
+    res.status(status).json({
+      success: false,
+      error: status === 400
+        ? error.message
+        : 'Error calculando inteligencia de Contactabilidad',
+    });
+  }
+}

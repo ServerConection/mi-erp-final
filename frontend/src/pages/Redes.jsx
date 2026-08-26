@@ -398,7 +398,9 @@ function Spinner() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL FILTROS GLOBALES — con desglose de líneas
 // ─────────────────────────────────────────────────────────────────────────────
-function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
+function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
+  const nombresAgencias = agencias.map((item) => item.canal).filter(Boolean);
+  const lineasDe = (agencia) => agencias.find((item) => item.canal === agencia)?.lineas || [];
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
       {/* Fila principal de selección */}
@@ -407,7 +409,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
           <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
         </div>
-        <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
+        <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} opciones={nombresAgencias} compact />
         {canalesSel.length > 0 && (
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             {canalesSel.map(c => {
@@ -428,13 +430,13 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
       </div>
 
       {/* Desglose de líneas para 1 canal seleccionado */}
-      {canalesSel.length === 1 && (CANAL_A_ORIGENES[canalesSel[0]] || []).length > 0 && (
+      {canalesSel.length === 1 && lineasDe(canalesSel[0]).length > 0 && (
         <div className="px-5 py-3 border-t" style={{ borderColor: C.border }}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
               📡 Líneas del canal {getCfg(canalesSel[0]).label}:
             </span>
-            {(CANAL_A_ORIGENES[canalesSel[0]] || []).map((origen) => {
+            {lineasDe(canalesSel[0]).map((origen) => {
               const cfg = getCfg(canalesSel[0]);
               return (
                 <span key={origen} style={{
@@ -458,7 +460,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
           <div className="flex flex-col gap-2">
             {canalesSel.map(c => {
               const cfg = getCfg(c);
-              const origenes = CANAL_A_ORIGENES[c] || [];
+              const origenes = lineasDe(c);
               if (!origenes.length) return null;
               return (
                 <div key={c} className="flex flex-wrap items-center gap-2">
@@ -2009,6 +2011,12 @@ export default function Redes() {
           </div>
         </div>
       </div>
+
+      <PanelFiltrosGlobales
+        canalesSel={canalesSel}
+        onCanalesSel={setCanalesSel}
+        agencias={data.principal?.canales_disponibles || []}
+      />
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 bg-white border rounded-2xl p-1 mb-7 w-fit shadow-sm" style={{ borderColor: C.border }}>

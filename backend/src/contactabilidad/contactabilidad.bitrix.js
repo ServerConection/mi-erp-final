@@ -26,6 +26,14 @@ function crearClienteBitrix({ request }) {
     return data?.result || [];
   }
 
+  async function listarOrigenes(crm) {
+    const data = await request(crm, 'crm.status.list', {
+      filter: { ENTITY_ID: 'SOURCE' },
+      order: { SORT: 'ASC' },
+    });
+    return data?.result || [];
+  }
+
   async function obtenerUsuario(crm, userId) {
     const data = await request(crm, 'user.get', { ID: String(userId) });
     return Array.isArray(data?.result) ? data.result[0] || null : data?.result || null;
@@ -51,7 +59,7 @@ function crearClienteBitrix({ request }) {
     return { chatId, messages: data?.result?.messages || [], users: data?.result?.users || [] };
   }
 
-  return { listarDeals, listarEtapas, obtenerUsuario, obtenerContacto, obtenerChat, resolverChatLead };
+  return { listarDeals, listarEtapas, listarOrigenes, obtenerUsuario, obtenerContacto, obtenerChat, resolverChatLead };
 }
 
 module.exports = { crearClienteBitrix };

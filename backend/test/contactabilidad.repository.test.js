@@ -45,3 +45,19 @@ test('actualiza el lead sin borrar contadores calculados', async () => {
   assert.doesNotMatch(client.llamadas[0].sql, /mensajes_cliente_total\s*=/);
   assert.equal(client.llamadas[0].params[0], 'VELSA');
 });
+
+test('actualiza historicamente nombres de origen sin cambiar el id tecnico', async () => {
+  const client = clienteRegistrador();
+  const repository = crearRepositorioContactabilidad();
+  await repository.actualizarNombresOrigen(client, 'NOVONET', [
+    { id: '104', nombre: 'FB Messenger - Novo' },
+    { id: '8', nombre: 'Base 593-987133635' },
+  ]);
+
+  assert.match(client.llamadas[0].sql, /UPDATE contactabilidad_leads/);
+  assert.match(client.llamadas[0].sql, /origen_id = fuente\.id/);
+  assert.deepEqual(client.llamadas[0].params, [
+    'NOVONET', ['104', '8'],
+    ['FB Messenger - Novo', 'Base 593-987133635'],
+  ]);
+});

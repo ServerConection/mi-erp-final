@@ -20,7 +20,15 @@ function crearRequestBitrix({ fetchImpl = fetch, timeoutMs = 30000, reintentos =
           throw new Error(`Bitrix HTTP ${response.status} en ${method}`);
         }
         const payload = await response.json();
-        if (payload?.error) throw new Error(`Bitrix ${payload.error} en ${method}`);
+        if (payload?.error) {
+          const temporal = ['QUERY_LIMIT_EXCEEDED', 'OPERATION_TIME_LIMIT', 'TOO_MANY_REQUESTS']
+            .includes(String(payload.error).toUpperCase());
+          if (temporal && intento < reintentos) {
+            await espera(500 * (2 ** intento));
+            continue;
+          }
+          throw new Error(`Bitrix ${payload.error} en ${method}`);
+        }
         return payload;
       } finally {
         clearTimeout(timeout);

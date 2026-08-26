@@ -7,6 +7,7 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   const guardados = [];
   const client = {};
   const bitrix = {
+    listarEtapas: async () => [{ STATUS_ID: 'NUEVO', NAME: 'Negociación nueva' }],
     listarDeals: async () => ({ result: [{
       ID: '77', TITLE: 'Lead', DATE_CREATE: '2026-08-24T09:00:00Z', STAGE_ID: 'NUEVO',
       ASSIGNED_BY_ID: '20', CONTACT_ID: '10', SOURCE_ID: 'WEB',
@@ -34,5 +35,6 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   assert.equal(resultado.mensajes, 2);
   assert.equal(guardados.filter(([tipo]) => tipo === 'mensaje').length, 2);
   assert.equal(guardados[0][1].nombre_cliente, 'Cliente Prueba');
+  assert.equal(guardados[0][1].etapa_nombre, 'Negociación nueva');
   assert.equal(guardados[0][1].asesor_nombre, 'Asesor');
 });

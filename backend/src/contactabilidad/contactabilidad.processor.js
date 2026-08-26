@@ -11,6 +11,10 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
     let total = Infinity;
     let leads = 0;
     let mensajes = 0;
+    const etapas = typeof bitrix.listarEtapas === 'function' ? await bitrix.listarEtapas(crm) : [];
+    const etapasPorId = new Map(etapas.map((etapa) => [String(etapa.STATUS_ID), etapa.NAME || etapa.STATUS_ID]));
+    const usuariosPorId = new Map();
+
 
     while (start < total) {
       const page = await bitrix.listarDeals(crm, { desde: rango.desde, hasta: rango.hasta, start });
@@ -23,7 +27,15 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
           : { result: null };
         const chat = await bitrix.resolverChatLead(crm, deal);
         const users = chat?.users || [];
-        const asesor = users.find((u) => String(u.id) === String(deal.ASSIGNED_BY_ID) && !u.connector && !u.extranet);
+        let asesor = users.find((u) => String(u.id) === String(deal.ASSIGNED_BY_ID) && !u.connector && !u.extranet);
+        if (!asesor && deal.ASSIGNED_BY_ID && typeof bitrix.obtenerUsuario === 'function') {
+          const asesorId = String(deal.ASSIGNED_BY_ID);
+          if (!usuariosPorId.has(asesorId)) usuariosPorId.set(asesorId, await bitrix.obtenerUsuario(crm, asesorId));
+          const usuario = usuariosPorId.get(asesorId);
+          if (usuario) asesor = {
+            name: [usuario.NAME, usuario.LAST_NAME].filter(Boolean).join(' ').trim() || null,
+          };
+        }
         const lead = {
           empresa: crm.empresa,
           id_bitrix: String(deal.ID),
@@ -34,7 +46,7 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
           origen_nombre: deal.SOURCE_ID || null,
           fecha_creacion: deal.DATE_CREATE ? new Date(deal.DATE_CREATE) : null,
           etapa_id: deal.STAGE_ID || null,
-          etapa_nombre: deal.STAGE_ID || null,
+          etapa_nombre: etapasPorId.get(String(deal.STAGE_ID)) || deal.STAGE_ID || null,
         };
         const normalizados = (chat?.messages || [])
           .map((message) => normalizarMensaje(message, users, {

@@ -27,6 +27,25 @@ test('lista deals de todas las etapas con campos de contactabilidad', async () =
   assert.equal(Object.hasOwn(llamadas[0].params.filter, 'STAGE_ID'), false);
 });
 
+test('consulta nombres de etapas del pipeline y datos del asesor', async () => {
+  const llamadas = [];
+  const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {
+    llamadas.push({ method, params });
+    return method === 'crm.status.list' ? { result: [{ STATUS_ID: 'C19:NEW', NAME: 'Nuevo' }] } : { result: [{ ID: '20', NAME: 'Ana', LAST_NAME: 'Paz' }] };
+  } });
+  const crm = { empresa: 'NOVONET', categoryId: '19' };
+
+  const etapas = await bitrix.listarEtapas(crm);
+  const asesor = await bitrix.obtenerUsuario(crm, '20');
+
+  assert.equal(etapas[0].NAME, 'Nuevo');
+  assert.equal(asesor.NAME, 'Ana');
+  assert.deepEqual(llamadas, [
+    { method: 'crm.status.list', params: { filter: { ENTITY_ID: 'DEAL_STAGE_19' }, order: { SORT: 'ASC' } } },
+    { method: 'user.get', params: { ID: '20' } },
+  ]);
+});
+
 test('consulta contacto y mensajes sin exponer el webhook en parametros', async () => {
   const llamadas = [];
   const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {

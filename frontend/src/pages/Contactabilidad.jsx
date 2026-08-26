@@ -22,7 +22,7 @@ export default function Contactabilidad() {
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filtros, setFiltros] = useState({ empresa: '', q: '', pendiente_por: '' });
+  const [filtros, setFiltros] = useState({ empresa: '', q: '', pendiente_por: '', desde: '', hasta: '' });
   const query = useMemo(() => {
     const p = new URLSearchParams({ limit: '100' });
     Object.entries(filtros).forEach(([k, v]) => v && p.set(k, v));
@@ -32,7 +32,7 @@ export default function Contactabilidad() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([get(`/api/bot-auditor/contactabilidad?${query}`), get('/api/bot-auditor/contactabilidad/stats')])
+    Promise.all([get(`/api/bot-auditor/contactabilidad?${query}`), get(`/api/bot-auditor/contactabilidad/stats?${query}`)])
       .then(([list, summary]) => { if (active) { setRows(list.data || []); setStats(summary.data || {}); setError(''); } })
       .catch((e) => active && setError(e.message))
       .finally(() => active && setLoading(false));
@@ -50,13 +50,15 @@ export default function Contactabilidad() {
     <div style={{ display:'flex', gap:10, marginBottom:14 }}>
       <select value={filtros.empresa} onChange={(e)=>setFiltros(f=>({...f,empresa:e.target.value}))}><option value="">Todas las empresas</option><option>NOVONET</option><option>VELSA</option></select>
       <select value={filtros.pendiente_por} onChange={(e)=>setFiltros(f=>({...f,pendiente_por:e.target.value}))}><option value="">Todos los estados</option><option value="ASESOR">Pendiente asesor</option><option value="CLIENTE">Pendiente cliente</option></select>
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#475569'}}>Desde <input type="date" value={filtros.desde} onChange={(e)=>setFiltros(f=>({...f,desde:e.target.value}))} /></label>
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#475569'}}>Hasta <input type="date" value={filtros.hasta} onChange={(e)=>setFiltros(f=>({...f,hasta:e.target.value}))} /></label>
       <input placeholder="Cliente, asesor o ID" value={filtros.q} onChange={(e)=>setFiltros(f=>({...f,q:e.target.value}))} style={{minWidth:240}} />
     </div>
     {error && <div style={{color:'#b91c1c',margin:12}}>{error}</div>}
     <div style={{ overflowX:'auto', background:'white', border:'1px solid #e2e8f0', borderRadius:12 }}>
-      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['Empresa','ID','Cliente','Asesor','Origen','Etapa','Cliente','Asesor','Últ. cliente','Hace','Últ. asesor','Hace','Pendiente'].map(h=><th key={h} style={{padding:10,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
-      <tbody>{loading ? <tr><td colSpan="13" style={{padding:30,textAlign:'center'}}>Cargando…</td></tr> : rows.map(r=><tr key={`${r.empresa}-${r.id_bitrix}`}>
-        {[r.empresa,r.id_bitrix,r.nombre_cliente||'—',r.asesor_nombre||'—',r.origen_nombre||'—',r.etapa_nombre||r.etapa_id||'—',r.mensajes_cliente_total,r.mensajes_asesor_total,fmt(r.ultimo_mensaje_cliente_at),tiempo(r.ultimo_mensaje_cliente_at),fmt(r.ultimo_mensaje_asesor_at),tiempo(r.ultimo_mensaje_asesor_at)].map((v,i)=><td key={i} style={{padding:10,borderBottom:'1px solid #f1f5f9',whiteSpace:'nowrap'}}>{v}</td>)}
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['Empresa','ID','Creado','Cliente','Asesor (nombre)','Origen','Etapa (nombre)','Mensajes cliente','Mensajes asesor','Últ. cliente','Hace','Últ. asesor','Hace','Pendiente'].map(h=><th key={h} style={{padding:10,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+      <tbody>{loading ? <tr><td colSpan="14" style={{padding:30,textAlign:'center'}}>Cargando…</td></tr> : rows.map(r=><tr key={`${r.empresa}-${r.id_bitrix}`}>
+        {[r.empresa,r.id_bitrix,fmt(r.fecha_creacion),r.nombre_cliente||'—',r.asesor_nombre||'—',r.origen_nombre||'—',r.etapa_nombre||r.etapa_id||'—',r.mensajes_cliente_total,r.mensajes_asesor_total,fmt(r.ultimo_mensaje_cliente_at),tiempo(r.ultimo_mensaje_cliente_at),fmt(r.ultimo_mensaje_asesor_at),tiempo(r.ultimo_mensaje_asesor_at)].map((v,i)=><td key={i} style={{padding:10,borderBottom:'1px solid #f1f5f9',whiteSpace:'nowrap'}}>{v}</td>)}
         <td style={{padding:10,fontWeight:700,color:r.pendiente_por==='ASESOR'?'#dc2626':'#2563eb'}}>{r.pendiente_por||'—'}</td></tr>)}</tbody></table>
     </div>
     <p style={{fontSize:11,color:'#94a3b8'}}>Última sincronización: {fmt(stats.ultima_sincronizacion)}</p>

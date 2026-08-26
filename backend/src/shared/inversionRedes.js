@@ -1,6 +1,7 @@
 const ORIGEN_SINTETICO_A_CANAL = Object.freeze({
   '__WINTRACKER_ARTS__': 'ARTS',
   '__WINTRACKER_VIDIKA__': 'VIDIKA',
+  '__WINTRACKER_VELSA__': 'VELSA',
 });
 
 function normalizarFechaInversion(fecha) {

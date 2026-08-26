@@ -221,7 +221,7 @@ function TabCiudad({ fechaDesde, fechaHasta, canalesSel }) {
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
-                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -293,7 +293,7 @@ function TabHora({ fechaDesde, fechaHasta, canalesSel }) {
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
-                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}</td>
+                <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -737,11 +737,10 @@ export default function RedesVelsa() {
       </div>
 
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
-        ℹ️ Este módulo agrupa por <b>origen real</b> de cada lead (Bitrix / GHL / JotForm), sin catálogo de campañas —
-        cada origen de Velsa es distinto y se muestra tal cual llega.
+        ℹ️ El filtro usa las <b>agencias asignadas</b> en el catálogo y agrupa automáticamente todas sus líneas de origen.
       </div>
 
-      {/* Filtro de canales */}
+      {/* Filtro de agencias */}
       {canalesDisponibles.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
           {canalesDisponibles.map((c) => {
@@ -871,7 +870,7 @@ export default function RedesVelsa() {
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.danger }}>{fmtNum(row.descartados)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                      {fmtPct(row.n_leads > 0 ? (row.venta_subida / row.n_leads) * 100 : 0)}
+                      {fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}
                     </td>
                     <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtUsd(row.inversion)}</td>
                     <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan, fontWeight: 700 }}>{fmtUsd(row.cpl)}</td>

@@ -6,6 +6,7 @@
 // ╚══════════════════════════════════════════════════════════════════════════╝
 import { useEffect, useState, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
+import { construirMatrizHoraDia, construirResumenHora, calcularEfectividadGestionables } from "../utils/reporteDataStats.js";
 
 const C = {
   primary:  "#2563eb",
@@ -153,6 +154,19 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // BLOQUE 1 — Inversión & Costos
 // ─────────────────────────────────────────────────────────────────────────────
+function TablaHora({ filas }) {
+  const horas = construirResumenHora(filas);
+  if (!horas.length) return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos horarios para el período y agencias seleccionadas.</p>;
+  return <table className="text-[9px] border-collapse w-full"><thead style={{ background: C.bgHeader }}><tr>{['HORA','LEADS','ATC','% ATC'].map(h => <th key={h} className="px-4 py-2 text-center border-b" style={{ color:C.slate,borderColor:C.border }}>{h}</th>)}</tr></thead><tbody>{horas.map(h => <tr key={h.hora} className="border-b" style={{ borderColor:C.border }}><td className="px-4 py-2 text-center font-black">{String(h.hora).padStart(2,'0')}:00</td><td className="px-4 py-2 text-center font-black" style={{color:C.primary}}>{h.n_leads}</td><td className="px-4 py-2 text-center" style={{color:C.danger}}>{h.atc}</td><td className="px-4 py-2 text-center font-black">{pf(h.pct_atc)}</td></tr>)}</tbody></table>;
+}
+function TablaHoraDia({ filas, dias }) {
+  const matriz = construirMatrizHoraDia(filas); if (!matriz.horas.length) return null;
+  return <div className="overflow-auto border-t" style={{borderColor:C.border}}><div className="px-4 py-2 text-[9px] font-black uppercase" style={{color:C.primary}}>Detalle diario por hora</div><table className="text-[8px] border-collapse w-full whitespace-nowrap"><thead style={{background:C.bgHeader}}><tr><th className="px-3 py-2 border">DÍA</th>{matriz.horas.map(h=><th key={h} className="px-2 py-2 border">{String(h).padStart(2,'0')}:00</th>)}<th className="px-3 py-2 border">TOTAL</th></tr></thead><tbody>{dias.map(d=>{const fila=matriz.porDia[d.dia]||{};const total=matriz.horas.reduce((sum,h)=>sum+n(fila[h]),0);return <tr key={d.dia}><td className="px-3 py-2 border font-black">{d.dia} {d.nombre}</td>{matriz.horas.map(h=><td key={h} className="px-2 py-2 border text-center">{n(fila[h])||'—'}</td>)}<td className="px-3 py-2 border text-center font-black">{total||'—'}</td></tr>;})}</tbody></table></div>;
+}
+function TablaCiudad({ filas }) {
+  if (!filas?.length) return <p className="p-4 text-[9px] italic" style={{color:C.muted}}>Sin datos por ciudad para el período.</p>;
+  return <table className="text-[9px] border-collapse w-full"><thead style={{background:C.bgHeader}}><tr>{['CIUDAD','PROVINCIA','LEADS','INGRESOS JOT','ACTIVOS','% ACTIVACIÓN'].map(h=><th key={h} className="px-3 py-2 border-b text-center" style={{borderColor:C.border,color:C.slate}}>{h}</th>)}</tr></thead><tbody>{filas.map((r,i)=><tr key={`${r.ciudad}-${i}`} className="border-b" style={{borderColor:C.border}}><td className="px-3 py-2 font-black">{r.ciudad||'SIN CIUDAD'}</td><td className="px-3 py-2">{r.provincia||'—'}</td><td className="px-3 py-2 text-center font-black">{n(r.total_leads)}</td><td className="px-3 py-2 text-center">{n(r.ingresos_jot)}</td><td className="px-3 py-2 text-center" style={{color:C.success}}>{n(r.activos)}</td><td className="px-3 py-2 text-center font-black">{pf(r.pct_activos)}</td></tr>)}</tbody></table>;
+}
 function buildInversionFilas(d, dias) {
   if (!d.inversion || d.inversion.length === 0) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
@@ -486,7 +500,8 @@ export default function TabReporteData({ filtro }) {
     const totVS      = (data.etapas     || []).reduce((s, r) => s + n(r.venta_subida),    0);
     const totJot     = (data.status_jot || []).reduce((s, r) => s + n(r.ingreso_jot),     0);
     const totActivos = (data.status_jot || []).reduce((s, r) => s + n(r.activos),         0);
-    const efect      = totLeads > 0 ? ((totVS / totLeads) * 100).toFixed(1) + '%' : '—';
+    const totGest    = (data.inversion || []).reduce((sum, r) => sum + n(r.negociables), 0);
+    const efect      = totGest > 0 ? calcularEfectividadGestionables(totVS, totGest).toFixed(1) + '%' : '—';
     const cplStr     = totLeads > 0 ? '$' + (totInv / totLeads).toFixed(2) : '—';
     const canalesStr = canalesSel.length > 0 ? canalesSel.map(c => getCfg(c).label).join(' · ') : 'Todos los canales';
 
@@ -875,7 +890,7 @@ ${horaData.length > 0 ? `
           <div className="flex items-stretch">
             <div className="flex-1 px-5 py-3 flex flex-wrap items-center gap-2">
               <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
-                Canal de Publicidad:
+                Agencia:
               </span>
 
               {/* Chip "Todos" */}
@@ -920,7 +935,7 @@ ${horaData.length > 0 ? `
 
               {canalesSel.length > 0 && (
                 <span className="text-[8px] font-medium ml-1" style={{ color: C.muted }}>
-                  {canalesSel.length} canal{canalesSel.length !== 1 ? "es" : ""}
+                  {canalesSel.length} agencia{canalesSel.length !== 1 ? "s" : ""}
                   {" · "}
                   <button onClick={limpiarCanales} className="underline hover:no-underline" style={{ color: C.danger }}>
                     limpiar
@@ -975,7 +990,7 @@ ${horaData.length > 0 ? `
                 Reporte Data — {MESES[data.meta.mes - 1]} {data.meta.anio}
               </div>
               <div className="text-[9px] font-medium uppercase tracking-widest mt-0.5" style={{ color: C.muted }}>
-                NETLIFE VELSA · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
+                NETLIFE NOVONET · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -994,6 +1009,42 @@ ${horaData.length > 0 ? `
             </div>
           </div>
 
+          <div className="bg-white rounded-xl border shadow-sm p-4 mb-4" style={{ borderColor: C.border }}>
+            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: C.violet }}>Forecast de inversión por agencia</div>
+                <div className="text-[8px] mt-1" style={{ color: C.muted }}>Promedio diario registrado × días del mes · fuente viva WinTracker</div>
+              </div>
+              <span className="text-[8px] font-bold px-2 py-1 rounded-full" style={{ background: "#f5f3ff", color: C.violet }}>
+                {(data.forecast_agencias || []).length} agencia(s)
+              </span>
+            </div>
+            {(data.forecast_agencias || []).length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {data.forecast_agencias.map((item) => (
+                  <div key={item.agencia} className="rounded-xl border p-3" style={{ borderColor: item.atrasada ? "#fca5a5" : "#bbf7d0", background: item.atrasada ? "#fef2f2" : "#f0fdf4" }}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[11px] font-black" style={{ color: C.slate }}>{item.agencia}</span>
+                      <span className="text-[8px] font-black px-2 py-0.5 rounded-full" style={{ background: item.atrasada ? "#fee2e2" : "#dcfce7", color: item.atrasada ? C.danger : C.success }}>
+                        {item.atrasada ? "ATRASADA" : "ACTUALIZADA"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[8px]">
+                      <div><span style={{ color: C.muted }}>Acumulado</span><div className="text-sm font-black" style={{ color: C.violet }}>${n(item.inversion_acumulada).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Proyección cierre</span><div className="text-sm font-black" style={{ color: C.primary }}>${n(item.proyeccion_cierre).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Por gastar estimado</span><div className="font-black" style={{ color: C.warning }}>${n(item.gasto_proyectado_restante).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Promedio diario</span><div className="font-black" style={{ color: C.slate }}>${n(item.promedio_diario).toFixed(2)}</div></div>
+                    </div>
+                    <div className="text-[8px] mt-2 pt-2 border-t" style={{ borderColor: C.border, color: item.atrasada ? C.danger : C.muted }}>
+                      Último dato: <b>{item.ultima_fecha}</b> · {item.dias_con_datos} días con datos · {item.dias_restantes} días restantes
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] rounded-lg p-3" style={{ background: "#fffbeb", color: C.warning }}>Sin inversión por agencia para este período. Usa “Forzar inversión”.</div>
+            )}
+          </div>
           <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">
             <TablaHorizontal filas={buildInversionFilas(data, dias)} dias={dias} accent={C.violet} />
           </Block>
@@ -1006,6 +1057,13 @@ ${horaData.length > 0 ? `
             <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
           </Block>
 
+          <Block title="Leads por Hora" accent={C.primary} id="bloque-hora">
+            <TablaHora filas={data.hora || []} />
+            <TablaHoraDia filas={data.hora_dia || []} dias={dias} />
+          </Block>
+          <Block title="Gestión por Ciudad" accent={C.violet} id="bloque-ciudad">
+            <TablaCiudad filas={data.ciudad || []} />
+          </Block>
           <Block title="Forma de Pago" accent={C.cyan} id="bloque-pago">
             <TablaHorizontal filas={buildPagoFilas(data, dias)} dias={dias} accent={C.cyan} />
           </Block>

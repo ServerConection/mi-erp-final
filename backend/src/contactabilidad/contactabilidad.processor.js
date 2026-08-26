@@ -5,25 +5,48 @@ function nombreCompleto(contact) {
     .filter(Boolean).join(' ').trim() || null;
 }
 
-function crearProcesadorCrm({ bitrix, repository, pool }) {
+function crearProcesadorCrm({ bitrix, repository, pool, logger = console }) {
   return async function procesarCrm(crm, rango) {
     let start = 0;
     let total = Infinity;
     let leads = 0;
     let mensajes = 0;
+    let errores = 0;
+    let omitidos = 0;
+    const existentes = rango.soloNuevos
+      ? new Set((await pool.query('SELECT id_bitrix FROM contactabilidad_leads WHERE empresa = $1', [crm.empresa])).rows.map((row) => String(row.id_bitrix)))
+      : new Set();
+
+    const etapas = typeof bitrix.listarEtapas === 'function' ? await bitrix.listarEtapas(crm) : [];
+    const etapasPorId = new Map(etapas.map((etapa) => [String(etapa.STATUS_ID), etapa.NAME || etapa.STATUS_ID]));
+    const usuariosPorId = new Map();
+
 
     while (start < total) {
-      const page = await bitrix.listarDeals(crm, { desde: rango.desde, hasta: rango.hasta, start });
+      const page = await bitrix.listarDeals(crm, { desde: rango.desde, hasta: rango.hasta, start, campoFecha: rango.campoFecha });
       const deals = page.result || [];
       total = Number(page.total ?? deals.length);
 
       for (const deal of deals) {
+        if (existentes.has(String(deal.ID))) {
+          omitidos += 1;
+          continue;
+        }
+        try {
         const contactData = deal.CONTACT_ID
           ? await bitrix.obtenerContacto(crm, deal.CONTACT_ID)
           : { result: null };
         const chat = await bitrix.resolverChatLead(crm, deal);
         const users = chat?.users || [];
-        const asesor = users.find((u) => String(u.id) === String(deal.ASSIGNED_BY_ID) && !u.connector && !u.extranet);
+        let asesor = users.find((u) => String(u.id) === String(deal.ASSIGNED_BY_ID) && !u.connector && !u.extranet);
+        if (!asesor && deal.ASSIGNED_BY_ID && typeof bitrix.obtenerUsuario === 'function') {
+          const asesorId = String(deal.ASSIGNED_BY_ID);
+          if (!usuariosPorId.has(asesorId)) usuariosPorId.set(asesorId, await bitrix.obtenerUsuario(crm, asesorId));
+          const usuario = usuariosPorId.get(asesorId);
+          if (usuario) asesor = {
+            name: [usuario.NAME, usuario.LAST_NAME].filter(Boolean).join(' ').trim() || null,
+          };
+        }
         const lead = {
           empresa: crm.empresa,
           id_bitrix: String(deal.ID),
@@ -34,7 +57,7 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
           origen_nombre: deal.SOURCE_ID || null,
           fecha_creacion: deal.DATE_CREATE ? new Date(deal.DATE_CREATE) : null,
           etapa_id: deal.STAGE_ID || null,
-          etapa_nombre: deal.STAGE_ID || null,
+          etapa_nombre: etapasPorId.get(String(deal.STAGE_ID)) || deal.STAGE_ID || null,
         };
         const normalizados = (chat?.messages || [])
           .map((message) => normalizarMensaje(message, users, {
@@ -49,11 +72,15 @@ function crearProcesadorCrm({ bitrix, repository, pool }) {
         });
         leads += 1;
         mensajes += normalizados.length;
+        } catch (error) {
+          errores += 1;
+          logger.error(`[contactabilidad:${crm.empresa}:${deal.ID}] ${error.message}`);
+        }
       }
       start += deals.length;
       if (!deals.length || deals.length < 50) break;
     }
-    return { leads, mensajes };
+    return { leads, mensajes, errores, omitidos };
   };
 }
 

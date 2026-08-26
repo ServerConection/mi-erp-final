@@ -1,6 +1,7 @@
 const ORIGEN_SINTETICO_A_CANAL = Object.freeze({
   '__WINTRACKER_ARTS__': 'ARTS',
   '__WINTRACKER_VIDIKA__': 'VIDIKA',
+  '__WINTRACKER_VELSA__': 'VELSA',
 });
 
 function normalizarFechaInversion(fecha) {
@@ -90,4 +91,45 @@ function agregarInversionDiaria(filasVivas = [], filasRespaldo = [], canalesSele
     .map(([dia, inversion_usd]) => ({ dia, inversion_usd: Number(inversion_usd.toFixed(2)) }));
 }
 
-module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria };
+function construirForecastAgencias(filas = [], { desde, hasta, hoy }) {
+  const diasTotales = Number(String(hasta).slice(-2));
+  const diaHoy = Math.min(diasTotales, Math.max(0, Number(String(hoy).slice(-2))));
+  const porAgencia = new Map();
+
+  filas.forEach((row) => {
+    const agencia = resolverCanalRespaldo(resolverCanalInversion(row.origen || row.agencia));
+    const fecha = normalizarFechaInversion(row.fecha);
+    const monto = Number(row.monto_usd || 0);
+    if (!agencia || !fecha || Number.isNaN(monto)) return;
+    if (!porAgencia.has(agencia)) porAgencia.set(agencia, { agencia, fechas: new Set(), total: 0, primera: fecha, ultima: fecha });
+    const item = porAgencia.get(agencia);
+    item.total += monto;
+    item.fechas.add(fecha);
+    if (fecha < item.primera) item.primera = fecha;
+    if (fecha > item.ultima) item.ultima = fecha;
+  });
+
+  return [...porAgencia.values()]
+    .sort((a, b) => a.agencia.localeCompare(b.agencia))
+    .map((item) => {
+      const acumulada = Number(item.total.toFixed(2));
+      const diasConDatos = item.fechas.size;
+      const promedio = diasConDatos > 0 ? Number((acumulada / diasConDatos).toFixed(2)) : 0;
+      const proyeccion = Number((promedio * diasTotales).toFixed(2));
+      return {
+        agencia: item.agencia,
+        inversion_acumulada: acumulada,
+        dias_con_datos: diasConDatos,
+        primera_fecha: item.primera,
+        ultima_fecha: item.ultima,
+        promedio_diario: promedio,
+        dias_transcurridos: diaHoy,
+        dias_restantes: Math.max(diasTotales - diaHoy, 0),
+        proyeccion_cierre: proyeccion,
+        gasto_proyectado_restante: Number(Math.max(proyeccion - acumulada, 0).toFixed(2)),
+        atrasada: item.ultima < hoy,
+      };
+    });
+}
+
+module.exports = { ORIGEN_SINTETICO_A_CANAL, normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo, agregarFilasSoloInversion, agregarInversionDiaria, construirForecastAgencias };

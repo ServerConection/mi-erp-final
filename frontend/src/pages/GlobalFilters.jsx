@@ -13,7 +13,7 @@ export const CANALES_CFG = {
 
 export const getCanalCfg = (c) => CANALES_CFG[c] || { color: "#64748b", bg: "#f8fafc", icon: "•", label: c };
 
-export function CanalSelector({ canalesSel, onChange, compact = false }) {
+export function CanalSelector({ canalesSel, onChange, compact = false, opciones }) {
   const toggle = (canal) => {
     const next = canalesSel.includes(canal)
       ? canalesSel.filter(c => c !== canal)
@@ -21,6 +21,7 @@ export function CanalSelector({ canalesSel, onChange, compact = false }) {
     onChange(next);
   };
   const selAll = () => onChange([]);
+  const agencias = Array.isArray(opciones) ? opciones : Object.keys(CANALES_CFG);
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
       <button onClick={selAll} style={{
@@ -30,7 +31,8 @@ export function CanalSelector({ canalesSel, onChange, compact = false }) {
         background: canalesSel.length === 0 ? "#1e3a8a" : "#fff",
         color: canalesSel.length === 0 ? "#fff" : "#64748b", cursor: "pointer",
       }}>Todos</button>
-      {Object.entries(CANALES_CFG).map(([canal, cfg]) => {
+      {agencias.map((canal) => {
+        const cfg = getCanalCfg(canal);
         const sel = canalesSel.includes(canal);
         return (
           <button key={canal} onClick={() => toggle(canal)} style={{
@@ -47,7 +49,7 @@ export function CanalSelector({ canalesSel, onChange, compact = false }) {
       })}
       {canalesSel.length > 0 && (
         <span style={{ fontSize: "8px", color: "#64748b" }}>
-          {canalesSel.length} canal{canalesSel.length > 1 ? "es" : ""}
+          {canalesSel.length} agencia{canalesSel.length > 1 ? "s" : ""}
           {" · "}
           <span onClick={selAll} style={{ color: "#ef4444", cursor: "pointer", textDecoration: "underline" }}>limpiar</span>
         </span>

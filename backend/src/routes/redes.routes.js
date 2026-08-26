@@ -14,8 +14,9 @@ const {
   getInversionAgencias,
   upsertInversionAgencias,
   getResumenPorAgencia,
-} = require('../controllers/redes.controller');
+} = require('../controllers/redesWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
+const { forceSyncInversion } = require('../controllers/redesWintracker.controller');
 
 router.get('/monitoreo-redes',   getMonitoreoRedes);
 router.get('/monitoreo-ciudad',  getMonitoreoCiudad);
@@ -36,5 +37,6 @@ router.post('/agencias',         verificarToken, noAsesor, upsertAgenciaCanal);
 router.get('/inversion',         verificarToken, getInversionAgencias);
 router.post('/inversion',        verificarToken, noAsesor, upsertInversionAgencias);
 router.get('/resumen-agencias',  verificarToken, getResumenPorAgencia);
+router.post('/sync-inversion',    verificarToken, noAsesor, forceSyncInversion);
 
 module.exports = router;

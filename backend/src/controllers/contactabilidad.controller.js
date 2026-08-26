@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { obtenerAnalytics } = require('../contactabilidad/contactabilidad.analytics');
 
 async function listar(req, res) {
   try {
@@ -11,12 +12,15 @@ async function listar(req, res) {
     if (req.query.origen) { params.push(`%${req.query.origen}%`); where.push(`COALESCE(origen_nombre, '') ILIKE $${params.length}`); }
     if (req.query.q) { params.push(`%${req.query.q}%`); where.push(`(COALESCE(nombre_cliente,'') ILIKE $${params.length} OR COALESCE(asesor_nombre,'') ILIKE $${params.length} OR id_bitrix ILIKE $${params.length})`); }
     if (req.query.pendiente_por) { params.push(String(req.query.pendiente_por).toUpperCase()); where.push(`pendiente_por = $${params.length}`); }
+    if (req.query.desde) { params.push(req.query.desde); where.push(`fecha_creacion >= $${params.length}::date`); }
+    if (req.query.hasta) { params.push(req.query.hasta); where.push(`fecha_creacion < ($${params.length}::date + INTERVAL '1 day')`); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const total = await pool.query(`SELECT COUNT(*)::int AS total FROM contactabilidad_leads ${whereSql}`, params);
     params.push(limit, (page - 1) * limit);
     const rows = await pool.query(`
       SELECT empresa, id_bitrix, nombre_cliente, asesor_id, asesor_nombre,
-             origen_nombre, fecha_creacion, etapa_id, etapa_nombre, etapa_ingreso_at,
+             origen_nombre, fecha_creacion, etapa_id,
+             COALESCE(etapa_nombre, etapa_id) AS etapa_nombre, etapa_ingreso_at,
              mensajes_cliente_total, mensajes_asesor_total,
              mensajes_cliente_etapa, mensajes_asesor_etapa,
              ultimo_mensaje_cliente_at, ultimo_mensaje_asesor_at,
@@ -35,6 +39,13 @@ async function listar(req, res) {
 
 async function stats(req, res) {
   try {
+    const params = [];
+    const where = [];
+    if (req.query.empresa) { params.push(String(req.query.empresa).toUpperCase()); where.push(`empresa = $${params.length}`); }
+    if (req.query.pendiente_por) { params.push(String(req.query.pendiente_por).toUpperCase()); where.push(`pendiente_por = $${params.length}`); }
+    if (req.query.desde) { params.push(req.query.desde); where.push(`fecha_creacion >= $${params.length}::date`); }
+    if (req.query.hasta) { params.push(req.query.hasta); where.push(`fecha_creacion < ($${params.length}::date + INTERVAL '1 day')`); }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const result = await pool.query(`
       SELECT COUNT(*)::int AS leads,
              COALESCE(SUM(mensajes_cliente_total),0)::int AS mensajes_cliente,
@@ -43,7 +54,8 @@ async function stats(req, res) {
              COUNT(*) FILTER (WHERE pendiente_por = 'ASESOR')::int AS pendientes_asesor,
              MAX(ultima_sincronizacion_at) AS ultima_sincronizacion
       FROM contactabilidad_leads
-    `);
+      ${whereSql}
+    `, params);
     const data = result.rows[0];
     data.tasa_contactabilidad = data.leads ? Number(((data.contactados / data.leads) * 100).toFixed(1)) : 0;
     res.json({ success: true, data });
@@ -53,5 +65,22 @@ async function stats(req, res) {
   }
 }
 
-module.exports = { listar, stats };
+module.exports = { listar, stats, analytics };
 
+
+async function analytics(req, res, deps = {}) {
+  const obtener = deps.obtener || ((query) => obtenerAnalytics(pool, query));
+  try {
+    const data = await obtener(req.query);
+    res.json({ success: true, data });
+  } catch (error) {
+    const status = error instanceof TypeError ? 400 : 500;
+    console.error('[contactabilidad] analytics:', error.message);
+    res.status(status).json({
+      success: false,
+      error: status === 400
+        ? error.message
+        : 'Error calculando inteligencia de Contactabilidad',
+    });
+  }
+}

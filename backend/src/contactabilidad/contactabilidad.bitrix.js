@@ -1,20 +1,34 @@
 function crearClienteBitrix({ request }) {
   if (typeof request !== 'function') throw new TypeError('request es requerido');
 
-  async function listarDeals(crm, { desde, hasta, start = 0 }) {
+  async function listarDeals(crm, { desde, hasta, start = 0, campoFecha = 'DATE_CREATE' }) {
     const select = [
       'ID', 'TITLE', 'DATE_CREATE', 'STAGE_ID', 'ASSIGNED_BY_ID',
       'CONTACT_ID', 'SOURCE_ID',
     ];
     if (crm.campoChat) select.push(crm.campoChat);
-    const filter = { CATEGORY_ID: crm.categoryId, '>=DATE_CREATE': desde };
-    if (hasta) filter['<=DATE_CREATE'] = `${hasta}T23:59:59`;
+    const filter = { CATEGORY_ID: crm.categoryId, [`>=${campoFecha}`]: desde };
+    if (hasta) filter[`<=${campoFecha}`] = `${hasta}T23:59:59`;
     return request(crm, 'crm.deal.list', {
       filter,
       select,
-      order: { DATE_CREATE: 'ASC' },
+      order: { [campoFecha]: 'ASC' },
       start,
     });
+  }
+
+  async function listarEtapas(crm) {
+    const entityId = Number(crm.categoryId) === 0 ? 'DEAL_STAGE' : `DEAL_STAGE_${crm.categoryId}`;
+    const data = await request(crm, 'crm.status.list', {
+      filter: { ENTITY_ID: entityId },
+      order: { SORT: 'ASC' },
+    });
+    return data?.result || [];
+  }
+
+  async function obtenerUsuario(crm, userId) {
+    const data = await request(crm, 'user.get', { ID: String(userId) });
+    return Array.isArray(data?.result) ? data.result[0] || null : data?.result || null;
   }
 
   const obtenerContacto = (crm, contactId) =>
@@ -37,7 +51,7 @@ function crearClienteBitrix({ request }) {
     return { chatId, messages: data?.result?.messages || [], users: data?.result?.users || [] };
   }
 
-  return { listarDeals, obtenerContacto, obtenerChat, resolverChatLead };
+  return { listarDeals, listarEtapas, obtenerUsuario, obtenerContacto, obtenerChat, resolverChatLead };
 }
 
 module.exports = { crearClienteBitrix };

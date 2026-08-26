@@ -9,6 +9,8 @@ const {
   canalOrigenSql,
   normalizarAgencia,
   canalAsignadoSql,
+  agruparLineasPorAgencia,
+  resolverAgenciasSeleccionadas,
 } = require('../src/shared/origenesRedes');
 
 test('conserva un origen nuevo terminado en 9000 sin depender del catalogo', () => {
@@ -50,4 +52,19 @@ test('la asignacion guardada tiene prioridad sobre el catalogo historico', () =>
   assert.match(sql, /m\.agencia/);
   assert.match(sql, /THEN 'ARTS'/);
   assert.match(sql, /FORMULARIO LANDING 4/);
+});
+test('agrupa filtros desde las agencias creadas y normaliza ARST como ARTS', () => {
+  const catalogo = agruparLineasPorAgencia([
+    { origen: 'Formulario Landing 3', agencia: 'ARST' },
+    { origen: 'API 484', agencia: 'ARST' },
+    { origen: 'Formulario Landing 4', agencia: 'VIDIKA' },
+  ]);
+  assert.deepEqual(catalogo, [
+    { canal: 'ARTS', lineas: ['API 484', 'FORMULARIO LANDING 3'] },
+    { canal: 'VIDIKA', lineas: ['FORMULARIO LANDING 4'] },
+  ]);
+  assert.deepEqual(resolverAgenciasSeleccionadas(['VIDIKA'], catalogo), {
+    origenesBitrix: ['FORMULARIO LANDING 4'],
+    canalesInversion: ['VIDIKA'],
+  });
 });

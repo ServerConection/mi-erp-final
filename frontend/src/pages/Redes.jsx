@@ -19,6 +19,7 @@ import TabAnalisisPautas from "./TabAnalisisPautas";
 import TabComparativo    from "./TabComparativo";
 import TabAsesorVsPauta  from "./TabAsesorVsPauta";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
+import { forzarSyncInversion } from "../utils/redesSync";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -89,6 +90,32 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function SyncInversionButton({ from, to, onSuccess, compact = false }) {
+  const [syncing, setSyncing] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+  const ejecutar = async () => {
+    if (syncing) return;
+    setSyncing(true); setSyncError(null);
+    try {
+      const payload = await forzarSyncInversion({ apiBase: API, token: localStorage.getItem("token"), from, to });
+      setResultado(payload.resultados || []); onSuccess?.(payload);
+    } catch (error) { setSyncError(error.message); }
+    finally { setSyncing(false); }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: compact ? "flex-start" : "flex-end" }}>
+      <button onClick={ejecutar} disabled={syncing} className="px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all disabled:opacity-60"
+        style={{ background: syncing ? C.muted : `linear-gradient(135deg,${C.violet},#5b21b6)` }}>
+        {syncing ? "Consultando agencias…" : "↻ Forzar inversión"}
+      </button>
+      {resultado && <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, maxWidth: 430, textAlign: compact ? "left" : "right" }}>
+        {resultado.map((r) => `${String(r.agency).toUpperCase()}: ${r.ok ? `${fmtUsd2(r.ultimoMonto)} (${r.ultimaFecha || "sin fecha"})` : `ERROR: ${r.error}`}`).join(" · ")}
+      </div>}
+      {syncError && <div style={{ fontSize: 10, fontWeight: 700, color: C.danger }}>{syncError}</div>}
+    </div>
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // AGREGADORES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +217,7 @@ function agregarPorOrigenDia(filas) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HOOK CENTRAL
 // ─────────────────────────────────────────────────────────────────────────────
-function useMonitoreoData(desde, hasta, canalesSel) {
+function useMonitoreoData(desde, hasta, canalesSel, refreshKey = 0) {
   const [data, setData]       = useState({ principal: null, ciudad: null, hora: null, atc: null });
   const [loading, setLoading] = useState(false);
   const abortRef = useRef(null);
@@ -208,7 +235,7 @@ function useMonitoreoData(desde, hasta, canalesSel) {
     const p = buildFiltroParams({ desde, hasta, canalesSel });
 
     const fetchJson = (endpoint) =>
-      fetch(apiUrl(endpoint, p), { signal })
+      fetch(apiUrl(endpoint, p), { signal, cache: "no-store" })
         .then(r => r.json())
         .catch(e => (e.name === "AbortError" ? "aborted" : null));
 
@@ -230,7 +257,7 @@ function useMonitoreoData(desde, hasta, canalesSel) {
     });
 
     return () => controller.abort();
-  }, [desde, hasta, JSON.stringify(canalesSel)]);
+  }, [desde, hasta, JSON.stringify(canalesSel), refreshKey]);
 
   return { data, loading };
 }
@@ -371,16 +398,18 @@ function Spinner() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL FILTROS GLOBALES — con desglose de líneas
 // ─────────────────────────────────────────────────────────────────────────────
-function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
+function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
+  const nombresAgencias = agencias.map((item) => item.canal).filter(Boolean);
+  const lineasDe = (agencia) => agencias.find((item) => item.canal === agencia)?.lineas || [];
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
       {/* Fila principal de selección */}
       <div className="px-5 py-3 flex flex-wrap items-center gap-4" style={{ background: "#f8fafc" }}>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
-          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
+          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
         </div>
-        <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} compact />
+        <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} opciones={nombresAgencias} compact />
         {canalesSel.length > 0 && (
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             {canalesSel.map(c => {
@@ -401,13 +430,13 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
       </div>
 
       {/* Desglose de líneas para 1 canal seleccionado */}
-      {canalesSel.length === 1 && (CANAL_A_ORIGENES[canalesSel[0]] || []).length > 0 && (
+      {canalesSel.length === 1 && lineasDe(canalesSel[0]).length > 0 && (
         <div className="px-5 py-3 border-t" style={{ borderColor: C.border }}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
               📡 Líneas del canal {getCfg(canalesSel[0]).label}:
             </span>
-            {(CANAL_A_ORIGENES[canalesSel[0]] || []).map((origen) => {
+            {lineasDe(canalesSel[0]).map((origen) => {
               const cfg = getCfg(canalesSel[0]);
               return (
                 <span key={origen} style={{
@@ -431,7 +460,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel }) {
           <div className="flex flex-col gap-2">
             {canalesSel.map(c => {
               const cfg = getCfg(c);
-              const origenes = CANAL_A_ORIGENES[c] || [];
+              const origenes = lineasDe(c);
               if (!origenes.length) return null;
               return (
                 <div key={c} className="flex flex-wrap items-center gap-2">
@@ -467,10 +496,10 @@ function CanalDetalleCard({ canalData, totalLeads }) {
   const [expandido, setExpandido] = useState(false);
   const cfg = getCfg(canalData.canal);
   const cpl = canalData.n_leads > 0 && canalData.inversion_usd > 0 ? canalData.inversion_usd / canalData.n_leads : null;
-  const ef  = canalData.n_leads > 0 ? (canalData.activos_mes / canalData.n_leads) * 100 : 0;
+  const ef  = canalData.negociables > 0 ? (canalData.venta_subida_bitrix / canalData.negociables) * 100 : 0;
   const pctNeg = canalData.n_leads > 0 ? (canalData.negociables / canalData.n_leads) * 100 : 0;
   const pctAtc = canalData.n_leads > 0 ? (canalData.atc_soporte / canalData.n_leads) * 100 : 0;
-  const pctVta = canalData.n_leads > 0 ? (canalData.venta_subida_bitrix / canalData.n_leads) * 100 : 0;
+  const pctVta = canalData.negociables > 0 ? (canalData.venta_subida_bitrix / canalData.negociables) * 100 : 0;
   const shareLeads = totalLeads > 0 ? (canalData.n_leads / totalLeads) * 100 : 0;
   const origenes = CANAL_A_ORIGENES[canalData.canal] || [];
   const etapas = [
@@ -784,7 +813,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
   const totalVta     = porCanal.reduce((s, c) => s + c.venta_subida_bitrix, 0);
   const totalAtc     = porCanal.reduce((s, c) => s + c.atc_soporte, 0);
   const totalBacklog = filasAgr.reduce((s, r) => s + n(r.activo_backlog), 0);
-  const efect        = totalNeg > 0 ? (totalJot / totalNeg) * 100 : 0;
+  const efect        = totalNeg > 0 ? (totalVta / totalNeg) * 100 : 0;
   const pctAtcGral   = totalLeads > 0 ? (totalAtc / totalLeads) * 100 : 0;
   const cplGral      = totalLeads > 0 && totalInv > 0 ? totalInv / totalLeads : null;
 
@@ -1537,7 +1566,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Canal de Publicidad</span>
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setCanalesSel([])} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
@@ -1713,6 +1742,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
   const [guardandoOrigen, setGuardandoOrigen] = useState(null);
   const [borradores, setBorradores] = useState({});
   const [catalogoDisponible, setCatalogoDisponible] = useState(true);
+  const [actualizandoLineas, setActualizandoLineas] = useState(false);
 
   const cargarOrigenes = () => {
     fetch(apiUrl("agencias", ""), { headers: authHeaders() })
@@ -1778,6 +1808,15 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
         ℹ️ Selecciona la agencia de cada origen real (tal como llega de Bitrix). Puedes escribir el nombre de una agencia
         nueva o reutilizar una ya creada — varios orígenes pueden compartir la misma agencia. Se guarda al instante.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+        <button disabled={actualizandoLineas} onClick={() => {
+          setActualizandoLineas(true); setError(null); cargarOrigenes(); onCambio?.();
+          setTimeout(() => setActualizandoLineas(false), 700);
+        }} style={{ background: "#fff", color: C.primary, border: `1px solid ${C.primary}`, borderRadius: 10, padding: "8px 14px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+          {actualizandoLineas ? "Actualizando…" : "↻ Actualizar líneas"}
+        </button>
+        <SyncInversionButton compact onSuccess={() => { cargarOrigenes(); onCambio?.(); }} />
       </div>
       {!catalogoDisponible && (
         <div style={{ fontSize: 12, color: "#92400e", marginBottom: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
@@ -1919,7 +1958,12 @@ export default function Redes() {
   const [applying,   setApplying]   = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel);
+  useEffect(() => {
+    const intervalId = setInterval(() => setRefreshTick((t) => t + 1), 15 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const { data, loading } = useMonitoreoData(filtro.desde, filtro.hasta, canalesSel, refreshTick);
 
   const handleAplicar = () => {
     setApplying(true);
@@ -1965,12 +2009,19 @@ export default function Redes() {
               style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
               {applying || loading ? "Cargando..." : "Aplicar"}
             </button>
+            <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
             <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
               Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
             </p>
           </div>
         </div>
       </div>
+
+      <PanelFiltrosGlobales
+        canalesSel={canalesSel}
+        onCanalesSel={setCanalesSel}
+        agencias={data.principal?.canales_disponibles || []}
+      />
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 bg-white border rounded-2xl p-1 mb-7 w-fit shadow-sm" style={{ borderColor: C.border }}>
@@ -1995,7 +2046,7 @@ export default function Redes() {
       {tab === "metas"        && <TabMetas filtro={filtro} canalesSel={canalesSel} />}
       {tab === "comparativo"  && <TabComparativo filtro={filtro} />}
       {tab === "pautas"       && <TabAnalisisPautas filtro={filtro} />}
-      {tab === "reporte"      && <TabReporteData filtro={filtro} />}
+      {tab === "reporte"      && <TabReporteData key={refreshTick} filtro={filtro} />}
       {tab === "agencias"     && (
         <TabAgencias
           fechaDesde={filtro.desde}

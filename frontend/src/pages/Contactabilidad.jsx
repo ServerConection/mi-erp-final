@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ContactabilidadFilters from './contactabilidad/ContactabilidadFilters.jsx';
 import ContactabilidadKpis from './contactabilidad/ContactabilidadKpis.jsx';
+import ContactabilidadRankings from './contactabilidad/ContactabilidadRankings.jsx';
 import { buildAnalyticsQuery, readFilters } from '../utils/contactabilidadAnalytics.js';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -57,7 +58,9 @@ export default function Contactabilidad() {
     <ContactabilidadKpis resumen={analytics.resumen} loading={loading} />
     {error && <div role="alert" style={{padding:14,borderRadius:10,background:'#fee2e2',color:'#991b1b',marginBottom:14}}>No se pudo actualizar: {error}</div>}
 
-    {tab === 'inteligencia' ? <div id="contactabilidad-inteligencia" /> : <div style={{overflowX:'auto',background:'#fff',border:'1px solid #e2e8f0',borderRadius:12}}>
+    {tab === 'inteligencia' ? <div id="contactabilidad-inteligencia">
+      <ContactabilidadRankings porOrigen={analytics.por_origen} porAsesor={analytics.por_asesor} porEtapa={analytics.por_etapa} />
+    </div> : <div style={{overflowX:'auto',background:'#fff',border:'1px solid #e2e8f0',borderRadius:12}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Empresa','ID','Creado','Cliente','Asesor','Origen','Etapa','Msg. cliente','Msg. asesor','Últ. cliente','Últ. asesor','Pendiente','Min.'].map(h=><th key={h} style={{padding:10,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
       <tbody>{loading?<tr><td colSpan="13" style={{padding:30,textAlign:'center'}}>Cargando…</td></tr>:analytics.operativo.map(r=><tr key={`${r.empresa}-${r.id_bitrix}`}>
         {[r.empresa,r.id_bitrix,fmt(r.fecha_creacion),r.nombre_cliente||'—',r.asesor_nombre||'—',r.origen_nombre||'—',r.etapa_nombre||r.etapa_id||'—',r.mensajes_cliente_total,r.mensajes_asesor_total,fmt(r.ultimo_mensaje_cliente_at),fmt(r.ultimo_mensaje_asesor_at),r.pendiente_por||'—',r.minutos_pendiente??'—'].map((v,i)=><td key={i} style={{padding:10,borderBottom:'1px solid #f1f5f9',whiteSpace:'nowrap'}}>{v}</td>)}

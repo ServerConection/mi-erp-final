@@ -19,6 +19,8 @@ function crearProcesadorCrm({ bitrix, repository, pool, logger = console }) {
 
     const etapas = typeof bitrix.listarEtapas === 'function' ? await bitrix.listarEtapas(crm) : [];
     const etapasPorId = new Map(etapas.map((etapa) => [String(etapa.STATUS_ID), etapa.NAME || etapa.STATUS_ID]));
+    const origenes = typeof bitrix.listarOrigenes === 'function' ? await bitrix.listarOrigenes(crm) : [];
+    const origenesPorId = new Map(origenes.map((origen) => [String(origen.STATUS_ID), origen.NAME || origen.STATUS_ID]));
     const usuariosPorId = new Map();
 
 
@@ -59,6 +61,7 @@ function crearProcesadorCrm({ bitrix, repository, pool, logger = console }) {
           etapa_id: deal.STAGE_ID || null,
           etapa_nombre: etapasPorId.get(String(deal.STAGE_ID)) || deal.STAGE_ID || null,
         };
+        lead.origen_nombre = origenesPorId.get(String(deal.SOURCE_ID)) || lead.origen_nombre;
         const normalizados = (chat?.messages || [])
           .map((message) => normalizarMensaje(message, users, {
             empresa: crm.empresa, idBitrix: deal.ID,
@@ -79,6 +82,10 @@ function crearProcesadorCrm({ bitrix, repository, pool, logger = console }) {
       }
       start += deals.length;
       if (!deals.length || deals.length < 50) break;
+    }
+    if (typeof repository.actualizarNombresOrigen === 'function') {
+      const catalogo = origenes.map((origen) => ({ id: String(origen.STATUS_ID), nombre: origen.NAME || String(origen.STATUS_ID) }));
+      await repository.actualizarNombresOrigen(pool, crm.empresa, catalogo);
     }
     return { leads, mensajes, errores, omitidos };
   };

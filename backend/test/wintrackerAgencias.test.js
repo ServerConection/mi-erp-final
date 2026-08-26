@@ -35,6 +35,40 @@ test('omite solamente las agencias que no tienen API key', () => {
   );
 });
 
+test('reporta explicitamente VIDIKA cuando falta su API key y no intenta consultarla', async () => {
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      json: async () => ({
+        ok: true,
+        consolidado_diario: [{ fecha: '2026-08-26', inversion: 65.47 }],
+      }),
+    };
+  };
+  const db = { query: async () => ({ rows: [] }) };
+
+  const resultado = await syncTodasLasAgencias({
+    from: '2026-08-26',
+    to: '2026-08-26',
+    env: { WINTRACKER_APIKEY_ARTS: 'arts-key' },
+    fetchImpl,
+    db,
+  });
+
+  assert.equal(resultado.agencias, 3);
+  assert.equal(resultado.configuradas, 1);
+  assert.equal(urls.length, 1);
+  assert.deepEqual(resultado.resultados.map(({ agency, ok }) => ({ agency, ok })), [
+    { agency: 'arts', ok: true },
+    { agency: 'vidika', ok: false },
+    { agency: 'velsa', ok: false },
+  ]);
+  assert.equal(resultado.resultados[1].configuracionFaltante, true);
+  assert.match(resultado.resultados[1].error, /WINTRACKER_APIKEY_VIDIKA/);
+});
+
 test('calcula el dia actual en Ecuador aunque UTC ya sea el dia siguiente', () => {
   assert.equal(fechaEcuador(new Date('2026-08-26T02:30:00.000Z')), '2026-08-25');
 });
@@ -65,10 +99,15 @@ test('devuelve el resultado independiente de cada agencia configurada', async ()
     db,
   });
 
-  assert.equal(resultado.agencias, 2);
+  assert.equal(resultado.agencias, 3);
+  assert.equal(resultado.configuradas, 2);
   assert.deepEqual(resultado.resultados, [
     { agency: 'arts', ok: true, guardados: 1, ultimaFecha: '2026-08-25', ultimoMonto: 75.03 },
     { agency: 'vidika', ok: false, guardados: 0, error: 'API temporalmente no disponible' },
+    {
+      agency: 'velsa', ok: false, guardados: 0, configuracionFaltante: true,
+      error: 'Falta configurar WINTRACKER_APIKEY_VELSA en este servicio.',
+    },
   ]);
   assert.equal(inserts.length, 1);
 });
@@ -92,8 +131,9 @@ test('rescata la inversion de hoy desde kpis cuando VIDIKA omite consolidado_dia
 
   assert.equal(urls.length, 2);
   assert.deepEqual(inserts.map((x) => [x[0], x[2]]), [['2026-08-25', 314], ['2026-08-26', 245.67]]);
-  assert.equal(resultado.resultados[0].ultimaFecha, '2026-08-26');
-  assert.equal(resultado.resultados[0].ultimoMonto, 245.67);
+  const vidika = resultado.resultados.find((item) => item.agency === 'vidika');
+  assert.equal(vidika.ultimaFecha, '2026-08-26');
+  assert.equal(vidika.ultimoMonto, 245.67);
 });
 
 test('consulta las agencias en paralelo para que una API lenta no bloquee las demas', async () => {

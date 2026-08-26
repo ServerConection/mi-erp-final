@@ -314,6 +314,114 @@ const css = `
     border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
     font-size: 13px; font-weight: 600; display: flex; align-items: flex-start; gap: 10px;
   }
+    /* Modal de campos faltantes */
+.nv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 9999;
+}
+
+.nv-modal {
+  width: 100%;
+  max-width: 480px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.30);
+  animation: nvModalIn .2s ease-out;
+}
+
+.nv-modal-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #FFF3E8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  margin: 0 auto 16px;
+}
+
+.nv-modal-title {
+  margin: 0;
+  text-align: center;
+  color: #1C1C2E;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.nv-modal-text {
+  margin: 10px 0 18px;
+  text-align: center;
+  color: #6B3A1F;
+  font-size: 13px;
+}
+
+.nv-modal-list {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #FEF7F2;
+  border: 1px solid #F5D8C2;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.nv-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid #F5E6DB;
+  color: #7C2D12;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nv-modal-item:last-child {
+  border-bottom: none;
+}
+
+.nv-modal-item-dot {
+  color: #DC2626;
+  font-size: 10px;
+}
+
+.nv-modal-btn {
+  width: 100%;
+  margin-top: 20px;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #FF6B00, #FF8533);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nv-modal-btn:hover {
+  opacity: .92;
+}
+
+@keyframes nvModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
   .nv-alert.ok  { background: #ECFDF5; border: 1px solid #6EE7B7; color: #065F46; }
   .nv-alert.err { background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; }
   /* Success */
@@ -504,6 +612,7 @@ export default function NuevaVenta() {
   const [vigenciaCat, setVigenciaCat] = useState(null);
   const [validandoBitrix, setValidandoBitrix] = useState(false);
   const [bitrixOrigenes, setBitrixOrigenes] = useState([]);
+  const [modalCamposFaltantes, setModalCamposFaltantes] = useState([]);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -815,46 +924,199 @@ export default function NuevaVenta() {
   };
 
   // ── Validación ─────────────────────────────────────────────────────────────
-  // accion: "CARGAR" exige todos los obligatorios; "BORRADOR" permite guardar a medias
+  // accion: "CARGAR" exige todos los obligatorios;
+  // "BORRADOR" permite guardar a medias
   const validar = (accion) => {
-    if (accion === "BORRADOR") { setErrs({}); return true; }
-    const e = {};
-    if (!form.distribuidor_autorizado) e.distribuidor_autorizado = "Requerido";
-    if (!form.supervisor) e.supervisor = "Requerido";
-    if (!form.biometrico) e.biometrico = "Requerido";
-    if (!form.tipo_cliente) e.tipo_cliente = "Requerido";
-    if (!form.tipo_documento) e.tipo_documento = "Requerido";
-    if (!form.numero_identificacion.trim()) e.numero_identificacion = "Requerido";
-    if (!form.apellidos_cliente.trim()) e.apellidos_cliente = "Requerido";
-    if (!form.nombres_cliente.trim()) e.nombres_cliente = "Requerido";
-    if (!form.genero_cliente) e.genero_cliente = "Requerido";
-    if (!form.estado_civil) e.estado_civil = "Requerido";
-    if (!form.fecha_nacimiento) e.fecha_nacimiento = "Requerido";
-    if (!form.tipo_inmueble) e.tipo_inmueble = "Requerido";
-    if (!form.aplica_descuento_3ra_edad) e.aplica_descuento_3ra_edad = "Requerido";
-    if (!form.regimen_vivienda) e.regimen_vivienda = "Requerido";
-    if (!form.calle_principal.trim()) e.calle_principal = "Requerido";
-    if (!form.provincia.trim()) e.provincia = "Requerido";
-    if (!form.ciudad.trim()) e.ciudad = "Requerido";
-    if (!form.parroquia_barrio.trim()) e.parroquia_barrio = "Requerido";
-    if (!form.telf_celular_pin.trim()) e.telf_celular_pin = "Requerido";
-    if (!form.email_cliente.trim()) e.email_cliente = "Requerido";
-    if (!form.forma_pago) e.forma_pago = "Requerido";
-    if (!form.tipo_plan) e.tipo_plan = "Requerido";
-    if (!form.banco) e.banco = "Requerido";
-    if (!form.ciclo_facturacion) e.ciclo_facturacion = "Requerido";
-    if (!form.costo_instalacion) e.costo_instalacion = "Requerido";
-    if (!form.descuento_instalacion) e.descuento_instalacion = "Requerido";
-    if (!form.beneficios_de_ley) e.beneficios_de_ley = "Requerido";
-    if (!form.plazo_contrato_meses) e.plazo_contrato_meses = "Requerido";
-    if (!form.origen_venta) e.origen_venta = "Requerido";
-    setErrs(e);
-    if (Object.keys(e).length > 0) {
-      // Scroll al primer error
-      const firstErrEl = document.querySelector(".nv-err");
-      firstErrEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (accion === "BORRADOR") {
+      setErrs({});
+      return true;
     }
-    return Object.keys(e).length === 0;
+
+    const e = {};
+
+    // Nombres amigables para mostrar en el modal
+    const nombresCampos = {
+      distribuidor_autorizado: "Distribuidor autorizado",
+      supervisor: "Supervisor",
+      biometrico: "Estado biométrico",
+
+      tipo_cliente: "Tipo de cliente",
+      tipo_documento: "Tipo de documento",
+      numero_identificacion: "Número de identificación",
+      apellidos_cliente: "Apellidos del cliente",
+      nombres_cliente: "Nombres del cliente",
+      genero_cliente: "Género",
+      estado_civil: "Estado civil",
+      fecha_nacimiento: "Fecha de nacimiento",
+      tipo_inmueble: "Tipo de inmueble",
+      aplica_descuento_3ra_edad: "Descuento de tercera edad",
+      regimen_vivienda: "Régimen de vivienda",
+
+      calle_principal: "Calle principal",
+      provincia: "Provincia",
+      ciudad: "Ciudad",
+      parroquia_barrio: "Parroquia / Barrio",
+
+      telf_celular_pin: "Teléfono celular",
+      email_cliente: "Correo electrónico",
+
+      forma_pago: "Forma de pago",
+      tipo_plan: "Tipo de plan",
+      banco: "Banco",
+      ciclo_facturacion: "Ciclo de facturación",
+      costo_instalacion: "Costo de instalación",
+      descuento_instalacion: "Descuento de instalación",
+      beneficios_de_ley: "Beneficios de ley",
+      plazo_contrato_meses: "Plazo del contrato",
+
+      origen_venta: "Origen de venta",
+    };
+
+    // ── Campos obligatorios ─────────────────────────────────────────────────
+
+    if (!form.distribuidor_autorizado)
+      e.distribuidor_autorizado = "Requerido";
+
+    if (!form.supervisor)
+      e.supervisor = "Requerido";
+
+    if (!form.biometrico)
+      e.biometrico = "Requerido";
+
+    if (!form.tipo_cliente)
+      e.tipo_cliente = "Requerido";
+
+    if (!form.tipo_documento)
+      e.tipo_documento = "Requerido";
+
+    // ── Validación de número de identificación según tipo de documento ──
+    const numDoc = form.numero_identificacion.trim();
+
+    if (!numDoc) {
+      e.numero_identificacion = "Requerido";
+    } else {
+      switch (form.tipo_documento) {
+        case "CÉDULA DE IDENTIDAD":
+          if (!/^\d+$/.test(numDoc)) {
+            e.numero_identificacion = "La cédula debe contener solo números";
+          } else if (numDoc.length < 10) {
+            e.numero_identificacion = "La cédula debe tener al menos 10 dígitos";
+          }
+          break;
+
+        case "RUC PERSONAL":
+        case "RUC EMPRESA":
+          if (!/^\d+$/.test(numDoc)) {
+            e.numero_identificacion = "El RUC debe contener solo números";
+          } else if (numDoc.length < 13) {
+            e.numero_identificacion = "El RUC debe tener al menos 13 dígitos";
+          }
+          break;
+
+        case "NÚMERO DE PASAPORTE":
+          if (numDoc.length < 6) {
+            e.numero_identificacion = "El pasaporte debe tener al menos 6 caracteres";
+          }
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    if (!form.numero_identificacion.trim())
+      e.numero_identificacion = "Requerido";
+
+    if (!form.apellidos_cliente.trim())
+      e.apellidos_cliente = "Requerido";
+
+    if (!form.nombres_cliente.trim())
+      e.nombres_cliente = "Requerido";
+
+    if (!form.genero_cliente)
+      e.genero_cliente = "Requerido";
+
+    if (!form.estado_civil)
+      e.estado_civil = "Requerido";
+
+    if (!form.fecha_nacimiento)
+      e.fecha_nacimiento = "Requerido";
+
+    if (!form.tipo_inmueble)
+      e.tipo_inmueble = "Requerido";
+
+    if (!form.aplica_descuento_3ra_edad)
+      e.aplica_descuento_3ra_edad = "Requerido";
+
+    if (!form.regimen_vivienda)
+      e.regimen_vivienda = "Requerido";
+
+    if (!form.calle_principal.trim())
+      e.calle_principal = "Requerido";
+
+    if (!form.provincia.trim())
+      e.provincia = "Requerido";
+
+    if (!form.ciudad.trim())
+      e.ciudad = "Requerido";
+
+    if (!form.parroquia_barrio.trim())
+      e.parroquia_barrio = "Requerido";
+
+    if (!form.telf_celular_pin.trim())
+      e.telf_celular_pin = "Requerido";
+
+    if (!form.email_cliente.trim())
+      e.email_cliente = "Requerido";
+
+    if (!form.forma_pago)
+      e.forma_pago = "Requerido";
+
+    if (!form.tipo_plan)
+      e.tipo_plan = "Requerido";
+
+    if (!form.banco)
+      e.banco = "Requerido";
+
+    if (!form.ciclo_facturacion)
+      e.ciclo_facturacion = "Requerido";
+
+    if (!form.costo_instalacion)
+      e.costo_instalacion = "Requerido";
+
+    if (!form.descuento_instalacion)
+      e.descuento_instalacion = "Requerido";
+
+    if (!form.beneficios_de_ley)
+      e.beneficios_de_ley = "Requerido";
+
+    if (!form.plazo_contrato_meses)
+      e.plazo_contrato_meses = "Requerido";
+
+    if (!form.origen_venta)
+      e.origen_venta = "Requerido";
+
+
+    // ── Guardar errores ──────────────────────────────────────────────────────
+
+    setErrs(e);
+
+    const camposFaltantes = Object.keys(e);
+
+    if (camposFaltantes.length > 0) {
+
+      // Convertir nombres técnicos a nombres amigables
+      const nombresFaltantes = camposFaltantes.map(
+        campo => nombresCampos[campo] || campo
+      );
+
+      // Abrir modal
+      setModalCamposFaltantes(nombresFaltantes);
+
+      return false;
+    }
+
+    return true;
   };
 
   // ── Validar ID Bitrix ──────────────────────────────────────────────────────
@@ -900,8 +1162,8 @@ export default function NuevaVenta() {
   // accion: "CARGAR" (venta final, ya no editable) o "BORRADOR" (REGISTRAR VENTA, se puede retomar)
   const handleSubmit = async (accion) => {
     setAlert(null);
+
     if (!validar(accion)) {
-      setAlert({ tipo: "err", msg: "Corrige los campos marcados antes de continuar." });
       return;
     }
 
@@ -1049,6 +1311,70 @@ export default function NuevaVenta() {
     <>
       <style>{css}</style>
       <div className="nv-page">
+
+        {/* ── Modal de campos faltantes ─────────────────────────────────────── */}
+        {modalCamposFaltantes.length > 0 && (
+          <div
+            className="nv-modal-overlay"
+            onClick={(e) => {
+              // Permite cerrar solamente haciendo clic fuera del modal
+              if (e.target === e.currentTarget) {
+                setModalCamposFaltantes([]);
+              }
+            }}
+          >
+            <div className="nv-modal">
+
+              <div className="nv-modal-icon">
+                ⚠️
+              </div>
+
+              <h2 className="nv-modal-title">
+                No se puede cargar la venta
+              </h2>
+
+              <p className="nv-modal-text">
+                Debes completar los siguientes campos obligatorios:
+              </p>
+
+              <div className="nv-modal-list">
+                {modalCamposFaltantes.map((campo, index) => (
+                  <div
+                    key={`${campo}-${index}`}
+                    className="nv-modal-item"
+                  >
+                    <span className="nv-modal-item-dot">
+                      ●
+                    </span>
+
+                    {campo}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="nv-modal-btn"
+                onClick={() => {
+                  setModalCamposFaltantes([]);
+
+                  // Llevar al primer campo faltante
+                  setTimeout(() => {
+                    const firstErrEl = document.querySelector(".nv-err");
+
+                    firstErrEl?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center"
+                    });
+                  }, 100);
+                }}
+              >
+                Entendido
+              </button>
+
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div className="nv-header">

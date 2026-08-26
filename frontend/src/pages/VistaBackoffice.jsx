@@ -2681,7 +2681,17 @@ function CalendarioMes({ anio, mes, mapaDias, color, fondo, borde, onDiaClick })
 /** Modal que lista los agendamientos de un día. Cada fila abre el detalle
  *  completo del registro (reutilizando PanelRegistros). */
 function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, color }) {
+  const registrosOrdenados = [...registros].sort((a, b) => {
+    const fa = String(a.fecha_ingreso_telcos || "");
+    const fb = String(b.fecha_ingreso_telcos || "");
+    if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
+    if (fa && !fb) return -1;
+    if (!fa && fb) return 1;
+    return 0;
+  });
+
   return (
+
     <div
       onClick={onCerrar}
       style={{
@@ -2744,7 +2754,8 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
               No hay agendamientos para este día.
             </p>
           )}
-          {registros.map((row) => (
+                    {registrosOrdenados.map((row) => (
+
             <button
               key={row.id}
               type="button"
@@ -2780,9 +2791,15 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
                 </span>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#475569", flexWrap: "wrap", marginTop: 2 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#475569", flexWrap: "wrap", marginTop: 2 }}>
                 <span><b>CI:</b> {row.numero_identificacion || "—"}</span>
+                {row.fecha_ingreso_telcos && (
+                  <span style={{ color: "#0891b2", fontWeight: 700 }}>
+                    📥 Telcos: {String(row.fecha_ingreso_telcos).slice(0, 10)}
+                  </span>
+                )}
                 {row.turno_agendado && (
+
                   <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontWeight: 800, color: "#334155" }}>
                     🕒 Turno: {row.turno_agendado}
                   </span>

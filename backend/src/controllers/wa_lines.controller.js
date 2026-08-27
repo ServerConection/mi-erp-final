@@ -339,6 +339,30 @@ async function connect(req, res) {
     const owned = await findOwnedLine(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
 
+    // Si la línea todavía no tiene proxy (por ejemplo, va a reconectar por QR
+    // porque se cayó la sesión), se le intenta asignar uno automático ANTES
+    // de conectar. Así una reconexión masiva de asesores por QR también sale
+    // protegida, no solo las líneas nuevas creadas desde hoy. A diferencia de
+    // la creación, aquí NO se bloquea la conexión si no se puede asignar
+    // proxy (sin credenciales o pool agotado): es preferible dejar reconectar
+    // sin proxy a dejar a un asesor sin poder trabajar en medio de una
+    // campaña, y WA_PROXY_REQUIRED sigue siendo el interruptor que decide si
+    // eso alcanza para bloquear o no.
+    if ((!owned.proxy_enabled || !owned.proxy_config?.host) && lineaLlevaProxy(owned.name)) {
+      const auto = await construirProxyAutomatico()
+      if (auto) {
+        await query(
+          `UPDATE lines SET proxy_enabled=true, proxy_config=$1, updated_at=NOW() WHERE id=$2`,
+          [JSON.stringify(auto), id]
+        )
+        owned.proxy_enabled = true
+        owned.proxy_config = auto
+        console.log(`[wa_lines] Línea "${owned.name}" → proxy asignado al reconectar: ${auto.host}:${auto.port}`)
+      } else {
+        console.warn(`[wa_lines] Línea "${owned.name}" va a conectar SIN proxy (no se pudo asignar uno automático — revisa PROXY_USER/PROXY_PASS o el pool)`)
+      }
+    }
+
     const bm = req.app.get('baileysManager')
     if (!bm) { console.error('[wa_lines.connect] baileysManager NO disponible en req.app'); return res.status(503).json({ success: false, error: 'WhatsApp no inicializado' }) }
     // Pasar quién solicita: el QR se emite SOLO a este usuario (seguridad)

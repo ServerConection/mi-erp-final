@@ -882,7 +882,9 @@ const getIndicadoresDashboard = async (req, res) => {
             FROM public.vw_bitrix_novonet mb
             ${joinEmpleadosDedup}
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersJoin}
-            LIMIT 6000
+            -- FIX (2026-08-27, data completa): se quita LIMIT 6000 a pedido -
+            -- esta es la data CRM/Bitrix del export "Detalle CRM"; no debe
+            -- truncarse silenciosamente en rangos de fecha grandes.
         `;
 
         const queryJotform = `

@@ -1091,6 +1091,9 @@ async function getDetalleCRMData(req, res) {
     // FIX (2026-08-27, leads reales): mismo bug que qOrigenes -- esta query
     // comparte "filters" con queries del lado Jotform, asi que no se cambia el
     // FROM (romperia esos filtros); se deduplica con DISTINCT en su lugar.
+    // FIX (2026-08-27, data completa): se quita LIMIT 6000 a pedido - este es
+    // el export "Detalle CRM" (lado Bitrix); no debe truncarse silenciosamente
+    // en rangos de fecha grandes.
     const result = await pool.query(`
       SELECT DISTINCT
         mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
@@ -1099,7 +1102,7 @@ async function getDetalleCRMData(req, res) {
         mv.fecha_modificacion_crm AS "FECHA_MODIFICACION", mv.origen AS "ORIGEN"
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC LIMIT 6000
+      ORDER BY mv.fecha_creacion_crm DESC
     `, values);
 
     console.log(`[DETALLE-CRM-VELSA] ${desde}~${hasta} | ${result.rowCount} registros`);

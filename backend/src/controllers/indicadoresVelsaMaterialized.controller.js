@@ -95,6 +95,32 @@ const HAS_PLAN_VELSA_MV = `(
 const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_MV})`;
 
 
+// ── Normalización de nombre de asesor/supervisor (FIX 2026-08-27) ──────────
+// Bitrix no usa catálogo de empleados: mv.asesor/mv.supervisor llegan como
+// texto libre. Dos problemas detectados en pantalla real:
+//   1) Variantes de espacios/caracteres invisibles ("Alexandra Pacheco"
+//      aparecía 3 veces en el dropdown de asesor siendo la misma persona).
+//   2) Nombre corto vs nombre legal completo ("Karina Torres" vs
+//      "KARINA MARICELA TORRES AMAGUANA", "Rossanna Alvarado" vs
+//      "ROSSANNA MARIBEL ALVARADO CRUZ", "Damian Viera" vs
+//      "DAMIAN ARIEL VIERA JACOME") — mismo asesor, dos filas en el
+//      desglose, métricas partidas y no confiables.
+// Colapsa espacios y mapea los alias confirmados a un nombre canónico único.
+// Agregar aquí nuevos pares apenas se detecten (agregar el WHEN en MAYÚSCULAS).
+function normalizarAsesorSQL(campo) {
+  const limpio = `REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g')`;
+  return `
+    CASE UPPER(${limpio})
+      WHEN 'KARINA TORRES' THEN 'Karina Torres'
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'Karina Torres'
+      WHEN 'ROSSANNA ALVARADO' THEN 'Rossanna Alvarado'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'Rossanna Alvarado'
+      WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'Damian Viera'
+      ELSE ${limpio}
+    END`;
+}
+
 // ── Filtros dinámicos ─────────────────────────────────────────────────────────
 function buildFilters(q, values) {
   let f = '';
@@ -104,7 +130,7 @@ function buildFilters(q, values) {
   // registros de OTRO asesor cuyo nombre compartiera una porción de texto con
   // el seleccionado, mezclando datos entre asesores. Mismo fix aplicado en
   // indicadores.controller.js (dashboard NOVONET).
-  if (asesor)               { values.push(asesor);                     f += ` AND UPPER(TRIM(mv.asesor)) = UPPER(TRIM($${values.length}))`; }
+  if (asesor)               { values.push(asesor);                     f += ` AND (${normalizarAsesorSQL('mv.asesor')}) = $${values.length}`; }
   if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); f += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
@@ -176,11 +202,11 @@ const queryKPI = (columna, filters) => {
   // (VistaAsesorVelsa.jsx, AsesorCard) siempre mostraba "Sin supervisor" —
   // leía row.supervisor, un campo que esta consulta nunca generó.
   const esSupervisor = columna === 'mv.supervisor';
-  const extraSelect  = esSupervisor ? '' : ", COALESCE(NULLIF(BTRIM(mv.supervisor::text), ''), 'SIN ASIGNAR') AS sup_nombre";
+  const extraSelect  = esSupervisor ? '' : `, COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS sup_nombre`;
   const extraGroup   = esSupervisor ? '' : ', 2';
   return `
   SELECT
-    COALESCE(NULLIF(BTRIM(${columna}::text), ''), 'SIN ASIGNAR') AS nombre_grupo
+    COALESCE(NULLIF(${normalizarAsesorSQL(columna)}, ''), 'SIN ASIGNAR') AS nombre_grupo
     ${extraSelect},
     -- ── LEADS TOTALES ────────────────────────────────────────────────────
     -- COUNT(DISTINCT id del lado CRM) + excluye las etapas DUPLICADO /
@@ -352,7 +378,7 @@ const queryKPI = (columna, filters) => {
 // grupos "fantasma" por espacios extra en mv.asesor/mv.supervisor.
 const queryBacklog = (columna, filters) => `
   SELECT
-    COALESCE(NULLIF(BTRIM(${columna}::text), ''), 'SIN ASIGNAR') AS nombre_grupo,
+    COALESCE(NULLIF(${normalizarAsesorSQL(columna)}, ''), 'SIN ASIGNAR') AS nombre_grupo,
     COUNT(DISTINCT mv.id_jotform)::int AS backlog
   FROM ${MV}
   WHERE mv.id_jotform IS NOT NULL
@@ -1128,8 +1154,8 @@ async function getActivasVelsa(req, res) {
 
     const result = await pool.query(`
       SELECT
-        COALESCE(mv.supervisor,'SIN ASIGNAR') AS supervisor,
-        COALESCE(mv.asesor,'SIN ASIGNAR') AS asesor,
+        COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS supervisor,
+        COALESCE(NULLIF(${normalizarAsesorSQL('mv.asesor')}, ''), 'SIN ASIGNAR') AS asesor,
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activas,
         COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS venta_servicio,
         COUNT(*)::int AS total_jotform
@@ -1157,8 +1183,8 @@ async function getBacklogVelsa(req, res) {
 
     const result = await pool.query(`
       SELECT
-        COALESCE(mv.supervisor,'SIN ASIGNAR') AS supervisor,
-        COALESCE(mv.asesor,'SIN ASIGNAR') AS asesor,
+        COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS supervisor,
+        COALESCE(NULLIF(${normalizarAsesorSQL('mv.asesor')}, ''), 'SIN ASIGNAR') AS asesor,
         COUNT(DISTINCT mv.id_jotform)::int AS backlog
       FROM ${MV}
       WHERE mv.id_jotform IS NOT NULL

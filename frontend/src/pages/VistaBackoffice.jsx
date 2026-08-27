@@ -2783,7 +2783,17 @@ function CalendarioMes({ anio, mes, mapaDias, color, fondo, borde, onDiaClick })
 /** Modal que lista los agendamientos de un día. Cada fila abre el detalle
  *  completo del registro (reutilizando PanelRegistros). */
 function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, color }) {
+  const registrosOrdenados = [...registros].sort((a, b) => {
+    const fa = String(a.fecha_ingreso_telcos || "");
+    const fb = String(b.fecha_ingreso_telcos || "");
+    if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
+    if (fa && !fb) return -1;
+    if (!fa && fb) return 1;
+    return 0;
+  });
+
   return (
+
     <div
       onClick={onCerrar}
       style={{
@@ -2846,7 +2856,8 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
               No hay agendamientos para este día.
             </p>
           )}
-          {registros.map((row) => (
+          {registrosOrdenados.map((row) => (
+
             <button
               key={row.id}
               type="button"
@@ -2884,7 +2895,13 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
 
               <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#475569", flexWrap: "wrap", marginTop: 2 }}>
                 <span><b>CI:</b> {row.numero_identificacion || "—"}</span>
+                {row.fecha_ingreso_telcos && (
+                  <span style={{ color: "#0891b2", fontWeight: 700 }}>
+                    📥 Telcos: {String(row.fecha_ingreso_telcos).slice(0, 10)}
+                  </span>
+                )}
                 {row.turno_agendado && (
+
                   <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontWeight: 800, color: "#334155" }}>
                     🕒 Turno: {row.turno_agendado}
                   </span>
@@ -2956,7 +2973,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
   const miga = [
     { texto: "Años", accion: () => navegar.aAnios(), activo: nivel === "anios" },
     ...(anioSel ? [{ texto: anioSel.anio, accion: () => navegar.aMeses(anioSel.anio), activo: nivel === "meses" }] : []),
-    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => {}, activo: nivel === "calendario" }] : []),
+    ...(mesSel ? [{ texto: MESES_ES[Number(mesSel.mes) - 1], accion: () => { }, activo: nivel === "calendario" }] : []),
   ];
 
   return (
@@ -3159,98 +3176,219 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SUBMÓDULO: PRESERVICIOS (Filtrado estricto por netlife_estatus_real)
+// SUBMÓDULO: PRESERVICIOS  ·  Cards de estado + tabla filtrada a la derecha
 // ═══════════════════════════════════════════════════════════════════════════
-const CAMPO_FECHA_INGRESO_TELCOS = "fecha_ingreso_telcos";
-
-const BLOQUES_PRESERVICIOS = [
-  {
-    id: "PRESERVICIO",
-    titulo: "Preservicios",
-    color: "#0891b2",
-    fondo: "#ecfeff",
-    borde: "#a5f3fc",
-    valorBD: "PRESERVICIO",
-    match: (v) => v.includes("PRESERV") || v.includes("PRESE"),
-  },
-  {
-    id: "DETENIDO",
-    titulo: "Detenidos",
-    color: "#b45309",
-    fondo: "#fffbeb",
-    borde: "#fcd34d",
-    valorBD: "DETENIDO",
-    match: (v) => v.includes("DETENID"),
-  },
-  {
-    id: "REPLANIFICADO",
-    titulo: "Replanificados",
-    color: "#7c3aed",
-    fondo: "#ede9fe",
-    borde: "#ddd6fe",
-    valorBD: "REPLANIFICADO",
-    match: (v) => v.includes("REPLANIFIC"),
-  },
+const ESTADOS_PRESERVICIOS = [
+  { id: "PRESERVICIO", titulo: "Preservicios", color: "#0891b2", fondo: "#ecfeff", borde: "#a5f3fc", match: (v) => v.includes("PRESERV") || v.includes("PRESE") },
+  { id: "FACTIBLE", titulo: "Factible", color: "#7c3aed", fondo: "#ede9fe", borde: "#ddd6fe", match: (v) => v.includes("FACTIB") },
+  { id: "REPLANIFICADO", titulo: "Replanificados", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", match: (v) => v.includes("REPLANIFIC") },
 ];
 
-/** Determina a qué bloque pertenece basándose EXCLUSIVAMENTE en netlife_estatus_real */
+/** Determina a qué estado pertenece basándose EXCLUSIVAMENTE en netlife_estatus_real */
 function clasificarPreservicio(row) {
   const v = normalizarEstado(row?.netlife_estatus_real);
   if (!v) return null;
-  for (const b of BLOQUES_PRESERVICIOS) {
-    if (b.match(v)) return b.id;
+  for (const e of ESTADOS_PRESERVICIOS) {
+    if (e.match(v)) return e.id;
   }
-  return null; // Si no es ninguno de los 3 estados, se descarta
+  return null;
 }
 
-function TarjetaPreservicio({ row, onAbrir, onArrastrar, moviendo }) {
-  const dias = diasDesde(row[CAMPO_FECHA_INGRESO_TELCOS]);
-  const colorDias = dias == null ? "#94a3b8" : dias === 0 ? "#059669" : dias >= 5 ? "#b91c1c" : "#b45309";
-
+function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
   return (
-    <div
-      draggable={!moviendo}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", String(row.id));
-        e.dataTransfer.effectAllowed = "move";
-        onArrastrar(row.id);
-      }}
-      onDragEnd={() => onArrastrar(null)}
-      onClick={() => onAbrir(row.id)}
-      title="Clic para abrir detalle · Arrastra para cambiar de bloque"
+    <button
+      type="button"
+      onClick={onClick}
       style={{
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        padding: 13,
-        cursor: moviendo ? "wait" : "grab",
-        boxShadow: "0 2px 8px rgba(15,23,42,.05)",
-        opacity: moviendo ? 0.55 : 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 7,
+        textAlign: "left", width: "100%", cursor: "pointer",
+        background: activo ? estado.color : "#fff",
+        border: `1.5px solid ${activo ? estado.color : estado.borde}`,
+        borderRadius: 14, padding: "14px 16px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        boxShadow: activo ? `0 8px 20px ${estado.color}33` : "0 2px 8px rgba(15,23,42,.04)",
+        transition: "all .15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
-          {row.nombre_cliente_completo || "Sin nombre"}
-        </span>
-        <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>#{row.id}</span>
-      </div>
+      <span style={{ fontSize: 14, fontWeight: 900, color: activo ? "#fff" : "#0f172a" }}>
+        {estado.titulo}
+      </span>
+      <span
+        style={{
+          fontSize: 13, fontWeight: 900, minWidth: 30, textAlign: "center",
+          color: activo ? "#fff" : estado.color,
+          background: activo ? "rgba(255,255,255,.22)" : estado.fondo,
+          border: `1px solid ${activo ? "transparent" : estado.borde}`,
+          borderRadius: 999, padding: "3px 10px",
+        }}
+      >
+        {cantidad}
+      </span>
+    </button>
+  );
+}
 
-      <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 2, display: "flex", alignItems: "center", gap: 4 }}>
-          <span>📥 Telcos:</span> {row[CAMPO_FECHA_INGRESO_TELCOS] ? String(row[CAMPO_FECHA_INGRESO_TELCOS]).slice(0, 10) : "Sin fecha"}
-        </div>
-        <div>CI {row.numero_identificacion || "—"}</div>
-        {row.netlife_login && <div>Login: {row.netlife_login}</div>}
-        {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
-      </div>
+/** Tabla de registros filtrados por estado, mismo estilo visual que la tabla
+ *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
+const COLUMNAS_TABLA_PRESERVICIOS = [
+  "nombre_cliente_completo",
+  "numero_identificacion",
+  "codigo_asesor",
+  "id_bitrix",
+  "distribuidor_autorizado",
+  "netlife_login",
+  "netlife_estatus_real",
+  "fecha_ingreso_telcos",
+  "dias_pendientes",
+];
 
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, color: colorDias, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
-          {dias == null ? "Sin fecha Telcos" : dias === 0 ? "0 días pendientes (Hoy)" : `${dias} día${dias > 1 ? "s" : ""} pendiente${dias > 1 ? "s" : ""}`}
+function TablaPreservicios({ rows, onAbrirRegistro }) {
+  const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
+    key,
+    label:
+      key === "nombre_cliente_completo"
+        ? "CLIENTE"
+        : key === "numero_identificacion"
+          ? "IDENTIFICACIÓN"
+          : key === "codigo_asesor"
+            ? "ASESOR"
+            : key === "id_bitrix"
+              ? "ID BITRIX"
+              : key === "distribuidor_autorizado"
+                ? "DISTRIBUIDOR"
+                : key === "netlife_login"
+                  ? "LOGIN NETLIFE"
+                  : key === "netlife_estatus_real"
+                    ? "ESTATUS NETLIFE"
+                    : key === "fecha_ingreso_telcos"
+                      ? "INGRESO TELCOS"
+                      : key === "dias_pendientes"
+                        ? "DÍAS PENDIENTES"
+                        : FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
+  }));
+
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid #e5e7eb",
+          background: "#f8fafc",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            color: "#64748b",
+            fontWeight: 700,
+          }}
+        >
+          {rows.length} registro{rows.length !== 1 ? "s" : ""}
         </span>
+
+        <span
+          style={{
+            fontSize: 11,
+            color: "#94a3b8",
+          }}
+        >
+          Haz clic en un registro para ver el detalle
+        </span>
+      </div>
+      <div style={{ overflow: "auto", maxHeight: 640 }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+          <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
+            <tr style={{ background: "#f8fafc" }}>
+              {headers.map((h, i) => (
+                <th
+                  key={h.key}
+                  title={h.key}
+                  style={{
+                    textAlign: "left",
+                    padding: "11px 12px",
+                    borderBottom: "1px solid #e5e7eb",
+                    fontWeight: 800,
+                    color: "#475569",
+                    whiteSpace: "nowrap",
+                    background: "#f8fafc",
+                    fontSize: 10.5,
+                    letterSpacing: ".04em",
+                  }}
+                >
+                  {h.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={headers.length} style={{ padding: 28, textAlign: "center", color: "#94a3b8" }}>
+                  Sin registros con este estado.
+                </td>
+              </tr>
+            )}
+            {rows.map((row) => (
+              <tr
+                key={row.id}
+                onClick={() => onAbrirRegistro(row.id)}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+              >
+                {headers.map((h, i) => (
+                  <td
+                    key={`${row.id}-${h.key}`}
+                    title={valueForField(row, h.key)}
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                      maxWidth: h.key === "nombre_cliente_completo" ? 230 : 180,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      background: "#fff",
+                      color: "#334155",
+                      fontSize: 11.5,
+                    }}
+                  >
+                    {h.key === "dias_pendientes"
+                      ? (() => {
+                        const dias = diasDesde(row.fecha_ingreso_telcos);
+
+                        return (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "4px 9px",
+                              borderRadius: 999,
+                              background:
+                                dias === 0
+                                  ? "#ecfdf5"
+                                  : "#fff7ed",
+                              color:
+                                dias === 0
+                                  ? "#047857"
+                                  : "#c2410c",
+                              fontWeight: 900,
+                              fontSize: 11,
+                            }}
+                          >
+                            {dias} {dias === 1 ? "día" : "días"}
+                          </span>
+                        );
+                      })()
+                      : valueForField(row, h.key)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -3258,94 +3396,52 @@ function TarjetaPreservicio({ row, onAbrir, onArrastrar, moviendo }) {
 
 function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
-  const [rows, setRows] = useState([]);
+  const [estadoActivo, setEstadoActivo] = useState("PRESERVICIO");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [arrastrando, setArrastrando] = useState(null);
-  const [sobreBloque, setSobreBloque] = useState(null);
-  const [moviendo, setMoviendo] = useState(null);
-  const [aviso, setAviso] = useState(null);
-  const [filtrosFecha, setFiltrosFecha] = useState({
-    PRESERVICIO: FILTRO_FECHA_VACIO,
-    DETENIDO: FILTRO_FECHA_VACIO,
-    REPLANIFICADO: FILTRO_FECHA_VACIO,
-  });
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
 
-  const token = localStorage.getItem("token");
+  const color = "#0891b2";
 
-  // FILTRADO ESTRICTO: Solo pasan los que tienen match en netlife_estatus_real
-  useEffect(() => {
-    const soloPreservicios = (todas || []).filter((r) => clasificarPreservicio(r) !== null);
-    setRows(soloPreservicios);
-  }, [todas]);
+  // Solo entran los registros que caen en alguno de los 3 estados definidos.
+  const rowsClasificadas = useMemo(
+    () => (todas || []).filter((r) => clasificarPreservicio(r) !== null),
+    [todas]
+  );
 
-  const cambiarFiltro = (bloqueId, nuevo) =>
-    setFiltrosFecha((prev) => ({ ...prev, [bloqueId]: { ...FILTRO_FECHA_VACIO, ...nuevo } }));
+  const conteos = useMemo(() => {
+    const acc = { PRESERVICIO: 0, FACTIBLE: 0, REPLANIFICADO: 0 };
+    for (const r of rowsClasificadas) {
+      const e = clasificarPreservicio(r);
+      if (e) acc[e]++;
+    }
+    return acc;
+  }, [rowsClasificadas]);
 
-  // Ordenamiento por fecha_ingreso_telcos
-  const ordenadas = useMemo(() => {
+  // Filtro final: estado seleccionado + búsqueda + rango de fecha_registro_sistema
+  const rowsFiltradas = useMemo(() => {
     const q = normalizarEstado(busqueda);
-    const filtradas = !q ? rows : rows.filter((r) =>
-      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, r.netlife_login, String(r.id)]
-        .some((c) => normalizarEstado(c).includes(q))
-    );
-    return [...filtradas].sort((a, b) => {
-      const fa = String(a[CAMPO_FECHA_INGRESO_TELCOS] || "");
-      const fb = String(b[CAMPO_FECHA_INGRESO_TELCOS] || "");
-      if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
-      return (a.id ?? 0) - (b.id ?? 0);
+    return rowsClasificadas.filter((r) => {
+      if (clasificarPreservicio(r) !== estadoActivo) return false;
+
+      if (q) {
+        const coincide = [
+          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor,
+          r.id_bitrix, r.netlife_login, String(r.id),
+        ].some((c) => normalizarEstado(c).includes(q));
+        if (!coincide) return false;
+      }
+
+      const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+      if (fechaDesde && (!iso || iso < fechaDesde)) return false;
+      if (fechaHasta && (!iso || iso > fechaHasta)) return false;
+
+      return true;
     });
-  }, [rows, busqueda]);
+  }, [rowsClasificadas, estadoActivo, busqueda, fechaDesde, fechaHasta]);
 
-  const porBloque = { PRESERVICIO: [], DETENIDO: [], REPLANIFICADO: [] };
-  for (const r of ordenadas) {
-    const bloque = clasificarPreservicio(r);
-    if (bloque && porBloque[bloque]) {
-      porBloque[bloque].push(r);
-    }
-  }
-
-  const soltarEn = async (bloqueDestino, e) => {
-    e.preventDefault();
-    setSobreBloque(null);
-
-    const idStr = e.dataTransfer.getData("text/plain");
-    setArrastrando(null);
-    if (!idStr) return;
-
-    const row = rows.find((r) => String(r.id) === idStr);
-    if (!row) return;
-
-    const id = row.id;
-    if (clasificarPreservicio(row) === bloqueDestino) return;
-
-    const destino = BLOQUES_PRESERVICIOS.find((b) => b.id === bloqueDestino);
-    const valorPrevio = row.netlife_estatus_real;
-
-    setRows((prev) =>
-      prev.map((r) => (String(r.id) === idStr ? { ...r, netlife_estatus_real: destino.valorBD } : r))
-    );
-    setMoviendo(id);
-    setAviso(null);
-
-    try {
-      const r = await fetch(`${API}/api/backoffice/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ netlife_estatus_real: destino.valorBD }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.success) throw new Error(j.error || `No se pudo guardar (HTTP ${r.status})`);
-      setAviso(`✅ #${id} actualizado a «${destino.titulo}».`);
-    } catch (err) {
-      setRows((prev) =>
-        prev.map((x) => (String(x.id) === idStr ? { ...x, netlife_estatus_real: valorPrevio } : x))
-      );
-      setAviso(`❌ Error al mover #${id}: ${err.message}`);
-    } finally {
-      setMoviendo(null);
-    }
-  };
+  const estadoObj = ESTADOS_PRESERVICIOS.find((e) => e.id === estadoActivo);
 
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -3353,31 +3449,20 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
         <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfeff)" }}>
           <button
             onClick={onVolver}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#0891b2", cursor: "pointer" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color, cursor: "pointer" }}
           >
             ← Volver a Backoffice
           </button>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#0891b2", textTransform: "uppercase" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color, textTransform: "uppercase" }}>
             Backoffice · Preservicios
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Preservicios</h2>
-              <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#64748b" }}>
-                Gestión de casos en Preservicio, Detenidos y Replanificados por <b>fecha de ingreso a Telcos.</b>
-              </p>
-            </div>
+            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Preservicios</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar cliente, CI, asesor, login..."
-                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
-              />
               <button
                 onClick={recargar}
-                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a5f3fc", background: "#ecfeff", color: "#0891b2", fontWeight: 700, cursor: "pointer" }}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a5f3fc", background: "#ecfeff", color, fontWeight: 700, cursor: "pointer" }}
               >
                 Refrescar
               </button>
@@ -3385,121 +3470,76 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           </div>
         </div>
 
-        {aviso && (
-          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, fontWeight: 700, color: "#334155" }}>
-            {aviso}
-          </div>
-        )}
-
         {error && (
           <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
             {error}
           </div>
         )}
 
-        {/* ── CONTADORES SUPERIORES ── */}
-        {(() => {
-          const conteos = BLOQUES_PRESERVICIOS.map((b) => {
-            const list = porBloque[b.id] || [];
-            return aplicarFiltroFecha(list, filtrosFecha[b.id], CAMPO_FECHA_INGRESO_TELCOS).length;
-          });
-          const totalVis = conteos.reduce((a, b) => a + b, 0);
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "260px 1fr", gap: 18, alignItems: "start" }}>
+          {/* ── IZQUIERDA: cards de estado, en columna ────────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
+            {ESTADOS_PRESERVICIOS.map((e) => (
+              <CardEstadoPreservicio
+                key={e.id}
+                estado={e}
+                cantidad={conteos[e.id]}
+                activo={estadoActivo === e.id}
+                onClick={() => setEstadoActivo(e.id)}
+              />
+            ))}
+          </div>
 
-          return (
-            <div style={{ padding: "18px 18px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-              <div style={{ padding: 16, borderRadius: 14, background: "#f0fdf4", border: "1px solid #86efac" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase" }}>Total Registros</div>
-                <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: "#065f46" }}>{totalVis}</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>Filtrados por status real</div>
-              </div>
-              {BLOQUES_PRESERVICIOS.map((b, idx) => (
-                <div key={b.id} style={{ padding: 16, borderRadius: 14, background: b.fondo, border: `1px solid ${b.borde}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: b.color, textTransform: "uppercase" }}>{b.titulo}</div>
-                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: b.color }}>{conteos[idx]}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>Status NetLife correspondiente</div>
+          {/* ── DERECHA: filtros + tabla ──────────────────────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: estadoObj?.color }}>
+                {estadoObj?.titulo}
+              </h3>
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, login, asesor…"
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 230 }}
+              />
+              <div style={estilosFiltro.campo}>
+                <label style={estilosFiltro.label}>Fecha de registro</label>
+                <div style={estilosFiltro.rango}>
+                  <input
+                    type="date" style={estilosFiltro.ctl}
+                    value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
+                  />
+                  <span style={estilosFiltro.guion}>–</span>
+                  <input
+                    type="date" style={estilosFiltro.ctl}
+                    value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
+                  />
                 </div>
-              ))}
+              </div>
+              {(fechaDesde || fechaHasta || busqueda) && (
+                <button
+                  onClick={() => { setFechaDesde(""); setFechaHasta(""); setBusqueda(""); }}
+                  style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", alignSelf: "flex-end" }}
+                >
+                  Limpiar filtros
+                </button>
+              )}
             </div>
-          );
-        })()}
 
-        {/* ── 3 COLUMNAS KANBAN ── */}
-        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
-          {BLOQUES_PRESERVICIOS.map((bloque) => {
-            const todasDelBloque = porBloque[bloque.id] || [];
-            const filtro = filtrosFecha[bloque.id];
-            const lista = aplicarFiltroFecha(todasDelBloque, filtro, CAMPO_FECHA_INGRESO_TELCOS);
-            const hayFiltro = Boolean(filtro.anio || filtro.mes || filtro.dia);
-            const activo = sobreBloque === bloque.id;
-
-            return (
-              <div
-                key={bloque.id}
-                onDragOver={(e) => { e.preventDefault(); setSobreBloque(bloque.id); }}
-                onDragLeave={() => setSobreBloque((b) => (b === bloque.id ? null : b))}
-                onDrop={(e) => soltarEn(bloque.id, e)}
-                style={{
-                  background: activo ? bloque.fondo : "#fafbfc",
-                  border: `2px ${activo ? "dashed" : "solid"} ${activo ? bloque.color : "#e5e7eb"}`,
-                  borderRadius: 14,
-                  padding: 14,
-                  minHeight: 360,
-                  transition: "background .15s, border-color .15s",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
-                  <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
-                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                    {bloque.titulo}
-                  </h3>
-                  <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
-                    {hayFiltro ? `${lista.length} / ${todasDelBloque.length}` : lista.length}
-                  </span>
-                </div>
-
-                <FiltroFechaBloque
-                  rows={todasDelBloque}
-                  filtro={filtro}
-                  campoFecha={CAMPO_FECHA_INGRESO_TELCOS}
-                  onCambiar={(nuevo) => cambiarFiltro(bloque.id, nuevo)}
-                  color={bloque.color}
-                  fondo={bloque.fondo}
-                  borde={bloque.borde}
-                />
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
-
-                  {!cargando && lista.length === 0 && (
-                    <div style={{ padding: "26px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
-                      {arrastrando ? "Suelta aquí" : "No hay registros con este estado"}
-                    </div>
-                  )}
-
-                  {lista.map((row) => (
-                    <TarjetaPreservicio
-                      key={row.id}
-                      row={row}
-                      moviendo={moviendo === row.id}
-                      onArrastrar={setArrastrando}
-                      onAbrir={(id) => setDetalleId(id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+            <TablaPreservicios rows={rowsFiltradas} onAbrirRegistro={(id) => setDetalleId(id)} />
+          </div>
         </div>
-
-        {detalleId && (
-          <PanelRegistros
-            soloDetalle
-            idInicial={detalleId}
-            etiquetaContexto="Detalle de Preservicio"
-            onVolver={() => setDetalleId(null)}
-          />
-        )}
       </div>
+
+      {detalleId && (
+        <PanelRegistros
+          soloDetalle
+          idInicial={detalleId}
+          etiquetaContexto="Detalle de Preservicio"
+          onVolver={() => setDetalleId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -4181,7 +4221,7 @@ export default function VistaBackoffice() {
   if (sub.id === "preservicios") {
     return (
       <TableroPreservicios
-        onVolver={volver} nav={nav} navegar={navegar}
+        onVolver={volver}
         empresa={empresa} onCambiarEmpresa={setEmpresa}
       />
     );

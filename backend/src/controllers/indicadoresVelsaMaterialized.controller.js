@@ -202,8 +202,16 @@ const queryKPI = (columna, filters) => {
   // (VistaAsesorVelsa.jsx, AsesorCard) siempre mostraba "Sin supervisor" —
   // leía row.supervisor, un campo que esta consulta nunca generó.
   const esSupervisor = columna === 'mv.supervisor';
-  const extraSelect  = esSupervisor ? '' : `, COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS sup_nombre`;
-  const extraGroup   = esSupervisor ? '' : ', 2';
+  // FIX (2026-08-27) — causa real de "Alexandra Pacheco" (y otros) repetidos
+  // en el dropdown de asesor: este GROUP BY incluia sup_nombre como columna 2,
+  // asi que un asesor con MAS DE UN supervisor asociado en el rango (aunque
+  // su nombre ya estuviera normalizado) generaba una fila por cada
+  // combinacion (asesor, supervisor) → el mismo asesor aparecia 2 o 3 veces
+  // en "asesores" y por lo tanto en el dropdown (que solo hace .map() sin
+  // dedup). sup_nombre ahora es un MAX() (agregado), no una columna de
+  // agrupacion: siempre 1 sola fila por asesor, con UN supervisor representativo.
+  const extraSelect  = esSupervisor ? '' : `, COALESCE(NULLIF(MAX(${normalizarAsesorSQL('mv.supervisor')}), ''), 'SIN ASIGNAR') AS sup_nombre`;
+  const extraGroup   = '';
   return `
   SELECT
     COALESCE(NULLIF(${normalizarAsesorSQL(columna)}, ''), 'SIN ASIGNAR') AS nombre_grupo

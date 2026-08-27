@@ -62,7 +62,7 @@ const validarRango = (d, h) => {
 // merge pero conserva el nombre "bonito" para mostrar en pantalla.
 // Agregar aquí nuevos pares (en MAYÚSCULAS) apenas se detecten.
 function claveAsesorSQL(campo) {
-  const limpio = `UPPER(REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g'))`;
+  const limpio = `UPPER(REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g'))`;
   return `
     CASE ${limpio}
       WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'KARINA TORRES'
@@ -72,7 +72,7 @@ function claveAsesorSQL(campo) {
     END`;
 }
 function nombreAsesorDisplaySQL(campo) {
-  const limpio = `REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g')`;
+  const limpio = `REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g')`;
   return `
     CASE UPPER(${limpio})
       WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'Karina Torres'

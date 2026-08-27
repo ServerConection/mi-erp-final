@@ -108,7 +108,7 @@ const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${
 // Colapsa espacios y mapea los alias confirmados a un nombre canónico único.
 // Agregar aquí nuevos pares apenas se detecten (agregar el WHEN en MAYÚSCULAS).
 function normalizarAsesorSQL(campo) {
-  const limpio = `REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g')`;
+  const limpio = `REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g')`;
   return `
     CASE UPPER(${limpio})
       WHEN 'KARINA TORRES' THEN 'Karina Torres'

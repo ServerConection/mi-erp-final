@@ -34,4 +34,6 @@ test('devuelve todos los bloques del contrato analitico', async () => {
   assert.ok(calls.every((call) => call.params[0] === 'NOVONET'));
   assert.ok(calls.some((call) => call.sql.includes('PERCENTILE_CONT(0.5)')));
   assert.ok(calls.some((call) => call.sql.includes("AT TIME ZONE 'America/Guayaquil'")));
+  const operativoQuery = calls.find((call) => call.sql.includes('LIMIT 100')).sql;
+  assert.match(operativoQuery, /ORDER BY u\.fecha_creacion DESC NULLS LAST/);
 });

@@ -13,3 +13,7 @@ test('Bot Auditor muestra un acceso visible al dashboard de Contactabilidad', ()
 test('Contactabilidad identifica claramente la tabla de mensajes y fechas', () => {
   assert.match(contactabilidad, /Mensajes y fechas/);
 });
+
+test('la tabla explica los registros que todavia no tienen mensajes', () => {
+  assert.match(contactabilidad, /Pendiente de reintento|Sin mensajes recuperables/);
+});

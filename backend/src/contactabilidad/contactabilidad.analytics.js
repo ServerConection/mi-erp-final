@@ -173,7 +173,8 @@ async function obtenerAnalytics(pool, query = {}) {
                THEN FLOOR(EXTRACT(EPOCH FROM (NOW() - u.ultimo_mensaje_cliente_at)) / 60)::int
                ELSE NULL END AS minutos_pendiente
       FROM universo u
-      ORDER BY (u.pendiente_por = 'ASESOR') DESC,
+      ORDER BY u.fecha_creacion DESC NULLS LAST,
+               (u.pendiente_por = 'ASESOR') DESC,
                minutos_pendiente DESC NULLS LAST,
                GREATEST(u.ultimo_mensaje_cliente_at,u.ultimo_mensaje_asesor_at) DESC NULLS LAST
       LIMIT 100`, params),

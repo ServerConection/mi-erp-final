@@ -58,6 +58,7 @@ export default function Contactabilidad() {
       <div><h1 style={{margin:0}}>📊 Inteligencia de Contactabilidad</h1><p style={{color:'#64748b'}}>Decisiones por origen, asesor, etapa y horario · actualización cada 30 minutos</p></div>
       <div style={{display:'flex',gap:8}}>{tabButton('inteligencia','Inteligencia')}{tabButton('operacion','Operación')}</div>
       <small style={{color:'#64748b'}}>Abre "Operaci�n" para ver Mensajes y fechas del cliente y del asesor.</small>
+      <small style={{color:'#64748b'}}>Pendiente de reintento identifica registros con cero mensajes; el listado se ordena por fecha de creacion, del mas reciente al mas antiguo.</small>
     </div>
     <ContactabilidadFilters filters={filters} options={options} onChange={setFilters} onReset={()=>setFilters(readFilters(''))} />
     <ContactabilidadKpis resumen={analytics.resumen} loading={loading} />

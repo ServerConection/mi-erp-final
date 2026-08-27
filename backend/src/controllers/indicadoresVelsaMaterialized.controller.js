@@ -516,10 +516,17 @@ async function getIndicadoresDashboardVelsa(req, res) {
     // Mismo criterio que Novonet: no se hardcodea ninguna lista, se leen los
     // valores que de verdad existen y se ordenan por volumen para que el
     // usuario vea primero los canales que mas leads traen.
+    // FIX (2026-08-27, leads reales): mv_indicadores_velsa_completo hace FULL
+    // OUTER JOIN con el lado Jotform y puede repetir un lead N veces. Ademas su
+    // lado CRM sale de negociaciones_reporteria (sync cada 15 min), no del
+    // webhook. bitrix_webhook_leads (empresa='velsa') es 1 fila por lead y es
+    // la fuente viva -> para un conteo puro de origen no hace falta el JOIN.
     const qOrigenes = `
-      SELECT mv.origen AS origen, COUNT(*)::int AS total
-      FROM ${MV}
-      WHERE NULLIF(TRIM(mv.origen), '') IS NOT NULL
+      SELECT source AS origen, COUNT(*)::int AS total
+      FROM public.bitrix_webhook_leads
+      WHERE empresa = 'velsa'
+        AND NULLIF(TRIM(source), '') IS NOT NULL
+        AND ${esLeadTotalExpr('etapa_bitrix')}
       GROUP BY 1
       ORDER BY total DESC, origen ASC
     `;
@@ -1081,8 +1088,11 @@ async function getDetalleCRMData(req, res) {
     const values  = [desde, hasta];
     const filters = buildFilters(req.query, values);
 
+    // FIX (2026-08-27, leads reales): mismo bug que qOrigenes -- esta query
+    // comparte "filters" con queries del lado Jotform, asi que no se cambia el
+    // FROM (romperia esos filtros); se deduplica con DISTINCT en su lugar.
     const result = await pool.query(`
-      SELECT
+      SELECT DISTINCT
         mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
         mv.fecha_creacion_crm AS "FECHA_CREACION_CRM",
         mv.asesor AS "ASESOR", mv.supervisor AS "SUPERVISOR_ASIGNADO",

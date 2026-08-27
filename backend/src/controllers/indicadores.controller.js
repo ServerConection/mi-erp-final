@@ -19,6 +19,7 @@ const {
     descarteIndicadoresExpr,
     esDescarteExactoExpr
 } = require('../shared/etapas');
+const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 // FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
 // unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
@@ -592,7 +593,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
+                COALESCE(${normalizarAsesorExpr(groupCol)}, 'SIN ASIGNAR') AS nombre_grupo
                 ${extraSelect},
                 -- COUNT(DISTINCT b_id) y no COUNT(*): un lead puede aparecer en
                 -- varias filas cuando tiene mas de una venta Jotform asociada
@@ -749,7 +750,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // poder filtrar por supervisor también en la variante *Asesor.
         const queryVentasDiaAsesor = `
             SELECT
-                mb_crm.b_persona_responsable AS nombre_grupo,
+                ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
             FROM public.mestra_bitrix mb_jot
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
@@ -799,7 +800,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // ver ${"$"}{filtrosDia}.
         const queryIngresosDiaAsesor = `
             SELECT
-                mb_crm.b_persona_responsable AS nombre_grupo,
+                ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
             FROM public.mestra_bitrix mb_jot
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
@@ -847,7 +848,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
         const queryBacklog = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM public.mestra_bitrix mb
             ${joinEmpleadosDedup}
@@ -1424,7 +1425,7 @@ LEFT JOIN LATERAL (
 
         const queryMonitoreo = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
@@ -1500,7 +1501,7 @@ LEFT JOIN LATERAL (
 
         const queryJotHoy = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
                 COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')::int AS activos_jot_hoy,
                 COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VAN})::int AS venta_servicio_jot_hoy,

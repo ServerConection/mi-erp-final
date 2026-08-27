@@ -49,6 +49,43 @@ const validarRango = (d, h) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Normalización de nombre de asesor (FIX 2026-08-27) — mismo problema que en
+// indicadoresVelsaMaterialized.controller.js: mb.b_persona_responsable y
+// metas_asesor.asesor llegan como texto libre, con variantes de escritura
+// para la MISMA persona (nombre corto vs nombre legal completo, o espacios/
+// caracteres invisibles distintos). Sin esto, "datos" y "metas" agrupaban/
+// cruzaban por strings distintos para un mismo asesor y la tabla KPI
+// Comercial (Pto/Real) mostraba dos filas partidas para una sola persona
+// (ej. "Karina Torres" vs "KARINA MARICELA TORRES AMAGUANA").
+// claveAsesorSQL(): clave de agrupación/join, siempre en MAYÚSCULAS (no
+// romper metas.persona = datos.persona). nombreAsesorDisplaySQL(): mismo
+// merge pero conserva el nombre "bonito" para mostrar en pantalla.
+// Agregar aquí nuevos pares (en MAYÚSCULAS) apenas se detecten.
+function claveAsesorSQL(campo) {
+  const limpio = `UPPER(REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g'))`;
+  return `
+    CASE ${limpio}
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'KARINA TORRES'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'ROSSANNA ALVARADO'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'DAMIAN VIERA'
+      ELSE ${limpio}
+    END`;
+}
+function nombreAsesorDisplaySQL(campo) {
+  const limpio = `REGEXP_REPLACE(BTRIM(${campo}::text), '\\s+', ' ', 'g')`;
+  return `
+    CASE UPPER(${limpio})
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'Karina Torres'
+      WHEN 'KARINA TORRES' THEN 'Karina Torres'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'Rossanna Alvarado'
+      WHEN 'ROSSANNA ALVARADO' THEN 'Rossanna Alvarado'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'Damian Viera'
+      WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
+      ELSE ${limpio}
+    END`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Consulta base: una fila por ASESOR con todos los reales + sus metas.
 // El nivel supervisor se obtiene agregando esta misma base.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,8 +94,8 @@ const validarRango = (d, h) => {
 const SQL_BASE = `
 WITH datos AS (
     SELECT
-        UPPER(TRIM(mb.b_persona_responsable))              AS persona,
-        MIN(mb.b_persona_responsable)                      AS asesor_display,
+        ${claveAsesorSQL('mb.b_persona_responsable')}              AS persona,
+        MIN(${nombreAsesorDisplaySQL('mb.b_persona_responsable')})                      AS asesor_display,
         __SUPERVISOR__                                     AS supervisor,
 
         -- ── Lado Bitrix (por fecha de creación del lead) ──────────────────
@@ -147,7 +184,7 @@ WITH datos AS (
 ),
 metas AS (
     -- MAX y no SUM: un asesor puede tener varias filas (una por escritura)
-    SELECT UPPER(TRIM(asesor))  AS persona,
+    SELECT ${claveAsesorSQL('asesor')}  AS persona,
            MAX(leads_total)     AS m_leads_total,
            MAX(leads_gestion)   AS m_leads_gestion,
            MAX(ingresos_jot)    AS m_ingresos_jot,

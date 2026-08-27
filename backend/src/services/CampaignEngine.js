@@ -15,6 +15,39 @@ const fs = require('fs')
 const path = require('path')
 const { query } = require('../config/db')
 
+// ── Protección anti-bloqueo adicional (2026-08-27) ─────────────────────────
+// Además del throttling propio de cada campaña (min/max delay, batch), se
+// agregan dos guardas que NO dependen de cómo esté configurada la campaña:
+//
+//  1. Piso de seguridad: aunque una campaña se configure de forma agresiva
+//     (delay muy bajo, lotes muy grandes), el motor nunca baja de estos
+//     mínimos. Con los valores por defecto de una campaña (8-20s, lote 50,
+//     pausa 120s) esto no cambia nada — solo actúa si alguien configura algo
+//     más arriesgado que estos pisos.
+//  2. Calentamiento de líneas nuevas: una línea recién creada no debería
+//     salir a campaña masiva el día 1. Mientras esté "nueva" (por defecto,
+//     sus primeros WA_CALENTAMIENTO_DIAS días desde que se creó la fila en
+//     `lines`), se limita cuántos mensajes de campaña puede mandar por día,
+//     sin importar qué diga la campaña. Al llegar al tope, se PAUSA la
+//     campaña entera (no se saltan destinatarios) para no seguir arriesgando
+//     el número; se reanuda manualmente cuando el operador lo decida.
+//
+// Todo ajustable por variable de entorno; nada de esto requiere migración
+// (usa columnas que ya existen: lines.created_at, messages.timestamp).
+const DELAY_MIN_SEGURO_SEGS      = parseInt(process.env.WA_CAMPANA_DELAY_MIN_SEGURO || '5', 10)
+const LOTE_MAX_SEGURO            = parseInt(process.env.WA_CAMPANA_LOTE_MAX_SEGURO || '100', 10)
+const PAUSA_LOTE_MIN_SEGURA_SEGS = parseInt(process.env.WA_CAMPANA_PAUSA_LOTE_MIN_SEGURA || '60', 10)
+const CALENTAMIENTO_DIAS         = parseInt(process.env.WA_CALENTAMIENTO_DIAS || '14', 10)
+const TOPE_CALENTAMIENTO_DIARIO  = parseInt(process.env.WA_TOPE_CALENTAMIENTO_DIARIO || '60', 10)
+
+// ¿La línea sigue en su ventana de calentamiento? Funcion pura para poder
+// probarla sin base de datos.
+function lineaEnCalentamiento(createdAt, ahora = new Date()) {
+  if (!createdAt) return false
+  const dias = (ahora - new Date(createdAt)) / (1000 * 60 * 60 * 24)
+  return dias < CALENTAMIENTO_DIAS
+}
+
 class CampaignEngine {
   constructor(baileysManager, io) {
     this.baileysManager = baileysManager
@@ -115,6 +148,7 @@ class CampaignEngine {
   async _run(campaignId) {
     let camp     = await this._loadCampaign(campaignId)
     let variants = await this._loadVariants(campaignId)
+    const linea  = await this._cargarLinea(camp.line_id)
     let processedInBatch = 0
     const rotState = {}  // estado de rotación de variantes (cola barajada)
 
@@ -122,6 +156,27 @@ class CampaignEngine {
       if (this.running[campaignId]?.abortFlag) {
         console.log(`[CampaignEngine] ⏸ Abort en ${campaignId}`)
         break
+      }
+
+      // 🛡️ Guarda de calentamiento: una línea nueva no sale a campaña sin
+      // límite solo porque la campaña lo permita. Se revisa en cada vuelta
+      // porque el conteo de "enviados hoy" sube con cada mensaje.
+      if (lineaEnCalentamiento(linea?.created_at)) {
+        const enviadosHoy = await this._contarEnviadosHoyPorLinea(camp.line_id)
+        if (enviadosHoy >= TOPE_CALENTAMIENTO_DIARIO) {
+          console.warn(
+            `[CampaignEngine] 🛡️ Línea "${linea?.name || camp.line_id}" en calentamiento ` +
+            `(creada hace menos de ${CALENTAMIENTO_DIAS} días): alcanzó su tope diario de ` +
+            `${TOPE_CALENTAMIENTO_DIARIO} mensajes de campaña. Se pausa "${camp.name}" para ` +
+            `proteger el número — se puede reanudar cuando el operador lo decida.`
+          )
+          await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [campaignId])
+          this._emit(campaignId, 'campaign:paused', {
+            campaignId, motivo: 'calentamiento_linea_nueva', tope: TOPE_CALENTAMIENTO_DIARIO,
+          })
+          delete this.running[campaignId]
+          return
+        }
       }
 
       // Obtener siguiente destinatario pendiente
@@ -154,17 +209,20 @@ class CampaignEngine {
       camp = await this._loadCampaign(campaignId)
       this._emitProgress(camp)
 
-      // Pausa entre lotes
-      if (processedInBatch >= (camp.batch_size || 50)) {
-        const batchPause = (camp.batch_pause_secs || 120) * 1000
+      // Pausa entre lotes — con piso de seguridad: aunque la campaña se haya
+      // configurado con un lote más grande o una pausa más corta que el
+      // mínimo seguro, nunca se baja de ahí.
+      const loteSeguro = Math.min(camp.batch_size || 50, LOTE_MAX_SEGURO)
+      if (processedInBatch >= loteSeguro) {
+        const batchPause = Math.max(camp.batch_pause_secs || 120, PAUSA_LOTE_MIN_SEGURA_SEGS) * 1000
         console.log(`[CampaignEngine] 🛌 Pausa de lote: ${batchPause / 1000}s`)
         this._emit(campaignId, 'campaign:batch_pause', { campaignId, seconds: batchPause / 1000 })
         await this._sleep(batchPause)
         processedInBatch = 0
       } else {
-        // Delay anti-bloqueo entre mensajes
-        const minD = camp.min_delay_secs || 8
-        const maxD = camp.max_delay_secs || 20
+        // Delay anti-bloqueo entre mensajes — igual con piso de seguridad
+        const minD = Math.max(camp.min_delay_secs || 8, DELAY_MIN_SEGURO_SEGS)
+        const maxD = Math.max(camp.max_delay_secs || 20, minD)
         const delay = (minD + Math.random() * Math.max(0, maxD - minD)) * 1000
         await this._sleep(delay)
       }
@@ -311,6 +369,24 @@ class CampaignEngine {
     return r.rows[0]
   }
 
+  async _cargarLinea(lineId) {
+    const r = await query('SELECT id, name, created_at FROM lines WHERE id=$1', [lineId])
+    return r.rows[0]
+  }
+
+  // Mensajes de CAMPAÑA (no Inbox ni bot) enviados por esta línea desde la
+  // medianoche de hoy. Solo cuenta lo que ya quedó en `messages`, así que es
+  // consistente con lo que WhatsApp realmente vio salir.
+  async _contarEnviadosHoyPorLinea(lineId) {
+    const r = await query(
+      `SELECT COUNT(*)::int AS total FROM messages
+       WHERE line_id=$1 AND direction='out' AND campaign_id IS NOT NULL
+         AND timestamp >= date_trunc('day', NOW())`,
+      [lineId]
+    )
+    return r.rows[0]?.total || 0
+  }
+
   _emit(campaignId, event, payload) {
     if (this.io) this.io.emit(event, payload)
   }
@@ -360,5 +436,7 @@ class CampaignEngine {
     return map[ext] || 'application/octet-stream'
   }
 }
+
+CampaignEngine.lineaEnCalentamiento = lineaEnCalentamiento
 
 module.exports = CampaignEngine

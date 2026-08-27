@@ -3,6 +3,7 @@
 // Acceso: ADMINISTRADOR y GERENCIA (NOVONET / VELSA)
 // =============================================================================
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -294,6 +295,16 @@ export default function BotAuditor() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <Link
+            to="/bot-auditor/contactabilidad"
+            style={{
+              background: "#1d4ed8", color: "white", textDecoration: "none",
+              borderRadius: 8, padding: "8px 18px", fontWeight: 700,
+              fontSize: 12, display: "inline-flex", alignItems: "center",
+            }}
+          >
+            ?? Contactabilidad ú mensajes y fechas
+          </Link>
           {esAdmin && (
             <button
               onClick={abrirConfig}

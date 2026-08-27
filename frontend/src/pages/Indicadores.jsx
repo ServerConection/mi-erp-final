@@ -2062,9 +2062,13 @@ function ConsultaDescargaNovonet() {
   const [asesor,       setAsesor]       = useState('');
   const [loginNetlife, setLoginNetlife] = useState('');
   const [idBitrix,     setIdBitrix]     = useState('');
+  const [busquedaGeneral, setBusquedaGeneral] = useState('');
   const [loading,    setLoading]    = useState(false);
   const [rows,       setRows]       = useState(null);
   const [error,      setError]      = useState(null);
+  // Guarda con qué término se ejecutó la última consulta, para poder
+  // mostrar "Buscando: ..." aunque el usuario siga editando el input.
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
 
   const consultar = async () => {
     setLoading(true); setError(null); setRows(null);
@@ -2073,6 +2077,8 @@ function ConsultaDescargaNovonet() {
       if (asesor.trim())       params.set('asesor', asesor.trim());
       if (loginNetlife.trim()) params.set('loginNetlife', loginNetlife.trim());
       if (idBitrix.trim())     params.set('idBitrix', idBitrix.trim());
+      if (busquedaGeneral.trim()) params.set('busquedaGeneral', busquedaGeneral.trim());
+      setBusquedaAplicada(busquedaGeneral.trim());
       const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/consulta-descarga?${params.toString()}`);
       const result = await res.json();
       if (result.success) setRows(result.rows);
@@ -2149,6 +2155,26 @@ function ConsultaDescargaNovonet() {
             className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
             {loading ? '⏳ Consultando...' : '🔍 Consultar'}
           </button>
+
+          {/* BÚSQUEDA GENERAL — un solo campo que busca a la vez en:
+              asesor / código ejecutivo, login netlife, ID negociación (id bitrix)
+              y estado de netlife. Se ubica junto al botón "Descargar Excel"
+              como pidieron. Se aplica en AND con los filtros de arriba si
+              también están llenos. */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+              Búsqueda general
+            </label>
+            <input
+              type="text"
+              value={busquedaGeneral}
+              onChange={e => setBusquedaGeneral(e.target.value)}
+              placeholder="Asesor, login, ID negociación o estado"
+              onKeyDown={e => { if (e.key === 'Enter') consultar(); }}
+              className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-56"
+            />
+          </div>
+
           {rows !== null && rows.length > 0 && (
             <button onClick={descargarExcel}
               className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-emerald-600 hover:bg-emerald-700 shadow transition-all active:scale-95 flex items-center gap-2">
@@ -2156,8 +2182,14 @@ function ConsultaDescargaNovonet() {
             </button>
           )}
         </div>
+        {busquedaAplicada && rows !== null && (
+          <p className="mt-3 text-[10px] font-bold text-blue-700 bg-blue-50 px-4 py-2 rounded-lg">
+            🔎 Buscando «{busquedaAplicada}» en: Código Ejecutivo / Asesor, Login Netlife, ID Negociación y Estado de Netlife.
+          </p>
+        )}
         {error && <p className="mt-3 text-[10px] font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg">⚠️ {error}</p>}
       </div>
+
 
       {/* Tabla preview */}
       {rows !== null && (

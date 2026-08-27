@@ -130,14 +130,21 @@ const MAX_LINEAS_POR_USUARIO = 1
 const { construirProxyAutomatico } = require('../services/proxyPool.service')
 
 // Qué líneas reciben proxy automático, por su NOMBRE.
-// Por defecto solo las de envío masivo (ENVIO_1, ENVIO_2, ...), que son las que
-// más riesgo de bloqueo tienen. Las líneas de asesores siguen saliendo por la
-// IP del servidor, sin gastar el tráfico contratado.
-// Se ajusta con PROXY_PATRON_LINEA (expresión regular). Ejemplos:
-//   ^ENVIO           → solo las que empiezan con ENVIO   (valor por defecto)
+// Antes solo las de envío masivo (ENVIO_1, ENVIO_2, ...); las líneas de
+// asesores salían directo por la IP del servidor y terminaron bloqueadas
+// igual. Por eso ahora el valor por defecto es "todas las líneas".
+// Se ajusta con PROXY_PATRON_LINEA (expresión regular) si se quiere volver a
+// acotar. Ejemplos:
+//   .                → todas las líneas                  (valor por defecto)
+//   ^ENVIO           → solo las que empiezan con ENVIO
 //   ^(ENVIO|PAUTA)   → las que empiezan con ENVIO o PAUTA
-//   .                → todas las líneas
-const PROXY_PATRON_LINEA = process.env.PROXY_PATRON_LINEA || '^ENVIO'
+const PROXY_PATRON_LINEA = process.env.PROXY_PATRON_LINEA || '.'
+
+// Si al crear/reactivar una línea que debería llevar proxy no se puede
+// asignar uno (sin credenciales o pool agotado), por defecto se BLOQUEA la
+// creación en vez de dejar el número expuesto por la IP del servidor.
+// Se puede desactivar con WA_PROXY_REQUIRED_ON_CREATE=false.
+const PROXY_OBLIGATORIO_AL_CREAR = process.env.WA_PROXY_REQUIRED_ON_CREATE !== 'false'
 
 function lineaLlevaProxy(nombre) {
   try {
@@ -215,13 +222,24 @@ async function create(req, res) {
       }
     }
 
+    // Elección explícita del usuario de NO llevar proxy (proxy_enabled=false
+    // enviado a propósito). Se respeta, pero queda registrado en el log.
+    const proxyRechazadoExplicitamente = req.body.proxy_enabled === false
+
     if (!cfgProxy || Object.keys(cfgProxy).length === 0) {
-      if (lineaLlevaProxy(nombre)) {
+      if (proxyRechazadoExplicitamente) {
+        console.log(`[wa_lines] Línea "${nombre}" creada SIN proxy por elección explícita (proxy_enabled=false)`)
+      } else if (lineaLlevaProxy(nombre)) {
         const auto = await construirProxyAutomatico()
         if (auto) {
           cfgProxy = auto
           usaProxy = true
           console.log(`[wa_lines] Línea "${nombre}" → proxy automático ${auto.host}:${auto.port}`)
+        } else if (PROXY_OBLIGATORIO_AL_CREAR) {
+          return res.status(409).json({
+            success: false,
+            error: 'No se pudo asignar un proxy a la línea (faltan credenciales PROXY_USER/PROXY_PASS o el pool de IPs está agotado). No se crea sin proxy para evitar que el número salga expuesto por la IP del servidor. Si de verdad quieres crearla sin proxy, envía proxy_enabled=false explícitamente.'
+          })
         } else {
           console.log(`[wa_lines] Línea "${nombre}" coincide con el patrón pero no hay credenciales de proxy (PROXY_USER/PROXY_PASS)`)
         }
@@ -450,4 +468,4 @@ async function dashboard(req, res) {
   }
 }
 
-module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard }
+module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard, lineaLlevaProxy }

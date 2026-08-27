@@ -48,6 +48,45 @@ function lineaEnCalentamiento(createdAt, ahora = new Date()) {
   return dias < CALENTAMIENTO_DIAS
 }
 
+// ── Numeros de control (2026-08-27) ─────────────────────────────────────
+// Numeros propios que SIEMPRE contestan. Se les manda primero (antes que a
+// cualquier destinatario frio) y luego cada WA_CONTROL_CADA_N envios reales,
+// para mantener una tasa de respuesta sana durante TODA la campaña, no solo
+// al arrancar. Ajustable/reemplazable con WA_NUMEROS_CONTROL (separados por
+// coma) sin tocar codigo.
+const CONTROL_CADA_N = parseInt(process.env.WA_CONTROL_CADA_N || '14', 10)
+
+// Normaliza a formato internacional de Ecuador (593XXXXXXXXX). Numeros que no
+// calzan ningun patron conocido se devuelven tal cual (con un digito de mas o
+// de menos, por ejemplo) para no inventar un numero que podria ser el de otra
+// persona — se avisa por consola para que se revisen a mano.
+function normalizarNumeroControl(raw) {
+  const digits = String(raw || '').replace(/[^\d]/g, '')
+  if (!digits) return null
+  if (digits.startsWith('593') && digits.length === 12) return digits
+  if (digits.startsWith('0') && digits.length === 10) return '593' + digits.slice(1)
+  if (digits.length === 9) return '593' + digits
+  console.warn(`[CampaignEngine] ⚠️ Número de control "${raw}" no tiene un formato reconocido (esperado: 593 + 9 dígitos). Se usa tal cual: ${digits}`)
+  return digits
+}
+
+const NUMEROS_CONTROL_RAW = (process.env.WA_NUMEROS_CONTROL || '59396028844,593958650281,958790214,0983336118')
+  .split(',').map(s => s.trim()).filter(Boolean)
+const NUMEROS_CONTROL = NUMEROS_CONTROL_RAW.map(normalizarNumeroControl).filter(Boolean)
+
+// ── Aviso de exclusión automático (opt-out) ─────────────────────────────
+const AGREGAR_OPT_OUT = process.env.WA_AGREGAR_OPT_OUT !== 'false'
+const TEXTO_OPT_OUT = process.env.WA_TEXTO_OPT_OUT ||
+  '\n\n_Responde *STOP* si no deseas volver a recibir mensajes nuestros._'
+
+// Agrega el aviso de exclusion al final del mensaje, salvo que el texto ya
+// mencione "stop" (para no duplicarlo si alguien ya lo escribio a mano).
+function conOptOut(body) {
+  if (!AGREGAR_OPT_OUT || !TEXTO_OPT_OUT) return body
+  if (/stop/i.test(body || '')) return body
+  return `${body || ''}${TEXTO_OPT_OUT}`
+}
+
 class CampaignEngine {
   constructor(baileysManager, io) {
     this.baileysManager = baileysManager
@@ -150,7 +189,15 @@ class CampaignEngine {
     let variants = await this._loadVariants(campaignId)
     const linea  = await this._cargarLinea(camp.line_id)
     let processedInBatch = 0
+    let enviosDesdeControl = 0
     const rotState = {}  // estado de rotación de variantes (cola barajada)
+
+    // Envío inicial a los números de control: solo la PRIMERA vez que corre
+    // esta campaña (sent_count sigue en 0), no cada vez que se reanuda tras
+    // una pausa — así no se repite en cada resume. Se manda DENTRO del loop,
+    // después de la guarda de calentamiento, para que una línea ya en su
+    // tope diario no reciba ni siquiera los envíos de control.
+    let burstInicialPendiente = (camp.sent_count || 0) === 0
 
     while (camp.status === 'running') {
       if (this.running[campaignId]?.abortFlag) {
@@ -179,6 +226,11 @@ class CampaignEngine {
         }
       }
 
+      if (burstInicialPendiente && NUMEROS_CONTROL.length) {
+        await this._enviarBurstControl(camp, this._nextVariant(rotState, variants))
+        burstInicialPendiente = false
+      }
+
       // Obtener siguiente destinatario pendiente
       const pending = await query(
         `SELECT * FROM campaign_recipients
@@ -204,6 +256,15 @@ class CampaignEngine {
       const variant = this._nextVariant(rotState, variants)
       await this._sendOne(camp, recipient, variant)
       processedInBatch++
+      enviosDesdeControl++
+
+      // Cada WA_CONTROL_CADA_N envíos reales, se vuelve a tocar a los
+      // números de control — mantiene la tasa de respuesta sana durante
+      // toda la campaña, no solo al arrancar.
+      if (enviosDesdeControl >= CONTROL_CADA_N && NUMEROS_CONTROL.length) {
+        await this._enviarBurstControl(camp, variant)
+        enviosDesdeControl = 0
+      }
 
       // Refrescar stats
       camp = await this._loadCampaign(campaignId)
@@ -261,7 +322,7 @@ class CampaignEngine {
     }
 
     try {
-      const body = this._interpolate(msgText, vars)
+      const body = conOptOut(this._interpolate(msgText, vars))
       let sendResult = null
 
       if (mediaUrl) {
@@ -346,6 +407,46 @@ class CampaignEngine {
         wa_number:   waNumber,
         error:       err.message,
       })
+    }
+  }
+
+  // ── Números de control: se les manda al empezar y cada N envíos ───
+  // reales, para mantener una tasa de respuesta sana durante toda la
+  // campaña. Van SIN el aviso de opt-out (son gente propia, no un
+  // destinatario real de la campaña) y no tocan campaign_recipients — no
+  // son parte del público objetivo, así que no deben afectar el % de
+  // progreso ni las estadísticas de la campaña.
+  async _enviarBurstControl(camp, variant) {
+    const msgText = variant ? (variant.message_text || '') : (camp.body || '')
+    for (const numero of NUMEROS_CONTROL) {
+      try {
+        const body = this._interpolate(msgText, { nombre: '', numero })
+        const sendResult = await this.baileysManager.sendText(camp.line_id, numero, body)
+        console.log(`[CampaignEngine] 🧪 Envío de control a ${numero} (mantiene la tasa de respuesta sana de la línea)`)
+        try {
+          await query(
+            `INSERT INTO messages (line_id, wa_number, direction, type, content, campaign_id, timestamp)
+             VALUES ($1,$2,'out','text',$3,$4,NOW())`,
+            [camp.line_id, numero, body, camp.id]
+          )
+        } catch (e) {}
+        try {
+          await query(
+            `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number, detail)
+             VALUES ($1,NULL,$2,'control_sent',$3,'numero de control')`,
+            [camp.id, variant ? variant.id : null, numero]
+          )
+        } catch (e) {}
+        void sendResult
+      } catch (e) {
+        console.warn(`[CampaignEngine] No se pudo enviar el mensaje de control a ${numero}: ${e.message}`)
+      }
+
+      // Mismo ritmo anti-bloqueo que el resto de la campaña (con piso de
+      // seguridad), para no crear una ráfaga distinta al resto de envíos.
+      const minD = Math.max(camp.min_delay_secs || 8, DELAY_MIN_SEGURO_SEGS)
+      const maxD = Math.max(camp.max_delay_secs || 20, minD)
+      await this._sleep((minD + Math.random() * Math.max(0, maxD - minD)) * 1000)
     }
   }
 
@@ -438,5 +539,9 @@ class CampaignEngine {
 }
 
 CampaignEngine.lineaEnCalentamiento = lineaEnCalentamiento
+CampaignEngine.normalizarNumeroControl = normalizarNumeroControl
+CampaignEngine.conOptOut = conOptOut
+CampaignEngine.NUMEROS_CONTROL = NUMEROS_CONTROL
+CampaignEngine.CONTROL_CADA_N = CONTROL_CADA_N
 
 module.exports = CampaignEngine

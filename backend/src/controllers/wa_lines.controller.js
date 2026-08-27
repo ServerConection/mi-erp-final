@@ -130,14 +130,21 @@ const MAX_LINEAS_POR_USUARIO = 1
 const { construirProxyAutomatico } = require('../services/proxyPool.service')
 
 // Qué líneas reciben proxy automático, por su NOMBRE.
-// Por defecto solo las de envío masivo (ENVIO_1, ENVIO_2, ...), que son las que
-// más riesgo de bloqueo tienen. Las líneas de asesores siguen saliendo por la
-// IP del servidor, sin gastar el tráfico contratado.
-// Se ajusta con PROXY_PATRON_LINEA (expresión regular). Ejemplos:
-//   ^ENVIO           → solo las que empiezan con ENVIO   (valor por defecto)
+// Antes solo las de envío masivo (ENVIO_1, ENVIO_2, ...); las líneas de
+// asesores salían directo por la IP del servidor y terminaron bloqueadas
+// igual. Por eso ahora el valor por defecto es "todas las líneas".
+// Se ajusta con PROXY_PATRON_LINEA (expresión regular) si se quiere volver a
+// acotar. Ejemplos:
+//   .                → todas las líneas                  (valor por defecto)
+//   ^ENVIO           → solo las que empiezan con ENVIO
 //   ^(ENVIO|PAUTA)   → las que empiezan con ENVIO o PAUTA
-//   .                → todas las líneas
-const PROXY_PATRON_LINEA = process.env.PROXY_PATRON_LINEA || '^ENVIO'
+const PROXY_PATRON_LINEA = process.env.PROXY_PATRON_LINEA || '.'
+
+// Si al crear/reactivar una línea que debería llevar proxy no se puede
+// asignar uno (sin credenciales o pool agotado), por defecto se BLOQUEA la
+// creación en vez de dejar el número expuesto por la IP del servidor.
+// Se puede desactivar con WA_PROXY_REQUIRED_ON_CREATE=false.
+const PROXY_OBLIGATORIO_AL_CREAR = process.env.WA_PROXY_REQUIRED_ON_CREATE !== 'false'
 
 function lineaLlevaProxy(nombre) {
   try {
@@ -215,13 +222,24 @@ async function create(req, res) {
       }
     }
 
+    // Elección explícita del usuario de NO llevar proxy (proxy_enabled=false
+    // enviado a propósito). Se respeta, pero queda registrado en el log.
+    const proxyRechazadoExplicitamente = req.body.proxy_enabled === false
+
     if (!cfgProxy || Object.keys(cfgProxy).length === 0) {
-      if (lineaLlevaProxy(nombre)) {
+      if (proxyRechazadoExplicitamente) {
+        console.log(`[wa_lines] Línea "${nombre}" creada SIN proxy por elección explícita (proxy_enabled=false)`)
+      } else if (lineaLlevaProxy(nombre)) {
         const auto = await construirProxyAutomatico()
         if (auto) {
           cfgProxy = auto
           usaProxy = true
           console.log(`[wa_lines] Línea "${nombre}" → proxy automático ${auto.host}:${auto.port}`)
+        } else if (PROXY_OBLIGATORIO_AL_CREAR) {
+          return res.status(409).json({
+            success: false,
+            error: 'No se pudo asignar un proxy a la línea (faltan credenciales PROXY_USER/PROXY_PASS o el pool de IPs está agotado). No se crea sin proxy para evitar que el número salga expuesto por la IP del servidor. Si de verdad quieres crearla sin proxy, envía proxy_enabled=false explícitamente.'
+          })
         } else {
           console.log(`[wa_lines] Línea "${nombre}" coincide con el patrón pero no hay credenciales de proxy (PROXY_USER/PROXY_PASS)`)
         }
@@ -320,6 +338,30 @@ async function connect(req, res) {
     const { id } = req.params
     const owned = await findOwnedLine(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Línea no encontrada' })
+
+    // Si la línea todavía no tiene proxy (por ejemplo, va a reconectar por QR
+    // porque se cayó la sesión), se le intenta asignar uno automático ANTES
+    // de conectar. Así una reconexión masiva de asesores por QR también sale
+    // protegida, no solo las líneas nuevas creadas desde hoy. A diferencia de
+    // la creación, aquí NO se bloquea la conexión si no se puede asignar
+    // proxy (sin credenciales o pool agotado): es preferible dejar reconectar
+    // sin proxy a dejar a un asesor sin poder trabajar en medio de una
+    // campaña, y WA_PROXY_REQUIRED sigue siendo el interruptor que decide si
+    // eso alcanza para bloquear o no.
+    if ((!owned.proxy_enabled || !owned.proxy_config?.host) && lineaLlevaProxy(owned.name)) {
+      const auto = await construirProxyAutomatico()
+      if (auto) {
+        await query(
+          `UPDATE lines SET proxy_enabled=true, proxy_config=$1, updated_at=NOW() WHERE id=$2`,
+          [JSON.stringify(auto), id]
+        )
+        owned.proxy_enabled = true
+        owned.proxy_config = auto
+        console.log(`[wa_lines] Línea "${owned.name}" → proxy asignado al reconectar: ${auto.host}:${auto.port}`)
+      } else {
+        console.warn(`[wa_lines] Línea "${owned.name}" va a conectar SIN proxy (no se pudo asignar uno automático — revisa PROXY_USER/PROXY_PASS o el pool)`)
+      }
+    }
 
     const bm = req.app.get('baileysManager')
     if (!bm) { console.error('[wa_lines.connect] baileysManager NO disponible en req.app'); return res.status(503).json({ success: false, error: 'WhatsApp no inicializado' }) }
@@ -450,4 +492,4 @@ async function dashboard(req, res) {
   }
 }
 
-module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard }
+module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard, lineaLlevaProxy }

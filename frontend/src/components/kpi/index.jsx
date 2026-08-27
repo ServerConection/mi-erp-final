@@ -40,7 +40,9 @@ if (typeof document !== "undefined" && !document.getElementById(STYLES_ID)) {
       animation: kpiFadeUp .38s cubic-bezier(.4,0,.2,1) both;
       box-shadow: 0 1px 2px rgba(15,23,42,.04);
     }
-    .kpi-card:hover {
+        .kpi-card:hover {
+      position: relative;
+      z-index: 100;
       transform: translateY(-3px) !important;
       box-shadow: 0 12px 32px -6px rgba(15,23,42,.14), 0 4px 10px rgba(15,23,42,.06) !important;
     }

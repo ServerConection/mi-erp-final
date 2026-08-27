@@ -8,6 +8,7 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   const client = {};
   const bitrix = {
     listarEtapas: async () => [{ STATUS_ID: 'NUEVO', NAME: 'Negociación nueva' }],
+    listarOrigenes: async () => [{ STATUS_ID: 'WEB', NAME: 'Formulario web' }],
     listarDeals: async () => ({ result: [{
       ID: '77', TITLE: 'Lead', DATE_CREATE: '2026-08-24T09:00:00Z', STAGE_ID: 'NUEVO',
       ASSIGNED_BY_ID: '20', CONTACT_ID: '10', SOURCE_ID: 'WEB',
@@ -25,6 +26,7 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   const repository = {
     upsertLead: async (_client, lead) => guardados.push(['lead', lead]),
     insertarMensaje: async (_client, message) => guardados.push(['mensaje', message]),
+    actualizarNombresOrigen: async (_pool, empresa, origenes) => guardados.push(['origenes', { empresa, origenes }]),
   };
   const pool = { transaction: async (fn) => fn(client) };
   const procesar = crearProcesadorCrm({ bitrix, repository, pool });
@@ -37,6 +39,12 @@ test('procesa un lead y persiste solo mensajes reales dentro de una transaccion'
   assert.equal(guardados[0][1].nombre_cliente, 'Cliente Prueba');
   assert.equal(guardados[0][1].etapa_nombre, 'Negociación nueva');
   assert.equal(guardados[0][1].asesor_nombre, 'Asesor');
+  assert.equal(guardados[0][1].origen_id, 'WEB');
+  assert.equal(guardados[0][1].origen_nombre, 'Formulario web');
+  assert.deepEqual(guardados.find(([tipo]) => tipo === 'origenes')[1], {
+    empresa: 'NOVONET',
+    origenes: [{ id: 'WEB', nombre: 'Formulario web' }],
+  });
 });
 
 test('continua con los demas leads cuando uno falla', async () => {

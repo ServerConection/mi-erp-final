@@ -40,7 +40,23 @@ function crearRepositorioContactabilidad() {
     ]);
   }
 
-  return { upsertLead, insertarMensaje };
+  async function actualizarNombresOrigen(client, empresa, origenes) {
+    if (!origenes?.length) return { rowCount: 0 };
+    const ids = origenes.map((origen) => String(origen.id));
+    const nombres = origenes.map((origen) => origen.nombre || String(origen.id));
+    return client.query(`
+      UPDATE contactabilidad_leads l
+      SET origen_nombre = fuente.nombre,
+          actualizado_at = NOW()
+      FROM (
+        SELECT UNNEST($2::text[]) AS id, UNNEST($3::text[]) AS nombre
+      ) fuente
+      WHERE l.empresa = $1 AND l.origen_id = fuente.id
+        AND l.origen_nombre IS DISTINCT FROM fuente.nombre
+    `, [empresa, ids, nombres]);
+  }
+
+  return { upsertLead, insertarMensaje, actualizarNombresOrigen };
 }
 
 module.exports = { crearRepositorioContactabilidad };

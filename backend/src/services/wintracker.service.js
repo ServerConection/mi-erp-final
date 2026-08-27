@@ -34,8 +34,7 @@
  *   WINTRACKER_BASE_URL     — https://reportingvidika.online (confirmado).
  *   WINTRACKER_APIKEY_ARTS  — apikey de Arts (recibida 2026-08-20).
  *   WINTRACKER_APIKEY_VELSA — apikey de Velsa (recibida 2026-08-20).
- *   WINTRACKER_APIKEY_VIDIKA — opcional. Sin ella, Vidika NO se sincroniza
- *                              todavía (pendiente que Novonet la entregue).
+ *   WINTRACKER_APIKEY_VIDIKA — requerida para sincronizar inversión VIDIKA.
  */
 
 const pool = require('../config/db');
@@ -45,9 +44,8 @@ const BASE_URL = process.env.WINTRACKER_BASE_URL || 'https://reportingvidika.onl
 // Cuántos días hacia atrás se vuelven a pedir en cada corrida (incluye hoy).
 const DIAS_VENTANA = 4;
 
-// Cada entrada = una agencia sincronizable. Agregar 'vidika' aquí cuando
-// llegue su apikey (agency se omite en la URL para Vidika, es el default
-// del proveedor — ver correo original).
+// Cada entrada = una agencia soportada. En VIDIKA se omite agency en la URL
+// porque es la agencia por defecto del proveedor.
 const AGENCIAS_SOPORTADAS = [
   {
     agency: 'arts',
@@ -172,9 +170,25 @@ async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = f
   const desdeFinal = from || restarDias(hastaFinal, DIAS_VENTANA);
   const rango = { from: desdeFinal, to: hastaFinal };
   const configuradas = crearConfiguracionAgencias(env);
-  const resultados = [];
+  const configuracionPorAgencia = new Map(configuradas.map((cfg) => [cfg.agency, cfg]));
 
-  const sincronizaciones = configuradas.map(async (cfg) => {
+  // Se conserva una fila de resultado por cada agencia soportada. Antes las
+  // agencias sin API key desaparecían silenciosamente y el botón podía decir
+  // "actualizado" aunque VIDIKA nunca hubiera sido consultada.
+  const sincronizaciones = AGENCIAS_SOPORTADAS.map(async (soportada) => {
+    const cfg = configuracionPorAgencia.get(soportada.agency);
+    if (!cfg) {
+      const error = `Falta configurar ${soportada.apikeyEnv} en este servicio.`;
+      console.error(`  ⚠️ WinTracker "${soportada.agency}": ${error}`);
+      return {
+        agency: soportada.agency,
+        ok: false,
+        guardados: 0,
+        configuracionFaltante: true,
+        error,
+      };
+    }
+
     try {
       return await syncAgencia(cfg, rango, { fetchImpl, db });
     } catch (err) {
@@ -183,9 +197,15 @@ async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = f
       return { agency: cfg.agency, ok: false, guardados: 0, error };
     }
   });
-  resultados.push(...await Promise.all(sincronizaciones));
+  const resultados = await Promise.all(sincronizaciones);
 
-  return { from: desdeFinal, to: hastaFinal, agencias: configuradas.length, resultados };
+  return {
+    from: desdeFinal,
+    to: hastaFinal,
+    agencias: AGENCIAS_SOPORTADAS.length,
+    configuradas: configuradas.length,
+    resultados,
+  };
 }
 
 module.exports = { crearConfiguracionAgencias, fechaEcuador, syncTodasLasAgencias };

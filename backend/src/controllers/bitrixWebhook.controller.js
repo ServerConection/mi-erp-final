@@ -101,8 +101,33 @@ const recibirLead = async (req, res) => {
     }
 
     const paramsUpsert = [id, empresa, etapa, ...valores, JSON.stringify(req.query)];
+
+    // FIX (2026-08-27, race condition de creacion): al crear un lead, Bitrix
+    // dispara varias automatizaciones casi al mismo tiempo (ej. "Contacto
+    // Nuevo" y la etapa real como "ATC" con el MISMISIMO segundo). No llegan
+    // garantizadas en orden -- si "contacto_nuevo" llega DESPUES en nuestro
+    // servidor, pisaba la etapa correcta y el lead quedaba mal en el estado
+    // actual. "Contacto Nuevo" es SIEMPRE la primera etapa de un lead: si el
+    // lead ya tiene otra etapa guardada, un webhook de "contacto_nuevo" que
+    // llega despues es ese evento duplicado/tardio de la creacion, no un
+    // retroceso real -- se ignora SOLO para etapa/etapa_bitrix, el resto de
+    // columnas (telefono, responsable, utm, etc.) se sigue actualizando
+    // normal. El historial NUNCA se toca -- ahi queda registrado tal cual
+    // llego, sin filtrar nada.
+    const COLUMNAS_PROTEGIDAS_DE_CONTACTO_NUEVO = ['etapa', 'etapa_bitrix'];
     const setClause = ['etapa', ...CAMPOS_BITRIX, 'raw_query']
-      .map(c => `${c} = EXCLUDED.${c}`)
+      .map(c => {
+        if (COLUMNAS_PROTEGIDAS_DE_CONTACTO_NUEVO.includes(c)) {
+          return `${c} = CASE
+            WHEN EXCLUDED.etapa = 'contacto_nuevo'
+             AND bitrix_webhook_leads.etapa IS NOT NULL
+             AND bitrix_webhook_leads.etapa <> 'contacto_nuevo'
+            THEN bitrix_webhook_leads.${c}
+            ELSE EXCLUDED.${c}
+          END`;
+        }
+        return `${c} = EXCLUDED.${c}`;
+      })
       .concat(['updated_at = NOW()'])
       .join(', ');
 

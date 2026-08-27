@@ -19,6 +19,7 @@ const {
     descarteIndicadoresExpr,
     esDescarteExactoExpr
 } = require('../shared/etapas');
+const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 // FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
 // unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
@@ -121,10 +122,17 @@ const getEtapasCache = async () => {
                 ORDER BY etapa ASC`),
     // Orígenes REALES presentes en la data (antes el filtro usaba una lista
     // hardcodeada de 6 canales que dejaba fuera la mayoría).
-    // Se lee de la vista del webhook, que es la fuente viva.
-    pool.query(`SELECT b_origen AS origen, COUNT(*)::int AS total
-                FROM public.vw_bitrix_novonet
-                WHERE NULLIF(TRIM(b_origen), '') IS NOT NULL
+    // FIX (2026-08-27): antes leía de vw_bitrix_novonet, que hace FULL OUTER
+    // JOIN con mestra_bitrix y puede repetir un mismo lead N veces (N ventas
+    // Jotform enganchadas al mismo bitrix_id) -> el total salía inflado vs
+    // Bitrix real. bitrix_webhook_leads es 1 fila por lead (UNIQUE empresa +
+    // bitrix_id) y es la fuente viva del webhook: para un conteo puro de
+    // origen/Bitrix no hace falta pasar por el JOIN con Jotform.
+    pool.query(`SELECT source AS origen, COUNT(*)::int AS total
+                FROM public.bitrix_webhook_leads
+                WHERE empresa = 'novonet'
+                  AND NULLIF(TRIM(source), '') IS NOT NULL
+                  AND ${esLeadTotalExpr('etapa_bitrix')}
                 GROUP BY 1
                 ORDER BY total DESC, origen ASC`),
   ]);
@@ -585,7 +593,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) ${filtersJoin}
             )
             SELECT
-                COALESCE(${groupCol}, 'SIN ASIGNAR') AS nombre_grupo
+                COALESCE(${normalizarAsesorExpr(groupCol)}, 'SIN ASIGNAR') AS nombre_grupo
                 ${extraSelect},
                 -- COUNT(DISTINCT b_id) y no COUNT(*): un lead puede aparecer en
                 -- varias filas cuando tiene mas de una venta Jotform asociada
@@ -742,7 +750,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // poder filtrar por supervisor también en la variante *Asesor.
         const queryVentasDiaAsesor = `
             SELECT
-                mb_crm.b_persona_responsable AS nombre_grupo,
+                ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
             FROM public.mestra_bitrix mb_jot
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
@@ -792,7 +800,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // ver ${"$"}{filtrosDia}.
         const queryIngresosDiaAsesor = `
             SELECT
-                mb_crm.b_persona_responsable AS nombre_grupo,
+                ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
             FROM public.mestra_bitrix mb_jot
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
@@ -840,7 +848,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // durante [fecha_desde, fecha_hasta], evitando inflación con activaciones del mismo período.
         const queryBacklog = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
             FROM public.mestra_bitrix mb
             ${joinEmpleadosDedup}
@@ -854,8 +862,15 @@ const getIndicadoresDashboard = async (req, res) => {
             GROUP BY 1
         `;
 
+        // FIX (2026-08-27, leads reales): vw_bitrix_novonet puede repetir un mismo
+        // lead cuando tiene N filas de Jotform enganchadas al mismo bitrix_id
+        // (reingreso, regularizacion, otra venta sobre el mismo deal). Esta query
+        // no muestra NINGUNA columna de Jotform, asi que dos filas del mismo lead
+        // son identicas en todo lo que se selecciona aqui -> DISTINCT las colapsa
+        // en 1 sin tocar filtersJoin (compartido con las queries de Jotform de
+        // esta misma funcion).
         const queryCRM = `
-            SELECT
+            SELECT DISTINCT
                 mb.b_id AS "ID_CRM",
                 mb.b_etapa_de_la_negociacion AS "ETAPA_CRM",
                 mb.b_creado_el_fecha AS "FECHA_CREACION_CRM",
@@ -868,7 +883,9 @@ const getIndicadoresDashboard = async (req, res) => {
             FROM public.vw_bitrix_novonet mb
             ${joinEmpleadosDedup}
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersJoin}
-            LIMIT 6000
+            -- FIX (2026-08-27, data completa): se quita LIMIT 6000 a pedido -
+            -- esta es la data CRM/Bitrix del export "Detalle CRM"; no debe
+            -- truncarse silenciosamente en rangos de fecha grandes.
         `;
 
         const queryJotform = `
@@ -1408,7 +1425,7 @@ LEFT JOIN LATERAL (
 
         const queryMonitoreo = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb.b_id) FILTER (
                     WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
@@ -1484,7 +1501,7 @@ LEFT JOIN LATERAL (
 
         const queryJotHoy = (columna) => `
             SELECT
-                COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+                COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
                 COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')::int AS activos_jot_hoy,
                 COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VAN})::int AS venta_servicio_jot_hoy,

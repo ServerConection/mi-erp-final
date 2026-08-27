@@ -46,6 +46,22 @@ test('consulta nombres de etapas del pipeline y datos del asesor', async () => {
   ]);
 });
 
+test('consulta el catalogo de origenes con sus nombres visibles', async () => {
+  const llamadas = [];
+  const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {
+    llamadas.push({ method, params });
+    return { result: [{ STATUS_ID: '104', NAME: 'FB Messenger - Novo' }] };
+  } });
+
+  const origenes = await bitrix.listarOrigenes({ empresa: 'NOVONET' });
+
+  assert.equal(origenes[0].NAME, 'FB Messenger - Novo');
+  assert.deepEqual(llamadas, [{
+    method: 'crm.status.list',
+    params: { filter: { ENTITY_ID: 'SOURCE' }, order: { SORT: 'ASC' } },
+  }]);
+});
+
 test('consulta contacto y mensajes sin exponer el webhook en parametros', async () => {
   const llamadas = [];
   const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {

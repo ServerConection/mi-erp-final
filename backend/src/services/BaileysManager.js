@@ -14,6 +14,15 @@ const { query, transaction } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
 const { quemarPuerto } = require('./proxyPool.service')
 
+// Política fail-closed de proxy: si WA_PROXY_REQUIRED='true', ninguna línea
+// sin proxy VÁLIDO puede conectar directo (saldría por la IP del servidor,
+// que es justo lo que el proxy existe para evitar). Función pura para poder
+// probarla sin abrir sockets ni tocar la base de datos.
+function proxyPermiteConectar(line, proxyRequerido) {
+  if (!proxyRequerido) return true
+  return !!(line?.proxy_enabled && line?.proxy_config?.host && line?.proxy_config?.port)
+}
+
 // WA_AUTH_DIR: variable usada en Render (disco persistente /var/data/auth_sessions)
 const AUTH_BASE = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions')
 const silentLogger = pino({ level: 'silent' })
@@ -225,6 +234,17 @@ class BaileysManager {
 
     const lineRow = await query('SELECT * FROM lines WHERE id = $1', [lineId])
     const line = lineRow.rows[0]
+
+    // Fail-closed: con WA_PROXY_REQUIRED activo, una línea sin proxy válido
+    // NO conecta directo. Se detiene ANTES de tocar el socket de Baileys.
+    const proxyRequerido = process.env.WA_PROXY_REQUIRED === 'true'
+    if (!proxyPermiteConectar(line, proxyRequerido)) {
+      console.error(`[Line ${lineId}] ⛔ WA_PROXY_REQUIRED activo y la línea no tiene proxy asignado. No se conecta por la IP del servidor.`)
+      await this._updateLineStatus(lineId, 'proxy_error')
+      this.io.emit('line:status', { lineId, status: 'proxy_error' })
+      this.io.emit(`line:status:${lineId}`, { lineId, status: 'proxy_error' })
+      throw new Error('PROXY_REQUIRED: la línea no tiene un proxy válido asignado')
+    }
 
     // Registrar quién puede ver el QR: el solicitante, o el dueño de la línea
     this.lineOwners[lineId] = requesterId || line?.created_by || this.lineOwners[lineId] || null
@@ -1197,5 +1217,7 @@ function _numEmoji(n) {
   const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣']
   return emojis[n - 1] || `${n}.`
 }
+
+BaileysManager.proxyPermiteConectar = proxyPermiteConectar
 
 module.exports = BaileysManager

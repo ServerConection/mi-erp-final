@@ -17,6 +17,26 @@ const CAMPOS_DOCUMENTO = [
 ];
 const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 
+const ESTATUS_NETLIFE = [
+  "ACTIVO",
+  "ASIGNADO",
+  "FIN DE GESTIÓN",
+  "RECHAZADO",
+  "PRESERVICIO",
+  "PREPLANIFICADO",
+  "ANULADO",
+  "DETENIDO",
+  "DUPLICADO",
+  "FACTIBLE",
+  "SIN ESTADO",
+  "ZONA PELIGROSA",
+  "FUERA DE COBERTURA",
+  "DESISTE DEL SERVICIO",
+  "ELIMINADO",
+  "REPLANIFICADO",
+];
+
+
 const CAMPOS_FECHA = [
   "fecha_nacimiento", "fecha_regularizacion_atc", "fecha_agenda",
   "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
@@ -716,47 +736,59 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   // formulario: aparece ahí hasta que se lo ubique en su grupo.
   const seccionesDetalle = useMemo(() => {
     const grupos = [
-      { titulo: "Registro", campos: ["estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta"] },
-      { titulo: "Cliente", campos: ["nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente", "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2"] },
-      { titulo: "Ubicación", campos: ["provincia", "ciudad", "parroquia_barrio", "direccion_calles", "referencia_ubicacion"] },
-      { titulo: "Plan y pago", campos: ["plan_contratado_final", "servicios_digitales", "forma_pago", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales", "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta"] },
-      { titulo: "Netlife", campos: ["estado_recaudacion", "netlife_login", "netlife_estatus_real", "fecha_regularizacion_atc", "fecha_ingreso_telcos", "novedades_atc"] },
-      { titulo: "Auditoría", campos: ["calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos"] },
       {
-        titulo: "Regularización",
+        titulo: "Registro",
         campos: [
-          "estatus_regularizacion",
-          "detalle_regularizacion",
-          "mes_regularizacion"
-        ]
+          "estatus_envio",
+          "codigo_asesor",
+          "id_bitrix",
+          "distribuidor_autorizado",
+          "supervisor",
+          "origen_venta",
+        ],
       },
 
       {
-        titulo: "Agendamiento",
+        titulo: "Cliente",
         campos: [
-          "turno_agendado",
-          "fecha_agenda",
-          "mes_agenda",
-          "dia_abc_agenda"
-        ]
+          "nombre_cliente_completo",
+          "numero_identificacion",
+          "tipo_cliente",
+          "genero_cliente",
+          "fecha_nacimiento",
+          "email_cliente",
+          "telf_celular_pin",
+          "telf_celular_2",
+        ],
+      },
+
+      {
+        titulo: "Netlife",
+        campos: [
+          "estado_recaudacion",
+          "netlife_login",
+          "netlife_estatus_real",
+          "fecha_regularizacion_atc",
+          "fecha_ingreso_telcos",
+          "novedades_atc",
+        ],
       },
 
       {
         titulo: "Observaciones",
         campos: [
           "observacion_venta_original",
-          "observacion_gestion_cobranza"
-        ]
+          "observacion_gestion_cobranza",
+        ],
       },
-      { titulo: "Documentos", campos: [...CAMPOS_DOCUMENTO] },
     ];
-    const asignados = new Set(grupos.flatMap((g) => g.campos));
-    const sobrantes = editableFields.filter((f) => !asignados.has(f));
-    const salida = grupos
-      .map((g) => ({ ...g, campos: g.campos.filter((f) => editableFields.includes(f)) }))
+
+    return grupos
+      .map((g) => ({
+        ...g,
+        campos: g.campos.filter((f) => editableFields.includes(f)),
+      }))
       .filter((g) => g.campos.length);
-    if (sobrantes.length) salida.push({ titulo: "Otros datos", campos: sobrantes });
-    return salida;
   }, [editableFields]);
 
   const handleSave = async () => {
@@ -976,12 +1008,12 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                         placeholder="Login o parte del login"
                       />
                     </div>
-                    <CampoSelect
-                      label="Estatus Netlife"
-                      valor={filtros.estatusNetlife}
-                      onChange={(v) => setFiltro("estatusNetlife", v)}
-                      opciones={opciones.estatusNetlife}
-                    />
+                  <CampoSelect
+  label="Estatus Netlife"
+  valor={filtros.estatusNetlife}
+  onChange={(v) => setFiltro("estatusNetlife", v)}
+  opciones={ESTATUS_NETLIFE}
+/>
                     <CampoSelect
                       label="Estatus regularización"
                       valor={filtros.estatusRegularizacion}
@@ -1143,7 +1175,41 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                               onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                               onAlert={setAlert}
                             />
-                          ) : field === "novedades_atc" ? (
+                          ) : field === "netlife_estatus_real" ? (
+  <select
+    value={detail?.[field] ?? ""}
+    onChange={(e) =>
+      setDetail((prev) => ({
+        ...prev,
+        [field]: e.target.value,
+      }))
+    }
+    style={{
+      width: "100%",
+      padding: "10px 12px",
+      borderRadius: 8,
+      border: "1px solid #dbe4f0",
+      fontSize: 12,
+      outline: "none",
+      color: "#111827",
+      background: "#fff",
+      cursor: "pointer",
+    }}
+  >
+    <option value="">Seleccionar...</option>
+    {ESTATUS_NETLIFE.map((estado) => (
+      <option key={estado} value={estado}>
+        {estado}
+      </option>
+    ))}
+    {detail?.[field] &&
+      !ESTATUS_NETLIFE.includes(detail[field]) && (
+        <option value={detail[field]}>
+          {detail[field]} (valor actual)
+        </option>
+      )}
+  </select>
+) : field === "novedades_atc" ? (
                             /* 🔔 NOVEDADES: solo una opción por ahora.
                                Vacío = Sin notificar / Notificado = NOTIFICADO. */
                             <select
@@ -1239,6 +1305,15 @@ const SUBMODULOS = [
     descripcion: "Todas las ventas ingresadas, con filtros, detalle editable y documentos de respaldo.",
     color: "#0ea5e9",
     fondo: "#e0f2fe",
+    listo: true,
+  },
+  {
+    id: "validacion-estado",
+    nombre: "Validación de Estado",
+    icono: "🔎",
+    descripcion: "Control y consulta de los estados Netlife con contadores y detalle editable.",
+    color: "#ea580c",
+    fondo: "#fff7ed",
     listo: true,
   },
   {
@@ -3545,6 +3620,490 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO: VALIDACIÓN DE ESTADO
+// ═══════════════════════════════════════════════════════════════════════════
+function estadoNetlifeDe(row) {
+  const v = normalizarEstado(row?.netlife_estatus_real);
+  if (!v) return "SIN ESTADO";
+  return ESTATUS_NETLIFE.find((estado) => normalizarEstado(estado) === v) || v;
+}
+
+function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const [estadoActivo, setEstadoActivo] = useState("ACTIVO");
+  const [detalleId, setDetalleId] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
+
+  const conteos = useMemo(() => {
+    const acc = Object.fromEntries(ESTATUS_NETLIFE.map((e) => [e, 0]));
+    for (const row of todas || []) {
+      const estado = estadoNetlifeDe(row);
+      if (Object.prototype.hasOwnProperty.call(acc, estado)) acc[estado] += 1;
+    }
+    return acc;
+  }, [todas]);
+
+  const rowsFiltradas = useMemo(() => {
+    const q = normalizarEstado(busqueda);
+
+    return (todas || [])
+      .filter((r) => estadoNetlifeDe(r) === estadoActivo)
+      .filter((r) => {
+        if (q) {
+          const coincide = [
+            r.nombre_cliente_completo,
+            r.numero_identificacion,
+            r.codigo_asesor,
+            r.id_bitrix,
+            r.netlife_login,
+            r.supervisor,
+            String(r.id),
+          ].some((c) => normalizarEstado(c).includes(q));
+
+          if (!coincide) return false;
+        }
+
+        const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+
+        if (fechaDesde && (!iso || iso < fechaDesde)) return false;
+        if (fechaHasta && (!iso || iso > fechaHasta)) return false;
+
+        return true;
+      })
+      .sort((a, b) =>
+        String(b.fecha_registro_sistema || "").localeCompare(
+          String(a.fecha_registro_sistema || "")
+        )
+      );
+  }, [todas, estadoActivo, busqueda, fechaDesde, fechaHasta]);
+
+  const columnas = [
+    "id",
+    "netlife_estatus_real",
+    "nombre_cliente_completo",
+    "numero_identificacion",
+    "fecha_registro_sistema",
+    "codigo_asesor",
+    "id_bitrix",
+    "distribuidor_autorizado",
+    "supervisor",
+    "netlife_login",
+    "origen_venta",
+  ];
+
+  return (
+    <div
+      style={{
+        padding: 18,
+        background: "#f3f4f6",
+        minHeight: "100vh",
+        color: "#0f172a",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          boxShadow: "0 12px 40px rgba(15,23,42,.08)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: 18,
+            borderBottom: "1px solid #e5e7eb",
+            background: "linear-gradient(135deg,#f8fafc,#fff7ed)",
+          }}
+        >
+          <button
+            onClick={onVolver}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 10,
+              background: "#fff",
+              border: "1px solid #dbe4f0",
+              borderRadius: 999,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#ea580c",
+              cursor: "pointer",
+            }}
+          >
+            ← Volver a Backoffice
+          </button>
+
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: ".18em",
+              color: "#ea580c",
+              textTransform: "uppercase",
+            }}
+          >
+            Backoffice · Validación de Estado
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              marginTop: 8,
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "#111827",
+                }}
+              >
+                Validación de Estado
+              </h2>
+
+              <p
+                style={{
+                  margin: "7px 0 0",
+                  color: "#64748b",
+                  fontSize: 12.5,
+                }}
+              >
+                Control por <b>ESTATUS NETLIFE</b>. Selecciona una tarjeta para
+                desplegar los registros de ese estado.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {onCambiarEmpresa && (
+                <FiltroEmpresa
+                  valor={empresa}
+                  onCambiar={onCambiarEmpresa}
+                />
+              )}
+
+              <button
+                onClick={recargar}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #fed7aa",
+                  background: "#fff7ed",
+                  color: "#c2410c",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Refrescar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              margin: "14px 18px 0",
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: "#b91c1c",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {total > (todas || []).length && (todas || []).length > 0 && (
+          <div
+            style={{
+              margin: "14px 18px 0",
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "#fffbeb",
+              border: "1px solid #fde68a",
+              fontSize: 12,
+              color: "#92400e",
+              fontWeight: 700,
+            }}
+          >
+            Mostrando {(todas || []).length} de {total} registros por el límite
+            actual de carga.
+          </div>
+        )}
+
+        <div
+          style={{
+            padding: 18,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(205px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {ESTATUS_NETLIFE.map((estado) => {
+            const activo = estadoActivo === estado;
+
+            return (
+              <button
+                key={estado}
+                type="button"
+                onClick={() => setEstadoActivo(estado)}
+                style={{
+                  width: "100%",
+                  minHeight: 54,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${activo ? "#ea580c" : "#e5e7eb"}`,
+                  background: activo ? "#fff7ed" : "#fff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  boxShadow: activo
+                    ? "0 5px 16px rgba(234,88,12,.12)"
+                    : "none",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 900,
+                    color: "#334155",
+                    textAlign: "left",
+                  }}
+                >
+                  {estado}
+                </span>
+
+                <span
+                  style={{
+                    minWidth: 34,
+                    padding: "4px 9px",
+                    borderRadius: 10,
+                    background: "#fff7ed",
+                    color: "#ea580c",
+                    fontSize: 13,
+                    fontWeight: 900,
+                    textAlign: "center",
+                  }}
+                >
+                  {conteos[estado] || 0}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "0 18px 18px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 10,
+              flexWrap: "wrap",
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ marginRight: "auto" }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: ".08em",
+                }}
+              >
+                Estado seleccionado
+              </div>
+
+              <h3
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: 18,
+                  color: "#c2410c",
+                }}
+              >
+                {estadoActivo} · {rowsFiltradas.length}
+              </h3>
+            </div>
+
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar cliente, CI, login, asesor…"
+              style={{
+                padding: "9px 12px",
+                borderRadius: 10,
+                border: "1px solid #dbe4f0",
+                fontSize: 12,
+                minWidth: 240,
+              }}
+            />
+
+            <CampoRangoFecha
+              label="Fecha de registro"
+              desde={fechaDesde}
+              hasta={fechaHasta}
+              onDesde={setFechaDesde}
+              onHasta={setFechaHasta}
+            />
+
+            {(busqueda || fechaDesde || fechaHasta) && (
+              <button
+                onClick={() => {
+                  setBusqueda("");
+                  setFechaDesde("");
+                  setFechaHasta("");
+                }}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  color: "#475569",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              overflow: "hidden",
+              background: "#fff",
+            }}
+          >
+            <div style={{ overflow: "auto", maxHeight: 590 }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "separate",
+                  borderSpacing: 0,
+                  fontSize: 11,
+                }}
+              >
+                <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
+                  <tr>
+                    {columnas.map((key) => (
+                      <th
+                        key={key}
+                        style={{
+                          textAlign: "left",
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                          whiteSpace: "nowrap",
+                          background: "#f8fafc",
+                          color: "#475569",
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {FIELD_LABELS[key] ||
+                          key.replace(/_/g, " ").toUpperCase()}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {!cargando && rowsFiltradas.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={columnas.length}
+                        style={{
+                          padding: 30,
+                          textAlign: "center",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        Sin registros para {estadoActivo}.
+                      </td>
+                    </tr>
+                  )}
+
+                  {cargando && (
+                    <tr>
+                      <td
+                        colSpan={columnas.length}
+                        style={{
+                          padding: 30,
+                          textAlign: "center",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        Cargando…
+                      </td>
+                    </tr>
+                  )}
+
+                  {!cargando &&
+                    rowsFiltradas.map((row) => (
+                      <tr
+                        key={row.id}
+                        onClick={() => setDetalleId(row.id)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {columnas.map((key) => (
+                          <td
+                            key={`${row.id}-${key}`}
+                            title={valueForField(row, key)}
+                            style={{
+                              padding: "10px 12px",
+                              borderBottom: "1px solid #f1f5f9",
+                              whiteSpace: "nowrap",
+                              maxWidth: 220,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              color: "#334155",
+                            }}
+                          >
+                            {key === "netlife_estatus_real" && !row[key]
+                              ? "SIN ESTADO"
+                              : valueForField(row, key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {detalleId && (
+        <PanelRegistros
+          soloDetalle
+          idInicial={detalleId}
+          etiquetaContexto="Detalle de Validación de Estado"
+          onVolver={() => setDetalleId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SUBMÓDULO: VALIDACIÓN / REGULARIZACIÓN  (tablero kanban)
 // ═══════════════════════════════════════════════════════════════════════════
 // Tres bloques alimentados por la columna `estatus_regularizacion`:
@@ -4197,6 +4756,16 @@ export default function VistaBackoffice() {
         onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar}
         empresa={empresa} onCambiarEmpresa={setEmpresa}
         onAbrirRegistro={abrirRegistro}
+      />
+    );
+  }
+
+  if (sub.id === "validacion-estado") {
+    return (
+      <TableroValidacionEstado
+        onVolver={volver}
+        empresa={empresa}
+        onCambiarEmpresa={setEmpresa}
       />
     );
   }

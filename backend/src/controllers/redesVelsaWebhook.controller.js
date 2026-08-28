@@ -20,7 +20,7 @@ const fechas = (q) => {
 };
 const seleccion = (q) => String(q.canales || '').split(',').map(v => v.trim()).filter(Boolean);
 const filtroAgencia = (items, offset = 2) => items.length
-  ? { sql: `AND ${AGENCIA} IN (${items.map((_, i) => `${offset + i + 1}`).join(',')})`, params: items.map(v => v.toUpperCase()) }
+  ? { sql: `AND ${AGENCIA} IN (${items.map((_, i) => `$${offset + i + 1}`).join(',')})`, params: items.map(v => v.toUpperCase()) }
   : { sql: '', params: [] };
 const filtroInversion = (items, offset = 2) => items.length
   ? { sql: `AND canal_publicidad IN (${items.map((_, i) => `$${offset + i + 1}`).join(',')})`, params: items }
@@ -42,6 +42,71 @@ const selectMetricas = `
   COUNT(*) FILTER (WHERE ${ETAPA} ~* 'CONTACTO NUEVO.*SUPERVISOR') AS contacto_nuevo_supervisor,
   COUNT(*) FILTER (WHERE ${ETAPA} ~* 'URGENTE GESTION SUPERVISOR') AS urgente_gestion_supervisor,
   COUNT(*) FILTER (WHERE ${ETAPA} ~* 'ENVIO REQUISITOS') AS envio_requisitos`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LADO JOTFORM DE VELSA (bloques "Forma de pago" y "Ciclo de venta")
+// ─────────────────────────────────────────────────────────────────────────────
+// Venían hardcodeados como [] y por eso el pie y el gráfico salían vacíos.
+// La forma de pago y la fecha de activación solo existen en la MV
+// mv_indicadores_velsa_completo. Pero esa MV tiene DOS problemas conocidos
+// (ver indicadoresVelsaMaterialized.controller.js):
+//   1) hace FULL OUTER JOIN con el lado Jotform y puede repetir un lead N veces
+//   2) su lado CRM sale de negociaciones_reporteria (sync cada 15 min), no del
+//      webhook, así que va atrasado
+// Por eso NO se consulta la MV de frente. Se maneja desde bitrix_webhook_leads
+// (1 fila por lead, fuente viva) y se entra a la MV por LATERAL ... LIMIT 1,
+// que trae como máximo una fila por lead y mata la duplicación del FULL OUTER.
+//
+// id_negociacion_bitrix está 100% NULL en Velsa, así que el match va contra
+// id_crm (el id de Bitrix que usa el filtro del dashboard) y, como respaldo,
+// id_bitrix_ghl (la llave real del lado Jotform).
+const jotVelsaLateral = `LEFT JOIN LATERAL (
+  SELECT mv.forma_pago, mv.fecha_activacion_date
+  FROM mv_indicadores_velsa_completo mv
+  WHERE BTRIM(mv.id_crm::text)        = BTRIM(w.bitrix_id::text)
+     OR BTRIM(mv.id_bitrix_ghl::text) = BTRIM(w.bitrix_id::text)
+  ORDER BY (BTRIM(mv.id_crm::text) = BTRIM(w.bitrix_id::text)) DESC,
+           mv.fecha_activacion_date DESC NULLS LAST
+  LIMIT 1
+) jf ON TRUE`;
+
+// Forma de pago de las ventas subidas. La etapa sale del webhook (tiempo real);
+// de la MV solo se toma forma_pago.
+async function consultarFormaPago(desde, hasta, canales) {
+  const f = filtroAgencia(canales);
+  return pool.query(`SELECT COALESCE(NULLIF(BTRIM(jf.forma_pago),''),'SIN ESPECIFICAR') forma_pago,
+      COUNT(*)::int cantidad
+    FROM bitrix_webhook_leads w ${jotVelsaLateral}
+    WHERE w.empresa='velsa'
+      AND ${FECHA} BETWEEN $1::date AND $2::date
+      AND ${ETAPA} ~* 'VENTA SUBIDA'
+      ${f.sql}
+    GROUP BY 1 ORDER BY cantidad DESC`, [desde, hasta, ...f.params]);
+}
+
+// Ciclo de venta EN TIEMPO REAL: días entre la creación real del lead
+// (created_at del webhook) y la activación Netlife (JotForm, vía la MV).
+// Antes el legacy restaba fecha_creacion_date de la MV, que va atrasada.
+async function consultarCicloVenta(desde, hasta, canales) {
+  const f = filtroAgencia(canales);
+  return pool.query(`SELECT CASE
+        WHEN dias <= 0 THEN '0'
+        WHEN dias  = 1 THEN '1'
+        WHEN dias  = 2 THEN '2'
+        WHEN dias  = 3 THEN '3'
+        WHEN dias  = 4 THEN '4'
+        ELSE '5+'
+      END bucket, COUNT(*)::int cantidad
+    FROM (
+      SELECT (jf.fecha_activacion_date - (w.created_at AT TIME ZONE 'America/Guayaquil')::date) dias
+      FROM bitrix_webhook_leads w ${jotVelsaLateral}
+      WHERE w.empresa='velsa'
+        AND ${FECHA} BETWEEN $1::date AND $2::date
+        AND jf.fecha_activacion_date IS NOT NULL
+        ${f.sql}
+    ) t
+    GROUP BY 1 ORDER BY 1`, [desde, hasta, ...f.params]);
+}
 
 async function getCanalesDisponibles(req, res) {
   try {
@@ -103,7 +168,7 @@ async function getMonitoreoCiudad(req,res){try{const {desde,hasta}=fechas(req.qu
 async function getMonitoreoHora(req,res){try{const {desde,hasta}=fechas(req.query),f=filtroAgencia(seleccion(req.query));const q=`FROM bitrix_webhook_leads w WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date ${f.sql}`;const r=await pool.query(`SELECT ${HORA} hora,COUNT(*) FILTER(WHERE ${esLeadTotalExpr(ETAPA)}) n_leads,COUNT(*) FILTER(WHERE ${ETAPA}~*'ATC|SOPORTE') atc,COUNT(*) FILTER(WHERE ${ETAPA}~*'VENTA SUBIDA') venta_subida ${q} GROUP BY 1 ORDER BY 1`,[desde,hasta,...f.params]);const d=await pool.query(`SELECT ${FECHA} fecha,${HORA} hora,COUNT(*) FILTER(WHERE ${esLeadTotalExpr(ETAPA)}) n_leads ${q} GROUP BY 1,2 ORDER BY 1,2`,[desde,hasta,...f.params]);res.json({success:true,porHora:r.rows,porHoraDia:d.rows});}catch(e){responderError(res,'hora',e);}}
 async function getMonitoreoAtc(req,res){try{const {desde,hasta}=fechas(req.query),f=filtroAgencia(seleccion(req.query));const r=await pool.query(`SELECT COALESCE(NULLIF(BTRIM(w.motivo_atc),''),${ETAPA},'SIN MOTIVO') motivo,COUNT(*) cantidad FROM bitrix_webhook_leads w WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date AND ${ETAPA}!~*'VENTA SUBIDA' ${f.sql} GROUP BY 1 ORDER BY 2 DESC`,[desde,hasta,...f.params]);res.json({success:true,data:r.rows,aviso:'Fuente directa del webhook Bitrix; usa motivo ATC y, cuando está vacío, la etapa CRM.'});}catch(e){responderError(res,'ATC',e);}}
 
-async function getReporteData(req,res){try{await asegurarInversionReciente();const {desde,hasta}=fechas(req.query),canales=seleccion(req.query),fi=filtroInversion(canales);const diario=(await consultarDiario(desde,hasta,canales)).rows;const dias=(await pool.query(`SELECT to_char(d,'YYYY-MM-DD') fecha FROM generate_series($1::date,$2::date,'1 day') d`,[desde,hasta])).rows.map(r=>r.fecha);const inv=(await pool.query(`SELECT fecha,SUM(monto_usd) inversion FROM velsa_inversion_redes WHERE fecha BETWEEN $1 AND $2 ${fi.sql} GROUP BY 1`,[desde,hasta,...fi.params])).rows;const map={};for(const r of diario){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};for(const k of ['n_leads','gestionables','atc','venta_subida'])map[f][k]+=Number(r[k]||0);map[f].descartados+=Number(r.descarte||0);}for(const r of inv){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};map[f].inversion=Number(r.inversion||0);}const inversion=dias.map(fecha=>({fecha,...(map[fecha]||{n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0})}));const fake={query:{...req.query,fechaDesde:desde,fechaHasta:hasta,canales:canales.join(',')}};let ciudad,hora;await getMonitoreoCiudad(fake,{json:x=>{ciudad=x.porCiudad}});await getMonitoreoHora(fake,{json:x=>{hora=x.porHora}});const canalesDisp=await pool.query(`SELECT ${AGENCIA} canal_publicidad,COUNT(*) n_leads FROM bitrix_webhook_leads w WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date GROUP BY 1 ORDER BY 2 DESC`,[desde,hasta]);res.json({success:true,meta:{dias,fechaDesde:desde,fechaHasta:hasta},inversion,pago:[],ciclo:[],ciudad:ciudad||[],hora:hora||[],canales_disponibles:canalesDisp.rows});}catch(e){responderError(res,'reporte',e);}}
+async function getReporteData(req,res){try{await asegurarInversionReciente();const {desde,hasta}=fechas(req.query),canales=seleccion(req.query),fi=filtroInversion(canales);const diario=(await consultarDiario(desde,hasta,canales)).rows;const dias=(await pool.query(`SELECT to_char(d,'YYYY-MM-DD') fecha FROM generate_series($1::date,$2::date,'1 day') d`,[desde,hasta])).rows.map(r=>r.fecha);const inv=(await pool.query(`SELECT fecha,SUM(monto_usd) inversion FROM velsa_inversion_redes WHERE fecha BETWEEN $1 AND $2 ${fi.sql} GROUP BY 1`,[desde,hasta,...fi.params])).rows;const map={};for(const r of diario){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};for(const k of ['n_leads','gestionables','atc','venta_subida'])map[f][k]+=Number(r[k]||0);map[f].descartados+=Number(r.descarte||0);}for(const r of inv){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};map[f].inversion=Number(r.inversion||0);}const inversion=dias.map(fecha=>({fecha,...(map[fecha]||{n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0})}));const fake={query:{...req.query,fechaDesde:desde,fechaHasta:hasta,canales:canales.join(',')}};let ciudad,hora;await getMonitoreoCiudad(fake,{json:x=>{ciudad=x.porCiudad}});await getMonitoreoHora(fake,{json:x=>{hora=x.porHora}});const canalesDisp=await pool.query(`SELECT ${AGENCIA} canal_publicidad,COUNT(*) n_leads FROM bitrix_webhook_leads w WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date GROUP BY 1 ORDER BY 2 DESC`,[desde,hasta]);let pago=[],ciclo=[];try{const[pg,cv]=await Promise.all([consultarFormaPago(desde,hasta,canales),consultarCicloVenta(desde,hasta,canales)]);pago=pg.rows;ciclo=cv.rows;}catch(e){console.error('[redes-velsa/reporte] bloques JotForm no disponibles:',e.message);}res.json({success:true,meta:{dias,fechaDesde:desde,fechaHasta:hasta},inversion,pago,ciclo,ciudad:ciudad||[],hora:hora||[],canales_disponibles:canalesDisp.rows});}catch(e){responderError(res,'reporte',e);}}
 
 async function getAgenciasCanal(req,res){try{const r=await pool.query(`SELECT NULLIF(BTRIM(w.source),'') origen,COUNT(*) n_leads,COALESCE(MAX(m.agencia),'VELSA') agencia FROM bitrix_webhook_leads w LEFT JOIN velsa_lineas_canal m ON m.origen=NULLIF(BTRIM(w.source),'') WHERE empresa='velsa' AND NULLIF(BTRIM(w.source),'') IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`);res.json({success:true,origenes:r.rows});}catch(e){responderError(res,'agencias',e);}}
 async function upsertAgenciaCanal(req,res){try{const items=Array.isArray(req.body.items)?req.body.items:[req.body],out=[];for(const x of items){if(!x.origen)return res.status(400).json({success:false,message:'Cada registro requiere origen'});if(!String(x.agencia||'').trim()){await pool.query('DELETE FROM velsa_lineas_canal WHERE origen=$1',[x.origen]);out.push({origen:x.origen,agencia:null});}else{const r=await pool.query(`INSERT INTO velsa_lineas_canal(origen,agencia,creado_por,actualizado_en) VALUES($1,$2,$3,now()) ON CONFLICT(origen) DO UPDATE SET agencia=EXCLUDED.agencia,creado_por=EXCLUDED.creado_por,actualizado_en=now() RETURNING *`,[x.origen,String(x.agencia).trim(),req.user?.usuario||'desconocido']);out.push(r.rows[0]);}}res.json({success:true,data:out});}catch(e){responderError(res,'guardar agencia',e);}}

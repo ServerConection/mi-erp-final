@@ -1860,6 +1860,9 @@ const ETAPAS_JOTFORM_RESUMEN = [
   "ASIGNADO",
   "PRESERVICIO",
   "FACTIBLE",
+  "REGULARIZACION",
+  "REPLANIFICADO",
+  "DETENIDO",
 ];
 
 function crearContadoresEtapas() {
@@ -1903,6 +1906,15 @@ function sumarEtapa(contadores, row) {
     if (target === "ACTIVO") {
       // Evita falsos positivos con "INACTIVO" o "DESACTIVADO"
       return valor.includes("ACTIV") && !valor.includes("INACTIV") && !valor.includes("DESACTIV");
+    }
+    if (target === "REGULARIZACION") {
+      return valor.includes("REGULARIZ");
+    }
+    if (target === "REPLANIFICADO") {
+      return valor.includes("REPLANIFIC");
+    }
+    if (target === "DETENIDO") {
+      return valor.includes("DETENID");
     }
 
     return valor.includes(target);
@@ -2095,9 +2107,13 @@ function BotonNivel({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(76px, 1fr))",
+            // Antes: repeat(5, ...) — fijo a las 5 etapas originales.
+            // Ahora se calcula solo, así si mañana se agregan o quitan
+            // etapas en ETAPAS_JOTFORM_RESUMEN, la grilla se ajusta sin
+            // tener que tocar este número a mano.
+            gridTemplateColumns: `repeat(${ETAPAS_JOTFORM_RESUMEN.length}, minmax(64px, 1fr))`,
             alignItems: "center",
-            gap: 8,
+            gap: 6,
             flex: 1,
             marginLeft: 24,
           }}
@@ -2159,8 +2175,30 @@ function ExploradorFechas({
   color = "#4f46e5", fondo = "#eef2ff", borde = "#c7d2fe",
   nav, navegar, onVolver, onRecargar,
   empresa, onCambiarEmpresa,
+  onAbrirRegistro,
 }) {
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows), [rows]);
+
+  // ── BÚSQUEDA GENERAL (cliente, CI, asesor, login) ──────────────────────
+  // Mismo criterio que en Validación/Regularización y Preservicios: filtra
+  // sobre TODOS los registros cargados (sin importar año/mes/día) por
+  // nombre del cliente, cédula, código de asesor, login netlife o ID.
+  // Al escribir, reemplaza el explorador de años por la lista de coincidencias.
+  const [busqueda, setBusqueda] = useState("");
+  const qBusqueda = normalizarEstado(busqueda);
+  const resultadosBusqueda = useMemo(() => {
+    if (!qBusqueda) return null;
+    return rows.filter((r) =>
+      [
+        r.nombre_cliente_completo,
+        r.numero_identificacion,
+        r.codigo_asesor,
+        r.login_netlife,
+        r.id_bitrix,
+        String(r.id),
+      ].some((c) => normalizarEstado(c).includes(qBusqueda))
+    );
+  }, [rows, qBusqueda]);
 
   const anioSel = nav.anio ? anios.find((a) => a.anio === nav.anio) : null;
   const mesSel = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
@@ -2193,6 +2231,12 @@ function ExploradorFechas({
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>{tituloModulo}</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, asesor, login..."
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
+              />
               <button
                 onClick={() => navegar.aTodos()}
                 style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${borde}`, background: fondo, color, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
@@ -2242,11 +2286,69 @@ function ExploradorFechas({
             </div>
           )}
 
-          {!cargando && !error && anios.length === 0 && (
+          {/* ── RESULTADOS DE BÚSQUEDA ──────────────────────────────────────
+              Reemplaza el explorador de años mientras haya un término escrito.
+              Busca en TODOS los registros cargados, sin importar la fecha. */}
+          {!cargando && !error && resultadosBusqueda !== null && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#475569" }}>
+                  {resultadosBusqueda.length} resultado{resultadosBusqueda.length === 1 ? "" : "s"} para «{busqueda}»
+                </span>
+                <button
+                  onClick={() => setBusqueda("")}
+                  style={{ background: "transparent", border: "none", color, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  ✕ Limpiar búsqueda
+                </button>
+              </div>
+
+              {resultadosBusqueda.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Ningún registro coincide con «{busqueda}».</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {resultadosBusqueda.slice(0, 200).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => onAbrirRegistro && onAbrirRegistro(r.id)}
+                      disabled={!onAbrirRegistro}
+                      style={{
+                        textAlign: "left",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
+                        flexWrap: "wrap",
+                        background: "#fff", border: `1px solid ${borde}`, borderRadius: 10,
+                        padding: "10px 14px", cursor: onAbrirRegistro ? "pointer" : "default",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 200 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
+                          {r.nombre_cliente_completo || "(sin nombre)"} <span style={{ color: "#94a3b8", fontWeight: 700 }}>· #{r.id}</span>
+                        </span>
+                        <span style={{ fontSize: 11.5, color: "#64748b" }}>
+                          CI: {r.numero_identificacion || "—"} · Asesor: {r.codigo_asesor || "—"} · Login: {r.login_netlife || "—"}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 800, color, background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "4px 10px" }}>
+                        {r.netlife_estatus_real || r.estatus_regularizacion || "—"}
+                      </span>
+                    </button>
+                  ))}
+                  {resultadosBusqueda.length > 200 && (
+                    <p style={{ fontSize: 11.5, color: "#94a3b8", margin: "4px 0 0" }}>
+                      Mostrando los primeros 200 de {resultadosBusqueda.length} resultados. Afina la búsqueda para acotar.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!cargando && !error && resultadosBusqueda === null && anios.length === 0 && (
             <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Todavía no hay registros con fecha para agrupar.</p>
           )}
 
-          {!cargando && !error && (
+          {!cargando && !error && resultadosBusqueda === null && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: nivel === "anios" ? "flex-start" : "stretch" }}>
               {nivel === "anios" && anios.map((a) => (
                 <BotonNivel
@@ -3246,6 +3348,27 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
 
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows, "fecha_agenda"), [rows]);
 
+  // ── BÚSQUEDA GENERAL (cliente, CI, login, asesor) ───────────────────────
+  // Mismo criterio que en Registros y Validación/Regularización: busca sobre
+  // TODOS los registros cargados (sin importar año/mes/día) y, mientras haya
+  // un término escrito, reemplaza el explorador años/meses/calendario por la
+  // lista de coincidencias.
+  const [busqueda, setBusqueda] = useState("");
+  const qBusqueda = normalizarEstado(busqueda);
+  const resultadosBusqueda = useMemo(() => {
+    if (!qBusqueda) return null;
+    return rows.filter((r) =>
+      [
+        r.nombre_cliente_completo,
+        r.numero_identificacion,
+        r.codigo_asesor,
+        r.login_netlife,
+        r.id_bitrix,
+        String(r.id),
+      ].some((c) => normalizarEstado(c).includes(qBusqueda))
+    );
+  }, [rows, qBusqueda]);
+
   const anioSel = nav.anio ? anios.find((a) => a.anio === nav.anio) : null;
   const mesSel = anioSel && nav.mes ? anioSel.meses.find((m) => m.mes === nav.mes) : null;
 
@@ -3291,8 +3414,14 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
                 Instalaciones con estado <b>ASIGNADO</b> organizadas por fecha de visita.
               </p>
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente, CI, login, asesor..."
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
+              />
               <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 800, color }}>
                 {total} asignados
               </div>
@@ -3358,7 +3487,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
             </div>
           )}
 
-          {!cargando && !error && nivel === "meses" && anioSel && (
+          {!cargando && !error && resultadosBusqueda === null && nivel === "meses" && anioSel && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
               {anioSel.meses.map((m) => (
                 <BotonNivel
@@ -3371,7 +3500,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
             </div>
           )}
 
-          {!cargando && !error && nivel === "calendario" && mesSel && (
+          {!cargando && !error && resultadosBusqueda === null && nivel === "calendario" && mesSel && (
             <CalendarioMes
               anio={anioSel.anio}
               mes={mesSel.mes}
@@ -3381,7 +3510,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
             />
           )}
 
-          {!cargando && !error && nivel === "anios" && sinFecha.length > 0 && (
+          {!cargando && !error && resultadosBusqueda === null && nivel === "anios" && sinFecha.length > 0 && (
             <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12.5, color: "#92400e", fontWeight: 700 }}>
               ⚠ {sinFecha.length} registro{sinFecha.length > 1 ? "s" : ""} asignado{sinFecha.length > 1 ? "s" : ""} sin fecha de agenda válida.
             </div>
@@ -4397,7 +4526,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
  * La tabla no filtra en el navegador: recibe el día elegido y deja que el
  * backend haga el filtro con fechaDesde/fechaHasta, que ya existía.
  */
-function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiarEmpresa }) {
+function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiarEmpresa, onAbrirRegistro }) {
   const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
 
   if (!idInicial && !nav.dia && !nav.todos) {
@@ -4409,6 +4538,7 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
         color="#0284c7" fondo="#e0f2fe" borde="#bae6fd"
         nav={nav} navegar={navegar} onVolver={onVolver} onRecargar={recargar}
         empresa={empresa} onCambiarEmpresa={onCambiarEmpresa}
+        onAbrirRegistro={onAbrirRegistro}
       />
     );
   }
@@ -4462,6 +4592,7 @@ export default function VistaBackoffice() {
       <ModuloRegistros
         onVolver={volver} idInicial={params.get("id")} nav={nav} navegar={navegar}
         empresa={empresa} onCambiarEmpresa={setEmpresa}
+        onAbrirRegistro={abrirRegistro}
       />
     );
   }

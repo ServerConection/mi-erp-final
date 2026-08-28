@@ -1848,7 +1848,7 @@ const getReporte180 = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const getConsultaDescargaNovonet = async (req, res) => {
     try {
-        const { fechaDesde, fechaHasta, asesor, loginNetlife, idBitrix } = req.query;
+        const { fechaDesde, fechaHasta, asesor, loginNetlife, idBitrix, busquedaGeneral } = req.query;
         if (!fechaDesde || !fechaHasta) {
             return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
         }
@@ -1874,6 +1874,20 @@ const getConsultaDescargaNovonet = async (req, res) => {
         if (idBitrix) {
             values.push(`%${idBitrix}%`);
             filters += ` AND id_bitrix::text ILIKE $${values.length}`;
+        }
+        // BÚSQUEDA GENERAL: un solo término que busca en TODAS estas columnas a la vez
+        // (asesor/código ejecutivo, login netlife, ID negociación/bitrix y estado netlife).
+        // Es independiente de los filtros específicos de arriba: si el usuario llena
+        // "Búsqueda general" Y algún filtro específico, se aplican ambos (AND).
+        if (busquedaGeneral && String(busquedaGeneral).trim()) {
+            values.push(`%${String(busquedaGeneral).trim()}%`);
+            const idx = values.length;
+            filters += ` AND (
+                codigo_asesor ILIKE $${idx} OR
+                login_netlife ILIKE $${idx} OR
+                id_bitrix::text ILIKE $${idx} OR
+                estatus_netlife ILIKE $${idx}
+            )`;
         }
 
         const result = await pool.query(`

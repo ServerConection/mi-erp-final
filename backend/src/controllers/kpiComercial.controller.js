@@ -256,6 +256,48 @@ const CAMPOS_SUMA = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RED DE SEGURIDAD (FIX 2026-08-28) — fusion automatica de nombre corto vs.
+// nombre legal completo para pares NO listados a mano en claveAsesorSQL.
+// claveAsesorSQL ya fusiona los pares confirmados manualmente (Karina Torres,
+// Rossanna Alvarado, Damian Viera, Christian Ponce...), pero cada vez que
+// aparece un asesor NUEVO escrito de dos formas (ej. "Erick Enriquez" vs
+// "Erick Leonel Enriquez Ramirez") hay que agregarlo a mano. Esta funcion
+// detecta ese patron automaticamente: dos filas se fusionan si comparten el
+// PRIMER token del nombre (primer nombre) Y al menos OTRO token en comun
+// (tipicamente el primer apellido), sumando sus campos numericos.
+// Riesgo aceptado (decision de negocio, 2026-08-28): si dos asesores REALES
+// distintos comparten primer nombre y un apellido, se fusionarian por error
+// (caso poco frecuente). Si eso pasa, agregar una excepcion aqui o pedir que
+// se corrija el nombre en el origen (Bitrix).
+function fusionarPorNombreSimilar(filas, campoNombre, camposSuma) {
+  const tokens = (s) => String(s || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const grupos = [];
+  for (const fila of filas) {
+    const tks = tokens(fila[campoNombre]);
+    const grupo = tks.length
+      ? grupos.find(g => g.tokens[0] === tks[0] && g.tokens.slice(1).some(t => tks.slice(1).includes(t)))
+      : null;
+    if (grupo) {
+      grupo.filas.push(fila);
+      if (tks.length > grupo.tokens.length) grupo.tokens = tks; // el nombre mas largo queda como referencia
+    } else {
+      grupos.push({ tokens: tks, filas: [fila] });
+    }
+  }
+  return grupos.map(g => {
+    if (g.filas.length === 1) return g.filas[0];
+    // Nombre canonico: el mas largo del grupo (asumimos que es el nombre legal completo).
+    const base = g.filas.reduce((a, b) =>
+      String(b[campoNombre] || '').length > String(a[campoNombre] || '').length ? b : a);
+    const fusion = { ...base };
+    for (const c of camposSuma) {
+      fusion[c] = g.filas.reduce((acc, f) => acc + Number(f[c] || 0), 0);
+    }
+    return fusion;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/kpi-comercial?fechaDesde=&fechaHasta=
 // Devuelve { supervisores: [...], asesores: [...], total: {...} }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,8 +346,10 @@ async function getKpiComercial(req, res) {
 
     const { rows } = await pool.query(sql, [rango.desde, rango.hasta, empresa]);
 
-    // Nivel ASESOR
-    const asesores = rows
+    // Nivel ASESOR — fusiona primero variantes de nombre corto/completo que
+    // claveAsesorSQL no haya cubierto todavia (ver fusionarPorNombreSimilar).
+    const filasAsesorFusionadas = fusionarPorNombreSimilar(rows, 'asesor_display', CAMPOS_SUMA);
+    const asesores = filasAsesorFusionadas
       .map(r => derivar({ ...r, nombre: r.asesor_display }))
       .filter(r => r.leads_total > 0 || r.ingresos_jot > 0 || r.meta_leads_total > 0)
       .sort((a, b) => b.leads_total - a.leads_total);

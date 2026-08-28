@@ -3,7 +3,6 @@
 // Acceso: ADMINISTRADOR y GERENCIA (NOVONET / VELSA)
 // =============================================================================
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -295,16 +294,6 @@ export default function BotAuditor() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link
-            to="/bot-auditor/contactabilidad"
-            style={{
-              background: "#1d4ed8", color: "white", textDecoration: "none",
-              borderRadius: 8, padding: "8px 18px", fontWeight: 700,
-              fontSize: 12, display: "inline-flex", alignItems: "center",
-            }}
-          >
-            ?? Contactabilidad � mensajes y fechas
-          </Link>
           {esAdmin && (
             <button
               onClick={abrirConfig}
@@ -413,7 +402,7 @@ export default function BotAuditor() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
-                {["Lead", "Creado", "Empresa", "Asesor", "Etapa", "Canal", "Calif.", "Venta", "ATC", "Últ. mensaje", "Auditado", "Detalle"].map((h) => (
+                {["Lead", "Creado", "Empresa", "Asesor", "Etapa", "Canal", "Calif.", "Venta", "ATC", "Intervención", "Últ. mensaje", "Auditado", "Detalle"].map((h) => (
                   <th key={h} style={{ padding: "10px 14px", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -436,6 +425,15 @@ export default function BotAuditor() {
                     </td>
                     <td style={{ padding: "10px 14px", fontWeight: 700, color: scoreColor(row.puntuacion_venta) }}>{row.puntuacion_venta ?? "—"}</td>
                     <td style={{ padding: "10px 14px", fontWeight: 700, color: scoreColor(row.puntuacion_atc) }}>{row.puntuacion_atc ?? "—"}</td>
+                    <td style={{ padding: "10px 14px" }}>
+                      {row.necesita_intervencion ? (
+                        <span style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11, whiteSpace: "nowrap" }}>
+                          ⚠️ Recuperar
+                        </span>
+                      ) : (
+                        <span style={{ color: "#94a3b8" }}>—</span>
+                      )}
+                    </td>
                     <td style={{ padding: "10px 14px", color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtFecha(row.ultimo_mensaje_at)}</td>
                     <td style={{ padding: "10px 14px", color: "#64748b", whiteSpace: "nowrap" }}>{fmtFecha(row.fecha_hora_auditada)}</td>
                     <td style={{ padding: "10px 14px" }}>
@@ -661,6 +659,12 @@ export default function BotAuditor() {
                   <div><strong>Calificación:</strong> {detalle.calificacion || "—"}</div>
                   <div><strong>Puntuación Venta:</strong> {detalle.puntuacion_venta ?? "—"}</div>
                   <div><strong>Puntuación ATC:</strong> {detalle.puntuacion_atc ?? "—"}</div>
+                  <div>
+                    <strong>Intervención:</strong>{" "}
+                    {detalle.necesita_intervencion ? (
+                      <span style={{ color: "#991b1b", fontWeight: 700 }}>⚠️ Necesita recuperar venta</span>
+                    ) : "—"}
+                  </div>
                   <div><strong>Lead creado:</strong> {fmtFecha(detalle.fecha_creacion_lead)}</div>
                   <div><strong>Último mensaje:</strong> {fmtFecha(detalle.ultimo_mensaje_at)}</div>
                   <div><strong>Auditado:</strong> {fmtFecha(detalle.fecha_hora_auditada)}</div>

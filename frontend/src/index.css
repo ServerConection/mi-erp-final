@@ -29,6 +29,18 @@
   --radius-lg:     16px;
   --radius-xl:     20px;
   --transition:    all .2s cubic-bezier(.4,0,.2,1);
+
+  /* — premium v2: acentos duotono suaves (fondos/chips, no botones) — */
+  --duo-blue:      linear-gradient(135deg, rgba(37,99,235,.13), rgba(79,70,229,.03));
+  --duo-indigo:    linear-gradient(135deg, rgba(79,70,229,.13), rgba(37,99,235,.03));
+  --duo-teal:      linear-gradient(135deg, rgba(13,148,136,.13), rgba(5,150,105,.03));
+  --duo-amber:     linear-gradient(135deg, rgba(217,119,6,.13), rgba(245,158,11,.03));
+  --duo-rose:      linear-gradient(135deg, rgba(225,29,72,.13), rgba(244,63,94,.03));
+
+  /* — premium v2: header con efecto glass al hacer scroll — */
+  --glass-bg:      rgba(255,255,255,.68);
+  --glass-border:  rgba(255,255,255,.7);
+  --glass-blur:    saturate(180%) blur(14px);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -570,4 +582,76 @@ select:focus, input[type="text"]:focus, input[type="date"]:focus {
 @media (max-width: 640px) {
   .recharts-cartesian-axis-tick-value { font-size: 8px !important; }
   .recharts-tooltip-item-value        { font-size: 12px !important; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KPI CARD — premium v2 (color-mix sobre --kpi-color por instancia)
+═══════════════════════════════════════════════════════════════════════ */
+.erp-kpi{
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--brand-blue)) 20%, transparent);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--kpi-color, var(--brand-blue)) 10%, transparent),
+    color-mix(in srgb, var(--kpi-color, var(--brand-blue)) 3%, transparent));
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+.erp-kpi:hover{
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.erp-kpi-icon{
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--kpi-color, var(--brand-blue)) 16%, transparent);
+  color: var(--kpi-color, var(--brand-blue));
+}
+.erp-kpi-value{
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CHART CARD — premium v2 shell (borde casi invisible + sombra)
+═══════════════════════════════════════════════════════════════════════ */
+.erp-chart-card{
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: var(--transition);
+}
+.erp-chart-card:hover{ box-shadow: var(--shadow-md); }
+.erp-chart-head{
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HEADER — glass on scroll (premium v2)
+═══════════════════════════════════════════════════════════════════════ */
+.erp-header-glass{
+  transition: background .25s ease, backdrop-filter .25s ease, border-color .25s ease, box-shadow .25s ease;
+  border-bottom: 1px solid transparent;
+}
+.erp-header-glass.is-scrolled{
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom-color: var(--border-subtle);
+  box-shadow: var(--shadow-sm);
 }

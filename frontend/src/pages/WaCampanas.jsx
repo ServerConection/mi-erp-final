@@ -44,6 +44,20 @@ const RCPT_LABEL = {
   delivered: "Entregado", read: "Leído", failed: "Fallido",
 };
 
+// Días de la semana para el picker de horario de envío. Se muestran en
+// orden Lun→Dom, pero el value sigue la convención de Date#getDay()
+// (0=domingo ... 6=sábado) porque así los guarda el backend.
+const DIAS_SEMANA = [
+  { value: 1, label: "Lun" },
+  { value: 2, label: "Mar" },
+  { value: 3, label: "Mié" },
+  { value: 4, label: "Jue" },
+  { value: 5, label: "Vie" },
+  { value: 6, label: "Sáb" },
+  { value: 0, label: "Dom" },
+];
+const HORAS_DIA = Array.from({ length: 24 }, (_, h) => h);
+
 // Preview de mensaje con variables de ejemplo
 const PREVIEW_VARS = { nombre: "María", numero: "0999999999" };
 const interpolate = (text) =>
@@ -53,6 +67,7 @@ const emptyForm = {
   name: "", line_id: "", list_id: "",
   min_delay_secs: 8, max_delay_secs: 20,
   batch_size: 50, batch_pause_secs: 120,
+  send_days: [], send_hour_from: "", send_hour_to: "",
 };
 
 export default function WaCampanas() {
@@ -134,6 +149,9 @@ export default function WaCampanas() {
       max_delay_secs: camp.max_delay_secs ?? 20,
       batch_size: camp.batch_size ?? 50,
       batch_pause_secs: camp.batch_pause_secs ?? 120,
+      send_days: camp.send_days || [],
+      send_hour_from: camp.send_hour_from ?? "",
+      send_hour_to: camp.send_hour_to ?? "",
     });
     setVariants(msgs.length
       ? msgs.map(m => ({
@@ -157,6 +175,9 @@ export default function WaCampanas() {
       batch_size: camp.batch_size ?? 50,
       batch_pause_secs: camp.batch_pause_secs ?? 120,
       line_id: camp.line_id || "",
+      send_days: camp.send_days || [],
+      send_hour_from: camp.send_hour_from ?? "",
+      send_hour_to: camp.send_hour_to ?? "",
     });
     setEditCamp(camp);
   };
@@ -458,6 +479,48 @@ export default function WaCampanas() {
                 </div>
               </div>
 
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Días de envío (opcional)</label>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {DIAS_SEMANA.map(d => {
+                    const activo = form.send_days.includes(d.value);
+                    return (
+                      <button key={d.value} type="button"
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          send_days: activo ? f.send_days.filter(v => v !== d.value) : [...f.send_days, d.value],
+                        }))}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          activo ? "bg-green-600 border-green-600 text-white" : "border-slate-200 text-slate-500 hover:border-green-300"
+                        }`}>
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Sin seleccionar = todos los días</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Enviar desde</label>
+                  <select value={form.send_hour_from}
+                    onChange={e => setForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    <option value="">Sin restricción</option>
+                    {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Enviar hasta</label>
+                  <select value={form.send_hour_to}
+                    onChange={e => setForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    <option value="">Sin restricción</option>
+                    {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                  </select>
+                </div>
+              </div>
+
               {/* Variantes */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -585,6 +648,48 @@ export default function WaCampanas() {
                   <input type="number" value={editForm.batch_pause_secs}
                     onChange={e => setEditForm(f => ({ ...f, batch_pause_secs: +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Días de envío (opcional)</label>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {DIAS_SEMANA.map(d => {
+                    const activo = editForm.send_days.includes(d.value);
+                    return (
+                      <button key={d.value} type="button"
+                        onClick={() => setEditForm(f => ({
+                          ...f,
+                          send_days: activo ? f.send_days.filter(v => v !== d.value) : [...f.send_days, d.value],
+                        }))}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          activo ? "bg-green-600 border-green-600 text-white" : "border-slate-200 text-slate-500 hover:border-green-300"
+                        }`}>
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Sin seleccionar = todos los días</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Enviar desde</label>
+                  <select value={editForm.send_hour_from}
+                    onChange={e => setEditForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    <option value="">Sin restricción</option>
+                    {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Enviar hasta</label>
+                  <select value={editForm.send_hour_to}
+                    onChange={e => setEditForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+                    <option value="">Sin restricción</option>
+                    {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                  </select>
                 </div>
               </div>
             </div>

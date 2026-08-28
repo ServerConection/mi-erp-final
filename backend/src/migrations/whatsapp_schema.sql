@@ -113,6 +113,18 @@ CREATE TABLE IF NOT EXISTS campaigns (
 CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
 CREATE INDEX IF NOT EXISTS idx_campaigns_line   ON campaigns(line_id);
 
+-- Horario de envío permitido (2026-08-28): días de la semana y rango de
+-- horas en que la campaña puede enviar. NULL/vacío = sin restricción
+-- (comportamiento igual que antes de este cambio).
+-- send_days: 0=domingo, 1=lunes ... 6=sábado (igual que Date#getDay() de JS).
+-- send_hour_from / send_hour_to: hora local 0-23, horario de Ecuador.
+-- paused_for_schedule: true cuando el motor pausó la campaña por estar
+-- fuera de esta ventana (para que el Scheduler sepa cuáles reanudar solo).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_days SMALLINT[];
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_hour_from SMALLINT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_hour_to SMALLINT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS paused_for_schedule BOOLEAN DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS campaign_messages (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id  UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,

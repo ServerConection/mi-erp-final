@@ -2,6 +2,7 @@ const {
   UMBRALES_DEFECTO, SEVERIDADES, normalizarUmbrales,
   expresionSeveridad, expresionMinutosEspera,
 } = require('./contactabilidad.severidad');
+const { CAPACIDADES_COMPLETAS, columnaOpcional } = require('./contactabilidad.esquema');
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const TEXTO = (valor) => String(valor).trim();
@@ -129,6 +130,10 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
   const gestionable = esGestionableExpr('u.etapa_nombre');
   const severidad = expresionSeveridad('u', umbrales);
   const minutosEspera = expresionMinutosEspera('u');
+  // Columnas que solo existen tras la migracion de tiempo real. Si no estan,
+  // se devuelven como NULL para que el contrato de la respuesta no cambie.
+  const cols = { ...CAPACIDADES_COMPLETAS, ...(opciones.columnas || {}) };
+  const chatId = columnaOpcional(cols.chat_id, 'u.chat_id', 'chat_id');
 
   const consultas = [
     pool.query(`${respuestas}
@@ -224,7 +229,7 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
              u.origen_nombre, u.etapa_id, u.etapa_nombre, u.fecha_creacion,
              u.mensajes_cliente_total, u.mensajes_asesor_total,
              u.ultimo_mensaje_cliente_at, u.ultimo_mensaje_asesor_at, u.pendiente_por,
-             u.temperatura, u.chat_id, u.ultima_sincronizacion_at,
+             u.temperatura, ${chatId}, u.ultima_sincronizacion_at,
              u.tiempo_primera_respuesta_seg,
              (${severidad}) AS severidad,
              (${minutosEspera}) AS minutos_pendiente

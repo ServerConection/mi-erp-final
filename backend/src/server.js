@@ -9,6 +9,7 @@ const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMater
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
 const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
+const { initContactabilidadTiempoReal } = require('./jobs/contactabilidadTiempoReal.cron');
 
 // SEGURIDAD: Verifica variables de entorno criticas al arrancar
 const requiredEnv = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'PORT'];
@@ -46,6 +47,7 @@ server.listen(process.env.PORT, async () => {
   await refreshRedesMVs();
   initJotformSync();
   initContactabilidadSync();
+  initContactabilidadTiempoReal();
   initWinTrackerSync();
   iniciarWhatsApp();
 });

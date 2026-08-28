@@ -1,5 +1,62 @@
-export const FILTER_KEYS = ['desde', 'hasta', 'empresa', 'origen', 'asesor_id', 'etapa'];
-const SERIALIZE_KEYS = ['empresa', 'origen', 'asesor_id', 'etapa', 'desde', 'hasta'];
+// Filtros base del tablero + filtros operativos de contactabilidad.
+// El orden de SERIALIZE_KEYS define como se ve la URL compartible.
+export const BASE_FILTER_KEYS = ['desde', 'hasta', 'empresa', 'origen', 'asesor_id', 'etapa'];
+export const OPERATIVE_FILTER_KEYS = [
+  'pendiente_por', 'severidad', 'min_espera', 'temperatura', 'q', 'solo_con_mensajes',
+];
+export const FILTER_KEYS = [...BASE_FILTER_KEYS, ...OPERATIVE_FILTER_KEYS];
+const SERIALIZE_KEYS = [
+  'empresa', 'origen', 'asesor_id', 'etapa', 'desde', 'hasta', ...OPERATIVE_FILTER_KEYS,
+];
+
+// Un unico diccionario de severidad para tabla, semaforo y leyendas.
+export const SEVERITY_META = {
+  CRITICO: { label: 'Crítico', color: '#b91c1c', bg: '#fee2e2', orden: 0 },
+  GRAVE: { label: 'Grave', color: '#c2410c', bg: '#ffedd5', orden: 1 },
+  ALERTA: { label: 'En alerta', color: '#a16207', bg: '#fef9c3', orden: 2 },
+  OK: { label: 'Al día', color: '#15803d', bg: '#dcfce7', orden: 3 },
+};
+
+export const severityMeta = (valor) => SEVERITY_META[String(valor || 'OK').toUpperCase()] || SEVERITY_META.OK;
+
+/**
+ * Severidad de una fila. Usa la que calculo el servidor y, si no llego,
+ * la deduce en el navegador para que la tabla nunca quede sin semaforo.
+ */
+export function rowSeverity(row = {}, umbrales = { alerta: 15, grave: 30, critico: 60 }, now = Date.now()) {
+  if (row.severidad) return String(row.severidad).toUpperCase();
+  if (row.pendiente_por !== 'ASESOR' || !row.ultimo_mensaje_cliente_at) return 'OK';
+  const minutos = Math.floor((now - new Date(row.ultimo_mensaje_cliente_at).getTime()) / 60000);
+  if (minutos >= umbrales.critico) return 'CRITICO';
+  if (minutos >= umbrales.grave) return 'GRAVE';
+  if (minutos >= umbrales.alerta) return 'ALERTA';
+  return 'OK';
+}
+
+/** "hace 3 min" — se recalcula en el navegador, sin esperar al backend. */
+export function formatRelative(value, now = Date.now()) {
+  if (!value) return '—';
+  const ms = now - new Date(value).getTime();
+  if (Number.isNaN(ms)) return '—';
+  if (ms < 0) return 'ahora';
+  const minutos = Math.floor(ms / 60000);
+  if (minutos < 1) return 'hace segundos';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h${minutos % 60 ? ` ${minutos % 60} min` : ''}`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} d${horas % 24 ? ` ${horas % 24} h` : ''}`;
+}
+
+/** Minutos que el cliente lleva esperando, recalculados en vivo. */
+export function waitingMinutes(row = {}, now = Date.now()) {
+  if (row.pendiente_por !== 'ASESOR' || !row.ultimo_mensaje_cliente_at) return null;
+  const minutos = Math.floor((now - new Date(row.ultimo_mensaje_cliente_at).getTime()) / 60000);
+  return Number.isFinite(minutos) && minutos >= 0 ? minutos : null;
+}
+
+export const hasActiveFilters = (filters = {}) =>
+  FILTER_KEYS.some((key) => filters[key] !== '' && filters[key] != null);
 
 export function buildAnalyticsQuery(filters = {}) {
   const params = new URLSearchParams();

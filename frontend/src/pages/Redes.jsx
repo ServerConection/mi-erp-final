@@ -29,15 +29,15 @@ const C = {
 };
 
 const CANALES = {
-  "ARTS":               { color: "#1e3a8a", bg: "#dbeafe", icon: "🎨", label: "ARTS" },
-  "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
-  "ARTS GOOGLE":        { color: "#ea4335", bg: "#fee2e2", icon: "🔍", label: "ARTS GG" },
-  "REMARKETING":        { color: "#7c3aed", bg: "#ede9fe", icon: "🔁", label: "REMARKETING" },
-  "VIDIKA":             { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA" },
-  "VIDIKA GOOGLE":      { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA GG" },
-  "POR RECOMENDACIÓN":  { color: "#f59e0b", bg: "#fef3c7", icon: "🤝", label: "RECOMEND." },
-  "MAL INGRESO":        { color: "#94a3b8", bg: "#f1f5f9", icon: "⚠️", label: "MAL ING." },
-  "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "❓", label: "SIN MAPEO" },
+  "ARTS":               { color: "#1e3a8a", bg: "#dbeafe", icon: "brand",     label: "ARTS" },
+  "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "facebook",  label: "ARTS FB" },
+  "ARTS GOOGLE":        { color: "#ea4335", bg: "#fee2e2", icon: "search",    label: "ARTS GG" },
+  "REMARKETING":        { color: "#7c3aed", bg: "#ede9fe", icon: "loop",      label: "REMARKETING" },
+  "VIDIKA":             { color: "#059669", bg: "#d1fae5", icon: "tv",        label: "VIDIKA" },
+  "VIDIKA GOOGLE":      { color: "#059669", bg: "#d1fae5", icon: "tv",        label: "VIDIKA GG" },
+  "POR RECOMENDACIÓN":  { color: "#f59e0b", bg: "#fef3c7", icon: "handshake", label: "RECOMEND." },
+  "MAL INGRESO":        { color: "#94a3b8", bg: "#f1f5f9", icon: "warning",   label: "MAL ING." },
+  "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "help",      label: "SIN MAPEO" },
 };
 
 const ORIGEN_CANAL = {
@@ -71,7 +71,7 @@ const ORIGEN_COLORS = [
 ];
 
 const getCanal     = (o) => { if (!o) return "SIN MAPEO"; if (CANALES[o]) return o; return ORIGEN_CANAL[o.toUpperCase()] || ORIGEN_CANAL[o] || "SIN MAPEO"; };
-const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "•", label: c };
+const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "help", label: c };
 const esPublicidad = (c) => c !== "MAL INGRESO" && c !== "SIN MAPEO";
 const getFechaHoy  = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
 const formatFecha  = (f) => { if (!f) return "—"; const [,m,d] = String(f).split("T")[0].split("-"); return `${d}/${m}`; };
@@ -288,24 +288,62 @@ function ChartModal({ title, onClose, children }) {
   );
 }
 
+/* Iconos de trazo — reemplazan los emoji, stroke-width 1.75px consistente en todo el módulo */
+const ICONS = {
+  brand:     <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+  facebook:  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3.3l.7-4H14V7a1 1 0 0 1 1-1h3z"/>,
+  search:    <><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></>,
+  loop:      <><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></>,
+  tv:        <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M17 2l-5 5-5-5"/></>,
+  handshake: <><path d="M2 12l4-4 4 3 3-3 4 4-3 3-4-3-4 3z"/><path d="M8 15l3 3 3-3"/></>,
+  warning:   <><path d="M10.3 3.9L2.1 18a2 2 0 0 0 1.7 3h16.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
+  help:      <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.9.4-1.4 1-1.4 1.9"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
+  users:     <><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+  check:     <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
+  clipboard: <><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/></>,
+  box:       <><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></>,
+  dollar:    <><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+  phone:     <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.7 19.7 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.7 19.7 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>,
+  chart:     <><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></>,
+  trending:  <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,
+  bolt:      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>,
+  target:    <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></>,
+  shuffle:   <><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></>,
+  scope:     <><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></>,
+  file:      <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></>,
+  building:  <><rect x="4" y="2" width="16" height="20" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><line x1="9" y1="17" x2="15" y2="17"/></>,
+  rocket:    <><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 19 2c0 2.52-.63 6.5-4 9a22.35 22.35 0 0 1-3 2z"/><path d="M9 12H4s.55-2.23 2-3c1.62-.87 4 0 4 0"/><path d="M12 15v5s2.23-.55 3-2c.87-1.62 0-4 0-4"/></>,
+  expand:    <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>,
+  calendar:  <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
+};
+function Icon({ name, className = "w-3.5 h-3.5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      {ICONS[name] || ICONS.help}
+    </svg>
+  );
+}
+
 function ChartCard({ title, subtitle, accent = C.primary, height = 230, children }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
-        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.border }}>
+      <div className="erp-chart-card">
+        <div className="erp-chart-head">
           <div className="flex items-center gap-3">
-            <div className="w-1 h-7 rounded-full" style={{ background: accent }} />
+            <div className="w-1 h-7 rounded-full flex-shrink-0" style={{ background: accent }} />
             <div>
               <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
               {subtitle && <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
             </div>
           </div>
           <button onClick={() => setOpen(true)}
-            className="text-[8px] font-black uppercase px-3 py-1 rounded-full border hover:shadow-sm transition-all"
-            style={{ borderColor: C.border, color: C.muted }}>⤢ Ampliar</button>
+            className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full"
+            style={{ border: "1px solid var(--border)", color: C.muted, transition: "var(--transition)" }}>
+            <Icon name="expand" className="w-2.5 h-2.5" /> Ampliar
+          </button>
         </div>
-        <div className="p-5"><ResponsiveContainer width="100%" height={height}>{children}</ResponsiveContainer></div>
+        <div className="px-5 pb-5"><ResponsiveContainer width="100%" height={height}>{children}</ResponsiveContainer></div>
       </div>
       {open && <ChartModal title={title} onClose={() => setOpen(false)}>{children}</ChartModal>}
     </>
@@ -331,34 +369,38 @@ function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
 }
 function KpiCard({ label, value, color = C.primary, icon, sub }) {
   return (
-    <div className="rounded-2xl border shadow-sm px-4 py-3 flex items-center gap-3"
-      style={{ borderColor: `${color}25`, background: `linear-gradient(135deg,${color}10,${color}04)`, boxShadow: `0 4px 16px ${color}10` }}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: `${color}18` }}>{icon}</div>
+    <div className="erp-kpi" style={{ "--kpi-color": color }}>
+      <div className="erp-kpi-icon">
+        <Icon name={icon} className="w-[18px] h-[18px]" />
+      </div>
       <div className="min-w-0">
-        <div className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: `${color}80` }}>{label}</div>
-        <div className="text-xl font-black leading-tight truncate" style={{ color }}>{value}</div>
-        {sub && <div className="text-[8px] font-medium mt-0.5" style={{ color: C.muted }}>{sub}</div>}
+        <div className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: `${color}90` }}>{label}</div>
+        <div className="erp-kpi-value text-xl font-black leading-tight truncate" style={{ color }}>{value}</div>
+        {sub && <div className="text-[8px] font-semibold mt-0.5" style={{ color: C.muted }}>{sub}</div>}
       </div>
     </div>
   );
 }
 function CanalBadge({ canal, size = "sm" }) {
   const cfg = getCfg(canal);
-  const cls = size === "sm" ? "px-2 py-0.5 text-[8px]" : "px-3 py-1 text-[9px]";
+  const cls = size === "sm" ? "px-2 py-0.5 text-[8px] gap-1" : "px-3 py-1 text-[9px] gap-1.5";
+  const iconCls = size === "sm" ? "w-2.5 h-2.5" : "w-3 h-3";
   return (
-    <span className={`${cls} rounded-full font-black uppercase inline-flex items-center gap-1`}
-      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
-      {cfg.icon} {cfg.label}
+    <span className={`${cls} rounded-full font-black uppercase inline-flex items-center`}
+      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}26`, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }}>
+      <Icon name={cfg.icon} className={iconCls} /> {cfg.label}
     </span>
   );
 }
 function VistaToggle({ value, onChange, options, color = C.primary }) {
   return (
-    <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: C.border }}>
+    <div className="inline-flex rounded-full p-[3px] gap-[2px]" style={{ background: "var(--surface-3)" }}>
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)}
-          className="px-3 py-1.5 text-[8px] font-black uppercase transition-all"
-          style={value === o.value ? { background: color, color: "#fff" } : { background: "#fff", color: C.muted }}>
+          className="px-3 py-1.5 text-[8px] font-black uppercase rounded-full"
+          style={value === o.value
+            ? { background: "#fff", color, boxShadow: "var(--shadow-sm)", transition: "var(--transition)" }
+            : { background: "transparent", color: C.muted, transition: "var(--transition)" }}>
           {o.label}
         </button>
       ))}
@@ -864,13 +906,13 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="👥" color={C.primary} sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
-        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="🤝" color={C.success} sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}%` : undefined} />
-        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="📋" color={C.cyan}    sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
-        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="✅" color={C.success} sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
-        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="📦" color={C.sky}   sub="pendientes activar" />
-        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="💰" color={C.violet} sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
-        <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="📞"
+        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="users"     color={C.primary} sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
+        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="handshake" color={C.success} sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}%` : undefined} />
+        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="clipboard" color={C.cyan}    sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
+        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="check"     color={C.success} sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
+        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="box"     color={C.sky}   sub="pendientes activar" />
+        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="dollar" color={C.violet} sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
+        <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="phone"
           color={pctAtcGral > 40 ? C.danger : pctAtcGral > 20 ? C.warning : C.success}
           sub={`${totalAtc} leads ATC`} />
       </div>
@@ -1937,15 +1979,15 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "general",       label: "Monitoreo General",    icon: "📊" },
-  { id: "graficos",      label: "Gráficos Gerencia",    icon: "📈" },
-  { id: "asesorvpauta",  label: "Asesores vs Pauta",    icon: "⚡" },
-  { id: "metas",         label: "Metas vs Logros",      icon: "🎯" },
-  { id: "comparativo",   label: "Comparativo",          icon: "🔀" },
-  { id: "pautas",        label: "Análisis Pautas",      icon: "🔬" },
-  { id: "reporte",       label: "Reporte Data",         icon: "📑" },
-  { id: "agencias",      label: "Agencias",             icon: "🏢" },
-  { id: "proximamente",  label: "Próximamente",         icon: "🚀" },
+  { id: "general",       label: "Monitoreo General",    icon: "chart" },
+  { id: "graficos",      label: "Gráficos Gerencia",    icon: "trending" },
+  { id: "asesorvpauta",  label: "Asesores vs Pauta",    icon: "bolt" },
+  { id: "metas",         label: "Metas vs Logros",      icon: "target" },
+  { id: "comparativo",   label: "Comparativo",          icon: "shuffle" },
+  { id: "pautas",        label: "Análisis Pautas",      icon: "scope" },
+  { id: "reporte",       label: "Reporte Data",         icon: "file" },
+  { id: "agencias",      label: "Agencias",             icon: "building" },
+  { id: "proximamente",  label: "Próximamente",         icon: "rocket" },
 ];
 
 export default function Redes() {
@@ -1958,8 +2000,53 @@ export default function Redes() {
   const [applying,   setApplying]   = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
+  // Header con efecto glass al hacer scroll — detecta el ancestro con scroll real
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const headerRef = useRef(null);
   useEffect(() => {
-    const intervalId = setInterval(() => setRefreshTick((t) => t + 1), 15 * 60 * 1000);
+    const el = headerRef.current;
+    if (!el) return;
+    let node = el.parentElement;
+    while (node && node !== document.body) {
+      const cs = window.getComputedStyle(node);
+      if (/(auto|scroll)/.test(cs.overflowY)) break;
+      node = node.parentElement;
+    }
+    const scrollEl = node && node !== document.body ? node : window;
+    const onScroll = () => {
+      const top = scrollEl === window ? window.scrollY : scrollEl.scrollTop;
+      setHeaderScrolled(top > 8);
+    };
+    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => scrollEl.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // FIX (2026-08-28): "hoy" se calculaba UNA sola vez al montar el componente.
+  // El refresco "Live" cada 15 min solo incrementaba refreshTick y volvia a
+  // pedir datos con el MISMO filtro.desde/hasta de siempre -> si la pestana
+  // quedaba abierta cruzando la medianoche, el dashboard seguia "en vivo"
+  // pidiendo para siempre el dia en que se abrio, nunca el dia actual.
+  // Ahora cada tick revisa si cambio el dia; si el usuario estaba viendo
+  // "hoy" (desde === hasta === el hoy anterior), desliza el rango al nuevo
+  // dia automaticamente. Si eligio manualmente una fecha pasada, no se toca.
+  const hoyRef = useRef(hoy);
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const hoyActual = getFechaHoy();
+      if (hoyActual !== hoyRef.current) {
+        const hoyAnterior = hoyRef.current;
+        setFechaDesde((d) => (d === hoyAnterior ? hoyActual : d));
+        setFechaHasta((h) => (h === hoyAnterior ? hoyActual : h));
+        setFiltro((f) => (
+          f.desde === hoyAnterior && f.hasta === hoyAnterior
+            ? { desde: hoyActual, hasta: hoyActual }
+            : f
+        ));
+        hoyRef.current = hoyActual;
+      }
+      setRefreshTick((t) => t + 1);
+    }, 15 * 60 * 1000);
     return () => clearInterval(intervalId);
   }, []);
 
@@ -1973,46 +2060,52 @@ export default function Redes() {
 
   return (
     <div className="min-h-screen p-5 md:p-7" style={{ background: C.light }}>
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
-              style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>V</div>
-            <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
-            <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase" style={{ background: `${C.success}15`, color: C.success }}>● Live</span>
-          </div>
-          <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>NOVONET — Actualización cada 15 minutos</p>
-          <div className="flex flex-wrap gap-1.5 ml-12 mt-2">
-            {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg]) => (
-              <span key={canal} className="text-[8px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-                style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
-                {cfg.icon} {cfg.label}
+      {/* Header — sticky + glass on scroll */}
+      <div ref={headerRef}
+        className={`sticky top-0 z-20 -mx-5 md:-mx-7 px-5 md:px-7 py-4 mb-3 erp-header-glass ${headerScrolled ? "is-scrolled" : ""}`}>
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
+                style={{ background: `linear-gradient(135deg,#f97316,#c2410c)` }}>V</div>
+              <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
+              <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase inline-flex items-center gap-1.5"
+                style={{ background: `${C.success}15`, color: C.success }}>
+                <span className="live-dot" style={{ background: C.success }} /> Live
               </span>
-            ))}
+            </div>
+            <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>NOVONET — Actualización cada 15 minutos</p>
+            <div className="flex flex-wrap gap-1.5 ml-12 mt-2">
+              {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg]) => (
+                <span key={canal} className="text-[8px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                  style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}26`, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }}>
+                  <Icon name={cfg.icon} className="w-2.5 h-2.5" /> {cfg.label}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
-          {/* Período y botón Aplicar */}
-          <div className="px-5 py-3 flex flex-wrap items-end gap-3">
-            {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
-              <div key={key} className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
-                <input type="date" value={val}
-                  onChange={e => key === "desde" ? setFechaDesde(e.target.value) : setFechaHasta(e.target.value)}
-                  className="border rounded-xl px-3 py-2 text-[11px] font-bold outline-none bg-white [color-scheme:light]"
-                  style={{ borderColor: C.border }} />
-              </div>
-            ))}
-            <button onClick={handleAplicar}
-              className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all"
-              style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
-              {applying || loading ? "Cargando..." : "Aplicar"}
-            </button>
-            <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
-            <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
-              Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
-            </p>
+          <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
+            {/* Período y botón Aplicar */}
+            <div className="px-5 py-3 flex flex-wrap items-end gap-3">
+              {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
+                <div key={key} className="flex flex-col gap-1">
+                  <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
+                  <input type="date" value={val}
+                    onChange={e => key === "desde" ? setFechaDesde(e.target.value) : setFechaHasta(e.target.value)}
+                    className="border rounded-xl px-3 py-2 text-[11px] font-bold outline-none bg-white [color-scheme:light]"
+                    style={{ borderColor: C.border }} />
+                </div>
+              ))}
+              <button onClick={handleAplicar}
+                className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all"
+                style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
+                {applying || loading ? "Cargando..." : "Aplicar"}
+              </button>
+              <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
+              <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
+                Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -2031,7 +2124,7 @@ export default function Redes() {
             style={tab === t.id
               ? { background: `linear-gradient(135deg,${C.primary},#1e40af)`, color: "#fff", boxShadow: `0 4px 14px ${C.primary}40` }
               : { color: C.muted }}>
-            <span className="text-sm">{t.icon}</span>
+            <Icon name={t.icon} className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}

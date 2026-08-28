@@ -2,6 +2,22 @@ const { query } = require('../config/db')
 const emailService = require('../services/email.service')
 const webhookService = require('../services/webhook.service')
 
+// ── Guardas de seguridad (2026-08-28) ────────────────────────────────────
+// Un flujo de chatbot lo arma alguien arrastrando nodos en un editor visual;
+// es facil (sin querer) dejar un ciclo — un nodo que termina apuntando de
+// vuelta a uno anterior sin pasar por un nodo de espera. Sin freno, eso
+// dispara mensajes al cliente sin parar (spam puro, la señal de bloqueo mas
+// obvia que existe) y puede colgar el proceso. Dos guardas independientes:
+//
+//  1. Tope de nodos por turno: si UN mensaje entrante dispara mas de esta
+//     cantidad de nodos seguidos, se corta — casi seguro es un ciclo.
+//  2. Un turno a la vez por conversacion: si llegan varios mensajes muy
+//     rapido del mismo contacto, el segundo no se procesa mientras el
+//     primero sigue corriendo (evita respuestas cruzadas/duplicadas). El
+//     mensaje igual queda guardado en el historial, solo no dispara el bot.
+const MAX_NODOS_POR_TURNO = parseInt(process.env.WA_FLOW_MAX_NODOS_POR_TURNO || '25', 10)
+const conversacionesEnProceso = new Set()
+
 class FlowEngine {
   constructor(baileysManager, io) {
     this.baileysManager = baileysManager
@@ -9,6 +25,15 @@ class FlowEngine {
   }
 
   async process({ lineId, sock, waNumber, text, conv, botId, isPollVote = false }) {
+    if (conversacionesEnProceso.has(conv.id)) {
+      console.log(
+        `[FlowEngine] Ya hay un turno en curso para la conversación ${conv.id} — ` +
+        `se ignora este mensaje para no cruzar respuestas (igual queda guardado en el historial).`
+      )
+      return
+    }
+    conversacionesEnProceso.add(conv.id)
+    const turno = { nodos: 0 }
     try {
       const botRes = await query('SELECT flow_json FROM bots WHERE id=$1 AND is_active=true', [botId])
       if (!botRes.rows.length) return
@@ -57,7 +82,7 @@ class FlowEngine {
         // Continuar al siguiente nodo desde el waitResponseNode
         const waitNode = flow.nodes.find(n => n.id === waitingNodeId)
         if (waitNode) {
-          await this._next(waitNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId })
+          await this._next(waitNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId, turno })
           return
         }
       }
@@ -84,13 +109,13 @@ class FlowEngine {
           if (selectedOption && typeof selectedOption === 'object' && selectedOption.nextNodeId) {
             const targetNode = flow.nodes.find(n => n.id === selectedOption.nextNodeId)
             if (targetNode) {
-              await this._executeNode(targetNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId })
+              await this._executeNode(targetNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId, turno })
               return
             }
           }
 
           // Si no tiene destino directo, ir al siguiente por edge
-          await this._next(waitingNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId })
+          await this._next(waitingNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId, turno })
           return
         }
       }
@@ -105,16 +130,31 @@ class FlowEngine {
       }
 
       if (!currentNode) return
-      await this._executeNode(currentNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId })
+      await this._executeNode(currentNode, flow, { lineId, sock, waNumber, conv: freshConv, context, botId, turno })
     } catch (err) {
       console.error('[FlowEngine] Error:', err.message)
       console.error(err.stack)
+    } finally {
+      conversacionesEnProceso.delete(conv.id)
     }
   }
 
   async _executeNode(node, flow, ctx) {
-    const { lineId, sock, waNumber, conv, context, botId } = ctx
+    const { lineId, sock, waNumber, conv, context, botId, turno } = ctx
     if (!node) return
+
+    if (turno) {
+      turno.nodos++
+      if (turno.nodos > MAX_NODOS_POR_TURNO) {
+        console.error(
+          `[FlowEngine] 🛑 Se alcanzó el límite de ${MAX_NODOS_POR_TURNO} nodos en un solo turno ` +
+          `(conversación ${conv?.id}, línea ${lineId}). Probable ciclo en el flujo — se detiene aquí ` +
+          `para no floodear al cliente. Revisa el flujo del bot buscando un nodo que vuelva a otro ya ` +
+          `visitado sin pasar por un nodo de "esperar respuesta".`
+        )
+        return
+      }
+    }
 
     console.log(`[FlowEngine] Ejecutando nodo: ${node.type} (${node.id})`)
 
@@ -146,7 +186,7 @@ class FlowEngine {
         } catch (e) {
           console.error(`[FlowEngine] Error enviando mensaje:`, e.message)
         }
-        await new Promise(r => setTimeout(r, 500))
+        await this._sleep(500)
         await this._next(node, flow, ctx)
         break
       }
@@ -164,7 +204,7 @@ class FlowEngine {
           } catch (e) {
             console.error(`[FlowEngine] Error enviando pregunta:`, e.message)
           }
-          await new Promise(r => setTimeout(r, 300))
+          await this._sleep(300)
         }
 
         // Guardar estado de espera
@@ -218,7 +258,7 @@ class FlowEngine {
         }
 
 
-        await new Promise(r => setTimeout(r, 800))
+        await this._sleep(800)
 
         // 2. Enviar lista interactiva (botón "Ver opciones") con fallback a poll
         try {
@@ -270,7 +310,7 @@ class FlowEngine {
 
       case 'waitNode': {
         const seconds = parseInt(node.data?.seconds || 1)
-        await new Promise(r => setTimeout(r, seconds * 1000))
+        await this._sleep(seconds * 1000)
         await this._next(node, flow, ctx)
         break
       }
@@ -408,6 +448,8 @@ class FlowEngine {
     const nextNode = flow.nodes.find(n => n.id === edge.target)
     if (nextNode) await this._executeNode(nextNode, flow, ctx)
   }
+
+  _sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
   _interpolate(text, context) {
     if (!text) return ''

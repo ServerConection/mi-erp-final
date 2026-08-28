@@ -15,6 +15,44 @@ const ETAPAS_VISIBLES = (process.env.BOT_AUDITOR_ETAPAS ||
 
 const FILTRO_ETAPA = `(stage_id IS NULL OR stage_id = ANY($__I__))`;
 
+// Nombre legible de cada stage_id. Solo existen 4 valores posibles porque
+// ETAPAS_VISIBLES ya filtra la consulta a estos mismos — por eso se resuelve
+// en JS con un mapa fijo en vez de un JOIN contra bitrix_etapas/bitrix_etapas_novonet:
+// ese JOIN dependía de tablas cuyo esquema nunca se confirmó en producción, ya
+// causó una caída de la vista principal una vez, y desde entonces seguía
+// cayendo silenciosamente al fallback (mostraba el código crudo "C19:LOSE" en
+// vez del nombre). Un mapa fijo no puede romper la consulta.
+const NOMBRES_ETAPA = {
+  'C19:UC_U0JYD8': 'ATC',
+  'C19:LOSE': 'DESCARTE',
+  'C8:UC_Q9LSSI': 'ATC',
+  'C8:LOSE': 'DESCARTE',
+};
+function nombreEtapa(stageId) {
+  return NOMBRES_ETAPA[stageId] || stageId || 'Sin etapa';
+}
+
+// "Necesita intervención para recuperar venta": la conversación se clasificó
+// como VENTA pero el bot le dio menos de 50/100 — indica que el asesor no
+// presentó bien los planes, no dio seguimiento o no manejó objeciones, y el
+// lead sigue siendo recuperable con una llamada/mensaje de un supervisor.
+const UMBRAL_INTERVENCION_VENTA = 50;
+function necesitaIntervencion(calificacion, puntuacionVenta) {
+  return (
+    String(calificacion).toUpperCase() === 'VENTA' &&
+    puntuacionVenta !== null &&
+    puntuacionVenta !== undefined &&
+    Number(puntuacionVenta) < UMBRAL_INTERVENCION_VENTA
+  );
+}
+function enriquecerFila(row) {
+  return {
+    ...row,
+    etapa: nombreEtapa(row.stage_id),
+    necesita_intervencion: necesitaIntervencion(row.calificacion, row.puntuacion_venta),
+  };
+}
+
 // Un ADMINISTRADOR ve las dos empresas; cualquier otro perfil queda acotado a
 // la suya. Sin esto, GERENCIA de VELSA podía leer auditorías de NOVONET.
 function empresaVisible(req, empresaSolicitada) {
@@ -94,43 +132,23 @@ async function listarAuditorias(req, res) {
     const offsetIdx = i++;
     const queryParams = [...params, limitNum, offset];
 
-    // El cruce con los catálogos de etapas es solo para MOSTRAR el nombre en
-    // vez del código crudo — nunca debe poder tumbar la vista principal. Si
-    // el JOIN falla por lo que sea (tabla/columna distinta en prod, tipo
-    // incompatible), se reintenta sin él y se loguea aparte para diagnosticar.
-    let dataResult;
-    try {
-      dataResult = await pool.query(
-        `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
-                puntuacion_venta, puntuacion_atc, observacion, stage_id,
-                COALESCE(be.nombre, ben.nombre, stage_id) AS etapa,
-                fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
-         FROM auditorias
-         LEFT JOIN bitrix_etapas         be  ON be.status_id  = stage_id
-         LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = stage_id
-         ${whereSql}
-         ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
-         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-        queryParams
-      );
-    } catch (joinError) {
-      console.error('[botAuditor.controller] listarAuditorias: JOIN de etapas falló, usando fallback sin nombre de etapa:', joinError.message);
-      dataResult = await pool.query(
-        `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
-                puntuacion_venta, puntuacion_atc, observacion, stage_id,
-                stage_id AS etapa,
-                fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
-         FROM auditorias
-         ${whereSql}
-         ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
-         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-        queryParams
-      );
-    }
+    // Nombre de etapa y flag de "necesita intervención" se calculan en JS
+    // (ver nombreEtapa/necesitaIntervencion) — sin JOIN, no hay forma de que
+    // esta consulta tumbe la vista principal.
+    const dataResult = await pool.query(
+      `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
+              puntuacion_venta, puntuacion_atc, observacion, stage_id,
+              fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
+       FROM auditorias
+       ${whereSql}
+       ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      queryParams
+    );
 
     res.json({
       success: true,
-      data: dataResult.rows,
+      data: dataResult.rows.map(enriquecerFila),
       pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (error) {
@@ -293,29 +311,14 @@ async function obtenerDetalle(req, res) {
       params.push(empresa);
     }
 
-    let result;
-    try {
-      result = await pool.query(
-        `SELECT a.*, COALESCE(be.nombre, ben.nombre, a.stage_id) AS etapa
-         FROM auditorias a
-         LEFT JOIN bitrix_etapas         be  ON be.status_id  = a.stage_id
-         LEFT JOIN bitrix_etapas_novonet ben ON ben.status_id = a.stage_id
-         WHERE a.id = $1${scope}`,
-        params
-      );
-    } catch (joinError) {
-      console.error('[botAuditor.controller] obtenerDetalle: JOIN de etapas falló, usando fallback sin nombre de etapa:', joinError.message);
-      result = await pool.query(
-        `SELECT a.*, a.stage_id AS etapa
-         FROM auditorias a
-         WHERE a.id = $1${scope}`,
-        params
-      );
-    }
+    const result = await pool.query(
+      `SELECT a.* FROM auditorias a WHERE a.id = $1${scope}`,
+      params
+    );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Auditoría no encontrada' });
     }
-    res.json({ success: true, data: result.rows[0] });
+    res.json({ success: true, data: enriquecerFila(result.rows[0]) });
   } catch (error) {
     console.error('[botAuditor.controller] obtenerDetalle error:', error);
     res.status(500).json({ success: false, error: 'Error al consultar la auditoría' });

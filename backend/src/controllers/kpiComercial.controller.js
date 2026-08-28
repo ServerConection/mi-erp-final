@@ -49,6 +49,46 @@ const validarRango = (d, h) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Normalización de nombre de asesor (FIX 2026-08-27) — mismo problema que en
+// indicadoresVelsaMaterialized.controller.js: mb.b_persona_responsable y
+// metas_asesor.asesor llegan como texto libre, con variantes de escritura
+// para la MISMA persona (nombre corto vs nombre legal completo, o espacios/
+// caracteres invisibles distintos). Sin esto, "datos" y "metas" agrupaban/
+// cruzaban por strings distintos para un mismo asesor y la tabla KPI
+// Comercial (Pto/Real) mostraba dos filas partidas para una sola persona
+// (ej. "Karina Torres" vs "KARINA MARICELA TORRES AMAGUANA").
+// claveAsesorSQL(): clave de agrupación/join, siempre en MAYÚSCULAS (no
+// romper metas.persona = datos.persona). nombreAsesorDisplaySQL(): mismo
+// merge pero conserva el nombre "bonito" para mostrar en pantalla.
+// Agregar aquí nuevos pares (en MAYÚSCULAS) apenas se detecten.
+function claveAsesorSQL(campo) {
+  const limpio = `UPPER(REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g'))`;
+  return `
+    CASE ${limpio}
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'KARINA TORRES'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'ROSSANNA ALVARADO'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'DAMIAN VIERA'
+      WHEN 'CHRISTIAN PONCE BAROJA' THEN 'CHRISTIAN PONCE'
+      ELSE ${limpio}
+    END`;
+}
+function nombreAsesorDisplaySQL(campo) {
+  const limpio = `REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g')`;
+  return `
+    CASE UPPER(${limpio})
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'Karina Torres'
+      WHEN 'KARINA TORRES' THEN 'Karina Torres'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'Rossanna Alvarado'
+      WHEN 'ROSSANNA ALVARADO' THEN 'Rossanna Alvarado'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'Damian Viera'
+      WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
+      WHEN 'CHRISTIAN PONCE BAROJA' THEN 'Christian Ponce'
+      WHEN 'CHRISTIAN PONCE' THEN 'Christian Ponce'
+      ELSE ${limpio}
+    END`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Consulta base: una fila por ASESOR con todos los reales + sus metas.
 // El nivel supervisor se obtiene agregando esta misma base.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,8 +97,8 @@ const validarRango = (d, h) => {
 const SQL_BASE = `
 WITH datos AS (
     SELECT
-        UPPER(TRIM(mb.b_persona_responsable))              AS persona,
-        MIN(mb.b_persona_responsable)                      AS asesor_display,
+        ${claveAsesorSQL('mb.b_persona_responsable')}              AS persona,
+        MIN(${nombreAsesorDisplaySQL('mb.b_persona_responsable')})                      AS asesor_display,
         __SUPERVISOR__                                     AS supervisor,
 
         -- ── Lado Bitrix (por fecha de creación del lead) ──────────────────
@@ -147,7 +187,7 @@ WITH datos AS (
 ),
 metas AS (
     -- MAX y no SUM: un asesor puede tener varias filas (una por escritura)
-    SELECT UPPER(TRIM(asesor))  AS persona,
+    SELECT ${claveAsesorSQL('asesor')}  AS persona,
            MAX(leads_total)     AS m_leads_total,
            MAX(leads_gestion)   AS m_leads_gestion,
            MAX(ingresos_jot)    AS m_ingresos_jot,
@@ -216,6 +256,48 @@ const CAMPOS_SUMA = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RED DE SEGURIDAD (FIX 2026-08-28) — fusion automatica de nombre corto vs.
+// nombre legal completo para pares NO listados a mano en claveAsesorSQL.
+// claveAsesorSQL ya fusiona los pares confirmados manualmente (Karina Torres,
+// Rossanna Alvarado, Damian Viera, Christian Ponce...), pero cada vez que
+// aparece un asesor NUEVO escrito de dos formas (ej. "Erick Enriquez" vs
+// "Erick Leonel Enriquez Ramirez") hay que agregarlo a mano. Esta funcion
+// detecta ese patron automaticamente: dos filas se fusionan si comparten el
+// PRIMER token del nombre (primer nombre) Y al menos OTRO token en comun
+// (tipicamente el primer apellido), sumando sus campos numericos.
+// Riesgo aceptado (decision de negocio, 2026-08-28): si dos asesores REALES
+// distintos comparten primer nombre y un apellido, se fusionarian por error
+// (caso poco frecuente). Si eso pasa, agregar una excepcion aqui o pedir que
+// se corrija el nombre en el origen (Bitrix).
+function fusionarPorNombreSimilar(filas, campoNombre, camposSuma) {
+  const tokens = (s) => String(s || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const grupos = [];
+  for (const fila of filas) {
+    const tks = tokens(fila[campoNombre]);
+    const grupo = tks.length
+      ? grupos.find(g => g.tokens[0] === tks[0] && g.tokens.slice(1).some(t => tks.slice(1).includes(t)))
+      : null;
+    if (grupo) {
+      grupo.filas.push(fila);
+      if (tks.length > grupo.tokens.length) grupo.tokens = tks; // el nombre mas largo queda como referencia
+    } else {
+      grupos.push({ tokens: tks, filas: [fila] });
+    }
+  }
+  return grupos.map(g => {
+    if (g.filas.length === 1) return g.filas[0];
+    // Nombre canonico: el mas largo del grupo (asumimos que es el nombre legal completo).
+    const base = g.filas.reduce((a, b) =>
+      String(b[campoNombre] || '').length > String(a[campoNombre] || '').length ? b : a);
+    const fusion = { ...base };
+    for (const c of camposSuma) {
+      fusion[c] = g.filas.reduce((acc, f) => acc + Number(f[c] || 0), 0);
+    }
+    return fusion;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/kpi-comercial?fechaDesde=&fechaHasta=
 // Devuelve { supervisores: [...], asesores: [...], total: {...} }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,8 +346,10 @@ async function getKpiComercial(req, res) {
 
     const { rows } = await pool.query(sql, [rango.desde, rango.hasta, empresa]);
 
-    // Nivel ASESOR
-    const asesores = rows
+    // Nivel ASESOR — fusiona primero variantes de nombre corto/completo que
+    // claveAsesorSQL no haya cubierto todavia (ver fusionarPorNombreSimilar).
+    const filasAsesorFusionadas = fusionarPorNombreSimilar(rows, 'asesor_display', CAMPOS_SUMA);
+    const asesores = filasAsesorFusionadas
       .map(r => derivar({ ...r, nombre: r.asesor_display }))
       .filter(r => r.leads_total > 0 || r.ingresos_jot > 0 || r.meta_leads_total > 0)
       .sort((a, b) => b.leads_total - a.leads_total);

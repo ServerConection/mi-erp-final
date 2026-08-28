@@ -6,6 +6,7 @@
  * Se ejecuta cada 30s.
  */
 const { query } = require('../config/db')
+const CampaignEngine = require('./CampaignEngine')
 
 class SchedulerService {
   constructor({ baileysManager, campaignEngine, io }) {
@@ -29,6 +30,7 @@ class SchedulerService {
   async tick() {
     await this._checkScheduledCampaigns()
     await this._checkScheduledMessages()
+    await this._checkCampanasPausadasPorHorario()
   }
 
   async _checkScheduledCampaigns() {
@@ -48,6 +50,31 @@ class SchedulerService {
       }
     } catch (err) {
       console.warn('[Scheduler] checkScheduledCampaigns:', err.message)
+    }
+  }
+
+  // Campañas que se auto-pausaron por estar fuera de su horario de envío
+  // configurado (días/horas). En cuanto vuelven a estar dentro de la
+  // ventana permitida, se reanudan solas — no hace falta que nadie entre
+  // a darle "Reanudar" a mano cada mañana.
+  async _checkCampanasPausadasPorHorario() {
+    try {
+      const res = await query(
+        `SELECT id, name, send_days, send_hour_from, send_hour_to FROM campaigns
+         WHERE status='paused' AND paused_for_schedule = true
+         LIMIT 20`
+      )
+      for (const c of res.rows) {
+        if (!CampaignEngine.dentroDeHorarioPermitido(c)) continue
+        try {
+          console.log(`[Scheduler] ▶ Reanudando campaña "${c.name}" (${c.id}) — ya entró a su horario permitido`)
+          await this.campaignEngine.start(c.id)
+        } catch (e) {
+          console.warn('[Scheduler] No pude reanudar campaña por horario:', e.message)
+        }
+      }
+    } catch (err) {
+      console.warn('[Scheduler] checkCampanasPausadasPorHorario:', err.message)
     }
   }
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef, useContext, createCo
 import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
 import TablaKpiComercial from "../components/TablaKpiComercial";
+import EfectividadDiaria from "../components/EfectividadDiaria";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
@@ -1609,6 +1610,7 @@ ${asesoresPDF.length>0?`
               { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#2563eb,#1d4ed8)' },
               { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
               { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+              { id:'EFECTIVIDAD',icon:'🎯', label:'EFECTIVIDAD DIARIA', grad:'linear-gradient(135deg,#047857,#065f46)' },
             ].map(tab => (
               <button key={tab.id} onClick={() => setTabActiva(tab.id)}
                 style={tabActiva === tab.id ? { background: tab.grad } : {}}
@@ -2021,6 +2023,8 @@ ${asesoresPDF.length>0?`
           etapasCRM={data.etapasCRM}
           ETAPAS_JOTFORM={ETAPAS_JOTFORM}
         />
+      ) : tabActiva === "EFECTIVIDAD" ? (
+        <EfectividadDiaria empresa="novonet" />
       ) : (
         <ConsultaDescargaNovonet />
       )}

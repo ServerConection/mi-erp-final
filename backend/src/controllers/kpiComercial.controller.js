@@ -68,6 +68,7 @@ function claveAsesorSQL(campo) {
       WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'KARINA TORRES'
       WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'ROSSANNA ALVARADO'
       WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'DAMIAN VIERA'
+      WHEN 'CHRISTIAN PONCE BAROJA' THEN 'CHRISTIAN PONCE'
       ELSE ${limpio}
     END`;
 }
@@ -81,6 +82,8 @@ function nombreAsesorDisplaySQL(campo) {
       WHEN 'ROSSANNA ALVARADO' THEN 'Rossanna Alvarado'
       WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'Damian Viera'
       WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
+      WHEN 'CHRISTIAN PONCE BAROJA' THEN 'Christian Ponce'
+      WHEN 'CHRISTIAN PONCE' THEN 'Christian Ponce'
       ELSE ${limpio}
     END`;
 }

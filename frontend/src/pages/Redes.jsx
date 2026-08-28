@@ -2067,7 +2067,7 @@ export default function Redes() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
-                style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>V</div>
+                style={{ background: `linear-gradient(135deg,#f97316,#c2410c)` }}>V</div>
               <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
               <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase inline-flex items-center gap-1.5"
                 style={{ background: `${C.success}15`, color: C.success }}>

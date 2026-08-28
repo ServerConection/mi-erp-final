@@ -3,6 +3,37 @@ const { normalizeNumber } = require('./wa_contacts.controller')
 
 const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
 
+// Valida/normaliza el horario de envío (días 0-6 = domingo..sábado, horas
+// 0-23). Lanza un Error con mensaje amigable si algo no calza; devuelve
+// null en cada campo si no vino nada (= sin restricción).
+function parseHorarioEnvio(body) {
+  let { send_days, send_hour_from, send_hour_to } = body
+
+  let dias = null
+  if (Array.isArray(send_days) && send_days.length) {
+    dias = [...new Set(send_days.map(d => parseInt(d, 10)))]
+    if (dias.some(d => Number.isNaN(d) || d < 0 || d > 6)) {
+      throw new Error('send_days debe ser un arreglo de números 0-6 (0=domingo ... 6=sábado)')
+    }
+  }
+
+  const desde = send_hour_from === '' || send_hour_from === undefined ? null : send_hour_from
+  const hasta = send_hour_to   === '' || send_hour_to   === undefined ? null : send_hour_to
+  if ((desde === null) !== (hasta === null)) {
+    throw new Error('send_hour_from y send_hour_to deben venir juntos (o ninguno de los dos)')
+  }
+  let horaDesde = null, horaHasta = null
+  if (desde !== null) {
+    horaDesde = parseInt(desde, 10)
+    horaHasta = parseInt(hasta, 10)
+    if ([horaDesde, horaHasta].some(h => Number.isNaN(h) || h < 0 || h > 23)) {
+      throw new Error('send_hour_from y send_hour_to deben ser horas 0-23')
+    }
+  }
+
+  return { send_days: dias, send_hour_from: horaDesde, send_hour_to: horaHasta }
+}
+
 // Verifica que la campaña exista y pertenezca al usuario (o que sea admin).
 async function findOwnedCampaign(req, id) {
   const result = await query('SELECT * FROM campaigns WHERE id=$1', [id])
@@ -108,6 +139,13 @@ async function create(req, res) {
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
     if (!line_id) return res.status(400).json({ success: false, error: 'Línea requerida' })
 
+    let horario
+    try {
+      horario = parseHorarioEnvio(req.body)
+    } catch (e) {
+      return res.status(400).json({ success: false, error: e.message })
+    }
+
     // Resolver body y media (si vienen de plantilla)
     let finalBody = body
     let finalMediaUrl = media_url
@@ -171,13 +209,15 @@ async function create(req, res) {
         `INSERT INTO campaigns
           (name, line_id, template_id, list_id, body, media_url, media_type, media_filename,
            min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
-           total_recipients, status, scheduled_at, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+           total_recipients, status, scheduled_at, created_by,
+           send_days, send_hour_from, send_hour_to)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [
           name, line_id, template_id || null, list_id || null,
           finalBody, finalMediaUrl, finalMediaType, finalMediaFilename,
           min_delay_secs ?? 8, max_delay_secs ?? 20, batch_size ?? 50, batch_pause_secs ?? 120,
           allRecipients.length, status, scheduled_at || null, req.user.id,
+          horario.send_days, horario.send_hour_from, horario.send_hour_to,
         ]
       )
       const campaign = c.rows[0]
@@ -218,6 +258,13 @@ async function update(req, res) {
       line_id,   // permite cambiar la línea de envío mientras está pausada/borrador
     } = req.body
 
+    let horario
+    try {
+      horario = parseHorarioEnvio(req.body)
+    } catch (e) {
+      return res.status(400).json({ success: false, error: e.message })
+    }
+
     const result = await query(
       `UPDATE campaigns SET
          name = COALESCE($1, name),
@@ -230,11 +277,16 @@ async function update(req, res) {
          batch_size = COALESCE($8, batch_size),
          batch_pause_secs = COALESCE($9, batch_pause_secs),
          scheduled_at = $10,
-         line_id = COALESCE($11, line_id)
+         line_id = COALESCE($11, line_id),
+         send_days = $13,
+         send_hour_from = $14,
+         send_hour_to = $15,
+         paused_for_schedule = false
        WHERE id=$12 RETURNING *`,
       [name, body, media_url || null, media_type || null, media_filename || null,
        min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
-       scheduled_at || null, line_id || null, id]
+       scheduled_at || null, line_id || null, id,
+       horario.send_days, horario.send_hour_from, horario.send_hour_to]
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {

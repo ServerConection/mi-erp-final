@@ -87,6 +87,51 @@ function conOptOut(body) {
   return `${body || ''}${TEXTO_OPT_OUT}`
 }
 
+// ── Horario de envio permitido (2026-08-28) ─────────────────────────────
+// Dias y rango de horas en que una campaña puede enviar. Fuera de esa
+// ventana, la campaña se pausa sola (paused_for_schedule=true) y el
+// SchedulerService la reanuda automaticamente en cuanto vuelve a estar
+// dentro del horario, sin que nadie tenga que hacerlo a mano.
+//
+// send_days: 0=domingo, 1=lunes ... 6=sabado (igual que Date#getDay()).
+//            null/vacio = todos los dias.
+// send_hour_from / send_hour_to: hora local 0-23 en horario de Ecuador.
+//            null/null = sin restriccion de horas.
+const OFFSET_HORAS_ECUADOR = -5 // Ecuador es UTC-5 todo el año, sin horario de verano
+
+// Se calcula el offset a mano (en vez de Intl con timeZone) para no
+// depender de que el build de Node tenga los datos de zona horaria
+// completos (ICU) — así funciona igual en cualquier entorno.
+function horaYDiaEcuador(ahora = new Date()) {
+  const ms = ahora.getTime() + OFFSET_HORAS_ECUADOR * 60 * 60 * 1000
+  const local = new Date(ms)
+  return { dia: local.getUTCDay(), hora: local.getUTCHours() }
+}
+
+function dentroDeHorarioPermitido(camp, ahora = new Date()) {
+  const sendDays  = camp?.send_days
+  const horaDesde = camp?.send_hour_from
+  const horaHasta = camp?.send_hour_to
+  const sinRestriccionDias  = !Array.isArray(sendDays) || sendDays.length === 0
+  const sinRestriccionHoras = horaDesde === null || horaDesde === undefined || horaHasta === null || horaHasta === undefined
+  if (sinRestriccionDias && sinRestriccionHoras) return true
+
+  const { dia, hora } = horaYDiaEcuador(ahora)
+
+  if (!sinRestriccionDias && !sendDays.includes(dia)) return false
+
+  if (!sinRestriccionHoras && horaDesde !== horaHasta) {
+    if (horaDesde < horaHasta) {
+      // ventana normal dentro del mismo dia (ej: 8 a 20)
+      if (hora < horaDesde || hora >= horaHasta) return false
+    } else {
+      // ventana que cruza la medianoche (ej: 22 a 6)
+      if (hora < horaDesde && hora >= horaHasta) return false
+    }
+  }
+  return true
+}
+
 class CampaignEngine {
   constructor(baileysManager, io) {
     this.baileysManager = baileysManager
@@ -106,7 +151,7 @@ class CampaignEngine {
     if (camp.status === 'completed') throw new Error('La campaña ya terminó')
 
     await query(
-      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()) WHERE id=$1`,
+      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()), paused_for_schedule=false WHERE id=$1`,
       [campaignId]
     )
 
@@ -129,7 +174,7 @@ class CampaignEngine {
     if (!this.running[campaignId]) throw new Error('La campaña no está en ejecución')
     this.paused[campaignId] = true
     this.running[campaignId].abortFlag = true
-    await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [campaignId])
+    await query(`UPDATE campaigns SET status='paused', paused_for_schedule=false WHERE id=$1`, [campaignId])
     this._emit(campaignId, 'campaign:paused', { campaignId })
     return { success: true }
   }
@@ -203,6 +248,21 @@ class CampaignEngine {
       if (this.running[campaignId]?.abortFlag) {
         console.log(`[CampaignEngine] ⏸ Abort en ${campaignId}`)
         break
+      }
+
+      // 🕐 Guarda de horario: si la campaña tiene días/horas configurados y
+      // ahora mismo está fuera de esa ventana, se pausa sola. El
+      // SchedulerService la reanuda automáticamente apenas vuelva a estar
+      // dentro del horario permitido — no hace falta reanudarla a mano.
+      if (!dentroDeHorarioPermitido(camp)) {
+        console.log(
+          `[CampaignEngine] 🕐 "${camp.name}" está fuera de su horario de envío configurado. ` +
+          `Se pausa hasta que vuelva a entrar en la ventana permitida.`
+        )
+        await query(`UPDATE campaigns SET status='paused', paused_for_schedule=true WHERE id=$1`, [campaignId])
+        this._emit(campaignId, 'campaign:paused', { campaignId, motivo: 'fuera_de_horario' })
+        delete this.running[campaignId]
+        return
       }
 
       // 🛡️ Guarda de calentamiento: una línea nueva no sale a campaña sin
@@ -543,5 +603,6 @@ CampaignEngine.normalizarNumeroControl = normalizarNumeroControl
 CampaignEngine.conOptOut = conOptOut
 CampaignEngine.NUMEROS_CONTROL = NUMEROS_CONTROL
 CampaignEngine.CONTROL_CADA_N = CONTROL_CADA_N
+CampaignEngine.dentroDeHorarioPermitido = dentroDeHorarioPermitido
 
 module.exports = CampaignEngine

@@ -9,6 +9,10 @@ const {
   getActivacionesPorDia,
   forceRefreshNovonet
 } = require('../controllers/indicadores.controller');
+const {
+  getEfectividadDiariaNovonet,
+  getAgenciasEfectividadNovonet,
+} = require('../controllers/efectividadDiaria.controller');
 const { verificarToken } = require('../middleware/auth');
 
 // /dashboard requiere sesión: alimenta la Vista Asesor y debe saber QUIÉN
@@ -20,5 +24,11 @@ router.get('/reporte180', getReporte180);
 router.get('/consulta-descarga', getConsultaDescargaNovonet);
 router.get('/activaciones-dia', getActivacionesPorDia);
 router.post('/force-refresh', forceRefreshNovonet);
+
+// EFECTIVIDAD DIARIA — por agencia y fecha de creación del lead (ver
+// controllers/efectividadDiaria.controller.js). Solo lectura, no toca nada
+// de lo existente.
+router.get('/efectividad-diaria', getEfectividadDiariaNovonet);
+router.get('/efectividad-diaria/agencias', getAgenciasEfectividadNovonet);
 
 module.exports = router;

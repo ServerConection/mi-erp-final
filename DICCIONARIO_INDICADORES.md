@@ -245,3 +245,77 @@ meta_mostrada = floor( meta_mensual × días_del_filtro ÷ días_del_mes )
 | 2 | Novonet excluye el origen `REMARKETING` de leads/gestionables; Velsa no filtra orígenes | **Intencional** (pedido tuyo) |
 | 3 | Denominador de descarte / efectividad_real usa ventana amplia ≠ gestionables en pantalla | **Abierta** — heredada de Novonet, replicada en Velsa para que cuadren |
 | 4 | 51 % de los orígenes de Novonet no mapean a ningún canal → Monitoreo Redes los descarta | **Abierta — decisión de marketing** |
+
+---
+
+## 11. EFECTIVIDAD DIARIA (por agencia)
+
+**Versión:** 2026-08-28 · Pestaña nueva al lado de CONSULTA, en Indicadores Novonet y Velsa.
+**Código:** `backend/src/controllers/efectividadDiaria.controller.js` · `frontend/src/components/EfectividadDiaria.jsx`
+**Verificación en pgAdmin:** `VERIFICAR_EFECTIVIDAD_DIARIA.sql`
+
+Una tabla por **agencia de publicidad**, una columna por **día**, cuatro filas fijas.
+Responde una sola pregunta: de lo que entró ese día por esa agencia, ¿cuánto se pudo gestionar y cuánto se convirtió en venta subida?
+
+### 11.1 Base de fecha — una sola
+
+Las cuatro filas usan **FECHA CRM (fecha de creación del lead)**, en hora Ecuador.
+Una venta subida se atribuye al día en que **entró** el lead, no al día en que se cerró.
+Es la única forma de leer una columna como un embudo cerrado (`gestionables ⊆ leads`, `ventas ⊆ gestionables`).
+
+### 11.2 Las cuatro filas
+
+| Fila | Cálculo | Meta |
+|---|---|---|
+| **TOTAL LEADS** | `COUNT(DISTINCT bitrix_id)` con etapa que suma a lead (§1.1) | — (es el 100 %) |
+| **GESTIONABLE** | `COUNT(DISTINCT bitrix_id)` con etapa gestionable (§1.2) | **50 %** de los leads totales |
+| **INGRESOS CRM** | `COUNT(DISTINCT bitrix_id)` con etapa `VENTA SUBIDA` | **30 %** de la *meta* de gestionables |
+| **FALTANTE** | `max(0, meta_ingresos − ingresos_crm)` | 0 |
+
+```
+meta_gestionables = round(total_leads × 50 %)
+meta_ingresos     = floor(meta_gestionables × 30 %)     ← floor, no round
+faltante          = max(0, meta_ingresos − ingresos_crm)
+```
+
+⚠️ El 30 % se calcula sobre la **meta** de gestionables, no sobre los gestionables reales.
+Es lo que hace cuadrar el ejemplo de gerencia: `55 × 0,30 = 16,5 → 16`, con 15 ventas el faltante es **1**.
+Si se calculara sobre los gestionables reales (`50 × 0,30 = 15`) el faltante daría 0 y el indicador premiaría tener pocos gestionables.
+
+### 11.3 Cómo se lee una celda
+
+`50 (45%/50%)` → **valor (% real / % meta)**
+
+- GESTIONABLE: el % real es sobre **TOTAL LEADS**.
+- INGRESOS CRM y FALTANTE: el % real es sobre **GESTIONABLE**.
+
+Cuadre de referencia entregado por gerencia:
+
+| | Leads | Gestionable | Ingresos CRM | Faltante |
+|---|---|---|---|---|
+| 1/8 | 110 | 50 (45,5 %) | 15 (30 %) | **1** (2 %) |
+| 2/8 | 100 | 50 (50 %) | 30 (60 %) | **0** ← cuadre perfecto |
+
+### 11.4 Fuente de datos y agencia
+
+| | Novonet | Velsa |
+|---|---|---|
+| Leads | `public.bitrix_webhook_leads` (`empresa='novonet'`) | ídem (`empresa='velsa'`) |
+| Agencia | `novonet_lineas_canal` (origen → agencia) | `velsa_lineas_canal` |
+| Origen sin asignar | `SIN AGENCIA ASIGNADA` | `VELSA` (todo origen nuevo cae acá) |
+| Filtro de origen | excluye el literal `REMARKETING` (§2.1) | no filtra orígenes |
+
+Se lee de `bitrix_webhook_leads` y **no** de `mestra_bitrix`: esa tabla quedó congelada a inicios de agosto y dejaría la pantalla ciega a los leads nuevos. Mismo criterio que ya usa Redes.
+
+La agencia se administra desde el módulo **Redes → pestaña "Agencias"**. Un origen nuevo sin asignar aparece en el bucket por defecto hasta que alguien lo mapee — en Novonet eso significa que puede haber una fila "SIN AGENCIA ASIGNADA" con volumen real.
+
+### 11.5 Endpoints
+
+```
+GET /api/indicadores/efectividad-diaria?fechaDesde&fechaHasta&agencia
+GET /api/indicadores/efectividad-diaria/agencias
+GET /api/indicadores-velsa/efectividad-diaria?fechaDesde&fechaHasta&agencia
+GET /api/indicadores-velsa/efectividad-diaria/agencias
+```
+
+Solo lectura. No tocan ningún KPI ni tabla existente.

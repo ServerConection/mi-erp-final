@@ -23,6 +23,7 @@ const bitrixRoutes                 = require('./routes/bitrix.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
 const gestionablesWebhookRoutes    = require('./routes/gestionablesWebhook.routes');
 const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
+const contactabilidadWebhookRoutes = require('./routes/contactabilidadWebhook.routes');
 const coverageRoutes               = require('./routes/coverage.routes');
 const inventarioRoutes             = require('./routes/inventario.routes');
 const forecastRoutes               = require('./routes/forecast.routes');
@@ -89,6 +90,11 @@ app.use((req, res, next) => {
 });
 
 app.set('trust proxy', 1);
+
+// Webhook de Contactabilidad ANTES del rate limit global: Bitrix empuja todos
+// los eventos desde una sola IP y el limite por IP lo cortaria en horas pico.
+// Se autentica con token propio por empresa y trae su propio parser de cuerpo.
+app.use(contactabilidadWebhookRoutes);
 
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
 const rateLimit = require('./middleware/rateLimit');

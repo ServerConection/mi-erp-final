@@ -8,7 +8,7 @@ const th = { padding: 10, textAlign: 'left', borderBottom: '1px solid #e2e8f0', 
 const td = { padding: 10, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' };
 
 const COLUMNAS = ['Gravedad', 'Esperando', 'Empresa', 'ID', 'Cliente', 'Asesor', 'Origen', 'Etapa',
-  'Msg. cliente', 'Msg. asesor', 'Últ. cliente', 'Últ. asesor', 'Pendiente', ''];
+  'Msg. cliente', 'Msg. asesor', 'Últ. cliente', 'Últ. asesor', 'Pendiente', 'Chat', ''];
 
 /**
  * Tabla operativa.
@@ -17,7 +17,7 @@ const COLUMNAS = ['Gravedad', 'Esperando', 'Empresa', 'ID', 'Cliente', 'Asesor',
  * es correcta aunque el backend no haya vuelto a responder todavia.
  */
 export default function ContactabilidadOperationalTable({
-  rows = [], loading, umbrales, ahora, onRefrescarLead,
+  rows = [], loading, umbrales, ahora, onRefrescarLead, onVerConversacion,
 }) {
   const [refrescando, setRefrescando] = useState(null);
 
@@ -69,6 +69,14 @@ export default function ContactabilidadOperationalTable({
                   <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_asesor_at)}</div>
                 </td>
                 <td style={td}>{fila.pendiente_por || '—'}</td>
+                <td style={td}>
+                  {onVerConversacion && <button type="button" onClick={() => onVerConversacion(fila)}
+                    title="Ver la conversación en Bitrix"
+                    style={{
+                      border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8',
+                      borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                    }}>💬 Ver</button>}
+                </td>
                 <td style={td}>
                   {onRefrescarLead && <button type="button" onClick={() => refrescar(fila)} disabled={enCurso}
                     title="Traer este chat de Bitrix ahora"

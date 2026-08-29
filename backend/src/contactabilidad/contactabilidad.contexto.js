@@ -11,6 +11,7 @@ const { crearClienteBitrix } = require('./contactabilidad.bitrix');
 const { crearRepositorioContactabilidad } = require('./contactabilidad.repository');
 const { crearRefrescador } = require('./contactabilidad.refresco');
 const { crearManejadorWebhook } = require('./contactabilidad.webhook');
+const { crearVisorConversacion } = require('./contactabilidad.conversacion');
 
 const activo = (valor) => String(valor).toLowerCase() === 'true';
 
@@ -47,8 +48,9 @@ function crearContexto(env = process.env, deps = {}) {
   const refrescador = crearRefrescador({ pool: basePool, crms, bitrix, repository });
   const secretos = Object.fromEntries(crms.map((crm) => [crm.empresa, crm.tokenWebhook]));
   const webhook = crearManejadorWebhook({ pool: basePool, refrescador, secretos });
+  const conversacion = crearVisorConversacion({ crms, bitrix });
 
-  return { pool: basePool, crms, bitrix, repository, refrescador, webhook };
+  return { pool: basePool, crms, bitrix, repository, refrescador, webhook, conversacion };
 }
 
 /** Instancia unica del proceso. */

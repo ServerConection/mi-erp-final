@@ -407,6 +407,38 @@ async function estado(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// Conversacion en vivo: se lee de Bitrix y no se guarda en la base
+// ---------------------------------------------------------------------------
+async function conversacion(req, res) {
+  const empresa = empresaValida(req.params.empresa);
+  if (!empresa) return res.status(400).json({ success: false, error: 'Empresa invalida' });
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ success: false, error: 'Negociacion invalida' });
+
+  try {
+    // El lead debe existir en el modulo: impide usar este endpoint para leer
+    // chats arbitrarios del CRM.
+    const { rows } = await pool.query(`
+      SELECT nombre_cliente, asesor_nombre, origen_nombre,
+             COALESCE(etapa_nombre, etapa_id) AS etapa_nombre, fecha_creacion
+      FROM contactabilidad_leads WHERE empresa = $1 AND id_bitrix = $2
+    `, [empresa, id]);
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Lead no encontrado' });
+
+    const data = await contexto().conversacion.obtener(empresa, id, {
+      limite: req.query.limite,
+      forzar: String(req.query.forzar).toLowerCase() === 'true',
+    });
+
+    // El contenido del chat no debe quedar en caches intermedias ni del navegador.
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.json({ success: true, data: { ...data, lead: rows[0] } });
+  } catch (error) {
+    return fallo(res, error, 'No se pudo cargar la conversacion', 'conversacion');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Webhook Bitrix (sin sesion: se autentica por token en la URL)
 // ---------------------------------------------------------------------------
 async function webhookBitrix(req, res) {
@@ -490,7 +522,7 @@ async function eliminarVista(req, res) {
 }
 
 module.exports = {
-  listar, stats, analytics, filtros, alertas,
+  listar, stats, analytics, filtros, alertas, conversacion,
   refrescarLead, refrescarGlobal, exportar, estado, webhookBitrix,
   listarVistas, guardarVista, eliminarVista,
   celdaCsv,

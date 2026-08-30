@@ -18,6 +18,14 @@ const {
 const { verificarToken, noAsesor } = require('../middleware/auth');
 const { forceSyncInversion } = require('../controllers/redesWintracker.controller');
 
+// ─── AUTENTICACIÓN OBLIGATORIA PARA TODO EL MÓDULO ──────────────────────────
+// Hasta ahora las 7 rutas de monitoreo eran públicas: cualquiera con la URL
+// del API veía leads, inversión, CPL y efectividad de NOVONET sin token.
+// redesVelsa.routes.js ya usaba este mismo router.use(verificarToken) — aquí
+// se iguala el criterio. El frontend (Redes.jsx y los Tab*.jsx) manda el
+// Bearer con cabecerasSesion().
+router.use(verificarToken);
+
 router.get('/monitoreo-redes',   getMonitoreoRedes);
 router.get('/monitoreo-ciudad',  getMonitoreoCiudad);
 router.get('/monitoreo-hora',    getMonitoreoHora);
@@ -27,16 +35,13 @@ router.get('/monitoreo-metas',   getMonitoreoMetas);
 router.get('/reporte-data',      getReporteData);
 
 // Módulo "Agencias" (catálogo origen -> agencia + inversión por origen).
-// NOTA: el resto de rutas de este archivo NO tienen verificarToken (así ya
-// estaban) — estas sí lo llevan porque tocan datos de inversión/asignación
-// y se escriben desde el ERP. Vale la pena revisar el resto del archivo en
-// algún momento por el mismo motivo, pero no se tocó aquí para no romper
-// nada que ya esté funcionando.
-router.get('/agencias',          verificarToken, getAgenciasCanal);
-router.post('/agencias',         verificarToken, noAsesor, upsertAgenciaCanal);
-router.get('/inversion',         verificarToken, getInversionAgencias);
-router.post('/inversion',        verificarToken, noAsesor, upsertInversionAgencias);
-router.get('/resumen-agencias',  verificarToken, getResumenPorAgencia);
-router.post('/sync-inversion',    verificarToken, noAsesor, forceSyncInversion);
+// El token ya lo aplica el router.use() de arriba; aquí solo queda el
+// control de perfil para las escrituras.
+router.get('/agencias',          getAgenciasCanal);
+router.post('/agencias',         noAsesor, upsertAgenciaCanal);
+router.get('/inversion',         getInversionAgencias);
+router.post('/inversion',        noAsesor, upsertInversionAgencias);
+router.get('/resumen-agencias',  getResumenPorAgencia);
+router.post('/sync-inversion',   noAsesor, forceSyncInversion);
 
 module.exports = router;

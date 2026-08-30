@@ -9,6 +9,7 @@
 // ║  ✅ Tabla comparativa con mini-barras ICP inline                         ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 import { useEffect, useState, useMemo } from "react";
+import { cabecerasSesion } from "../utils/sesion";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
@@ -17,6 +18,7 @@ import {
   ResponsiveContainer, Cell, LabelList, ReferenceLine, ReferenceArea,
   ComposedChart,
 } from "recharts";
+import { Expandible } from "./ChartFrame";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -82,9 +84,9 @@ function Card({ children, title, subtitle, accent=C.primary, badge, noPad=false,
             <div style={{ width:"4px", height:"30px", borderRadius:"9999px",
               background:`linear-gradient(180deg,${accent},${accent}55)`, flexShrink:0 }} />
             <div>
-              <div style={{ fontSize:"10px", fontWeight:900, textTransform:"uppercase",
+              <div style={{ fontSize:"12px", fontWeight:900, textTransform:"uppercase",
                 letterSpacing:"0.15em", color:accent }}>{title}</div>
-              {subtitle && <div style={{ fontSize:"8px", color:C.muted, marginTop:"2px" }}>{subtitle}</div>}
+              {subtitle && <div style={{ fontSize:"11px", color:C.muted, marginTop:"2px" }}>{subtitle}</div>}
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>{badge}{right}</div>
@@ -109,18 +111,18 @@ function KpiCard({ label, value, sub, color, icon, info }) {
         {info && (
           <button onClick={()=>setShowInfo(!showInfo)}
             style={{ width:"18px", height:"18px", borderRadius:"50%", border:`1px solid ${C.border}`,
-              background:C.light, cursor:"pointer", fontSize:"9px", fontWeight:900, color:C.muted,
+              background:C.light, cursor:"pointer", fontSize:"11px", fontWeight:900, color:C.muted,
               display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
         )}
       </div>
-      <div style={{ fontSize:"8px", fontWeight:900, color:`${color}90`, textTransform:"uppercase",
+      <div style={{ fontSize:"11px", fontWeight:900, color:`${color}90`, textTransform:"uppercase",
         letterSpacing:"0.1em", marginBottom:"2px" }}>{label}</div>
       <div style={{ fontSize:"22px", fontWeight:900, color, lineHeight:1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize:"8px", color:C.muted, marginTop:"4px" }}>{sub}</div>}
+      {sub && <div style={{ fontSize:"11px", color:C.muted, marginTop:"4px" }}>{sub}</div>}
       {showInfo && info && (
         <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, marginTop:"4px",
           padding:"10px 14px", background:"#fff", borderRadius:"12px", border:`1px solid ${C.border}`,
-          boxShadow:"0 8px 24px rgba(0,0,0,0.12)", fontSize:"8px", lineHeight:1.5, color:C.slate }}>
+          boxShadow:"0 8px 24px rgba(0,0,0,0.12)", fontSize:"11px", lineHeight:1.5, color:C.slate }}>
           {info}
           <button onClick={()=>setShowInfo(false)} style={{ marginLeft:"6px", fontWeight:900, color:C.danger, background:"none", border:"none", cursor:"pointer" }}>✕</button>
         </div>
@@ -175,7 +177,7 @@ function GaugePremium({ valor, label, color, size=90, sublabel }) {
       </div>
       <div style={{ fontSize:"7.5px", fontWeight:900, color:C.muted, textTransform:"uppercase",
         textAlign:"center", maxWidth:size+14, lineHeight:1.3 }}>{label}</div>
-      {sublabel && <div style={{ fontSize:"7px", color:C.muted, textAlign:"center" }}>{sublabel}</div>}
+      {sublabel && <div style={{ fontSize:"10px", color:C.muted, textAlign:"center" }}>{sublabel}</div>}
     </div>
   );
 }
@@ -185,11 +187,11 @@ const DarkTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
-      borderRadius:"14px", padding:"12px 16px", fontSize:"10px", minWidth:"170px",
+      borderRadius:"14px", padding:"12px 16px", fontSize:"12px", minWidth:"170px",
       boxShadow:"0 20px 50px rgba(0,0,0,0.55)" }}>
       <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"7px",
         borderBottom:"1px solid #334155", paddingBottom:"5px",
-        textTransform:"uppercase", letterSpacing:"0.08em", fontSize:"9px" }}>{label}</div>
+        textTransform:"uppercase", letterSpacing:"0.08em", fontSize:"11px" }}>{label}</div>
       {payload.map((p,i) => (
         <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:"14px", marginBottom:"3px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:"5px" }}>
@@ -211,7 +213,7 @@ function Toggle({ value, onChange, options, color=C.primary }) {
     <div style={{ display:"flex", borderRadius:"10px", overflow:"hidden", border:`1px solid ${C.border}` }}>
       {options.map(o => (
         <button key={o.v} onClick={()=>onChange(o.v)} style={{
-          padding:"5px 14px", fontSize:"8px", fontWeight:900,
+          padding:"5px 14px", fontSize:"11px", fontWeight:900,
           textTransform:"uppercase", border:"none", cursor:"pointer",
           background:value===o.v?color:"#fff",
           color:value===o.v?"#fff":C.muted,
@@ -253,13 +255,13 @@ function TablaComparativa({ metricas }) {
 
   return (
     <div style={{ overflowX:"auto" }}>
-      <table style={{ fontSize:"9px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%", whiteSpace:"nowrap" }}>
+      <table style={{ fontSize:"11px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%", whiteSpace:"nowrap" }}>
         <thead style={{ position:"sticky", top:0, background:C.light, borderBottom:`2px solid ${C.border}`, zIndex:10 }}>
           <tr>
             {cols.map(c => (
               <th key={c.k} onClick={()=>c.k!=="canal"&&toggle(c.k)}
                 style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`,
-                  textAlign:"center", fontWeight:900, fontSize:"8px",
+                  textAlign:"center", fontWeight:900, fontSize:"11px",
                   textTransform:"uppercase", letterSpacing:"0.05em",
                   color:ord.col===c.k?C.primary:C.muted,
                   cursor:c.k!=="canal"?"pointer":"default",
@@ -321,21 +323,21 @@ function RadarPautas({ metricas }) {
   });
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <Expandible title="Radar de Canales" height={300}>
       <RadarChart data={radarData} margin={{ top:10, right:30, bottom:10, left:30 }}>
         <PolarGrid stroke={C.border} />
-        <PolarAngleAxis dataKey="dim" tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
-        <PolarRadiusAxis domain={[0,100]} tick={{ fontSize:7, fill:C.muted }} tickCount={4} />
+        <PolarAngleAxis dataKey="dim" tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} />
+        <PolarRadiusAxis domain={[0,100]} tick={{ fontSize:10, fill:C.muted }} tickCount={4} />
         {metricas.map(m => (
           <Radar key={m.canal} name={getCfg(m.canal).label} dataKey={m.canal}
             stroke={getCfg(m.canal).color} fill={getCfg(m.canal).color}
             fillOpacity={0.10} strokeWidth={2.5}
             dot={{ r:4, fill:getCfg(m.canal).color }} />
         ))}
-        <Legend wrapperStyle={{ fontSize:9 }} />
+        <Legend wrapperStyle={{ fontSize:11 }} />
         <Tooltip content={<DarkTip />} />
       </RadarChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -345,7 +347,7 @@ function RadarPautas({ metricas }) {
 function ScatterPremium({ metricas }) {
   const conInv = metricas.filter(m => m.cpl!==null);
   if (!conInv.length) return (
-    <div style={{ textAlign:"center", padding:"60px", color:C.muted, fontSize:"10px" }}>
+    <div style={{ textAlign:"center", padding:"60px", color:C.muted, fontSize:"12px" }}>
       Sin datos de inversión para este período
     </div>
   );
@@ -358,7 +360,7 @@ function ScatterPremium({ metricas }) {
   const maxEf  = Math.min(100, Math.max(...conInv.map(m=>m.efect)) * (1+pad));
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <Expandible title="CPL vs Efectividad por Canal" height={320}>
       <ScatterChart margin={{ top:24, right:40, bottom:44, left:10 }}>
         <defs>
           {conInv.map(m => (
@@ -369,37 +371,37 @@ function ScatterPremium({ metricas }) {
           ))}
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis type="number" dataKey="cpl" name="CPL $" tick={{ fontSize:9, fill:C.muted }}
+        <XAxis type="number" dataKey="cpl" name="CPL $" tick={{ fontSize:11, fill:C.muted }}
           domain={[minCpl, maxCpl]}
           tickFormatter={v=>`$${v.toFixed(2)}`}
-          label={{ value:"← CPL más barato mejor →", position:"insideBottom", offset:-30, fontSize:8, fill:C.muted }} />
-        <YAxis type="number" dataKey="efect" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%"
+          label={{ value:"← CPL más barato mejor →", position:"insideBottom", offset:-30, fontSize:11, fill:C.muted }} />
+        <YAxis type="number" dataKey="efect" name="Efectividad %" tick={{ fontSize:11, fill:C.muted }} unit="%"
           domain={[minEf, maxEf]}
-          label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
+          label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:11, fill:C.muted, dy:50 }} />
         {/* ── CUADRANTES: CPL bajo=mejor (X), Efectividad alta=mejor (Y) ── */}
         <ReferenceArea x1={minCpl} x2={avgCpl} y1={avgEf} y2={maxEf}
           fill={C.success} fillOpacity={0.08} stroke="none"
-          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:8, fill:C.success, fontWeight:700 }} />
+          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:11, fill:C.success, fontWeight:700 }} />
         <ReferenceArea x1={avgCpl} x2={maxCpl} y1={avgEf} y2={maxEf}
           fill={C.warning} fillOpacity={0.08} stroke="none"
-          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:8, fill:C.warning, fontWeight:700 }} />
+          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:11, fill:C.warning, fontWeight:700 }} />
         <ReferenceArea x1={minCpl} x2={avgCpl} y1={minEf} y2={avgEf}
           fill={C.sky} fillOpacity={0.08} stroke="none"
-          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:8, fill:C.cyan, fontWeight:700 }} />
+          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:11, fill:C.cyan, fontWeight:700 }} />
         <ReferenceArea x1={avgCpl} x2={maxCpl} y1={minEf} y2={avgEf}
           fill={C.danger} fillOpacity={0.08} stroke="none"
-          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:8, fill:C.danger, fontWeight:700 }} />
+          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:11, fill:C.danger, fontWeight:700 }} />
         <ReferenceLine x={avgCpl} stroke={`${C.muted}70`} strokeDasharray="5 3"
-          label={{ value:`Avg $${avgCpl.toFixed(2)}`, fontSize:7, fill:C.muted, position:"top" }} />
+          label={{ value:`Avg $${avgCpl.toFixed(2)}`, fontSize:10, fill:C.muted, position:"top" }} />
         <ReferenceLine y={avgEf} stroke={`${C.muted}70`} strokeDasharray="5 3"
-          label={{ value:`Avg ${avgEf.toFixed(1)}%`, fontSize:7, fill:C.muted, position:"right" }} />
+          label={{ value:`Avg ${avgEf.toFixed(1)}%`, fontSize:10, fill:C.muted, position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
           const cfg=getCfg(d?.canal);
           return (
             <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
-              borderRadius:"14px", padding:"14px 18px", fontSize:"9px" }}>
+              borderRadius:"14px", padding:"14px 18px", fontSize:"11px" }}>
               <div style={{ color:cfg.color, fontWeight:900, marginBottom:"6px", fontSize:"11px" }}>
                 {cfg.icon} {cfg.label}
               </div>
@@ -412,8 +414,8 @@ function ScatterPremium({ metricas }) {
                   ["CP Activ.",d?.cpActivado?fmt2(d.cpActivado):"—",C.orange],
                 ].map(([l,v,c])=>(
                   <div key={l}>
-                    <div style={{ fontSize:"7px", color:"#64748b" }}>{l}</div>
-                    <div style={{ fontSize:"10px", fontWeight:900, color:c }}>{v}</div>
+                    <div style={{ fontSize:"10px", color:"#64748b" }}>{l}</div>
+                    <div style={{ fontSize:"12px", fontWeight:900, color:c }}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -427,9 +429,12 @@ function ScatterPremium({ metricas }) {
               stroke={getCfg(m.canal).color}
               strokeWidth={2} />
           ))}
+          <LabelList dataKey="canal" position="top" offset={10}
+            formatter={(v) => getCfg(v).label}
+            style={{ fontSize: 12, fontWeight: 800, fill: C.slate }} />
         </Scatter>
       </ScatterChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -482,13 +487,13 @@ function TendenciaArea({ rawFilas, canalesActivos }) {
         {METS.map(m=>(
           <button key={m.v} onClick={()=>setMetrica(m.v)} style={{
             padding:"5px 14px", borderRadius:"9999px", border:"none",
-            fontSize:"8px", fontWeight:900, cursor:"pointer",
+            fontSize:"11px", fontWeight:900, cursor:"pointer",
             background:metrica===m.v?C.primary:C.light,
             color:metrica===m.v?"#fff":C.muted, transition:"all 0.15s",
           }}>{m.l}</button>
         ))}
       </div>
-      <ResponsiveContainer width="100%" height={280}>
+      <Expandible title="Tendencia Diaria por Canal" height={280}>
         <ComposedChart data={lineData} margin={{ top:10, right:20, left:0, bottom:5 }}>
           <defs>
             {canalesActivos.map(c=>(
@@ -499,11 +504,11 @@ function TendenciaArea({ rawFilas, canalesActivos }) {
             ))}
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="fecha" tick={{ fontSize:9, fill:C.muted }} />
-          <YAxis tick={{ fontSize:9, fill:C.muted }} width={38}
+          <XAxis dataKey="fecha" tick={{ fontSize:11, fill:C.muted }} />
+          <YAxis tick={{ fontSize:11, fill:C.muted }} width={38}
             tickFormatter={v=>metrica==="cpl"?`$${v}`:`${v}${metrica!=="icp"?"%":""}`} />
           <Tooltip content={<DarkTip />} />
-          <Legend wrapperStyle={{ fontSize:9 }} />
+          <Legend wrapperStyle={{ fontSize:11 }} />
           {canalesActivos.map(c=>(
             <Area key={c} type="monotone" dataKey={c} name={getCfg(c).label}
               stroke={getCfg(c).color} fill={`url(#ag_${c.replace(/\W/g,"")})`}
@@ -512,7 +517,7 @@ function TendenciaArea({ rawFilas, canalesActivos }) {
               activeDot={{ r:5 }} connectNulls />
           ))}
         </ComposedChart>
-      </ResponsiveContainer>
+      </Expandible>
     </div>
   );
 }
@@ -538,14 +543,14 @@ function Cuadrante({ metricas }) {
     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px" }}>
       {Object.values(grupos).map(g=>(
         <div key={g.l} style={{ padding:"12px 14px", borderRadius:"14px", background:g.bg, border:`1px solid ${g.c}25` }}>
-          <div style={{ fontSize:"10px", fontWeight:900, color:g.c, marginBottom:"4px" }}>{g.l}</div>
-          <div style={{ fontSize:"8px", color:C.muted, marginBottom:"8px" }}>{g.d}</div>
+          <div style={{ fontSize:"12px", fontWeight:900, color:g.c, marginBottom:"4px" }}>{g.l}</div>
+          <div style={{ fontSize:"11px", color:C.muted, marginBottom:"8px" }}>{g.d}</div>
           {g.canales.map(m=>{
             const cfg=getCfg(m.canal);
             return (
               <div key={m.canal} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                 background:"rgba(255,255,255,0.7)", borderRadius:"8px", padding:"5px 10px", marginBottom:"4px" }}>
-                <span style={{ fontSize:"8px", fontWeight:900, color:cfg.color }}>{cfg.icon} {cfg.label}</span>
+                <span style={{ fontSize:"11px", fontWeight:900, color:cfg.color }}>{cfg.icon} {cfg.label}</span>
                 <div style={{ display:"flex", gap:"10px", fontSize:"7.5px" }}>
                   <span style={{ color:C.muted }}>CPL</span>
                   <span style={{ fontWeight:900, color:g.c }}>${m.cpl.toFixed(2)}</span>
@@ -578,16 +583,16 @@ function RankingBars({ metricas }) {
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"8px" }}>
               <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
                 <span style={{ width:"22px", height:"22px", borderRadius:"50%",
-                  background:`${cfg.color}20`, color:cfg.color, fontWeight:900, fontSize:"9px",
+                  background:`${cfg.color}20`, color:cfg.color, fontWeight:900, fontSize:"11px",
                   display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                   {i===0?"🏆":i+1}
                 </span>
                 <span style={{ fontSize:"14px" }}>{cfg.icon}</span>
-                <span style={{ fontSize:"10px", fontWeight:900, color:cfg.color, textTransform:"uppercase" }}>{cfg.label}</span>
+                <span style={{ fontSize:"12px", fontWeight:900, color:cfg.color, textTransform:"uppercase" }}>{cfg.label}</span>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
                 <span style={{ fontSize:"14px", fontWeight:900, color:icpColor }}>{m.icp.toFixed(0)}</span>
-                <span style={{ fontSize:"7px", fontWeight:900, padding:"2px 6px", borderRadius:"9999px",
+                <span style={{ fontSize:"10px", fontWeight:900, padding:"2px 6px", borderRadius:"9999px",
                   background:`${icpColor}15`, color:icpColor }}>ICP</span>
               </div>
             </div>
@@ -602,8 +607,8 @@ function RankingBars({ metricas }) {
                   : ["ROAS",m.roas!==null?`${m.roas.toFixed(1)}x`:"—",C.muted],
               ].map(([l,v,c])=>(
                 <div key={l} style={{ background:"rgba(255,255,255,0.65)", borderRadius:"8px", padding:"5px 6px", textAlign:"center" }}>
-                  <div style={{ fontSize:"7px", fontWeight:700, color:C.muted }}>{l}</div>
-                  <div style={{ fontSize:"9px", fontWeight:900, color:c }}>{v}</div>
+                  <div style={{ fontSize:"10px", fontWeight:700, color:C.muted }}>{l}</div>
+                  <div style={{ fontSize:"11px", fontWeight:900, color:c }}>{v}</div>
                 </div>
               ))}
             </div>
@@ -687,7 +692,7 @@ export default function TabAnalisisPautas({ filtro }) {
   useEffect(() => {
     if (!desde||!hasta) return;
     setLoading(true);
-    fetch(`${API}/api/redes/monitoreo-redes?fechaDesde=${desde}&fechaHasta=${hasta}`)
+    fetch(`${API}/api/redes/monitoreo-redes?fechaDesde=${desde}&fechaHasta=${hasta}`, { headers: cabecerasSesion() })
       .then(r=>r.json()).then(d=>setRawData(d?.success?d:null))
       .catch(()=>setRawData(null)).finally(()=>setLoading(false));
   }, [desde, hasta]);
@@ -755,7 +760,7 @@ export default function TabAnalisisPautas({ filtro }) {
       padding:"80px", gap:"16px" }}>
       <div style={{ fontSize:"56px" }}>📡</div>
       <div style={{ fontSize:"14px", fontWeight:900, color:C.slate }}>Sin datos — aplica un rango de fechas</div>
-      <div style={{ fontSize:"10px", color:C.muted, textAlign:"center", maxWidth:"360px", lineHeight:1.6 }}>
+      <div style={{ fontSize:"12px", color:C.muted, textAlign:"center", maxWidth:"360px", lineHeight:1.6 }}>
         Selecciona un período desde el filtro principal para cargar el análisis de pautas.
       </div>
     </div>
@@ -781,12 +786,12 @@ export default function TabAnalisisPautas({ filtro }) {
             <div style={{ background:`${C.primary}15`, borderRadius:"10px", padding:"7px 9px", fontSize:"20px" }}>🔬</div>
             <span style={{ fontSize:"15px", fontWeight:900, color:C.primary,
               textTransform:"uppercase", letterSpacing:"0.1em" }}>Análisis de Pautas</span>
-            <span style={{ fontSize:"8px", fontWeight:900, padding:"3px 10px", borderRadius:"9999px",
+            <span style={{ fontSize:"11px", fontWeight:900, padding:"3px 10px", borderRadius:"9999px",
               background:`${C.primary}12`, color:C.primary, textTransform:"uppercase" }}>
               {metricas.length} canales · {desde} → {hasta}
             </span>
           </div>
-          <p style={{ fontSize:"9px", color:C.muted, marginLeft:"44px", letterSpacing:"0.04em" }}>
+          <p style={{ fontSize:"11px", color:C.muted, marginLeft:"44px", letterSpacing:"0.04em" }}>
             Tasa contacto · CPL · CP Activado · ROAS · Índice de Calidad de Pauta (ICP 0-100)
           </p>
         </div>
@@ -796,7 +801,7 @@ export default function TabAnalisisPautas({ filtro }) {
             borderRadius:"14px", boxShadow:`0 4px 16px ${C.success}15` }}>
             <span style={{ fontSize:"20px" }}>{getCfg(mejorCanal.canal).icon}</span>
             <div>
-              <div style={{ fontSize:"7px", color:C.muted, textTransform:"uppercase", fontWeight:900 }}>Mejor pauta (ICP)</div>
+              <div style={{ fontSize:"10px", color:C.muted, textTransform:"uppercase", fontWeight:900 }}>Mejor pauta (ICP)</div>
               <div style={{ fontSize:"11px", fontWeight:900, color:C.success }}>
                 {getCfg(mejorCanal.canal).label} — {mejorCanal.icp.toFixed(0)} pts
               </div>
@@ -842,7 +847,7 @@ export default function TabAnalisisPautas({ filtro }) {
         <Card title="Índice de Calidad de Pauta (ICP)" accent={C.primary}
           subtitle="Score 0-100 · 40% efectividad + 25% contacto + 20% calidad lead + 15% eficiencia inversión"
           badge={
-            <span style={{ fontSize:"8px", fontWeight:600, padding:"3px 10px", borderRadius:"9999px",
+            <span style={{ fontSize:"11px", fontWeight:600, padding:"3px 10px", borderRadius:"9999px",
               background:`${C.primary}10`, color:C.primary }}>Mayor = mejor pauta</span>
           }>
           <div style={{ display:"flex", flexWrap:"wrap", gap:"24px", justifyContent:"center", marginBottom:"20px" }}>
@@ -872,7 +877,7 @@ export default function TabAnalisisPautas({ filtro }) {
             ].map(l=>(
               <div key={l.l} style={{ display:"flex", alignItems:"center", gap:"6px" }}>
                 <div style={{ width:"10px", height:"10px", borderRadius:"50%", background:l.c }} />
-                <span style={{ fontSize:"8px", fontWeight:600, color:C.muted }}>{l.l}</span>
+                <span style={{ fontSize:"11px", fontWeight:600, color:C.muted }}>{l.l}</span>
               </div>
             ))}
           </div>
@@ -887,7 +892,7 @@ export default function TabAnalisisPautas({ filtro }) {
           <button key={t.id} onClick={()=>setTabActivo(t.id)} style={{
             display:"flex", alignItems:"center", gap:"6px",
             padding:"8px 16px", borderRadius:"10px", border:"none",
-            fontSize:"9px", fontWeight:900, textTransform:"uppercase",
+            fontSize:"11px", fontWeight:900, textTransform:"uppercase",
             letterSpacing:"0.07em", cursor:"pointer",
             background:tabActivo===t.id?`linear-gradient(135deg,${C.primary},#1e40af)`:"transparent",
             color:tabActivo===t.id?"#fff":C.muted, transition:"all 0.15s",
@@ -919,7 +924,7 @@ export default function TabAnalisisPautas({ filtro }) {
       {tabActivo==="tabla" && (
         <Card title="Tabla Comparativa" accent={C.primary}
           subtitle="Click en columnas para ordenar · ICP = Índice de Calidad de Pauta"
-          badge={<span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px", fontWeight:700,
+          badge={<span style={{ fontSize:"11px", padding:"3px 10px", borderRadius:"9999px", fontWeight:700,
             background:`${C.primary}12`, color:C.primary }}>{metricas.length} canales</span>}>
           <TablaComparativa metricas={metricas} />
           <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.border}`, marginTop:"4px",
@@ -936,7 +941,7 @@ export default function TabAnalisisPautas({ filtro }) {
         <Card title="Radar Multidimensional" accent={C.violet}
           subtitle="5 dimensiones normalizadas (0-100 cada eje)">
           {metricas.length<2 ? (
-            <div style={{ textAlign:"center", padding:"40px", color:C.muted, fontSize:"9px" }}>
+            <div style={{ textAlign:"center", padding:"40px", color:C.muted, fontSize:"11px" }}>
               Se necesitan al menos 2 canales para el radar
             </div>
           ) : <RadarPautas metricas={metricas} />}
@@ -946,8 +951,8 @@ export default function TabAnalisisPautas({ filtro }) {
               ["Sin ATC","leads sin ATC/total"],["V. Subida","ventas/leads"],["ICP","índice pond."]
             ].map(([dim,desc])=>(
               <div key={dim} style={{ textAlign:"center" }}>
-                <div style={{ fontSize:"8px", fontWeight:900, color:C.slate }}>{dim}</div>
-                <div style={{ fontSize:"7px", color:C.muted }}>{desc}</div>
+                <div style={{ fontSize:"11px", fontWeight:900, color:C.slate }}>{dim}</div>
+                <div style={{ fontSize:"10px", color:C.muted }}>{desc}</div>
               </div>
             ))}
           </div>

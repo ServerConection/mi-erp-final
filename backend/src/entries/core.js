@@ -34,6 +34,7 @@ app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'))
 app.use('/api/reporte-jefatura',  require('../routes/reporteJefatura.routes'));
 app.use('/api/reporte-detalle',   require('../routes/reporteDetalle.routes'));
 app.use('/api/bot-auditor',       require('../routes/botAuditor.routes'));
+app.use('/api/nexo-ia',           require('../routes/nexoIa.routes'));
 app.use('/api/tthh',              require('../routes/tthh.routes'));
 app.use('/api/tareas',            require('../routes/tareas.routes'));
 app.use('/api/hojas',             require('../routes/hojas.routes'));

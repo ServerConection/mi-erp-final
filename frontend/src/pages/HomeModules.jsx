@@ -76,6 +76,8 @@ export default function HomeModules() {
     { title: "Contactabilidad", path: "/bot-auditor/contactabilidad", icon: ShieldCheck, accent: "azul", cat: "analitica",
       desc: "Mensajes de cliente y asesor, tiempos de respuesta, pendientes, orígenes y etapas.",
       rolesPermitidos: ['CONSULTOR', 'SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR', 'COORDINADOR'] },
+    { title: "NEXO IA", path: "/nexo-ia", icon: MessageCircle, accent: "verde", cat: "ventas",
+      desc: "Copiloto comercial que analiza conversaciones y prepara respuestas y seguimientos." },
 
     { title: "Ventas CRM", path: "/ventas", icon: TrendingUp, accent: "verde", cat: "ventas",
       desc: "Pipeline comercial, seguimiento de leads y cierre de negocios." },

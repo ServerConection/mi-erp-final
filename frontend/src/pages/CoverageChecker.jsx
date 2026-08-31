@@ -541,6 +541,12 @@ export default function CoverageChecker() {
         hasCoverage: data.hasCoverage,
         zoneName: data.zoneName || "—",
         zonaMasCercana: data.zonaMasCercana || null,
+        // Por que dio ese resultado. El backend lo explica; aqui solo se
+        // muestra, para que el asesor no tenga que creer a ciegas.
+        coberturaVia:     data.coberturaVia     || null,   // poligono | trazado | agujero
+        coberturaMetros:  data.coberturaMetros  ?? null,
+        coberturaDetalle: data.coberturaDetalle || null,
+        radioTrazadoM:    data.radioTrazadoM    ?? null,
         // Pregunta 2 — peligro (independiente de la cobertura)
         esZonaPeligrosa: !!data.esZonaPeligrosa,
         peligroTipo:     data.peligroTipo     || null,
@@ -1357,6 +1363,28 @@ export default function CoverageChecker() {
               >
                 {result.hasCoverage ? "✅ SÍ tiene cobertura" : "❌ NO tiene cobertura"}
               </h3>
+
+              {/* Por que. Un "si" o un "no" sin motivo obliga al asesor a
+                  confiar a ciegas; cuando el mapa dice otra cosa, no hay forma
+                  de saber quien tiene razon. Aqui se dice de donde salio. */}
+              {result.coberturaDetalle && (
+                <div className="mb-4 rounded-xl px-4 py-3 bg-white/70 border border-slate-200">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                    Por qué
+                  </p>
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    {result.coberturaVia === "trazado" && "🔌 "}
+                    {result.coberturaVia === "poligono" && "🗺️ "}
+                    {result.coberturaVia === "agujero" && "🚫 "}
+                    {result.coberturaDetalle}
+                  </p>
+                  {result.coberturaVia === "trazado" && (
+                    <p className="text-xs text-slate-500 mt-1.5">
+                      La red pasa cerca, no exactamente encima. Confirma factibilidad antes de prometer instalación.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Sin cobertura: informar qué tan cerca está la más próxima.
                   Ayuda a distinguir "está al lado, vale escalarlo" de

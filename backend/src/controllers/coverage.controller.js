@@ -200,8 +200,10 @@ function isShortenedUrl(url) {
 let loadedZones  = null;
 let loadedAt     = null;
 let loadedFile   = null;
-let spatialIndex = null; // grilla de zonas de COBERTURA
+let spatialIndex = null; // grilla de POLIGONOS de cobertura
 let dangerIndex  = null; // grilla de zonas de PELIGRO (independiente)
+let lineIndex    = null; // grilla de TRAZADOS (LineString/Point) — cobertura por cercania
+let holeIndex    = null; // grilla de AGUJEROS — regiones excluidas dentro de un poligono
 let dbRestoring  = false; // semáforo para evitar restauraciones paralelas
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -633,7 +635,9 @@ function buildBBox(coords) {
  */
 function buildSpatialIndex(zones, opts = {}) {
   const t0 = Date.now();
-  const soloPeligro = !!opts.soloPeligro;
+  const soloPeligro  = !!opts.soloPeligro;
+  const soloLineas   = !!opts.soloLineas;
+  const soloAgujeros = !!opts.soloAgujeros;
 
   // 1. Pre-calcular bounding box de cada zona (en el objeto mismo)
   for (const zone of zones) {
@@ -647,10 +651,28 @@ function buildSpatialIndex(zones, opts = {}) {
   const cells = new Map();
   let indexadas = 0;
   for (let i = 0; i < zones.length; i++) {
-    if (zones[i].type && zones[i].type !== 'Polygon') continue;
-    if (soloPeligro && !zones[i].dangerType) continue;
-    if (!soloPeligro && zones[i].dangerType) continue; // peligro va en su propio índice
-    const { minLon, minLat, maxLon, maxLat } = zones[i].bbox;
+    const tipo = zones[i].type || 'Polygon';
+
+    if (soloLineas) {
+      // Trazados de fibra y postes: no son geometrias cerradas, se evaluan por
+      // cercania. Su bbox se infla el radio de cobertura para que el lookup en
+      // la grilla no descarte un punto que esta a 200 m de la linea.
+      if (tipo !== 'LineString' && tipo !== 'Point') continue;
+      if (zones[i].dangerType) continue;
+    } else if (soloAgujeros) {
+      if (tipo !== 'Hole') continue;
+    } else {
+      if (tipo !== 'Polygon') continue;
+      if (soloPeligro && !zones[i].dangerType) continue;
+      if (!soloPeligro && zones[i].dangerType) continue; // peligro va en su propio indice
+    }
+
+    let { minLon, minLat, maxLon, maxLat } = zones[i].bbox;
+    if (soloLineas) {
+      const mLat = COVERAGE_BUFFER_M / METROS_POR_GRADO_LAT;
+      const mLon = mLat / Math.max(0.2, Math.cos(((minLat + maxLat) / 2) * Math.PI / 180));
+      minLon -= mLon; maxLon += mLon; minLat -= mLat; maxLat += mLat;
+    }
     const c0 = Math.floor(minLon / GRID_CELL);
     const c1 = Math.floor(maxLon / GRID_CELL);
     const r0 = Math.floor(minLat / GRID_CELL);
@@ -665,9 +687,11 @@ function buildSpatialIndex(zones, opts = {}) {
     indexadas++;
   }
 
+  const etiqueta = soloLineas ? 'de TRAZADOS' : soloAgujeros ? 'de AGUJEROS'
+                 : soloPeligro ? 'de PELIGRO' : 'de POLIGONOS';
   console.log(
-    `[Coverage] Índice ${soloPeligro ? 'de PELIGRO' : 'de cobertura'} listo:`,
-    `${cells.size} celdas / ${indexadas} polígonos (${Date.now() - t0}ms)`
+    `[Coverage] Indice ${etiqueta} listo:`,
+    `${cells.size} celdas / ${indexadas} elementos (${Date.now() - t0}ms)`
   );
   return cells;
 }
@@ -676,6 +700,8 @@ function buildSpatialIndex(zones, opts = {}) {
 function rebuildIndexes(zones) {
   spatialIndex = buildSpatialIndex(zones);
   dangerIndex  = buildSpatialIndex(zones, { soloPeligro: true });
+  lineIndex    = buildSpatialIndex(zones, { soloLineas: true });
+  holeIndex    = buildSpatialIndex(zones, { soloAgujeros: true });
 }
 
 /**
@@ -743,6 +769,20 @@ function findDangerZonesForPoint(longitude, latitude, zones, cells) {
 
 const METROS_POR_GRADO_LAT = 111320;
 
+// ════════════════════════════════════════════════════════════════════════════
+// RADIO DE COBERTURA SOBRE TRAZADOS
+// ────────────────────────────────────────────────────────────────────────────
+// Buena parte de los mapas de cobertura no son poligonos: son LINEAS — el
+// recorrido real de la fibra por las calles. Un poligono responde "¿esta
+// dentro?"; una linea no, porque no encierra area. La cobertura de un cable
+// existe ALREDEDOR de el: si la fibra pasa por el frente de la casa, hay
+// servicio aunque el punto no caiga exactamente sobre el trazo.
+//
+// 200 m es el radio definido por operacion. Se cambia sin tocar codigo con la
+// variable de entorno COVERAGE_BUFFER_M.
+// ════════════════════════════════════════════════════════════════════════════
+const COVERAGE_BUFFER_M = Math.max(0, parseInt(process.env.COVERAGE_BUFFER_M || '200', 10) || 200);
+
 // Distancia aproximada punto→segmento en metros (proyección plana local;
 // suficiente y muy rápida para distancias urbanas).
 function distanciaPuntoSegmento(px, py, ax, ay, bx, by, escalaLon) {
@@ -768,21 +808,117 @@ function zonaMasCercana(longitude, latitude, radioMax = 5000) {
   let mejor = null;
   for (const z of loadedZones) {
     if (z.dangerType) continue;                 // solo cobertura
-    if (z.type && z.type !== 'Polygon') continue;
+    // Antes se saltaban LineString y Point: por eso la distancia reportada era
+    // la de un poligono lejano mientras un cable pasaba al lado.
+    const tipo = z.type || 'Polygon';
+    if (tipo === 'Hole') continue;              // un agujero no es cobertura
     const b = z.bbox || buildBBox(z.coordinates);
     // Descarte rápido por bounding box ampliado
     if (b.minLon - margenGrados > longitude || b.maxLon + margenGrados < longitude) continue;
     if (b.minLat - margenGrados > latitude  || b.maxLat + margenGrados < latitude)  continue;
 
-    const c = z.coordinates;
-    for (let i = 0, j = c.length - 1; i < c.length; j = i++) {
-      const d = distanciaPuntoSegmento(longitude, latitude, c[j][0], c[j][1], c[i][0], c[i][1], escalaLon);
-      if (!mejor || d < mejor.metros) mejor = { nombre: z.name, metros: d };
-      if (mejor.metros < 1) break;
+    // Un poligono cierra (ultimo vertice -> primero); una linea NO. Cerrarla
+    // inventa un segmento que no existe y falsea la distancia.
+    const d = distanciaAZona(longitude, latitude, z, escalaLon);
+    if (!mejor || d < mejor.metros) mejor = { nombre: z.name, metros: d, tipo };
+    if (tipo === 'Polygon') {
+      const c = z.coordinates;
+      const cierre = distanciaPuntoSegmento(longitude, latitude,
+        c[c.length - 1][0], c[c.length - 1][1], c[0][0], c[0][1], escalaLon);
+      if (cierre < mejor.metros) mejor = { nombre: z.name, metros: cierre, tipo };
     }
   }
   if (!mejor || mejor.metros > radioMax) return null;
-  return { nombre: mejor.nombre, metros: Math.round(mejor.metros) };
+  return { nombre: mejor.nombre, metros: Math.round(mejor.metros), tipo: mejor.tipo };
+}
+
+/**
+ * Distancia en metros de un punto a una zona (recorre sus vertices).
+ * Sirve igual para LineString (segmentos consecutivos) y para Point
+ * (un solo vertice: distanciaPuntoSegmento con a==b devuelve la distancia recta).
+ */
+function distanciaAZona(longitude, latitude, zona, escalaLon) {
+  const c = zona.coordinates;
+  if (!c || !c.length) return Infinity;
+  if (c.length === 1) {
+    return distanciaPuntoSegmento(longitude, latitude, c[0][0], c[0][1], c[0][0], c[0][1], escalaLon);
+  }
+  let min = Infinity;
+  for (let i = 1; i < c.length; i++) {
+    const d = distanciaPuntoSegmento(longitude, latitude, c[i - 1][0], c[i - 1][1], c[i][0], c[i][1], escalaLon);
+    if (d < min) { min = d; if (min < 1) break; }
+  }
+  return min;
+}
+
+/** Trazado (linea o poste) mas cercano dentro del radio. Devuelve {zona, metros} o null. */
+function trazadoEnRadio(longitude, latitude, radio = COVERAGE_BUFFER_M) {
+  if (!lineIndex) return null;
+  const candidatos = lineIndex.get(`${Math.floor(latitude / GRID_CELL)},${Math.floor(longitude / GRID_CELL)}`);
+  if (!candidatos || !candidatos.length) return null;
+
+  const escalaLon = METROS_POR_GRADO_LAT * Math.cos(latitude * Math.PI / 180);
+  let mejor = null;
+  for (const idx of candidatos) {
+    const z = loadedZones[idx];
+    const d = distanciaAZona(longitude, latitude, z, escalaLon);
+    if (d <= radio && (!mejor || d < mejor.metros)) mejor = { zona: z, metros: d };
+  }
+  return mejor ? { zona: mejor.zona, metros: Math.round(mejor.metros) } : null;
+}
+
+/** ¿El punto cae en un agujero (region excluida dentro de un poligono)? */
+function puntoEnAgujero(longitude, latitude) {
+  if (!holeIndex) return null;
+  const candidatos = holeIndex.get(`${Math.floor(latitude / GRID_CELL)},${Math.floor(longitude / GRID_CELL)}`);
+  if (!candidatos || !candidatos.length) return null;
+  const punto = [longitude, latitude];
+  for (const idx of candidatos) {
+    const z = loadedZones[idx];
+    const b = z.bbox;
+    if (longitude < b.minLon || longitude > b.maxLon || latitude < b.minLat || latitude > b.maxLat) continue;
+    if (pointInPolygon(punto, z.coordinates)) return z;
+  }
+  return null;
+}
+
+/**
+ * ¿Este punto tiene cobertura? Respuesta unica y trazable.
+ *
+ * El orden importa y es deliberado:
+ *   1. AGUJERO   → un hueco dentro de un poligono es una exclusion explicita.
+ *                  Manda sobre todo lo demas: el que dibujo el mapa marco ahi
+ *                  que NO hay servicio.
+ *   2. POLIGONO  → punto dentro de un area de cobertura. La evidencia mas fuerte.
+ *   3. TRAZADO   → fibra o poste a <= COVERAGE_BUFFER_M metros.
+ *
+ * Devuelve siempre `via` y `metros` para que se pueda auditar por que dio lo
+ * que dio, sin tener que adivinar.
+ */
+function evaluarCobertura(longitude, latitude) {
+  const agujero = puntoEnAgujero(longitude, latitude);
+  if (agujero) {
+    return { cubierto: false, via: 'agujero', zona: agujero, metros: 0,
+             detalle: `El punto cae dentro de "${agujero.name}", marcada en el mapa como zona excluida.` };
+  }
+
+  const poligono = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
+  if (poligono) {
+    return { cubierto: true, via: 'poligono', zona: poligono, metros: 0,
+             detalle: `Dentro del area de cobertura "${poligono.name}".` };
+  }
+
+  const trazado = trazadoEnRadio(longitude, latitude);
+  if (trazado) {
+    return { cubierto: true, via: 'trazado', zona: trazado.zona, metros: trazado.metros,
+             detalle: `A ${trazado.metros} m del trazado "${trazado.zona.name}" (radio de cobertura: ${COVERAGE_BUFFER_M} m).` };
+  }
+
+  const cercana = zonaMasCercana(longitude, latitude);
+  return { cubierto: false, via: null, zona: null, metros: null, cercana,
+           detalle: cercana
+             ? `Sin cobertura. Lo mas cercano es "${cercana.nombre}" a ${cercana.metros} m (el radio es de ${COVERAGE_BUFFER_M} m).`
+             : 'Sin cobertura y sin nada cargado en varios kilometros a la redonda.' };
 }
 
 // Gravedad: BLOQUEADO manda sobre HORARIO_RESTRINGIDO, y este sobre RESTRINGIDA
@@ -828,9 +964,17 @@ function classifyGeometry(beforeSnippet) {
   const lineIdx  = beforeSnippet.lastIndexOf('<LineString>');
   const ringIdx  = beforeSnippet.lastIndexOf('<LinearRing>');
   const max = Math.max(pointIdx, lineIdx, ringIdx);
-  if (max === -1) return 'Polygon'; // fallback conservador (no debería pasar en KML válido)
+  if (max === -1) return 'Polygon'; // fallback conservador (no deberia pasar en KML valido)
   if (max === pointIdx) return 'Point';
   if (max === lineIdx) return 'LineString';
+
+  // Es un LinearRing. Falta lo importante: ¿es el borde exterior del poligono
+  // o un AGUJERO?  <innerBoundaryIs> marca una region EXCLUIDA del area.
+  // Tratar un agujero como cobertura es exactamente al reves de lo que
+  // significa, y es la causa de los "si tiene cobertura" donde no la hay.
+  const innerIdx = beforeSnippet.lastIndexOf('<innerBoundaryIs>');
+  const outerIdx = beforeSnippet.lastIndexOf('<outerBoundaryIs>');
+  if (innerIdx > outerIdx && innerIdx !== -1) return 'Hole';
   return 'Polygon';
 }
 
@@ -879,7 +1023,7 @@ function parseKMLFast(kmlString) {
 
     if (coords.length === 0) continue;
 
-    const type = classifyGeometry(kmlString.substring(Math.max(0, cm.index - 300), cm.index));
+    const type = classifyGeometry(kmlString.substring(Math.max(0, cm.index - 700), cm.index));
 
     // Buscar el <name> más cercano ANTES de este bloque de coordenadas
     // Ventana de 2000 chars es suficiente para cubrir cualquier Placemark / Folder
@@ -1315,19 +1459,24 @@ exports.checkCoverage = async (req, res) => {
     // 1) ¿Hay cobertura?   2) ¿Es zona de peligro?
     // Se evalúan por separado contra índices distintos: un punto puede tener
     // cobertura Y estar en zona bloqueada al mismo tiempo.
-    const zone    = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
+    const cob     = evaluarCobertura(longitude, latitude);
     const peligro = evaluarPeligro(longitude, latitude);
 
-    // Diagnóstico: si no hay cobertura, ¿qué tan cerca está la más próxima?
-    // No otorga cobertura — solo informa, para decidir si vale escalarlo.
-    const cercana = zone ? null : zonaMasCercana(longitude, latitude);
+    // Si no hay cobertura, que tan cerca esta lo mas proximo. No otorga
+    // cobertura: solo informa, para decidir si vale escalarlo.
+    const cercana = cob.cubierto ? null : (cob.cercana ?? zonaMasCercana(longitude, latitude));
 
     return res.status(200).json({
       latitude, longitude,
       // Pregunta 1 — cobertura
-      hasCoverage: !!zone,
-      zoneName:    zone ? zone.name : 'Sin cobertura',
-      zonaMasCercana: cercana,   // { nombre, metros } o null
+      hasCoverage: cob.cubierto,
+      zoneName:    cob.zona ? cob.zona.name : 'Sin cobertura',
+      // Por que dio ese resultado — auditable desde la UI
+      coberturaVia:     cob.via,        // 'poligono' | 'trazado' | 'agujero' | null
+      coberturaMetros:  cob.metros,     // distancia al trazado cuando via = 'trazado'
+      coberturaDetalle: cob.detalle,
+      radioTrazadoM:    COVERAGE_BUFFER_M,
+      zonaMasCercana: cercana,   // { nombre, metros, tipo } o null
       // Pregunta 2 — peligro (siempre presente, independiente de la cobertura)
       esZonaPeligrosa: peligro.esPeligrosa,
       peligroTipo:     peligro.tipo,      // BLOQUEADO | HORARIO_RESTRINGIDO | RESTRINGIDA | null
@@ -1504,7 +1653,8 @@ exports.checkBatch = async (req, res) => {
       const longitude = parseFloat(p.longitude);
 
       // Dos preguntas independientes por cada punto
-      const zone    = findZoneForPoint(longitude, latitude, loadedZones, spatialIndex);
+      const cobB    = evaluarCobertura(longitude, latitude);
+      const zone    = cobB.cubierto ? cobB.zona : null;
       const peligro = evaluarPeligro(longitude, latitude);
 
       return {
@@ -1938,3 +2088,85 @@ exports.resolveLink = async (req, res) => {
     return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
   }
 };
+
+// ── GET /api/coverage/debug?lat=&lon= ────────────────────────────────────────
+/**
+ * Por que este punto dio ese resultado.
+ *
+ * Existe para cerrar discusiones: cuando un asesor dice "aqui si hay cobertura
+ * y el sistema dice que no", esto responde con la evidencia — que geometria
+ * hizo match, de que tipo, a cuantos metros, y que hay alrededor. Sin esto la
+ * unica salida es abrir Google Earth y comparar a ojo.
+ */
+exports.debugPunto = async (req, res) => {
+  try {
+    const latitude  = parseFloat(req.query.lat);
+    const longitude = parseFloat(req.query.lon);
+    if (!isValidCoords(latitude, longitude)) {
+      return res.status(400).json({ status: 'error', message: 'Coordenadas invalidas. Usa ?lat=-2.4189&lon=-79.3459' });
+    }
+
+    if (!loadedZones || loadedZones.length === 0) {
+      const ok = await ensureZonesLoaded();
+      if (!ok) return res.status(503).json({ status: 'error', message: 'No hay zonas cargadas.' });
+    }
+
+    const cob     = evaluarCobertura(longitude, latitude);
+    const escala  = METROS_POR_GRADO_LAT * Math.cos(latitude * Math.PI / 180);
+
+    // Las 10 geometrias mas cercanas, del tipo que sean. Es lo que de verdad
+    // permite entender el resultado: si las 10 son LineString a 40 m, el punto
+    // tiene fibra encima aunque no haya ningun poligono.
+    const margen = 3000 / METROS_POR_GRADO_LAT;
+    const cerca = [];
+    for (const z of loadedZones) {
+      const b = z.bbox || buildBBox(z.coordinates);
+      if (b.minLon - margen > longitude || b.maxLon + margen < longitude) continue;
+      if (b.minLat - margen > latitude  || b.maxLat + margen < latitude)  continue;
+      const d = distanciaAZona(longitude, latitude, z, escala);
+      if (d <= 3000) {
+        cerca.push({
+          nombre: z.name,
+          tipo:   z.type || 'Polygon',
+          metros: Math.round(d),
+          archivo: z.fileName || z.source || null,
+          dentroDelRadio: d <= COVERAGE_BUFFER_M,
+          peligro: z.dangerType || null,
+        });
+      }
+    }
+    cerca.sort((a, b) => a.metros - b.metros);
+
+    const porTipo = countByType(loadedZones);
+
+    return res.json({
+      punto: { latitude, longitude },
+      resultado: {
+        hasCoverage: cob.cubierto,
+        via:         cob.via,          // poligono | trazado | agujero | null
+        zona:        cob.zona ? cob.zona.name : null,
+        metros:      cob.metros,
+        explicacion: cob.detalle,
+      },
+      configuracion: {
+        radioTrazadoM: COVERAGE_BUFFER_M,
+        nota: 'Se cambia con la variable de entorno COVERAGE_BUFFER_M, sin tocar codigo.',
+      },
+      geometriasCargadas: porTipo,
+      masCercanas: cerca.slice(0, 10),
+      // Si esto sale en 0, el KMZ se cargo con el parser viejo y los agujeros
+      // quedaron guardados como poligonos: hay que volver a subir el archivo.
+      agujerosDetectados: loadedZones.filter(z => z.type === 'Hole').length,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Coverage debug]', error);
+    return res.status(500).json({ status: 'error', message: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });
+  }
+};
+
+// ── Ganchos internos para pruebas ────────────────────────────────────────────
+// Se exponen solo para que backend/test/coverage.radio.test.js pueda ejercitar
+// el parser y el motor de decision sin levantar el servidor ni tocar la base.
+// No los consume ninguna ruta.
+exports._internos = { parseKMLFast, evaluarCobertura, setLoadedZones, countByType, COVERAGE_BUFFER_M };

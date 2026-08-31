@@ -10,9 +10,37 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { verificarToken, noAsesor } = require('../middleware/auth');
+const { verificarToken } = require('../middleware/auth');
 
-router.use(verificarToken, noAsesor);
+// ─── QUIÉN ENTRA A BACKOFFICE ───────────────────────────────────────────────
+// Antes esta ruta usaba `noAsesor`, que bloquea `perfil === 'ASESOR'`.
+// Ese perfil NO EXISTE en la tabla usuarios: los asesores están registrados
+// como 'USUARIO' (93 de ellos). O sea que el guard no bloqueaba a nadie y
+// cualquier vendedor podía leer y editar ventas ajenas —incluido valor_pago,
+// plan contratado y los datos personales del cliente.
+//
+// Se cambia a lista blanca en vez de lista negra: si mañana aparece un perfil
+// nuevo en la base, queda FUERA por defecto en vez de entrar por descuido.
+// `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
+const PERFILES_BACKOFFICE = new Set([
+  'ADMINISTRADOR',   // transversal, ve las dos empresas
+  'GERENCIA',
+  'SUPERVISOR',
+  'ANALISTA',
+]);
+
+const soloBackoffice = (req, res, next) => {
+  const perfil = (req.user?.perfil || '').trim().toUpperCase();
+  if (!PERFILES_BACKOFFICE.has(perfil)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Tu perfil no tiene acceso al módulo de Backoffice.',
+    });
+  }
+  next();
+};
+
+router.use(verificarToken, soloBackoffice);
 
 // ─── GET /api/backoffice ─────────────────────────────────────────────────────
 // Lista todos los registros con columnas clave para la tabla

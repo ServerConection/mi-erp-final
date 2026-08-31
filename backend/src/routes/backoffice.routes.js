@@ -10,7 +10,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { verificarToken } = require('../middleware/auth');
+const { verificarToken, noAsesor } = require('../middleware/auth');
+const { enviarBienvenidaWelcome } = require('../services/email.service');
 
 // ─── QUIÉN ENTRA A BACKOFFICE ───────────────────────────────────────────────
 // Antes esta ruta usaba `noAsesor`, que bloquea `perfil === 'ASESOR'`.
@@ -272,7 +273,8 @@ const CAMPOS_EDITABLES = new Set([
   'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
   'archivo_resumen',
   'links_documentos',
-
+  'gestion_atc',
+  
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',
@@ -315,16 +317,16 @@ router.put('/:id', async (req, res) => {
       payload[clave] = valor === '' ? null : valor;
     }
 
-    // Tampoco se puede "mudar" una venta a la otra empresa desde el formulario.
-    if ('distribuidor_autorizado' in payload) {
-      const alcance = empresaDelUsuario(req);
-      const destino = (payload.distribuidor_autorizado || '').trim().toUpperCase();
-      if (alcance && destino && destino !== alcance) {
-        return res.status(403).json({
-          success: false,
-          error: 'No puedes reasignar el registro a otra empresa.',
-        });
-      }
+    // El correo se dispara únicamente al entrar a NOTIFICADO. Guardar otros
+    // campos de un registro que ya estaba notificado no debe reenviarlo.
+    let debeEnviarBienvenida = false;
+    if (String(payload.novedades_atc || '').trim().toUpperCase() === 'NOTIFICADO') {
+      const anterior = await pool.query(
+        'SELECT novedades_atc FROM public.envios_ventas WHERE id = $1',
+        [id]
+      );
+      const estadoAnterior = String(anterior.rows[0]?.novedades_atc || '').trim().toUpperCase();
+      debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
     }
 
     // Manejo de la fecha y cálculo de campos derivados
@@ -408,7 +410,24 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
 
-    res.json({ success: true, data: rows[0], mensaje: 'Registro actualizado correctamente' });
+    let correoBienvenida = null;
+    if (debeEnviarBienvenida) {
+      try {
+        correoBienvenida = await enviarBienvenidaWelcome(rows[0]);
+      } catch (errorCorreo) {
+        // El estado ya quedó guardado. Un fallo SMTP se informa sin revertir
+        // la gestión realizada por Backoffice.
+        console.error('[BACKOFFICE] Error enviando bienvenida:', errorCorreo.message);
+        correoBienvenida = { enviado: false, error: 'No se pudo enviar el correo de bienvenida' };
+      }
+    }
+
+    res.json({
+      success: true,
+      data: rows[0],
+      mensaje: 'Registro actualizado correctamente',
+      correo_bienvenida: correoBienvenida,
+    });
   } catch (e) {
     console.error(
       '[BACKOFFICE] Error en PUT update:',

@@ -68,7 +68,10 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  // El modulo de tareas (estado, reasignacion y comentarios) usa PATCH.
+  // Si no se anuncia aqui, el navegador bloquea el preflight y muestra
+  // solamente "Failed to fetch", aunque la ruta exista en Express.
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   // Cache-Control y Pragma: los manda el botón "Forzar Refresh" de Indicadores.
   // Sin ellos el preflight falla con "Request header field cache-control is not allowed".
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],

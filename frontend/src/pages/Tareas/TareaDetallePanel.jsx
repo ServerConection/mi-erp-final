@@ -34,6 +34,13 @@ const ETIQUETA_CAMPO = {
   proyecto_id: 'el proyecto',
 };
 
+const ETAPAS_TAREA = [
+  { estado: 'PENDIENTE',   etiqueta: 'Pendiente' },
+  { estado: 'EN_PROCESO',  etiqueta: 'En proceso' },
+  { estado: 'EN_REVISION', etiqueta: 'En revisión' },
+  { estado: 'COMPLETADA',  etiqueta: 'Finalizada' },
+];
+
 export default function TareaDetallePanel({ tareaId, catalogos, onCerrar, onCambio }) {
   const [d, setD]             = useState(null);
   const [cargando, setCarg]   = useState(true);
@@ -127,6 +134,8 @@ export default function TareaDetallePanel({ tareaId, catalogos, onCerrar, onCamb
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            <EtapasTarea estado={t.estado} />
+
             {/* ── Acciones principales ─────────────────────────────────────── */}
             {p.transiciones.length > 0 && (
               <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-2">
@@ -333,6 +342,43 @@ export default function TareaDetallePanel({ tareaId, catalogos, onCerrar, onCamb
         </>
       )}
     </Drawer>
+  );
+}
+
+function EtapasTarea({ estado }) {
+  const cancelada = estado === 'CANCELADA';
+  const indiceActual = ETAPAS_TAREA.findIndex(etapa => etapa.estado === estado);
+
+  return (
+    <div className="px-6 py-4 border-b border-slate-100 bg-white">
+      <div className="flex items-center justify-between gap-1" aria-label="Etapas de la tarea">
+        {ETAPAS_TAREA.map((etapa, indice) => {
+          const alcanzada = !cancelada && indice <= indiceActual;
+          const actual = !cancelada && indice === indiceActual;
+
+          return (
+            <div key={etapa.estado} className="contents">
+              {indice > 0 && (
+                <div className={`h-0.5 flex-1 min-w-3 ${alcanzada ? 'bg-blue-500' : 'bg-slate-200'}`} />
+              )}
+              <div className="flex flex-col items-center gap-1 min-w-14">
+                <span className={`h-3 w-3 rounded-full ring-4 ring-white ${
+                  alcanzada ? 'bg-blue-600' : 'bg-slate-300'
+                } ${actual ? 'outline outline-2 outline-blue-200 outline-offset-2' : ''}`} />
+                <span className={`text-[11px] text-center leading-tight ${
+                  actual ? 'font-semibold text-blue-700' : alcanzada ? 'text-slate-600' : 'text-slate-400'
+                }`}>
+                  {etapa.etiqueta}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {cancelada && (
+        <p className="mt-2 text-xs font-medium text-rose-600 text-center">Tarea cancelada</p>
+      )}
+    </div>
   );
 }
 

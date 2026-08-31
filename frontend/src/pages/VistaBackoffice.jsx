@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -42,6 +44,290 @@ const CAMPOS_FECHA = [
   "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
   "fecha_ingreso_telcos",
 ];
+
+const OPCIONES_ESTATUS_REGULARIZACION = [
+  { valor: "__SIN_REVISAR__", etiqueta: "Sin Revisar" },
+  { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
+  { valor: "REGULARIZADO", etiqueta: "Regularizado" },
+  { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
+];
+
+/**
+ * Exporta un arreglo de registros a un archivo CSV compatible directamente con Excel.
+ * @param {Array} data - Lista de objetos/registros a exportar.
+ * @param {string} nombreArchivo - Nombre del archivo resultante.
+ */
+/**
+ * Exporta un listado de registros a un libro nativo de Excel (.xlsx) con
+ * cabeceras descriptivas, auto-ajuste de anchos de columna y formato limpio.
+ */
+async function exportarAExcel(data, nombreArchivo = "Reporte") {
+  if (!data || !data.length) {
+    alert("No hay registros disponibles para exportar con los filtros actuales.");
+    return;
+  }
+
+  // Excel permite máximo 32.767 caracteres por celda.
+  // Dejamos un pequeño margen de seguridad.
+  const MAX_CARACTERES_EXCEL = 32000;
+
+  /**
+   * Limpia cualquier valor antes de mandarlo a Excel.
+   */
+  const limpiarValorExcel = (valor, columna) => {
+    if (valor === null || valor === undefined) return "";
+
+    // Fechas
+    if (CAMPOS_FECHA.includes(columna)) {
+      return String(valor).slice(0, 10);
+    }
+
+    let texto;
+
+    // Evita que objetos terminen como [object Object]
+    try {
+      if (typeof valor === "object") {
+        texto = JSON.stringify(valor);
+      } else {
+        texto = String(valor);
+      }
+    } catch {
+      texto = String(valor);
+    }
+
+    /*
+     * DOCUMENTOS / IMÁGENES
+     *
+     * Los documentos deberían contener solamente una ruta o URL.
+     * Si por datos antiguos existe un base64 gigantesco, NO lo
+     * mandamos completo al Excel.
+     */
+    if (CAMPOS_DOCUMENTO.includes(columna)) {
+      if (
+        texto.startsWith("data:image/") ||
+        texto.startsWith("data:application/") ||
+        texto.length > MAX_CARACTERES_EXCEL
+      ) {
+        return "[DOCUMENTO ADJUNTO - CONTENIDO OMITIDO]";
+      }
+
+      return texto;
+    }
+
+    /*
+     * Protección general.
+     *
+     * Ninguna celda puede superar el límite permitido por Excel.
+     */
+    if (texto.length > MAX_CARACTERES_EXCEL) {
+      return `${texto.slice(0, MAX_CARACTERES_EXCEL)}\n[CONTENIDO RECORTADO PARA EXCEL]`;
+    }
+
+    return texto;
+  };
+
+  // Detectar todas las columnas existentes en todos los registros,
+  // no solamente las del primer registro.
+  const columnasDisponibles = [
+    ...new Set(
+      data.flatMap((row) => Object.keys(row || {}))
+    ),
+  ];
+
+  // Mantener primero el orden definido en TABLE_COLUMNS.
+  const columnasOrdenadas = [
+    ...TABLE_COLUMNS.filter((col) =>
+      columnasDisponibles.includes(col)
+    ),
+    ...columnasDisponibles.filter(
+      (col) => !TABLE_COLUMNS.includes(col)
+    ),
+  ];
+
+  // Preparar los registros.
+  const filasFormateadas = data.map((row) => {
+    const objetoFila = {};
+
+    columnasOrdenadas.forEach((col) => {
+      const cabecera =
+        FIELD_LABELS[col] ||
+        col.replace(/_/g, " ").toUpperCase();
+
+      objetoFila[cabecera] = limpiarValorExcel(
+        row?.[col],
+        col
+      );
+    });
+
+    return objetoFila;
+  });
+
+  // Crear hoja.
+  const worksheet =
+    XLSX.utils.json_to_sheet(filasFormateadas);
+
+  /*
+   * Anchos de columnas.
+   *
+   * Se calculan sobre filasFormateadas porque ahí las claves
+   * ya son los nombres descriptivos de las cabeceras.
+   */
+  const encabezados = Object.keys(
+    filasFormateadas[0] || {}
+  );
+
+  worksheet["!cols"] = encabezados.map((key) => {
+    const longitudCabecera = key.length;
+
+    const longitudMaximaDatos = filasFormateadas.reduce(
+      (max, row) => {
+        const valor = row[key] ?? "";
+
+        const primeraLinea =
+          String(valor).split("\n")[0];
+
+        return Math.max(
+          max,
+          Math.min(primeraLinea.length, 45)
+        );
+      },
+      0
+    );
+
+    return {
+      wch: Math.max(
+        12,
+        Math.min(
+          50,
+          Math.max(
+            longitudCabecera + 2,
+            longitudMaximaDatos + 2
+          )
+        )
+      ),
+    };
+  });
+
+  // Filtro en las cabeceras y una altura cómoda para textos de varias líneas.
+  worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+  worksheet["!rows"] = [
+    { hpt: 28 },
+    ...filasFormateadas.map((row) => {
+      const lineas = Math.max(
+        1,
+        ...encabezados.map((key) => String(row[key] ?? "").split("\n").length)
+      );
+      return { hpt: Math.min(60, 18 * lineas) };
+    }),
+  ];
+
+  // Crear libro.
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Registros"
+  );
+
+  // Nombre seguro del archivo.
+  const fechaHoy = new Date()
+    .toISOString()
+    .slice(0, 10);
+
+  const nombreSeguro = String(nombreArchivo)
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim();
+
+  try {
+    const contenido = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
+
+    // SheetJS Community no escribe estilos. Como JSZip ya forma parte del
+    // proyecto, incorporamos al XLSX dos estilos simples: cabecera y cuerpo.
+    const zip = await JSZip.loadAsync(contenido);
+    const rutaHoja = "xl/worksheets/sheet1.xml";
+    const hojaXml = await zip.file(rutaHoja)?.async("string");
+
+    if (hojaXml) {
+      const hojaConEstilos = hojaXml.replace(
+        /<c\b([^>]*\br="([A-Z]+)(\d+)"[^>]*)>/g,
+        (celda, atributos, _columna, fila) => {
+          const sinEstilo = atributos.replace(/\s+s="[^"]*"/g, "");
+          return `<c${sinEstilo} s="${fila === "1" ? 1 : 2}">`;
+        }
+      );
+      zip.file(rutaHoja, hojaConEstilos);
+
+      zip.file("xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts>
+  <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1E3A5F"/><bgColor indexed="64"/></patternFill></fill></fills>
+  <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`);
+    }
+
+    const archivo = await zip.generateAsync({
+      type: "blob",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(archivo);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = `${nombreSeguro}_${fechaHoy}.xlsx`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(
+      "[EXCEL] Error exportando archivo:",
+      error
+    );
+
+    alert(
+      `No se pudo generar el archivo Excel.\n\n${error.message || "Error desconocido"}`
+    );
+  }
+}
+
+function BotonDescargaExcel({
+  onClick,
+  color = "#059669",
+  fondo = "#ecfdf5",
+  borde = "#a7f3d0",
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Descargar datos actuales en Excel"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "9px 14px",
+        borderRadius: 10,
+        border: `1px solid ${borde}`,
+        background: fondo,
+        color,
+        fontWeight: 700,
+        fontSize: 12.5,
+        cursor: "pointer",
+        transition: "all .15s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>📥</span>
+      Descargar Excel
+    </button>
+  );
+}
 
 // ── Carga de un documento protegido ──────────────────────────────────────────
 // En la base de datos el documento se guarda como una RUTA interna
@@ -443,6 +729,7 @@ const FIELD_LABELS = {
   foto_carnet: "FOTO CARNET",
   archivo_resumen: "ARCHIVO RESUMEN",
   fecha_ingreso_telcos: "FECHA INGRESO TELCOS",
+  gestion_atc: "GESTIÓN ATC",
 };
 
 const TABLE_COLUMNS = [
@@ -456,7 +743,7 @@ const TABLE_COLUMNS = [
   "links_documentos", "estado_recaudacion", "fecha_recaudada", "mes_recaudada", "dia_abc_recaudada", "netlife_login", "netlife_estatus_real",
   "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc",
   "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
-  "estatus_regularizacion", "detalle_regularizacion", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
+  "estatus_regularizacion", "detalle_regularizacion", "gestion_atc", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
   "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
   "dia_abc_agenda", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
   "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet", "archivo_resumen"
@@ -516,6 +803,7 @@ const initialDetail = {
   foto_carnet: "",
   archivo_resumen: "",
   fecha_ingreso_telcos: "",
+  gestion_atc: "",
 };
 
 function valueForField(row, key) {
@@ -536,9 +824,9 @@ const FILTROS_VACIOS = {
 
 const estilosFiltro = {
   campo: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
-  label: { fontSize: 12, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
-  ctl: { padding: "8px 10px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", background: "#fff", color: "#0f172a", width: "100%" },
-  rango: { display: "flex", alignItems: "center", gap: 6 },
+  label: { fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
+  ctl: { padding: "8px 10px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", background: "#fff", color: "#0f172a", width: "100%", boxSizing: "border-box" },
+  rango: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, minWidth: 0 },
   guion: { color: "#94a3b8", fontSize: 12 },
 };
 
@@ -559,9 +847,9 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
     <div style={estilosFiltro.campo}>
       <label style={estilosFiltro.label}>{label}</label>
       <div style={estilosFiltro.rango}>
-        <input type="date" style={estilosFiltro.ctl} value={desde} onChange={(e) => onDesde(e.target.value)} />
+        <input type="date" aria-label={`${label} desde`} style={{ ...estilosFiltro.ctl, minWidth: 0 }} value={desde} onChange={(e) => onDesde(e.target.value)} />
         <span style={estilosFiltro.guion}>–</span>
-        <input type="date" style={estilosFiltro.ctl} value={hasta} onChange={(e) => onHasta(e.target.value)} />
+        <input type="date" aria-label={`${label} hasta`} style={{ ...estilosFiltro.ctl, minWidth: 0 }} value={hasta} onChange={(e) => onHasta(e.target.value)} />
       </div>
     </div>
   );
@@ -577,6 +865,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   const [alert, setAlert] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
+  const solicitudDetalleRef = useRef(0);
 
   // ── FILTROS ────────────────────────────────────────────────────────────
   // El buscador de texto se mantiene igual; estos se suman.
@@ -610,7 +899,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Error al cargar registros");
       setRows(json.data || []);
-      if (!selectedId && (json.data || []).length) setSelectedId(json.data[0].id);
+      if ((json.data || []).length) {
+        // Conserva el registro que el usuario ya seleccionó aunque esta
+        // petición de listado haya comenzado antes de hacer clic en él.
+        setSelectedId((actual) => actual ?? json.data[0].id);
+      }
     } catch (e) {
       setAlert({ type: "error", msg: e.message || "Error al cargar la vista" });
     } finally {
@@ -637,11 +930,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   }, []);
 
   const fetchDetail = async (id) => {
+    const solicitudActual = ++solicitudDetalleRef.current;
+    setSelectedId(Number(id));
     try {
       const res = await fetch(`${API}/api/backoffice/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
+      // Una respuesta anterior nunca debe reemplazar un detalle abierto después.
+      if (solicitudActual !== solicitudDetalleRef.current) return;
       if (json.success) {
         const normalizado = normalizarRegistro(json.data);
         setDetail(normalizado);
@@ -657,6 +954,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   };
 
   const closeModal = () => {
+    solicitudDetalleRef.current += 1;
     setShowModal(false);
     setSelectedId(null);
     setDetail(null);
@@ -708,7 +1006,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
     "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
     "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "estado_recaudacion", "netlife_login",
     "netlife_estatus_real", "calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por",
-    "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion",
+    "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
     "fecha_regularizacion_atc",
     "mes_regularizacion",
     "novedades_atc",
@@ -739,13 +1037,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       {
         titulo: "Registro",
         campos: [
-          "estatus_envio",
-          "codigo_asesor",
-          "id_bitrix",
-          "distribuidor_autorizado",
-          "supervisor",
-          "origen_venta",
-        ],
+          "estatus_regularizacion",
+          "detalle_regularizacion",
+          "gestion_atc",
+          "mes_regularizacion"
+        ]
       },
 
       {
@@ -816,6 +1112,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
           !CAMPOS_FECHA.includes(campo)
         ) {
           nuevo = nuevo.toUpperCase();
+        }
+
+        if (campo === "estatus_regularizacion" && nuevo === "SIN REVISAR") {
+          nuevo = "";
         }
 
         if (nuevo !== viejo) {
@@ -916,15 +1216,23 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
        * Actualización correcta.
        */
       setAlert({
-        type: "success",
-        msg: "Registro actualizado correctamente",
+        type: json.correo_bienvenida?.enviado === false ? "error" : "success",
+        msg: json.correo_bienvenida?.enviado === false
+          ? "Registro actualizado, pero no se pudo enviar el correo de bienvenida."
+          : json.correo_bienvenida?.enviado
+            ? json.correo_bienvenida.cliente
+              ? "Registro actualizado y correo de bienvenida enviado al cliente con copia a Backoffice."
+              : "Registro actualizado. El cliente no tiene un correo válido; la bienvenida se envió solo a Backoffice."
+            : "Registro actualizado correctamente",
       });
 
       /*
        * Recargamos ambos.
        */
-      await fetchRows(search);
-      await fetchDetail(selectedId);
+      const registroActualizado = normalizarRegistro(json.data);
+      setDetail(registroActualizado);
+      setDetailOriginal(registroActualizado);
+      await fetchRows(search, filtros);
 
     } catch (e) {
 
@@ -977,6 +1285,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar por asesor, cliente, ID, CI..."
                     style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none" }}
+                  />
+                  <BotonDescargaExcel
+                    onClick={() => exportarAExcel(rows, `Reporte_Registros_${empresa || "Todos"}`)}
+                    color="#0284c7" fondo="#f0f9ff" borde="#bae6fd"
                   />
                   <button
                     onClick={() => fetchRows(search, filtros)}
@@ -1071,9 +1383,6 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                               style={{
                                 textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
                                 fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
-                                // Las 2 primeras columnas quedan fijas para no perder
-                                // la referencia del registro al desplazarse a lo ancho.
-                                ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 4, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
                                 ...(i === 0 ? { width: 60 } : {}),
                               }}
                             >
@@ -1086,10 +1395,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                         {rows.map((row) => (
                           <tr
                             key={row.id}
-                            onClick={() => { setSelectedId(row.id); fetchDetail(row.id); }}
+                            onClick={() => fetchDetail(row.id)}
                             style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}
                           >
-                            {tableHeaders.map((h, i) => (
+                            {tableHeaders.map((h) => (
                               <td
                                 key={`${row.id}-${h.key}`}
                                 title={valueForField(row, h.key)}
@@ -1097,7 +1406,6 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                                   padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
                                   maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
                                   background: selectedId === row.id ? "#eff6ff" : "#fff",
-                                  ...(i < 2 ? { position: "sticky", left: i === 0 ? 0 : 60, zIndex: 2, boxShadow: i === 1 ? "2px 0 0 #e5e7eb" : undefined } : {}),
                                 }}
                               >
                                 {valueForField(row, h.key)}
@@ -1164,9 +1472,6 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                           </label>
 
                           {esCampoDocumento(field) ? (
-                            /* 📸 CASO 1: DOCUMENTO DE RESPALDO — miniatura sin recorte,
-                               clic para verlo completo, y reemplazo vía el servidor de
-                               almacenamiento (no como base64 dentro de la fila). */
                             <CampoDocumento
                               field={field}
                               etiqueta={FIELD_LABELS[field] || field}
@@ -1175,43 +1480,49 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                               onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                               onAlert={setAlert}
                             />
-                          ) : field === "netlife_estatus_real" ? (
-  <select
-    value={detail?.[field] ?? ""}
-    onChange={(e) =>
-      setDetail((prev) => ({
-        ...prev,
-        [field]: e.target.value,
-      }))
-    }
-    style={{
-      width: "100%",
-      padding: "10px 12px",
-      borderRadius: 8,
-      border: "1px solid #dbe4f0",
-      fontSize: 12,
-      outline: "none",
-      color: "#111827",
-      background: "#fff",
-      cursor: "pointer",
-    }}
-  >
-    <option value="">Seleccionar...</option>
-    {ESTATUS_NETLIFE.map((estado) => (
-      <option key={estado} value={estado}>
-        {estado}
-      </option>
-    ))}
-    {detail?.[field] &&
-      !ESTATUS_NETLIFE.includes(detail[field]) && (
-        <option value={detail[field]}>
-          {detail[field]} (valor actual)
-        </option>
-      )}
-  </select>
-) : field === "novedades_atc" ? (
-                            /* 🔔 NOVEDADES: solo una opción por ahora.
-                               Vacío = Sin notificar / Notificado = NOTIFICADO. */
+                          ) : field === "estatus_regularizacion" ? (() => {
+                            const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
+                            const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"
+                              ? "__SIN_REVISAR__"
+                              : estadoActual;
+                            const esValorConocido = OPCIONES_ESTATUS_REGULARIZACION.some(
+                              (opcion) => opcion.valor === valorSeleccionado
+                            );
+
+                            return (
+                            <select
+                              value={valorSeleccionado}
+                              onChange={(e) => {
+                                const valor = e.target.value === "__SIN_REVISAR__"
+                                  ? ""
+                                  : e.target.value.toUpperCase();
+                                setDetail((prev) => ({ ...prev, [field]: valor }));
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: "1px solid #dbe4f0",
+                                fontSize: 12,
+                                outline: "none",
+                                color: "#111827",
+                                background: "#fff",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {estadoActual && !esValorConocido && (
+                                <option value={valorSeleccionado} disabled>
+                                  Estado actual: {estadoActual}
+                                </option>
+                              )}
+                              {OPCIONES_ESTATUS_REGULARIZACION.map((opcion) => (
+                                <option key={opcion.valor} value={opcion.valor}>
+                                  {opcion.etiqueta}
+                                </option>
+                              ))}
+                            </select>
+                            );
+                          })() : field === "novedades_atc" ? (
                             <select
                               value={detail?.[field] ?? ""}
                               onChange={(e) =>
@@ -1230,10 +1541,34 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                               }}
                             >
                               <option value="">Seleccionar...</option>
+                              <option value="PENDIENTE">Pendiente</option>
                               <option value="NOTIFICADO">Notificado</option>
                             </select>
+                          ) : field === "gestion_atc" ? (
+                            /* 📋 SELECT: GESTIÓN ATC */
+                            <select
+                              value={detail?.[field] ?? ""}
+                              onChange={(e) =>
+                                setDetail((prev) => ({ ...prev, [field]: e.target.value }))
+                              }
+                              style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: "1px solid #dbe4f0",
+                                fontSize: 12,
+                                outline: "none",
+                                color: "#111827",
+                                background: "#fff",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <option value="">Seleccionar gestión...</option>
+                              <option value="ANALFABETO">Analfabeto</option>
+                              <option value="DESCUENTO CONADIS">Descuento conadis</option>
+                              <option value="DESCUENTO 3RA EDAD">Descuento 3ra edad</option>
+                            </select>
                           ) : (
-                            /* 📅 CASO 2 Y 3: INPUT DINÁMICO (TIPO "date" PARA FECHAS, "text" PARA EL RESTO) */
                             <input
                               type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
                               value={detail?.[field] ?? ""}
@@ -2191,11 +2526,13 @@ function useRegistrosBackoffice(limite = 1000, empresa = "TODOS") {
 //   "NOTIFICADO"       → NOTIFICADOS
 const BLOQUES_WELCOME = [
   { id: "SIN_NOTIFICAR", titulo: "Sin notificar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "" },
+  { id: "PENDIENTES", titulo: "Pendiente", color: "#1d4ed8", fondo: "#eff6ff", borde: "#93c5fd", valorBD: "PENDIENTE" },
   { id: "NOTIFICADOS", titulo: "Notificados", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "NOTIFICADO" },
 ];
 
 function estadoWelcome(row) {
   const v = normalizarEstado(row?.novedades_atc);
+  if (v === "PENDIENTE") return "PENDIENTES";
   return v === "NOTIFICADO" ? "NOTIFICADOS" : "SIN_NOTIFICAR";
 }
 
@@ -2413,7 +2750,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     );
   })();
 
-  const porBloque = { SIN_NOTIFICAR: [], NOTIFICADOS: [] };
+  const porBloque = { SIN_NOTIFICAR: [], PENDIENTES: [], NOTIFICADOS: [] };
   for (const row of filtradas) {
     porBloque[estadoWelcome(row)].push(row);
   }
@@ -2467,7 +2804,14 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       }
 
       await recargar();
-      setAviso(`✅ #${id} movido a «${destino.titulo}».`);
+      const correo = j.correo_bienvenida;
+      setAviso(
+        correo?.enviado === false
+          ? `⚠️ #${id} movido a «${destino.titulo}», pero el correo no pudo enviarse.`
+          : correo?.enviado
+            ? `✅ #${id} movido a «${destino.titulo}» y correo de bienvenida enviado${correo.cliente ? ' al cliente con copia a Backoffice' : ' solo a Backoffice (cliente sin correo válido)'}.`
+            : `✅ #${id} movido a «${destino.titulo}».`
+      );
     } catch (e) {
       setRows((prev) =>
         prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: valorPrevio } : r))
@@ -2504,7 +2848,14 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       }
 
       await recargar();
-      setAviso(`✅ #${id} marcado como NOTIFICADO.`);
+      const correo = j.correo_bienvenida;
+      setAviso(
+        correo?.enviado === false
+          ? `⚠️ #${id} marcado como NOTIFICADO, pero el correo no pudo enviarse.`
+          : correo?.enviado
+            ? `✅ #${id} marcado como NOTIFICADO y correo de bienvenida enviado${correo.cliente ? ' al cliente con copia a Backoffice' : ' solo a Backoffice (cliente sin correo válido)'}.`
+            : `✅ #${id} marcado como NOTIFICADO.`
+      );
     } catch (e) {
       setRows(anterior);
       setAviso(`❌ No se pudo marcar #${id}: ${e.message}`);
@@ -2513,6 +2864,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
 
   const total = filtradas.length;
   const sinNotificar = porBloque.SIN_NOTIFICAR.length;
+  const pendientes = porBloque.PENDIENTES.length;
   const notificados = porBloque.NOTIFICADOS.length;
 
   return (
@@ -2548,6 +2900,10 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 placeholder="Buscar cliente, CI, login, asesor…"
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 250 }}
               />
+              <BotonDescargaExcel
+                onClick={() => exportarAExcel(filtradas, `Reporte_Welcome_${empresa || "Todos"}`)}
+                color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
+              />
               <button
                 onClick={recargar}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
@@ -2570,8 +2926,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           </div>
         )}
 
-        {/* Tres bloques: TOTAL, SIN NOTIFICAR y NOTIFICADOS */}
-        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+        {/* Resumen de los estados de Welcome */}
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
           <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
               Registros totales
@@ -2596,6 +2952,18 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             </div>
           </div>
 
+          <div style={{ padding: 18, borderRadius: 14, background: "#eff6ff", border: "1px solid #93c5fd" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Pendientes
+            </div>
+            <div style={{ marginTop: 8, fontSize: 32, lineHeight: 1, fontWeight: 900, color: "#1e40af" }}>
+              {pendientes}
+            </div>
+            <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
+              Novedades ATC = PENDIENTE
+            </div>
+          </div>
+
           <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #86efac" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
               Notificados
@@ -2610,7 +2978,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         </div>
 
         <div style={{ padding: "0 18px 18px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
             {BLOQUES_WELCOME.map((bloque) => {
               const activo = sobreBloque === bloque.id;
               const listaBloque = porBloque[bloque.id];
@@ -2680,7 +3048,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 11.5, color: "#64748b" }}>
             <b>Prioridad:</b> los registros de Welcome están ordenados por <b>Fecha de activación</b>, del más antiguo al más reciente.
             <br />
-            <b>Drag &amp; drop:</b> arrastra cualquier tarjeta entre «Sin notificar» y «Notificados». El cambio actualiza <b>NOVEDADES</b> automáticamente; también puedes cambiarlo desde el select del detalle.
+            <b>Drag &amp; drop:</b> arrastra cualquier tarjeta entre «Sin notificar», «Pendiente» y «Notificados». El cambio actualiza <b>NOVEDADES</b> automáticamente; también puedes cambiarlo desde el select del detalle.
           </div>
         </div>
         {detalleId && (
@@ -3035,11 +3403,21 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
 }
 
 function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpresa }) {
-  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
   const [diaModal, setDiaModal] = useState(null);
   const [detalleId, setDetalleId] = useState(null);
 
   const color = "#ea580c", fondo = "#fff7ed", borde = "#fed7aa";
+
+  // ── FILTRO ESTRICTO: Solo registros con estado "ASIGNADO" ──────────────────
+  const rows = useMemo(() => {
+    return (todas || []).filter((r) => {
+      const v2 = normalizarEstado(r?.netlife_estatus_real);
+      const v1 = normalizarEstado(r?.estatus_envio);
+      const estado = v2 || v1;
+      return estado.includes("ASIGN");
+    });
+  }, [todas]);
 
   const { anios, sinFecha } = useMemo(() => agruparPorFecha(rows, "fecha_agenda"), [rows]);
 
@@ -3106,7 +3484,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
                 {mesSel ? `Agendamientos · ${MESES_ES[Number(mesSel.mes) - 1]} ${anioSel.anio}` : "Agendamientos"}
               </h2>
               <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "#64748b" }}>
-                Organizado según <b>fecha de agenda</b> de la cita técnica.
+                Instalaciones con estado <b>ASIGNADO</b> organizadas por fecha de visita.
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -3118,8 +3496,12 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
               />
               <div style={{ background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 800, color }}>
-                {total} agendamientos
+                {total} asignados
               </div>
+              <BotonDescargaExcel
+                onClick={() => exportarAExcel(rows, `Reporte_Agendamientos_${empresa || "Todos"}`)}
+                color="#ea580c" fondo="#fff7ed" borde="#fed7aa"
+              />
               <button
                 onClick={recargar}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
@@ -3161,65 +3543,11 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
             </div>
           )}
 
-          {/* ── RESULTADOS DE BÚSQUEDA ────────────────────────────────────
-              Reemplaza el explorador años/meses/calendario mientras haya un
-              término escrito. Busca en TODOS los registros cargados, sin
-              importar la fecha de agenda. */}
-          {!cargando && !error && resultadosBusqueda !== null && (
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#475569" }}>
-                  {resultadosBusqueda.length} resultado{resultadosBusqueda.length === 1 ? "" : "s"} para «{busqueda}»
-                </span>
-                <button
-                  onClick={() => setBusqueda("")}
-                  style={{ background: "transparent", border: "none", color, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
-                >
-                  ✕ Limpiar búsqueda
-                </button>
-              </div>
-
-              {resultadosBusqueda.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Ningún registro coincide con «{busqueda}».</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {resultadosBusqueda.slice(0, 200).map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setDetalleId(r.id)}
-                      style={{
-                        textAlign: "left",
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
-                        flexWrap: "wrap",
-                        background: "#fff", border: `1px solid ${borde}`, borderRadius: 10,
-                        padding: "10px 14px", cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 200 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
-                          {r.nombre_cliente_completo || "(sin nombre)"} <span style={{ color: "#94a3b8", fontWeight: 700 }}>· #{r.id}</span>
-                        </span>
-                        <span style={{ fontSize: 11.5, color: "#64748b" }}>
-                          CI: {r.numero_identificacion || "—"} · Asesor: {r.codigo_asesor || "—"} · Login: {r.login_netlife || "—"}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 11, fontWeight: 800, color, background: fondo, border: `1px solid ${borde}`, borderRadius: 999, padding: "4px 10px" }}>
-                        {r.fecha_agenda ? etiquetaDia(fechaCalendarioEC(r.fecha_agenda)) : "Sin fecha de agenda"}
-                      </span>
-                    </button>
-                  ))}
-                  {resultadosBusqueda.length > 200 && (
-                    <p style={{ fontSize: 11.5, color: "#94a3b8", margin: "4px 0 0" }}>
-                      Mostrando los primeros 200 de {resultadosBusqueda.length} resultados. Afina la búsqueda para acotar.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+          {!cargando && !error && rows.length === 0 && (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No hay registros con estado ASIGNADO.</p>
           )}
 
-          {!cargando && !error && resultadosBusqueda === null && nivel === "anios" && (
+          {!cargando && !error && nivel === "anios" && anios.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
               {anios.map((a) => (
                 <BotonNivel
@@ -3257,7 +3585,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
 
           {!cargando && !error && resultadosBusqueda === null && nivel === "anios" && sinFecha.length > 0 && (
             <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12.5, color: "#92400e", fontWeight: 700 }}>
-              ⚠ {sinFecha.length} registro{sinFecha.length > 1 ? "s" : ""} sin fecha de agenda válida.
+              ⚠ {sinFecha.length} registro{sinFecha.length > 1 ? "s" : ""} asignado{sinFecha.length > 1 ? "s" : ""} sin fecha de agenda válida.
             </div>
           )}
         </div>
@@ -3570,6 +3898,10 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Preservicios</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <BotonDescargaExcel
+                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Preservicios_${empresa || "Todos"}`)}
+                color="#0891b2" fondo="#ecfeff" borde="#a5f3fc"
+              />
               <button
                 onClick={recargar}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a5f3fc", background: "#ecfeff", color, fontWeight: 700, cursor: "pointer" }}
@@ -4155,6 +4487,7 @@ const BLOQUES_VALIDACION = [
   { id: "SIN_REVISAR", titulo: "Sin revisar", color: "#475569", fondo: "#f1f5f9", borde: "#cbd5e1", valorBD: "" },
   { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
   { id: "REGULARIZADO", titulo: "Regularizado", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
+  { id: "GESTION_ATC", titulo: "Gestión ATC", color: "#e11d48", fondo: "#fff1f2", borde: "#fecdd3", valorBD: "GESTION ATC" },
 ];
 
 // Normaliza para comparar: sin tildes, sin espacios sobrantes, en mayúsculas.
@@ -4166,9 +4499,8 @@ function bloqueDeRegistro(row) {
   const v = normalizarEstado(row?.estatus_regularizacion);
   if (!v) return "SIN_REVISAR";
   if (v.includes("NO NECESITA") || v.startsWith("REGULARIZAD")) return "REGULARIZADO";
+  if (v.includes("GESTION") && v.includes("ATC")) return "GESTION_ATC";
   if (v.includes("REGULARIZAR")) return "POR_REGULARIZAR";
-  // Valor que no encaja en ninguna regla: se muestra en "Sin revisar" pero la
-  // tarjeta lleva su texto original visible, para que se note y se corrija.
   return "SIN_REVISAR";
 }
 
@@ -4182,11 +4514,8 @@ function diasDesde(fecha) {
 function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
   const dias = diasDesde(row.fecha_registro_sistema);
   const estadoCrudo = String(row.estatus_regularizacion ?? "").trim();
-  // Solo se muestra el texto crudo cuando NO coincide con la etiqueta esperada
-  // del bloque (es decir, un valor raro que alguien escribió a mano).
   const esperado = BLOQUES_VALIDACION.find((b) => b.id === bloqueActual)?.valorBD ?? "";
   const estadoInesperado = estadoCrudo && normalizarEstado(estadoCrudo) !== normalizarEstado(esperado);
-
   const colorAntiguedad = dias == null ? "#94a3b8" : dias >= 15 ? "#b91c1c" : dias >= 7 ? "#b45309" : "#64748b";
 
   return (
@@ -4217,7 +4546,33 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
         <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
           {row.nombre_cliente_completo || "Sin nombre"}
         </span>
-        <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", flex: "none" }}>#{row.id}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {/* Indicador rojo a la derecha si está en Por regularizar */}
+          {bloqueActual === "POR_REGULARIZAR" && (
+            <span
+              title={row.gestion_atc ? `Gestión ATC: ${row.gestion_atc}` : "Sin Gestión ATC asignada"}
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                color: "#991b1b",
+                background: "#fee2e2",
+                border: "1px solid #fca5a5",
+                borderRadius: 6,
+                padding: "2px 6px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                maxWidth: 130,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ⚠️ {row.gestion_atc ? row.gestion_atc : "PEND. ATC"}
+            </span>
+          )}
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+        </div>
       </div>
 
       <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
@@ -4228,7 +4583,6 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
         {row.plan_contratado_final && <div>{row.plan_contratado_final}</div>}
         <div>Asesor: {row.codigo_asesor || "—"}</div>
       </div>
-
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: colorAntiguedad, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
@@ -4388,29 +4742,20 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   const [filtrosFecha, setFiltrosFecha] = useState({
     SIN_REVISAR: FILTRO_FECHA_VACIO,
     POR_REGULARIZAR: FILTRO_FECHA_VACIO,
+    GESTION_ATC: FILTRO_FECHA_VACIO,
     REGULARIZADO: FILTRO_FECHA_VACIO,
   });
 
   const token = localStorage.getItem("token");
-
   const cambiarFiltro = (bloqueId, nuevo) =>
     setFiltrosFecha((prev) => ({ ...prev, [bloqueId]: { ...FILTRO_FECHA_VACIO, ...nuevo } }));
 
-  // El tablero trabaja sobre una copia local para poder mover tarjetas al
-  // instante (actualización optimista) sin volver a pedir todo al servidor.
   useEffect(() => { setRows(todas); }, [todas]);
 
-  useEffect(() => {
-    if (total > todas.length && todas.length > 0) {
-      setAviso(`Mostrando ${todas.length} de ${total} registros. Los más antiguos quedaron fuera del límite de carga.`);
-    }
-  }, [total, todas.length]);
-
-  // Ordenadas de la MÁS ANTIGUA a la más reciente.
   const ordenadas = (() => {
     const q = normalizarEstado(busqueda);
     const filtradas = !q ? rows : rows.filter((r) =>
-      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, String(r.id)]
+      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, r.gestion_atc, String(r.id)]
         .some((c) => normalizarEstado(c).includes(q))
     );
     return [...filtradas].sort((a, b) => {
@@ -4421,12 +4766,13 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
     });
   })();
 
-  // OJO: de aquí para abajo NO puede haber hooks. El `return` temprano del
-  // explorador de fechas hace que este tramo no siempre se ejecute, y React
-  // exige que la cantidad de hooks sea idéntica en todos los renders. Por eso
-  // esto es un cálculo plano y no un useMemo.
-  const porBloque = { SIN_REVISAR: [], POR_REGULARIZAR: [], REGULARIZADO: [] };
-  for (const r of ordenadas) porBloque[bloqueDeRegistro(r)].push(r);
+  const porBloque = { SIN_REVISAR: [], POR_REGULARIZAR: [], GESTION_ATC: [], REGULARIZADO: [] };
+  for (const r of ordenadas) {
+    const b = bloqueDeRegistro(r);
+    if (porBloque[b]) porBloque[b].push(r);
+  }
+
+  // ... (el resto de funciones y renderizado iteran automáticamente sobre BLOQUES_VALIDACION mostrando las 4 columnas)
 
   const soltarEn = async (bloqueDestino, e) => {
     e.preventDefault();
@@ -4497,6 +4843,10 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
                 onChange={(e) => setBusqueda(e.target.value)}
                 placeholder="Buscar cliente, CI, asesor…"
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
+              />
+              <BotonDescargaExcel
+                onClick={() => exportarAExcel(ordenadas, `Reporte_Validacion_${empresa || "Todos"}`)}
+                color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe"
               />
               <button
                 onClick={recargar}
@@ -4572,6 +4922,15 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
               fondo: "#f0fdf4",
               borde: "#86efac",
               detalle: "Ya regularizados",
+            },
+
+            {
+              titulo: "Gestión ATC",
+              cantidad: conteosVisibles[3],
+              color: "#0369a1",
+              fondo: "#f0f9ff",
+              borde: "#7dd3fc",
+              detalle: "Registros en gestión por ATC",
             },
           ];
 

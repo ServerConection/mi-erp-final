@@ -115,6 +115,93 @@ async function enviarOTP(correo, otp, nombre) {
   }
 }
 
+const CORREO_COPIA_WELCOME = 'kchala@novonetmail.com';
+
+const escaparHtml = (valor) => String(valor ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const esCorreoValido = (correo) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(correo || '').trim());
+
+/**
+ * Envía el mensaje de bienvenida cuando Welcome cambia a NOTIFICADO.
+ * El cliente es el destinatario principal y Backoffice recibe siempre copia.
+ */
+async function enviarBienvenidaWelcome(registro) {
+  const correoCliente = String(registro?.email_cliente || '').trim().toLowerCase();
+  const tieneCorreoCliente = esCorreoValido(correoCliente);
+  const nombreCompleto = String(registro?.nombre_cliente_completo || '').trim() || 'Cliente';
+  const primerNombre = nombreCompleto.split(/\s+/)[0];
+  const identificacion = String(registro?.numero_identificacion || '').replace(/\s/g, '');
+  const identificacionProtegida = identificacion
+    ? `${'*'.repeat(Math.max(0, identificacion.length - 4))}${identificacion.slice(-4)}`
+    : 'No registrada';
+
+  const datos = [
+    ['Plan contratado', registro?.plan_contratado_final],
+    ['Servicios adicionales', registro?.servicios_digitales],
+    ['Login Netlife', registro?.netlife_login],
+    ['Fecha de activación', registro?.fecha_activacion_netlife ? String(registro.fecha_activacion_netlife).slice(0, 10) : ''],
+    ['Ciudad', registro?.ciudad],
+    ['Asesor', registro?.codigo_asesor],
+    ['Identificación', identificacionProtegida],
+  ].filter(([, valor]) => String(valor || '').trim());
+
+  const filasHtml = datos.map(([etiqueta, valor], indice) => `
+    <tr>
+      <td style="padding:12px 14px;background:${indice % 2 ? '#ffffff' : '#f8fafc'};color:#64748b;font-size:12px;font-weight:bold;width:42%;border-bottom:1px solid #e2e8f0;">${escaparHtml(etiqueta)}</td>
+      <td style="padding:12px 14px;background:${indice % 2 ? '#ffffff' : '#f8fafc'};color:#0f172a;font-size:13px;border-bottom:1px solid #e2e8f0;">${escaparHtml(valor)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#eef2f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:30px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px rgba(15,23,42,.10);font-family:Arial,Helvetica,sans-serif;">
+        <tr><td style="padding:34px 36px;text-align:center;background:linear-gradient(135deg,#0369a1,#0ea5e9);">
+          <div style="font-size:28px;line-height:1;color:#ffffff;font-weight:800;">¡Bienvenido/a!</div>
+          <div style="margin-top:10px;color:#e0f2fe;font-size:14px;">Tu servicio ya se encuentra activo</div>
+        </td></tr>
+        <tr><td style="padding:32px 36px;">
+          <p style="margin:0 0 12px;color:#0f172a;font-size:18px;font-weight:bold;">Hola, ${escaparHtml(primerNombre)} 👋</p>
+          <p style="margin:0 0 24px;color:#475569;font-size:14px;line-height:1.7;">Nos alegra darte la bienvenida. A continuación encontrarás un resumen de los datos importantes de tu servicio.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;border-spacing:0;">
+            ${filasHtml}
+          </table>
+          <div style="margin-top:24px;padding:16px 18px;border-radius:12px;background:#ecfdf5;border:1px solid #a7f3d0;color:#166534;font-size:13px;line-height:1.6;">Gracias por confiar en nosotros. Conserva este correo como referencia de tu activación.</div>
+          <p style="margin:22px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">Por seguridad, tu identificación se muestra parcialmente oculta. Este es un mensaje automático generado al completar tu proceso de Welcome.</p>
+        </td></tr>
+        <tr><td style="padding:17px 36px;text-align:center;background:#0f172a;color:#cbd5e1;font-size:11px;">Sistema ERP · Mensaje automático</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const destinatario = tieneCorreoCliente ? correoCliente : CORREO_COPIA_WELCOME;
+  const copia = tieneCorreoCliente && correoCliente !== CORREO_COPIA_WELCOME
+    ? CORREO_COPIA_WELCOME
+    : undefined;
+  const texto = `Hola, ${primerNombre}. Tu servicio ya se encuentra activo.\n\n${datos.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nGracias por confiar en nosotros.`;
+
+  const info = await transporter.sendMail({
+    from: process.env.MAIL_FROM || process.env.MAIL_USER,
+    to: destinatario,
+    cc: copia,
+    subject: `¡Bienvenido/a! Tu servicio ya está activo`,
+    text: texto,
+    html,
+  });
+
+  console.log('EMAIL Welcome enviado:', info.messageId, '→', destinatario, copia ? `(cc: ${copia})` : '');
+  return { enviado: true, cliente: tieneCorreoCliente, destinatario, copia: copia || null };
+}
+
 // Envío genérico — usado por FlowEngine (emailNode) y por Evaluaciones
 // (resultado + certificado). `attachments` sigue el formato de nodemailer:
 // [{ filename, content, contentType }]. Opcional — nadie más lo manda hoy,
@@ -133,4 +220,4 @@ async function send({ to, subject, body, html, attachments }) {
   return true;
 }
 
-module.exports = { enviarOTP, send };
+module.exports = { enviarOTP, enviarBienvenidaWelcome, send };

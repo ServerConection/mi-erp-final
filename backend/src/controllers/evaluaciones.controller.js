@@ -14,6 +14,19 @@ const { enviarResultadoEvaluacion } = require('../services/evaluacionesCorreo.se
 const nombreCompleto = (r) =>
   [r.nombres, r.apellidos].filter(Boolean).join(' ').trim() || r.usuario;
 
+const MAX_IMAGEN_BYTES = 2 * 1024 * 1024;
+// Base64 agrega cerca de 33% al JSON; 6 MB deja margen bajo el límite HTTP de 10 MB.
+const MAX_IMAGENES_TOTAL_BYTES = 6 * 1024 * 1024;
+const DATA_URL_IMAGEN = /^data:image\/(jpeg|png|webp|gif);base64,([a-zA-Z0-9+/]+={0,2})$/;
+
+function bytesImagenDataUrl(valor) {
+  if (!valor) return 0;
+  const match = String(valor).match(DATA_URL_IMAGEN);
+  if (!match) return -1;
+  const base64 = match[2];
+  return Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+}
+
 /** Quita "correcta" de cada pregunta — lo que ve alguien que va a responder. */
 const sinRespuestas = (preguntas) =>
   preguntas.map(({ correcta, ...resto }) => resto);
@@ -26,6 +39,7 @@ function validarPreguntas(preguntas) {
   if (!Array.isArray(preguntas) || preguntas.length === 0) {
     return 'Necesitas al menos 1 pregunta';
   }
+  let totalImagenes = 0;
   for (let i = 0; i < preguntas.length; i++) {
     const p = preguntas[i];
     if (!p.texto || String(p.texto).trim().length < 3) {
@@ -40,7 +54,14 @@ function validarPreguntas(preguntas) {
     if (!Number.isInteger(p.correcta) || p.correcta < 0 || p.correcta >= p.opciones.length) {
       return `La pregunta ${i + 1} necesita marcar cuál opción es la correcta`;
     }
+    if (p.imagen) {
+      const bytes = bytesImagenDataUrl(p.imagen);
+      if (bytes < 0) return `La imagen de la pregunta ${i + 1} no tiene un formato válido`;
+      if (bytes > MAX_IMAGEN_BYTES) return `La imagen de la pregunta ${i + 1} supera el máximo de 2 MB`;
+      totalImagenes += bytes;
+    }
   }
+  if (totalImagenes > MAX_IMAGENES_TOTAL_BYTES) return 'Las imágenes de la evaluación superan el máximo total de 6 MB';
   return null;
 }
 
@@ -72,6 +93,7 @@ exports.crear = async (req, res) => {
     const preguntas = (req.body.preguntas || []).map((p, i) => ({
       id: `p${i + 1}`,
       texto: String(p.texto).trim(),
+      imagen: p.imagen ? String(p.imagen) : null,
       opciones: p.opciones.map(o => String(o).trim()),
       correcta: p.correcta,
     }));

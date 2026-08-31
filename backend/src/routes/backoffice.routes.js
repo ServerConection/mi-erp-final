@@ -12,6 +12,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 const { enviarBienvenidaWelcome } = require('../services/email.service');
+const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.service');
 
 // ─── QUIÉN ENTRA A BACKOFFICE ───────────────────────────────────────────────
 // Antes esta ruta usaba `noAsesor`, que bloquea `perfil === 'ASESOR'`.
@@ -289,6 +290,114 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 // ─── PUT /api/backoffice/:id ──────────────────────────────────────────────────
+// Programación persistente de bienvenidas: cada registro queda separado tres
+// minutos del siguiente y WaBot procesa correo + WhatsApp en segundo plano.
+router.get('/welcome/programaciones', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT registro_id, scheduled_at, status, attempts, last_error
+       FROM welcome_notifications
+       WHERE status IN ('pending', 'processing', 'failed')
+       ORDER BY scheduled_at ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('[WELCOME] Error listando programaciones:', error.message);
+    res.status(500).json({ success: false, error: 'No se pudieron cargar las programaciones' });
+  }
+});
+
+router.post('/welcome/programar', async (req, res) => {
+  const ids = [...new Set((req.body?.registro_ids || []).map(Number).filter(Number.isSafeInteger))];
+  const inicio = new Date(req.body?.inicio);
+
+  if (!ids.length || ids.length > 200) {
+    return res.status(400).json({ success: false, error: 'Selecciona entre 1 y 200 registros' });
+  }
+  if (Number.isNaN(inicio.getTime())) {
+    return res.status(400).json({ success: false, error: 'La fecha y hora de inicio no son válidas' });
+  }
+  if (inicio.getTime() < Date.now() - 60 * 1000) {
+    return res.status(400).json({ success: false, error: 'La fecha de inicio no puede estar en el pasado' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const seleccionados = await client.query(
+      `SELECT id
+       FROM public.envios_ventas
+       WHERE id = ANY($1::bigint[])
+         AND COALESCE(UPPER(TRIM(novedades_atc)), '') NOT IN ('NOTIFICADO', 'PENDIENTE')
+       ORDER BY array_position($1::bigint[], id::bigint)`,
+      [ids]
+    );
+
+    if (seleccionados.rows.length !== ids.length) {
+      throw Object.assign(new Error('Uno o más registros ya no están disponibles en Sin notificar'), { status: 409 });
+    }
+
+    const programaciones = [];
+    for (let indice = 0; indice < seleccionados.rows.length; indice += 1) {
+      const registroId = seleccionados.rows[indice].id;
+      const fechaProgramada = new Date(inicio.getTime() + indice * 3 * 60 * 1000);
+      await client.query(
+        `INSERT INTO welcome_notifications
+           (registro_id, scheduled_at, status, email_sent, whatsapp_sent, attempts, last_error, created_by, updated_at, completed_at)
+         VALUES ($1, $2, 'pending', false, false, 0, NULL, $3, NOW(), NULL)
+         ON CONFLICT (registro_id) DO UPDATE SET
+           scheduled_at=EXCLUDED.scheduled_at, status='pending', email_sent=false,
+           whatsapp_sent=false, attempts=0, last_error=NULL,
+           created_by=EXCLUDED.created_by, updated_at=NOW(), completed_at=NULL`,
+        [registroId, fechaProgramada.toISOString(), req.user.id]
+      );
+      await client.query(
+        `UPDATE public.envios_ventas SET novedades_atc='PENDIENTE' WHERE id=$1`,
+        [registroId]
+      );
+      programaciones.push({ registro_id: registroId, scheduled_at: fechaProgramada.toISOString(), status: 'pending' });
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, data: programaciones, intervalo_minutos: 3 });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[WELCOME] Error programando:', error.message);
+    res.status(error.status || 500).json({ success: false, error: error.message || 'No se pudieron programar los envíos' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/welcome/programaciones/:registroId/cancelar', async (req, res) => {
+  try {
+    const registroId = Number(req.params.registroId);
+    if (!Number.isSafeInteger(registroId)) {
+      return res.status(400).json({ success: false, error: 'Registro inválido' });
+    }
+    const cancelada = await pool.query(
+      `UPDATE welcome_notifications
+       SET status='cancelled', updated_at=NOW(), last_error=NULL
+       WHERE registro_id=$1 AND status IN ('pending', 'failed')
+       RETURNING id`,
+      [registroId]
+    );
+    if (!cancelada.rows.length) {
+      return res.status(409).json({ success: false, error: 'La notificación ya se está enviando o terminó' });
+    }
+    await pool.query(
+      `UPDATE public.envios_ventas
+       SET novedades_atc=NULL
+       WHERE id=$1 AND UPPER(TRIM(COALESCE(novedades_atc, '')))='PENDIENTE'`,
+      [registroId]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[WELCOME] Error cancelando:', error.message);
+    res.status(500).json({ success: false, error: 'No se pudo cancelar la programación' });
+  }
+});
+
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -410,7 +519,23 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
 
+    // Si el usuario mueve manualmente una tarjeta programada fuera de
+    // Pendiente, su tarea futura debe quedar anulada para evitar un envío
+    // sorpresa después de haber cambiado el estado.
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'novedades_atc') &&
+      String(payload.novedades_atc || '').trim().toUpperCase() !== 'PENDIENTE'
+    ) {
+      await pool.query(
+        `UPDATE welcome_notifications
+         SET status='cancelled', updated_at=NOW()
+         WHERE registro_id=$1 AND status IN ('pending', 'failed')`,
+        [id]
+      );
+    }
+
     let correoBienvenida = null;
+    let whatsappBienvenida = null;
     if (debeEnviarBienvenida) {
       try {
         correoBienvenida = await enviarBienvenidaWelcome(rows[0]);
@@ -420,6 +545,15 @@ router.put('/:id', async (req, res) => {
         console.error('[BACKOFFICE] Error enviando bienvenida:', errorCorreo.message);
         correoBienvenida = { enviado: false, error: 'No se pudo enviar el correo de bienvenida' };
       }
+
+      try {
+        whatsappBienvenida = await encolarWhatsappBienvenida(rows[0]);
+      } catch (errorWhatsapp) {
+        // Igual que con el correo: la gestión de Backoffice no se revierte si
+        // la línea o la cola de WaBot presentan un problema.
+        console.error('[BACKOFFICE] Error encolando WhatsApp de bienvenida:', errorWhatsapp.message);
+        whatsappBienvenida = { encolado: false, motivo: 'error_al_encolar' };
+      }
     }
 
     res.json({
@@ -427,6 +561,7 @@ router.put('/:id', async (req, res) => {
       data: rows[0],
       mensaje: 'Registro actualizado correctamente',
       correo_bienvenida: correoBienvenida,
+      whatsapp_bienvenida: whatsappBienvenida,
     });
   } catch (e) {
     console.error(

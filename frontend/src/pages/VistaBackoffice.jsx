@@ -52,6 +52,40 @@ const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
 ];
 
+function resultadoBienvenida(json, mensajeBase) {
+  const correo = json?.correo_bienvenida;
+  const whatsapp = json?.whatsapp_bienvenida;
+  if (!correo && !whatsapp) return { type: "success", msg: mensajeBase };
+
+  const exitos = [];
+  const advertencias = [];
+
+  if (correo?.enviado) {
+    exitos.push(correo.cliente
+      ? "correo enviado al cliente con copia a Backoffice"
+      : "correo enviado solo a Backoffice (cliente sin correo válido)");
+  } else if (correo?.enviado === false) {
+    advertencias.push("el correo no pudo enviarse");
+  }
+
+  if (whatsapp?.encolado) {
+    exitos.push("WhatsApp de bienvenida en cola por NOTI_BACK");
+  } else if (whatsapp?.encolado === false) {
+    const motivos = {
+      cliente_sin_telefono_valido: "el cliente no tiene un teléfono válido para WhatsApp",
+      linea_noti_back_no_encontrada: "no se encontró la línea NOTI_BACK",
+      error_al_encolar: "no se pudo registrar el WhatsApp de bienvenida",
+    };
+    advertencias.push(motivos[whatsapp.motivo] || "el WhatsApp no pudo encolarse");
+  }
+
+  const detalles = [...exitos, ...advertencias].join("; ");
+  return {
+    type: advertencias.length ? "error" : "success",
+    msg: `${mensajeBase}. ${detalles}.`,
+  };
+}
+
 /**
  * Exporta un arreglo de registros a un archivo CSV compatible directamente con Excel.
  * @param {Array} data - Lista de objetos/registros a exportar.
@@ -1215,16 +1249,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       /*
        * Actualización correcta.
        */
-      setAlert({
-        type: json.correo_bienvenida?.enviado === false ? "error" : "success",
-        msg: json.correo_bienvenida?.enviado === false
-          ? "Registro actualizado, pero no se pudo enviar el correo de bienvenida."
-          : json.correo_bienvenida?.enviado
-            ? json.correo_bienvenida.cliente
-              ? "Registro actualizado y correo de bienvenida enviado al cliente con copia a Backoffice."
-              : "Registro actualizado. El cliente no tiene un correo válido; la bienvenida se envió solo a Backoffice."
-            : "Registro actualizado correctamente",
-      });
+      setAlert(resultadoBienvenida(json, "Registro actualizado correctamente"));
 
       /*
        * Recargamos ambos.
@@ -2552,7 +2577,26 @@ function ordenarWelcome(rows) {
   });
 }
 
-function TarjetaWelcome({ row, onAbrir, onArrastrar, arrastrando, moviendo }) {
+function valorFechaHoraLocal(fecha) {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (Number.isNaN(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function mostrarFechaHoraWelcome(fecha) {
+  if (!fecha) return "Sin horario";
+  return new Intl.DateTimeFormat("es-EC", {
+    timeZone: "America/Guayaquil",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(fecha));
+}
+
+function TarjetaWelcome({
+  row, onAbrir, onArrastrar, arrastrando, moviendo,
+  seleccionable = false, seleccionado = false, onSeleccionar,
+}) {
   const estaMoviendose = moviendo === row.id;
 
   return (
@@ -2597,9 +2641,20 @@ function TarjetaWelcome({ row, onAbrir, onArrastrar, arrastrando, moviendo }) {
         <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
           {row.nombre_cliente_completo || "Sin nombre"}
         </span>
-        <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", flex: "none" }}>
-          #{row.id}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, flex: "none" }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+          {seleccionable && (
+            <input
+              type="checkbox"
+              checked={seleccionado}
+              aria-label={`Seleccionar registro ${row.id}`}
+              title="Seleccionar para programar"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
+              style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer" }}
+            />
+          )}
+        </div>
       </div>
 
       <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
@@ -2724,7 +2779,27 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [arrastrando, setArrastrando] = useState(null);
   const [sobreBloque, setSobreBloque] = useState(null);
   const [moviendo, setMoviendo] = useState(null);
+  const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [inicioEnvio, setInicioEnvio] = useState(() => valorFechaHoraLocal(new Date(Date.now() + 5 * 60 * 1000)));
+  const [programaciones, setProgramaciones] = useState({});
+  const [programando, setProgramando] = useState(false);
+  const [cancelandoId, setCancelandoId] = useState(null);
   const token = localStorage.getItem("token");
+
+  const cargarProgramaciones = useCallback(async () => {
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/welcome/programaciones`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await respuesta.json();
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudieron cargar los horarios");
+      const mapa = {};
+      (json.data || []).forEach((item) => { mapa[String(item.registro_id)] = item; });
+      setProgramaciones(mapa);
+    } catch (errorProgramaciones) {
+      console.error("[WELCOME] Programaciones:", errorProgramaciones);
+    }
+  }, [token]);
 
   useEffect(() => {
     // Welcome solo trabaja con activaciones que ya están ACTIVAS.
@@ -2733,6 +2808,25 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     );
     setRows(ordenarWelcome(activas));
   }, [todas]);
+
+  useEffect(() => {
+    const disponibles = new Set(
+      rows.filter((row) => estadoWelcome(row) === "SIN_NOTIFICAR").map((row) => String(row.id))
+    );
+    setSeleccionados((actuales) => new Set([...actuales].filter((id) => disponibles.has(id))));
+  }, [rows]);
+
+  useEffect(() => { cargarProgramaciones(); }, [cargarProgramaciones]);
+
+  // El worker cambia PENDIENTE → NOTIFICADO sin depender del navegador.
+  // Esta actualización periódica refleja esos cambios en el Kanban abierto.
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      recargar();
+      cargarProgramaciones();
+    }, 30000);
+    return () => clearInterval(intervalo);
+  }, [recargar, cargarProgramaciones]);
 
   const filtradas = (() => {
     const q = normalizarEstado(busqueda);
@@ -2754,6 +2848,88 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   for (const row of filtradas) {
     porBloque[estadoWelcome(row)].push(row);
   }
+
+  const cambiarSeleccion = (id, marcado) => {
+    setSeleccionados((actuales) => {
+      const siguientes = new Set(actuales);
+      const clave = String(id);
+      if (marcado) siguientes.add(clave);
+      else siguientes.delete(clave);
+      return siguientes;
+    });
+  };
+
+  const seleccionarTodosSinNotificar = (marcado) => {
+    setSeleccionados(marcado
+      ? new Set(porBloque.SIN_NOTIFICAR.map((row) => String(row.id)))
+      : new Set());
+  };
+
+  const programarSeleccionados = async () => {
+    const ordenados = rows
+      .filter((row) => estadoWelcome(row) === "SIN_NOTIFICAR")
+      .filter((row) => seleccionados.has(String(row.id)))
+      .map((row) => row.id);
+    if (!ordenados.length) {
+      setAviso("⚠️ Selecciona al menos un registro de Sin notificar.");
+      return;
+    }
+    const inicio = new Date(inicioEnvio);
+    if (!inicioEnvio || Number.isNaN(inicio.getTime())) {
+      setAviso("⚠️ Selecciona una fecha y hora de inicio válida.");
+      return;
+    }
+
+    setProgramando(true);
+    setAviso(null);
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/welcome/programar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ registro_ids: ordenados, inicio: inicio.toISOString() }),
+      });
+      const json = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo crear la programación");
+
+      const mapaNuevo = {};
+      (json.data || []).forEach((item) => { mapaNuevo[String(item.registro_id)] = item; });
+      setProgramaciones((actuales) => ({ ...actuales, ...mapaNuevo }));
+      setSeleccionados(new Set());
+      await recargar();
+      const ultima = json.data?.[json.data.length - 1]?.scheduled_at;
+      setAviso(`✅ ${ordenados.length} notificación${ordenados.length === 1 ? "" : "es"} programada${ordenados.length === 1 ? "" : "s"} cada 3 minutos${ultima ? `, hasta ${mostrarFechaHoraWelcome(ultima)}` : ""}.`);
+    } catch (errorProgramar) {
+      setAviso(`❌ ${errorProgramar.message}`);
+    } finally {
+      setProgramando(false);
+    }
+  };
+
+  const cancelarProgramacion = async (registroId) => {
+    setCancelandoId(String(registroId));
+    setAviso(null);
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/welcome/programaciones/${registroId}/cancelar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo cancelar");
+      setProgramaciones((actuales) => {
+        const siguientes = { ...actuales };
+        delete siguientes[String(registroId)];
+        return siguientes;
+      });
+      await recargar();
+      setAviso(`✅ Programación de #${registroId} cancelada; el registro volvió a Sin notificar.`);
+    } catch (errorCancelar) {
+      setAviso(`❌ ${errorCancelar.message}`);
+      await cargarProgramaciones();
+      await recargar();
+    } finally {
+      setCancelandoId(null);
+    }
+  };
 
   const soltarWelcome = async (bloqueDestino, e) => {
     e.preventDefault();
@@ -2804,14 +2980,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       }
 
       await recargar();
-      const correo = j.correo_bienvenida;
-      setAviso(
-        correo?.enviado === false
-          ? `⚠️ #${id} movido a «${destino.titulo}», pero el correo no pudo enviarse.`
-          : correo?.enviado
-            ? `✅ #${id} movido a «${destino.titulo}» y correo de bienvenida enviado${correo.cliente ? ' al cliente con copia a Backoffice' : ' solo a Backoffice (cliente sin correo válido)'}.`
-            : `✅ #${id} movido a «${destino.titulo}».`
-      );
+      const resultado = resultadoBienvenida(j, `#${id} movido a «${destino.titulo}»`);
+      setAviso(`${resultado.type === "error" ? "⚠️" : "✅"} ${resultado.msg}`);
     } catch (e) {
       setRows((prev) =>
         prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: valorPrevio } : r))
@@ -2848,14 +3018,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       }
 
       await recargar();
-      const correo = j.correo_bienvenida;
-      setAviso(
-        correo?.enviado === false
-          ? `⚠️ #${id} marcado como NOTIFICADO, pero el correo no pudo enviarse.`
-          : correo?.enviado
-            ? `✅ #${id} marcado como NOTIFICADO y correo de bienvenida enviado${correo.cliente ? ' al cliente con copia a Backoffice' : ' solo a Backoffice (cliente sin correo válido)'}.`
-            : `✅ #${id} marcado como NOTIFICADO.`
-      );
+      const resultado = resultadoBienvenida(j, `#${id} marcado como NOTIFICADO`);
+      setAviso(`${resultado.type === "error" ? "⚠️" : "✅"} ${resultado.msg}`);
     } catch (e) {
       setRows(anterior);
       setAviso(`❌ No se pudo marcar #${id}: ${e.message}`);
@@ -2977,6 +3141,44 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           </div>
         </div>
 
+        <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "center", fontSize: 12, fontWeight: 800, color: "#075985", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={porBloque.SIN_NOTIFICAR.length > 0 && seleccionados.size === porBloque.SIN_NOTIFICAR.length}
+              onChange={(e) => seleccionarTodosSinNotificar(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: "#0284c7" }}
+            />
+            Seleccionar todos
+          </label>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 10, fontWeight: 900, color: "#0369a1", letterSpacing: ".08em", textTransform: "uppercase" }}>
+              Fecha y hora de envío inicial
+            </label>
+            <input
+              type="datetime-local"
+              value={inicioEnvio}
+              min={valorFechaHoraLocal(new Date())}
+              onChange={(e) => setInicioEnvio(e.target.value)}
+              style={{ padding: "9px 11px", borderRadius: 9, border: "1px solid #7dd3fc", background: "#fff", color: "#0f172a", fontSize: 12 }}
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={programando || seleccionados.size === 0 || !inicioEnvio}
+            onClick={programarSeleccionados}
+            style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: programando || seleccionados.size === 0 ? "#94a3b8" : "#0284c7", color: "#fff", fontSize: 12, fontWeight: 900, cursor: programando || seleccionados.size === 0 ? "not-allowed" : "pointer" }}
+          >
+            {programando ? "Programando…" : `Enviar a pendiente (${seleccionados.size})`}
+          </button>
+
+          <div style={{ marginLeft: "auto", maxWidth: 360, fontSize: 11.5, lineHeight: 1.55, color: "#475569" }}>
+            El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
+          </div>
+        </div>
+
         <div style={{ padding: "0 18px 18px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
             {BLOQUES_WELCOME.map((bloque) => {
@@ -3022,6 +3224,9 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             onArrastrar={setArrastrando}
                             arrastrando={arrastrando}
                             moviendo={moviendo}
+                            seleccionable={bloque.id === "SIN_NOTIFICAR"}
+                            seleccionado={seleccionados.has(String(row.id))}
+                            onSeleccionar={cambiarSeleccion}
                           />
                           {bloque.id === "SIN_NOTIFICAR" && (
                             <button
@@ -3035,6 +3240,27 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             >
                               ✓ Marcar como notificado
                             </button>
+                          )}
+                          {bloque.id === "PENDIENTES" && programaciones[String(row.id)] && (
+                            <div style={{ padding: "9px 10px", borderRadius: 9, background: programaciones[String(row.id)].status === "failed" ? "#fef2f2" : "#eff6ff", border: `1px solid ${programaciones[String(row.id)].status === "failed" ? "#fecaca" : "#bfdbfe"}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: 170 }}>
+                                <div style={{ fontSize: 9.5, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                                  Fecha y hora de notificación
+                                </div>
+                                <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 800, color: programaciones[String(row.id)].status === "failed" ? "#b91c1c" : "#1e40af" }}>
+                                  {mostrarFechaHoraWelcome(programaciones[String(row.id)].scheduled_at)}
+                                  {programaciones[String(row.id)].status === "failed" && " · Reintento pendiente"}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={cancelandoId === String(row.id)}
+                                onClick={() => cancelarProgramacion(row.id)}
+                                style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}
+                              >
+                                {cancelandoId === String(row.id) ? "Cancelando…" : "Cancelar"}
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))

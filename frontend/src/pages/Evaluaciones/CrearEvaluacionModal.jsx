@@ -8,11 +8,14 @@
  */
 
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { ImagePlus, Plus, Trash2, X } from 'lucide-react';
 import { evaluacionesApi } from '../../hooks/useEvaluaciones';
 import { Modal } from './ui';
 
-const preguntaVacia = () => ({ texto: '', opciones: ['', ''], correcta: 0 });
+const MAX_IMAGEN_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGENES_TOTAL_BYTES = 6 * 1024 * 1024;
+const TIPOS_IMAGEN = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const preguntaVacia = () => ({ texto: '', imagen: null, opciones: ['', ''], correcta: 0 });
 
 export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onError }) {
   const [titulo, setTitulo]         = useState('');
@@ -56,6 +59,17 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
   const agregarPregunta = () => setPreguntas(prev => [...prev, preguntaVacia()]);
   const quitarPregunta = (i) => setPreguntas(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
 
+  const seleccionarImagen = (i, archivo) => {
+    if (!archivo) return;
+    if (!TIPOS_IMAGEN.includes(archivo.type)) return onError?.('La imagen debe ser JPG, PNG, WebP o GIF');
+    if (archivo.size > MAX_IMAGEN_BYTES) return onError?.('La imagen no puede superar 2 MB');
+
+    const lector = new FileReader();
+    lector.onload = () => actualizarPregunta(i, { imagen: lector.result });
+    lector.onerror = () => onError?.('No se pudo leer la imagen');
+    lector.readAsDataURL(archivo);
+  };
+
   const guardar = async () => {
     if (titulo.trim().length < 3) return onError?.('El título debe tener al menos 3 caracteres');
     if (tieneLimite && (!Number(tiempoLimiteMin) || tiempoLimiteMin < 1 || tiempoLimiteMin > 180)) {
@@ -66,6 +80,11 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
       if (p.texto.trim().length < 3) return onError?.(`La pregunta ${i + 1} necesita un enunciado`);
       if (p.opciones.some(o => o.trim() === '')) return onError?.(`La pregunta ${i + 1} tiene una opción vacía`);
     }
+    const totalImagenes = preguntas.reduce((total, p) => {
+      const base64 = p.imagen?.split(',')[1] || '';
+      return total + Math.floor(base64.length * 3 / 4);
+    }, 0);
+    if (totalImagenes > MAX_IMAGENES_TOTAL_BYTES) return onError?.('Las imágenes no pueden superar 6 MB en total');
 
     setGuardando(true);
     try {
@@ -77,6 +96,7 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
         tiempoLimiteMin: tieneLimite ? Number(tiempoLimiteMin) : null,
         preguntas: preguntas.map(p => ({
           texto: p.texto.trim(),
+          imagen: p.imagen || undefined,
           opciones: p.opciones.map(o => o.trim()),
           correcta: p.correcta,
         })),
@@ -175,6 +195,25 @@ export default function CrearEvaluacionModal({ abierto, onCerrar, onCreada, onEr
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
+                </div>
+
+                <div className="mb-3 ml-6">
+                  {p.imagen ? (
+                    <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                      <img src={p.imagen} alt={`Imagen de la pregunta ${i + 1}`} className="max-h-56 w-full object-contain" />
+                      <button type="button" onClick={() => actualizarPregunta(i, { imagen: null })}
+                        className="absolute right-2 top-2 rounded-full bg-slate-900/70 p-1 text-white hover:bg-rose-600" title="Quitar imagen">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600">
+                      <ImagePlus className="h-4 w-4" /> Agregar imagen
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only"
+                        onChange={(e) => { seleccionarImagen(i, e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400">JPG, PNG, WebP o GIF · máximo 2 MB</p>
                 </div>
 
                 <div className="ml-6 space-y-1.5">

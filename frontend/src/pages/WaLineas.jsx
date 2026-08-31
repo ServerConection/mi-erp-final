@@ -83,9 +83,9 @@ export default function WaLineas() {
       setLines(prev => prev.map(l => l.id === lineId ? { ...l, status } : l));
       if (status !== "qr_ready" && qrModal?.lineId === lineId) setQrModal(null);
     });
-    socket.on("line:qr", ({ lineId, qr }) => {
-      setQrModal({ lineId, qr });
-    });
+    // No abrir QR por eventos automáticos de otras líneas. El modal solo se
+    // abre desde connect(id), después de que el usuario pulsa "Conectar QR".
+    // El polling HTTP de esa línea concreta actualiza luego la imagen.
     return () => { socket.off("line:status"); socket.off("line:qr"); stopQrPoll(); };
   }, []);
 

@@ -165,7 +165,7 @@ async function enviarBienvenidaWelcome(registro) {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px rgba(15,23,42,.10);font-family:Arial,Helvetica,sans-serif;">
         <tr><td style="padding:34px 36px;text-align:center;background:linear-gradient(135deg,#0369a1,#0ea5e9);">
           <div style="font-size:28px;line-height:1;color:#ffffff;font-weight:800;">¡Bienvenido/a!</div>
-          <div style="margin-top:10px;color:#e0f2fe;font-size:14px;">Tu servicio ya se encuentra activo</div>
+          <div style="margin-top:10px;color:#0f172a;font-size:14px;font-weight:600;">Tu servicio ya se encuentra activo</div>
         </td></tr>
         <tr><td style="padding:32px 36px;">
           <p style="margin:0 0 12px;color:#0f172a;font-size:18px;font-weight:bold;">Hola, ${escaparHtml(primerNombre)} 👋</p>

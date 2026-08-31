@@ -171,6 +171,10 @@ export default function TomarEvaluacion({ evaluacionId, onVolver }) {
         {datos.preguntas.map((p, i) => (
           <div key={p.id} className="rounded-lg border border-slate-200 bg-white p-4">
             <p className="mb-3 text-sm font-medium text-slate-800">{i + 1}. {p.texto}</p>
+            {p.imagen && (
+              <img src={p.imagen} alt={`Imagen de la pregunta ${i + 1}`}
+                className="mb-4 max-h-80 w-full rounded-lg border border-slate-200 bg-slate-50 object-contain" />
+            )}
             <div className="space-y-1.5">
               {p.opciones.map((o, j) => (
                 <label key={j} className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition ${

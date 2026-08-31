@@ -214,6 +214,25 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_scheduled_status ON scheduled_messages(status, scheduled_at);
 
+-- Bienvenidas programadas desde el Kanban de Backoffice. Un registro conserva
+-- una sola programación reutilizable para evitar envíos duplicados.
+CREATE TABLE IF NOT EXISTS welcome_notifications (
+  id              BIGSERIAL PRIMARY KEY,
+  registro_id     BIGINT NOT NULL UNIQUE,
+  scheduled_at    TIMESTAMPTZ NOT NULL,
+  status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+  email_sent      BOOLEAN NOT NULL DEFAULT false,
+  whatsapp_sent   BOOLEAN NOT NULL DEFAULT false,
+  attempts        INT NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  created_by      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_welcome_notifications_due
+  ON welcome_notifications(status, scheduled_at);
+
 -- Triggers updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$

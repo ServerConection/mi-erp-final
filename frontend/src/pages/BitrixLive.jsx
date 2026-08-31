@@ -1389,9 +1389,19 @@ function ActividadCRM() {
 // Bitrix Live agrupa dos miradas al MISMO Bitrix24:
 //   · Actividad CRM → qué se está trabajando (deals y actividades)
 //   · Sesiones      → quién está conectado, desde cuándo, con qué IP y equipo
+//
+// Las pestañas usan el sistema visual de index.css (clases ui-*): sin
+// mayúsculas forzadas, íconos SVG en vez de emoji y transiciones de 150 ms
+// limitadas a color y sombra.
 const SUBMODULOS = [
-  { key: "crm",      label: "Actividad CRM", icon: "📊", soloJefatura: false },
-  { key: "sesiones", label: "Sesiones",      icon: "🟢", soloJefatura: true  },
+  {
+    key: "crm", label: "Actividad CRM", soloJefatura: false,
+    icono: <path d="M4 19V5m0 14h16M8 16V9m4 7v-4m4 4V7"/>,
+  },
+  {
+    key: "sesiones", label: "Sesiones", soloJefatura: true,
+    icono: <><circle cx="9" cy="7" r="3.2"/><path d="M15.5 20v-1.6a4 4 0 0 0-4-4h-5a4 4 0 0 0-4 4V20"/><path d="M17 4.5a3.5 3.5 0 0 1 0 6"/></>,
+  },
 ];
 
 const TAB_KEY = "bitrixlive:submodulo:v1";
@@ -1422,17 +1432,24 @@ export default function BitrixLive() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-4">
+      <div className="ui-seg mb-5" role="tablist">
         {visibles.map(m => (
-          <button key={m.key} onClick={() => elegir(m.key)}
-            className={`px-4 py-2 rounded-lg text-[12px] font-black uppercase tracking-wider transition ${
-              sub === m.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
-            <span className="mr-1.5">{m.icon}</span>{m.label}
+          <button key={m.key} role="tab" aria-selected={sub === m.key}
+            onClick={() => elegir(m.key)}
+            data-on={sub === m.key ? "1" : "0"}
+            className="ui-seg-item ui-t inline-flex items-center gap-2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {m.icono}
+            </svg>
+            {m.label}
           </button>
         ))}
       </div>
 
-      {sub === "crm" ? <ActividadCRM/> : <BitrixSesiones/>}
+      <div key={sub} className="ui-in">
+        {sub === "crm" ? <ActividadCRM/> : <BitrixSesiones/>}
+      </div>
     </div>
   );
 }

@@ -25,6 +25,7 @@ app.use('/api',           require('../routes/test.email.routes'));
 app.use('/api/ventas',            require('../routes/ventas.routes'));
 app.use('/api/analista',          require('../routes/analista.routes'));
 app.use('/api/bitrix',            require('../routes/bitrix.routes'));
+app.use('/api/bitrix-sesiones',   require('../routes/bitrixSesiones.routes'));
 app.use('/api/inventario',        require('../routes/inventario.routes'));
 app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));

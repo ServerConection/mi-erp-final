@@ -20,6 +20,7 @@ const broadcastRoutes              = require('./routes/broadcast.routes');
 const ventasRoutes                 = require('./routes/ventas.routes');
 const analistaRoutes               = require('./routes/analista.routes');
 const bitrixRoutes                 = require('./routes/bitrix.routes');
+const bitrixSesionesRoutes         = require('./routes/bitrixSesiones.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
 const gestionablesWebhookRoutes    = require('./routes/gestionablesWebhook.routes');
 const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
@@ -123,6 +124,7 @@ app.use('/api/alertas',           alertasRoutes);
 app.use('/api/ventas',            ventasRoutes);
 app.use('/api/analista',          analistaRoutes);
 app.use('/api/bitrix',            bitrixRoutes);
+app.use('/api/bitrix-sesiones',   bitrixSesionesRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions

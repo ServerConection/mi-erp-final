@@ -16,6 +16,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import BitrixSesiones from "./BitrixSesiones";
 
 const API          = import.meta.env.VITE_API_URL || "http://localhost:3050";
 const REFRESH_SECS = 90;
@@ -968,7 +969,7 @@ function GraficaGlobal({ empresa, asesores, horas }) {
 }
 
 // ── Página principal ───────────────────────────────────────────────────────────
-export default function BitrixLive() {
+function ActividadCRM() {
   // Hidratación instantánea: el primer render ya sale con los datos cacheados.
   const HORAS_INI = 48;                               // histórico completo por defecto
   const [data,      setData]      = useState(() => bootSnapshot(HORAS_INI)?.data || []);
@@ -1380,6 +1381,58 @@ export default function BitrixLive() {
         <br/>
         Calidad = % de leads con interacción registrada · Clic en una tarjeta para ver el detalle · Ventana actual: {horas}h
       </div>
+    </div>
+  );
+}
+
+// ── Envoltorio de submódulos ─────────────────────────────────────────────────
+// Bitrix Live agrupa dos miradas al MISMO Bitrix24:
+//   · Actividad CRM → qué se está trabajando (deals y actividades)
+//   · Sesiones      → quién está conectado, desde cuándo, con qué IP y equipo
+const SUBMODULOS = [
+  { key: "crm",      label: "Actividad CRM", icon: "📊", soloJefatura: false },
+  { key: "sesiones", label: "Sesiones",      icon: "🟢", soloJefatura: true  },
+];
+
+const TAB_KEY = "bitrixlive:submodulo:v1";
+
+export default function BitrixLive() {
+  const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
+  const perfil  = useMemo(() => {
+    try { return (JSON.parse(userRaw).perfil || "").toUpperCase(); } catch { return ""; }
+  }, [userRaw]);
+
+  // Quién está conectado y desde qué IP es información de personal: jefatura.
+  // El backend lo vuelve a validar — esto solo evita mostrar una pestaña muerta.
+  const esJefatura = ["ADMINISTRADOR", "GERENTE", "SUPERVISOR"].includes(perfil);
+  const visibles = SUBMODULOS.filter(m => !m.soloJefatura || esJefatura);
+
+  const [sub, setSub] = useState(() => {
+    const guardado = localStorage.getItem(TAB_KEY);
+    return visibles.some(m => m.key === guardado) ? guardado : "crm";
+  });
+
+  const elegir = (kk) => {
+    setSub(kk);
+    try { localStorage.setItem(TAB_KEY, kk); } catch { /* modo privado: no es crítico */ }
+  };
+
+  // Con un solo submódulo visible la barra de pestañas sobra.
+  if (visibles.length < 2) return <ActividadCRM/>;
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-4">
+        {visibles.map(m => (
+          <button key={m.key} onClick={() => elegir(m.key)}
+            className={`px-4 py-2 rounded-lg text-[12px] font-black uppercase tracking-wider transition ${
+              sub === m.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+            <span className="mr-1.5">{m.icon}</span>{m.label}
+          </button>
+        ))}
+      </div>
+
+      {sub === "crm" ? <ActividadCRM/> : <BitrixSesiones/>}
     </div>
   );
 }

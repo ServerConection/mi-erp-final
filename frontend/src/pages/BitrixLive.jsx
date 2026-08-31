@@ -16,6 +16,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import BitrixSesiones from "./BitrixSesiones";
 
 const API          = import.meta.env.VITE_API_URL || "http://localhost:3050";
 const REFRESH_SECS = 90;
@@ -968,7 +969,7 @@ function GraficaGlobal({ empresa, asesores, horas }) {
 }
 
 // ── Página principal ───────────────────────────────────────────────────────────
-export default function BitrixLive() {
+function ActividadCRM() {
   // Hidratación instantánea: el primer render ya sale con los datos cacheados.
   const HORAS_INI = 48;                               // histórico completo por defecto
   const [data,      setData]      = useState(() => bootSnapshot(HORAS_INI)?.data || []);
@@ -1379,6 +1380,75 @@ export default function BitrixLive() {
         ⏳ En espera = movimiento &lt; 2 h · 👤 Disponible = sin movimiento hace más de 2 h
         <br/>
         Calidad = % de leads con interacción registrada · Clic en una tarjeta para ver el detalle · Ventana actual: {horas}h
+      </div>
+    </div>
+  );
+}
+
+// ── Envoltorio de submódulos ─────────────────────────────────────────────────
+// Bitrix Live agrupa dos miradas al MISMO Bitrix24:
+//   · Actividad CRM → qué se está trabajando (deals y actividades)
+//   · Sesiones      → quién está conectado, desde cuándo, con qué IP y equipo
+//
+// Las pestañas usan el sistema visual de index.css (clases ui-*): sin
+// mayúsculas forzadas, íconos SVG en vez de emoji y transiciones de 150 ms
+// limitadas a color y sombra.
+const SUBMODULOS = [
+  {
+    key: "crm", label: "Actividad CRM", soloJefatura: false,
+    icono: <path d="M4 19V5m0 14h16M8 16V9m4 7v-4m4 4V7"/>,
+  },
+  {
+    key: "sesiones", label: "Sesiones", soloJefatura: true,
+    icono: <><circle cx="9" cy="7" r="3.2"/><path d="M15.5 20v-1.6a4 4 0 0 0-4-4h-5a4 4 0 0 0-4 4V20"/><path d="M17 4.5a3.5 3.5 0 0 1 0 6"/></>,
+  },
+];
+
+const TAB_KEY = "bitrixlive:submodulo:v1";
+
+export default function BitrixLive() {
+  const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
+  const perfil  = useMemo(() => {
+    try { return (JSON.parse(userRaw).perfil || "").toUpperCase(); } catch { return ""; }
+  }, [userRaw]);
+
+  // Quién está conectado y desde qué IP es información de personal: jefatura.
+  // El backend lo vuelve a validar — esto solo evita mostrar una pestaña muerta.
+  const esJefatura = ["ADMINISTRADOR", "GERENTE", "SUPERVISOR"].includes(perfil);
+  const visibles = SUBMODULOS.filter(m => !m.soloJefatura || esJefatura);
+
+  const [sub, setSub] = useState(() => {
+    const guardado = localStorage.getItem(TAB_KEY);
+    return visibles.some(m => m.key === guardado) ? guardado : "crm";
+  });
+
+  const elegir = (kk) => {
+    setSub(kk);
+    try { localStorage.setItem(TAB_KEY, kk); } catch { /* modo privado: no es crítico */ }
+  };
+
+  // Con un solo submódulo visible la barra de pestañas sobra.
+  if (visibles.length < 2) return <ActividadCRM/>;
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="ui-seg mb-5" role="tablist">
+        {visibles.map(m => (
+          <button key={m.key} role="tab" aria-selected={sub === m.key}
+            onClick={() => elegir(m.key)}
+            data-on={sub === m.key ? "1" : "0"}
+            className="ui-seg-item ui-t inline-flex items-center gap-2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {m.icono}
+            </svg>
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      <div key={sub} className="ui-in">
+        {sub === "crm" ? <ActividadCRM/> : <BitrixSesiones/>}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { construirMatrizHoraDia, construirResumenHora, calcularEfectividadGestionables } from "../utils/reporteDataStats.js";
+import { cabecerasSesion } from "../utils/sesion";
 
 const C = {
   primary:  "#2563eb",
@@ -89,7 +90,7 @@ function Block({ title, accent = C.primary, children, id }) {
     <div id={id} className="bg-white rounded-xl border shadow-sm overflow-hidden mb-5" style={{ borderColor: C.border }}>
       <div className="px-5 py-3 border-b flex items-center gap-3" style={{ background: C.bgHeader, borderColor: C.border }}>
         <div className="w-1 h-5 rounded-full" style={{ background: accent }} />
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</span>
+        <span className="text-[12px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</span>
       </div>
       <div className="overflow-auto">{children}</div>
     </div>
@@ -97,9 +98,9 @@ function Block({ title, accent = C.primary, children, id }) {
 }
 
 function TablaHorizontal({ filas, dias, accent = C.primary }) {
-  if (!filas || filas.length === 0) return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos</p>;
+  if (!filas || filas.length === 0) return <p className="p-4 text-[11px] italic" style={{ color: C.muted }}>Sin datos</p>;
   return (
-    <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
+    <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
       <thead className="sticky top-0 z-10 border-b-2" style={{ background: C.bgHeader, borderColor: C.border }}>
         <tr>
           <th className="px-3 py-2 text-left font-black border-r min-w-[260px] sticky left-0"
@@ -117,7 +118,7 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
         {filas.map((fila, fi) => (
           <tr key={fi} className={`border-b transition-colors ${fila.separador ? "" : "hover:bg-blue-50/30"}`}
             style={{ borderColor: C.border, background: fila.separador ? "#f8fafc" : "white" }}>
-            <td className="px-3 py-1.5 font-black text-[8px] border-r sticky left-0"
+            <td className="px-3 py-1.5 font-black text-[11px] border-r sticky left-0"
               style={{ background: fila.separador ? "#f8fafc" : "white", color: fila.separador ? C.muted : C.slate, borderColor: C.border }}>
               {fila.label}
             </td>
@@ -156,16 +157,16 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function TablaHora({ filas }) {
   const horas = construirResumenHora(filas);
-  if (!horas.length) return <p className="p-4 text-[9px] italic" style={{ color: C.muted }}>Sin datos horarios para el período y agencias seleccionadas.</p>;
-  return <table className="text-[9px] border-collapse w-full"><thead style={{ background: C.bgHeader }}><tr>{['HORA','LEADS','ATC','% ATC'].map(h => <th key={h} className="px-4 py-2 text-center border-b" style={{ color:C.slate,borderColor:C.border }}>{h}</th>)}</tr></thead><tbody>{horas.map(h => <tr key={h.hora} className="border-b" style={{ borderColor:C.border }}><td className="px-4 py-2 text-center font-black">{String(h.hora).padStart(2,'0')}:00</td><td className="px-4 py-2 text-center font-black" style={{color:C.primary}}>{h.n_leads}</td><td className="px-4 py-2 text-center" style={{color:C.danger}}>{h.atc}</td><td className="px-4 py-2 text-center font-black">{pf(h.pct_atc)}</td></tr>)}</tbody></table>;
+  if (!horas.length) return <p className="p-4 text-[11px] italic" style={{ color: C.muted }}>Sin datos horarios para el período y agencias seleccionadas.</p>;
+  return <table className="text-[11px] border-collapse w-full"><thead style={{ background: C.bgHeader }}><tr>{['HORA','LEADS','ATC','% ATC'].map(h => <th key={h} className="px-4 py-2 text-center border-b" style={{ color:C.slate,borderColor:C.border }}>{h}</th>)}</tr></thead><tbody>{horas.map(h => <tr key={h.hora} className="border-b" style={{ borderColor:C.border }}><td className="px-4 py-2 text-center font-black">{String(h.hora).padStart(2,'0')}:00</td><td className="px-4 py-2 text-center font-black" style={{color:C.primary}}>{h.n_leads}</td><td className="px-4 py-2 text-center" style={{color:C.danger}}>{h.atc}</td><td className="px-4 py-2 text-center font-black">{pf(h.pct_atc)}</td></tr>)}</tbody></table>;
 }
 function TablaHoraDia({ filas, dias }) {
   const matriz = construirMatrizHoraDia(filas); if (!matriz.horas.length) return null;
-  return <div className="overflow-auto border-t" style={{borderColor:C.border}}><div className="px-4 py-2 text-[9px] font-black uppercase" style={{color:C.primary}}>Detalle diario por hora</div><table className="text-[8px] border-collapse w-full whitespace-nowrap"><thead style={{background:C.bgHeader}}><tr><th className="px-3 py-2 border">DÍA</th>{matriz.horas.map(h=><th key={h} className="px-2 py-2 border">{String(h).padStart(2,'0')}:00</th>)}<th className="px-3 py-2 border">TOTAL</th></tr></thead><tbody>{dias.map(d=>{const fila=matriz.porDia[d.dia]||{};const total=matriz.horas.reduce((sum,h)=>sum+n(fila[h]),0);return <tr key={d.dia}><td className="px-3 py-2 border font-black">{d.dia} {d.nombre}</td>{matriz.horas.map(h=><td key={h} className="px-2 py-2 border text-center">{n(fila[h])||'—'}</td>)}<td className="px-3 py-2 border text-center font-black">{total||'—'}</td></tr>;})}</tbody></table></div>;
+  return <div className="overflow-auto border-t" style={{borderColor:C.border}}><div className="px-4 py-2 text-[11px] font-black uppercase" style={{color:C.primary}}>Detalle diario por hora</div><table className="text-[11px] border-collapse w-full whitespace-nowrap"><thead style={{background:C.bgHeader}}><tr><th className="px-3 py-2 border">DÍA</th>{matriz.horas.map(h=><th key={h} className="px-2 py-2 border">{String(h).padStart(2,'0')}:00</th>)}<th className="px-3 py-2 border">TOTAL</th></tr></thead><tbody>{dias.map(d=>{const fila=matriz.porDia[d.dia]||{};const total=matriz.horas.reduce((sum,h)=>sum+n(fila[h]),0);return <tr key={d.dia}><td className="px-3 py-2 border font-black">{d.dia} {d.nombre}</td>{matriz.horas.map(h=><td key={h} className="px-2 py-2 border text-center">{n(fila[h])||'—'}</td>)}<td className="px-3 py-2 border text-center font-black">{total||'—'}</td></tr>;})}</tbody></table></div>;
 }
 function TablaCiudad({ filas }) {
-  if (!filas?.length) return <p className="p-4 text-[9px] italic" style={{color:C.muted}}>Sin datos por ciudad para el período.</p>;
-  return <table className="text-[9px] border-collapse w-full"><thead style={{background:C.bgHeader}}><tr>{['CIUDAD','PROVINCIA','LEADS','INGRESOS JOT','ACTIVOS','% ACTIVACIÓN'].map(h=><th key={h} className="px-3 py-2 border-b text-center" style={{borderColor:C.border,color:C.slate}}>{h}</th>)}</tr></thead><tbody>{filas.map((r,i)=><tr key={`${r.ciudad}-${i}`} className="border-b" style={{borderColor:C.border}}><td className="px-3 py-2 font-black">{r.ciudad||'SIN CIUDAD'}</td><td className="px-3 py-2">{r.provincia||'—'}</td><td className="px-3 py-2 text-center font-black">{n(r.total_leads)}</td><td className="px-3 py-2 text-center">{n(r.ingresos_jot)}</td><td className="px-3 py-2 text-center" style={{color:C.success}}>{n(r.activos)}</td><td className="px-3 py-2 text-center font-black">{pf(r.pct_activos)}</td></tr>)}</tbody></table>;
+  if (!filas?.length) return <p className="p-4 text-[11px] italic" style={{color:C.muted}}>Sin datos por ciudad para el período.</p>;
+  return <table className="text-[11px] border-collapse w-full"><thead style={{background:C.bgHeader}}><tr>{['CIUDAD','PROVINCIA','LEADS','INGRESOS JOT','ACTIVOS','% ACTIVACIÓN'].map(h=><th key={h} className="px-3 py-2 border-b text-center" style={{borderColor:C.border,color:C.slate}}>{h}</th>)}</tr></thead><tbody>{filas.map((r,i)=><tr key={`${r.ciudad}-${i}`} className="border-b" style={{borderColor:C.border}}><td className="px-3 py-2 font-black">{r.ciudad||'SIN CIUDAD'}</td><td className="px-3 py-2">{r.provincia||'—'}</td><td className="px-3 py-2 text-center font-black">{n(r.total_leads)}</td><td className="px-3 py-2 text-center">{n(r.ingresos_jot)}</td><td className="px-3 py-2 text-center" style={{color:C.success}}>{n(r.activos)}</td><td className="px-3 py-2 text-center font-black">{pf(r.pct_activos)}</td></tr>)}</tbody></table>;
 }
 function buildInversionFilas(d, dias) {
   if (!d.inversion || d.inversion.length === 0) return [];
@@ -368,7 +369,7 @@ export default function TabReporteData({ filtro }) {
     dataLoaded.current = false;
     setCanalDetalle(null);
 
-    fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`)
+    fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`, { headers: cabecerasSesion() })
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.canales_disponibles) {
@@ -383,7 +384,7 @@ export default function TabReporteData({ filtro }) {
     const params = new URLSearchParams({ anio: anio_, mes: mes_ });
     if (canalesSel_.length > 0) params.set("canales", canalesSel_.join(","));
 
-    fetch(`${API}/api/redes/reporte-data?${params}`)
+    fetch(`${API}/api/redes/reporte-data?${params}`, { headers: cabecerasSesion() })
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
@@ -845,39 +846,39 @@ ${horaData.length > 0 ? `
         <div className="px-5 py-3 flex flex-wrap items-center gap-3 border-b" style={{ background: C.bgHeader, borderColor: C.border }}>
           <div className="flex items-center gap-2">
             <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} />
-            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Reporte Data</span>
+            <span className="text-[12px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Reporte Data</span>
           </div>
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
             <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
-              className="border rounded-lg px-2.5 py-1.5 text-[10px] font-semibold outline-none bg-white cursor-pointer"
+              className="border rounded-lg px-2.5 py-1.5 text-[12px] font-semibold outline-none bg-white cursor-pointer"
               style={{ borderColor: C.border, color: C.slate }}>
               {[2024, 2025, 2026, 2027].map((y) => <option key={y}>{y}</option>)}
             </select>
 
             <select value={mes} onChange={(e) => setMes(Number(e.target.value))}
-              className="border rounded-lg px-2.5 py-1.5 text-[10px] font-semibold outline-none bg-white cursor-pointer"
+              className="border rounded-lg px-2.5 py-1.5 text-[12px] font-semibold outline-none bg-white cursor-pointer"
               style={{ borderColor: C.border, color: C.slate }}>
               {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
 
             <button onClick={handleCargar}
               disabled={loading}
-              className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 disabled:opacity-60"
+              className="px-4 py-1.5 rounded-lg text-[12px] font-black uppercase text-white transition-all active:scale-95 disabled:opacity-60"
               style={{ background: C.primary }}>
               {loading ? "Cargando..." : "Generar"}
             </button>
 
             {data && (
               <button onClick={handleExport}
-                className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg text-[12px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
                 style={{ background: C.success }}>
                 ↓ Excel
               </button>
             )}
             {data && (
               <button onClick={generarReporteVisual}
-                className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg text-[12px] font-black uppercase text-white transition-all active:scale-95 flex items-center gap-1.5"
                 style={{ background: "#1A3A6E" }}>
                 📊 Ver Reporte
               </button>
@@ -889,14 +890,14 @@ ${horaData.length > 0 ? `
         {canalesDisp.length > 0 && (
           <div className="flex items-stretch">
             <div className="flex-1 px-5 py-3 flex flex-wrap items-center gap-2">
-              <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
+              <span className="text-[11px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
                 Agencia:
               </span>
 
               {/* Chip "Todos" */}
               <button
                 onClick={limpiarCanales}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black uppercase border transition-all"
                 style={canalesSel.length === 0
                   ? { background: C.primary, color: "#fff", borderColor: C.primary }
                   : { background: "#fff",    color: C.muted, borderColor: C.border }
@@ -911,7 +912,7 @@ ${horaData.length > 0 ? `
                 return (
                   <div key={canal} className="inline-flex items-center gap-0.5">
                     <button onClick={() => toggleCanal(canal)}
-                      className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[8px] font-black uppercase border transition-all hover:shadow-sm"
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-l-full text-[11px] font-black uppercase border transition-all hover:shadow-sm"
                       style={sel
                         ? { background: cfg.color, color: "#fff",    borderColor: cfg.color }
                         : { background: cfg.bg,    color: cfg.color, borderColor: `${cfg.color}40` }
@@ -919,7 +920,7 @@ ${horaData.length > 0 ? `
                       <span>{cfg.icon}</span><span>{cfg.label}</span>
                     </button>
                     <button onClick={() => setCanalDetalle(isDetail ? null : canal)}
-                      className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[9px] font-black border-l-0 border transition-all"
+                      className="inline-flex items-center justify-center w-5 h-[26px] rounded-r-full text-[11px] font-black border-l-0 border transition-all"
                       style={isDetail
                         ? { background: cfg.color,         color: "#fff", borderColor: cfg.color }
                         : sel
@@ -934,7 +935,7 @@ ${horaData.length > 0 ? `
               })}
 
               {canalesSel.length > 0 && (
-                <span className="text-[8px] font-medium ml-1" style={{ color: C.muted }}>
+                <span className="text-[11px] font-medium ml-1" style={{ color: C.muted }}>
                   {canalesSel.length} agencia{canalesSel.length !== 1 ? "s" : ""}
                   {" · "}
                   <button onClick={limpiarCanales} className="underline hover:no-underline" style={{ color: C.danger }}>
@@ -944,7 +945,7 @@ ${horaData.length > 0 ? `
               )}
 
               {loading && dataLoaded.current && (
-                <span className="text-[8px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
+                <span className="text-[11px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
                   <span className="inline-block w-2 h-2 border border-current rounded-full animate-spin border-t-transparent" />
                   Actualizando...
                 </span>
@@ -955,20 +956,20 @@ ${horaData.length > 0 ? `
               <div className="border-l flex-shrink-0 px-4 py-3 min-w-[220px] max-w-[280px]"
                 style={{ borderColor: C.border, background: `${getCfg(canalDetalle).bg}` }}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[8px] font-black uppercase" style={{ color: getCfg(canalDetalle).color }}>
+                  <span className="text-[11px] font-black uppercase" style={{ color: getCfg(canalDetalle).color }}>
                     {getCfg(canalDetalle).icon} {getCfg(canalDetalle).label} — Líneas
                   </span>
-                  <button onClick={() => setCanalDetalle(null)} className="text-[9px] font-bold hover:opacity-70"
+                  <button onClick={() => setCanalDetalle(null)} className="text-[11px] font-bold hover:opacity-70"
                     style={{ color: getCfg(canalDetalle).color }}>✕</button>
                 </div>
                 <div className="space-y-1">
                   {(data?.canales_disponibles?.find(c => c.canal === canalDetalle)?.lineas
                     || []).map((linea) => (
-                    <div key={linea} className="text-[8px] px-2 py-1 rounded-md font-medium"
+                    <div key={linea} className="text-[11px] px-2 py-1 rounded-md font-medium"
                       style={{ background: "#ffffff80", color: C.slate }}>{linea}</div>
                   ))}
                 </div>
-                <p className="text-[7px] mt-2" style={{ color: C.muted }}>
+                <p className="text-[10px] mt-2" style={{ color: C.muted }}>
                   La inversión del canal se asigna una sola vez (no por línea).
                 </p>
               </div>
@@ -989,7 +990,7 @@ ${horaData.length > 0 ? `
               <div className="text-lg font-black" style={{ color: C.slate }}>
                 Reporte Data — {MESES[data.meta.mes - 1]} {data.meta.anio}
               </div>
-              <div className="text-[9px] font-medium uppercase tracking-widest mt-0.5" style={{ color: C.muted }}>
+              <div className="text-[11px] font-medium uppercase tracking-widest mt-0.5" style={{ color: C.muted }}>
                 NETLIFE NOVONET · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
               </div>
             </div>
@@ -997,13 +998,13 @@ ${horaData.length > 0 ? `
               {canalesSel.map((c) => {
                 const cfg = getCfg(c);
                 return (
-                  <span key={c} className="text-[8px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1"
+                  <span key={c} className="text-[11px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1"
                     style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
                     {cfg.icon} {cfg.label}
                   </span>
                 );
               })}
-              <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>
+              <span className="text-[11px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>
                 {data.meta.dias.length} días
               </span>
             </div>
@@ -1012,10 +1013,10 @@ ${horaData.length > 0 ? `
           <div className="bg-white rounded-xl border shadow-sm p-4 mb-4" style={{ borderColor: C.border }}>
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: C.violet }}>Forecast de inversión por agencia</div>
-                <div className="text-[8px] mt-1" style={{ color: C.muted }}>Promedio diario registrado × días del mes · fuente viva WinTracker</div>
+                <div className="text-[12px] font-black uppercase tracking-widest" style={{ color: C.violet }}>Forecast de inversión por agencia</div>
+                <div className="text-[11px] mt-1" style={{ color: C.muted }}>Promedio diario registrado × días del mes · fuente viva WinTracker</div>
               </div>
-              <span className="text-[8px] font-bold px-2 py-1 rounded-full" style={{ background: "#f5f3ff", color: C.violet }}>
+              <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: "#f5f3ff", color: C.violet }}>
                 {(data.forecast_agencias || []).length} agencia(s)
               </span>
             </div>
@@ -1025,24 +1026,24 @@ ${horaData.length > 0 ? `
                   <div key={item.agencia} className="rounded-xl border p-3" style={{ borderColor: item.atrasada ? "#fca5a5" : "#bbf7d0", background: item.atrasada ? "#fef2f2" : "#f0fdf4" }}>
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-[11px] font-black" style={{ color: C.slate }}>{item.agencia}</span>
-                      <span className="text-[8px] font-black px-2 py-0.5 rounded-full" style={{ background: item.atrasada ? "#fee2e2" : "#dcfce7", color: item.atrasada ? C.danger : C.success }}>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: item.atrasada ? "#fee2e2" : "#dcfce7", color: item.atrasada ? C.danger : C.success }}>
                         {item.atrasada ? "ATRASADA" : "ACTUALIZADA"}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-[8px]">
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div><span style={{ color: C.muted }}>Acumulado</span><div className="text-sm font-black" style={{ color: C.violet }}>${n(item.inversion_acumulada).toFixed(2)}</div></div>
                       <div><span style={{ color: C.muted }}>Proyección cierre</span><div className="text-sm font-black" style={{ color: C.primary }}>${n(item.proyeccion_cierre).toFixed(2)}</div></div>
                       <div><span style={{ color: C.muted }}>Por gastar estimado</span><div className="font-black" style={{ color: C.warning }}>${n(item.gasto_proyectado_restante).toFixed(2)}</div></div>
                       <div><span style={{ color: C.muted }}>Promedio diario</span><div className="font-black" style={{ color: C.slate }}>${n(item.promedio_diario).toFixed(2)}</div></div>
                     </div>
-                    <div className="text-[8px] mt-2 pt-2 border-t" style={{ borderColor: C.border, color: item.atrasada ? C.danger : C.muted }}>
+                    <div className="text-[11px] mt-2 pt-2 border-t" style={{ borderColor: C.border, color: item.atrasada ? C.danger : C.muted }}>
                       Último dato: <b>{item.ultima_fecha}</b> · {item.dias_con_datos} días con datos · {item.dias_restantes} días restantes
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-[10px] rounded-lg p-3" style={{ background: "#fffbeb", color: C.warning }}>Sin inversión por agencia para este período. Usa “Forzar inversión”.</div>
+              <div className="text-[12px] rounded-lg p-3" style={{ background: "#fffbeb", color: C.warning }}>Sin inversión por agencia para este período. Usa “Forzar inversión”.</div>
             )}
           </div>
           <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">

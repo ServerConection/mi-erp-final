@@ -7,6 +7,7 @@
 
 const { normalizarMensaje } = require('./contactabilidad.normalizer');
 const { recalcularLeads } = require('./contactabilidad.recalculo');
+const { obtenerCapacidades } = require('./contactabilidad.esquema');
 
 const LIMITE_LEADS_CICLO = 120;   // tope duro por ciclo del cron corto
 const CONCURRENCIA = 3;           // Bitrix tolera ~2 req/s: 3 chats en paralelo con backoff
@@ -100,6 +101,10 @@ function crearRefrescador({
   /** Resuelve el lead a partir del chat de Open Lines y lo refresca. */
   async function refrescarChat(empresa, chatId, opciones = {}) {
     const crm = buscarCrm(empresa);
+    // Sin la migracion no hay columna chat_id: no se puede resolver el lead,
+    // pero tampoco debe reventar. El ciclo largo lo cubre.
+    const cols = await obtenerCapacidades(pool);
+    if (!cols.chat_id) return { empresa: crm.empresa, chat_id: String(chatId), sin_lead: true };
     const { rows } = await pool.query(`
       SELECT id_bitrix FROM contactabilidad_leads
       WHERE empresa = $1 AND chat_id = $2

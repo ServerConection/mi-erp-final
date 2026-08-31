@@ -20,6 +20,7 @@ import ContactabilidadHeatmap from './contactabilidad/ContactabilidadHeatmap.jsx
 import ContactabilidadFunnel from './contactabilidad/ContactabilidadFunnel.jsx';
 import ContactabilidadQuality from './contactabilidad/ContactabilidadQuality.jsx';
 import ContactabilidadOperationalTable from './contactabilidad/ContactabilidadOperationalTable.jsx';
+import ContactabilidadConversacion from './contactabilidad/ContactabilidadConversacion.jsx';
 import { buildAnalyticsQuery, readFilters } from '../utils/contactabilidadAnalytics.js';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -71,6 +72,7 @@ export default function Contactabilidad() {
   const [ultimaCarga, setUltimaCarga] = useState(null);
   const [intervalo, setIntervalo] = useState(leerIntervalo);
   const [ahora, setAhora] = useState(() => Date.now());
+  const [chat, setChat] = useState(null); // { lead, data, cargando, error }
 
   const admin = useMemo(() => esAdministrador(), []);
   const query = useMemo(() => buildAnalyticsQuery(filters), [filters]);
@@ -180,6 +182,18 @@ export default function Contactabilidad() {
   };
 
   // El export es CSV, no JSON: se descarga como blob con el token en la cabecera.
+  // --- Conversacion en vivo (se lee de Bitrix, no se guarda) ----------------
+  const abrirConversacion = useCallback(async (lead, { forzar = false } = {}) => {
+    setChat((previo) => ({ lead, data: forzar ? previo?.data : null, cargando: true, error: '' }));
+    try {
+      const json = await pedir(
+        `${BASE}/conversacion/${lead.empresa}/${lead.id_bitrix}${forzar ? '?forzar=true' : ''}`);
+      setChat({ lead, data: json.data, cargando: false, error: '' });
+    } catch (e) {
+      setChat((previo) => ({ ...previo, lead, cargando: false, error: e.message }));
+    }
+  }, []);
+
   const exportar = () => {
     const url = `${BASE}/export?${query}`;
     fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
@@ -286,7 +300,8 @@ export default function Contactabilidad() {
       alertas={analytics.alertas} umbrales={analytics.umbrales} ahora={ahora}
       onFiltrarAsesor={filtrarPor('asesor_id')}
       onFiltrarEtapa={filtrarPor('etapa')}
-      onFiltrarOrigen={filtrarPor('origen')} />}
+      onFiltrarOrigen={filtrarPor('origen')}
+      onAbrirLead={abrirConversacion} />}
 
     {tab === 'inteligencia' && <div id="contactabilidad-inteligencia" style={{ display: 'grid', gap: 14 }}>
       <ContactabilidadRankings porOrigen={analytics.por_origen} porAsesor={analytics.por_asesor} porEtapa={analytics.por_etapa} />
@@ -299,6 +314,11 @@ export default function Contactabilidad() {
 
     {tab === 'operacion' && <ContactabilidadOperationalTable
       rows={analytics.operativo} loading={loading} umbrales={analytics.umbrales}
-      ahora={ahora} onRefrescarLead={refrescarLead} />}
+      ahora={ahora} onRefrescarLead={refrescarLead} onVerConversacion={abrirConversacion} />}
+
+    {chat && <ContactabilidadConversacion
+      lead={chat.lead} data={chat.data} cargando={chat.cargando} error={chat.error}
+      ahora={ahora} onCerrar={() => setChat(null)}
+      onRecargar={() => abrirConversacion(chat.lead, { forzar: true })} />}
   </div>;
 }

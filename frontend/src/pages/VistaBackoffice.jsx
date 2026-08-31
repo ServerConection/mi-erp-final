@@ -1344,7 +1344,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                   {loading ? (
                     <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
                   ) : (
-                    <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+                    <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
                       <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
                         <tr style={{ background: "#f8fafc" }}>
                           {tableHeaders.map((h, i) => (
@@ -1438,7 +1438,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
                       {sec.campos.map((field) => (
                         <div key={field}>
-                          <label style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                          <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                             {FIELD_LABELS[field] || field}
                           </label>
 
@@ -1678,7 +1678,7 @@ function TarjetaSubmodulo({ sub, onAbrir }) {
       }}
     >
       {!sub.listo && (
-        <span style={{ position: "absolute", top: 16, right: 16, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 999, padding: "3px 9px" }}>
+        <span style={{ position: "absolute", top: 16, right: 16, fontSize: 12, fontWeight: 800, letterSpacing: ".08em", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 999, padding: "3px 9px" }}>
           EN DESARROLLO
         </span>
       )}
@@ -1717,7 +1717,7 @@ function HubBackoffice({ onAbrir, empresa, onCambiarEmpresa }) {
               </p>
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#94a3b8", textTransform: "uppercase", marginBottom: 6, textAlign: "right" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".08em", color: "#94a3b8", textTransform: "uppercase", marginBottom: 6, textAlign: "right" }}>
                 Empresa
               </div>
               <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />
@@ -1783,7 +1783,42 @@ const EMPRESAS_FILTRO = [
   { id: "VELSA", label: "Velsa" },
 ];
 
+// Perfil y empresa del usuario logueado. El layout guarda esto en
+// "userProfile" (no en "user"), igual que hace Backoffice.jsx.
+function perfilUsuario() {
+  try {
+    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
+    return {
+      perfil: (u.perfil || "").toUpperCase(),
+      empresa: (u.empresa || "").toUpperCase(),
+    };
+  } catch (_) {
+    return { perfil: "", empresa: "" };
+  }
+}
+
 function FiltroEmpresa({ valor, onCambiar }) {
+  // El backend ya limita los registros a la empresa del token: un usuario que
+  // no sea ADMINISTRADOR no puede ver la otra empresa aunque pulse el botón
+  // (recibiría un 403). Mostrarle el selector solo genera un error confuso,
+  // así que se le enseña su empresa como etiqueta fija.
+  const { perfil, empresa: empresaUsuario } = perfilUsuario();
+
+  if (perfil !== "ADMINISTRADOR") {
+    const etiqueta =
+      EMPRESAS_FILTRO.find((e) => e.id === empresaUsuario)?.label || empresaUsuario || "—";
+    return (
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999,
+        padding: "7px 16px", fontWeight: 800, fontSize: 12.5, color: "#475569",
+        whiteSpace: "nowrap",
+      }} title="Solo ves los registros de tu empresa">
+        <span style={{ opacity: .6 }}>Empresa:</span> {etiqueta}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "inline-flex", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: 4, gap: 4 }}>
       {EMPRESAS_FILTRO.map((e) => {
@@ -2136,7 +2171,7 @@ function BotonNivel({
             >
               <span
                 style={{
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: 800,
                   color: "#64748b",
                   textAlign: "center",
@@ -2524,7 +2559,7 @@ function TarjetaWelcome({ row, onAbrir, onArrastrar, arrastrando, moviendo }) {
         <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
           {row.nombre_cliente_completo || "Sin nombre"}
         </span>
-        <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", flex: "none" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", flex: "none" }}>
           #{row.id}
         </span>
       </div>
@@ -3128,7 +3163,7 @@ function CalendarioMes({ anio, mes, mapaDias, color, fondo, borde, onDiaClick })
                 {esHoy && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 11,
                       fontWeight: 900,
                       color: "#fff",
                       background: color,
@@ -3664,7 +3699,7 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
         </span>
       </div>
       <div style={{ overflow: "auto", maxHeight: 640 }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
             <tr style={{ background: "#f8fafc" }}>
               {headers.map((h, i) => (
@@ -3679,7 +3714,7 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
                     color: "#475569",
                     whiteSpace: "nowrap",
                     background: "#f8fafc",
-                    fontSize: 10.5,
+                    fontSize: 12.5,
                     letterSpacing: ".04em",
                   }}
                 >
@@ -4028,16 +4063,16 @@ function TarjetaCliente({ row, onAbrir, onArrastrar, moviendo, bloqueActual }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, color: colorAntiguedad, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: colorAntiguedad, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "2px 8px" }}>
           {dias == null ? "sin fecha" : dias === 0 ? "hoy" : `${dias} día${dias > 1 ? "s" : ""}`}
         </span>
         {row.estatus_envio && (
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>
             {row.estatus_envio}
           </span>
         )}
         {estadoInesperado && (
-          <span title="Valor no reconocido en estatus_regularizacion" style={{ fontSize: 10, fontWeight: 800, color: "#7c2d12", background: "#ffedd5", border: "1px solid #fed7aa", borderRadius: 999, padding: "2px 8px" }}>
+          <span title="Valor no reconocido en estatus_regularizacion" style={{ fontSize: 12, fontWeight: 800, color: "#7c2d12", background: "#ffedd5", border: "1px solid #fed7aa", borderRadius: 999, padding: "2px 8px" }}>
             ⚠ {estadoCrudo}
           </span>
         )}
@@ -4119,13 +4154,13 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde, campo
   return (
     <div style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: activo ? fondo : "#f8fafc", border: `1px solid ${activo ? borde : "#eef2f7"}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: activo ? color : "#94a3b8", textTransform: "uppercase" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".06em", color: activo ? color : "#94a3b8", textTransform: "uppercase" }}>
           📅 Navegar fechas
         </span>
         {activo && (
           <button
             onClick={() => onCambiar(FILTRO_FECHA_VACIO)}
-            style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 10, fontWeight: 800, color, cursor: "pointer", textDecoration: "underline" }}
+            style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 12, fontWeight: 800, color, cursor: "pointer", textDecoration: "underline" }}
           >
             limpiar
           </button>
@@ -4140,7 +4175,7 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde, campo
               else if (nivel === "mes") onCambiar({ ...filtro, mes: "" });
               else if (nivel === "anio") onCambiar(FILTRO_FECHA_VACIO);
             }}
-            style={{ background: "#fff", border: `1px solid ${borde}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 800, color, cursor: "pointer" }}
+            style={{ background: "#fff", border: `1px solid ${borde}`, borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 800, color, cursor: "pointer" }}
           >
             ← Volver
           </button>

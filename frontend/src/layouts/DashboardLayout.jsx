@@ -376,9 +376,14 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "ventas" },
 
   // ── Backoffice ───────────────────────────────────────────────────────────
+  // Lista blanca, no lista negra. El filtro anterior era
+  // `p !== 'ASESOR' && p !== 'CONSULTOR'`, y como en la base los asesores
+  // están como 'USUARIO' (no 'ASESOR'), los 93 vendedores veían este menú.
+  // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
   { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "backoffice" },
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR', 'ANALISTA'].includes(p),
+    isChild: true, group: "backoffice" },
 
   // ── Reportes ─────────────────────────────────────────────────────────────
   { name: "Reportes", path: null, icon: "📈", isGroup: true, groupId: "reportes" },

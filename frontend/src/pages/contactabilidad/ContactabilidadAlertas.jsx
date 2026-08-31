@@ -80,13 +80,11 @@ export default function ContactabilidadAlertas({
     {criticos.length > 0 && <div style={tarjeta}>
       <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>Atender primero</h3>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{['Gravedad', 'Esperando', 'Cliente', 'Asesor', 'Etapa', 'Origen', 'Escribió'].map((h) =>
-          <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <thead><tr>{['Gravedad', 'Esperando', 'Cliente', 'Asesor', 'Etapa', 'Origen', 'Escribió', ''].map((h, i) =>
+          <th key={`${h}-${i}`} style={th}>{h}</th>)}</tr></thead>
         <tbody>{criticos.map((fila) => {
           const minutos = waitingMinutes(fila, ahora) ?? fila.minutos_pendiente;
-          return <tr key={`${fila.empresa}-${fila.id_bitrix}`}
-            onClick={() => onAbrirLead?.(fila)}
-            style={{ cursor: onAbrirLead ? 'pointer' : 'default' }}>
+          return <tr key={`${fila.empresa}-${fila.id_bitrix}`}>
             <td style={td}><Chip severidad={fila.severidad} /></td>
             <td style={{ ...td, fontWeight: 800 }}>{minutos != null ? `${minutos} min` : '—'}</td>
             <td style={td}>{fila.nombre_cliente || '—'}</td>
@@ -94,6 +92,14 @@ export default function ContactabilidadAlertas({
             <td style={td}>{fila.etapa_nombre || '—'}</td>
             <td style={td}>{fila.origen_nombre || '—'}</td>
             <td style={td}>{formatRelative(fila.ultimo_mensaje_cliente_at, ahora)}</td>
+            <td style={td}>
+              {onAbrirLead && <button type="button" onClick={() => onAbrirLead(fila)}
+                title="Ver la conversación en Bitrix"
+                style={{
+                  border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8',
+                  borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                }}>💬 Ver</button>}
+            </td>
           </tr>;
         })}</tbody>
       </table></div>

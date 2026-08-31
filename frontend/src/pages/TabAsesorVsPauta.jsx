@@ -18,6 +18,7 @@ import {
   ResponsiveContainer, Cell, LabelList, ReferenceLine, ReferenceArea,
   ComposedChart, ZAxis,
 } from "recharts";
+import { Expandible } from "./ChartFrame";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
 
 const API = import.meta.env.VITE_API_URL;
@@ -46,11 +47,11 @@ const DarkTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
-      borderRadius:"14px", padding:"12px 16px", fontSize:"10px", minWidth:"170px",
+      borderRadius:"14px", padding:"12px 16px", fontSize:"12px", minWidth:"170px",
       boxShadow:"0 20px 50px rgba(0,0,0,0.6)" }}>
       <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"8px",
         borderBottom:"1px solid #334155", paddingBottom:"5px",
-        textTransform:"uppercase", letterSpacing:"0.08em", fontSize:"9px" }}>{label}</div>
+        textTransform:"uppercase", letterSpacing:"0.08em", fontSize:"11px" }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:"14px", marginBottom:"3px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:"5px" }}>
@@ -79,9 +80,9 @@ function Card({ children, title, subtitle, accent=C.accent, badge, noPad=false }
             <div style={{ width:"4px", height:"30px", borderRadius:"9999px",
               background:`linear-gradient(180deg,${accent},${accent}55)`, flexShrink:0 }} />
             <div>
-              <div style={{ fontSize:"10px", fontWeight:900, textTransform:"uppercase",
+              <div style={{ fontSize:"12px", fontWeight:900, textTransform:"uppercase",
                 letterSpacing:"0.15em", color:accent }}>{title}</div>
-              {subtitle && <div style={{ fontSize:"8px", color:C.muted, marginTop:"2px" }}>{subtitle}</div>}
+              {subtitle && <div style={{ fontSize:"11px", color:C.muted, marginTop:"2px" }}>{subtitle}</div>}
             </div>
           </div>
           {badge}
@@ -101,9 +102,9 @@ function Kpi({ label, value, sub, color, icon }) {
         borderRadius:"50%", background:`${color}08`, pointerEvents:"none" }} />
       <div style={{ width:"34px", height:"34px", borderRadius:"10px", background:`${color}20`,
         display:"flex", alignItems:"center", justifyContent:"center", fontSize:"16px", marginBottom:"8px" }}>{icon}</div>
-      <div style={{ fontSize:"8px", fontWeight:900, color:`${color}90`, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:"2px" }}>{label}</div>
+      <div style={{ fontSize:"11px", fontWeight:900, color:`${color}90`, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:"2px" }}>{label}</div>
       <div style={{ fontSize:"22px", fontWeight:900, color, lineHeight:1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize:"8px", color:C.muted, marginTop:"4px" }}>{sub}</div>}
+      {sub && <div style={{ fontSize:"11px", color:C.muted, marginTop:"4px" }}>{sub}</div>}
     </div>
   );
 }
@@ -130,7 +131,7 @@ function Gauge({ valor, label, color, size=74 }) {
         <text x={size/2} y={size/2+1} textAnchor="middle" dominantBaseline="central"
           fontSize={11} fontWeight={900} fill={color}>{valor.toFixed(0)}</text>
       </svg>
-      <div style={{ fontSize:"7px", fontWeight:900, color:C.muted, textTransform:"uppercase",
+      <div style={{ fontSize:"10px", fontWeight:900, color:C.muted, textTransform:"uppercase",
         textAlign:"center", maxWidth:size+10, lineHeight:1.3 }}>{label}</div>
     </div>
   );
@@ -151,7 +152,7 @@ function AsesorDropdown({ asesores, value, onChange }) {
         border:`1.5px solid ${open?C.accent:C.border}`,
         background:"#fff", cursor:"pointer",
         display:"flex", alignItems:"center", justifyContent:"space-between", gap:"8px",
-        fontSize:"9px", fontWeight:700, color:C.slate,
+        fontSize:"11px", fontWeight:700, color:C.slate,
         boxShadow:open?`0 0 0 4px ${C.accent}15`:"0 1px 4px rgba(0,0,0,0.06)",
         transition:"all 0.15s",
       }}>
@@ -168,12 +169,12 @@ function AsesorDropdown({ asesores, value, onChange }) {
           <div style={{ padding:"8px" }}>
             <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar..."
               style={{ width:"100%", padding:"6px 10px", borderRadius:"8px",
-                border:`1px solid ${C.border}`, fontSize:"9px", outline:"none",
+                border:`1px solid ${C.border}`, fontSize:"11px", outline:"none",
                 background:C.light, color:C.slate, boxSizing:"border-box" }} />
           </div>
           <div style={{ overflowY:"auto", maxHeight:"230px" }}>
             <div onClick={()=>{onChange("");setOpen(false);setQ("");}}
-              style={{ padding:"8px 14px", cursor:"pointer", fontSize:"9px", fontWeight:900,
+              style={{ padding:"8px 14px", cursor:"pointer", fontSize:"11px", fontWeight:900,
                 color:!value?C.accent:C.slate, background:!value?`${C.accent}10`:"transparent",
                 borderBottom:`1px solid ${C.border}` }}>Todos los asesores</div>
             {list.map(a=>(
@@ -182,8 +183,8 @@ function AsesorDropdown({ asesores, value, onChange }) {
                   background:value===a.nombre?`${C.accent}10`:"transparent",
                   borderBottom:`1px solid ${C.border}55`, transition:"background 0.1s",
                   display:"flex", flexDirection:"column", gap:"2px" }}>
-                <div style={{ fontSize:"9px", fontWeight:900, color:value===a.nombre?C.accent:C.slate }}>{a.nombre}</div>
-                <div style={{ fontSize:"8px", color:C.muted, display:"flex", gap:"10px" }}>
+                <div style={{ fontSize:"11px", fontWeight:900, color:value===a.nombre?C.accent:C.slate }}>{a.nombre}</div>
+                <div style={{ fontSize:"11px", color:C.muted, display:"flex", gap:"10px" }}>
                   {a.supervisor && <span>👤 {a.supervisor}</span>}
                   <span>📊 {a.leads} leads</span>
                   <span style={{ color:a.efect>=15?C.success:a.efect>=8?C.warning:C.danger }}>⚡{a.efect.toFixed(1)}%</span>
@@ -237,34 +238,34 @@ function BubbleCostoEfect({ asesores, canalMap }) {
   const maxY = data.length ? Math.max(...data.map(d=>d.y))*1.15 : 100;
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <Expandible title="Costo vs Efectividad por Asesor" height={400}>
       <ScatterChart margin={{ top:30, right:40, bottom:50, left:20 }}>
         {/* Quadrant zones */}
         <ReferenceArea x1={minX} x2={avgX} y1={avgY} y2={maxY} fill="#10b981" fillOpacity={0.07}
-          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:7, fill:"#059669", fontWeight:900 }} />
+          label={{ value:"✅ ÓPTIMO", position:"insideTopLeft", fontSize:10, fill:"#059669", fontWeight:900 }} />
         <ReferenceArea x1={avgX} x2={maxX} y1={avgY} y2={maxY} fill="#f59e0b" fillOpacity={0.07}
-          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:7, fill:"#d97706", fontWeight:900 }} />
+          label={{ value:"⚠️ COSTO ALTO", position:"insideTopRight", fontSize:10, fill:"#d97706", fontWeight:900 }} />
         <ReferenceArea x1={minX} x2={avgX} y1={minY} y2={avgY} fill="#06b6d4" fillOpacity={0.07}
-          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:7, fill:"#0891b2", fontWeight:900 }} />
+          label={{ value:"🔵 RECUPERAR", position:"insideBottomLeft", fontSize:10, fill:"#0891b2", fontWeight:900 }} />
         <ReferenceArea x1={avgX} x2={maxX} y1={minY} y2={avgY} fill="#ef4444" fillOpacity={0.07}
-          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:7, fill:"#dc2626", fontWeight:900 }} />
+          label={{ value:"🔴 CRÍTICO", position:"insideBottomRight", fontSize:10, fill:"#dc2626", fontWeight:900 }} />
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis type="number" dataKey="x" name="CPA Real $" tick={{ fontSize:9, fill:C.muted }}
+        <XAxis type="number" dataKey="x" name="CPA Real $" tick={{ fontSize:11, fill:C.muted }}
           tickFormatter={v=>`$${v.toFixed(0)}`} domain={[minX, maxX]}
-          label={{ value:"← CPA (Inversión / JOT) — menor es mejor →", position:"insideBottom", offset:-35, fontSize:8, fill:C.muted }} />
-        <YAxis type="number" dataKey="y" name="Efectividad %" tick={{ fontSize:9, fill:C.muted }} unit="%" domain={[minY, maxY]}
-          label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:50 }} />
+          label={{ value:"← CPA (Inversión / JOT) — menor es mejor →", position:"insideBottom", offset:-35, fontSize:11, fill:C.muted }} />
+        <YAxis type="number" dataKey="y" name="Efectividad %" tick={{ fontSize:11, fill:C.muted }} unit="%" domain={[minY, maxY]}
+          label={{ value:"Efectividad %", angle:-90, position:"insideLeft", fontSize:11, fill:C.muted, dy:50 }} />
         <ZAxis type="number" dataKey="z" range={[50,500]} />
         <ReferenceLine x={avgX} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
-          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:"#475569", position:"top" }} />
+          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:10, fill:"#475569", position:"top" }} />
         <ReferenceLine y={avgY} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
-          label={{ value:`Avg ${avgY.toFixed(1)}%`, fontSize:7, fill:"#475569", position:"right" }} />
+          label={{ value:`Avg ${avgY.toFixed(1)}%`, fontSize:10, fill:"#475569", position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
           return (
             <div style={{ background:"linear-gradient(135deg,#0f172a,#1e293b)", border:"1px solid #334155",
-              borderRadius:"14px", padding:"14px 18px", fontSize:"9px", minWidth:"210px" }}>
+              borderRadius:"14px", padding:"14px 18px", fontSize:"11px", minWidth:"210px" }}>
               <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"8px", fontSize:"11px" }}>{d?.nombre}</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"7px" }}>
                 {[
@@ -274,8 +275,8 @@ function BubbleCostoEfect({ asesores, canalMap }) {
                   ["Score",d?.score?.toFixed(0),scCol(d?.score)],["ROI est.",`${n(d?.roi).toFixed(2)}x`,n(d?.roi)>=1?C.success:C.danger],
                 ].map(([l,v,c])=>(
                   <div key={l}>
-                    <div style={{ fontSize:"7px", color:"#64748b" }}>{l}</div>
-                    <div style={{ fontSize:"9px", fontWeight:900, color:c }}>{v}</div>
+                    <div style={{ fontSize:"10px", color:"#64748b" }}>{l}</div>
+                    <div style={{ fontSize:"11px", fontWeight:900, color:c }}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -284,9 +285,12 @@ function BubbleCostoEfect({ asesores, canalMap }) {
         }} />
         <Scatter data={data}>
           {data.map((d,i)=><Cell key={i} fill={d.col} opacity={0.82} />)}
+          <LabelList dataKey="nombre" position="top" offset={9}
+            formatter={(v) => String(v || "").split(" ")[0]}
+            style={{ fontSize: 12, fontWeight: 800, fill: C.slate }} />
         </Scatter>
       </ScatterChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -312,33 +316,33 @@ function ScatterInvJOT({ asesores, canalMap }) {
   const maxY = data.length ? Math.max(...data.map(d=>d.y))*1.15 : 1;
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <Expandible title="Inversión vs JOT por Asesor" height={320}>
       <ScatterChart margin={{ top:20, right:30, bottom:50, left:10 }}>
         {/* Quadrant zones */}
         <ReferenceArea x1={minX} x2={avgX} y1={avgY} y2={maxY} fill="#10b981" fillOpacity={0.08}
-          label={{ value:"✅ EFICIENTE", position:"insideTopLeft", fontSize:7, fill:"#059669", fontWeight:900 }} />
+          label={{ value:"✅ EFICIENTE", position:"insideTopLeft", fontSize:10, fill:"#059669", fontWeight:900 }} />
         <ReferenceArea x1={avgX} x2={maxX} y1={avgY} y2={maxY} fill="#f59e0b" fillOpacity={0.08}
-          label={{ value:"⚠️ ALTO COSTO", position:"insideTopRight", fontSize:7, fill:"#d97706", fontWeight:900 }} />
+          label={{ value:"⚠️ ALTO COSTO", position:"insideTopRight", fontSize:10, fill:"#d97706", fontWeight:900 }} />
         <ReferenceArea x1={minX} x2={avgX} y1={minY} y2={avgY} fill="#f97316" fillOpacity={0.08}
-          label={{ value:"🟠 INVERTIR MÁS", position:"insideBottomLeft", fontSize:7, fill:"#ea580c", fontWeight:900 }} />
+          label={{ value:"🟠 INVERTIR MÁS", position:"insideBottomLeft", fontSize:10, fill:"#ea580c", fontWeight:900 }} />
         <ReferenceArea x1={avgX} x2={maxX} y1={minY} y2={avgY} fill="#ef4444" fillOpacity={0.08}
-          label={{ value:"🔴 ATACAR", position:"insideBottomRight", fontSize:7, fill:"#dc2626", fontWeight:900 }} />
+          label={{ value:"🔴 ATACAR", position:"insideBottomRight", fontSize:10, fill:"#dc2626", fontWeight:900 }} />
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis type="number" dataKey="x" tick={{ fontSize:9, fill:C.muted }} tickFormatter={v=>`$${v.toFixed(0)}`}
+        <XAxis type="number" dataKey="x" tick={{ fontSize:11, fill:C.muted }} tickFormatter={v=>`$${v.toFixed(0)}`}
           domain={[minX, maxX]}
-          label={{ value:"Inversión pauta asignada →", position:"insideBottom", offset:-30, fontSize:8, fill:C.muted }} />
-        <YAxis type="number" dataKey="y" tick={{ fontSize:9, fill:C.muted }} domain={[minY, maxY]}
-          label={{ value:"JOT logrados", angle:-90, position:"insideLeft", fontSize:8, fill:C.muted, dy:45 }} />
+          label={{ value:"Inversión pauta asignada →", position:"insideBottom", offset:-30, fontSize:11, fill:C.muted }} />
+        <YAxis type="number" dataKey="y" tick={{ fontSize:11, fill:C.muted }} domain={[minY, maxY]}
+          label={{ value:"JOT logrados", angle:-90, position:"insideLeft", fontSize:11, fill:C.muted, dy:45 }} />
         <ZAxis range={[50,50]} />
         <ReferenceLine x={avgX} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
-          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:7, fill:"#475569", position:"top" }} />
+          label={{ value:`Avg $${avgX.toFixed(0)}`, fontSize:10, fill:"#475569", position:"top" }} />
         <ReferenceLine y={avgY} stroke="#64748b" strokeDasharray="5 3" strokeWidth={1.5}
-          label={{ value:`Avg ${avgY.toFixed(0)} JOT`, fontSize:7, fill:"#475569", position:"right" }} />
+          label={{ value:`Avg ${avgY.toFixed(0)} JOT`, fontSize:10, fill:"#475569", position:"right" }} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
           return (
-            <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"9px" }}>
+            <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"11px" }}>
               <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"6px" }}>{d?.nombre}</div>
               <div style={{ color:"#64748b" }}>Inv. asignada: <b style={{ color:C.violet }}>${d?.x?.toFixed(2)}</b></div>
               <div style={{ color:"#64748b" }}>JOT: <b style={{ color:C.success }}>{d?.y}</b></div>
@@ -350,9 +354,12 @@ function ScatterInvJOT({ asesores, canalMap }) {
         }} />
         <Scatter data={data}>
           {data.map((d,i)=><Cell key={i} fill={d.col} opacity={0.85} />)}
+          <LabelList dataKey="nombre" position="top" offset={9}
+            formatter={(v) => String(v || "").split(" ")[0]}
+            style={{ fontSize: 12, fontWeight: 800, fill: C.slate }} />
         </Scatter>
       </ScatterChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -374,16 +381,16 @@ function BarrasCostoApilado({ asesores, canalMap }) {
     .sort((a,b)=>b.inv-a.inv);
 
   return (
-    <ResponsiveContainer width="100%" height={Math.max(220, data.length*36)}>
+    <Expandible title="Costo Apilado por Canal" height={Math.max(220, data.length*36)}>
       <BarChart data={data} layout="vertical" margin={{ top:5, right:130, left:10, bottom:5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize:9, fill:C.muted }} tickFormatter={v=>`$${v}`} />
-        <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted, fontWeight:700 }} width={130} />
+        <XAxis type="number" tick={{ fontSize:11, fill:C.muted }} tickFormatter={v=>`$${v}`} />
+        <YAxis type="category" dataKey="nombre" tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} width={130} />
         <Tooltip content={({ active, payload }) => {
           if(!active||!payload?.length) return null;
           const d=payload[0]?.payload;
           return (
-            <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"9px" }}>
+            <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"11px" }}>
               <div style={{ color:"#f1f5f9", fontWeight:900, marginBottom:"7px" }}>{d?.full}</div>
               <div style={{ color:"#64748b" }}>Inversión asignada: <b style={{ color:C.violet }}>${d?.inv}</b></div>
               <div style={{ color:"#64748b" }}>CPL real: <b style={{ color:C.cyan }}>${d?.cpl?.toFixed(2)}</b></div>
@@ -408,7 +415,7 @@ function BarrasCostoApilado({ asesores, canalMap }) {
             }} />
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -427,10 +434,10 @@ function AreaScoreCPL({ asesores, canalList }) {
     };
   }).filter(d=>d["Score Asesores"]>0||d["CPL Canal $"]>0);
 
-  if(!data.length) return <div style={{ textAlign:"center", padding:"40px", color:C.muted, fontSize:"9px" }}>Sin datos</div>;
+  if(!data.length) return <div style={{ textAlign:"center", padding:"40px", color:C.muted, fontSize:"11px" }}>Sin datos</div>;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <Expandible title="Score vs CPL" height={280}>
       <ComposedChart data={data} margin={{ top:20, right:30, bottom:10, left:0 }}>
         <defs>
           <linearGradient id="areaScoreG" x1="0" y1="0" x2="0" y2="1">
@@ -443,29 +450,29 @@ function AreaScoreCPL({ asesores, canalList }) {
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis dataKey="canal" tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
-        <YAxis yAxisId="l" tick={{ fontSize:9, fill:C.muted }} width={38} />
-        <YAxis yAxisId="r" orientation="right" tick={{ fontSize:9, fill:C.muted }} width={35} tickFormatter={v=>`$${v}`} />
+        <XAxis dataKey="canal" tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} />
+        <YAxis yAxisId="l" tick={{ fontSize:11, fill:C.muted }} width={38} />
+        <YAxis yAxisId="r" orientation="right" tick={{ fontSize:11, fill:C.muted }} width={35} tickFormatter={v=>`$${v}`} />
         <Tooltip content={<DarkTip />} />
-        <Legend wrapperStyle={{ fontSize:9 }} />
+        <Legend wrapperStyle={{ fontSize:11 }} />
         <Area yAxisId="l" type="monotone" dataKey="Score Asesores" fill="url(#areaScoreG)"
           stroke={C.accent} strokeWidth={2.5} dot={{ r:5, fill:C.accent, strokeWidth:0 }}>
           <LabelList dataKey="Score Asesores" position="top"
-            style={{ fontSize:8, fill:C.accent, fontWeight:900 }} formatter={v=>v>0?v:""} />
+            style={{ fontSize:11, fill:C.accent, fontWeight:900 }} formatter={v=>v>0?v:""} />
         </Area>
         <Area yAxisId="l" type="monotone" dataKey="Efectividad %" fill="url(#areaEfG)"
           stroke={C.success} strokeWidth={2} strokeDasharray="5 3"
           dot={{ r:4, fill:C.success, strokeWidth:0 }}>
           <LabelList dataKey="Efectividad %" position="top"
-            style={{ fontSize:8, fill:C.success, fontWeight:800 }} formatter={v=>v>0?`${v}%`:""} />
+            style={{ fontSize:11, fill:C.success, fontWeight:800 }} formatter={v=>v>0?`${v}%`:""} />
         </Area>
         <Line yAxisId="r" type="monotone" dataKey="CPL Canal $" stroke={C.violet} strokeWidth={2.5}
           dot={{ r:5, fill:C.violet, stroke:"#fff", strokeWidth:2 }}>
           <LabelList dataKey="CPL Canal $" position="bottom"
-            style={{ fontSize:8, fill:C.violet, fontWeight:900 }} formatter={v=>v>0?`$${v}`:""} />
+            style={{ fontSize:11, fill:C.violet, fontWeight:900 }} formatter={v=>v>0?`$${v}`:""} />
         </Line>
       </ComposedChart>
-    </ResponsiveContainer>
+    </Expandible>
   );
 }
 
@@ -500,14 +507,14 @@ function Heatmap({ asesoresXCanal, canales }) {
         {modos.map(m=>(
           <button key={m.v} onClick={()=>setModo(m.v)} style={{
             padding:"5px 14px", borderRadius:"9999px", border:"none",
-            fontSize:"8px", fontWeight:900, cursor:"pointer",
+            fontSize:"11px", fontWeight:900, cursor:"pointer",
             background:modo===m.v?C.primary:C.light,
             color:modo===m.v?"#fff":C.muted, transition:"all 0.15s",
           }}>{m.l}</button>
         ))}
       </div>
       <div style={{ overflowX:"auto" }}>
-        <table style={{ fontSize:"8px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%" }}>
+        <table style={{ fontSize:"11px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%" }}>
           <thead>
             <tr>
               <th style={{ padding:"8px 14px", borderRight:`1px solid ${C.border}`, textAlign:"left",
@@ -515,7 +522,7 @@ function Heatmap({ asesoresXCanal, canales }) {
                 position:"sticky", left:0, background:C.light, zIndex:2 }}>ASESOR</th>
               {canales.map(c=>{const cfg=getCanalCfg(c); return (
                 <th key={c} style={{ padding:"8px 12px", borderRight:`1px solid ${C.border}`,
-                  textAlign:"center", fontWeight:900, color:cfg.color, fontSize:"8px",
+                  textAlign:"center", fontWeight:900, color:cfg.color, fontSize:"11px",
                   minWidth:"88px", background:cfg.bg }}>
                   <div>{cfg.icon}</div><div style={{ marginTop:"2px" }}>{cfg.label}</div>
                 </th>
@@ -535,7 +542,7 @@ function Heatmap({ asesoresXCanal, canales }) {
                     <td key={c} style={{ padding:"5px 10px", borderRight:`1px solid ${C.border}`, textAlign:"center" }}>
                       <div style={{ width:"60px", height:"28px", margin:"0 auto", borderRadius:"8px",
                         background:bg, display:"flex", alignItems:"center", justifyContent:"center",
-                        color:lightText?"#fff":(v!==null?C.slate:C.muted), fontSize:"9px", fontWeight:900,
+                        color:lightText?"#fff":(v!==null?C.slate:C.muted), fontSize:"11px", fontWeight:900,
                         boxShadow:v!==null?`0 2px 8px ${bg}50`:"none" }}>
                         {v!==null ? (modo==="leads"||modo==="jot" ? v : (v.toFixed(0)+"%")) : "—"}
                       </div>
@@ -571,19 +578,19 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
           <span style={{ fontSize:"24px" }}>{cfg.icon}</span>
           <div>
             <div style={{ fontSize:"12px", fontWeight:900, color:cfg.color, textTransform:"uppercase", letterSpacing:"0.12em" }}>{cfg.label}</div>
-            <div style={{ fontSize:"8px", color:C.muted }}>{asesores.length} asesores · {totalCanal} leads del canal</div>
+            <div style={{ fontSize:"11px", color:C.muted }}>{asesores.length} asesores · {totalCanal} leads del canal</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:"16px", alignItems:"center", flexWrap:"wrap" }}>
           {pautaInfo && pautaInfo.cpl && (
             <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:"7px", color:C.muted }}>CPL Canal</div>
+              <div style={{ fontSize:"10px", color:C.muted }}>CPL Canal</div>
               <div style={{ fontSize:"12px", fontWeight:900, color:C.violet }}>${pautaInfo.cpl.toFixed(2)}</div>
             </div>
           )}
           {pautaInfo && pautaInfo.inversion>0 && (
             <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:"7px", color:C.muted }}>Inversión</div>
+              <div style={{ fontSize:"10px", color:C.muted }}>Inversión</div>
               <div style={{ fontSize:"12px", fontWeight:900, color:C.violet }}>${pautaInfo.inversion.toFixed(0)}</div>
             </div>
           )}
@@ -592,8 +599,8 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
               background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:"10px" }}>
               <span>🏆</span>
               <div>
-                <div style={{ fontSize:"7px", color:C.muted, fontWeight:900 }}>Mejor</div>
-                <div style={{ fontSize:"10px", fontWeight:900, color:C.success }}>{top.nombre.split(" ")[0]} — {top.efect.toFixed(1)}%</div>
+                <div style={{ fontSize:"10px", color:C.muted, fontWeight:900 }}>Mejor</div>
+                <div style={{ fontSize:"12px", fontWeight:900, color:C.success }}>{top.nombre.split(" ")[0]} — {top.efect.toFixed(1)}%</div>
               </div>
             </div>
           )}
@@ -602,7 +609,7 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
 
       <div style={{ padding:"16px 22px" }}>
         {/* Barras horizontales efectividad */}
-        <ResponsiveContainer width="100%" height={Math.max(120, sorted.length*34)}>
+        <Expandible title="Efectividad por Asesor" height={Math.max(120, sorted.length*34)}>
           <ComposedChart
             data={sorted.map(a=>({
               nombre: a.nombre.length>20?a.nombre.slice(0,20)+"…":a.nombre,
@@ -616,13 +623,13 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
             layout="vertical"
             margin={{ top:5, right:80, left:130, bottom:5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize:8, fill:C.muted }} domain={[0,100]} unit="%" />
-            <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted, fontWeight:700 }} width={130} />
+            <XAxis type="number" tick={{ fontSize:11, fill:C.muted }} domain={[0,100]} unit="%" />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} width={130} />
             <Tooltip content={({ active, payload }) => {
               if(!active||!payload?.length) return null;
               const d=payload[0]?.payload;
               return (
-                <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"9px" }}>
+                <div style={{ background:"#0f172a", border:"1px solid #334155", borderRadius:"12px", padding:"12px 16px", fontSize:"11px" }}>
                   <div style={{ color:cfg.color, fontWeight:900, marginBottom:"6px" }}>{d?.full}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px" }}>
                     {[
@@ -631,8 +638,8 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
                       ["Efect.",`${d?.efect}%`,efCol(d?.efect)],["Score",d?.score,scCol(d?.score)],
                       ["Costo/Lead",`$${d?.costoLead}`,C.orange],
                     ].map(([l,v,c])=>(
-                      <div key={l}><div style={{ fontSize:"7px", color:"#64748b" }}>{l}</div>
-                      <div style={{ fontSize:"9px", fontWeight:900, color:c }}>{v}</div></div>
+                      <div key={l}><div style={{ fontSize:"10px", color:"#64748b" }}>{l}</div>
+                      <div style={{ fontSize:"11px", fontWeight:900, color:c }}>{v}</div></div>
                     ))}
                   </div>
                 </div>
@@ -647,11 +654,11 @@ function PorCampana({ canal, asesores, totalCanal, pautaInfo }) {
                 }} />
             </Bar>
           </ComposedChart>
-        </ResponsiveContainer>
+        </Expandible>
 
         {/* Tabla mini */}
         <div style={{ overflowX:"auto", marginTop:"12px" }}>
-          <table style={{ fontSize:"8px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%" }}>
+          <table style={{ fontSize:"11px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%" }}>
             <thead style={{ background:cfg.bg, borderBottom:`1px solid ${cfg.color}20` }}>
               <tr>
                 {["#","ASESOR","LEADS","JOT","VENTAS","%EFECT","%ATC","COSTO/LEAD","SCORE"].map(h=>(
@@ -717,13 +724,13 @@ function TablaRanking({ data, canalMap }) {
 
   return (
     <div style={{ overflowX:"auto" }}>
-      <table style={{ fontSize:"9px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%", whiteSpace:"nowrap" }}>
+      <table style={{ fontSize:"11px", fontFamily:"monospace", borderCollapse:"collapse", width:"100%", whiteSpace:"nowrap" }}>
         <thead style={{ position:"sticky", top:0, background:C.light, borderBottom:`2px solid ${C.border}`, zIndex:10 }}>
           <tr>
             {cols.map(c=>(
               <th key={c.k} onClick={()=>!["_i","nombre","canal"].includes(c.k)&&toggle(c.k)}
                 style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`,
-                  textAlign:"center", fontWeight:900, fontSize:"8px",
+                  textAlign:"center", fontWeight:900, fontSize:"11px",
                   textTransform:"uppercase", letterSpacing:"0.05em",
                   color:ord.col===c.k?C.accent:C.muted,
                   cursor:!["_i","nombre","canal"].includes(c.k)?"pointer":"default",
@@ -744,7 +751,7 @@ function TablaRanking({ data, canalMap }) {
                 <td style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`, fontWeight:700, color:C.slate }}>{row.nombre}</td>
                 <td style={{ padding:"9px 12px", borderRight:`1px solid ${C.border}`, textAlign:"center" }}>
                   <span style={{ padding:"2px 7px", borderRadius:"9999px", background:cfg.bg,
-                    color:cfg.color, fontWeight:900, fontSize:"7px", border:`1px solid ${cfg.color}30` }}>
+                    color:cfg.color, fontWeight:900, fontSize:"10px", border:`1px solid ${cfg.color}30` }}>
                     {cfg.icon} {cfg.label}</span>
                 </td>
                 {cols.slice(3).map(c=>{
@@ -788,7 +795,7 @@ export default function TabAsesorVsPauta({ filtro, canalesSel, onCanalesSel }) {
     Promise.all([
       // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
       fetch(`${API}/api/indicadores/dashboard?fechaDesde=${desde}&fechaHasta=${hasta}`, { headers: cabecerasSesion() }).then(r=>r.json()).catch(()=>null),
-      fetch(`${API}/api/redes/monitoreo-redes?${p}`).then(r=>r.json()).catch(()=>null),
+      fetch(`${API}/api/redes/monitoreo-redes?${p}`, { headers: cabecerasSesion() }).then(r=>r.json()).catch(()=>null),
     ]).then(([a,r])=>{
       if(a?.success) setRawA(a);
       if(r?.success) setRawR(r);
@@ -1133,15 +1140,15 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
             <span style={{ fontSize:"15px", fontWeight:900, color:"#f8fafc", textTransform:"uppercase", letterSpacing:"0.1em" }}>
               Asesores vs Campaña
             </span>
-            <span style={{ fontSize:"8px", fontWeight:900, padding:"3px 10px", borderRadius:"9999px",
+            <span style={{ fontSize:"11px", fontWeight:900, padding:"3px 10px", borderRadius:"9999px",
               background:"rgba(59,130,246,0.25)", color:"#93c5fd", textTransform:"uppercase" }}>
               {asesores.length} asesores · {canales.length} canales
             </span>
           </div>
-          <p style={{ fontSize:"9px", color:"#64748b", marginLeft:"44px" }}>
+          <p style={{ fontSize:"11px", color:"#64748b", marginLeft:"44px" }}>
             CPA real · Inversión asignada por asesor · Score vs CPL · Heatmap multi-métrica
           </p>
-          <p style={{ fontSize:"8px", color:"#475569", marginLeft:"44px", marginTop:"3px" }}>
+          <p style={{ fontSize:"11px", color:"#475569", marginLeft:"44px", marginTop:"3px" }}>
             💡 Inversión proporcional según leads por canal · Ticket est. ${TICKET_MENSUAL_EST}/cliente activo
           </p>
         </div>
@@ -1151,7 +1158,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
               borderRadius:"14px", padding:"12px 18px", display:"flex", alignItems:"center", gap:"10px" }}>
               <span style={{ fontSize:"24px" }}>🏆</span>
               <div>
-                <div style={{ fontSize:"7px", color:"#64748b", textTransform:"uppercase", fontWeight:900 }}>Mejor Score</div>
+                <div style={{ fontSize:"10px", color:"#64748b", textTransform:"uppercase", fontWeight:900 }}>Mejor Score</div>
                 <div style={{ fontSize:"12px", fontWeight:900, color:C.success }}>
                   {glob.top.nombre} — {glob.top.score.toFixed(0)} pts
                 </div>
@@ -1160,7 +1167,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
           )}
           <button onClick={generarInformeRedes}
             style={{ background:"rgba(124,58,237,0.85)", border:"1px solid rgba(167,139,250,0.4)",
-              borderRadius:"12px", padding:"9px 18px", color:"#fff", fontSize:"9px", fontWeight:900,
+              borderRadius:"12px", padding:"9px 18px", color:"#fff", fontSize:"11px", fontWeight:900,
               cursor:"pointer", display:"flex", alignItems:"center", gap:"6px",
               boxShadow:"0 4px 20px rgba(124,58,237,0.4)", letterSpacing:"0.05em",
               textTransform:"uppercase", transition:"all .15s" }}
@@ -1174,10 +1181,10 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
       {/* FILTROS — solo asesor (canal ya está en el panel global superior) */}
       <div style={{ background:"#fff", borderRadius:"16px", border:`1px solid ${C.border}`, padding:"14px 22px" }}>
         <div style={{ display:"flex", alignItems:"center", gap:"12px", flexWrap:"wrap" }}>
-          <span style={{ fontSize:"8px", fontWeight:900, color:C.muted, textTransform:"uppercase" }}>👤 Asesor:</span>
+          <span style={{ fontSize:"11px", fontWeight:900, color:C.muted, textTransform:"uppercase" }}>👤 Asesor:</span>
           <AsesorDropdown asesores={asesores} value={asel} onChange={setAsel} />
           {asel && (
-            <button onClick={()=>setAsel("")} style={{ fontSize:"8px", color:C.danger, fontWeight:900,
+            <button onClick={()=>setAsel("")} style={{ fontSize:"11px", color:C.danger, fontWeight:900,
               background:`${C.danger}10`, border:`1px solid ${C.danger}30`,
               borderRadius:"9999px", padding:"4px 12px", cursor:"pointer" }}>✕ Limpiar</button>
           )}
@@ -1212,7 +1219,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setSub(t.id)} style={{
             display:"flex", alignItems:"center", gap:"6px", padding:"8px 16px",
-            borderRadius:"11px", border:"none", fontSize:"9px", fontWeight:900,
+            borderRadius:"11px", border:"none", fontSize:"11px", fontWeight:900,
             textTransform:"uppercase", letterSpacing:"0.07em", cursor:"pointer",
             background:sub===t.id?"linear-gradient(135deg,#0f172a,#1e3a8a)":"transparent",
             color:sub===t.id?"#fff":C.muted, transition:"all 0.15s",
@@ -1240,7 +1247,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
           {canales.length>1 && (
             <Card title="Comparativa Efectividad Promedio por Campaña" accent={C.accent}
               subtitle="Promedio de asesores por canal · línea de referencia = promedio global">
-              <ResponsiveContainer width="100%" height={280}>
+              <Expandible title="Efectividad Promedio por Campaña" height={280}>
                 <BarChart
                   data={canales.map(c=>{
                     const lista=asesXCanal[c]||[];
@@ -1250,11 +1257,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                   })}
                   margin={{ top:30, right:10, left:0, bottom:10 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="canal" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize:9, fill:C.muted }} unit="%" />
+                  <XAxis dataKey="canal" axisLine={false} tickLine={false} tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:C.muted }} unit="%" />
                   <Tooltip content={<DarkTip />} formatter={v=>`${v}%`} />
                   <ReferenceLine y={glob.efect} stroke={`${C.muted}80`} strokeDasharray="4 3"
-                    label={{ value:`Prom ${glob.efect.toFixed(1)}%`, fontSize:8, fill:C.muted, position:"insideTopRight" }} />
+                    label={{ value:`Prom ${glob.efect.toFixed(1)}%`, fontSize:11, fill:C.muted, position:"insideTopRight" }} />
                   <Bar dataKey="avg" name="Efect. promedio" radius={[8,8,0,0]} barSize={44}>
                     {canales.map((c,i)=><Cell key={i} fill={getCanalCfg(c).color} />)}
                     <LabelList dataKey="avg" position="top"
@@ -1264,7 +1271,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                       }} />
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </Expandible>
             </Card>
           )}
         </div>
@@ -1284,8 +1291,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
               {l:"⛔ Abajo-Der.", c:C.danger, bg:"#fee2e2",d:"Alto costo + baja efect. — revisar"},
             ].map(q=>(
               <div key={q.l} style={{ padding:"10px 14px", borderRadius:"10px", background:q.bg, border:`1px solid ${q.c}20` }}>
-                <div style={{ fontSize:"9px", fontWeight:900, color:q.c }}>{q.l}</div>
-                <div style={{ fontSize:"8px", color:C.muted, marginTop:"2px" }}>{q.d}</div>
+                <div style={{ fontSize:"11px", fontWeight:900, color:q.c }}>{q.l}</div>
+                <div style={{ fontSize:"11px", color:C.muted, marginTop:"2px" }}>{q.d}</div>
               </div>
             ))}
           </div>
@@ -1304,7 +1311,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
           <Card title="JOT Logrado vs Gap de Conversión — Todos los Asesores"
             subtitle="Barra verde = JOT activados · Gris = no convertidos aún"
             accent={C.success}>
-            <ResponsiveContainer width="100%" height={Math.max(200, asesores.length*28)}>
+            <Expandible title="JOT Logrado vs Gap de Conversión" height={Math.max(200, asesores.length*28)}>
               <BarChart layout="vertical"
                 data={[...asesores].sort((a,b)=>b.jot-a.jot).map(a=>({
                   nombre: a.nombre.length>22?a.nombre.slice(0,22)+"…":a.nombre,
@@ -1312,19 +1319,19 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                 }))}
                 margin={{ top:5, right:60, left:10, bottom:5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize:9, fill:C.muted }} />
-                <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted }} width={155} />
+                <XAxis type="number" tick={{ fontSize:11, fill:C.muted }} />
+                <YAxis type="category" dataKey="nombre" tick={{ fontSize:11, fill:C.muted }} width={155} />
                 <Tooltip content={<DarkTip />} />
-                <Legend wrapperStyle={{ fontSize:9 }} />
+                <Legend wrapperStyle={{ fontSize:11 }} />
                 <Bar dataKey="JOT" name="JOT (Activados)" fill={C.success} stackId="a">
                   <LabelList dataKey="JOT" position="insideLeft"
-                    style={{ fontSize:8, fill:"#fff", fontWeight:900 }} formatter={v=>v>0?v:""} />
+                    style={{ fontSize:11, fill:"#fff", fontWeight:900 }} formatter={v=>v>0?v:""} />
                 </Bar>
                 <Bar dataKey="Gap" name="No convertidos" fill={`${C.muted}30`} stackId="a" radius={[0,4,4,0]}>
-                  <LabelList dataKey="Gap" position="right" style={{ fontSize:8, fill:C.muted }} formatter={v=>v>0?v:""} />
+                  <LabelList dataKey="Gap" position="right" style={{ fontSize:11, fill:C.muted }} formatter={v=>v>0?v:""} />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </Card>
         </div>
       )}
@@ -1336,15 +1343,15 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
           accent={C.orange}
           badge={
             <div style={{ display:"flex", gap:"8px" }}>
-              <span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px",
+              <span style={{ fontSize:"11px", padding:"3px 10px", borderRadius:"9999px",
                 background:`${C.violet}15`, color:C.violet, fontWeight:900 }}>■ Inv. Asignada</span>
-              <span style={{ fontSize:"8px", padding:"3px 10px", borderRadius:"9999px",
+              <span style={{ fontSize:"11px", padding:"3px 10px", borderRadius:"9999px",
                 background:`${C.danger}15`, color:C.danger, fontWeight:900 }}>● CPA Real</span>
             </div>
           }>
           <BarrasCostoApilado asesores={asel?asesFilt:asesConCanal} canalMap={pauta.map} />
           <div style={{ marginTop:"16px", padding:"12px 16px", borderRadius:"12px",
-            background:"#f8fafc", border:`1px solid ${C.border}`, fontSize:"8px", color:C.muted }}>
+            background:"#f8fafc", border:`1px solid ${C.border}`, fontSize:"11px", color:C.muted }}>
             💡 <b style={{ color:C.slate }}>Cómo leer:</b> Morado = pauta digital (CPL).
             Naranja = parte del salario del asesor proporcional a leads atendidos.
             Total = costo real por lead captado. CPA = costo por cliente activado (JOT).
@@ -1359,7 +1366,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
           accent={C.cyan}>
           <AreaScoreCPL asesores={asesores} canalList={pauta.canales} />
           <div style={{ marginTop:"14px", padding:"12px 16px", borderRadius:"12px",
-            background:"#f0f9ff", border:"1px solid #bae6fd", fontSize:"8px", color:C.muted }}>
+            background:"#f0f9ff", border:"1px solid #bae6fd", fontSize:"11px", color:C.muted }}>
             💡 <b style={{ color:C.slate }}>Análisis clave:</b> Si el Score/Efectividad sube mientras el CPL también sube,
             la pauta atrae leads de mayor calidad aunque más caros. Si el CPL baja pero el score también baja,
             la pauta genera más volumen pero de menor calidad.
@@ -1386,7 +1393,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
         <div style={{ display:"flex", flexDirection:"column", gap:"20px" }}>
           <Card title="Radar Multidimensional — Top Asesores" accent={C.violet}
             subtitle="Efectividad · Sin ATC · Ventas · Score · Negociación — normalizados 0-100">
-            <ResponsiveContainer width="100%" height={340}>
+            <Expandible title="Radar Multidimensional — Top Asesores" height={340}>
               <RadarChart data={(() => {
                 const top=[...asesores].sort((a,b)=>b.score-a.score).slice(0,8);
                 return [
@@ -1405,21 +1412,21 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                 });
               })()} margin={{ top:10, right:40, bottom:10, left:40 }}>
                 <PolarGrid stroke={C.border} />
-                <PolarAngleAxis dataKey="dim" tick={{ fontSize:9, fill:C.muted, fontWeight:700 }} />
-                <PolarRadiusAxis domain={[0,100]} tick={{ fontSize:7, fill:C.muted }} tickCount={4} />
+                <PolarAngleAxis dataKey="dim" tick={{ fontSize:11, fill:C.muted, fontWeight:700 }} />
+                <PolarRadiusAxis domain={[0,100]} tick={{ fontSize:10, fill:C.muted }} tickCount={4} />
                 {[...asesores].sort((a,b)=>b.score-a.score).slice(0,8).map((a,i)=>(
                   <Radar key={a.nombre} name={a.nombre.split(" ")[0]} dataKey={a.nombre}
                     stroke={PAL[i%PAL.length]} fill={PAL[i%PAL.length]}
                     fillOpacity={0.07} strokeWidth={2.5} dot={{ r:4 }} />
                 ))}
-                <Legend wrapperStyle={{ fontSize:"8px" }} />
+                <Legend wrapperStyle={{ fontSize:"11px" }} />
                 <Tooltip content={<DarkTip />} />
               </RadarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </Card>
           {/* ATC ranking */}
           <Card title="% ATC por Asesor" accent={C.danger} subtitle=">40% = alerta calidad leads · Menor es mejor">
-            <ResponsiveContainer width="100%" height={Math.max(200, asesores.length*28)}>
+            <Expandible title="% ATC por Asesor" height={Math.max(200, asesores.length*28)}>
               <BarChart layout="vertical"
                 data={[...asesores].sort((a,b)=>b.pct_atc-a.pct_atc).map(a=>({
                   nombre:a.nombre.length>22?a.nombre.slice(0,22)+"…":a.nombre,
@@ -1427,13 +1434,13 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                 }))}
                 margin={{ top:5, right:70, left:5, bottom:5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize:9, fill:C.muted }} unit="%" />
-                <YAxis type="category" dataKey="nombre" tick={{ fontSize:8, fill:C.muted }} width={140} />
+                <XAxis type="number" tick={{ fontSize:11, fill:C.muted }} unit="%" />
+                <YAxis type="category" dataKey="nombre" tick={{ fontSize:11, fill:C.muted }} width={140} />
                 <Tooltip content={<DarkTip />} formatter={v=>`${v}%`} />
                 <ReferenceLine x={40} stroke={C.danger} strokeDasharray="4 2"
-                  label={{ value:"40%", fontSize:8, fill:C.danger, position:"top" }} />
+                  label={{ value:"40%", fontSize:11, fill:C.danger, position:"top" }} />
                 <ReferenceLine x={20} stroke={C.warning} strokeDasharray="4 2"
-                  label={{ value:"20%", fontSize:8, fill:C.warning, position:"top" }} />
+                  label={{ value:"20%", fontSize:11, fill:C.warning, position:"top" }} />
                 <Bar dataKey="pct_atc" name="% ATC" radius={[0,6,6,0]}>
                   {[...asesores].sort((a,b)=>b.pct_atc-a.pct_atc).map((a,i)=>(
                     <Cell key={i} fill={a.pct_atc>40?C.danger:a.pct_atc>20?C.warning:C.success} />
@@ -1446,7 +1453,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#7c3aed;font-weight
                     }} />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </Card>
         </div>
       )}

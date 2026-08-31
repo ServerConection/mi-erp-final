@@ -16,6 +16,8 @@ router.get('/analytics', C.analytics);
 router.get('/filtros', C.filtros);
 router.get('/alertas', C.alertas);
 router.get('/estado', C.estado);
+// Conversacion en vivo (no persiste texto); va antes de '/' por el parametro.
+router.get('/conversacion/:empresa/:id', C.conversacion);
 router.get('/export', C.exportar);
 router.get('/vistas', C.listarVistas);
 

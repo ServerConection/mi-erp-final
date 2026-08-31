@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { KpiCard180, KpiMini } from "../components/kpi";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import TablaKpiComercial from "../components/TablaKpiComercial";
+import EfectividadDiaria from "../components/EfectividadDiaria";
 import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
@@ -1211,6 +1212,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               { id:'MONITOREO',  icon:'⏱️', label:'MONITOREO',    grad:'linear-gradient(135deg,#ea580c,#c2410c)' },
               { id:'REPORTE180', icon:'🔭', label:'REPORTE 180°', grad:'linear-gradient(135deg,#d97706,#b45309)' },
               { id:'CONSULTA',   icon:'📥', label:'CONSULTA',     grad:'linear-gradient(135deg,#1A3A6E,#1e3a8a)' },
+              { id:'EFECTIVIDAD',icon:'🎯', label:'EFECTIVIDAD DIARIA', grad:'linear-gradient(135deg,#047857,#065f46)' },
             ].map(tab => (
               <button key={tab.id} onClick={() => setTabActiva(tab.id)}
                 style={tabActiva === tab.id ? { background: tab.grad } : {}}
@@ -1654,6 +1656,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           etapasCRM={data.etapasCRM}
           ETAPAS_JOTFORM={ETAPAS_JOTFORM}
         />
+      ) : tabActiva === "EFECTIVIDAD" ? (
+        <EfectividadDiaria empresa="velsa" />
       ) : (
         <ConsultaDescargaVelsa />
       )}

@@ -20,6 +20,7 @@ const broadcastRoutes              = require('./routes/broadcast.routes');
 const ventasRoutes                 = require('./routes/ventas.routes');
 const analistaRoutes               = require('./routes/analista.routes');
 const bitrixRoutes                 = require('./routes/bitrix.routes');
+const bitrixSesionesRoutes         = require('./routes/bitrixSesiones.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
 const gestionablesWebhookRoutes    = require('./routes/gestionablesWebhook.routes');
 const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
@@ -40,6 +41,7 @@ const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
+const nexoIaRoutes                 = require('./routes/nexoIa.routes');
 const cumplimientoLeadsRoutes      = require('./routes/cumplimientoLeads.routes');
 const kpiComercialRoutes           = require('./routes/kpiComercial.routes');
 const datosAdicionalesRoutes       = require('./routes/datosAdicionales.routes');
@@ -123,6 +125,7 @@ app.use('/api/alertas',           alertasRoutes);
 app.use('/api/ventas',            ventasRoutes);
 app.use('/api/analista',          analistaRoutes);
 app.use('/api/bitrix',            bitrixRoutes);
+app.use('/api/bitrix-sesiones',   bitrixSesionesRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
@@ -166,6 +169,7 @@ app.use('/api/asistente', asistenteRoutes);
 app.use('/api/reporte-detalle', reporteDetalleRoutes);
 app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
+app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/cumplimiento-leads', cumplimientoLeadsRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);

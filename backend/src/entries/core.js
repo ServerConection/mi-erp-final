@@ -25,6 +25,7 @@ app.use('/api',           require('../routes/test.email.routes'));
 app.use('/api/ventas',            require('../routes/ventas.routes'));
 app.use('/api/analista',          require('../routes/analista.routes'));
 app.use('/api/bitrix',            require('../routes/bitrix.routes'));
+app.use('/api/bitrix-sesiones',   require('../routes/bitrixSesiones.routes'));
 app.use('/api/inventario',        require('../routes/inventario.routes'));
 app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
@@ -33,6 +34,7 @@ app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'))
 app.use('/api/reporte-jefatura',  require('../routes/reporteJefatura.routes'));
 app.use('/api/reporte-detalle',   require('../routes/reporteDetalle.routes'));
 app.use('/api/bot-auditor',       require('../routes/botAuditor.routes'));
+app.use('/api/nexo-ia',           require('../routes/nexoIa.routes'));
 app.use('/api/tthh',              require('../routes/tthh.routes'));
 app.use('/api/tareas',            require('../routes/tareas.routes'));
 app.use('/api/hojas',             require('../routes/hojas.routes'));

@@ -5,13 +5,21 @@
 // Ambos usan EXACTAMENTE el mismo SQL, asi el dato no depende de por donde entro.
 // =============================================================================
 
+const { obtenerCapacidades, CAPACIDADES_COMPLETAS } = require('./contactabilidad.esquema');
+
 const SELECCION_TODOS = `SELECT empresa, id_bitrix FROM contactabilidad_leads`;
 const SELECCION_LEADS = `
   SELECT empresa, id_bitrix FROM contactabilidad_leads
   WHERE empresa = $1 AND id_bitrix = ANY($2::text[])`;
 
-function construirSql(seleccion, origenDato) {
+function construirSql(seleccion, origenDato, columnas = CAPACIDADES_COMPLETAS) {
   const origen = origenDato ? `'${origenDato}'` : 'l.origen_ultimo_dato';
+  // chat_id y origen_ultimo_dato llegan con la migracion de tiempo real; hasta
+  // entonces el recalculo debe seguir funcionando sin ellas.
+  const extras = [
+    columnas.chat_id ? 'chat_id = COALESCE(a.chat_id, l.chat_id),' : '',
+    columnas.origen_ultimo_dato ? `origen_ultimo_dato = ${origen},` : '',
+  ].filter(Boolean).join('\n    ');
   return `
 WITH objetivo AS (${seleccion}),
 ordenados AS (
@@ -83,7 +91,7 @@ SET mensajes_cliente_total      = a.mensajes_cliente,
     tiempo_primera_respuesta_seg  = t.primera_seg,
     tiempo_respuesta_promedio_seg = t.promedio_seg,
     tiempo_respuesta_maximo_seg   = t.maximo_seg,
-    chat_id = COALESCE(a.chat_id, l.chat_id),
+    ${extras}
     pendiente_por = CASE
       WHEN a.ultimo_cliente IS NULL AND a.ultimo_asesor IS NULL THEN NULL
       WHEN a.ultimo_asesor IS NULL OR a.ultimo_cliente > a.ultimo_asesor THEN 'ASESOR'
@@ -95,7 +103,6 @@ SET mensajes_cliente_total      = a.mensajes_cliente,
       WHEN GREATEST(a.ultimo_cliente, a.ultimo_asesor) >= NOW() - INTERVAL '72 hours' THEN 'TIBIO'
       ELSE 'FRIO'
     END,
-    origen_ultimo_dato = ${origen},
     actualizado_at = NOW()
 FROM agregados a
 LEFT JOIN tiempos t ON t.empresa = a.empresa AND t.id_bitrix = a.id_bitrix
@@ -112,7 +119,8 @@ const normalizarOrigen = (valor) => {
 
 /** Barrido completo. Se mantiene la firma original usada por el sincronizador. */
 async function recalcularConsolidados(pool, origen = 'CRON') {
-  return pool.query(construirSql(SELECCION_TODOS, normalizarOrigen(origen)));
+  const columnas = await obtenerCapacidades(pool);
+  return pool.query(construirSql(SELECCION_TODOS, normalizarOrigen(origen), columnas));
 }
 
 /**
@@ -125,7 +133,8 @@ async function recalcularLeads(pool, empresa, ids, origen = 'WEBHOOK') {
     .filter((id) => id !== null && id !== undefined && String(id).trim() !== '')
     .map((id) => String(id)))];
   if (!empresa || !lista.length) return { rowCount: 0 };
-  return pool.query(construirSql(SELECCION_LEADS, normalizarOrigen(origen)),
+  const columnas = await obtenerCapacidades(pool);
+  return pool.query(construirSql(SELECCION_LEADS, normalizarOrigen(origen), columnas),
     [String(empresa).toUpperCase(), lista]);
 }
 

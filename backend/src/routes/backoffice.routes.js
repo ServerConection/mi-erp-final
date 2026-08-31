@@ -13,7 +13,35 @@ const pool = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 const { enviarBienvenidaWelcome } = require('../services/email.service');
 
-router.use(verificarToken, noAsesor);
+// ─── QUIÉN ENTRA A BACKOFFICE ───────────────────────────────────────────────
+// Antes esta ruta usaba `noAsesor`, que bloquea `perfil === 'ASESOR'`.
+// Ese perfil NO EXISTE en la tabla usuarios: los asesores están registrados
+// como 'USUARIO' (93 de ellos). O sea que el guard no bloqueaba a nadie y
+// cualquier vendedor podía leer y editar ventas ajenas —incluido valor_pago,
+// plan contratado y los datos personales del cliente.
+//
+// Se cambia a lista blanca en vez de lista negra: si mañana aparece un perfil
+// nuevo en la base, queda FUERA por defecto en vez de entrar por descuido.
+// `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
+const PERFILES_BACKOFFICE = new Set([
+  'ADMINISTRADOR',   // transversal, ve las dos empresas
+  'GERENCIA',
+  'SUPERVISOR',
+  'ANALISTA',
+]);
+
+const soloBackoffice = (req, res, next) => {
+  const perfil = (req.user?.perfil || '').trim().toUpperCase();
+  if (!PERFILES_BACKOFFICE.has(perfil)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Tu perfil no tiene acceso al módulo de Backoffice.',
+    });
+  }
+  next();
+};
+
+router.use(verificarToken, soloBackoffice);
 
 // ─── GET /api/backoffice ─────────────────────────────────────────────────────
 // Lista todos los registros con columnas clave para la tabla
@@ -23,6 +51,44 @@ router.use(verificarToken, noAsesor);
 // malformado y tumba toda la consulta. LEFT(col::text, 10) devuelve siempre
 // 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
 const fechaCol = (col) => `LEFT(${col}::text, 10)`;
+
+// ─── AISLAMIENTO POR EMPRESA ────────────────────────────────────────────────
+// `distribuidor_autorizado` guarda NOVONET o VELSA y se deriva de
+// usuarios.empresa al momento de registrar la venta (ver NuevaVenta.jsx).
+// Antes, la empresa se elegía con un query param: cualquier usuario podía
+// pedir la data de la otra empresa cambiando la URL. Ahora el alcance sale
+// del token y el query param solo puede ESTRECHARLO, nunca ampliarlo.
+//
+// ADMINISTRADOR es transversal (ve las dos empresas), igual que en el resto
+// del ERP.
+//
+// NOTA sobre registros sin empresa: hay filas históricas con
+// distribuidor_autorizado NULL o vacío. Se dejan visibles para todos para no
+// esconderle trabajo a nadie de un día para otro. Cuando esas filas estén
+// normalizadas, quitar el `OR ... IS NULL` de abajo cierra el aislamiento
+// del todo.
+const empresaDelUsuario = (req) => {
+  if (!req.user) return null;
+  if (req.user.perfil === 'ADMINISTRADOR') return null;   // sin restricción
+  const e = (req.user.empresa || '').trim().toUpperCase();
+  return e || null;
+};
+
+/** Condición SQL de visibilidad. Devuelve '' cuando el usuario ve todo. */
+const filtroEmpresa = (req, P) => {
+  const empresa = empresaDelUsuario(req);
+  if (!empresa) return '';
+  return ` AND (UPPER(TRIM(COALESCE(distribuidor_autorizado,''))) = ${P(empresa)}
+                OR COALESCE(TRIM(distribuidor_autorizado),'') = '')`;
+};
+
+/** ¿Este usuario puede tocar esta fila? */
+const puedeVerRegistro = (req, row) => {
+  const empresa = empresaDelUsuario(req);
+  if (!empresa) return true;
+  const dist = (row?.distribuidor_autorizado || '').trim().toUpperCase();
+  return dist === '' || dist === empresa;
+};
 
 router.get('/', async (req, res) => {
   try {
@@ -75,8 +141,21 @@ router.get('/', async (req, res) => {
     if (terceraEdad.trim())
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
     // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
-    if (empresa.trim() && empresa.trim().toUpperCase() !== 'TODOS')
-      whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = UPPER(TRIM(${P(empresa.trim())}))`;
+    // Alcance obligatorio según el token (no se puede saltar desde la URL).
+    whereClause += filtroEmpresa(req, P);
+
+    // El selector de la UI solo puede estrechar dentro de lo permitido.
+    const empresaPedida = empresa.trim().toUpperCase();
+    const alcance = empresaDelUsuario(req);
+    if (empresaPedida && empresaPedida !== 'TODOS') {
+      if (alcance && empresaPedida !== alcance) {
+        return res.status(403).json({
+          success: false,
+          error: 'No tienes acceso a los registros de esa empresa.',
+        });
+      }
+      whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
+    }
 
     const countParams = [...params];
     const { rows: countRows } = await pool.query(
@@ -116,14 +195,20 @@ router.get('/', async (req, res) => {
 // match de '/opciones' contra '/:id' (id = "opciones") y la consulta falla.
 router.get('/opciones', async (req, res) => {
   try {
+    // Los combos solo ofrecen valores que el usuario realmente puede ver.
+    const params = [];
+    const P = (v) => { params.push(v); return `$${params.length}`; };
+    const alcanceSql = filtroEmpresa(req, P);
+
     const distintos = async (col) => {
       const { rows } = await pool.query(`
         SELECT DISTINCT TRIM(${col}) AS v
         FROM public.envios_ventas
         WHERE ${col} IS NOT NULL AND TRIM(${col}) <> ''
           AND estatus_envio != 'BORRADOR'
+          ${alcanceSql}
         ORDER BY 1
-      `);
+      `, params);
       return rows.map(r => r.v);
     };
 
@@ -150,6 +235,12 @@ router.get('/:id', async (req, res) => {
     );
     if (rows.length === 0)
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
+
+    // 404 (y no 403) a propósito: un usuario de otra empresa no debe poder
+    // deducir que el registro existe probando IDs.
+    if (!puedeVerRegistro(req, rows[0]))
+      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
+
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     console.error('[BACKOFFICE] GET detail:', e.message);
@@ -206,6 +297,18 @@ router.put('/:id', async (req, res) => {
     if (!/^\d+$/.test(String(id))) {
       return res.status(400).json({ success: false, error: 'ID inválido' });
     }
+
+    // El registro debe existir Y pertenecer a la empresa del usuario.
+    // Sin esto, cualquier perfil no-ASESOR podía editar ventas de la otra
+    // empresa mandando el id directo al endpoint.
+    const { rows: actual } = await pool.query(
+      'SELECT distribuidor_autorizado FROM public.envios_ventas WHERE id = $1',
+      [id]
+    );
+    if (actual.length === 0)
+      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
+    if (!puedeVerRegistro(req, actual[0]))
+      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
 
     // Construcción del payload filtrando solo lo permitido
     const payload = {};

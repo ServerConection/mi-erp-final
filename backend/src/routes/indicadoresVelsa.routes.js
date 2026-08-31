@@ -13,6 +13,10 @@ const {
   getActivacionesPorDiaVelsa,
   forceRefreshVelsa,
 } = require('../controllers/indicadoresVelsaMaterialized.controller');
+const {
+  getEfectividadDiariaVelsa,
+  getAgenciasEfectividadVelsa,
+} = require('../controllers/efectividadDiaria.controller');
 const { verificarToken } = require('../middleware/auth');
 
 // /dashboard requiere sesión: alimenta la Vista Asesor Velsa y debe saber
@@ -28,5 +32,10 @@ router.get('/activas', getActivasVelsa);
 router.get('/backlog', getBacklogVelsa);
 router.get('/activaciones-dia', getActivacionesPorDiaVelsa);
 router.post('/force-refresh', forceRefreshVelsa);
+
+// EFECTIVIDAD DIARIA — mismo módulo que Novonet, apuntando al catálogo de
+// agencias de Velsa (velsa_lineas_canal).
+router.get('/efectividad-diaria', getEfectividadDiariaVelsa);
+router.get('/efectividad-diaria/agencias', getAgenciasEfectividadVelsa);
 
 module.exports = router;

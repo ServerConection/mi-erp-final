@@ -88,6 +88,13 @@ router.delete('/files', verificarToken, soloAdmin, coverageController.deleteSour
 router.get('/status', coverageController.getCoverageStatus);
 
 /**
+ * GET /api/coverage/debug?lat=&lon=
+ * Por que un punto dio ese resultado: que geometria hizo match, de que tipo,
+ * a cuantos metros, y las 10 mas cercanas. Para cerrar discusiones de campo.
+ */
+router.get('/debug', verificarToken, coverageController.debugPunto);
+
+/**
  * POST /api/coverage/load-batch
  * Recibe zonas ya parseadas desde el navegador en lotes pequeños.
  * El servidor nunca toca el archivo KMZ — solo recibe JSON liviano.

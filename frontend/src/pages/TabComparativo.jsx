@@ -5,12 +5,14 @@
 // ║  KPIs: Leads · Efectividad · CPL · ATC · Activos · V.Subida · ROAS     ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 import { useEffect, useState, useMemo } from "react";
+import { cabecerasSesion } from "../utils/sesion";
 import {
   BarChart, Bar, LineChart, Line, RadarChart, Radar,
   PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, Cell, ReferenceLine,
+  ResponsiveContainer, Cell, ReferenceLine, LabelList,
 } from "recharts";
+import { Expandible } from "./ChartFrame";
 
 // ── Colores base (mismo sistema que Redes.jsx) ────────────────────────────────
 const C = {
@@ -84,7 +86,7 @@ function getMesesAnteriores(n = 5) {
 // ── Fetch datos de un período ────────────────────────────────────────────────
 async function fetchPeriodo(desde, hasta) {
   try {
-    const r = await fetch(`${API}/api/redes/monitoreo-redes?fechaDesde=${desde}&fechaHasta=${hasta}`);
+    const r = await fetch(`${API}/api/redes/monitoreo-redes?fechaDesde=${desde}&fechaHasta=${hasta}`, { headers: cabecerasSesion() });
     const d = await r.json();
     if (!d.success || !d.data) return null;
 
@@ -179,7 +181,7 @@ function CardHeader({ title, subtitle, accent = C.primary, badge }) {
         <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: accent }} />
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
-          {subtitle && <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
+          {subtitle && <div className="text-[11px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
         </div>
       </div>
       {badge && <div className="flex items-center gap-2 flex-wrap">{badge}</div>}
@@ -189,13 +191,13 @@ function CardHeader({ title, subtitle, accent = C.primary, badge }) {
 
 // Chip de variación con flecha
 function VarChip({ valor, invertir = false, size = "sm" }) {
-  if (valor === null || !isFinite(valor)) return <span className="text-[8px]" style={{ color: C.muted }}>—</span>;
+  if (valor === null || !isFinite(valor)) return <span className="text-[11px]" style={{ color: C.muted }}>—</span>;
   const positivo = invertir ? valor < 0 : valor > 0;
   const abs = Math.abs(valor);
   const color = positivo ? C.success : C.danger;
   const bg    = positivo ? "#d1fae5" : "#fee2e2";
   const arrow = positivo ? "▲" : "▼";
-  const cls   = size === "sm" ? "text-[8px] px-1.5 py-0.5" : "text-[9px] px-2 py-0.5";
+  const cls   = size === "sm" ? "text-[11px] px-1.5 py-0.5" : "text-[11px] px-2 py-0.5";
   return (
     <span className={`${cls} rounded-full font-black inline-flex items-center gap-0.5`}
       style={{ background: bg, color }}>
@@ -214,10 +216,10 @@ function KpiComp({ label, actual, anterior, fmt = fmtN, color = C.primary, icon,
           style={{ background: `${color}15` }}>{icon}</div>
         <VarChip valor={var_} invertir={invertir} />
       </div>
-      <div className="text-[8px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{label}</div>
+      <div className="text-[11px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{label}</div>
       <div className="text-xl font-black leading-tight" style={{ color }}>{fmt(actual)}</div>
       {anterior !== null && anterior !== undefined && (
-        <div className="text-[8px] mt-1" style={{ color: C.muted }}>
+        <div className="text-[11px] mt-1" style={{ color: C.muted }}>
           Anterior: <span className="font-bold">{fmt(anterior)}</span>
         </div>
       )}
@@ -230,9 +232,9 @@ function KpiComp({ label, actual, anterior, fmt = fmtN, color = C.primary, icon,
 const CTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[10px] max-w-xs z-50"
+    <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[12px] max-w-xs z-50"
       style={{ borderColor: C.border }}>
-      <div className="font-black mb-2 uppercase text-[9px]" style={{ color: C.slate }}>{label}</div>
+      <div className="font-black mb-2 uppercase text-[11px]" style={{ color: C.slate }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 mb-0.5">
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color || p.fill }} />
@@ -321,11 +323,11 @@ function PanelSemanas({ año, mes }) {
       {semActualData && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
+            <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
               {semanas[semActual]?.label} ({semanas[semActual]?.labelFull}) vs semana anterior
             </div>
             {semAnteriorData && (
-              <span className="text-[8px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${C.primary}10`, color: C.primary }}>
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${C.primary}10`, color: C.primary }}>
                 {semanas[semActual - 1]?.labelFull}
               </span>
             )}
@@ -350,7 +352,7 @@ function PanelSemanas({ año, mes }) {
             <div className="flex flex-wrap gap-1.5">
               {METRICAS.map(m => (
                 <button key={m.key} onClick={() => setMetrica(m.key)}
-                  className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+                  className="px-2.5 py-1 rounded-full text-[11px] font-black uppercase border transition-all"
                   style={metrica === m.key
                     ? { background: m.color, color: "#fff", borderColor: m.color }
                     : { background: "#fff", color: C.muted, borderColor: C.border }}>
@@ -360,22 +362,22 @@ function PanelSemanas({ año, mes }) {
             </div>
           } />
         <div className="p-5">
-          <ResponsiveContainer width="100%" height={280}>
+          <Expandible title="Comparativo Semanal" height={280}>
             <BarChart data={barData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-              <YAxis tick={{ fontSize: 9, fill: C.muted }} width={45}
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+              <YAxis tick={{ fontSize: 11, fill: C.muted }} width={45}
                 tickFormatter={v => cfg.key === "cpl" || cfg.key === "cpAct" || cfg.key === "inv" ? `$${v}` : cfg.key === "efect" || cfg.key === "pctAtc" ? `${v}%` : v} />
               <Tooltip content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null;
                 const item = barData.find(b => b.name === label);
                 return (
-                  <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[10px]" style={{ borderColor: C.border }}>
+                  <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[12px]" style={{ borderColor: C.border }}>
                     <div className="font-black mb-1" style={{ color: C.slate }}>{label} · {item?.rango}</div>
                     <div style={{ color: cfg.color }} className="font-black">
                       {cfg.fmt(payload[0].value)}
                     </div>
-                    <div className="text-[8px] mt-1" style={{ color: C.muted }}>{cfg.info}</div>
+                    <div className="text-[11px] mt-1" style={{ color: C.muted }}>{cfg.info}</div>
                   </div>
                 );
               }} />
@@ -386,14 +388,16 @@ function PanelSemanas({ año, mes }) {
                     stroke={entry.esActual ? cfg.color : "none"}
                     strokeWidth={entry.esActual ? 2 : 0} />
                 ))}
+                <LabelList dataKey="val" position="top" formatter={cfg.fmt}
+                  style={{ fontSize: 11, fontWeight: 800, fill: C.slate }} />
               </Bar>
               {semActual !== null && (
                 <ReferenceLine x={semanas[semActual]?.label} stroke={cfg.color} strokeDasharray="4 2"
-                  label={{ value: "← Actual", position: "insideTopRight", fontSize: 8, fill: cfg.color }} />
+                  label={{ value: "← Actual", position: "insideTopRight", fontSize: 11, fill: cfg.color }} />
               )}
             </BarChart>
-          </ResponsiveContainer>
-          <div className="mt-3 flex items-center gap-3 text-[8px]" style={{ color: C.muted }}>
+          </Expandible>
+          <div className="mt-3 flex items-center gap-3 text-[11px]" style={{ color: C.muted }}>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded" style={{ background: cfg.color }} />
               Semana actual
@@ -413,11 +417,11 @@ function PanelSemanas({ año, mes }) {
             subtitle="Compara rendimiento en 5 dimensiones — ATC invertido (más alto = menos ATC = mejor)"
             accent={C.violet} />
           <div className="p-5">
-            <ResponsiveContainer width="100%" height={300}>
+            <Expandible title="Radar Multidimensional por Semana" height={300}>
               <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
                 <PolarGrid stroke={C.border} />
-                <PolarAngleAxis dataKey="dim" tick={{ fontSize: 9, fill: C.muted, fontWeight: 700 }} />
-                <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 7, fill: C.muted }} tickCount={3} />
+                <PolarAngleAxis dataKey="dim" tick={{ fontSize: 11, fill: C.muted, fontWeight: 700 }} />
+                <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 10, fill: C.muted }} tickCount={3} />
                 {semanas.map((s, i) => (
                   <Radar key={s.label} name={`${s.label} (${s.labelFull})`} dataKey={s.label}
                     stroke={SEMANA_COLS[i % SEMANA_COLS.length]}
@@ -426,10 +430,10 @@ function PanelSemanas({ año, mes }) {
                     strokeWidth={i === semActual ? 2.5 : 1.5}
                     strokeDasharray={i === semActual ? "0" : "4 2"} />
                 ))}
-                <Legend wrapperStyle={{ fontSize: 9 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Tooltip content={<CTooltip />} />
               </RadarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </div>
         </Card>
       )}
@@ -439,11 +443,11 @@ function PanelSemanas({ año, mes }) {
         <CardHeader title="Tabla Comparativa de Semanas" accent={C.slate}
           subtitle="Todas las semanas del mes en una vista" />
         <div className="overflow-auto">
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+          <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
             <thead className="sticky top-0" style={{ background: C.light, borderBottom: `2px solid ${C.border}` }}>
               <tr>
                 {["SEMANA", "RANGO", "LEADS", "NEGOC.", "ATC %", "V.SUBIDA", "ACTIVOS", "EFECT. %", "CPL $", "CP ACT. $", "INV. $"].map(h => (
-                  <th key={h} className="px-3 py-2.5 border-r text-center font-black uppercase text-[8px]"
+                  <th key={h} className="px-3 py-2.5 border-r text-center font-black uppercase text-[11px]"
                     style={{ color: C.muted, borderColor: C.border }}>{h}</th>
                 ))}
               </tr>
@@ -455,7 +459,7 @@ function PanelSemanas({ año, mes }) {
                 const prev = i > 0 ? dataSem[i - 1] : null;
                 if (!d) return (
                   <tr key={s.label} className="border-b" style={{ borderColor: C.border }}>
-                    <td colSpan={11} className="px-3 py-2 text-center text-[8px]" style={{ color: C.muted }}>
+                    <td colSpan={11} className="px-3 py-2 text-center text-[11px]" style={{ color: C.muted }}>
                       {s.label} — Sin datos
                     </td>
                   </tr>
@@ -465,9 +469,9 @@ function PanelSemanas({ año, mes }) {
                     style={{ borderColor: C.border, background: esActual ? `${C.primary}06` : undefined }}>
                     <td className="px-3 py-2 border-r font-black text-center"
                       style={{ borderColor: C.border, color: SEMANA_COLS[i % SEMANA_COLS.length] }}>
-                      {s.label} {esActual && <span className="text-[7px] px-1 py-0.5 rounded ml-1" style={{ background: `${C.primary}15`, color: C.primary }}>Actual</span>}
+                      {s.label} {esActual && <span className="text-[10px] px-1 py-0.5 rounded ml-1" style={{ background: `${C.primary}15`, color: C.primary }}>Actual</span>}
                     </td>
-                    <td className="px-3 py-2 border-r text-[8px]" style={{ color: C.muted, borderColor: C.border }}>{s.labelFull}</td>
+                    <td className="px-3 py-2 border-r text-[11px]" style={{ color: C.muted, borderColor: C.border }}>{s.labelFull}</td>
                     {[
                       [d.leads,   fmtN, C.primary, prev?.leads,   false],
                       [d.neg,     fmtN, C.success, prev?.neg,     false],
@@ -482,7 +486,7 @@ function PanelSemanas({ año, mes }) {
                       const v_ = variacion(val, prevVal);
                       return (
                         <td key={j} className="px-3 py-2 border-r text-center" style={{ borderColor: C.border }}>
-                          <span className="font-black text-[9px]" style={{ color: col }}>{fmt(val)}</span>
+                          <span className="font-black text-[11px]" style={{ color: col }}>{fmt(val)}</span>
                           {v_ !== null && (
                             <div className="mt-0.5"><VarChip valor={v_} invertir={inv} /></div>
                           )}
@@ -584,7 +588,7 @@ function PanelMeses() {
       {mesActualData && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
+            <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>
               {meses[mesActualIdx]?.label} vs {meses[mesActualIdx - 1]?.label}
             </div>
           </div>
@@ -608,7 +612,7 @@ function PanelMeses() {
             <div className="flex flex-wrap gap-1.5">
               {METRICAS.map(m => (
                 <button key={m.key} onClick={() => setMetrica(m.key)}
-                  className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+                  className="px-2.5 py-1 rounded-full text-[11px] font-black uppercase border transition-all"
                   style={metrica === m.key
                     ? { background: m.color, color: "#fff", borderColor: m.color }
                     : { background: "#fff", color: C.muted, borderColor: C.border }}>
@@ -618,11 +622,11 @@ function PanelMeses() {
             </div>
           } />
         <div className="p-5">
-          <ResponsiveContainer width="100%" height={280}>
+          <Expandible title="Evolución Mensual" height={280}>
             <LineChart data={lineData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-              <YAxis tick={{ fontSize: 9, fill: C.muted }} width={50}
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+              <YAxis tick={{ fontSize: 11, fill: C.muted }} width={50}
                 tickFormatter={v => cfg.key === "cpl" || cfg.key === "cpAct" || cfg.key === "inv" ? `$${v}` :
                   cfg.key === "efect" || cfg.key === "pctAtc" ? `${v}%` :
                   cfg.key === "roas" ? `${v}x` : v} />
@@ -630,7 +634,7 @@ function PanelMeses() {
                 if (!active || !payload?.length) return null;
                 const item = lineData.find(l => l.name === label);
                 return (
-                  <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[10px]" style={{ borderColor: C.border }}>
+                  <div className="bg-white border rounded-xl shadow-xl px-4 py-3 text-[12px]" style={{ borderColor: C.border }}>
                     <div className="font-black mb-1" style={{ color: C.slate }}>
                       {label} {item?.esMesActual && "· Mes actual"}
                     </div>
@@ -650,11 +654,14 @@ function PanelMeses() {
                       stroke={cfg.color} strokeWidth={2} />
                   );
                 }}
-                activeDot={{ r: 8 }} connectNulls />
+                activeDot={{ r: 8 }} connectNulls>
+                <LabelList position="top" offset={12} formatter={cfg.fmt}
+                  style={{ fontSize: 11, fontWeight: 800, fill: C.slate }} />
+              </Line>
               {/* Área bajo la curva como referencia visual */}
               <ReferenceLine y={0} stroke={C.border} />
             </LineChart>
-          </ResponsiveContainer>
+          </Expandible>
         </div>
       </Card>
 
@@ -663,7 +670,7 @@ function PanelMeses() {
         <Card>
           <CardHeader title="Leads & Activos por Mes" accent={C.primary} />
           <div className="p-5">
-            <ResponsiveContainer width="100%" height={220}>
+            <Expandible title="Leads & Activos por Mes" height={220}>
               <BarChart data={meses.map((m, i) => ({
                 name: m.labelCorto,
                 Leads:   safe(dataMes[i]?.leads),
@@ -671,25 +678,27 @@ function PanelMeses() {
                 esActual: m.esMesActual,
               }))} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-                <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+                <YAxis tick={{ fontSize: 11, fill: C.muted }} width={35} />
                 <Tooltip content={<CTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 9 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="Leads" fill={`${C.primary}60`} radius={[4, 4, 0, 0]}>
                   {meses.map((m, i) => <Cell key={i} fill={m.esMesActual ? C.primary : `${C.primary}45`} />)}
+                  <LabelList dataKey="Leads" position="top" style={{ fontSize: 12, fontWeight: 800, fill: C.primary }} />
                 </Bar>
                 <Bar dataKey="Activos" fill={C.success} radius={[4, 4, 0, 0]}>
                   {meses.map((m, i) => <Cell key={i} fill={m.esMesActual ? C.success : `${C.success}55`} />)}
+                  <LabelList dataKey="Activos" position="top" style={{ fontSize: 12, fontWeight: 800, fill: C.success }} />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </div>
         </Card>
 
         <Card>
           <CardHeader title="Ventas Subidas & Inversión $" accent={C.violet} />
           <div className="p-5">
-            <ResponsiveContainer width="100%" height={220}>
+            <Expandible title="Ventas Subidas & Inversión $" height={220}>
               <BarChart data={meses.map((m, i) => ({
                 name: m.labelCorto,
                 "V.Subida": safe(dataMes[i]?.vsub),
@@ -697,20 +706,22 @@ function PanelMeses() {
                 esActual: m.esMesActual,
               }))} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-                <YAxis yAxisId="l" tick={{ fontSize: 9, fill: C.muted }} width={35} />
-                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={50}
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+                <YAxis yAxisId="l" tick={{ fontSize: 11, fill: C.muted }} width={35} />
+                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: C.muted }} width={50}
                   tickFormatter={v => `$${v}`} />
                 <Tooltip content={<CTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 9 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar yAxisId="l" dataKey="V.Subida" radius={[4, 4, 0, 0]}>
                   {meses.map((m, i) => <Cell key={i} fill={m.esMesActual ? C.sky : `${C.sky}55`} />)}
+                  <LabelList dataKey="V.Subida" position="top" style={{ fontSize: 12, fontWeight: 800, fill: C.sky }} />
                 </Bar>
                 <Bar yAxisId="r" dataKey="Inv.$" radius={[4, 4, 0, 0]}>
                   {meses.map((m, i) => <Cell key={i} fill={m.esMesActual ? C.violet : `${C.violet}45`} />)}
+                  <LabelList dataKey="Inv.$" position="top" formatter={(v) => `$${v}`} style={{ fontSize: 12, fontWeight: 800, fill: C.violet }} />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </Expandible>
           </div>
         </Card>
       </div>
@@ -720,7 +731,7 @@ function PanelMeses() {
         <CardHeader title="Eficiencia Mensual — CPL $ · Efectividad % · % ATC"
           subtitle="Evolución de los 3 indicadores clave de calidad de pauta" accent={C.warning} />
         <div className="p-5">
-          <ResponsiveContainer width="100%" height={240}>
+          <Expandible title="Eficiencia Mensual — CPL · Efectividad · ATC" height={240}>
             <LineChart data={meses.map((m, i) => ({
               name: m.labelCorto,
               "CPL $":    dataMes[i]?.cpl    ? parseFloat(safe(dataMes[i].cpl).toFixed(2))   : null,
@@ -729,20 +740,23 @@ function PanelMeses() {
               esActual: m.esMesActual,
             }))} margin={{ top: 16, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-              <YAxis yAxisId="pct" tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 100]} />
-              <YAxis yAxisId="usd" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={40}
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+              <YAxis yAxisId="pct" tick={{ fontSize: 11, fill: C.muted }} width={35} unit="%" domain={[0, 100]} />
+              <YAxis yAxisId="usd" orientation="right" tick={{ fontSize: 11, fill: C.muted }} width={40}
                 tickFormatter={v => `$${v}`} />
               <Tooltip content={<CTooltip />} />
-              <Legend wrapperStyle={{ fontSize: 9 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line yAxisId="pct" type="monotone" dataKey="Efect. %" stroke={C.success} strokeWidth={2.5}
                 dot={{ r: 4, fill: C.success }} connectNulls />
               <Line yAxisId="pct" type="monotone" dataKey="ATC %" stroke={C.danger} strokeWidth={2.5}
                 dot={{ r: 4, fill: C.danger }} strokeDasharray="5 3" connectNulls />
               <Line yAxisId="usd" type="monotone" dataKey="CPL $" stroke={C.violet} strokeWidth={2.5}
-                dot={{ r: 4, fill: C.violet }} connectNulls />
+                dot={{ r: 4, fill: C.violet }} connectNulls>
+                <LabelList position="top" offset={10} formatter={(v) => v == null ? "" : `$${v}`}
+                  style={{ fontSize: 12, fontWeight: 800, fill: C.violet }} />
+              </Line>
             </LineChart>
-          </ResponsiveContainer>
+          </Expandible>
         </div>
       </Card>
 
@@ -751,11 +765,11 @@ function PanelMeses() {
         <CardHeader title="Tabla Histórica de Meses" accent={C.slate}
           subtitle="Últimos 6 meses con variación mes a mes" />
         <div className="overflow-auto">
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+          <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
             <thead className="sticky top-0" style={{ background: C.light, borderBottom: `2px solid ${C.border}` }}>
               <tr>
                 {["MES", "LEADS", "NEGOC.", "ATC %", "V.SUBIDA", "ACTIVOS", "EFECT. %", "CPL $", "CP ACT. $", "INV. $", "ROAS"].map(h => (
-                  <th key={h} className="px-3 py-2.5 border-r text-center font-black uppercase text-[8px]"
+                  <th key={h} className="px-3 py-2.5 border-r text-center font-black uppercase text-[11px]"
                     style={{ color: C.muted, borderColor: C.border }}>{h}</th>
                 ))}
               </tr>
@@ -770,7 +784,7 @@ function PanelMeses() {
                     <td className="px-3 py-2 border-r font-black"
                       style={{ color: MES_COLS[i % MES_COLS.length], borderColor: C.border }}>
                       {m.label}
-                      {m.esMesActual && <span className="text-[7px] ml-1 px-1 py-0.5 rounded"
+                      {m.esMesActual && <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
                         style={{ background: `${C.primary}15`, color: C.primary }}>Actual</span>}
                     </td>
                     {d ? [
@@ -788,12 +802,12 @@ function PanelMeses() {
                       const v_ = variacion(val, prevVal);
                       return (
                         <td key={j} className="px-3 py-2 border-r text-center" style={{ borderColor: C.border }}>
-                          <div className="font-black text-[9px]" style={{ color: col }}>{fmt(val)}</div>
+                          <div className="font-black text-[11px]" style={{ color: col }}>{fmt(val)}</div>
                           {v_ !== null && <div className="mt-0.5"><VarChip valor={v_} invertir={inv} /></div>}
                         </td>
                       );
                     }) : (
-                      <td colSpan={10} className="px-3 py-2 text-center text-[8px]" style={{ color: C.muted }}>
+                      <td colSpan={10} className="px-3 py-2 text-center text-[11px]" style={{ color: C.muted }}>
                         Cargando...
                       </td>
                     )}
@@ -833,17 +847,17 @@ export default function TabComparativo({ filtro }) {
             <span className="text-[13px] font-black uppercase tracking-wide" style={{ color: C.primary }}>
               Comparativo Inteligente
             </span>
-            <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase"
+            <span className="text-[11px] font-black px-2 py-0.5 rounded-full uppercase"
               style={{ background: `${C.primary}15`, color: C.primary }}>
               {nombresMes[mes]} {año}
             </span>
           </div>
-          <p className="text-[9px] leading-relaxed" style={{ color: C.muted }}>
+          <p className="text-[11px] leading-relaxed" style={{ color: C.muted }}>
             Semana vs semana del mismo mes · Mes actual vs meses anteriores · Variación automática · ICP por período
           </p>
         </div>
         {/* Leyenda de chips */}
-        <div className="flex flex-col gap-1.5 text-[8px]" style={{ color: C.muted }}>
+        <div className="flex flex-col gap-1.5 text-[11px]" style={{ color: C.muted }}>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded-full font-black" style={{ background: "#d1fae5", color: C.success }}>▲ 12.5%</span>
             Subió vs período anterior
@@ -862,7 +876,7 @@ export default function TabComparativo({ filtro }) {
       <div className="flex gap-1 bg-white border rounded-xl p-1 w-fit" style={{ borderColor: C.border }}>
         {VISTAS.map(v => (
           <button key={v.id} onClick={() => setVista(v.id)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[9px] font-black uppercase tracking-wide transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all"
             style={vista === v.id
               ? { background: C.primary, color: "#fff", boxShadow: `0 2px 8px ${C.primary}30` }
               : { color: C.muted }}>

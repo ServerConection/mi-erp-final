@@ -14,6 +14,7 @@ const pool = require('../config/db');
 const { obtenerAnalytics, construirFiltros } = require('../contactabilidad/contactabilidad.analytics');
 const { obtenerUmbrales, UMBRALES_DEFECTO, expresionSeveridad, expresionMinutosEspera } =
   require('../contactabilidad/contactabilidad.severidad');
+const { obtenerCapacidades, columnaOpcional } = require('../contactabilidad/contactabilidad.esquema');
 
 const EMPRESAS = ['NOVONET', 'VELSA'];
 const COOLDOWN_MANUAL_MS = 60_000;
@@ -52,6 +53,7 @@ async function listar(req, res) {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
     const umbrales = await umbralesVigentes();
+    const cols = await obtenerCapacidades(pool);
     const { whereSql, params } = construirFiltros(req.query, umbrales);
 
     const total = await pool.query(
@@ -65,9 +67,10 @@ async function listar(req, res) {
              l.mensajes_cliente_total, l.mensajes_asesor_total,
              l.mensajes_cliente_etapa, l.mensajes_asesor_etapa,
              l.ultimo_mensaje_cliente_at, l.ultimo_mensaje_asesor_at,
-             l.pendiente_por, l.temperatura, l.chat_id,
+             l.pendiente_por, l.temperatura,
+             ${columnaOpcional(cols.chat_id, 'l.chat_id', 'chat_id')},
              l.tiempo_primera_respuesta_seg, l.ultima_sincronizacion_at,
-             l.origen_ultimo_dato,
+             ${columnaOpcional(cols.origen_ultimo_dato, 'l.origen_ultimo_dato', 'origen_ultimo_dato')},
              (${expresionSeveridad('l', umbrales)}) AS severidad,
              (${expresionMinutosEspera('l')}) AS minutos_pendiente
       FROM contactabilidad_leads l ${whereSql}
@@ -122,7 +125,8 @@ async function stats(req, res) {
 async function analytics(req, res, deps = {}) {
   try {
     const umbrales = await umbralesVigentes();
-    const obtener = deps.obtener || ((query) => obtenerAnalytics(pool, query, { umbrales }));
+    const columnas = await obtenerCapacidades(pool);
+    const obtener = deps.obtener || ((query) => obtenerAnalytics(pool, query, { umbrales, columnas }));
     const data = await obtener(req.query);
     res.json({ success: true, data, generado_at: new Date().toISOString() });
   } catch (error) {
@@ -359,41 +363,78 @@ async function exportar(req, res) {
 // ---------------------------------------------------------------------------
 async function estado(req, res) {
   try {
+    const cols = await obtenerCapacidades(pool);
+    const vacio = { rows: [] };
+
     const [runs, eventos, frescura] = await Promise.all([
       pool.query(`
         SELECT DISTINCT ON (empresa, origen) empresa, origen, estado, iniciado_at,
                finalizado_at, leads_leidos, mensajes_insertados, error_resumen
         FROM contactabilidad_sync_runs
         WHERE iniciado_at >= NOW() - INTERVAL '24 hours'
-        ORDER BY empresa, origen, iniciado_at DESC`),
-      pool.query(`
+        ORDER BY empresa, origen, iniciado_at DESC`).catch(() => vacio),
+      cols.eventos_inbox ? pool.query(`
         SELECT estado, COUNT(*)::int AS total, MAX(recibido_at) AS ultimo
         FROM contactabilidad_eventos_inbox
         WHERE recibido_at >= NOW() - INTERVAL '24 hours'
-        GROUP BY estado`),
+        GROUP BY estado`) : Promise.resolve(vacio),
       pool.query(`
         SELECT empresa,
                MAX(actualizado_at) AS ultimo_recalculo,
                MAX(GREATEST(ultimo_mensaje_cliente_at, ultimo_mensaje_asesor_at)) AS ultimo_mensaje,
-               COUNT(*) FILTER (WHERE origen_ultimo_dato = 'WEBHOOK')::int AS por_webhook,
+               ${cols.origen_ultimo_dato
+                 ? "COUNT(*) FILTER (WHERE origen_ultimo_dato = 'WEBHOOK')::int"
+                 : '0'} AS por_webhook,
                COUNT(*)::int AS leads
         FROM contactabilidad_leads GROUP BY empresa`),
     ]);
 
-    const tiempoReal = eventos.rows.some((r) => r.estado === 'PROCESADO' && r.total > 0);
     res.json({
       success: true,
       data: {
         ciclos: runs.rows,
         eventos_webhook: eventos.rows,
         frescura: frescura.rows,
-        webhook_activo: tiempoReal,
+        webhook_activo: eventos.rows.some((r) => r.estado === 'PROCESADO' && r.total > 0),
+        migracion_pendiente: !cols.eventos_inbox || !cols.chat_id,
         empresas_habilitadas: contexto().refrescador.empresas(),
       },
       generado_at: new Date().toISOString(),
     });
   } catch (error) {
     return fallo(res, error, 'No se pudo leer el estado', 'estado');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Conversacion en vivo: se lee de Bitrix y no se guarda en la base
+// ---------------------------------------------------------------------------
+async function conversacion(req, res) {
+  const empresa = empresaValida(req.params.empresa);
+  if (!empresa) return res.status(400).json({ success: false, error: 'Empresa invalida' });
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ success: false, error: 'Negociacion invalida' });
+
+  try {
+    // El lead debe existir en el modulo: impide usar este endpoint para leer
+    // chats arbitrarios del CRM.
+    const { rows } = await pool.query(`
+      SELECT nombre_cliente, asesor_nombre, origen_nombre,
+             COALESCE(etapa_nombre, etapa_id) AS etapa_nombre, fecha_creacion
+      FROM contactabilidad_leads WHERE empresa = $1 AND id_bitrix = $2
+    `, [empresa, id]);
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Lead no encontrado' });
+
+    const data = await contexto().conversacion.obtener(empresa, id, {
+      limite: req.query.limite,
+      forzar: String(req.query.forzar).toLowerCase() === 'true',
+    });
+
+    // El contenido del chat no debe quedar en caches intermedias ni del navegador.
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.json({ success: true, data: { ...data, lead: rows[0] } });
+  } catch (error) {
+    return fallo(res, error, 'No se pudo cargar la conversacion', 'conversacion');
   }
 }
 
@@ -422,6 +463,8 @@ const usuarioDe = (req) => req.user?.usuario || 'anonimo';
 
 async function listarVistas(req, res) {
   try {
+    const cols = await obtenerCapacidades(pool);
+    if (!cols.vistas) return res.json({ success: true, data: [], migracion_pendiente: true });
     const { rows } = await pool.query(`
       SELECT id, usuario, nombre, filtros, compartida, actualizado_at,
              (usuario = $1) AS propia
@@ -440,6 +483,10 @@ async function guardarVista(req, res) {
   if (!nombre) return res.status(400).json({ success: false, error: 'La vista necesita un nombre' });
 
   try {
+    const cols = await obtenerCapacidades(pool);
+    if (!cols.vistas) {
+      return res.status(503).json({ success: false, error: 'Falta ejecutar la migracion de Contactabilidad' });
+    }
     // Solo se guardan claves conocidas: un preset no debe poder inyectar
     // parametros arbitrarios en las consultas del tablero.
     const permitidas = ['empresa', 'desde', 'hasta', 'origen', 'asesor_id', 'etapa',
@@ -475,7 +522,7 @@ async function eliminarVista(req, res) {
 }
 
 module.exports = {
-  listar, stats, analytics, filtros, alertas,
+  listar, stats, analytics, filtros, alertas, conversacion,
   refrescarLead, refrescarGlobal, exportar, estado, webhookBitrix,
   listarVistas, guardarVista, eliminarVista,
   celdaCsv,

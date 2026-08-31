@@ -655,3 +655,186 @@ select:focus, input[type="text"]:focus, input[type="date"]:focus {
   border-bottom-color: var(--border-subtle);
   box-shadow: var(--shadow-sm);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CAPA PREMIUM — sistema visual sobrio
+   ───────────────────────────────────────────────────────────────────────
+   Tres reglas, y nada más:
+
+   1. Sin uppercase ni tracking-widest. La jerarquía se hace con peso y
+      tamaño, no gritando. El texto en versalitas espaciadas es la firma
+      más reconocible de una interfaz generada.
+   2. Una escala de grises y UN acento. El color deja de ser decorativo y
+      pasa a significar algo: verde = activo, ámbar = atención, rojo =
+      problema. Todo lo demás es gris.
+   3. Transiciones de 150-200 ms en color, opacidad y sombra. NUNCA en
+      propiedades que recalculan layout (width, height, padding, top): eso
+      es lo que hace que una interfaz se sienta "gelatinosa" en vez de
+      rápida.
+
+   Nada aquí cambia una sola pantalla existente: son clases nuevas que solo
+   aplican donde se usan. Para migrar una pantalla se cambian sus clases,
+   no se toca este archivo.
+═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Un acento. Uno. */
+  --ui-accent:        #2563eb;
+  --ui-accent-soft:   rgba(37, 99, 235, .08);
+  --ui-accent-ring:   rgba(37, 99, 235, .35);
+
+  /* Grises: la estructura entera se construye con esto */
+  --ui-fg:            #0f172a;   /* texto principal   */
+  --ui-fg-2:          #475569;   /* texto secundario  */
+  --ui-fg-3:          #94a3b8;   /* etiquetas, meta   */
+  --ui-bg:            #ffffff;
+  --ui-bg-2:          #f8fafc;
+  --ui-line:          #e8edf3;   /* borde estándar, más suave que slate-200 */
+  --ui-line-2:        #f1f5f9;   /* separador interno */
+
+  /* Semánticos, desaturados: se usan en puntos y texto, no en bloques */
+  --ui-ok:            #059669;
+  --ui-warn:          #b45309;
+  --ui-bad:           #be123c;
+
+  /* Movimiento: una curva, dos duraciones */
+  --ui-ease:          cubic-bezier(.4, 0, .2, 1);
+  --ui-fast:          150ms;
+  --ui-base:          200ms;
+
+  /* Sombras de un solo tono: sombras "de color" se ven baratas */
+  --ui-shadow:        0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.05);
+  --ui-shadow-hover:  0 2px 4px rgba(15,23,42,.05), 0 4px 12px rgba(15,23,42,.07);
+}
+
+/* ── Transición base ──────────────────────────────────────────────────
+   Lista explícita de propiedades. Jamás `all`: con `all` cualquier cambio
+   de layout se anima por accidente y la interfaz se siente lenta.        */
+.ui-t {
+  transition:
+    color            var(--ui-fast) var(--ui-ease),
+    background-color var(--ui-fast) var(--ui-ease),
+    border-color     var(--ui-fast) var(--ui-ease),
+    box-shadow       var(--ui-base) var(--ui-ease),
+    opacity          var(--ui-fast) var(--ui-ease);
+}
+/* Solo donde el movimiento aporta: transform no recalcula layout. */
+.ui-t-lift { transition: box-shadow var(--ui-base) var(--ui-ease), transform var(--ui-base) var(--ui-ease); }
+
+/* ── Superficies ──────────────────────────────────────────────────── */
+.ui-card {
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow);
+}
+.ui-card-hover:hover { box-shadow: var(--ui-shadow-hover); }
+
+/* ── Tipografía ───────────────────────────────────────────────────────
+   Etiqueta de dato: pequeña y gris, en minúsculas. Sin uppercase.       */
+.ui-label  { font-size: 11.5px; font-weight: 500; color: var(--ui-fg-3); letter-spacing: 0; }
+.ui-value  { font-size: 26px;   font-weight: 600; color: var(--ui-fg); letter-spacing: -.02em; line-height: 1.1; }
+.ui-title  { font-size: 17px;   font-weight: 600; color: var(--ui-fg); letter-spacing: -.01em; }
+.ui-meta   { font-size: 11.5px; font-weight: 400; color: var(--ui-fg-3); }
+.ui-body   { font-size: 13px;   font-weight: 400; color: var(--ui-fg-2); }
+.ui-strong { font-size: 13px;   font-weight: 550; color: var(--ui-fg); }
+/* Cifras: tabulares para que no bailen los dígitos al refrescar */
+.ui-num    { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ── Controles ────────────────────────────────────────────────────── */
+.ui-input {
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: 13px;
+  color: var(--ui-fg);
+  outline: none;
+}
+.ui-input::placeholder { color: var(--ui-fg-3); }
+.ui-input:hover  { border-color: #dbe3ec; }
+.ui-input:focus  { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+
+.ui-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 8px; padding: 7px 13px;
+  font-size: 13px; font-weight: 550;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg); color: var(--ui-fg-2);
+  cursor: pointer;
+}
+.ui-btn:hover:not(:disabled)  { background: var(--ui-bg-2); color: var(--ui-fg); }
+.ui-btn:active:not(:disabled) { background: var(--ui-line-2); }
+.ui-btn:disabled              { opacity: .45; cursor: not-allowed; }
+.ui-btn-primary {
+  background: var(--ui-fg); border-color: var(--ui-fg); color: #fff;
+}
+.ui-btn-primary:hover:not(:disabled)  { background: #1e293b; border-color: #1e293b; color: #fff; }
+.ui-btn-primary:active:not(:disabled) { background: #0f172a; }
+
+/* Foco visible solo por teclado: accesible sin ensuciar el clic */
+.ui-btn:focus-visible, .ui-input:focus-visible, .ui-seg-item:focus-visible {
+  outline: 2px solid var(--ui-accent-ring); outline-offset: 2px;
+}
+
+/* ── Segmentado (pestañas y rangos) ───────────────────────────────── */
+.ui-seg      { display: inline-flex; gap: 2px; background: var(--ui-bg-2); border: 1px solid var(--ui-line); border-radius: 9px; padding: 2px; }
+.ui-seg-item {
+  border-radius: 7px; padding: 6px 12px;
+  font-size: 13px; font-weight: 500; color: var(--ui-fg-3);
+  background: transparent; border: none; cursor: pointer;
+}
+.ui-seg-item:hover        { color: var(--ui-fg-2); }
+.ui-seg-item[data-on="1"] { background: var(--ui-bg); color: var(--ui-fg); font-weight: 550; box-shadow: var(--ui-shadow); }
+
+/* ── Fichas de estado ─────────────────────────────────────────────────
+   Fondo neutro siempre; el color vive en el punto, no en el bloque.
+   Así diez fichas juntas no parecen un semáforo.                       */
+.ui-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--ui-line); border-radius: 999px;
+  padding: 2px 9px 2px 7px;
+  font-size: 12px; font-weight: 500; color: var(--ui-fg-2);
+  background: var(--ui-bg);
+  white-space: nowrap;
+}
+.ui-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; background: var(--ui-fg-3); }
+.ui-dot-ok   { background: var(--ui-ok); }
+.ui-dot-warn { background: var(--ui-warn); }
+.ui-dot-bad  { background: var(--ui-bad); }
+.ui-dot-live { background: var(--ui-ok); animation: uiPulse 2.4s var(--ui-ease) infinite; }
+@keyframes uiPulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* Ficha descartable (filtro activo) */
+.ui-chip-filter { background: var(--ui-fg); border-color: var(--ui-fg); color: #fff; padding-right: 3px; }
+.ui-chip-x {
+  width: 17px; height: 17px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255,255,255,.16); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ui-chip-x:hover { background: rgba(255,255,255,.32); }
+
+/* ── Tablas ───────────────────────────────────────────────────────── */
+.ui-table            { width: 100%; border-collapse: collapse; }
+.ui-table th {
+  text-align: left; padding: 9px 14px;
+  font-size: 11.5px; font-weight: 500; color: var(--ui-fg-3);
+  background: var(--ui-bg-2); border-bottom: 1px solid var(--ui-line);
+  position: sticky; top: 0; z-index: 1;
+}
+.ui-table td         { padding: 10px 14px; border-top: 1px solid var(--ui-line-2); font-size: 13px; color: var(--ui-fg-2); }
+.ui-table tbody tr   { transition: background-color var(--ui-fast) var(--ui-ease); }
+.ui-table tbody tr:hover { background: var(--ui-bg-2); }
+
+/* ── Entrada de contenido ─────────────────────────────────────────────
+   Un fundido corto. Nada de deslizamientos largos: en un tablero que
+   refresca solo, el movimiento repetido cansa.                          */
+@keyframes uiIn { from { opacity: 0 } to { opacity: 1 } }
+.ui-in { animation: uiIn var(--ui-base) var(--ui-ease) both; }
+
+/* Respeta a quien pidió menos movimiento en su sistema operativo. */
+@media (prefers-reduced-motion: reduce) {
+  .ui-t, .ui-t-lift, .ui-table tbody tr { transition: none !important; }
+  .ui-in, .ui-dot-live { animation: none !important; }
+}

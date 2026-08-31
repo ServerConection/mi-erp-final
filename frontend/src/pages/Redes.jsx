@@ -20,6 +20,8 @@ import TabComparativo    from "./TabComparativo";
 import TabAsesorVsPauta  from "./TabAsesorVsPauta";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
 import { forzarSyncInversion } from "../utils/redesSync";
+import { cabecerasSesion } from "../utils/sesion";
+import { ChartCard, Expandible } from "./ChartFrame";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -29,15 +31,15 @@ const C = {
 };
 
 const CANALES = {
-  "ARTS":               { color: "#1e3a8a", bg: "#dbeafe", icon: "brand",     label: "ARTS" },
-  "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "facebook",  label: "ARTS FB" },
-  "ARTS GOOGLE":        { color: "#ea4335", bg: "#fee2e2", icon: "search",    label: "ARTS GG" },
-  "REMARKETING":        { color: "#7c3aed", bg: "#ede9fe", icon: "loop",      label: "REMARKETING" },
-  "VIDIKA":             { color: "#059669", bg: "#d1fae5", icon: "tv",        label: "VIDIKA" },
-  "VIDIKA GOOGLE":      { color: "#059669", bg: "#d1fae5", icon: "tv",        label: "VIDIKA GG" },
-  "POR RECOMENDACIÓN":  { color: "#f59e0b", bg: "#fef3c7", icon: "handshake", label: "RECOMEND." },
-  "MAL INGRESO":        { color: "#94a3b8", bg: "#f1f5f9", icon: "warning",   label: "MAL ING." },
-  "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "help",      label: "SIN MAPEO" },
+  "ARTS":               { color: "#1e3a8a", bg: "#dbeafe", icon: "🎨", label: "ARTS" },
+  "ARTS FACEBOOK":      { color: "#1877f2", bg: "#eff6ff", icon: "📘", label: "ARTS FB" },
+  "ARTS GOOGLE":        { color: "#ea4335", bg: "#fee2e2", icon: "🔍", label: "ARTS GG" },
+  "REMARKETING":        { color: "#7c3aed", bg: "#ede9fe", icon: "🔁", label: "REMARKETING" },
+  "VIDIKA":             { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA" },
+  "VIDIKA GOOGLE":      { color: "#059669", bg: "#d1fae5", icon: "📺", label: "VIDIKA GG" },
+  "POR RECOMENDACIÓN":  { color: "#f59e0b", bg: "#fef3c7", icon: "🤝", label: "RECOMEND." },
+  "MAL INGRESO":        { color: "#94a3b8", bg: "#f1f5f9", icon: "⚠️", label: "MAL ING." },
+  "SIN MAPEO":          { color: "#cbd5e1", bg: "#f8fafc", icon: "❓", label: "SIN MAPEO" },
 };
 
 const ORIGEN_CANAL = {
@@ -71,7 +73,7 @@ const ORIGEN_COLORS = [
 ];
 
 const getCanal     = (o) => { if (!o) return "SIN MAPEO"; if (CANALES[o]) return o; return ORIGEN_CANAL[o.toUpperCase()] || ORIGEN_CANAL[o] || "SIN MAPEO"; };
-const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "help", label: c };
+const getCfg       = (c) => CANALES[c] || { color: C.muted, bg: "#f8fafc", icon: "•", label: c };
 const esPublicidad = (c) => c !== "MAL INGRESO" && c !== "SIN MAPEO";
 const getFechaHoy  = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
 const formatFecha  = (f) => { if (!f) return "—"; const [,m,d] = String(f).split("T")[0].split("-"); return `${d}/${m}`; };
@@ -105,14 +107,14 @@ function SyncInversionButton({ from, to, onSuccess, compact = false }) {
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: compact ? "flex-start" : "flex-end" }}>
-      <button onClick={ejecutar} disabled={syncing} className="px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all disabled:opacity-60"
+      <button onClick={ejecutar} disabled={syncing} className="px-4 py-2 rounded-xl text-[12px] font-black uppercase text-white active:scale-95 shadow-sm transition-all disabled:opacity-60"
         style={{ background: syncing ? C.muted : `linear-gradient(135deg,${C.violet},#5b21b6)` }}>
         {syncing ? "Consultando agencias…" : "↻ Forzar inversión"}
       </button>
-      {resultado && <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, maxWidth: 430, textAlign: compact ? "left" : "right" }}>
+      {resultado && <div style={{ fontSize: 12, fontWeight: 700, color: C.slate, maxWidth: 430, textAlign: compact ? "left" : "right" }}>
         {resultado.map((r) => `${String(r.agency).toUpperCase()}: ${r.ok ? `${fmtUsd2(r.ultimoMonto)} (${r.ultimaFecha || "sin fecha"})` : `ERROR: ${r.error}`}`).join(" · ")}
       </div>}
-      {syncError && <div style={{ fontSize: 10, fontWeight: 700, color: C.danger }}>{syncError}</div>}
+      {syncError && <div style={{ fontSize: 12, fontWeight: 700, color: C.danger }}>{syncError}</div>}
     </div>
   );
 }
@@ -235,7 +237,7 @@ function useMonitoreoData(desde, hasta, canalesSel, refreshKey = 0) {
     const p = buildFiltroParams({ desde, hasta, canalesSel });
 
     const fetchJson = (endpoint) =>
-      fetch(apiUrl(endpoint, p), { signal, cache: "no-store" })
+      fetch(apiUrl(endpoint, p), { signal, cache: "no-store", headers: cabecerasSesion() })
         .then(r => r.json())
         .catch(e => (e.name === "AbortError" ? "aborted" : null));
 
@@ -265,91 +267,6 @@ function useMonitoreoData(desde, hasta, canalesSel, refreshKey = 0) {
 // ─────────────────────────────────────────────────────────────────────────────
 // UI ATOMS
 // ─────────────────────────────────────────────────────────────────────────────
-function ChartModal({ title, onClose, children }) {
-  useEffect(() => {
-    const h = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: C.border }}>
-          <span className="text-sm font-black uppercase tracking-wide" style={{ color: C.primary }}>{title}</span>
-          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 font-black text-sm" style={{ color: C.muted }}>✕</button>
-        </div>
-        <div className="p-6 overflow-auto" style={{ maxHeight: "calc(90vh - 70px)" }}>
-          <ResponsiveContainer width="100%" height={500}>{children}</ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Iconos de trazo — reemplazan los emoji, stroke-width 1.75px consistente en todo el módulo */
-const ICONS = {
-  brand:     <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
-  facebook:  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3.3l.7-4H14V7a1 1 0 0 1 1-1h3z"/>,
-  search:    <><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></>,
-  loop:      <><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></>,
-  tv:        <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M17 2l-5 5-5-5"/></>,
-  handshake: <><path d="M2 12l4-4 4 3 3-3 4 4-3 3-4-3-4 3z"/><path d="M8 15l3 3 3-3"/></>,
-  warning:   <><path d="M10.3 3.9L2.1 18a2 2 0 0 0 1.7 3h16.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
-  help:      <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.9.4-1.4 1-1.4 1.9"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
-  users:     <><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
-  check:     <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
-  clipboard: <><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/></>,
-  box:       <><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></>,
-  dollar:    <><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
-  phone:     <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.7 19.7 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.7 19.7 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>,
-  chart:     <><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></>,
-  trending:  <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,
-  bolt:      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>,
-  target:    <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></>,
-  shuffle:   <><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></>,
-  scope:     <><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></>,
-  file:      <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></>,
-  building:  <><rect x="4" y="2" width="16" height="20" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><line x1="9" y1="17" x2="15" y2="17"/></>,
-  rocket:    <><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 19 2c0 2.52-.63 6.5-4 9a22.35 22.35 0 0 1-3 2z"/><path d="M9 12H4s.55-2.23 2-3c1.62-.87 4 0 4 0"/><path d="M12 15v5s2.23-.55 3-2c.87-1.62 0-4 0-4"/></>,
-  expand:    <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>,
-  calendar:  <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
-};
-function Icon({ name, className = "w-3.5 h-3.5" }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      {ICONS[name] || ICONS.help}
-    </svg>
-  );
-}
-
-function ChartCard({ title, subtitle, accent = C.primary, height = 230, children }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <div className="erp-chart-card">
-        <div className="erp-chart-head">
-          <div className="flex items-center gap-3">
-            <div className="w-1 h-7 rounded-full flex-shrink-0" style={{ background: accent }} />
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
-              {subtitle && <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
-            </div>
-          </div>
-          <button onClick={() => setOpen(true)}
-            className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full"
-            style={{ border: "1px solid var(--border)", color: C.muted, transition: "var(--transition)" }}>
-            <Icon name="expand" className="w-2.5 h-2.5" /> Ampliar
-          </button>
-        </div>
-        <div className="px-5 pb-5"><ResponsiveContainer width="100%" height={height}>{children}</ResponsiveContainer></div>
-      </div>
-      {open && <ChartModal title={title} onClose={() => setOpen(false)}>{children}</ChartModal>}
-    </>
-  );
-}
-
 function Card({ children, className = "" }) {
   return <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${className}`} style={{ borderColor: C.border }}>{children}</div>;
 }
@@ -360,7 +277,7 @@ function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
         <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: accent }} />
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: accent }}>{title}</div>
-          {subtitle && <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
+          {subtitle && <div className="text-[11px] font-medium mt-0.5" style={{ color: C.muted }}>{subtitle}</div>}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap">{badge}{action}</div>
@@ -369,38 +286,34 @@ function CardHeader({ title, subtitle, accent = C.primary, badge, action }) {
 }
 function KpiCard({ label, value, color = C.primary, icon, sub }) {
   return (
-    <div className="erp-kpi" style={{ "--kpi-color": color }}>
-      <div className="erp-kpi-icon">
-        <Icon name={icon} className="w-[18px] h-[18px]" />
-      </div>
+    <div className="rounded-2xl border shadow-sm px-4 py-3 flex items-center gap-3"
+      style={{ borderColor: `${color}25`, background: `linear-gradient(135deg,${color}10,${color}04)`, boxShadow: `0 4px 16px ${color}10` }}>
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: `${color}18` }}>{icon}</div>
       <div className="min-w-0">
-        <div className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: `${color}90` }}>{label}</div>
-        <div className="erp-kpi-value text-xl font-black leading-tight truncate" style={{ color }}>{value}</div>
-        {sub && <div className="text-[8px] font-semibold mt-0.5" style={{ color: C.muted }}>{sub}</div>}
+        <div className="text-[11px] font-black uppercase tracking-widest truncate" style={{ color: `${color}80` }}>{label}</div>
+        <div className="text-xl font-black leading-tight truncate" style={{ color }}>{value}</div>
+        {sub && <div className="text-[11px] font-medium mt-0.5" style={{ color: C.muted }}>{sub}</div>}
       </div>
     </div>
   );
 }
 function CanalBadge({ canal, size = "sm" }) {
   const cfg = getCfg(canal);
-  const cls = size === "sm" ? "px-2 py-0.5 text-[8px] gap-1" : "px-3 py-1 text-[9px] gap-1.5";
-  const iconCls = size === "sm" ? "w-2.5 h-2.5" : "w-3 h-3";
+  const cls = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-3 py-1 text-[11px]";
   return (
-    <span className={`${cls} rounded-full font-black uppercase inline-flex items-center`}
-      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}26`, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }}>
-      <Icon name={cfg.icon} className={iconCls} /> {cfg.label}
+    <span className={`${cls} rounded-full font-black uppercase inline-flex items-center gap-1`}
+      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+      {cfg.icon} {cfg.label}
     </span>
   );
 }
 function VistaToggle({ value, onChange, options, color = C.primary }) {
   return (
-    <div className="inline-flex rounded-full p-[3px] gap-[2px]" style={{ background: "var(--surface-3)" }}>
+    <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: C.border }}>
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)}
-          className="px-3 py-1.5 text-[8px] font-black uppercase rounded-full"
-          style={value === o.value
-            ? { background: "#fff", color, boxShadow: "var(--shadow-sm)", transition: "var(--transition)" }
-            : { background: "transparent", color: C.muted, transition: "var(--transition)" }}>
+          className="px-3 py-1.5 text-[11px] font-black uppercase transition-all"
+          style={value === o.value ? { background: color, color: "#fff" } : { background: "#fff", color: C.muted }}>
           {o.label}
         </button>
       ))}
@@ -411,8 +324,8 @@ function VistaToggle({ value, onChange, options, color = C.primary }) {
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl px-4 py-3 text-[10px] min-w-[160px]">
-      <div className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-800 pb-1 text-[9px]">{label}</div>
+    <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl px-4 py-3 text-[12px] min-w-[160px]">
+      <div className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-800 pb-1 text-[11px]">{label}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center justify-between gap-4 mb-0.5">
           <div className="flex items-center gap-1.5">
@@ -449,7 +362,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
       <div className="px-5 py-3 flex flex-wrap items-center gap-4" style={{ background: "#f8fafc" }}>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: C.primary }} />
-          <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
+          <span className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
         </div>
         <CanalSelector canalesSel={canalesSel} onChange={onCanalesSel} opciones={nombresAgencias} compact />
         {canalesSel.length > 0 && (
@@ -459,7 +372,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
               return (
                 <span key={c} style={{
                   padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
-                  color: cfg.color, fontWeight: 900, fontSize: "8px",
+                  color: cfg.color, fontWeight: 900, fontSize: "11px",
                   border: `1px solid ${cfg.color}30`,
                   display: "inline-flex", alignItems: "center", gap: "4px",
                 }}>
@@ -475,7 +388,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
       {canalesSel.length === 1 && lineasDe(canalesSel[0]).length > 0 && (
         <div className="px-5 py-3 border-t" style={{ borderColor: C.border }}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[8px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
+            <span className="text-[11px] font-black uppercase tracking-widest flex-shrink-0" style={{ color: C.muted }}>
               📡 Líneas del canal {getCfg(canalesSel[0]).label}:
             </span>
             {lineasDe(canalesSel[0]).map((origen) => {
@@ -484,7 +397,7 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
                 <span key={origen} style={{
                   padding: "3px 10px", borderRadius: "8px",
                   background: `${cfg.color}10`, color: cfg.color,
-                  fontWeight: 700, fontSize: "8px",
+                  fontWeight: 700, fontSize: "11px",
                   border: `1px solid ${cfg.color}22`,
                   display: "inline-flex", alignItems: "center", gap: "4px",
                 }}>
@@ -508,11 +421,11 @@ function PanelFiltrosGlobales({ canalesSel, onCanalesSel, agencias = [] }) {
                 <div key={c} className="flex flex-wrap items-center gap-2">
                   <span style={{
                     padding: "2px 8px", borderRadius: "9999px", background: cfg.bg,
-                    color: cfg.color, fontWeight: 900, fontSize: "8px",
+                    color: cfg.color, fontWeight: 900, fontSize: "11px",
                     border: `1px solid ${cfg.color}30`, flexShrink: 0,
                     display: "inline-flex", alignItems: "center", gap: "4px",
                   }}>{cfg.icon} {cfg.label}</span>
-                  <span style={{ fontSize: "8px", color: C.muted }}>→</span>
+                  <span style={{ fontSize: "11px", color: C.muted }}>→</span>
                   {origenes.map(o => (
                     <span key={o} style={{
                       padding: "2px 8px", borderRadius: "6px",
@@ -557,15 +470,14 @@ function CanalDetalleCard({ canalData, totalLeads }) {
       style={{ borderColor: `${cfg.color}30`, background: cfg.bg }}>
       <div className="px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl flex-shrink-0">{cfg.icon}</span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase" style={{ color: cfg.color }}>{cfg.label}</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${cfg.color}20`, color: cfg.color }}>
+              <span className="text-[12px] font-black uppercase" style={{ color: cfg.color }}>{cfg.label}</span>
+              <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${cfg.color}20`, color: cfg.color }}>
                 {shareLeads.toFixed(0)}% del total
               </span>
             </div>
-            <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>
+            <div className="text-[11px] font-medium mt-0.5" style={{ color: C.muted }}>
               {origenes.length} línea{origenes.length !== 1 ? "s" : ""} de publicidad
             </div>
           </div>
@@ -573,14 +485,14 @@ function CanalDetalleCard({ canalData, totalLeads }) {
         <button onClick={() => setExpandido(!expandido)}
           className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all"
           style={{ background: `${cfg.color}20`, color: cfg.color }}>
-          <span className="text-[10px] font-black">{expandido ? "▲" : "▼"}</span>
+          <span className="text-[12px] font-black">{expandido ? "▲" : "▼"}</span>
         </button>
       </div>
       <div className="px-4 pb-3 space-y-2">
         <div>
           <div className="flex justify-between mb-0.5">
-            <span className="text-[8px] font-bold" style={{ color: C.muted }}>Participación leads</span>
-            <span className="text-[9px] font-black" style={{ color: cfg.color }}>{canalData.n_leads} leads</span>
+            <span className="text-[11px] font-bold" style={{ color: C.muted }}>Participación leads</span>
+            <span className="text-[11px] font-black" style={{ color: cfg.color }}>{canalData.n_leads} leads</span>
           </div>
           <div className="w-full bg-white rounded-full h-1.5 overflow-hidden">
             <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(shareLeads, 100)}%`, background: cfg.color }} />
@@ -589,8 +501,8 @@ function CanalDetalleCard({ canalData, totalLeads }) {
         <div className="grid grid-cols-5 gap-1 pt-1">
           {etapas.map((e) => (
             <div key={e.label} className="text-center">
-              <div className="text-[9px] font-black leading-tight" style={{ color: e.color }}>{e.val}</div>
-              <div className="text-[7px] font-bold uppercase" style={{ color: C.muted }}>{e.label}</div>
+              <div className="text-[11px] font-black leading-tight" style={{ color: e.color }}>{e.val}</div>
+              <div className="text-[10px] font-bold uppercase" style={{ color: C.muted }}>{e.label}</div>
               <div className="w-full mt-0.5 rounded-full overflow-hidden" style={{ height: "2px", background: `${e.color}20` }}>
                 <div style={{ width: `${Math.min(e.pct, 100)}%`, height: "100%", background: e.color }} />
               </div>
@@ -598,28 +510,28 @@ function CanalDetalleCard({ canalData, totalLeads }) {
           ))}
         </div>
         <div className="flex flex-wrap gap-2 pt-1 border-t" style={{ borderColor: `${cfg.color}20` }}>
-          <div className="text-[8px]"><span style={{ color: C.muted }}>Efectividad: </span><span className="font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</span></div>
-          <div className="text-[8px]"><span style={{ color: C.muted }}>ATC: </span><span className="font-black" style={{ color: pctAtc > 40 ? C.danger : pctAtc > 20 ? C.warning : C.success }}>{pctAtc.toFixed(1)}%</span></div>
-          {canalData.inversion_usd > 0 && <div className="text-[8px]"><span style={{ color: C.muted }}>Inv: </span><span className="font-black" style={{ color: C.violet }}>{fmtUsd(canalData.inversion_usd)}</span></div>}
-          {cpl && <div className="text-[8px]"><span style={{ color: C.muted }}>CPL: </span><span className="font-black" style={{ color: C.violet }}>${cpl.toFixed(2)}</span></div>}
+          <div className="text-[11px]"><span style={{ color: C.muted }}>Efectividad: </span><span className="font-black" style={{ color: pctColor(ef) }}>{ef.toFixed(1)}%</span></div>
+          <div className="text-[11px]"><span style={{ color: C.muted }}>ATC: </span><span className="font-black" style={{ color: pctAtc > 40 ? C.danger : pctAtc > 20 ? C.warning : C.success }}>{pctAtc.toFixed(1)}%</span></div>
+          {canalData.inversion_usd > 0 && <div className="text-[11px]"><span style={{ color: C.muted }}>Inv: </span><span className="font-black" style={{ color: C.violet }}>{fmtUsd(canalData.inversion_usd)}</span></div>}
+          {cpl && <div className="text-[11px]"><span style={{ color: C.muted }}>CPL: </span><span className="font-black" style={{ color: C.violet }}>${cpl.toFixed(2)}</span></div>}
         </div>
       </div>
       {expandido && (
         <div className="border-t px-4 py-3" style={{ borderColor: `${cfg.color}25`, background: "#ffffff60" }}>
-          <div className="text-[8px] font-black uppercase mb-2" style={{ color: cfg.color }}>Líneas / Orígenes</div>
+          <div className="text-[11px] font-black uppercase mb-2" style={{ color: cfg.color }}>Líneas / Orígenes</div>
           <div className="flex flex-wrap gap-1.5">
             {origenes.length > 0 ? origenes.map((origen) => (
               <span key={origen} className="text-[7.5px] px-2 py-1 rounded-lg font-medium"
                 style={{ background: "#fff", color: C.slate, border: `1px solid ${cfg.color}25` }}>
                 <span style={{ color: cfg.color }}>›</span> {origen}
               </span>
-            )) : <span className="text-[8px] italic" style={{ color: C.muted }}>Sin orígenes mapeados</span>}
+            )) : <span className="text-[11px] italic" style={{ color: C.muted }}>Sin orígenes mapeados</span>}
           </div>
           <div className="mt-2 pt-2 border-t grid grid-cols-2 gap-2" style={{ borderColor: `${cfg.color}15` }}>
-            <div className="text-[8px]"><span style={{ color: C.muted }}>Seguimiento: </span><span className="font-black" style={{ color: C.slate }}>{canalData.seguimiento_negociacion || 0}</span></div>
-            <div className="text-[8px]"><span style={{ color: C.muted }}>Fuera cob.: </span><span className="font-black" style={{ color: C.danger }}>{canalData.fuera_cobertura || 0}</span></div>
-            <div className="text-[8px]"><span style={{ color: C.muted }}>Innegociable: </span><span className="font-black" style={{ color: C.warning }}>{canalData.innegociable || 0}</span></div>
-            <div className="text-[8px]"><span style={{ color: C.muted }}>Backlog: </span><span className="font-black" style={{ color: C.cyan }}>{canalData.activo_backlog || 0}</span></div>
+            <div className="text-[11px]"><span style={{ color: C.muted }}>Seguimiento: </span><span className="font-black" style={{ color: C.slate }}>{canalData.seguimiento_negociacion || 0}</span></div>
+            <div className="text-[11px]"><span style={{ color: C.muted }}>Fuera cob.: </span><span className="font-black" style={{ color: C.danger }}>{canalData.fuera_cobertura || 0}</span></div>
+            <div className="text-[11px]"><span style={{ color: C.muted }}>Innegociable: </span><span className="font-black" style={{ color: C.warning }}>{canalData.innegociable || 0}</span></div>
+            <div className="text-[11px]"><span style={{ color: C.muted }}>Backlog: </span><span className="font-black" style={{ color: C.cyan }}>{canalData.activo_backlog || 0}</span></div>
           </div>
         </div>
       )}
@@ -661,7 +573,7 @@ function AtcEtapasPanel({ atcData }) {
       <CardHeader title="Motivos ATC — Análisis por Etapa" accent={C.danger}
         badge={
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.danger}12`, color: C.danger }}>{totalAtc} total</span>
+            <span className="text-[11px] font-black px-2 py-1 rounded-full" style={{ background: `${C.danger}12`, color: C.danger }}>{totalAtc} total</span>
             <VistaToggle value={vistaAtc} onChange={setVistaAtc} color={C.danger}
               options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />
           </div>
@@ -675,12 +587,12 @@ function AtcEtapasPanel({ atcData }) {
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className="text-base">{etapa.icon}</span>
-                    <span className="text-[10px] font-black uppercase" style={{ color: etapa.color }}>{etapa.label}</span>
-                    <span className="text-[8px]" style={{ color: C.muted }}>{etapa.descripcion}</span>
+                    <span className="text-[12px] font-black uppercase" style={{ color: etapa.color }}>{etapa.label}</span>
+                    <span className="text-[11px]" style={{ color: C.muted }}>{etapa.descripcion}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black" style={{ color: etapa.color }}>{etapa.cantidad}</span>
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${etapa.color}20`, color: etapa.color }}>{pct.toFixed(1)}%</span>
+                    <span className="text-[12px] font-black" style={{ color: etapa.color }}>{etapa.cantidad}</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${etapa.color}20`, color: etapa.color }}>{pct.toFixed(1)}%</span>
                   </div>
                 </div>
                 <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${etapa.color}20` }}>
@@ -697,12 +609,12 @@ function AtcEtapasPanel({ atcData }) {
             const pct = totalAtc > 0 ? ((n(row.cantidad) / totalAtc) * 100).toFixed(1) : 0;
             return (
               <div key={i} className="flex items-center gap-3">
-                <div className="text-[9px] font-bold w-44 truncate" style={{ color: C.slate }}>{row.motivo_atc}</div>
+                <div className="text-[11px] font-bold w-44 truncate" style={{ color: C.slate }}>{row.motivo_atc}</div>
                 <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: `${C.danger}15` }}>
                   <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: C.danger }} />
                 </div>
-                <div className="text-[9px] font-black w-8 text-right" style={{ color: C.danger }}>{row.cantidad}</div>
-                <div className="text-[9px] w-10 text-right" style={{ color: C.muted }}>{pct}%</div>
+                <div className="text-[11px] font-black w-8 text-right" style={{ color: C.danger }}>{row.cantidad}</div>
+                <div className="text-[11px] w-10 text-right" style={{ color: C.muted }}>{pct}%</div>
               </div>
             );
           })}
@@ -739,12 +651,12 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, ori
       <div>
         {/* Badge modo desglose */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "8px", fontWeight: 900, padding: "3px 10px", borderRadius: "9999px",
+          <span style={{ fontSize: "11px", fontWeight: 900, padding: "3px 10px", borderRadius: "9999px",
             background: "#dbeafe", color: "#1e3a8a", border: "1px solid #1e3a8a30" }}>
             🔍 Desglose por línea — {origenesUnicos.length} orígenes en {getCfg(canalesFiltrados[0]).label}
           </span>
           {origenesUnicos.map((o, i) => (
-            <span key={o} style={{ fontSize: "7px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px",
+            <span key={o} style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px",
               background: `${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}14`,
               color: ORIGEN_COLORS[i % ORIGEN_COLORS.length],
               border: `1px solid ${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}25` }}>
@@ -755,18 +667,18 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, ori
         <ResponsiveContainer width="100%" height={height}>
           <ComposedChart data={dataFinal} margin={{ top: 8, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis yAxisId="vol" tick={{ fontSize: 9, fill: C.muted }} width={38}
-              label={{ value: "Leads", angle: -90, position: "insideLeft", fontSize: 8, fill: C.muted, dy: 25 }} />
-            <YAxis yAxisId="jot" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={32}
-              label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 8, fill: C.muted, dy: -20 }} />
+            <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis yAxisId="vol" tick={{ fontSize: 11, fill: C.muted }} width={38}
+              label={{ value: "Leads", angle: -90, position: "insideLeft", fontSize: 11, fill: C.muted, dy: 25 }} />
+            <YAxis yAxisId="jot" orientation="right" tick={{ fontSize: 11, fill: C.muted }} width={32}
+              label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 11, fill: C.muted, dy: -20 }} />
             <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 9 }} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-              <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+              <LabelList dataKey="Leads" position="top" style={{ fontSize: 10, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
             </Bar>
             <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-              <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+              <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 10, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
             </Bar>
             {origenesUnicos.map((orig, i) => (
               <Line key={orig} yAxisId="jot" type="monotone"
@@ -776,7 +688,7 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, ori
                 dot={{ r: 3, fill: ORIGEN_COLORS[i % ORIGEN_COLORS.length], strokeWidth: 0 }}
                 activeDot={{ r: 6 }} connectNulls>
                 <LabelList dataKey={`JOT·${orig.slice(0, 18)}`} position="top"
-                  style={{ fontSize: 7, fill: ORIGEN_COLORS[i % ORIGEN_COLORS.length], fontWeight: 800 }}
+                  style={{ fontSize: 10, fill: ORIGEN_COLORS[i % ORIGEN_COLORS.length], fontWeight: 800 }}
                   formatter={v => v > 0 ? v : ""} />
               </Line>
             ))}
@@ -797,25 +709,25 @@ function GraficoFunnelCombinado({ diasData, tendCanalData, canalesPresentes, ori
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={dataFinal} margin={{ top: 8, right: 20, left: 0, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-        <YAxis yAxisId="vol" tick={{ fontSize: 9, fill: C.muted }} width={38}
-          label={{ value: "Leads", angle: -90, position: "insideLeft", fontSize: 8, fill: C.muted, dy: 25 }} />
-        <YAxis yAxisId="jot" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={32}
-          label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 8, fill: C.muted, dy: -20 }} />
+        <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: C.muted }} />
+        <YAxis yAxisId="vol" tick={{ fontSize: 11, fill: C.muted }} width={38}
+          label={{ value: "Leads", angle: -90, position: "insideLeft", fontSize: 11, fill: C.muted, dy: 25 }} />
+        <YAxis yAxisId="jot" orientation="right" tick={{ fontSize: 11, fill: C.muted }} width={32}
+          label={{ value: "JOT", angle: 90, position: "insideRight", fontSize: 11, fill: C.muted, dy: -20 }} />
         <Tooltip content={<CustomTooltip />} />
-        <Legend wrapperStyle={{ fontSize: 9 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
         <Bar yAxisId="vol" dataKey="Leads" name="Leads total" fill={`${C.primary}35`} stroke={C.primary} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-          <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+          <LabelList dataKey="Leads" position="top" style={{ fontSize: 10, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
         </Bar>
         <Bar yAxisId="vol" dataKey="V. Subida" name="Venta Subida" fill={`${C.success}70`} stroke={C.success} strokeWidth={0.5} radius={[3,3,0,0]} barSize={20}>
-          <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+          <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 10, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
         </Bar>
         {canalesPresentes.map((canal) => (
           <Line key={canal} yAxisId="jot" type="monotone" dataKey={`JOT·${getCfg(canal).label}`}
             stroke={getCfg(canal).color} strokeWidth={2.5}
             dot={{ r: 3, fill: getCfg(canal).color, strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls>
             <LabelList dataKey={`JOT·${getCfg(canal).label}`} position="top"
-              style={{ fontSize: 7, fill: getCfg(canal).color, fontWeight: 800 }}
+              style={{ fontSize: 10, fill: getCfg(canal).color, fontWeight: 800 }}
               formatter={v => v > 0 ? v : ""} />
           </Line>
         ))}
@@ -906,13 +818,13 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="users"     color={C.primary} sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
-        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="handshake" color={C.success} sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}%` : undefined} />
-        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="clipboard" color={C.cyan}    sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
-        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="check"     color={C.success} sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
-        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="box"     color={C.sky}   sub="pendientes activar" />
-        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="dollar" color={C.violet} sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
-        <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="phone"
+        <KpiCard label="Leads Totales"  value={totalLeads || "—"} icon="👥" color={C.primary} sub={totalNeg > 0 ? `${totalNeg} negociables` : undefined} />
+        <KpiCard label="Negociables"    value={totalNeg   || "—"} icon="🤝" color={C.success} sub={totalLeads > 0 ? `${((totalNeg/totalLeads)*100).toFixed(1)}%` : undefined} />
+        <KpiCard label="Ing. JOT"       value={totalJot   || "—"} icon="📋" color={C.cyan}    sub={totalVta > 0 ? `${totalVta} V.Subida` : undefined} />
+        <KpiCard label="Activos Mes"    value={totalAct   || "—"} icon="✅" color={C.success} sub={efect > 0 ? `${efect.toFixed(1)}% efectividad` : undefined} />
+        <KpiCard label="Backlog Activo" value={totalBacklog || "—"} icon="📦" color={C.sky}   sub="pendientes activar" />
+        <KpiCard label="Inversión"      value={totalInv > 0 ? fmtUsd(totalInv) : "—"} icon="💰" color={C.violet} sub={cplGral ? `CPL $${cplGral.toFixed(2)}` : undefined} />
+        <KpiCard label="% ATC / SAC"    value={pctAtcGral > 0 ? fmtPct(pctAtcGral) : "—"} icon="📞"
           color={pctAtcGral > 40 ? C.danger : pctAtcGral > 20 ? C.warning : C.success}
           sub={`${totalAtc} leads ATC`} />
       </div>
@@ -923,7 +835,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
           <CardHeader title="Canales de Publicidad" subtitle="Orígenes, funnel y métricas por canal" accent={C.primary}
             badge={
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{porCanal.length} canales</span>
+                <span className="text-[11px] font-black px-2 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{porCanal.length} canales</span>
                 <VistaToggle value={vistaCanal} onChange={setVistaCanal} color={C.primary}
                   options={[{ value:"detalle", label:"Detalle" }, { value:"tabla", label:"Tabla" }]} />
               </div>
@@ -944,7 +856,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
             </div>
           ) : (
             <div className="overflow-auto max-h-72">
-              <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+              <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
                 <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
                   <tr>{["CANAL","LEADS","NEGOC.","ATC","V.SUB.","JOT","ACTIVOS","INV.$","CPL","% EF.JOT","% EF.CRM","% EF.PAU."].map(h => (
                     <th key={h} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{h}</th>
@@ -983,14 +895,14 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
       {/* Tabla métricas diarias */}
       <Card>
         <CardHeader title="Métricas por Canal y Día" subtitle="Inversión sin duplicar — agrupada por canal×día" accent={C.primary}
-          badge={<span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{filasConCalc.length} registros</span>}
+          badge={<span className="text-[11px] font-black px-3 py-1 rounded-full" style={{ background: `${C.primary}12`, color: C.primary }}>{filasConCalc.length} registros</span>}
           action={<VistaToggle value={vistaTabla} onChange={setVistaTabla} color={C.primary}
             options={[{ value:"canal", label:"Por Canal" }, { value:"dia", label:"Por Día" }]} />} />
         <div className="overflow-auto max-h-96">
           {filasConCalc.length === 0
             ? <div className="text-center py-12 text-[11px]" style={{ color: C.muted }}>Sin datos para el período</div>
             : (
-              <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+              <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
                 <thead className="sticky top-0 z-10" style={{ background: C.light, borderBottom: `2px solid ${C.border}` }}>
                   <tr>{cols.map((c) => <th key={c.key} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{c.label}</th>)}</tr>
                 </thead>
@@ -1024,7 +936,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
             badge={<VistaToggle value={vistaCity} onChange={setVistaCity} color={C.cyan}
               options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />} />
           <div className="overflow-auto max-h-72">
-            <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+            <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
               <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
                 <tr>{(vistaCity === "resumen" ? ["CIUDAD","PROV.","LEADS","ACTIVOS","JOT","% ACT."] : ["FECHA","CIUDAD","LEADS","ACTIVOS","% ACT."]).map(h => (
                   <th key={h} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{h}</th>
@@ -1035,7 +947,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
                   <tr key={i} className="border-b hover:bg-slate-50" style={{ borderColor: C.border }}>
                     {vistaCity === "resumen" ? <>
                       <td className="px-3 py-1.5 border-r font-black" style={{ color: C.cyan, borderColor: C.border }}>{row.ciudad}</td>
-                      <td className="px-3 py-1.5 border-r text-[8px]" style={{ color: C.muted, borderColor: C.border }}>{row.provincia}</td>
+                      <td className="px-3 py-1.5 border-r text-[11px]" style={{ color: C.muted, borderColor: C.border }}>{row.provincia}</td>
                       <td className="px-3 py-1.5 border-r text-center" style={{ borderColor: C.border }}>{row.total_leads}</td>
                       <td className="px-3 py-1.5 border-r text-center font-black" style={{ color: C.success, borderColor: C.border }}>{row.activos}</td>
                       <td className="px-3 py-1.5 border-r text-center" style={{ borderColor: C.border }}>{row.ingresos_jot}</td>
@@ -1062,7 +974,7 @@ function TabMonitoreoGeneral({ data, loading, canalesSel = [] }) {
           badge={<VistaToggle value={vistaHora} onChange={setVistaHora} color={C.violet}
             options={[{ value:"resumen", label:"Resumen" }, { value:"detalle", label:"Detalle" }]} />} />
         <div className="overflow-auto max-h-64">
-          <table className="text-[9px] font-mono border-collapse w-full whitespace-nowrap">
+          <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
             <thead className="sticky top-0 border-b" style={{ background: C.light, borderColor: C.border }}>
               <tr>{(vistaHora === "resumen" ? ["HORA","LEADS","ATC","% ATC"] : ["FECHA","HORA","LEADS","ATC","% ATC"]).map(h => (
                 <th key={h} className="px-3 py-2 border-r text-center font-black uppercase" style={{ color: C.muted, borderColor: C.border }}>{h}</th>
@@ -1202,14 +1114,14 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
                   ? `Desglose por Línea — ${canalFiltradoCfg?.label} · Leads & JOT por Origen`
                   : "Leads & Venta Subida (total) · Ingresos JOT por Campaña"}
               </div>
-              <div className="text-[9px] font-medium mt-0.5" style={{ color: C.muted }}>
+              <div className="text-[11px] font-medium mt-0.5" style={{ color: C.muted }}>
                 {modoDesglose
                   ? `Barras = totales del canal · Líneas = JOT por cada línea/origen`
                   : "Barras = totales consolidados · Líneas = JOT desglosado por canal · Labels siempre visibles"}
               </div>
             </div>
           </div>
-          <button onClick={() => setOpenFunnel(true)} className="text-[8px] font-black uppercase px-3 py-1 rounded-full border hover:shadow-sm transition-all" style={{ borderColor: C.border, color: C.muted }}>⤢ Ampliar</button>
+          <button onClick={() => setOpenFunnel(true)} className="text-[11px] font-black uppercase px-3 py-1 rounded-full border hover:shadow-sm transition-all" style={{ borderColor: C.border, color: C.muted }}>⤢ Ampliar</button>
         </div>
         <div className="p-5">
           <GraficoFunnelCombinado
@@ -1224,7 +1136,7 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <div className="px-5 pb-4 flex flex-wrap gap-1.5">
           {modoDesglose ? (
             [...new Set(origenData.map(r => r.origen))].map((orig, i) => (
-              <span key={orig} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+              <span key={orig} className="text-[10px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
                 style={{ background: `${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}15`,
                   color: ORIGEN_COLORS[i % ORIGEN_COLORS.length],
                   border: `1px solid ${ORIGEN_COLORS[i % ORIGEN_COLORS.length]}25` }}>
@@ -1233,7 +1145,7 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
             ))
           ) : (
             canalesPresentes.map(canal => (
-              <span key={canal} className="text-[7px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+              <span key={canal} className="text-[10px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
                 style={{ background: getCfg(canal).bg, color: getCfg(canal).color, border: `1px solid ${getCfg(canal).color}30` }}>
                 {getCfg(canal).icon} JOT {getCfg(canal).label}
               </span>
@@ -1263,20 +1175,20 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
       <ChartCard title="Gestionables & Venta Subida por Canal" accent={C.success} height={260}>
         <BarChart data={gestionBarData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted }} />
-          <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} />
-          <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.muted }} />
+          <YAxis tick={{ fontSize: 11, fill: C.muted }} width={35} />
+          <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 12 }} />
           <Bar dataKey="Leads" radius={[4,4,0,0]} opacity={0.35}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+            <LabelList dataKey="Leads" position="top" style={{ fontSize: 10, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
           <Bar dataKey="Negociables" radius={[4,4,0,0]} opacity={0.65}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="Negociables" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
+            <LabelList dataKey="Negociables" position="top" style={{ fontSize: 10, fontWeight: 700 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
           <Bar dataKey="V. Subida" radius={[4,4,0,0]}>
             {gestionBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 8, fontWeight: 900 }} formatter={v => v > 0 ? v : ""} />
+            <LabelList dataKey="V. Subida" position="top" style={{ fontSize: 11, fontWeight: 900 }} formatter={v => v > 0 ? v : ""} />
           </Bar>
         </BarChart>
       </ChartCard>
@@ -1288,7 +1200,7 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
               label={({ name, value }) => `${name}: ${value}`} labelLine={true}>
               {donaLeads.map((e, i) => <Cell key={i} fill={e.fill} />)}
             </Pie>
-            <Legend wrapperStyle={{ fontSize: 9 }} /><Tooltip />
+            <Legend wrapperStyle={{ fontSize: 11 }} /><Tooltip />
           </PieChart>
         </ChartCard>
         <ChartCard title="Inversión por Canal" accent={C.violet} height={220}>
@@ -1297,7 +1209,7 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
               label={({ name, value }) => `${name}: $${value}`} labelLine={true}>
               {donaInv.map((e, i) => <Cell key={i} fill={e.fill} />)}
             </Pie>
-            <Legend wrapperStyle={{ fontSize: 9 }} formatter={(v, e) => `${v}: ${fmtUsd(e.payload.value)}`} />
+            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v, e) => `${v}: ${fmtUsd(e.payload.value)}`} />
             <Tooltip formatter={v => fmtUsd(v)} />
           </PieChart>
         </ChartCard>
@@ -1307,35 +1219,35 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="% Efectividad (JOT / CRM / Pauta) vs % ATC" accent={C.warning} height={260}>
           <LineChart data={diasData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={35} unit="%" domain={[0, 'auto']} />
-            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 9 }} />
+            <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis tick={{ fontSize: 11, fill: C.muted }} width={35} unit="%" domain={[0, 'auto']} />
+            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="% Ef.JOT"   stroke={C.success} strokeWidth={2.5} dot={{ r: 3 }}>
-              <LabelList dataKey="% Ef.JOT"   position="top"    style={{ fontSize: 7, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% Ef.JOT"   position="top"    style={{ fontSize: 10, fill: C.success, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
             <Line type="monotone" dataKey="% Ef.CRM"   stroke={C.primary} strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="5 3">
-              <LabelList dataKey="% Ef.CRM"   position="top"    style={{ fontSize: 7, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% Ef.CRM"   position="top"    style={{ fontSize: 10, fill: C.primary, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
             <Line type="monotone" dataKey="% Ef.Pauta" stroke={C.warning} strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="2 2">
-              <LabelList dataKey="% Ef.Pauta" position="top"    style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% Ef.Pauta" position="top"    style={{ fontSize: 10, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
             <Line type="monotone" dataKey="% ATC"      stroke={C.danger}  strokeWidth={2}   dot={{ r: 3 }} strokeDasharray="4 2">
-              <LabelList dataKey="% ATC"      position="bottom" style={{ fontSize: 7, fill: C.danger,  fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
+              <LabelList dataKey="% ATC"      position="bottom" style={{ fontSize: 10, fill: C.danger,  fontWeight: 700 }} formatter={v => v > 0 ? `${v}%` : ""} />
             </Line>
           </LineChart>
         </ChartCard>
         <ChartCard title="Inversión & CPL Diario" accent={C.violet} height={230}>
           <BarChart data={diasData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis yAxisId="l" tick={{ fontSize: 9, fill: C.muted }} width={50} />
-            <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 9, fill: C.muted }} width={35} />
-            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 10 }} />
+            <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis yAxisId="l" tick={{ fontSize: 11, fill: C.muted }} width={50} />
+            <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: C.muted }} width={35} />
+            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar yAxisId="l" dataKey="Inv.$" fill={C.violet} radius={[4,4,0,0]} opacity={0.8}>
-              <LabelList dataKey="Inv.$" position="top" style={{ fontSize: 7, fill: C.violet, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
+              <LabelList dataKey="Inv.$" position="top" style={{ fontSize: 10, fill: C.violet, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
             </Bar>
             <Line yAxisId="r" type="monotone" dataKey="CPL" stroke={C.warning} strokeWidth={2.5} dot={{ r: 3 }}>
-              <LabelList dataKey="CPL" position="top" style={{ fontSize: 7, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
+              <LabelList dataKey="CPL" position="top" style={{ fontSize: 10, fill: C.warning, fontWeight: 700 }} formatter={v => v > 0 ? `$${v}` : ""} />
             </Line>
           </BarChart>
         </ChartCard>
@@ -1345,12 +1257,12 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="Leads por Hora del Día" accent={C.cyan} height={230}>
           <BarChart data={horaData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="hora" tick={{ fontSize: 8, fill: C.muted }} />
-            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
+            <XAxis dataKey="hora" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis tick={{ fontSize: 11, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="Leads" radius={[4,4,0,0]}>
               {horaData.map((d, i) => <Cell key={i} fill={d["Leads"] === maxL ? C.primary : "#93c5fd"} />)}
-              <LabelList dataKey="Leads" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
+              <LabelList dataKey="Leads" position="top" style={{ fontSize: 10, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
                 content={({ x, y, width, value, index }) => {
                   if (!value) return null;
                   const isMax = horaData[index]?.["Leads"] === maxL;
@@ -1362,12 +1274,12 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="Soporte ATC por Hora" accent={C.danger} height={230}>
           <BarChart data={horaData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="hora" tick={{ fontSize: 8, fill: C.muted }} />
-            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
+            <XAxis dataKey="hora" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis tick={{ fontSize: 11, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="ATC" radius={[4,4,0,0]}>
               {horaData.map((d, i) => <Cell key={i} fill={d["ATC"] === maxA ? C.danger : "#fca5a5"} />)}
-              <LabelList dataKey="ATC" position="top" style={{ fontSize: 7, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
+              <LabelList dataKey="ATC" position="top" style={{ fontSize: 10, fontWeight: 700 }} formatter={v => v > 0 ? v : ""}
                 content={({ x, y, width, value, index }) => {
                   if (!value) return null;
                   const isMax = horaData[index]?.["ATC"] === maxA;
@@ -1382,14 +1294,14 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <Card>
           <CardHeader title="Mapa de Calor — Leads × Hora × Día de Semana" accent={C.primary} />
           <div className="p-5 overflow-auto">
-            <div className="inline-flex gap-1.5 text-[8px]">
+            <div className="inline-flex gap-1.5 text-[11px]">
               <div className="flex flex-col gap-1.5">
                 <div className="h-7" />
                 {heatHoras.map(h => <div key={h} className="h-8 w-9 flex items-center justify-end pr-1 font-black" style={{ color: C.muted }}>{h}</div>)}
               </div>
               {DIAS_SEMANA.map(dia => (
                 <div key={dia} className="flex flex-col gap-1.5">
-                  <div className="h-7 w-12 flex items-center justify-center font-black uppercase text-[8px]" style={{ color: C.muted }}>{dia}</div>
+                  <div className="h-7 w-12 flex items-center justify-center font-black uppercase text-[11px]" style={{ color: C.muted }}>{dia}</div>
                   {heatHoras.map(h => {
                     const v = heatRaw[h]?.[dia] || 0;
                     return (
@@ -1411,8 +1323,8 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="Embudo de Conversión" accent={C.success} height={220}>
           <BarChart data={embudo} layout="vertical" margin={{ top: 5, right: 50, left: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis type="category" dataKey="e" tick={{ fontSize: 9, fill: C.muted }} width={80} />
+            <XAxis type="number" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis type="category" dataKey="e" tick={{ fontSize: 11, fill: C.muted }} width={80} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="v" radius={[0,4,4,0]}>
               {embudo.map((_, i) => <Cell key={i} fill={embudoColors[i]} opacity={0.9} />)}
@@ -1426,8 +1338,8 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="Ciclo de Venta" accent={C.warning} height={220}>
           <BarChart data={cicloData} margin={{ top: 16, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="c" tick={{ fontSize: 10, fill: C.muted }} />
-            <YAxis tick={{ fontSize: 9, fill: C.muted }} width={30} />
+            <XAxis dataKey="c" tick={{ fontSize: 12, fill: C.muted }} />
+            <YAxis tick={{ fontSize: 11, fill: C.muted }} width={30} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="v" radius={[4,4,0,0]}>
               {cicloData.map((_, i) => <Cell key={i} fill={cicloColors[i]} opacity={0.9} />)}
@@ -1441,8 +1353,8 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
         <ChartCard title="Ranking Motivos ATC" accent={C.danger} height={220}>
           <BarChart data={atcData} layout="vertical" margin={{ top: 5, right: 20, left: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 9, fill: C.muted }} />
-            <YAxis type="category" dataKey="name" tick={{ fontSize: 8, fill: C.muted }} width={100} />
+            <XAxis type="number" tick={{ fontSize: 11, fill: C.muted }} />
+            <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: C.muted }} width={100} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="Cantidad" fill={C.danger} radius={[0,4,4,0]} opacity={0.85}>
               <LabelList dataKey="Cantidad" position="right"
@@ -1463,12 +1375,12 @@ function TabGraficos({ data, loading, canalesSel = [] }) {
 function MetaInput({ label, value, onChange, prefix = "", suffix = "", placeholder = "0" }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[8px] font-black uppercase tracking-widest truncate" style={{ color: C.muted }}>{label}</label>
+      <label className="text-[11px] font-black uppercase tracking-widest truncate" style={{ color: C.muted }}>{label}</label>
       <div className="flex items-center border rounded-xl overflow-hidden bg-white" style={{ borderColor: C.border }}>
-        {prefix && <span className="px-2 text-[10px] font-black border-r flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{prefix}</span>}
+        {prefix && <span className="px-2 text-[12px] font-black border-r flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{prefix}</span>}
         <input type="number" step="any" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
           className="w-full px-2 py-1.5 text-[11px] font-bold outline-none bg-white min-w-0" style={{ color: C.slate }} />
-        {suffix && <span className="px-2 text-[10px] font-black border-l flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{suffix}</span>}
+        {suffix && <span className="px-2 text-[12px] font-black border-l flex-shrink-0" style={{ color: C.muted, borderColor: C.border, background: C.light }}>{suffix}</span>}
       </div>
     </div>
   );
@@ -1532,37 +1444,37 @@ function MetaFilaVisual({ f }) {
       style={{ borderColor: C.border, background: hovered ? rowBgHover : rowBg }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <td className="px-5 py-2.5 border-r" style={{ borderColor: C.border, background: "inherit" }}>
-        <div className="font-black text-[10px]" style={{ color: C.slate }}>{f.label}</div>
+        <div className="font-black text-[12px]" style={{ color: C.slate }}>{f.label}</div>
         {progreso !== null && (
           <div className="mt-1">
             <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: `${progresoColor}20` }}>
               <div style={{ width: `${progresoAncho}%`, height: "100%", background: progresoColor, transition: "width 0.6s ease" }} />
             </div>
-            <div className="text-[7px] mt-0.5 font-bold" style={{ color: progresoColor }}>{progreso<=150?`${progreso.toFixed(0)}% de la meta`:">150%"}</div>
+            <div className="text-[10px] mt-0.5 font-bold" style={{ color: progresoColor }}>{progreso<=150?`${progreso.toFixed(0)}% de la meta`:">150%"}</div>
           </div>
         )}
       </td>
-      <td className="px-5 py-2.5 text-center font-bold border-r text-[10px]" style={{ color: C.primary, borderColor: C.border }}>
-        {f.obj !== null ? f.fmtO(f.obj) : <span style={{ color: C.border, fontSize:"9px" }}>Sin meta</span>}
+      <td className="px-5 py-2.5 text-center font-bold border-r text-[12px]" style={{ color: C.primary, borderColor: C.border }}>
+        {f.obj !== null ? f.fmtO(f.obj) : <span style={{ color: C.border, fontSize:"11px" }}>Sin meta</span>}
       </td>
-      <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: C.slate, borderColor: C.border }}>
-        {f.manual?<span style={{ color:C.muted, fontSize:"9px" }} className="italic">Externo</span>
-          :f.logro!==null?<span>{f.fmtL(f.logro)}{f.sub&&<span className="ml-1 text-[8px]" style={{ color:C.muted }}>({f.sub})</span>}</span>
-          :<span style={{ color:C.border, fontSize:"9px" }}>—</span>}
+      <td className="px-5 py-2.5 text-center font-black border-r text-[12px]" style={{ color: C.slate, borderColor: C.border }}>
+        {f.manual?<span style={{ color:C.muted, fontSize:"11px" }} className="italic">Externo</span>
+          :f.logro!==null?<span>{f.fmtL(f.logro)}{f.sub&&<span className="ml-1 text-[11px]" style={{ color:C.muted }}>({f.sub})</span>}</span>
+          :<span style={{ color:C.border, fontSize:"11px" }}>—</span>}
       </td>
-      <td className="px-5 py-2.5 text-center font-black border-r text-[10px]" style={{ color: cD, borderColor: C.border }}>
+      <td className="px-5 py-2.5 text-center font-black border-r text-[12px]" style={{ color: cD, borderColor: C.border }}>
         {f.diff !== null ? f.fmtD(f.diff) : "—"}
       </td>
-      <td className="px-5 py-2.5 text-center border-r text-[10px]" style={{ borderColor: C.border }}>
+      <td className="px-5 py-2.5 text-center border-r text-[12px]" style={{ borderColor: C.border }}>
         {progreso !== null ? (
           <div className="flex items-center justify-center gap-1.5">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px]"
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[11px]"
               style={{ background: `${progresoColor}15`, color: progresoColor }}>
               {progreso >= 100 ? "✓" : progreso >= 75 ? "~" : "✗"}
             </div>
             <span className="font-black" style={{ color: progresoColor }}>{progreso.toFixed(0)}%</span>
           </div>
-        ) : <span style={{ color: C.muted, fontSize:"9px" }}>—</span>}
+        ) : <span style={{ color: C.muted, fontSize:"11px" }}>—</span>}
       </td>
     </tr>
   );
@@ -1585,7 +1497,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
   useEffect(() => {
     if (!desde || !hasta) return;
     setCanalesData([]); setLoadingOrig(true);
-    fetch(`${API}/api/redes/monitoreo-metas?fechaDesde=${desde}&fechaHasta=${hasta}`)
+    fetch(`${API}/api/redes/monitoreo-metas?fechaDesde=${desde}&fechaHasta=${hasta}`, { headers: cabecerasSesion() })
       .then(r => r.json()).then(d => { if (d.success) setCanalesDisp(d.canales_disponibles||[]); })
       .catch(()=>{}).finally(()=>setLoadingOrig(false));
   }, [desde, hasta]);
@@ -1594,7 +1506,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
     setLoadingData(true);
     const p = new URLSearchParams({ fechaDesde: desde, fechaHasta: hasta });
     if (canalesSel.length > 0) p.set("canales", canalesSel.join(","));
-    fetch(`${API}/api/redes/monitoreo-metas?${p}`)
+    fetch(`${API}/api/redes/monitoreo-metas?${p}`, { headers: cabecerasSesion() })
       .then(r => r.json()).then(d => { if (d.success) setCanalesData(d.canales||[]); })
       .catch(()=>{}).finally(()=>setLoadingData(false));
   };
@@ -1603,25 +1515,25 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
     <div className="space-y-6">
       <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center gap-3 flex-wrap">
         <span className="text-blue-600">📅</span>
-        <span className="text-[10px] font-black uppercase tracking-wide text-blue-700">Período: {desde} → {hasta}</span>
+        <span className="text-[12px] font-black uppercase tracking-wide text-blue-700">Período: {desde} → {hasta}</span>
       </div>
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
         <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
+            <div className="w-1 h-5 rounded-full" style={{ background: C.primary }} /><span className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>Agencia</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setCanalesSel([])} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase border transition-all"
+            <button onClick={() => setCanalesSel([])} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black uppercase border transition-all"
               style={canalesSel.length===0?{background:C.primary,color:"#fff",borderColor:C.primary}:{background:"#fff",color:C.muted,borderColor:C.border}}>Todos</button>
             {canalesDisp.map(({canal})=>{const cfg=getCfg(canal),sel=canalesSel.includes(canal);return(
               <button key={canal} onClick={()=>setCanalesSel(prev=>prev.includes(canal)?prev.filter(c=>c!==canal):[...prev,canal])}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[8px] font-black uppercase border transition-all rounded-full"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-black uppercase border transition-all rounded-full"
                 style={{background:sel?cfg.color:cfg.bg,color:sel?"#fff":cfg.color,borderColor:sel?cfg.color:`${cfg.color}40`}}>
                 {cfg.icon}{cfg.label}</button>);})}
           </div>
         </div>
         <div className="px-5 py-3 flex justify-end">
-          <button onClick={handleAplicar} className="px-5 py-1.5 rounded-lg text-[10px] font-black uppercase text-white transition-all active:scale-95 shadow-sm" style={{ background: C.primary }}>
+          <button onClick={handleAplicar} className="px-5 py-1.5 rounded-lg text-[12px] font-black uppercase text-white transition-all active:scale-95 shadow-sm" style={{ background: C.primary }}>
             {loadingData?"Calculando...":"Calcular Logros"}
           </button>
         </div>
@@ -1655,18 +1567,18 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
             <CardHeader title={cfg.label||canal.canal} subtitle={`${desde} → ${hasta}`} accent={cfg.color}
               badge={<div className="flex items-center gap-2">
                 <CanalBadge canal={canal.canal} size="md" />
-                <span className="text-[9px] font-black px-3 py-1 rounded-full" style={{ background:`${cfg.color}15`,color:cfg.color }}>
+                <span className="text-[11px] font-black px-3 py-1 rounded-full" style={{ background:`${cfg.color}15`,color:cfg.color }}>
                   {canal.total_leads} leads · ${n(canal.inversion_usd).toFixed(2)} inv.
                 </span>
               </div>} />
             {lineas.length>0&&(
               <div className="px-5 py-2.5 border-b flex flex-wrap gap-1.5" style={{ borderColor:C.border,background:cfg.bg }}>
-                <span className="text-[7px] font-black uppercase" style={{ color:cfg.color }}>Orígenes:</span>
-                {lineas.map(o=><span key={o} className="text-[7px] px-2 py-0.5 rounded-full" style={{ background:"#ffffff90",color:C.slate,border:`1px solid ${cfg.color}25` }}>{o}</span>)}
+                <span className="text-[10px] font-black uppercase" style={{ color:cfg.color }}>Orígenes:</span>
+                {lineas.map(o=><span key={o} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background:"#ffffff90",color:C.slate,border:`1px solid ${cfg.color}25` }}>{o}</span>)}
               </div>
             )}
             <div className="overflow-auto">
-              <table className="w-full border-collapse text-[10px] whitespace-nowrap">
+              <table className="w-full border-collapse text-[12px] whitespace-nowrap">
                 <thead className="sticky top-0 z-10 border-b-2" style={{ background:C.light,borderColor:C.border }}>
                   <tr>{[["INDICADOR","left",200],["OBJETIVO","center",120],["LOGRO","center",120],["DIFERENCIAL","center",110],["PROGRESO","center",90]].map(([h,a,w])=>(
                     <th key={h} className="px-5 py-3 font-black uppercase tracking-widest border-r" style={{ textAlign:a,minWidth:w,color:C.muted,borderColor:C.border }}>{h}</th>
@@ -1675,7 +1587,7 @@ function TabMetas({ filtro, canalesSel: canalesSelProp = [] }) {
                 <tbody>{filas.map((f,fi)=><MetaFilaVisual key={fi} f={f}/>)}</tbody>
               </table>
             </div>
-            <div className="px-5 py-2.5 border-t flex items-center gap-4 text-[8px] font-bold flex-wrap" style={{ borderColor:C.border }}>
+            <div className="px-5 py-2.5 border-t flex items-center gap-4 text-[11px] font-bold flex-wrap" style={{ borderColor:C.border }}>
               <span style={{ color:C.success }}>✓ Verde = supera la meta</span>
               <span style={{ color:C.danger }}>✗ Rojo = bajo la meta</span>
               <span style={{ color:C.muted }}>· Costos y SAC: menor es mejor</span>
@@ -1855,7 +1767,7 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
         <button disabled={actualizandoLineas} onClick={() => {
           setActualizandoLineas(true); setError(null); cargarOrigenes(); onCambio?.();
           setTimeout(() => setActualizandoLineas(false), 700);
-        }} style={{ background: "#fff", color: C.primary, border: `1px solid ${C.primary}`, borderRadius: 10, padding: "8px 14px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+        }} style={{ background: "#fff", color: C.primary, border: `1px solid ${C.primary}`, borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
           {actualizandoLineas ? "Actualizando…" : "↻ Actualizar líneas"}
         </button>
         <SyncInversionButton compact onSuccess={() => { cargarOrigenes(); onCambio?.(); }} />
@@ -1979,15 +1891,15 @@ function TabAgencias({ fechaDesde, fechaHasta, refreshTick, onCambio }) {
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "general",       label: "Monitoreo General",    icon: "chart" },
-  { id: "graficos",      label: "Gráficos Gerencia",    icon: "trending" },
-  { id: "asesorvpauta",  label: "Asesores vs Pauta",    icon: "bolt" },
-  { id: "metas",         label: "Metas vs Logros",      icon: "target" },
-  { id: "comparativo",   label: "Comparativo",          icon: "shuffle" },
-  { id: "pautas",        label: "Análisis Pautas",      icon: "scope" },
-  { id: "reporte",       label: "Reporte Data",         icon: "file" },
-  { id: "agencias",      label: "Agencias",             icon: "building" },
-  { id: "proximamente",  label: "Próximamente",         icon: "rocket" },
+  { id: "general",       label: "Monitoreo General",    icon: "📊" },
+  { id: "graficos",      label: "Gráficos Gerencia",    icon: "📈" },
+  { id: "asesorvpauta",  label: "Asesores vs Pauta",    icon: "⚡" },
+  { id: "metas",         label: "Metas vs Logros",      icon: "🎯" },
+  { id: "comparativo",   label: "Comparativo",          icon: "🔀" },
+  { id: "pautas",        label: "Análisis Pautas",      icon: "🔬" },
+  { id: "reporte",       label: "Reporte Data",         icon: "📑" },
+  { id: "agencias",      label: "Agencias",             icon: "🏢" },
+  { id: "proximamente",  label: "Próximamente",         icon: "🚀" },
 ];
 
 export default function Redes() {
@@ -2000,53 +1912,8 @@ export default function Redes() {
   const [applying,   setApplying]   = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  // Header con efecto glass al hacer scroll — detecta el ancestro con scroll real
-  const [headerScrolled, setHeaderScrolled] = useState(false);
-  const headerRef = useRef(null);
   useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    let node = el.parentElement;
-    while (node && node !== document.body) {
-      const cs = window.getComputedStyle(node);
-      if (/(auto|scroll)/.test(cs.overflowY)) break;
-      node = node.parentElement;
-    }
-    const scrollEl = node && node !== document.body ? node : window;
-    const onScroll = () => {
-      const top = scrollEl === window ? window.scrollY : scrollEl.scrollTop;
-      setHeaderScrolled(top > 8);
-    };
-    scrollEl.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => scrollEl.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // FIX (2026-08-28): "hoy" se calculaba UNA sola vez al montar el componente.
-  // El refresco "Live" cada 15 min solo incrementaba refreshTick y volvia a
-  // pedir datos con el MISMO filtro.desde/hasta de siempre -> si la pestana
-  // quedaba abierta cruzando la medianoche, el dashboard seguia "en vivo"
-  // pidiendo para siempre el dia en que se abrio, nunca el dia actual.
-  // Ahora cada tick revisa si cambio el dia; si el usuario estaba viendo
-  // "hoy" (desde === hasta === el hoy anterior), desliza el rango al nuevo
-  // dia automaticamente. Si eligio manualmente una fecha pasada, no se toca.
-  const hoyRef = useRef(hoy);
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      const hoyActual = getFechaHoy();
-      if (hoyActual !== hoyRef.current) {
-        const hoyAnterior = hoyRef.current;
-        setFechaDesde((d) => (d === hoyAnterior ? hoyActual : d));
-        setFechaHasta((h) => (h === hoyAnterior ? hoyActual : h));
-        setFiltro((f) => (
-          f.desde === hoyAnterior && f.hasta === hoyAnterior
-            ? { desde: hoyActual, hasta: hoyActual }
-            : f
-        ));
-        hoyRef.current = hoyActual;
-      }
-      setRefreshTick((t) => t + 1);
-    }, 15 * 60 * 1000);
+    const intervalId = setInterval(() => setRefreshTick((t) => t + 1), 15 * 60 * 1000);
     return () => clearInterval(intervalId);
   }, []);
 
@@ -2059,53 +1926,38 @@ export default function Redes() {
   };
 
   return (
-    <div className="min-h-screen p-5 md:p-7" style={{ background: C.light }}>
-      {/* Header — sticky + glass on scroll */}
-      <div ref={headerRef}
-        className={`sticky top-0 z-20 -mx-5 md:-mx-7 px-5 md:px-7 py-4 mb-3 erp-header-glass ${headerScrolled ? "is-scrolled" : ""}`}>
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
-                style={{ background: `linear-gradient(135deg,#f97316,#c2410c)` }}>V</div>
-              <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
-              <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase inline-flex items-center gap-1.5"
-                style={{ background: `${C.success}15`, color: C.success }}>
-                <span className="live-dot" style={{ background: C.success }} /> Live
-              </span>
-            </div>
-            <p className="text-[10px] font-medium uppercase tracking-widest ml-12" style={{ color: C.muted }}>NOVONET — Actualización cada 15 minutos</p>
-            <div className="flex flex-wrap gap-1.5 ml-12 mt-2">
-              {Object.entries(CANALES).filter(([k]) => esPublicidad(k)).map(([canal, cfg]) => (
-                <span key={canal} className="text-[8px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-                  style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}26`, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }}>
-                  <Icon name={cfg.icon} className="w-2.5 h-2.5" /> {cfg.label}
-                </span>
-              ))}
-            </div>
+    <div className="min-h-screen p-5 md:p-7 erp-page-bg">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm"
+              style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>V</div>
+            <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes</h1>
+            <span className="text-[11px] font-black px-2.5 py-1 rounded-full uppercase" style={{ background: `${C.success}15`, color: C.success }}>● Live</span>
           </div>
-          <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
-            {/* Período y botón Aplicar */}
-            <div className="px-5 py-3 flex flex-wrap items-end gap-3">
-              {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
-                <div key={key} className="flex flex-col gap-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
-                  <input type="date" value={val}
-                    onChange={e => key === "desde" ? setFechaDesde(e.target.value) : setFechaHasta(e.target.value)}
-                    className="border rounded-xl px-3 py-2 text-[11px] font-bold outline-none bg-white [color-scheme:light]"
-                    style={{ borderColor: C.border }} />
-                </div>
-              ))}
-              <button onClick={handleAplicar}
-                className="px-6 py-2 rounded-xl text-[10px] font-black uppercase text-white active:scale-95 shadow-sm transition-all"
-                style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
-                {applying || loading ? "Cargando..." : "Aplicar"}
-              </button>
-              <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
-              <p className="text-[8px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
-                Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
-              </p>
-            </div>
+        </div>
+        <div className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}>
+          {/* Período y botón Aplicar */}
+          <div className="px-5 py-3 flex flex-wrap items-end gap-3">
+            {[["Desde","desde",fechaDesde],["Hasta","hasta",fechaHasta]].map(([label,key,val]) => (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
+                <input type="date" value={val}
+                  onChange={e => key === "desde" ? setFechaDesde(e.target.value) : setFechaHasta(e.target.value)}
+                  className="border rounded-xl px-3 py-2 text-[11px] font-bold outline-none bg-white [color-scheme:light]"
+                  style={{ borderColor: C.border }} />
+              </div>
+            ))}
+            <button onClick={handleAplicar}
+              className="px-6 py-2 rounded-xl text-[12px] font-black uppercase text-white active:scale-95 shadow-sm transition-all"
+              style={{ background: applying || loading ? C.muted : `linear-gradient(135deg,${C.primary},#1e40af)` }}>
+              {applying || loading ? "Cargando..." : "Aplicar"}
+            </button>
+            <SyncInversionButton from={filtro.desde} to={filtro.hasta} onSuccess={() => setRefreshTick((t) => t + 1)} />
+            <p className="text-[11px] font-medium self-end pb-0.5 uppercase tracking-wide" style={{ color: C.muted }}>
+              Período activo: <span className="font-black">{filtro.desde} → {filtro.hasta}</span>
+            </p>
           </div>
         </div>
       </div>
@@ -2120,11 +1972,11 @@ export default function Redes() {
       <div className="flex flex-wrap gap-1 bg-white border rounded-2xl p-1 mb-7 w-fit shadow-sm" style={{ borderColor: C.border }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-wide transition-all"
             style={tab === t.id
               ? { background: `linear-gradient(135deg,${C.primary},#1e40af)`, color: "#fff", boxShadow: `0 4px 14px ${C.primary}40` }
               : { color: C.muted }}>
-            <Icon name={t.icon} className="w-3.5 h-3.5" />
+            <span className="text-sm">{t.icon}</span>
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}

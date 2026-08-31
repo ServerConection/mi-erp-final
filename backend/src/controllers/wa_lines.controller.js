@@ -435,14 +435,13 @@ async function dashboard(req, res) {
       ORDER BY empresa ASC, usuario ASC, l.created_at ASC
     `, params)
 
-    // Estado en vivo desde BaileysManager (más fiable que el guardado en BD)
+    // El dashboard representa el estado ACTUAL del proceso Wabot. Un qr_ready
+    // guardado en BD puede quedar obsoleto después de un reinicio; conservarlo
+    // cuando Baileys ya no tiene esa instancia hacía aparecer "Esperando QR"
+    // aunque no hubiera ningún QR vigente.
     const bm = req.app.get('baileysManager')
     const lineas = rows.map(r => {
-      const rt = bm ? bm.getStatus(r.id) : null
-      // Si Baileys no tiene la línea en memoria devuelve 'disconnected'; en ese
-      // caso conservamos el último estado conocido de BD (logged_out / error),
-      // que es más informativo para saber por qué no está conectada.
-      const estado = (rt && rt !== 'disconnected') ? rt : (r.status || 'disconnected')
+      const estado = bm ? bm.getStatus(r.id) : 'disconnected'
       return { ...r, estado, conectada: estado === 'connected' }
     })
 

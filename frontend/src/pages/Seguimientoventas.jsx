@@ -662,25 +662,25 @@ function LiderSplash({ lider, show }) {
         }}>
           <div>
             <div style={{ fontSize: 36, fontWeight: 900, color: lider.accent, lineHeight: 1 }}>
-              {lider.crm}
+              {lider.jot}
             </div>
             <div style={{
               fontSize: 9, fontWeight: 700, color: "#94a3b8",
               textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
             }}>
-              Ingresos CRM
+              Ingresos Jot
             </div>
           </div>
           <div style={{ width: 1, background: "#f1f5f9" }} />
           <div>
             <div style={{ fontSize: 36, fontWeight: 900, color: "#334155", lineHeight: 1 }}>
-              {lider.gestionables}
+              {lider.activas}
             </div>
             <div style={{
               fontSize: 9, fontWeight: 700, color: "#94a3b8",
               textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
             }}>
-              Gestionables
+              Activas totales
             </div>
           </div>
         </div>
@@ -713,7 +713,7 @@ export default function Seguimientoventas() {
   const [asesores, setAsesores] = useState([]);
   const [ultimaAct, setUltimaAct] = useState(null);
   const [newNames, setNewNames] = useState(new Set());
-  const [lider, setLider] = useState(null);      // { nombre, crm, gestionables, accentColor }
+  const [lider, setLider] = useState(null);      // { nombre, jot, activas, accentColor }
   const [showLider, setShowLider] = useState(false);
   const prevJotMap = useRef({});
   const liderTimer = useRef(null);
@@ -761,7 +761,7 @@ export default function Seguimientoventas() {
         }
         // ── Splash de líder en CADA actualización ──────────────────────────
         const sorted = [...enriched].sort((a, b) =>
-          Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0)
+          Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0)
         );
         if (sorted.length > 0) {
           const top = sorted[0];
@@ -774,8 +774,8 @@ export default function Seguimientoventas() {
           if (liderTimer.current) clearTimeout(liderTimer.current);
           setLider({
             nombre: top.nombre_grupo,
-            crm: Number(top.ventas_crm || 0),
-            gestionables: Number(top.gestionables || 0),
+            jot: Number(top.ingresos_reales || 0),
+            activas: Number(top.real_mes || 0) + Number(top.backlog || 0),
             accent,
           });
           setShowLider(true);

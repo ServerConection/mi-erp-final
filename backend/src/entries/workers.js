@@ -16,6 +16,7 @@ const { runInitialRefresh: refreshRedesMVs } = require('../jobs/refreshRedesMate
 const { initJotformSync }            = require('../jobs/jotformSync.cron');
 const { initCierreDiario }           = require('../jobs/cierreDiario.cron');
 const { initWinTrackerSync }         = require('../jobs/syncWinTracker.cron');
+const { initReconciliacionBitrix }   = require('../jobs/reconciliacionBitrix.cron');
 
 (async () => {
   console.log('[workers] iniciando jobs programados...');
@@ -26,6 +27,7 @@ const { initWinTrackerSync }         = require('../jobs/syncWinTracker.cron');
     initJotformSync();            // sync programado de Jotform
     initWinTrackerSync();         // inversión Arts/Velsa al arrancar y cada 30 minutos
     initCierreDiario();           // cierre diario 23:30 (America/Guayaquil) -> reportegeneral_d1
+    initReconciliacionBitrix();   // red de seguridad: rellena leads que el webhook de Bitrix nunca entregó
     console.log('[workers] jobs activos');
   } catch (e) {
     console.error('[workers] error inicializando jobs:', e.message);

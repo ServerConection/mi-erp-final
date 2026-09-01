@@ -234,10 +234,28 @@ const COMUNES = [
 
 const EMPRESA = 'velsa';
 
+// FIX 2026-09-01 — ORDEN DE PARAMETROS.
+// Bitrix arma la URL sustituyendo texto literal, SIN URL-encodear. Cualquier
+// placeholder puede traer comas, espacios, saltos de linea o caracteres raros
+// (ej. un contacto con 6 telefonos => "+593986719197, +59324759410, ...", o un
+// comentario largo del asesor). Si el cliente HTTP corta la URL en ese punto,
+// se pierde TODO lo que venga despues.
+// Por eso token / id / event / etapa / empresa van PRIMERO: son la identidad
+// del lead. Si algo se pierde, que sean campos descriptivos (utm, comentario),
+// nunca el token ni el ID -- sin ellos el webhook responde 401 o no puede
+// hacer el UPSERT, y el lead desaparece de bitrix_webhook_leads sin rastro.
 function construirUrl(slug) {
-  const partes = [`event=${slug}`, `etapa=${slug}`, `empresa=${EMPRESA}`];
-  COMUNES.forEach(([clave, valor]) => partes.push(`${clave}=${valor}`));
-  partes.push(`token=${TOKEN}`);
+  const IDENTIDAD = ['token', 'id', 'event', 'etapa', 'empresa'];
+  const partes = [
+    `token=${TOKEN}`,
+    'id={{ID}}',
+    `event=${slug}`,
+    `etapa=${slug}`,
+    `empresa=${EMPRESA}`,
+  ];
+  COMUNES
+    .filter(([clave]) => !IDENTIDAD.includes(clave))
+    .forEach(([clave, valor]) => partes.push(`${clave}=${valor}`));
   return `${BASE}?${partes.join('&')}`;
 }
 

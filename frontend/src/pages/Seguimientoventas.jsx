@@ -101,6 +101,10 @@ const RANK_COLORS = [
   { bg: "#f1f5f9", border: "#cbd5e1", text: "#475569", dot: "#94a3b8" },
   { bg: "#fef3c7", border: "#fcd34d", text: "#92400e", dot: "#d97706" },
 ];
+
+// Degradado de fondo por posición: 1º fuerte, 2º medio, 3º+ blanco
+const RANK_ROW_BG = ["#38bdf8", "#bae6fd", "#ffffff", "#ffffff"];
+
 const rankColor = (i) => RANK_COLORS[i] || { bg: "#f8fafc", border: "#e2e8f0", text: "#94a3b8", dot: "#cbd5e1" };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,19 +122,29 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
   const barW = maxCrm > 0 ? Math.round((ingresosCrm / maxCrm) * 100) : 0;
 
   if (compact) {
+    const tier = Math.min(rank, 3);
+    const rowBg = RANK_ROW_BG[tier];
+    const isDark = tier === 0;   // solo el 1er lugar tiene fondo fuerte → texto blanco
+    const nameColor = isDark ? "#ffffff" : "#0f172a";
+    const labelColor = isDark ? "rgba(255,255,255,.65)" : "#94a3b8";
+    const metricBg = isDark ? "rgba(255,255,255,.14)" : (tier === 0 ? "#f8fafc" : "#f8fafc");
+    const metricBorder = isDark ? "rgba(255,255,255,.18)" : "#eef2f7";
+    const trackBg = isDark ? "rgba(255,255,255,.25)" : "#f1f5f9";
+
     const metricas = [
-      { label: "Jotform", value: jot, color: "#0284c7" },
-      { label: "Activas", value: activas, color: "#10b981" },
-      { label: "CRM", value: ingresosCrm, color: accentColor },
-      { label: "CRM día", value: ingresosCrmDia, color: "#0f172a" },
-      { label: "Gestionables", value: gestionables, color: "#475569" },
-      { label: "% descarte", value: `${pctDescarte.toFixed(1)}%`, color: pctDescarte > 30 ? "#dc2626" : "#059669" },
+      { label: "Jotform", value: jot, color: isDark ? "#7dd3fc" : "#0284c7" },
+      { label: "Activas", value: activas, color: isDark ? "#6ee7b7" : "#10b981" },
+      { label: "CRM", value: ingresosCrm, color: isDark ? "#ffffff" : accentColor },
+      { label: "CRM día", value: ingresosCrmDia, color: nameColor },
+      { label: "Gestionables", value: gestionables, color: isDark ? "#e2e8f0" : "#475569" },
+      { label: "% descarte", value: `${pctDescarte.toFixed(1)}%`, color: pctDescarte > 30 ? "#f87171" : (isDark ? "#6ee7b7" : "#059669") },
     ];
 
     return (
       <div style={{
         display: "flex", alignItems: "center", gap: 8,
         padding: "9px 10px", borderBottom: "1px solid #f1f5f9",
+        background: rowBg,
         animation: isNew ? "rowFlash 2.4s ease-out forwards" : "none",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: "1 1 46%" }}>
@@ -142,16 +156,17 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
           }}>{rank + 1}</div>
           <div style={{
             width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-            background: accentColor + "18", border: `1px solid ${accentColor}40`,
+            background: isDark ? "rgba(255,255,255,.2)" : accentColor + "18",
+            border: `1px solid ${isDark ? "rgba(255,255,255,.35)" : accentColor + "40"}`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800, color: accentColor,
+            fontSize: 9, fontWeight: 800, color: isDark ? "#ffffff" : accentColor,
           }}>{initials(asesor.nombre_grupo)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div title={asesor.nombre_grupo} style={{ fontSize: 9, fontWeight: 800, color: "#0f172a", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div title={asesor.nombre_grupo} style={{ fontSize: 9, fontWeight: 800, color: nameColor, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {asesor.nombre_grupo}
             </div>
-            <div style={{ height: 3, marginTop: 5, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ width: `${barW}%`, height: "100%", background: accentColor, borderRadius: 2 }} />
+            <div style={{ height: 3, marginTop: 5, background: trackBg, borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${barW}%`, height: "100%", background: isDark ? "#ffffff" : accentColor, borderRadius: 2 }} />
             </div>
           </div>
         </div>
@@ -160,9 +175,9 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
           gap: 4, flex: "1 1 54%", minWidth: 0,
         }}>
           {metricas.map((metrica) => (
-            <div key={metrica.label} title={metrica.label} style={{ textAlign: "center", padding: "5px 1px", background: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 6, minWidth: 0 }}>
+            <div key={metrica.label} title={metrica.label} style={{ textAlign: "center", padding: "5px 1px", background: metricBg, border: `1px solid ${metricBorder}`, borderRadius: 6, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 900, color: metrica.color, lineHeight: 1 }}>{metrica.value}</div>
-              <div style={{ marginTop: 2, fontSize: 5.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{metrica.label}</div>
+              <div style={{ marginTop: 2, fontSize: 5.5, fontWeight: 800, color: labelColor, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{metrica.label}</div>
             </div>
           ))}
         </div>
@@ -328,7 +343,7 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
 // CARD DE SUPERVISOR
 // ─────────────────────────────────────────────────────────────────────────────
 function SupervisorCard({ supervisor, asesores, idx, newNames }) {
-  const cfg = supColor(idx);
+  const cfg = { accent: "#0ea5e9", light: "#e0f2fe", text: "#0369a1", border: "#bae6fd" }; // mismo color para todos
   const sorted = [...asesores].sort((a, b) => Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0));
   const maxCrm = Math.max(...sorted.map(a => Number(a.ventas_crm || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);

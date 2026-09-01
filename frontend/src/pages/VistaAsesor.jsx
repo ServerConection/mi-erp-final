@@ -616,6 +616,7 @@ export default function VistaAsesor() {
       // backlog), sin volver a sumarle el backlog encima (antes se contaba doble).
       activas_mes:    Math.max(0, totalActivas - totalBacklog),
       activas_tot:    totalActivas,
+      backlog:        totalBacklog,
       regularizacion: base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
       // Nuevos
       pct_descarte:    pctDescarte,
@@ -809,8 +810,8 @@ export default function VistaAsesor() {
         <StripCard index={0} label="Leads gestionables" value={totales.gestionables}  color="#0ea5e9" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={1} label="Ingresos CRM"       value={totales.ingresos_crm}  color="#8b5cf6" meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={2} label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
-        <StripCard index={3} label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
-        <StripCard index={4} label="Activas + backlog"  value={totales.activas_tot}   color="#64748b" />
+        <StripCard index={3} label="Activas mes"        value={ventasActivas.length}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={4} label="Backlog"            value={totales.backlog}       color="#64748b" />
         <StripCard index={5} label="Regularización"     value={totales.regularizacion} color="#f97316" />
       </div>
 

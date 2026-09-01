@@ -386,11 +386,11 @@ const ALL_MENU_ITEMS = [
     isChild: true, group: "backoffice" },
 
   // ── Reportes ─────────────────────────────────────────────────────────────
-  { name: "Reportes", path: null, icon: "📈", isGroup: true, groupId: "reportes" },
+  /*{ name: "Reportes", path: null, icon: "📈", isGroup: true, groupId: "reportes" },
   { name: "📊 Cumplimiento de Leads", path: "/cumplimiento-leads", icon: "📊",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },
   { name: "📊 Reporte Jefatura",      path: "/reporte-jefatura",   icon: "📊",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },
+    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },*/
 
   // ── Resumenes ────────────────────────────────────────────────────────────
   { name: "Resumenes", path: null, icon: "📦", isGroup: true, groupId: "resumenes" },

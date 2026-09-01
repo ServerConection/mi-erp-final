@@ -50,40 +50,6 @@ const slugify = (valor = '') =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
-// FIX (2026-09-01, leads que nunca llegaban a bitrix_webhook_leads):
-// Bitrix arma la URL del webhook por sustitucion literal de texto, SIN
-// URL-encodear. Si un contacto tiene varios telefonos, el placeholder
-// {{Contacto: Telefono (texto)}} se expande a
-//   "+593986719197, +59324759410, +593994695838, ..."
-// y ese espacio parte la URL: todo lo que iba DESPUES de phone= (incluidos
-// id= y token=) se pierde -> el webhook responde 401 y el lead nunca se
-// guarda. Mismo problema con comentario, ciudad, responsable, etc.
-//
-// Se ataca en dos frentes:
-//   a) en las URLs de las automatizaciones, token/id/etapa van PRIMERO y los
-//      campos de texto libre al final (ver webhooks_bitrix_etapas*.html);
-//   b) aqui: se tolera el token por header/body, se normaliza el telefono a
-//      un solo numero y se deja rastro en log cuando llega algo mutilado.
-
-// Devuelve UN solo telefono normalizado. Bitrix puede mandar varios
-// separados por coma; nos quedamos con el primero (el principal del contacto).
-const normalizarTelefono = (valor = '') => {
-  const crudo = String(valor || '').trim();
-  if (!crudo) return '';
-  const primero = crudo.split(',')[0].trim();
-  const soloDigitos = primero.replace(/[^0-9+]/g, '');
-  return soloDigitos || primero;
-};
-
-// El token puede venir por query (como siempre), por header o por body. Asi
-// una URL que se corto por un espacio todavia tiene chance de autenticarse
-// si se reconfigura la automatizacion, sin romper las que ya funcionan.
-const tokenRecibido = (req) =>
-  req.query.token ||
-  req.headers['x-webhook-token'] ||
-  (req.body && req.body.token) ||
-  '';
-
 // Campos que vienen de placeholders de Bitrix (todos opcionales, default '').
 // Nota: {{Contacto: Teléfono (texto)}} y {{Origen}} ya se capturan como
 // phone/source; {{Negociación repetida > printable}} reemplaza al viejo
@@ -102,39 +68,13 @@ const recibirLead = async (req, res) => {
     // SEGURIDAD: token compartido en query string (Bitrix no permite headers
     // custom en el nodo de automatización, así que se valida por query param).
     const tokenEsperado = process.env.BITRIX_WEBHOOK_TOKEN;
-    if (tokenEsperado && tokenRecibido(req) !== tokenEsperado) {
-      // Se loguea el evento/etapa para poder detectar automatizaciones cuya
-      // URL se esta cortando (llegan sin token y sin id) en vez de perderlas
-      // en silencio con un 401 mudo.
-      console.warn('[bitrixWebhook] 401 token invalido o ausente. etapa:', req.query.etapa || '(sin etapa)', '| params recibidos:', Object.keys(req.query).join(','));
+    if (tokenEsperado && req.query.token !== tokenEsperado) {
       return res.status(401).send('No autorizado');
     }
 
     const id      = req.query.id || '';
+    const etapa   = slugify(req.query.etapa || '');
     const empresa = slugify(req.query.empresa || '') || 'novonet'; // retro-compatibilidad
-
-    // FIX (2026-09-01, etapas partidas en dos por renombres en Bitrix):
-    // En la URL de cada automatización, "etapa" es un valor FIJO escrito a mano
-    // al configurarla, mientras que "etapa_bitrix" es el placeholder dinámico
-    // {{Etapa (texto)}} que Bitrix rellena con el nombre REAL de la etapa.
-    // Si alguien renombra la etapa en Bitrix (ej. "Gestión Diaria" pasó a ser
-    // "Gestion Diaria/Pendiente Cierre"), el valor fijo queda viejo PARA
-    // SIEMPRE y nadie se entera: la misma etapa entra a la tabla con dos slugs
-    // distintos y los reportes la cuentan partida. Pasó con 125 leads en agosto.
-    //
-    // Por eso la etapa se deriva del nombre REAL que manda Bitrix, y el valor
-    // fijo de la URL queda solo como respaldo si el placeholder viene vacío.
-    // Así los renombres se auto-corrigen sin tocar las 53 automatizaciones.
-    const etapaFija = slugify(req.query.etapa || '');
-    const etapaReal = slugify(req.query.etapa_bitrix || '');
-    const etapa     = etapaReal || etapaFija;
-
-    if (etapaReal && etapaFija && etapaReal !== etapaFija) {
-      // No es un error: es una automatización cuya URL quedó desactualizada.
-      // Se corrige sola acá, pero conviene arreglar la URL en Bitrix para que
-      // "event" (que sigue siendo el valor fijo) tampoco quede mintiendo.
-      console.warn(`[bitrixWebhook] Etapa renombrada en Bitrix: la URL dice "${etapaFija}" pero la etapa real es "${etapaReal}". Se guarda la real. Revisar esa automatización. bitrix_id: ${id || '(sin id)'}`);
-    }
 
     // Valores de todos los campos Bitrix, en el mismo orden que CAMPOS_BITRIX
     // etapa_bitrix se guarda SIEMPRE en MAYUSCULAS. Bitrix la manda en
@@ -142,17 +82,8 @@ const recibirLead = async (req, res) => {
     // normalizar, la misma etapa aparece partida en dos al agrupar.
     const valores = CAMPOS_BITRIX.map(campo => {
       const v = req.query[campo] || '';
-      if (campo === 'etapa_bitrix') return String(v).trim().toUpperCase();
-      if (campo === 'phone') return normalizarTelefono(v);
-      return v;
+      return campo === 'etapa_bitrix' ? String(v).trim().toUpperCase() : v;
     });
-
-    // Aviso temprano: si el telefono llego con varios numeros, la URL venia
-    // con espacios y es MUY probable que se hayan perdido parametros del
-    // final. Queda registrado para poder auditarlo despues.
-    if (String(req.query.phone || '').includes(',')) {
-      console.warn('[bitrixWebhook] phone con multiples numeros (contacto con telefonos duplicados en Bitrix). bitrix_id:', req.query.id || '(sin id)', '| phone crudo:', req.query.phone);
-    }
 
     const columnas = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'raw_query'];
     const placeholders = columnas.map((_, i) => `$${i + 1}`).join(',');

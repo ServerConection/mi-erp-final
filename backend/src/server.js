@@ -11,7 +11,6 @@ const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
 const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
 const { initContactabilidadTiempoReal } = require('./jobs/contactabilidadTiempoReal.cron');
 const { initNexoIa } = require('./jobs/nexoIa.cron');
-const { initReconciliacionBitrix } = require('./jobs/reconciliacionBitrix.cron');
 
 // SEGURIDAD: Verifica variables de entorno criticas al arrancar
 const requiredEnv = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'PORT'];
@@ -52,12 +51,6 @@ server.listen(process.env.PORT, async () => {
   initContactabilidadTiempoReal();
   initNexoIa();
   initWinTrackerSync();
-  // Red de seguridad de bitrix_webhook_leads: rellena los deals que existen en
-  // Bitrix pero cuyo webhook de etapa nunca disparó. Si este proceso NO es el
-  // que corre los jobs (deploy separado erp-workers), poné RECONCILIACION_BITRIX=off
-  // aquí para no duplicar el trabajo — es idempotente, pero no tiene sentido
-  // gastar dos veces el rate limit de Bitrix.
-  initReconciliacionBitrix();
   iniciarWhatsApp();
 });
 

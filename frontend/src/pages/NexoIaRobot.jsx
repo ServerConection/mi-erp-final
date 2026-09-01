@@ -120,7 +120,7 @@ const hace = (iso, ahora) => {
   return `hace ${Math.round(s / 86400)} d`;
 };
 
-export default function NexoIaRobot({ empresa, api, headers, intervalo = 10000 }) {
+export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo = 5000 }) {
   const [salud, setSalud] = useState(null);
   const [abierto, setAbierto] = useState(false);
   // Reloj propio: evita llamar Date.now() durante el render (regla de pureza
@@ -136,7 +136,8 @@ export default function NexoIaRobot({ empresa, api, headers, intervalo = 10000 }
     const consultar = async () => {
       if (document.hidden) return;
       try {
-        const r = await fetch(`${api}/${empresa}/salud`, { headers: headers() });
+        const query = idBitrix ? `?id_bitrix=${encodeURIComponent(idBitrix)}` : '';
+        const r = await fetch(`${api}/${empresa}/salud${query}`, { headers: headers() });
         const j = await r.json();
         if (vivo) setSalud(j.success ? j.data : { error: j.error });
       } catch { if (vivo) setSalud({ error: 'Sin conexion' }); }
@@ -144,7 +145,7 @@ export default function NexoIaRobot({ empresa, api, headers, intervalo = 10000 }
     consultar();
     const t = setInterval(consultar, intervalo);
     return () => { vivo = false; clearInterval(t); };
-  }, [empresa, api, headers, intervalo]);
+  }, [empresa, idBitrix, api, headers, intervalo]);
 
   let estado = 'cargando';
   if (salud?.error) estado = 'alerta';

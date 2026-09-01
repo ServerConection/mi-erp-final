@@ -72,6 +72,7 @@ app.use(makeProxy(TARGETS.NOVO, [
 // INGESTA / WEBHOOKS
 app.use(makeProxy(TARGETS.INGESTA, [
   '/bitrix_webhook.php', '/api/bitrix-webhook/**',
+  '/bitrix_evento.php', '/api/bitrix-evento/**',
   '/bitrix_webhook_gestionables.php',
   '/jotform_webhook.php', '/api/jotform-webhook/**',
 ]));

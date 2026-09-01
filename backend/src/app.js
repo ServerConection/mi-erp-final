@@ -5,6 +5,7 @@ const cors = require('cors');
 
 const authRoutes                   = require('./routes/auth.routes');
 const redesRoutes                  = require('./routes/redes.routes');
+const bitrixConnectorRoutes        = require('./routes/bitrixConnector.routes');
 const redesVelsaRoutes             = require('./routes/redesVelsa.routes');
 const usuariosRoutes               = require('./routes/usuarios.routes');
 const loginOtpRoutes               = require('./routes/login.otp.routes');
@@ -120,6 +121,7 @@ app.use('/api/indicadores',             indicadoresRoutes);
 app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 app.use('/api/redes',             redesRoutes);
+app.use('/api/bitrix-connector',  bitrixConnectorRoutes);
 app.use('/api/redes-velsa',       redesVelsaRoutes);
 app.use('/api/alertas',           alertasRoutes);
 app.use('/api/ventas',            ventasRoutes);
@@ -127,6 +129,7 @@ app.use('/api/analista',          analistaRoutes);
 app.use('/api/bitrix',            bitrixRoutes);
 app.use('/api/bitrix-sesiones',   bitrixSesionesRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
+app.use(require('./routes/bitrixEvento.routes')); // /bitrix_evento.php — eventos en tiempo real de Bitrix (ONCRMDEALUPDATE)
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);

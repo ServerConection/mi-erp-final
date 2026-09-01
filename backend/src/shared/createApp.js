@@ -55,6 +55,10 @@ function buildBaseApp({ serviceName = 'service' } = {}) {
   app.set('trust proxy', 1);
   app.use(rateLimit);
   app.use(express.json({ limit: '10mb' }));
+  // Bitrix24 manda sus eventos (ONCRMDEALUPDATE) como
+  // application/x-www-form-urlencoded con claves anidadas data[FIELDS][ID].
+  // Sin esto el body llega vacío en el proceso de ingesta y el evento se pierde.
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   app.get('/health', (req, res) => {
     res.json({ ok: true, service: serviceName, ts: Date.now(), uptime: process.uptime() });

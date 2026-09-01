@@ -16,7 +16,6 @@ const startHttp = require('../shared/startHttp');
 const app = buildBaseApp({ serviceName: 'ingesta' });
 
 app.use(require('../routes/bitrixWebhook.routes'));       // /bitrix_webhook.php, /api/bitrix-webhook/leads
-app.use(require('../routes/bitrixEvento.routes'));        // /bitrix_evento.php — eventos en tiempo real
 app.use(require('../routes/gestionablesWebhook.routes')); // /bitrix_webhook_gestionables.php
 app.use(require('../routes/jotformWebhook.routes'));      // /jotform_webhook.php, /api/jotform-webhook/submissions
 

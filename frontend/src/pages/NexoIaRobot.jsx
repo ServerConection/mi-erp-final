@@ -64,40 +64,39 @@ function Robot({ estado, color }) {
     estado === 'alerta'     ? 'nxr-mal'    : 'nxr-viva';
   const durmiendo = estado === 'durmiendo';
   return (
-    <svg width="52" height="52" viewBox="0 0 52 52" className={clase} aria-hidden="true">
+    <svg width="58" height="58" viewBox="0 0 58 58" className={clase} aria-hidden="true">
+      <defs>
+        <linearGradient id="nxr-azul" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#60a5fa"/><stop offset=".5" stopColor="#3266df"/><stop offset="1" stopColor="#1d4ed8"/></linearGradient>
+        <linearGradient id="nxr-visor" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#12315c"/><stop offset="1" stopColor="#071a36"/></linearGradient>
+        <filter id="nxr-sombra" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" floodColor="#0f172a" floodOpacity=".24"/></filter>
+      </defs>
       <g className="nxr-cuerpo">
-        {/* antena */}
-        <g className="nxr-antena">
-          <line x1="26" y1="14" x2="26" y2="8" stroke={color} strokeWidth="2" strokeLinecap="round" />
-          <circle cx="26" cy="6" r="2.6" fill={color} />
+        <ellipse cx="29" cy="54" rx="11" ry="2.2" fill="#0f172a" opacity=".12"/>
+        <g filter="url(#nxr-sombra)">
+          <path className="nxr-brazo-i" d="M13 37c-4 2-5 8-2 11 2 2 5 0 6-3l2-7z" fill="url(#nxr-azul)" stroke="#173b91" strokeWidth="1"/>
+          <path className="nxr-brazo-d" d="M45 37c4 2 5 8 2 11-2 2-5 0-6-3l-2-7z" fill="url(#nxr-azul)" stroke="#173b91" strokeWidth="1"/>
+          <path d="M18 37h22l-2 12c-.5 3-3 4-9 4s-8.5-1-9-4z" fill="url(#nxr-azul)" stroke="#173b91" strokeWidth="1.2"/>
+          <rect x="22" y="49" width="5" height="5" rx="2" fill="#3b82f6" stroke="#173b91"/>
+          <rect x="31" y="49" width="5" height="5" rx="2" fill="#3b82f6" stroke="#173b91"/>
+          <path d="M13 14c-1-5 4-9 9-8 3-4 11-4 14 0 6-1 10 3 9 8 4 2 5 8 1 11 1 6-4 11-10 10-4 3-11 3-15 0-6 1-11-4-10-10-4-3-3-9 2-11z" fill="url(#nxr-azul)" stroke="#173b91" strokeWidth="1.3"/>
+          <rect x="16" y="13" width="26" height="20" rx="8" fill="url(#nxr-visor)" stroke="#8bb8ff" strokeWidth="1.2"/>
         </g>
-        {/* brazos */}
-        <rect className="nxr-brazo-i" x="8"  y="27" width="5" height="13" rx="2.5" fill={color} opacity=".75" />
-        <rect className="nxr-brazo-d" x="39" y="27" width="5" height="13" rx="2.5" fill={color} opacity=".75" />
-        {/* cabeza */}
-        <rect x="13" y="14" width="26" height="21" rx="7" fill={color} opacity=".16" stroke={color} strokeWidth="2" />
-        {/* ojos */}
         {durmiendo ? (
           <>
-            <path d="M18.5 24.5q2.5 2.2 5 0" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
-            <path d="M28.5 24.5q2.5 2.2 5 0" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+            <path d="M20 23q2.5 2 5 0M33 23q2.5 2 5 0" fill="none" stroke="#67e8f9" strokeWidth="2" strokeLinecap="round" />
           </>
         ) : estado === 'alerta' ? (
           <>
-            <path d="M18.5 22.5l4.5 4.5M23 22.5l-4.5 4.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-            <path d="M29 22.5l4.5 4.5M33.5 22.5L29 27" stroke={color} strokeWidth="2" strokeLinecap="round" />
+            <path d="M20 20l4 4m0-4-4 4M34 20l4 4m0-4-4 4" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" />
           </>
         ) : (
           <>
-            <circle className="nxr-ojo" cx="21" cy="24" r="2.7" fill={color} />
-            <circle className="nxr-ojo" cx="31" cy="24" r="2.7" fill={color} />
+            <path className="nxr-ojo" d="M21 20l3 3-3 3" fill="none" stroke="#67e8f9" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path className="nxr-ojo" d="M34 24h4" fill="none" stroke="#67e8f9" strokeWidth="2.2" strokeLinecap="round"/>
           </>
         )}
-        {/* boca */}
-        {estado === 'trabajando' && <path d="M22 30q4 3 8 0" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" />}
-        {/* torso */}
-        <rect x="16" y="36" width="20" height="11" rx="4" fill={color} opacity=".16" stroke={color} strokeWidth="2" />
-        <circle className={estado === 'trabajando' ? 'nxr-punto' : ''} cx="26" cy="41.5" r="2.2" fill={color} />
+        <path d="M25 42h8M27 40l-2 2 2 2M31 40l2 2-2 2" fill="none" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle className={estado === 'trabajando' ? 'nxr-punto' : ''} cx="29" cy="47" r="1.5" fill="#93c5fd" />
       </g>
       {/* zzz */}
       {durmiendo && (

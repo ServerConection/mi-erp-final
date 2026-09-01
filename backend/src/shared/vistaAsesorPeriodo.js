@@ -1,4 +1,6 @@
 /** Alcance temporal comun de los detalles de Vista Asesor ($1/$2 del endpoint). */
+const { normalizarAsesorExpr } = require('./normalizarAsesor');
+
 const enPeriodoSeleccionadoExpr = (columna) =>
   `(${columna} BETWEEN $1::date AND $2::date)`;
 
@@ -13,9 +15,15 @@ const esPorRegularizarVelsa = (valor) =>
 const esPorRegularizarVelsaExpr = (columna) =>
   `(COALESCE(${columna}::text, '') ~* '(^|[^A-Z])POR[[:space:]]+REGULARIZAR([^A-Z]|$)')`;
 
+// El agregado D-1 ya unifica alias de asesores. Los detalles deben aplicar la
+// misma expresion antes de filtrar para no perder ventas de una variante.
+const asesorResueltoNormalizadoExpr = (asesorExpr) =>
+  normalizarAsesorExpr(asesorExpr);
+
 module.exports = {
   enPeriodoSeleccionadoExpr,
   backlogEnPeriodoSeleccionadoExpr,
   esPorRegularizarVelsa,
   esPorRegularizarVelsaExpr,
+  asesorResueltoNormalizadoExpr,
 };

@@ -6,6 +6,7 @@ const {
   backlogEnPeriodoSeleccionadoExpr,
   esPorRegularizarVelsa,
   esPorRegularizarVelsaExpr,
+  asesorResueltoNormalizadoExpr,
 } = require('../src/shared/vistaAsesorPeriodo');
 
 test('ventas activas y regularizaciones usan el rango elegido por el usuario', () => {
@@ -13,6 +14,13 @@ test('ventas activas y regularizaciones usan el rango elegido por el usuario', (
     enPeriodoSeleccionadoExpr('fecha_actividad'),
     '(fecha_actividad BETWEEN $1::date AND $2::date)'
   );
+});
+
+test('Vista Asesor normaliza las variantes de Jomaira igual que Indicadores D-1', () => {
+  const sql = asesorResueltoNormalizadoExpr('asesor_resuelto');
+  assert.match(sql, /JOMAIRA CRISTINA LEITON RIZZO/);
+  assert.match(sql, /JOMAIRA CRISTIANA LEITON RIZZO/);
+  assert.match(sql, /UPPER\(TRIM\(asesor_resuelto\)\)/);
 });
 
 test('VELSA reconoce POR REGULARIZAR guardado como arreglo serializado de Backoffice', () => {

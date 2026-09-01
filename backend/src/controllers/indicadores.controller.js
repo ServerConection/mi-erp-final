@@ -20,7 +20,11 @@ const {
     esDescarteExactoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
-const { enPeriodoSeleccionadoExpr, backlogEnPeriodoSeleccionadoExpr } = require('../shared/vistaAsesorPeriodo');
+const {
+    enPeriodoSeleccionadoExpr,
+    backlogEnPeriodoSeleccionadoExpr,
+    asesorResueltoNormalizadoExpr,
+} = require('../shared/vistaAsesorPeriodo');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 // FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
 // unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
@@ -241,6 +245,7 @@ const ASESOR_RESUELTO = `
             END,
             'REVISAR'
         )`;
+const ASESOR_RESUELTO_NORMALIZADO = asesorResueltoNormalizadoExpr(ASESOR_RESUELTO);
 
 // Supervisor recalculado a partir del asesor YA RESUELTO. Sin esto, el detalle
 // mostraría el asesor real del webhook pero el supervisor del nombre viejo
@@ -250,7 +255,7 @@ const joinSupervisorResuelto = `
 LEFT JOIN LATERAL (
     SELECT e3.supervisor
     FROM public.empleados e3
-    WHERE UPPER(BTRIM(e3.nombre_completo)) = UPPER(BTRIM(${ASESOR_RESUELTO}))
+    WHERE UPPER(BTRIM(e3.nombre_completo)) = UPPER(BTRIM(${ASESOR_RESUELTO_NORMALIZADO}))
     ORDER BY e3.codigo::int DESC
     LIMIT 1
 ) esup ON true`;
@@ -348,11 +353,11 @@ const getIndicadoresDashboard = async (req, res) => {
             if (listaAsesores.length > 1) {
                 const asesoresUpper = _sqlListaUpper(listaAsesores);
                 fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
-                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO})) IN ${asesoresUpper}`;
+                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO_NORMALIZADO})) IN ${asesoresUpper}`;
             } else if (listaAsesores.length === 1) {
                 values.push(listaAsesores[0]);
                 fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
-                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO})) = UPPER(TRIM($${values.length}))`;
+                fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO_NORMALIZADO})) = UPPER(TRIM($${values.length}))`;
             }
             filtersJoin   += fragmentoAsesorViejo;
             filtersNoJoin += fragmentoAsesorViejo;
@@ -904,7 +909,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
                 -- y solo cae al histórico si el webhook no tiene dato. Ver
                 -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
-                ${ASESOR_RESUELTO} AS "ASESOR",
+                ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
@@ -942,7 +947,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
-                ${ASESOR_RESUELTO} AS "ASESOR",
+                ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
             ${joinEmpleadosDedup}
@@ -1140,7 +1145,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 mb.j_id_bitrix AS "ID_CRM",
                 -- ASESOR resuelto desde el webhook (mismo criterio que queryJotform)
-                ${ASESOR_RESUELTO} AS "ASESOR",
+                ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
@@ -1171,7 +1176,7 @@ const getIndicadoresDashboard = async (req, res) => {
         const queryBacklogDetalle = `
             SELECT
                 mb.j_id_bitrix AS "ID_CRM",
-                ${ASESOR_RESUELTO} AS "ASESOR",
+                ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",

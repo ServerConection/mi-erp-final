@@ -20,8 +20,8 @@
  *   Descarte %         = Descarte / gestion      ← sobre GESTIONABLES, no total
  *   Ingresos CRM       = cantidad en etapa Venta Subida
  *   Ingresos Jot       = registros Jotform creados en el rango
- *   ACTIVA MES         = activo + activación en rango + lead creado en rango
- *   ACTIVAS BACK       = activo + activación en rango + lead creado ANTES
+ *   ACTIVA MES         = activo + activación en rango + registro Jotform en rango
+ *   ACTIVAS BACK       = activas totales - activa mes
  *   ACTIVAS TOTALES    = activo + activación en rango   (= mes + backlog)
  *   Tasa Activación    = activas totales / ingresos Jot
  *   % 3ra Edad         = ventas 3ra edad / ingresos Jot
@@ -97,8 +97,8 @@ function nombreAsesorDisplaySQL(campo) {
 const SQL_BASE = `
 WITH datos AS (
     SELECT
-        ${claveAsesorSQL('mb.b_persona_responsable')}              AS persona,
-        MIN(${nombreAsesorDisplaySQL('mb.b_persona_responsable')})                      AS asesor_display,
+        COALESCE(${claveAsesorSQL('mb.b_persona_responsable')}, 'SIN ASIGNAR')          AS persona,
+        COALESCE(MIN(${nombreAsesorDisplaySQL('mb.b_persona_responsable')}), 'SIN ASIGNAR') AS asesor_display,
         __SUPERVISOR__                                     AS supervisor,
 
         -- ── Lado Bitrix (por fecha de creación del lead) ──────────────────
@@ -133,17 +133,19 @@ WITH datos AS (
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango
         COUNT(*) FILTER (
-            WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
               AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)
                   BETWEEN $1::date AND $2::date
         )                                                  AS activas_totales,
 
-        -- ACTIVA MES: además el lead se creó dentro del rango
+        -- ACTIVA MES: además se registró en Jotform dentro del rango.
+        -- Es la misma definición usada por las tarjetas de Indicadores.
         COUNT(*) FILTER (
-            WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
               AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)
                   BETWEEN $1::date AND $2::date
-              AND mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
         )                                                  AS activa_mes,
 
         -- activas_backlog NO se calcula aquí: se deriva como TOTALES − MES
@@ -182,7 +184,6 @@ WITH datos AS (
         )                                                  AS por_regularizar
     FROM public.__VISTA__ mb
     __JOIN_EMPLEADOS__
-    WHERE NULLIF(TRIM(mb.b_persona_responsable), '') IS NOT NULL
     GROUP BY 1
 ),
 metas AS (
@@ -227,7 +228,7 @@ const derivar = (f) => {
   const pct = (num, den) => (n(den) > 0 ? Number(((n(num) / n(den)) * 100).toFixed(1)) : 0);
 
   // ACTIVAS TOTALES = todo lo que tiene fecha de activación en el rango
-  // ACTIVA MES      = de esas, las que además se crearon en el rango
+  // ACTIVA MES      = de esas, las registradas en Jotform dentro del rango
   // ACTIVAS BACKLOG = TOTALES − MES  (definición de gerencia, 2026-08)
   // Se calcula por resta y no con su propio FILTER: así los tres siempre
   // cuadran entre sí, en cualquier nivel (asesor, supervisor o total).
@@ -351,7 +352,9 @@ async function getKpiComercial(req, res) {
     const filasAsesorFusionadas = fusionarPorNombreSimilar(rows, 'asesor_display', CAMPOS_SUMA);
     const asesores = filasAsesorFusionadas
       .map(r => derivar({ ...r, nombre: r.asesor_display }))
-      .filter(r => r.leads_total > 0 || r.ingresos_jot > 0 || r.meta_leads_total > 0)
+      // Conservar también asesores que solo aportan activaciones/backlog en el
+      // rango. Las tarjetas los incluyen aunque su lead/Jotform sea anterior.
+      .filter(r => r.leads_total > 0 || r.ingresos_jot > 0 || r.activas_totales > 0 || r.meta_leads_total > 0)
       .sort((a, b) => b.leads_total - a.leads_total);
 
     // Nivel SUPERVISOR — se agregan los absolutos y se recalculan los %

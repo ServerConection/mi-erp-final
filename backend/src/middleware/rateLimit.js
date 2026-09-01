@@ -30,9 +30,23 @@ const cleanup = setInterval(() => {
 }, WINDOW_MS);
 if (cleanup.unref) cleanup.unref();
 
+// Endpoints de ingesta que llama Bitrix24, no un navegador. Todos vienen de
+// las MISMAS IPs de Bitrix, asi que comparten contador: mover 400 leads de
+// golpe (o un dia con mucho movimiento) puede pasar los 600/min y devolver
+// 429. Un 429 al handler de eventos hace que Bitrix reintente y termine
+// DESACTIVANDO el handler — y ahi el ERP se queda sordo sin avisar.
+// Estan protegidos por ?token= contra el .env, no por rate limit.
+const SIN_LIMITE = new Set([
+  '/bitrix_evento.php',
+  '/bitrix_webhook.php',
+  '/bitrix_webhook_gestionables.php',
+  '/jotform_webhook.php',
+]);
+
 function rateLimit(req, res, next) {
   // No limitar preflight ni health checks
   if (req.method === 'OPTIONS' || req.path === '/health') return next();
+  if (SIN_LIMITE.has(req.path)) return next();
 
   const ip = req.ip || req.connection?.remoteAddress || 'desconocido';
   const now = Date.now();

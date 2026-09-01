@@ -53,8 +53,15 @@ const correr = async () => {
 };
 
 function initReconciliacionBitrix() {
-  if ((process.env.RECONCILIACION_BITRIX || 'on').toLowerCase() === 'off') {
-    console.log('[reconciliacion] desactivada por RECONCILIACION_BITRIX=off');
+  // APAGADO POR DEFECTO. Desde 2026-09-01 la actualizacion en tiempo real la
+  // hace el evento ONCRMDEALUPDATE (ver services/bitrixEvento.service.js), que
+  // avisa en CADA movimiento y no depende de las automatizaciones de etapa.
+  // Este cron queda como red de emergencia: si algun dia Bitrix pierde eventos
+  // (caida, deploy largo, handler desactivado), se prende con
+  //   RECONCILIACION_BITRIX=on
+  // y rellena lo que falte, sin volver a programar nada.
+  if ((process.env.RECONCILIACION_BITRIX || 'off').toLowerCase() !== 'on') {
+    console.log('[reconciliacion] apagada (tiempo real vía eventos). Para activarla: RECONCILIACION_BITRIX=on');
     return;
   }
   // Al minuto 20 de cada hora, para no chocar con los otros jobs en punto.

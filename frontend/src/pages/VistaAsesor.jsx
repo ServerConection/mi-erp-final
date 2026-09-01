@@ -896,25 +896,25 @@ export default function VistaAsesor() {
         )}
       </div>
 
-      {/* ── VENTAS ACTIVAS (mes en curso, por fecha de activación) ── */}
+      {/* ── VENTAS ACTIVAS (período seleccionado, por fecha de activación) ── */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-slate-100">
           <div>
             <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
-              Ventas activas — mes en curso
+              Ventas activas — período seleccionado
               <span className="text-slate-300 font-normal normal-case tracking-normal text-[9px]">
                 — por fecha de activación, sin importar cuándo se creó el registro
               </span>
             </p>
             <p className="text-[8px] text-slate-400 mt-0.5 uppercase">
-              {ventasActivas.length} venta{ventasActivas.length === 1 ? "" : "s"} activada{ventasActivas.length === 1 ? "" : "s"} este mes
+              {ventasActivas.length} venta{ventasActivas.length === 1 ? "" : "s"} activada{ventasActivas.length === 1 ? "" : "s"} en el período
             </p>
           </div>
         </div>
         {ventasActivas.length === 0 ? (
           <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
-            Sin ventas activadas este mes
+            Sin ventas activadas en el período seleccionado
           </div>
         ) : (
           <div className="overflow-auto max-h-64">
@@ -943,7 +943,7 @@ export default function VistaAsesor() {
         )}
       </div>
 
-      {/* ── BACKLOG — activadas este mes pero registradas en un mes anterior ── */}
+      {/* ── BACKLOG — activadas en el período pero registradas antes ── */}
       <div className="bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-blue-100 bg-blue-50">
           <div>
@@ -951,7 +951,7 @@ export default function VistaAsesor() {
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
               Backlog
               <span className="text-blue-300 font-normal normal-case tracking-normal text-[9px]">
-                — activadas este mes, pero registradas en Jotform en un mes anterior
+                — activadas en el período, pero registradas antes de su inicio
               </span>
             </p>
             <p className="text-[8px] text-blue-400 mt-0.5 uppercase">
@@ -961,7 +961,7 @@ export default function VistaAsesor() {
         </div>
         {backlogDetalle.length === 0 ? (
           <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
-            Sin backlog este mes
+            Sin backlog en el período seleccionado
           </div>
         ) : (
           <div className="overflow-auto max-h-64">
@@ -990,7 +990,7 @@ export default function VistaAsesor() {
         )}
       </div>
 
-      {/* ── POR REGULARIZAR (worklist urgente, sin filtro de fecha) ── */}
+      {/* ── POR REGULARIZAR — período seleccionado ── */}
       <div className="bg-white border border-red-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-red-100 bg-red-50">
           <div>
@@ -998,7 +998,7 @@ export default function VistaAsesor() {
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
               Por regularizar — pendientes
               <span className="text-red-300 font-normal normal-case tracking-normal text-[9px]">
-                — todo lo que hoy está "POR REGULARIZAR", sin importar la fecha de registro o activación
+                — pendientes registrados en el período seleccionado
               </span>
             </p>
             <p className="text-[8px] text-red-400 mt-0.5 uppercase">
@@ -1038,13 +1038,12 @@ export default function VistaAsesor() {
       </div>
 
       {/* ── TABLA JOTFORM ── */}
-      {dataJotform.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="px-5 py-3 flex justify-between items-center border-b border-slate-100">
             <div>
               <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                Detalle base Jotform
+                Ingresos del período — detalle Jotform
                 <span className="text-slate-300 font-normal normal-case tracking-normal text-[9px]">
                   — click en una fila para ver el detalle
                 </span>
@@ -1058,7 +1057,11 @@ export default function VistaAsesor() {
               ⬇ Excel
             </button>
           </div>
-          <div className="overflow-auto max-h-64">
+          {dataJotform.length === 0 ? (
+            <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
+              Sin ingresos en el período seleccionado
+            </div>
+          ) : <div className="overflow-auto max-h-64">
             <table className="text-[9px] w-full border-collapse font-mono">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 text-slate-400 font-black text-[8px] uppercase border-b border-slate-100">
@@ -1080,9 +1083,8 @@ export default function VistaAsesor() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
+          </div>}
+      </div>
     </div>
   );
 }

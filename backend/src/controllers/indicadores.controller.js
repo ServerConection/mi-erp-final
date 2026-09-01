@@ -20,6 +20,7 @@ const {
     esDescarteExactoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
+const { enPeriodoSeleccionadoExpr, backlogEnPeriodoSeleccionadoExpr } = require('../shared/vistaAsesorPeriodo');
 // NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
 // FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
 // unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
@@ -927,38 +928,8 @@ const getIndicadoresDashboard = async (req, res) => {
         //      contadores "por_regularizar" / "regularizacion" del resto del
         //      dashboard, para que el número de la tarjeta y el detalle
         //      siempre cuadren.
-        //   2) SIN filtro de fecha — es una worklist de "lo que está pendiente
-        //      HOY", sin importar cuándo se registró o activó (mismo criterio
-        //      que ya describe el texto de VistaAsesor.jsx).
-        //   3) SOLO se acota por asesor/supervisor (scoping normal de
-        //      seguridad + el <select> del dashboard). A propósito NO reusa
-        //      filtersJoinResuelto: ese string ya trae pegado el filtro del
-        //      dropdown "REGULARIZACIÓN" (estadoRegularizacion) y el resto de
-        //      filtros del dashboard (etapa, canal, gestionables, fecha de
-        //      activación...) — si el usuario tuviera seleccionado, por
-        //      ejemplo, "REGULARIZADO" en ese dropdown, este worklist se
-        //      vaciaría por contradicción con la condición #1. Por eso arma
-        //      su propio arreglo de valores (valuesRegularizar), en vez de
-        //      compartir "values", así el conteo de placeholders no se
-        //      acopla al resto de filtros del dashboard.
-        let valuesRegularizar = [];
-        let filtrosRegularizar = "";
-        if (asesorQuery) {
-            const listaAsesoresReg = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
-                .map(a => a.trim()).filter(Boolean);
-            if (listaAsesoresReg.length > 1) {
-                const asesoresUpperReg = _sqlListaUpper(listaAsesoresReg);
-                filtrosRegularizar += ` AND UPPER(TRIM(${ASESOR_RESUELTO})) IN ${asesoresUpperReg}`;
-            } else if (listaAsesoresReg.length === 1) {
-                valuesRegularizar.push(listaAsesoresReg[0]);
-                filtrosRegularizar += ` AND UPPER(TRIM(${ASESOR_RESUELTO})) = UPPER(TRIM($${valuesRegularizar.length}))`;
-            }
-        }
-        if (supervisor) {
-            valuesRegularizar.push(`%${supervisor}%`);
-            filtrosRegularizar += ` AND e.supervisor ILIKE $${valuesRegularizar.length}`;
-        }
-
+        //   2) Usa fecha de registro dentro del período seleccionado.
+        //   3) Respeta los mismos filtros y el asesor resuelto por webhook.
         const queryRegularizaciones = `
             SELECT
                 mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
@@ -978,7 +949,8 @@ const getIndicadoresDashboard = async (req, res) => {
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
             WHERE ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
-            ${filtrosRegularizar}
+              AND ${enPeriodoSeleccionadoExpr("public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)")}
+            ${filtersJoinResuelto}
             ORDER BY public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) DESC
             LIMIT 3000
         `;
@@ -1183,25 +1155,14 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
               AND mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= date_trunc('month', CURRENT_DATE)::date
-              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-              -- FIX (bind mismatch): esta query no usa $1/$2 para el rango de fechas
-              -- (usa CURRENT_DATE a propósito), pero se ejecuta con pool.query(query, values)
-              -- y "values" siempre trae [desde, hasta] como $1/$2, más lo que agregue
-              -- filtersJoin numerado desde $3 en adelante. Sin esta línea, cuando no hay
-              -- filtros activos la query queda con 0 placeholders y Postgres revienta con
-              -- "bind message supplies 2 parameters, but prepared statement requires 0"
-              -- (tumbaba TODO el dashboard de Indicadores). Esta condición es un no-op:
-              -- $1 y $2 siempre son fechas válidas (desde/hasta ya vienen con default),
-              -- solo existe para que el conteo de placeholders cuadre con "values".
-              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+              AND ${enPeriodoSeleccionadoExpr("public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)")}
               ${filtersJoinResuelto}
             ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
             LIMIT 3000
         `;
 
         // ── BACKLOG (NUEVO, 2026-08-18) — detalle fila por fila ──────────────────
-        // Mismo universo que queryVentasActivasMes (activada este mes, por fecha
+        // Mismo universo que queryVentasActivasMes (activada en el período, por fecha
         // de ACTIVACIÓN), pero SOLO la porción que la tarjeta KPI ya reporta como
         // "backlog": activada este mes, REGISTRADA en Jotform en un mes ANTERIOR
         // (ver mergeBacklog más abajo: backlog = real_mes − activa_mes). Antes ese
@@ -1225,14 +1186,13 @@ const getIndicadoresDashboard = async (req, res) => {
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
               AND mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
-              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= date_trunc('month', CURRENT_DATE)::date
-              AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-              -- BACKLOG: registrada en Jotform ANTES del mes en curso (si no hay
+              AND ${backlogEnPeriodoSeleccionadoExpr(
+                  "public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)",
+                  "public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)"
+              )}
+              -- BACKLOG: registrada en Jotform ANTES del período seleccionado (si no hay
               -- fecha de registro parseable, no se puede saber si es backlog o no
               -- → se excluye, mismo criterio implícito que activa_mes/real_mes).
-              AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) IS NOT NULL
-              AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) < date_trunc('month', CURRENT_DATE)::date
-              AND $1::date IS NOT NULL AND $2::date IS NOT NULL
               ${filtersJoinResuelto}
             ORDER BY public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) DESC
             LIMIT 3000
@@ -1250,7 +1210,7 @@ const getIndicadoresDashboard = async (req, res) => {
             pool.query(queryIngresosDiaAsesor, valuesDia),
             pool.query(queryPlanesPorCategoria, values),
             pool.query(queryVentasActivasMes, values),
-            pool.query(queryRegularizaciones, valuesRegularizar),
+            pool.query(queryRegularizaciones, values),
             pool.query(queryBacklogDetalle, values),
         ]);
 
@@ -1337,7 +1297,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
                 };
             })(),
-            // NUEVO: detalle de ventas activas del mes en curso (por fecha de
+            // Detalle de ventas activas del período seleccionado (por fecha de
             // activación, no por fecha de creación) — ver queryVentasActivasMes.
             ventasActivas: resVentasActivasMes.rows,
             ventasActivasTotal: resVentasActivasMes.rowCount,
@@ -1345,8 +1305,8 @@ const getIndicadoresDashboard = async (req, res) => {
             // Antes este campo no existía en la respuesta y el bloque rojo
             // quedaba siempre vacío — ver queryRegularizaciones arriba.
             regularizaciones: resRegularizaciones.rows,
-            // NUEVO: detalle fila por fila del backlog (activada este mes, pero
-            // registrada en Jotform un mes anterior) — ver queryBacklogDetalle.
+            // Detalle fila por fila del backlog (activada en el período, pero
+            // registrada en Jotform antes de su inicio) — ver queryBacklogDetalle.
             backlogDetalle: resBacklogDetalle.rows,
             backlogDetalleTotal: resBacklogDetalle.rowCount,
         };

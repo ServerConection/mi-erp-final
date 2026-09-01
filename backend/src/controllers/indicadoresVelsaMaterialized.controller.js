@@ -1,4 +1,9 @@
 const pool = require('../config/db');
+const {
+  enPeriodoSeleccionadoExpr,
+  backlogEnPeriodoSeleccionadoExpr,
+  esPorRegularizarVelsaExpr,
+} = require('../shared/vistaAsesorPeriodo');
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,8 +20,6 @@ const {
     esDescarteExactoExpr,
     descarteIndicadoresExpr,
     ETAPAS_NO_GESTIONABLES,
-
-    esPorRegularizarExpr
 } = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -258,7 +261,7 @@ const queryKPI = (columna, filters) => {
     -- POR REGULARIZAR (existe en Novonet, faltaba en Velsa)
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-      AND ${esPorRegularizarExpr('mv.estado_regularizacion')}
+      AND ${esPorRegularizarVelsaExpr('mv.estado_regularizacion')}
     ) AS por_regularizar,
     -- ACTIVAS por FECHA DE REGISTRO JOTFORM (equivalente a "activas" de Novonet;
     -- distinto de real_mes, que va por fecha de activación).
@@ -310,7 +313,7 @@ const queryKPI = (columna, filters) => {
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND UPPER(TRIM(mv.estado_venta)) NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')
-      AND ${esPorRegularizarExpr('mv.estado_regularizacion')}
+      AND ${esPorRegularizarVelsaExpr('mv.estado_regularizacion')}
     ) AS regularizacion,
 
     -- ── PORCENTAJES ──────────────────────────────────────────────────────
@@ -690,14 +693,12 @@ LIMIT 6000
       FROM ${MV}
       WHERE mv.estado_venta = ${ESTADO_ACTIVO}
         AND mv.fecha_activacion IS NOT NULL
-        AND mv.fecha_activacion::date >= date_trunc('month', CURRENT_DATE)::date
-        AND mv.fecha_activacion::date <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        AND ${enPeriodoSeleccionadoExpr('mv.fecha_activacion::date')}
         -- FIX (bind mismatch, mismo bug que en Novonet): esta query no usa $1/$2
         -- para fechas (usa CURRENT_DATE a propósito), pero se ejecuta con
         -- pool.query(query, valuesMain) que siempre trae [desde, hasta]. Sin esto,
         -- sin filtros activos la query queda con 0 placeholders y truena con
         -- "bind message supplies 2 parameters, but prepared statement requires 0".
-        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
         ${filters}
       ORDER BY mv.fecha_activacion DESC
       LIMIT 3000
@@ -723,13 +724,12 @@ LIMIT 6000
       FROM ${MV}
       WHERE mv.estado_venta = ${ESTADO_ACTIVO}
         AND mv.fecha_activacion IS NOT NULL
-        AND mv.fecha_activacion::date >= date_trunc('month', CURRENT_DATE)::date
-        AND mv.fecha_activacion::date <  (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        AND ${backlogEnPeriodoSeleccionadoExpr(
+          'mv.fecha_activacion::date',
+          "(mv.fecha_registro_jotform - INTERVAL '5 hours')::date"
+        )}
         -- BACKLOG: registrada en Jotform ANTES del mes en curso (misma
         -- normalización -5h que JF_DATE, arriba).
-        AND mv.fecha_registro_jotform IS NOT NULL
-        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < date_trunc('month', CURRENT_DATE)::date
-        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
         ${filters}
       ORDER BY mv.fecha_activacion DESC
       LIMIT 3000
@@ -756,11 +756,11 @@ LIMIT 6000
         mv.forma_pago AS "FORMA_PAGO",
         mv.inicio_sesion_netlife AS "LOGIN"
       FROM ${MV}
-      WHERE ${esPorRegularizarExpr('mv.estado_regularizacion')}
+      WHERE ${esPorRegularizarVelsaExpr('mv.estado_regularizacion')}
         -- mismo no-op de conteo de placeholders que qVentasActivasMes: esta
         -- query no acota por $1/$2, pero se ejecuta con "valuesMain" (que
         -- siempre trae [desde, hasta] como $1/$2 + filters).
-        AND $1::date IS NOT NULL AND $2::date IS NOT NULL
+        AND ${enPeriodoSeleccionadoExpr("(mv.fecha_registro_jotform - INTERVAL '5 hours')::date")}
         ${filters}
       ORDER BY mv.fecha_registro_jotform DESC
       LIMIT 3000

@@ -887,6 +887,29 @@ export default function DashboardLayout() {
                 </svg>
               </button>
 
+              {location.pathname !== "/" && (
+                <button
+                  type="button"
+                  onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
+                  title="Regresar a la pantalla anterior"
+                  aria-label="Regresar a la pantalla anterior"
+                  className="flex items-center justify-center rounded-xl"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    flexShrink: 0,
+                    color: "#475569",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    cursor: "pointer",
+                  }}
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+              )}
+
               {/* Breadcrumb / título */}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{

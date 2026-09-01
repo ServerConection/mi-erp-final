@@ -9,12 +9,12 @@ const playChime = () => {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const notas = [
-      { freq: 523.25, t: 0,    dur: 0.18 },  // C5
+      { freq: 523.25, t: 0, dur: 0.18 },  // C5
       { freq: 659.25, t: 0.12, dur: 0.18 },  // E5
       { freq: 783.99, t: 0.24, dur: 0.28 },  // G5
     ];
     notas.forEach(({ freq, t, dur }) => {
-      const osc  = ctx.createOscillator();
+      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -26,7 +26,7 @@ const playChime = () => {
       osc.start(ctx.currentTime + t);
       osc.stop(ctx.currentTime + t + dur + 0.05);
     });
-  } catch (_) {}
+  } catch (_) { }
 };
 
 // CSS keyframes inyectados una vez
@@ -106,11 +106,69 @@ const rankColor = (i) => RANK_COLORS[i] || { bg: "#f8fafc", border: "#e2e8f0", t
 // ─────────────────────────────────────────────────────────────────────────────
 // FILA DE ASESOR
 // ─────────────────────────────────────────────────────────────────────────────
-function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
-  const rc   = rankColor(rank);
-  const jot  = Number(asesor.ingresos_reales || 0);
-  const act  = Number(asesor.real_mes || 0) + Number(asesor.backlog || 0);
-  const barW = maxJot > 0 ? Math.round((jot / maxJot) * 100) : 0;
+function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }) {
+  const rc = rankColor(rank);
+  const jot = Number(asesor.ingresos_reales || 0);
+  const activas = Number(asesor.real_mes || 0) + Number(asesor.backlog || 0);
+  const ingresosCrm = Number(asesor.ventas_crm || 0);
+  const ingresosCrmDia = Number(asesor.ventas_del_dia || 0);
+  const gestionables = Number(asesor.gestionables || 0);
+  const descartes = Number(asesor.descarte_count || 0);
+  const pctDescarte = gestionables > 0 ? (descartes / gestionables) * 100 : 0;
+  const barW = maxCrm > 0 ? Math.round((ingresosCrm / maxCrm) * 100) : 0;
+
+  if (compact) {
+    const metricas = [
+      { label: "Jotform", value: jot, color: "#0284c7" },
+      { label: "Activas", value: activas, color: "#10b981" },
+      { label: "CRM", value: ingresosCrm, color: accentColor },
+      { label: "CRM día", value: ingresosCrmDia, color: "#0f172a" },
+      { label: "Gestionables", value: gestionables, color: "#475569" },
+      { label: "% descarte", value: `${pctDescarte.toFixed(1)}%`, color: pctDescarte > 30 ? "#dc2626" : "#059669" },
+    ];
+
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 10px", borderBottom: "1px solid #f1f5f9",
+        animation: isNew ? "rowFlash 2.4s ease-out forwards" : "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: "1 1 46%" }}>
+          <div style={{
+            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+            background: rc.bg, border: `1px solid ${rc.border}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, fontWeight: 900, color: rc.text,
+          }}>{rank + 1}</div>
+          <div style={{
+            width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+            background: accentColor + "18", border: `1px solid ${accentColor}40`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, fontWeight: 800, color: accentColor,
+          }}>{initials(asesor.nombre_grupo)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div title={asesor.nombre_grupo} style={{ fontSize: 9, fontWeight: 800, color: "#0f172a", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {asesor.nombre_grupo}
+            </div>
+            <div style={{ height: 3, marginTop: 5, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${barW}%`, height: "100%", background: accentColor, borderRadius: 2 }} />
+            </div>
+          </div>
+        </div>
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 4, flex: "1 1 54%", minWidth: 0,
+        }}>
+          {metricas.map((metrica) => (
+            <div key={metrica.label} title={metrica.label} style={{ textAlign: "center", padding: "5px 1px", background: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: metrica.color, lineHeight: 1 }}>{metrica.value}</div>
+              <div style={{ marginTop: 2, fontSize: 5.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{metrica.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -180,13 +238,13 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
         </div>
       </div>
 
-      {/* Ingresos Jot */}
-      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
-        <div style={{ fontSize: 20, fontWeight: 900, color: accentColor, lineHeight: 1 }}>
+      {/* Ingresos Jotform */}
+      <div style={{ textAlign: "center", minWidth: 58, flexShrink: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#0284c7", lineHeight: 1 }}>
           {jot}
         </div>
         <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>
-          Jot
+          Jotform
         </div>
       </div>
 
@@ -194,9 +252,9 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
       <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
 
       {/* Activas totales */}
-      <div style={{ textAlign: "center", minWidth: 48, flexShrink: 0 }}>
-        <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>
-          {act}
+      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", lineHeight: 1 }}>
+          {activas}
         </div>
         <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>
           Activas
@@ -206,21 +264,60 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
       {/* Divisor */}
       <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
 
-      {/* % del grupo */}
-      <div style={{ textAlign: "center", minWidth: 40, flexShrink: 0 }}>
+      {/* Ingresos CRM */}
+      <div style={{ textAlign: "center", minWidth: 58, flexShrink: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: accentColor, lineHeight: 1 }}>
+          {ingresosCrm}
+        </div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>
+          CRM
+        </div>
+      </div>
+
+      {/* Divisor */}
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+
+      {/* Ingresos CRM del día */}
+      <div style={{ textAlign: "center", minWidth: 58, flexShrink: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>
+          {ingresosCrmDia}
+        </div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>
+          CRM día
+        </div>
+      </div>
+
+      {/* Divisor */}
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+
+      {/* Gestionables */}
+      <div style={{ textAlign: "center", minWidth: 58, flexShrink: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#475569", lineHeight: 1 }}>
+          {gestionables}
+        </div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>
+          Gestionables
+        </div>
+      </div>
+
+      {/* Divisor */}
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+
+      {/* Porcentaje de descarte */}
+      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
         <div style={{
           display: "inline-block",
-          background: accentColor + "12",
-          border: `1px solid ${accentColor}30`,
+          background: pctDescarte > 30 ? "#fef2f2" : "#f0fdf4",
+          border: `1px solid ${pctDescarte > 30 ? "#fecaca" : "#bbf7d0"}`,
           borderRadius: 6,
           padding: "2px 6px",
-          fontSize: 11, fontWeight: 800, color: accentColor,
+          fontSize: 11, fontWeight: 800, color: pctDescarte > 30 ? "#dc2626" : "#059669",
           lineHeight: 1.4,
         }}>
-          {pct}%
+          {pctDescarte.toFixed(1)}%
         </div>
         <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 3 }}>
-          del grupo
+          Descarte
         </div>
       </div>
     </div>
@@ -231,11 +328,16 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
 // CARD DE SUPERVISOR
 // ─────────────────────────────────────────────────────────────────────────────
 function SupervisorCard({ supervisor, asesores, idx, newNames }) {
-  const cfg    = supColor(idx);
-  const sorted = [...asesores].sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0));
-  const maxJot = Math.max(...sorted.map(a => Number(a.ingresos_reales || 0)), 1);
+  const cfg = supColor(idx);
+  const sorted = [...asesores].sort((a, b) => Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0));
+  const maxCrm = Math.max(...sorted.map(a => Number(a.ventas_crm || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
   const totAct = sorted.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0);
+  const totCrm = sorted.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
+  const totCrmDia = sorted.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0);
+  const totGestionables = sorted.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+  const totDescartes = sorted.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+  const pctDescarte = totGestionables > 0 ? (totDescartes / totGestionables) * 100 : 0;
 
   return (
     <div style={{
@@ -250,10 +352,10 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
       <div style={{
         padding: "14px 16px 12px",
         borderBottom: "1px solid #f1f5f9",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
+        display: "flex", flexDirection: "column", gap: 12,
         background: "#fafafa",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
             background: cfg.light,
@@ -277,57 +379,54 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
         </div>
 
         {/* Totales del supervisor */}
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, width: "100%" }}>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: cfg.accent, lineHeight: 1 }}>{totJot}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#0284c7", lineHeight: 1 }}>{totJot}</div>
             <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Jotform</div>
           </div>
-          <div style={{ width: 1, height: 28, background: "#e2e8f0" }} />
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#334155", lineHeight: 1 }}>{totAct}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981", lineHeight: 1 }}>{totAct}</div>
             <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Activas</div>
           </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: cfg.accent, lineHeight: 1 }}>{totCrm}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>CRM</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#334155", lineHeight: 1 }}>{totCrmDia}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>CRM día</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#475569", lineHeight: 1 }}>{totGestionables}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Gestionables</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: pctDescarte > 30 ? "#dc2626" : "#059669", lineHeight: 1 }}>{pctDescarte.toFixed(1)}%</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Descarte</div>
+          </div>
         </div>
-      </div>
-
-      {/* Cabecera de columnas */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "5px 16px",
-        background: "#f8fafc",
-        borderBottom: "1px solid #f1f5f9",
-      }}>
-        <div style={{ width: 26, flexShrink: 0 }} />
-        <div style={{ width: 30, flexShrink: 0 }} />
-        <div style={{ flex: 1 }} />
-        <div style={{ minWidth: 52, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Jot</div>
-        <div style={{ width: 1 }} />
-        <div style={{ minWidth: 48, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Activas</div>
-        <div style={{ width: 1 }} />
-        <div style={{ minWidth: 40, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>% Grupo</div>
       </div>
 
       {/* Filas */}
       <div>
         {sorted.map((asesor, i) => {
-          const pct = totJot > 0
-            ? Math.round((Number(asesor.ingresos_reales || 0) / totJot) * 100)
-            : 0;
           return (
             <AsesorRow
               key={asesor.nombre_grupo}
               asesor={asesor}
               rank={i}
-              pct={pct}
-              maxJot={maxJot}
+              maxCrm={maxCrm}
               accentColor={cfg.accent}
               isNew={newNames.has(asesor.nombre_grupo)}
+              compact
             />
           );
         })}
         {sorted.length === 0 && (
-          <div style={{ padding: "24px 16px", textAlign: "center",
-            fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <div style={{
+            padding: "24px 16px", textAlign: "center",
+            fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em"
+          }}>
             Sin datos
           </div>
         )}
@@ -340,10 +439,15 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
 // RANKING GENERAL
 // ─────────────────────────────────────────────────────────────────────────────
 function RankingGeneral({ asesores, supColorMap, newNames }) {
-  const sorted = [...asesores].sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0));
-  const maxJot = Math.max(...sorted.map(a => Number(a.ingresos_reales || 0)), 1);
+  const sorted = [...asesores].sort((a, b) => Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0));
+  const maxCrm = Math.max(...sorted.map(a => Number(a.ventas_crm || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
   const totAct = sorted.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0);
+  const totCrm = sorted.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
+  const totCrmDia = sorted.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0);
+  const totGestionables = sorted.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+  const totDescartes = sorted.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+  const pctDescarte = totGestionables > 0 ? (totDescartes / totGestionables) * 100 : 0;
 
   return (
     <div style={{
@@ -371,8 +475,10 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
             🏆
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a",
-              textTransform: "uppercase", letterSpacing: ".03em" }}>
+            <div style={{
+              fontSize: 14, fontWeight: 900, color: "#0f172a",
+              textTransform: "uppercase", letterSpacing: ".03em"
+            }}>
               Ranking general
             </div>
             <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>
@@ -380,15 +486,35 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{totJot}</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#0284c7", lineHeight: 1 }}>{totJot}</div>
             <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Total Jot</div>
           </div>
           <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#475569", lineHeight: 1 }}>{totAct}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#10b981", lineHeight: 1 }}>{totAct}</div>
             <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Total Activas</div>
+          </div>
+          <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: "#0ea5e9", lineHeight: 1 }}>{totCrm}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Ingresos CRM</div>
+          </div>
+          <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#10b981", lineHeight: 1 }}>{totCrmDia}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>CRM día</div>
+          </div>
+          <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#8b5cf6", lineHeight: 1 }}>{totGestionables}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Gestionables</div>
+          </div>
+          <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: pctDescarte > 30 ? "#dc2626" : "#059669", lineHeight: 1 }}>{pctDescarte.toFixed(1)}%</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Descarte</div>
           </div>
         </div>
       </div>
@@ -401,18 +527,25 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
         <div style={{ width: 26, flexShrink: 0 }} />
         <div style={{ width: 30, flexShrink: 0 }} />
         <div style={{ flex: 1 }} />
-        <div style={{ minWidth: 52, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Jot</div>
+        <div style={{ minWidth: 58, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Jotform</div>
         <div style={{ width: 1 }} />
-        <div style={{ minWidth: 48, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Activas</div>
+        <div style={{ minWidth: 52, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Activas</div>
         <div style={{ width: 1 }} />
-        <div style={{ minWidth: 40, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>% Total</div>
+        <div style={{ minWidth: 58, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>CRM</div>
+        <div style={{ width: 1 }} />
+        <div style={{ minWidth: 58, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>CRM día</div>
+        <div style={{ width: 1 }} />
+        <div style={{ minWidth: 58, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Gestionables</div>
+        <div style={{ width: 1 }} />
+        <div style={{ minWidth: 52, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>% Descarte</div>
       </div>
 
       {/* 1 columna — 15 primeros visibles, scroll para el resto */}
-      <div style={{ maxHeight: 15 * 57, overflowY: "auto",
-        scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent" }}>
+      <div style={{
+        maxHeight: 15 * 57, overflowY: "auto",
+        scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent"
+      }}>
         {sorted.map((asesor, i) => {
-          const pct    = totJot > 0 ? Math.round((Number(asesor.ingresos_reales || 0) / totJot) * 100) : 0;
           const supIdx = supColorMap[asesor.supervisor] ?? 0;
           const accent = supColor(supIdx).accent;
           return (
@@ -420,8 +553,7 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
               key={asesor.nombre_grupo}
               asesor={asesor}
               rank={i}
-              pct={pct}
-              maxJot={maxJot}
+              maxCrm={maxCrm}
               accentColor={accent}
               isNew={newNames.has(asesor.nombre_grupo)}
             />
@@ -439,17 +571,17 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFETI — piezas aleatorias
 // ─────────────────────────────────────────────────────────────────────────────
-const CONFETTI_COLORS = ["#fbbf24","#10b981","#0ea5e9","#f472b6","#a78bfa","#f97316","#34d399"];
+const CONFETTI_COLORS = ["#fbbf24", "#10b981", "#0ea5e9", "#f472b6", "#a78bfa", "#f97316", "#34d399"];
 const CONFETTI_PIECES = Array.from({ length: 48 }, (_, i) => ({
   id: i,
-  color:  CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-  left:   `${Math.round(Math.random() * 100)}%`,
-  width:  `${6 + Math.round(Math.random() * 8)}px`,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  left: `${Math.round(Math.random() * 100)}%`,
+  width: `${6 + Math.round(Math.random() * 8)}px`,
   height: `${10 + Math.round(Math.random() * 10)}px`,
-  delay:  `${(Math.random() * 0.6).toFixed(2)}s`,
-  dur:    `${(1.8 + Math.random() * 1.4).toFixed(2)}s`,
+  delay: `${(Math.random() * 0.6).toFixed(2)}s`,
+  dur: `${(1.8 + Math.random() * 1.4).toFixed(2)}s`,
   rotate: `${Math.round(Math.random() * 360)}deg`,
-  shape:  i % 3 === 0 ? "50%" : i % 3 === 1 ? "0%" : "2px",
+  shape: i % 3 === 0 ? "50%" : i % 3 === 1 ? "0%" : "2px",
 }));
 
 function LiderSplash({ lider, show }) {
@@ -463,7 +595,7 @@ function LiderSplash({ lider, show }) {
       animation: show ? "splashIn .4s ease-out forwards" : "splashOut .5s ease-in forwards",
       pointerEvents: show ? "auto" : "none",
     }}
-    onClick={() => {}}
+      onClick={() => { }}
     >
       {/* Confeti */}
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
@@ -532,8 +664,10 @@ function LiderSplash({ lider, show }) {
             <div style={{ fontSize: 36, fontWeight: 900, color: lider.accent, lineHeight: 1 }}>
               {lider.jot}
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
+            }}>
               Ingresos Jot
             </div>
           </div>
@@ -542,16 +676,20 @@ function LiderSplash({ lider, show }) {
             <div style={{ fontSize: 36, fontWeight: 900, color: "#334155", lineHeight: 1 }}>
               {lider.activas}
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
+            }}>
               Activas totales
             </div>
           </div>
         </div>
 
         {/* Barra de tiempo */}
-        <div style={{ marginTop: 20, height: 3, background: "#f1f5f9",
-          borderRadius: 2, overflow: "hidden" }}>
+        <div style={{
+          marginTop: 20, height: 3, background: "#f1f5f9",
+          borderRadius: 2, overflow: "hidden"
+        }}>
           <div style={{
             height: "100%", background: lider.accent,
             borderRadius: 2,
@@ -559,8 +697,10 @@ function LiderSplash({ lider, show }) {
             width: "100%",
           }} />
         </div>
-        <div style={{ fontSize: 8, color: "#cbd5e1", marginTop: 6,
-          fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase" }}>
+        <div style={{
+          fontSize: 8, color: "#cbd5e1", marginTop: 6,
+          fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase"
+        }}>
           Cerrando en 7 s · click para cerrar
         </div>
       </div>
@@ -569,15 +709,15 @@ function LiderSplash({ lider, show }) {
 }
 
 export default function Seguimientoventas() {
-  const [loading, setLoading]     = useState(false);
-  const [asesores, setAsesores]   = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [asesores, setAsesores] = useState([]);
   const [ultimaAct, setUltimaAct] = useState(null);
-  const [newNames, setNewNames]   = useState(new Set());
-  const [lider, setLider]         = useState(null);      // { nombre, jot, activas, accentColor }
+  const [newNames, setNewNames] = useState(new Set());
+  const [lider, setLider] = useState(null);      // { nombre, jot, activas, accentColor }
   const [showLider, setShowLider] = useState(false);
-  const prevJotMap                = useRef({});
-  const liderTimer                = useRef(null);
-  const styleInjected             = useRef(false);
+  const prevJotMap = useRef({});
+  const liderTimer = useRef(null);
+  const styleInjected = useRef(false);
 
   const [filtros, setFiltros] = useState({
     fechaDesde: getPrimerDiaMes(),
@@ -590,7 +730,7 @@ export default function Seguimientoventas() {
     try {
       const params = new URLSearchParams({ fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta });
       // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)
@@ -603,16 +743,16 @@ export default function Seguimientoventas() {
           ...a,
           supervisor: netMap[a.nombre_grupo?.toUpperCase()] || "SIN SUPERVISOR",
         }));
-        // Detectar asesores con ingresos Jot nuevos respecto al ciclo anterior
+        // Detectar asesores con ingresos CRM nuevos respecto al ciclo anterior
         const changed = new Set();
         enriched.forEach(a => {
           const prev = prevJotMap.current[a.nombre_grupo] ?? -1;
-          const curr = Number(a.ingresos_reales || 0);
+          const curr = Number(a.ventas_crm || 0);
           if (prev !== -1 && curr > prev) changed.add(a.nombre_grupo);
         });
         // Actualizar mapa previo
         enriched.forEach(a => {
-          prevJotMap.current[a.nombre_grupo] = Number(a.ingresos_reales || 0);
+          prevJotMap.current[a.nombre_grupo] = Number(a.ventas_crm || 0);
         });
         if (changed.size > 0) {
           playChime();
@@ -624,17 +764,17 @@ export default function Seguimientoventas() {
           Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0)
         );
         if (sorted.length > 0) {
-          const top     = sorted[0];
-          const supIdx  = Object.keys(
+          const top = sorted[0];
+          const supIdx = Object.keys(
             enriched.reduce((m, a) => { m[a.supervisor] = true; return m; }, {})
           ).indexOf(top.supervisor);
-          const accent  = ["#0ea5e9","#10b981","#8b5cf6","#f59e0b","#ef4444","#ec4899","#06b6d4"][
+          const accent = ["#0ea5e9", "#10b981", "#8b5cf6", "#f59e0b", "#ef4444", "#ec4899", "#06b6d4"][
             Math.max(0, supIdx) % 7
           ];
           if (liderTimer.current) clearTimeout(liderTimer.current);
           setLider({
-            nombre:  top.nombre_grupo,
-            jot:     Number(top.ingresos_reales || 0),
+            nombre: top.nombre_grupo,
+            jot: Number(top.ingresos_reales || 0),
             activas: Number(top.real_mes || 0) + Number(top.backlog || 0),
             accent,
           });
@@ -683,8 +823,8 @@ export default function Seguimientoventas() {
       map[sup].push(a);
     });
     return Object.entries(map).sort(([, a], [, b]) => {
-      const ta = a.reduce((s, r) => s + Number(r.ingresos_reales || 0), 0);
-      const tb = b.reduce((s, r) => s + Number(r.ingresos_reales || 0), 0);
+      const ta = a.reduce((s, r) => s + Number(r.ventas_crm || 0), 0);
+      const tb = b.reduce((s, r) => s + Number(r.ventas_crm || 0), 0);
       return tb - ta;
     });
   }, [asesores]);
@@ -700,7 +840,15 @@ export default function Seguimientoventas() {
   const totales = useMemo(() => ({
     jot: asesores.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
     act: asesores.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
+    crm: asesores.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+    crmDia: asesores.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0),
+    gestionables: asesores.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+    descartes: asesores.reduce((a, r) => a + Number(r.descarte_count || 0), 0),
   }), [asesores]);
+
+  const pctDescarteTotal = totales.gestionables > 0
+    ? (totales.descartes / totales.gestionables) * 100
+    : 0;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -745,7 +893,7 @@ export default function Seguimientoventas() {
               </h1>
             </div>
             <p style={{ margin: 0, fontSize: 11, color: "#64748b", fontWeight: 500 }}>
-              Ingresos Jotform y activas totales por asesor · agrupado por supervisor
+              Ingresos CRM, gestionables y descarte por asesor · agrupado por supervisor
               {ultimaAct && (
                 <span style={{ marginLeft: 10, color: "#94a3b8" }}>
                   · Actualizado {ultimaAct.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
@@ -757,18 +905,24 @@ export default function Seguimientoventas() {
           {/* KPI strip */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
-              { label: "Total Jotform",   val: totales.jot,      color: "#0ea5e9" },
-              { label: "Total activas",   val: totales.act,      color: "#10b981" },
-              { label: "Supervisores",    val: grupos.length,    color: "#8b5cf6" },
-              { label: "Asesores",        val: asesores.length,  color: "#f59e0b" },
+              { label: "Total Jotform", val: totales.jot, color: "#0ea5e9" },
+              { label: "Total activas", val: totales.act, color: "#10b981" },
+              { label: "Supervisores", val: grupos.length, color: "#8b5cf6" },
+              { label: "Asesores", val: asesores.length, color: "#f59e0b" },
+              { label: "Ingresos CRM", val: totales.crm, color: "#0ea5e9" },
+              { label: "Ingresos CRM día", val: totales.crmDia, color: "#10b981" },
+              { label: "Gestionables", val: totales.gestionables, color: "#8b5cf6" },
+              { label: "% descarte", val: `${pctDescarteTotal.toFixed(1)}%`, color: pctDescarteTotal > 30 ? "#dc2626" : "#059669" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: "#fff", border: "1px solid #e2e8f0",
                 borderRadius: 10, padding: "10px 16px", minWidth: 90,
                 boxShadow: "0 1px 4px rgba(0,0,0,.04)",
               }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-                  textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: "#94a3b8",
+                  textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4
+                }}>
                   {label}
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1 }}>
@@ -786,8 +940,10 @@ export default function Seguimientoventas() {
           borderRadius: 10, padding: "10px 16px",
           boxShadow: "0 1px 4px rgba(0,0,0,.04)",
         }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-            textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, color: "#94a3b8",
+            textTransform: "uppercase", letterSpacing: ".1em"
+          }}>
             Período
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -835,8 +991,10 @@ export default function Seguimientoventas() {
       {/* ── LOADING STATE ── */}
       {loading && asesores.length === 0 && (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700,
-            textTransform: "uppercase", letterSpacing: ".15em" }}>
+          <div style={{
+            fontSize: 11, color: "#94a3b8", fontWeight: 700,
+            textTransform: "uppercase", letterSpacing: ".15em"
+          }}>
             Cargando datos...
           </div>
         </div>
@@ -846,8 +1004,10 @@ export default function Seguimientoventas() {
       {asesores.length > 0 && (
         <>
           <div style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".14em" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".14em"
+            }}>
               Ranking general
             </span>
           </div>
@@ -857,8 +1017,10 @@ export default function Seguimientoventas() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
             <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-            <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".18em", whiteSpace: "nowrap" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".18em", whiteSpace: "nowrap"
+            }}>
               Por supervisor — {grupos.length} grupos
             </span>
             <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
@@ -866,9 +1028,10 @@ export default function Seguimientoventas() {
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+            gridTemplateColumns: "repeat(4, minmax(300px, 1fr))",
             gap: 16,
             marginBottom: 32,
+            overflowX: "auto",
           }}>
             {grupos.map(([sup, ases], idx) => (
               <SupervisorCard key={sup} supervisor={sup} asesores={ases} idx={idx} newNames={newNames} />
@@ -880,8 +1043,10 @@ export default function Seguimientoventas() {
       {/* ── VACÍO ── */}
       {!loading && asesores.length === 0 && (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700,
-            textTransform: "uppercase", letterSpacing: ".15em" }}>
+          <div style={{
+            fontSize: 12, color: "#94a3b8", fontWeight: 700,
+            textTransform: "uppercase", letterSpacing: ".15em"
+          }}>
             Sin datos para el período seleccionado
           </div>
         </div>

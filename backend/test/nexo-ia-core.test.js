@@ -21,3 +21,16 @@ test('la cola deduplica y reclama tiempo real antes que historico', async () => 
   await cola.encolar({empresa:'NOVONET',id_bitrix:'2',mensaje_disparador_id:'m2',tipo:'RESPUESTA_AL_CLIENTE',config_version:1});
   assert.equal((await cola.siguiente()).id_bitrix, '2');
 });
+
+test('una solicitud manual pasa delante de los trabajos automaticos acumulados', async () => {
+  const memoria=[];
+  const cola=crearCola({
+    insertar: async j => { memoria.push({...j,id:memoria.length+1}); return memoria.at(-1); },
+    reclamar: async()=>memoria.sort((a,b)=>b.prioridad-a.prioridad).shift(),
+  });
+  await cola.encolar({empresa:'NOVONET',id_bitrix:'1',mensaje_disparador_id:'2026-08-31T23:00:00Z',tipo:'RESPUESTA_AL_CLIENTE',config_version:1});
+  await cola.encolar({empresa:'NOVONET',id_bitrix:'2',mensaje_disparador_id:'manual:m2:123',tipo:'SEGUIMIENTO_COMERCIAL',config_version:1});
+  const siguiente=await cola.siguiente();
+  assert.equal(siguiente.id_bitrix, '2');
+  assert.equal(siguiente.prioridad, 1000);
+});

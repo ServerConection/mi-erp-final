@@ -539,6 +539,17 @@ export default function DashboardLayout() {
     const p = (user.perfil  || '').toUpperCase();
     const e = (user.empresa || '').toUpperCase();
 
+    // Special-case route protection: users with perfil 'TV' may only access their Vista Asesor page
+    const perfilUpper = (user?.perfil || '').toUpperCase();
+    const empresaUpper = (user?.empresa || '').toUpperCase();
+    if (perfilUpper === 'TV') {
+      const allowedName = empresaUpper === 'NOVONET' ? 'Vista Asesor NOVONET' : (empresaUpper === 'VELSA' ? 'Vista Asesor VELSA' : null);
+      if (itemActual.group !== 'vista-asesor' || itemActual.name !== allowedName) {
+        navigate('/');
+      }
+      return;
+    }
+
     if (itemActual.accessCheck) {
       if (!itemActual.accessCheck(p, e)) navigate('/');
     } else if (itemActual.permiso) {
@@ -560,6 +571,16 @@ export default function DashboardLayout() {
   if (!user) return null;
 
   const passaAcceso = (item) => {
+    // If user profile is 'TV', only show the Vista Asesor group and the matching subitem by company
+    const perfilUpper = (user?.perfil || '').toUpperCase();
+    const empresaUpper = (user?.empresa || '').toUpperCase();
+    if (perfilUpper === 'TV') {
+      if (item.group !== 'vista-asesor') return false;
+      if (empresaUpper === 'NOVONET') return item.name === 'Vista Asesor NOVONET';
+      if (empresaUpper === 'VELSA') return item.name === 'Vista Asesor VELSA';
+      return false; // other companies: no access
+    }
+
     if (item.accessCheck) {
       const p = (user?.perfil  || '').toUpperCase();
       const e = (user?.empresa || '').toUpperCase();

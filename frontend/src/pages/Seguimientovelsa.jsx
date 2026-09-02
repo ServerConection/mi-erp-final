@@ -9,12 +9,12 @@ const playChime = () => {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const notas = [
-      { freq: 523.25, t: 0,    dur: 0.18 },  // C5
+      { freq: 523.25, t: 0, dur: 0.18 },  // C5
       { freq: 659.25, t: 0.12, dur: 0.18 },  // E5
       { freq: 783.99, t: 0.24, dur: 0.28 },  // G5
     ];
     notas.forEach(({ freq, t, dur }) => {
-      const osc  = ctx.createOscillator();
+      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -26,7 +26,7 @@ const playChime = () => {
       osc.start(ctx.currentTime + t);
       osc.stop(ctx.currentTime + t + dur + 0.05);
     });
-  } catch (_) {}
+  } catch (_) { }
 };
 
 // CSS keyframes inyectados una vez
@@ -107,9 +107,9 @@ const rankColor = (i) => RANK_COLORS[i] || { bg: "#f8fafc", border: "#e2e8f0", t
 // FILA DE ASESOR
 // ─────────────────────────────────────────────────────────────────────────────
 function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
-  const rc   = rankColor(rank);
-  const jot  = Number(asesor.ingresos_reales || 0);
-  const act  = Number(asesor.real_mes || 0) + Number(asesor.backlog || 0);
+  const rc = rankColor(rank);
+  const jot = Number(asesor.ingresos_reales || 0);
+  const act = Number(asesor.real_mes || 0) + Number(asesor.backlog || 0);
   const barW = maxJot > 0 ? Math.round((jot / maxJot) * 100) : 0;
 
   return (
@@ -231,7 +231,7 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
 // CARD DE SUPERVISOR
 // ─────────────────────────────────────────────────────────────────────────────
 function SupervisorCard({ supervisor, asesores, idx, newNames }) {
-  const cfg    = supColor(idx);
+  const cfg = supColor(idx);
   const sorted = [...asesores].sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0));
   const maxJot = Math.max(...sorted.map(a => Number(a.ingresos_reales || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
@@ -326,8 +326,10 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
           );
         })}
         {sorted.length === 0 && (
-          <div style={{ padding: "24px 16px", textAlign: "center",
-            fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <div style={{
+            padding: "24px 16px", textAlign: "center",
+            fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em"
+          }}>
             Sin datos
           </div>
         )}
@@ -371,8 +373,10 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
             🏆
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a",
-              textTransform: "uppercase", letterSpacing: ".03em" }}>
+            <div style={{
+              fontSize: 14, fontWeight: 900, color: "#0f172a",
+              textTransform: "uppercase", letterSpacing: ".03em"
+            }}>
               Ranking general
             </div>
             <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>
@@ -409,10 +413,12 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
       </div>
 
       {/* 1 columna — 15 primeros visibles, scroll para el resto */}
-      <div style={{ maxHeight: 15 * 57, overflowY: "auto",
-        scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent" }}>
+      <div style={{
+        maxHeight: 15 * 57, overflowY: "auto",
+        scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent"
+      }}>
         {sorted.map((asesor, i) => {
-          const pct    = totJot > 0 ? Math.round((Number(asesor.ingresos_reales || 0) / totJot) * 100) : 0;
+          const pct = totJot > 0 ? Math.round((Number(asesor.ingresos_reales || 0) / totJot) * 100) : 0;
           const supIdx = supColorMap[asesor.supervisor] ?? 0;
           const accent = supColor(supIdx).accent;
           return (
@@ -439,17 +445,17 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFETI — piezas aleatorias
 // ─────────────────────────────────────────────────────────────────────────────
-const CONFETTI_COLORS = ["#f97316","#fbbf24","#ef4444","#f59e0b","#fb923c","#fde68a","#dc2626"];
+const CONFETTI_COLORS = ["#f97316", "#fbbf24", "#ef4444", "#f59e0b", "#fb923c", "#fde68a", "#dc2626"];
 const CONFETTI_PIECES = Array.from({ length: 48 }, (_, i) => ({
   id: i,
-  color:  CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-  left:   `${Math.round(Math.random() * 100)}%`,
-  width:  `${6 + Math.round(Math.random() * 8)}px`,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  left: `${Math.round(Math.random() * 100)}%`,
+  width: `${6 + Math.round(Math.random() * 8)}px`,
   height: `${10 + Math.round(Math.random() * 10)}px`,
-  delay:  `${(Math.random() * 0.6).toFixed(2)}s`,
-  dur:    `${(1.8 + Math.random() * 1.4).toFixed(2)}s`,
+  delay: `${(Math.random() * 0.6).toFixed(2)}s`,
+  dur: `${(1.8 + Math.random() * 1.4).toFixed(2)}s`,
   rotate: `${Math.round(Math.random() * 360)}deg`,
-  shape:  i % 3 === 0 ? "50%" : i % 3 === 1 ? "0%" : "2px",
+  shape: i % 3 === 0 ? "50%" : i % 3 === 1 ? "0%" : "2px",
 }));
 
 function LiderSplash({ lider, show }) {
@@ -463,7 +469,7 @@ function LiderSplash({ lider, show }) {
       animation: show ? "splashIn .4s ease-out forwards" : "splashOut .5s ease-in forwards",
       pointerEvents: show ? "auto" : "none",
     }}
-    onClick={() => {}}
+      onClick={() => { }}
     >
       {/* Confeti */}
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
@@ -532,8 +538,10 @@ function LiderSplash({ lider, show }) {
             <div style={{ fontSize: 36, fontWeight: 900, color: lider.accent, lineHeight: 1 }}>
               {lider.jot}
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
+            }}>
               Ingresos Jot
             </div>
           </div>
@@ -542,16 +550,20 @@ function LiderSplash({ lider, show }) {
             <div style={{ fontSize: 36, fontWeight: 900, color: "#334155", lineHeight: 1 }}>
               {lider.activas}
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".12em", marginTop: 4
+            }}>
               Activas totales
             </div>
           </div>
         </div>
 
         {/* Barra de tiempo */}
-        <div style={{ marginTop: 20, height: 3, background: "#f1f5f9",
-          borderRadius: 2, overflow: "hidden" }}>
+        <div style={{
+          marginTop: 20, height: 3, background: "#f1f5f9",
+          borderRadius: 2, overflow: "hidden"
+        }}>
           <div style={{
             height: "100%", background: lider.accent,
             borderRadius: 2,
@@ -559,8 +571,10 @@ function LiderSplash({ lider, show }) {
             width: "100%",
           }} />
         </div>
-        <div style={{ fontSize: 8, color: "#cbd5e1", marginTop: 6,
-          fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase" }}>
+        <div style={{
+          fontSize: 8, color: "#cbd5e1", marginTop: 6,
+          fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase"
+        }}>
           Cerrando en 7 s · click para cerrar
         </div>
       </div>
@@ -569,15 +583,15 @@ function LiderSplash({ lider, show }) {
 }
 
 export default function Seguimientovelsa() {
-  const [loading, setLoading]     = useState(false);
-  const [asesores, setAsesores]   = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [asesores, setAsesores] = useState([]);
   const [ultimaAct, setUltimaAct] = useState(null);
-  const [newNames, setNewNames]   = useState(new Set());
-  const [lider, setLider]         = useState(null);      // { nombre, jot, activas, accentColor }
+  const [newNames, setNewNames] = useState(new Set());
+  const [lider, setLider] = useState(null);      // { nombre, jot, activas, accentColor }
   const [showLider, setShowLider] = useState(false);
-  const prevJotMap                = useRef({});
-  const liderTimer                = useRef(null);
-  const styleInjected             = useRef(false);
+  const prevJotMap = useRef({});
+  const liderTimer = useRef(null);
+  const styleInjected = useRef(false);
 
   const [filtros, setFiltros] = useState({
     fechaDesde: getPrimerDiaMes(),
@@ -590,7 +604,7 @@ export default function Seguimientovelsa() {
     try {
       const params = new URLSearchParams({ fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta });
       // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${params}`);
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)
@@ -624,17 +638,17 @@ export default function Seguimientovelsa() {
           Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0)
         );
         if (sorted.length > 0) {
-          const top     = sorted[0];
-          const supIdx  = Object.keys(
+          const top = sorted[0];
+          const supIdx = Object.keys(
             enriched.reduce((m, a) => { m[a.supervisor] = true; return m; }, {})
           ).indexOf(top.supervisor);
-          const accent  = ["#f97316","#eab308","#ef4444","#f59e0b","#fb923c","#dc2626","#d97706"][
+          const accent = ["#f97316", "#eab308", "#ef4444", "#f59e0b", "#fb923c", "#dc2626", "#d97706"][
             Math.max(0, supIdx) % 7
           ];
           if (liderTimer.current) clearTimeout(liderTimer.current);
           setLider({
-            nombre:  top.nombre_grupo,
-            jot:     Number(top.ingresos_reales || 0),
+            nombre: top.nombre_grupo,
+            jot: Number(top.ingresos_reales || 0),
             activas: Number(top.real_mes || 0) + Number(top.backlog || 0),
             accent,
           });
@@ -757,18 +771,20 @@ export default function Seguimientovelsa() {
           {/* KPI strip */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
-              { label: "Total Jotform",   val: totales.jot,      color: "#f97316" },
-              { label: "Total activas",   val: totales.act,      color: "#eab308" },
-              { label: "Supervisores",    val: grupos.length,    color: "#ef4444" },
-              { label: "Asesores",        val: asesores.length,  color: "#fb923c" },
+              { label: "Total Jotform", val: totales.jot, color: "#f97316" },
+              { label: "Total activas", val: totales.act, color: "#eab308" },
+              { label: "Supervisores", val: grupos.length, color: "#ef4444" },
+              { label: "Asesores", val: asesores.length, color: "#fb923c" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: "#fff", border: "1px solid #e2e8f0",
                 borderRadius: 10, padding: "10px 16px", minWidth: 90,
                 boxShadow: "0 1px 4px rgba(0,0,0,.04)",
               }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
-                  textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: "#94a3b8",
+                  textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4
+                }}>
                   {label}
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1 }}>
@@ -786,8 +802,10 @@ export default function Seguimientovelsa() {
           borderRadius: 10, padding: "10px 16px",
           boxShadow: "0 1px 4px rgba(0,0,0,.04)",
         }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
-            textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, color: "#94a3b8",
+            textTransform: "uppercase", letterSpacing: ".1em"
+          }}>
             Período
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -835,30 +853,23 @@ export default function Seguimientovelsa() {
       {/* ── LOADING STATE ── */}
       {loading && asesores.length === 0 && (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700,
-            textTransform: "uppercase", letterSpacing: ".15em" }}>
+          <div style={{
+            fontSize: 11, color: "#94a3b8", fontWeight: 700,
+            textTransform: "uppercase", letterSpacing: ".15em"
+          }}>
             Cargando datos...
           </div>
         </div>
       )}
 
-      {/* ── RANKING GENERAL — PRIMERO ── */}
+      {/* ── POR SUPERVISOR — PRIMERO ── */}
       {asesores.length > 0 && (
         <>
-          <div style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".14em" }}>
-              Ranking general
-            </span>
-          </div>
-          <div style={{ marginBottom: 32 }}>
-            <RankingGeneral asesores={asesores} supColorMap={supColorMap} newNames={newNames} />
-          </div>
-
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-            <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".18em", whiteSpace: "nowrap" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".18em", whiteSpace: "nowrap"
+            }}>
               Por supervisor — {grupos.length} grupos
             </span>
             <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
@@ -874,14 +885,30 @@ export default function Seguimientovelsa() {
               <SupervisorCard key={sup} supervisor={sup} asesores={ases} idx={idx} newNames={newNames} />
             ))}
           </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".14em", whiteSpace: "nowrap"
+            }}>
+              Ranking general
+            </span>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+          </div>
+          <div style={{ marginBottom: 32 }}>
+            <RankingGeneral asesores={asesores} supColorMap={supColorMap} newNames={newNames} />
+          </div>
         </>
       )}
 
       {/* ── VACÍO ── */}
       {!loading && asesores.length === 0 && (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700,
-            textTransform: "uppercase", letterSpacing: ".15em" }}>
+          <div style={{
+            fontSize: 12, color: "#94a3b8", fontWeight: 700,
+            textTransform: "uppercase", letterSpacing: ".15em"
+          }}>
             Sin datos para el período seleccionado
           </div>
         </div>

@@ -648,6 +648,21 @@ export default function VistaAsesor() {
     XLSX.writeFile(wb, `Jotform_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
   };
 
+  // Fullscreen toggle for this view
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFull = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFull);
+    return () => document.removeEventListener('fullscreenchange', onFull);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
   const handleFiltroChange = (campo, valor) => {
     setFiltros((prev) => ({ ...prev, [campo]: valor }));
   };
@@ -684,12 +699,21 @@ export default function VistaAsesor() {
             Mi tablero de ventas
           </h1>
         </div>
-        <button
-          onClick={exportarExcel}
-          className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-        >
-          ⬇ Exportar Jotform Excel
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportarExcel}
+            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+          >
+            ⬇ Exportar Jotform Excel
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Salir pantalla completa' : 'Ver en pantalla completa'}
+            className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+          >
+            {isFullscreen ? '⤢ Salir' : '⤡ Pantalla completa'}
+          </button>
+        </div>
       </div>
 
       {/* ── FILTROS ── */}

@@ -549,6 +549,21 @@ export default function VistaAsesorVelsa() {
     XLSX.writeFile(wb, `Velsa_Jotform_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
   };
 
+  // Fullscreen toggle for this view
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFull = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFull);
+    return () => document.removeEventListener('fullscreenchange', onFull);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
   const inputCls =
     "bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-[10px] font-bold text-slate-800 outline-none focus:border-purple-400 focus:bg-white transition-colors uppercase";
   const labelCls =
@@ -577,12 +592,21 @@ export default function VistaAsesorVelsa() {
             Mi tablero de ventas
           </h1>
         </div>
-        <button
-          onClick={exportarExcel}
-          className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-        >
-          ⬇ Exportar Jotform Excel
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportarExcel}
+            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+          >
+            ⬇ Exportar Jotform Excel
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Salir pantalla completa' : 'Ver en pantalla completa'}
+            className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+          >
+            {isFullscreen ? '⤢ Salir' : '⤡ Pantalla completa'}
+          </button>
+        </div>
       </div>
 
       {/* ── FILTROS ── */}

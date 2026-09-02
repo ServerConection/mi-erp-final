@@ -103,7 +103,7 @@ const INIT = {
   beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
   resumen_venta: "",
   // ── Documentos ──
-  foto_cedula_frontal: "",   foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "", archivo_planilla: "",
+  foto_cedula_frontal: "",   foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "",
 };
 
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
@@ -1189,6 +1189,16 @@ export default function NuevaVenta() {
       const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
       const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user);
 
+      // Normalizar el valor de aplica_descuento_3ra_edad al formato que espera la BD
+      // (la base histórica usa 'SI POR TERCERA EDAD' / 'NO'). Evita violar el CHECK constraint.
+      const _aplica3raw = form.aplica_descuento_3ra_edad || '';
+      let _aplica3 = null;
+      if (_aplica3raw && String(_aplica3raw).trim() !== '') {
+        const u = String(_aplica3raw).toUpperCase();
+        if (u.includes('3RA') || u.includes('TERCERA') || u.includes('SÍ') || u.includes('SI')) _aplica3 = 'SI POR TERCERA EDAD';
+        else _aplica3 = 'NO';
+      }
+
       const payload = {
         accion,
         // asesor
@@ -1206,7 +1216,7 @@ export default function NuevaVenta() {
         genero_cliente: form.genero_cliente || null,
         estado_civil: form.estado_civil || null,
         fecha_nacimiento: form.fecha_nacimiento || null,
-        aplica_descuento_3ra_edad: form.aplica_descuento_3ra_edad || null,
+        aplica_descuento_3ra_edad: _aplica3,
         tipo_vivienda: form.regimen_vivienda || null,
         regimen_vivienda: form.tipo_inmueble || null,
         // dirección

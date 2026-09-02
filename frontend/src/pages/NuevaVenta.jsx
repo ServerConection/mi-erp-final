@@ -62,7 +62,7 @@ const BENEFICIOS_LEY = ["SI", "NO"];
 
 // Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
 const SUPERVISORES = {
-  NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAY"],
+  NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAÑA"],
   VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
 };
 
@@ -91,7 +91,7 @@ const INIT = {
   calle_principal: "", calle_secundaria: "",
   provincia: "", ciudad: "", parroquia_barrio: "",
   manzana_villa: "", referencia_ubicacion: "", coordenadas_gps: "",
-  telf_celular_pin: "", telf_instalacion: "", email_cliente: "",
+  telf_celular_pin: "", telf_instalacion: "", email_cliente: "", tipo_cuenta: "",
   forma_pago: "",
   tipo_plan: "", plan_contratado_final: "",
   servicios_digitales: "", servicio_adicional: "",
@@ -103,7 +103,7 @@ const INIT = {
   beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
   resumen_venta: "",
   // ── Documentos ──
-  foto_cedula_frontal: "", foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "",
+  foto_cedula_frontal: "",   foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "", archivo_planilla: "",
 };
 
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
@@ -790,7 +790,14 @@ export default function NuevaVenta() {
 
   const set = (k, { preserveCase = false } = {}) => e => {
     const v = e?.target ? e.target.value : e;
-    const normalizedValue = typeof v === "string" && !preserveCase ? v.toUpperCase() : v;
+    let normalizedValue;
+    if (k === "email_cliente") {
+      // Guardar email en minúsculas según pedido
+      normalizedValue = typeof v === "string" ? v.toLowerCase() : v;
+    } else {
+      normalizedValue = typeof v === "string" && !preserveCase ? v.toUpperCase() : v;
+    }
+
     if (k === "id_bitrix") setOrigenVentaLocked(false);
     setForm(f => {
       const next = { ...f, [k]: normalizedValue };
@@ -1221,6 +1228,7 @@ export default function NuevaVenta() {
         tipo_contrato: form.servicio_adicional || null,
         // resumen de venta
         banco: form.banco || null,
+        tipo_cuenta: form.tipo_cuenta || null,
         ciclo_facturacion: form.ciclo_facturacion || null,
         costo_instalacion: form.costo_instalacion || null,
         descuento_instalacion: form.descuento_instalacion || null,
@@ -1232,6 +1240,7 @@ export default function NuevaVenta() {
         foto_cedula_trasera: form.foto_cedula_trasera || null,
         foto_carnet: form.foto_carnet || null,
         archivo_resumen: form.archivo_resumen || null,
+        archivo_planilla: form.archivo_planilla || null,
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
@@ -1690,8 +1699,11 @@ export default function NuevaVenta() {
               <FSel value={form.banco} onChange={set("banco")} options={BANCOS} placeholder="Selecciona el banco principal" />
               {err("banco")}
             </Row>
+            <Row label="Tipo de cuenta">
+              <FSel value={form.tipo_cuenta} onChange={set("tipo_cuenta")} options={["CUENTA CORRIENTE", "CUENTA AHORROS"]} placeholder={!form.banco ? "Primero selecciona el banco" : "Selecciona tipo de cuenta"} />
+            </Row>
             <Row label="Ciclo de facturación" required>
-              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion")} options={CICLOS_FACT} />
+              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} />
               {err("ciclo_facturacion")}
             </Row>
             <Row label="Costo de instalación" required>
@@ -1759,6 +1771,11 @@ export default function NuevaVenta() {
               <FileUpload label="resumen" value={form.archivo_resumen} uploading={uploading.archivo_resumen}
                 error={uploadErr.archivo_resumen} onRetry={() => reintentarSubida("archivo_resumen")}
                 onPick={(file) => subirArchivo("archivo_resumen", file)} />
+            </Row>
+            <Row label="Planilla">
+              <FileUpload label="planilla" value={form.archivo_planilla} uploading={uploading.archivo_planilla}
+                error={uploadErr.archivo_planilla} onRetry={() => reintentarSubida("archivo_planilla")}
+                onPick={(file) => subirArchivo("archivo_planilla", file)} />
             </Row>
           </Seccion>
 

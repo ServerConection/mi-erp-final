@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { StripCard, BarProgress, PctKpiCard } from "../components/kpi";
 import { fetchConSesion } from "../utils/sesion";
@@ -470,6 +470,15 @@ export default function VistaAsesorVelsa() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Auto-refresh cada 15 minutos (900000 ms)
+  const fetchRef = useRef(fetchData);
+  useEffect(() => { fetchRef.current = fetchData; }, [fetchData]);
+  useEffect(() => {
+    const intervalMs = 15 * 60 * 1000;
+    const id = setInterval(() => { fetchRef.current(); }, intervalMs);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Enriquecer asesores con etapas Jot — campo ESTADO_NETLIFE de Velsa ───
   const asesoresEnriquecidos = useMemo(() => {
     const lista = filtros.asesor
@@ -549,16 +558,17 @@ export default function VistaAsesorVelsa() {
     XLSX.writeFile(wb, `Velsa_Jotform_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
   };
 
-  // Fullscreen toggle for this view
+  // Fullscreen toggle for this view (fullscreen only the content container so sidebar/menu is hidden)
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const contentRef = useRef(null);
   useEffect(() => {
-    const onFull = () => setIsFullscreen(!!document.fullscreenElement);
+    const onFull = () => setIsFullscreen(document.fullscreenElement === contentRef.current);
     document.addEventListener('fullscreenchange', onFull);
     return () => document.removeEventListener('fullscreenchange', onFull);
   }, []);
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      contentRef.current?.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
     }
@@ -571,7 +581,7 @@ export default function VistaAsesorVelsa() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-5 animate-in fade-in duration-500">
+    <div ref={contentRef} className="min-h-screen bg-slate-50 text-slate-900 p-5 animate-in fade-in duration-500">
 
       {/* ── MODAL CLIENTE ── */}
       <ClienteModal

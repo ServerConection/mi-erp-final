@@ -9,4 +9,8 @@ async function ciclo(){if(running)return;running=true;try{await service.encolarA
 // automatica para ahorrar tokens, los pedidos manuales quedaban en cola para
 // siempre porque nadie los procesaba.
 function initNexoIa(){if(String(process.env.NEXO_IA_WORKER||'true').toLowerCase()==='false')return null;ciclo();return cron.schedule('* * * * *',ciclo,{timezone:'America/Guayaquil'});}
-module.exports={initNexoIa,ciclo};
+// La llama el controlador cuando alguien aprieta "Generar respuesta": corre el
+// ciclo al instante en vez de esperar al proximo minuto del cron. Si ya hay uno
+// corriendo, no hace nada (el guard `running` de ciclo lo evita).
+async function despertarNexoIa(){try{await ciclo();}catch(e){console.error('[NEXO IA] despertar:',e.message);}}
+module.exports={initNexoIa,ciclo,despertarNexoIa};

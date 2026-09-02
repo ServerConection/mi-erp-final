@@ -440,6 +440,15 @@ router.post('/', async (req, res) => {
       req.socket?.remoteAddress || '0.0.0.0';
     const fecha_registro_sistema = new Date();
 
+    // Normalizar aplica_descuento_3ra_edad para cumplir el CHECK de la tabla (solo 'SÍ' | 'NO' | NULL)
+    const _raw3 = t(b.aplica_descuento_3ra_edad);
+    if (_raw3) {
+      const _u = _raw3.toUpperCase();
+      b.aplica_descuento_3ra_edad = (_u.includes('3RA') || _u.includes('TERCERA') || _u.includes('SÍ') || _u.includes('SI')) ? 'SÍ' : 'NO';
+    } else {
+      b.aplica_descuento_3ra_edad = null;
+    }
+
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
     const placeholdersVenta = COLUMNAS_VENTA.map((_, i) => `$${i + 5}`).join(', ');
 

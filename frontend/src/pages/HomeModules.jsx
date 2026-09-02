@@ -145,6 +145,21 @@ export default function HomeModules() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+
+    // Special-case: users with perfil 'TV' should only see the Vista Asesor tile matching their company
+    try {
+      const up = JSON.parse(localStorage.getItem('userProfile') || '{}');
+      const perfil = (up.perfil || '').toUpperCase();
+      const empresa = (up.empresa || '').toUpperCase();
+      if (perfil === 'TV') {
+        if (empresa === 'NOVONET') return modules.filter(m => m.path === '/vista-asesor');
+        if (empresa === 'VELSA') return modules.filter(m => m.path === '/vista-asesor-velsa');
+        return [];
+      }
+    } catch (e) {
+      // ignore parse errors and fall back to normal filtering
+    }
+
     return modules.filter(mod => {
       // Módulo de Tareas: el acceso lo decide el área/cargo en la BD, no el perfil.
       // Mientras se resuelve la consulta no se muestra, para evitar parpadeo.

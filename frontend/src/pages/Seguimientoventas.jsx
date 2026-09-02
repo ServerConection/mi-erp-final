@@ -1015,23 +1015,10 @@ export default function Seguimientoventas() {
         </div>
       )}
 
-      {/* ── RANKING GENERAL — PRIMERO ── */}
+      {/* ── POR SUPERVISOR — PRIMERO ── */}
       {asesores.length > 0 && (
         <>
-          <div style={{ marginBottom: 10 }}>
-            <span style={{
-              fontSize: 10, fontWeight: 800, color: "#94a3b8",
-              textTransform: "uppercase", letterSpacing: ".14em"
-            }}>
-              Ranking general
-            </span>
-          </div>
-          <div style={{ marginBottom: 32 }}>
-            <RankingGeneral asesores={asesores} supColorMap={supColorMap} newNames={newNames} />
-          </div>
-
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
             <span style={{
               fontSize: 10, fontWeight: 800, color: "#94a3b8",
               textTransform: "uppercase", letterSpacing: ".18em", whiteSpace: "nowrap"
@@ -1051,6 +1038,20 @@ export default function Seguimientoventas() {
             {grupos.map(([sup, ases], idx) => (
               <SupervisorCard key={sup} supervisor={sup} asesores={ases} idx={idx} newNames={newNames} />
             ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: ".14em", whiteSpace: "nowrap"
+            }}>
+              Ranking general
+            </span>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+          </div>
+          <div style={{ marginBottom: 32 }}>
+            <RankingGeneral asesores={asesores} supColorMap={supColorMap} newNames={newNames} />
           </div>
         </>
       )}

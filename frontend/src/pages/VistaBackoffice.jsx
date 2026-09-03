@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
@@ -846,6 +846,52 @@ function valueForField(row, key) {
   return String(v);
 }
 
+// La tabla puede contener miles de filas y decenas de columnas. Mantenerla
+// memoizada evita reconstruir todas esas celdas mientras el usuario solamente
+// escribe en el buscador o cambia un filtro todavía no aplicado.
+const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, selectedId, onSelect }) {
+  return (
+    <div style={{ overflow: "auto", maxHeight: 700 }}>
+      {loading ? (
+        <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+          <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
+            <tr style={{ background: "#f8fafc" }}>
+              {headers.map((h, i) => (
+                <th key={h.key} title={h.key} style={{
+                  textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
+                  fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
+                  ...(i === 0 ? { width: 60 } : {}),
+                }}>{h.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} onClick={() => onSelect(row.id)}
+                style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}>
+                {headers.map((h) => (
+                  <td key={`${row.id}-${h.key}`} title={valueForField(row, h.key)} style={{
+                    padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
+                    maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                    background: selectedId === row.id ? "#eff6ff" : "#fff",
+                  }}>{valueForField(row, h.key)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}, (anterior, siguiente) =>
+  anterior.loading === siguiente.loading &&
+  anterior.rows === siguiente.rows &&
+  anterior.headers === siguiente.headers &&
+  anterior.selectedId === siguiente.selectedId
+);
+
 // ── Estado inicial de los filtros (las claves son los query params del API) ──
 const FILTROS_VACIOS = {
   fechaDesde: "", fechaHasta: "",
@@ -907,15 +953,24 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   // elegido llega como `fechaFija` y se precarga en el filtro de rango. El
   // backend ya sabe filtrar por fechaDesde/fechaHasta, así que no hace falta
   // filtrar en el navegador ni traer registros de más.
-  const [filtros, setFiltros] = useState(
-    fechaFija ? { ...FILTROS_VACIOS, fechaDesde: fechaFija, fechaHasta: fechaFija } : FILTROS_VACIOS
-  );
+  const filtrosIniciales = fechaFija
+    ? { ...FILTROS_VACIOS, fechaDesde: fechaFija, fechaHasta: fechaFija }
+    : FILTROS_VACIOS;
+  // `filtros` contiene lo que el usuario está editando. La consulta solamente
+  // usa la copia aplicada al pulsar el botón Consultar.
+  const [filtros, setFiltros] = useState(filtrosIniciales);
+  const [filtrosAplicados, setFiltrosAplicados] = useState(filtrosIniciales);
+  const [searchAplicada, setSearchAplicada] = useState("");
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
   // false = se muestran TODAS las columnas de envios_ventas (con scroll horizontal)
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
   const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
   const filtrosActivos = Object.values(filtros).filter(Boolean).length;
+  const consultar = () => {
+    setSearchAplicada(search.trim());
+    setFiltrosAplicados({ ...filtros });
+  };
 
   const token = localStorage.getItem("token");
 
@@ -925,6 +980,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       const p = new URLSearchParams();
       if (q) p.set("buscar", q);
       p.set("limit", "sin_limite");
+      // Este panel muestra rows.length y no consume el total de otra consulta.
+      p.set("includeTotal", "false");
       Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
       if (empresa && empresa !== "TODOS") p.set("empresa", empresa);   // ← NUEVO
       const qs = p.toString() ? `?${p.toString()}` : "";
@@ -947,9 +1004,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   };
 
   useEffect(() => {
-    const t = setTimeout(() => fetchRows(search, filtros), 350);
-    return () => clearTimeout(t);
-  }, [search, filtros, empresa]);
+    fetchRows(searchAplicada, filtrosAplicados);
+    // Los filtros editables no son dependencias: cambiar un campo no consulta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchAplicada, filtrosAplicados, empresa]);
 
   // Opciones reales de los combos (una sola vez al montar)
   useEffect(() => {
@@ -1258,7 +1316,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       const registroActualizado = normalizarRegistro(json.data);
       setDetail(registroActualizado);
       setDetailOriginal(registroActualizado);
-      await fetchRows(search, filtros);
+      await fetchRows(searchAplicada, filtrosAplicados);
 
     } catch (e) {
 
@@ -1317,7 +1375,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                     color="#0284c7" fondo="#f0f9ff" borde="#bae6fd"
                   />
                   <button
-                    onClick={() => fetchRows(search, filtros)}
+                    onClick={() => fetchRows(searchAplicada, filtrosAplicados)}
                     style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}
                   >
                     Refrescar
@@ -1366,10 +1424,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                     />
                   </div>
 
-                  {filtrosActivos > 0 && (
-                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={consultar}
+                      disabled={loading}
+                      style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #2563eb", background: loading ? "#93c5fd" : "#2563eb", color: "#fff", fontWeight: 800, fontSize: 12, cursor: loading ? "wait" : "pointer" }}
+                    >
+                      {loading ? "Consultando..." : "🔍 Consultar"}
+                    </button>
+                    {filtrosActivos > 0 && (
+                      <>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
-                        {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} aplicado{filtrosActivos > 1 ? "s" : ""}
+                        {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} seleccionado{filtrosActivos > 1 ? "s" : ""}
                       </span>
                       <button
                         onClick={limpiarFiltros}
@@ -1377,8 +1444,9 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                       >
                         Limpiar filtros
                       </button>
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Cambio de vista: 12 columnas clave vs. la tabla completa */}
@@ -1395,54 +1463,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                   </button>
                 </div>
 
-                <div style={{ overflow: "auto", maxHeight: 700 }}>
-                  {loading ? (
-                    <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
-                  ) : (
-                    <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-                      <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
-                        <tr style={{ background: "#f8fafc" }}>
-                          {tableHeaders.map((h, i) => (
-                            <th
-                              key={h.key}
-                              title={h.key}
-                              style={{
-                                textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
-                                fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
-                                ...(i === 0 ? { width: 60 } : {}),
-                              }}
-                            >
-                              {h.label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row) => (
-                          <tr
-                            key={row.id}
-                            onClick={() => fetchDetail(row.id)}
-                            style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}
-                          >
-                            {tableHeaders.map((h) => (
-                              <td
-                                key={`${row.id}-${h.key}`}
-                                title={valueForField(row, h.key)}
-                                style={{
-                                  padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
-                                  maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
-                                  background: selectedId === row.id ? "#eff6ff" : "#fff",
-                                }}
-                              >
-                                {valueForField(row, h.key)}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                <TablaRegistros
+                  loading={loading}
+                  rows={rows}
+                  headers={tableHeaders}
+                  selectedId={selectedId}
+                  onSelect={fetchDetail}
+                />
               </div>
             </div>
 

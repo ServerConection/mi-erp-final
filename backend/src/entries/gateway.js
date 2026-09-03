@@ -64,7 +64,6 @@ app.use(makeProxy(TARGETS.NOVO, [
   '/api/redes', '/api/redes/**',
   '/api/forecast', '/api/forecast/**',
   '/api/coverage', '/api/coverage/**',
-  '/api/cumplimiento-leads', '/api/cumplimiento-leads/**',
   '/api/llamadas', '/api/llamadas/**',
   '/api/kpi-comercial', '/api/kpi-comercial/**',
 ]));

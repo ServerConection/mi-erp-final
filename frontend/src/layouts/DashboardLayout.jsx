@@ -385,13 +385,6 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR', 'ANALISTA'].includes(p),
     isChild: true, group: "backoffice" },
 
-  // ── Reportes ─────────────────────────────────────────────────────────────
-  /*{ name: "Reportes", path: null, icon: "📈", isGroup: true, groupId: "reportes" },
-  { name: "📊 Cumplimiento de Leads", path: "/cumplimiento-leads", icon: "📊",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },
-  { name: "📊 Reporte Jefatura",      path: "/reporte-jefatura",   icon: "📊",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR', isChild: true, group: "reportes" },*/
-
   // ── Resumenes ────────────────────────────────────────────────────────────
   { name: "Resumenes", path: null, icon: "📦", isGroup: true, groupId: "resumenes" },
   { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
@@ -429,11 +422,6 @@ const ALL_MENU_ITEMS = [
   // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
   { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
-
-  // ── Diversión / actividades internas ────────────────────────────────────
-  { name: "Diversión", path: null, icon: "🎮", isGroup: true, groupId: "diversion" },
-  { name: "🏆 Mundialito",        path: "/mundialito",        icon: "🏆", accessCheck: (p) => p !== 'CONSULTOR', isChild: true, group: "diversion" },
-  { name: "⚽ Polla Mundialista", path: "/polla-mundialista", icon: "⚽", permiso: null,                         isChild: true, group: "diversion" },
 
   // ── Archivos compartidos (planillas colaborativas) ──────────────────────────
   // Visible para todos menos CONSULTOR: quien no tenga archivos compartidos

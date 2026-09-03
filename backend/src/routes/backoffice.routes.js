@@ -102,6 +102,7 @@ router.get('/', async (req, res) => {
       terceraEdad = '',                                  // aplica_descuento_3ra_edad
       estatusRegularizacion = '',                        // estatus_regularizacion
       empresa = '',
+      includeTotal = 'true',
     } = req.query;
 
     let whereClause = "WHERE estatus_envio != 'BORRADOR'";
@@ -154,12 +155,8 @@ router.get('/', async (req, res) => {
       whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
     }
 
-    // Conteo total para la vista
+    // Parámetros exclusivos de filtros; después se pueden agregar LIMIT/OFFSET.
     const countParams = [...params];
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
-      countParams
-    );
 
     // ── GESTIÓN DE LÍMITE (Paginado o Todo) ──────────────────────────────
     const sinLimite = limit === '0' || limit === 0 || limit === 'all' || limit === 'sin_limite';
@@ -182,7 +179,18 @@ router.get('/', async (req, res) => {
       ${paginacionSql}
     `, params);
 
-    res.json({ success: true, data: rows, total: countRows[0].total });
+    // PanelRegistros carga sin límite y ya conoce rows.length. Permitirle omitir
+    // el COUNT evita un segundo recorrido completo de la tabla en cada consulta.
+    let total = rows.length;
+    if (String(includeTotal).toLowerCase() !== 'false') {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
+        countParams
+      );
+      total = countRows[0].total;
+    }
+
+    res.json({ success: true, data: rows, total });
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
     res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });

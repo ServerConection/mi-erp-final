@@ -9,7 +9,6 @@ const API = import.meta.env.VITE_API_URL;
 
 // ─── Catálogos exactos del proceso comercial ─────────────────────────────────
 const DISTRIBUIDORES = ["NOVONET", "VELSA"];
-const BIOMETRICO = ["FALTA BIOMÉTRICO", "FIRMÓ BIOMÉTRICO"];
 const TIPOS_CLI = ["NATURAL", "JURÍDICO"];
 const TIPOS_DOC = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"];
 const GENEROS = ["HOMBRE", "MUJER"];
@@ -41,6 +40,9 @@ const BANCOS = [
   "COOP. JEP", "COOP. CREATIVA", "COOP. CHONE", "COOP. 9 DE OCTUBRE",
   "COOP. SAN FRANCISCO", "COOP. TULCÁN", "COOP. MANABÍ", "COOP. SOLIDARIA",
   "COOP. DE AHORRO Y CRÉDITO ANDALUCÍA", "COOP. DE AHORRO Y CRÉDITO JEP"
+];
+const TIPOS_TARJETA_CREDITO = [
+  "VISA", "MASTERCARD", "DINERS CLUB", "AMERICAN EXPRESS", "DISCOVER", "UNIONPAY",
 ];
 const PROVINCIAS_ECUADOR = [
   "AZUAY", "BOLÍVAR", "CAÑAR", "CARCHI", "CHIMBORAZO", "COTOPAXI", "EL ORO",
@@ -83,7 +85,7 @@ function calcularEdad(fechaISO) {
 // ─── Estado inicial ──────────────────────────────────────────────────────────
 const INIT = {
   codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
-  biometrico: "", supervisor: "",
+  supervisor: "",
   tipo_cliente: "", tipo_documento: "", numero_identificacion: "",
   apellidos_cliente: "", nombres_cliente: "",
   genero_cliente: "", estado_civil: "", fecha_nacimiento: "",
@@ -485,9 +487,15 @@ function FIn({ value, onChange, placeholder, type = "text", readOnly = false, li
   );
 }
 
-function FSel({ value, onChange, options, placeholder = "Seleccionar…" }) {
+function FSel({ value, onChange, options, placeholder = "Seleccionar…", disabled = false }) {
   return (
-    <select className="nv-select" value={value} onChange={onChange}>
+    <select
+      className="nv-select"
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      style={disabled ? { background: "#F5EDE6", color: "#9A795F", cursor: "not-allowed" } : {}}
+    >
       <option value="">{placeholder}</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
@@ -616,6 +624,7 @@ export default function NuevaVenta() {
   const [validandoBitrix, setValidandoBitrix] = useState(false);
   const [bitrixOrigenes, setBitrixOrigenes] = useState([]);
   const [modalCamposFaltantes, setModalCamposFaltantes] = useState([]);
+  const [alertaDescuento, setAlertaDescuento] = useState(null);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -644,7 +653,6 @@ export default function NuevaVenta() {
             // formulario (por el mapeo hecho en handleSubmit). Sin este segundo
             // paso, estos campos siempre volvían vacíos al continuar un borrador.
             const RENOMBRADOS_DB_A_FORM = {
-              clausulas: 'biometrico',
               tipo_vivienda: 'regimen_vivienda',
               regimen_vivienda: 'tipo_inmueble',
               direccion_manzana_villa: 'manzana_villa',
@@ -826,6 +834,67 @@ export default function NuevaVenta() {
   // ya no se vende por motivo de discapacidad
   const edadCliente = calcularEdad(form.fecha_nacimiento);
   const calificaPara3raEdad = edadCliente != null && edadCliente >= EDAD_MINIMA_3RA_EDAD;
+  const valorDescuento3raEdad = String(form.aplica_descuento_3ra_edad || "").toUpperCase();
+  const aplicaDescuento3raEdad = valorDescuento3raEdad.includes("3RA") || valorDescuento3raEdad.includes("TERCERA");
+
+  useEffect(() => {
+    const beneficioEsperado = aplicaDescuento3raEdad ? "SI" : "NO";
+    setForm((actual) => {
+      const debeLimpiarPlanilla = !aplicaDescuento3raEdad && actual.archivo_planilla;
+      if (actual.beneficios_de_ley === beneficioEsperado && !debeLimpiarPlanilla) return actual;
+      return {
+        ...actual,
+        beneficios_de_ley: beneficioEsperado,
+        archivo_planilla: aplicaDescuento3raEdad ? actual.archivo_planilla : "",
+      };
+    });
+
+    if (!aplicaDescuento3raEdad) {
+      delete uploadFilesRef.current.archivo_planilla;
+      setUploadErr((actual) => {
+        if (!actual.archivo_planilla) return actual;
+        const siguiente = { ...actual };
+        delete siguiente.archivo_planilla;
+        return siguiente;
+      });
+    }
+  }, [aplicaDescuento3raEdad]);
+
+  useEffect(() => {
+    if (!alertaDescuento) return undefined;
+    const timeout = setTimeout(() => setAlertaDescuento(null), 3000);
+    return () => clearTimeout(timeout);
+  }, [alertaDescuento]);
+
+  const cambiarDescuento3raEdad = (valor) => {
+    set("aplica_descuento_3ra_edad")(valor);
+    if (!valor) {
+      setAlertaDescuento(null);
+      return;
+    }
+    const esNo = String(valor).trim().toUpperCase() === "NO";
+    setAlertaDescuento(
+      `Verifica que la cédula ingresada no corresponda a una persona analfabeta ni tenga descuento Conadis${esNo ? ", y que tampoco tenga descuento por tercera edad" : ""}.`
+    );
+  };
+
+  useEffect(() => {
+    if (form.forma_pago === "EFECTIVO") {
+      setForm((actual) => ({ ...actual, banco: "", tipo_cuenta: "", ciclo_facturacion: "" }));
+      setErrs((actual) => {
+        const siguiente = { ...actual };
+        delete siguiente.banco;
+        delete siguiente.tipo_cuenta;
+        delete siguiente.ciclo_facturacion;
+        return siguiente;
+      });
+    } else if (form.forma_pago === PAGO_TC) {
+      setForm((actual) => ({
+        ...actual,
+        tipo_cuenta: TIPOS_TARJETA_CREDITO.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
+      }));
+    }
+  }, [form.forma_pago]);
 
   useEffect(() => {
     if (!calificaPara3raEdad && form.aplica_descuento_3ra_edad !== "NO" && form.aplica_descuento_3ra_edad !== "") {
@@ -948,7 +1017,6 @@ export default function NuevaVenta() {
     const nombresCampos = {
       distribuidor_autorizado: "Distribuidor autorizado",
       supervisor: "Supervisor",
-      biometrico: "Estado biométrico",
 
       tipo_cliente: "Tipo de cliente",
       tipo_documento: "Tipo de documento",
@@ -990,9 +1058,6 @@ export default function NuevaVenta() {
 
     if (!form.supervisor)
       e.supervisor = "Requerido";
-
-    if (!form.biometrico)
-      e.biometrico = "Requerido";
 
     if (!form.tipo_cliente)
       e.tipo_cliente = "Requerido";
@@ -1096,10 +1161,10 @@ export default function NuevaVenta() {
     if (!form.tipo_plan)
       e.tipo_plan = "Requerido";
 
-    if (!form.banco)
+    if (form.forma_pago !== "EFECTIVO" && !form.banco)
       e.banco = "Requerido";
 
-    if (!form.ciclo_facturacion)
+    if (form.forma_pago !== "EFECTIVO" && !form.ciclo_facturacion)
       e.ciclo_facturacion = "Requerido";
 
     if (!form.costo_instalacion)
@@ -1223,7 +1288,6 @@ export default function NuevaVenta() {
         id_bitrix: form.id_bitrix || null,
         distribuidor_autorizado: form.distribuidor_autorizado || null,
         supervisor: form.supervisor || null,
-        clausulas: form.biometrico || null,  // biométrico → clausulas
         nombre_atc: user.nombre || user.usuario || null,
         // cliente
         tipo_cliente: form.tipo_cliente || null,
@@ -1267,7 +1331,7 @@ export default function NuevaVenta() {
         foto_cedula_trasera: form.foto_cedula_trasera || null,
         foto_carnet: form.foto_carnet || null,
         archivo_resumen: form.archivo_resumen || null,
-        archivo_planilla: form.archivo_planilla || null,
+        archivo_planilla: aplicaDescuento3raEdad ? (form.archivo_planilla || null) : null,
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
@@ -1412,6 +1476,34 @@ export default function NuevaVenta() {
           </div>
         )}
 
+        {alertaDescuento && (
+          <div
+            className="nv-modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-alerta-descuento"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setAlertaDescuento(null);
+            }}
+          >
+            <div className="nv-modal" style={{ position: "relative", maxWidth: 520, border: "1px solid #fcd34d" }}>
+              <button
+                type="button"
+                onClick={() => setAlertaDescuento(null)}
+                aria-label="Cerrar alerta"
+                style={{ position: "absolute", top: 14, right: 16, width: 32, height: 32, border: 0, borderRadius: "50%", background: "#fffbeb", color: "#92400e", fontSize: 21, fontWeight: 900, lineHeight: 1, cursor: "pointer" }}
+              >
+                ×
+              </button>
+              <div className="nv-modal-icon" style={{ background: "#fffbeb" }}>⚠️</div>
+              <h2 id="titulo-alerta-descuento" className="nv-modal-title">Verifica la cédula</h2>
+              <p className="nv-modal-text" style={{ marginBottom: 0, lineHeight: 1.6, color: "#92400e", fontWeight: 700 }}>
+                {alertaDescuento}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="nv-header">
           <div className="nv-logo">📡</div>
@@ -1469,10 +1561,6 @@ export default function NuevaVenta() {
 
           {/* ── 2. Datos del cliente ── */}
           <Seccion num={2} icon="👤" label="Datos del cliente">
-            <Row label="Biométrico" required>
-              <Chips value={form.biometrico} onChange={set("biometrico")} options={BIOMETRICO} />
-              {err("biometrico")}
-            </Row>
             <Row label="Tipo de cliente" required>
               <Chips value={form.tipo_cliente} onChange={set("tipo_cliente")} options={TIPOS_CLI} />
               {err("tipo_cliente")}
@@ -1530,7 +1618,7 @@ export default function NuevaVenta() {
             <Row label="Descuento 3ra edad" required>
               <Chips
                 value={form.aplica_descuento_3ra_edad}
-                onChange={set("aplica_descuento_3ra_edad")}
+                onChange={cambiarDescuento3raEdad}
                 options={DESCUENTO_3ERA}
                 disabledOptions={calificaPara3raEdad ? [] : ["SÍ — POR 3RA EDAD"]}
               />
@@ -1735,15 +1823,27 @@ export default function NuevaVenta() {
 
           {/* ── 7. Resumen de venta (se genera automáticamente, antes de subir documentos) ── */}
           <Seccion num={7} icon="📝" label="Banco, facturación y resumen de venta">
-            <Row label="Banco" required>
-              <FSel value={form.banco} onChange={set("banco")} options={BANCOS} placeholder="Selecciona el banco principal" />
+            <Row label="Banco" required={form.forma_pago !== "EFECTIVO"}>
+              <FSel
+                value={form.banco}
+                onChange={set("banco")}
+                options={BANCOS}
+                disabled={form.forma_pago === "EFECTIVO"}
+                placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : "Selecciona el banco principal"}
+              />
               {err("banco")}
             </Row>
             <Row label="Tipo de cuenta">
-              <FSel value={form.tipo_cuenta} onChange={set("tipo_cuenta")} options={["CUENTA CORRIENTE", "CUENTA AHORROS"]} placeholder={!form.banco ? "Primero selecciona el banco" : "Selecciona tipo de cuenta"} />
+              <FSel
+                value={form.tipo_cuenta}
+                onChange={set("tipo_cuenta")}
+                options={form.forma_pago === PAGO_TC ? TIPOS_TARJETA_CREDITO : ["CUENTA CORRIENTE", "CUENTA AHORROS"]}
+                disabled={form.forma_pago === "EFECTIVO"}
+                placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : form.forma_pago === PAGO_TC ? "Selecciona el tipo de tarjeta" : !form.banco ? "Primero selecciona el banco" : "Selecciona tipo de cuenta"}
+              />
             </Row>
-            <Row label="Ciclo de facturación" required>
-              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} />
+            <Row label="Ciclo de facturación" required={form.forma_pago !== "EFECTIVO"}>
+              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} disabled={form.forma_pago === "EFECTIVO"} placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : "Seleccionar…"} />
               {err("ciclo_facturacion")}
             </Row>
             <Row label="Costo de instalación" required>
@@ -1764,7 +1864,10 @@ export default function NuevaVenta() {
               />
             </Row>
             <Row label="Beneficios de Ley" required>
-              <Chips value={form.beneficios_de_ley} onChange={set("beneficios_de_ley")} options={BENEFICIOS_LEY} />
+              <Chips value={aplicaDescuento3raEdad ? "SI" : "NO"} onChange={() => {}} options={BENEFICIOS_LEY} disabledOptions={BENEFICIOS_LEY} />
+              <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
+                Se define automáticamente según el descuento de tercera edad.
+              </div>
               {err("beneficios_de_ley")}
             </Row>
             <Row label="Plazo del contrato (meses)" required>
@@ -1812,11 +1915,13 @@ export default function NuevaVenta() {
                 error={uploadErr.archivo_resumen} onRetry={() => reintentarSubida("archivo_resumen")}
                 onPick={(file) => subirArchivo("archivo_resumen", file)} />
             </Row>
-            <Row label="Planilla">
-              <FileUpload label="planilla" value={form.archivo_planilla} uploading={uploading.archivo_planilla}
-                error={uploadErr.archivo_planilla} onRetry={() => reintentarSubida("archivo_planilla")}
-                onPick={(file) => subirArchivo("archivo_planilla", file)} />
-            </Row>
+            {aplicaDescuento3raEdad && (
+              <Row label="Planilla">
+                <FileUpload label="planilla" value={form.archivo_planilla} uploading={uploading.archivo_planilla}
+                  error={uploadErr.archivo_planilla} onRetry={() => reintentarSubida("archivo_planilla")}
+                  onPick={(file) => subirArchivo("archivo_planilla", file)} />
+              </Row>
+            )}
           </Seccion>
 
           {/* ── Botones de envío ── */}

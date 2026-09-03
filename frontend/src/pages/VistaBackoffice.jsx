@@ -4257,48 +4257,54 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
 
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    busqueda: "", fechaDesde: "", fechaHasta: "",
+  });
+
+  const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
+
+  const limpiarFiltros = () => {
+    setBusqueda("");
+    setFechaDesde("");
+    setFechaHasta("");
+    setFiltrosAplicados({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+  };
+
+  const rowsConFiltros = useMemo(() => {
+    const q = normalizarEstado(filtrosAplicados.busqueda);
+    return (todas || []).filter((r) => {
+      if (q) {
+        const coincide = [
+          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor,
+          r.id_bitrix, r.netlife_login, r.supervisor, String(r.id),
+        ].some((c) => normalizarEstado(c).includes(q));
+        if (!coincide) return false;
+      }
+      const iso = fechaCalendarioEC(r.fecha_registro_sistema);
+      if (filtrosAplicados.fechaDesde && (!iso || iso < filtrosAplicados.fechaDesde)) return false;
+      if (filtrosAplicados.fechaHasta && (!iso || iso > filtrosAplicados.fechaHasta)) return false;
+      return true;
+    });
+  }, [todas, filtrosAplicados]);
+
   const conteos = useMemo(() => {
     const acc = Object.fromEntries(ESTATUS_NETLIFE.map((e) => [e, 0]));
-    for (const row of todas || []) {
+    for (const row of rowsConFiltros) {
       const estado = estadoNetlifeDe(row);
       if (Object.prototype.hasOwnProperty.call(acc, estado)) acc[estado] += 1;
     }
     return acc;
-  }, [todas]);
+  }, [rowsConFiltros]);
 
   const rowsFiltradas = useMemo(() => {
-    const q = normalizarEstado(busqueda);
-
-    return (todas || [])
-      .filter((r) => estadoNetlifeDe(r) === estadoActivo)
-      .filter((r) => {
-        if (q) {
-          const coincide = [
-            r.nombre_cliente_completo,
-            r.numero_identificacion,
-            r.codigo_asesor,
-            r.id_bitrix,
-            r.netlife_login,
-            r.supervisor,
-            String(r.id),
-          ].some((c) => normalizarEstado(c).includes(q));
-
-          if (!coincide) return false;
-        }
-
-        const iso = fechaCalendarioEC(r.fecha_registro_sistema);
-
-        if (fechaDesde && (!iso || iso < fechaDesde)) return false;
-        if (fechaHasta && (!iso || iso > fechaHasta)) return false;
-
-        return true;
-      })
+    return rowsConFiltros
+      .filter((r) => estadoActivo === "TODOS" || estadoNetlifeDe(r) === estadoActivo)
       .sort((a, b) =>
         String(b.fecha_registro_sistema || "").localeCompare(
           String(a.fecha_registro_sistema || "")
         )
       );
-  }, [todas, estadoActivo, busqueda, fechaDesde, fechaHasta]);
+  }, [rowsConFiltros, estadoActivo]);
 
   const columnas = [
     "id",
@@ -4333,7 +4339,8 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       >
         <div
           style={{
-            padding: 18,
+            padding: "18px 18px 86px",
+            position: "relative",
             borderBottom: "1px solid #e5e7eb",
             background: "linear-gradient(135deg,#f8fafc,#fff7ed)",
           }}
@@ -4404,13 +4411,49 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              {onCambiarEmpresa && (
-                <FiltroEmpresa
-                  valor={empresa}
-                  onCambiar={onCambiarEmpresa}
-                />
-              )}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
+              <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") consultar(); }}
+                placeholder="Buscar cliente, CI, login, asesor…"
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, minWidth: 240 }}
+              />
+
+              <CampoRangoFecha
+                label="Fecha de registro"
+                desde={fechaDesde}
+                hasta={fechaHasta}
+                onDesde={setFechaDesde}
+                onHasta={setFechaHasta}
+              />
+
+              <button
+                type="button"
+                onClick={consultar}
+                disabled={cargando}
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #ea580c", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}
+              >
+                Consultar
+              </button>
+
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+              >
+                Limpiar filtros
+              </button>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                {onCambiarEmpresa && (
+                  <FiltroEmpresa
+                    valor={empresa}
+                    onCambiar={onCambiarEmpresa}
+                  />
+                )}
 
               <button
                 onClick={recargar}
@@ -4426,6 +4469,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               >
                 Refrescar
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -4473,7 +4517,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
             gap: 12,
           }}
         >
-          {ESTATUS_NETLIFE.map((estado) => {
+          {["TODOS", ...ESTATUS_NETLIFE].map((estado) => {
             const activo = estadoActivo === estado;
 
             return (
@@ -4521,7 +4565,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                     textAlign: "center",
                   }}
                 >
-                  {conteos[estado] || 0}
+                  {estado === "TODOS" ? rowsConFiltros.length : (conteos[estado] || 0)}
                 </span>
               </button>
             );
@@ -4562,48 +4606,6 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               </h3>
             </div>
 
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar cliente, CI, login, asesor…"
-              style={{
-                padding: "9px 12px",
-                borderRadius: 10,
-                border: "1px solid #dbe4f0",
-                fontSize: 12,
-                minWidth: 240,
-              }}
-            />
-
-            <CampoRangoFecha
-              label="Fecha de registro"
-              desde={fechaDesde}
-              hasta={fechaHasta}
-              onDesde={setFechaDesde}
-              onHasta={setFechaHasta}
-            />
-
-            {(busqueda || fechaDesde || fechaHasta) && (
-              <button
-                onClick={() => {
-                  setBusqueda("");
-                  setFechaDesde("");
-                  setFechaHasta("");
-                }}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  color: "#475569",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                Limpiar filtros
-              </button>
-            )}
           </div>
 
           <div
@@ -4740,6 +4742,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
 const BLOQUES_VALIDACION = [
   { id: "SIN_REVISAR", titulo: "Sin revisar", color: "#475569", fondo: "#f1f5f9", borde: "#cbd5e1", valorBD: "" },
   { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
+  { id: "NO_REQUIERE", titulo: "No requiere regularizar", color: "#6d28d9", fondo: "#f5f3ff", borde: "#c4b5fd", valorBD: "NO REQUIERE REGULARIZAR" },
   { id: "REGULARIZADO", titulo: "Regularizado", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
   { id: "GESTION_ATC", titulo: "Gestión ATC", color: "#e11d48", fondo: "#fff1f2", borde: "#fecdd3", valorBD: "GESTION ATC" },
 ];
@@ -4752,7 +4755,8 @@ const normalizarEstado = (txt) =>
 function bloqueDeRegistro(row) {
   const v = normalizarEstado(row?.estatus_regularizacion);
   if (!v) return "SIN_REVISAR";
-  if (v.includes("NO NECESITA") || v.startsWith("REGULARIZAD")) return "REGULARIZADO";
+  if (v.includes("NO NECESITA") || v.includes("NO REQUIERE")) return "NO_REQUIERE";
+  if (v.startsWith("REGULARIZAD")) return "REGULARIZADO";
   if (v.includes("GESTION") && v.includes("ATC")) return "GESTION_ATC";
   if (v.includes("REGULARIZAR")) return "POR_REGULARIZAR";
   return "SIN_REVISAR";
@@ -5332,6 +5336,161 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   );
 }
 
+function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) {
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
+  const [estadoActivo, setEstadoActivo] = useState("TODOS");
+  const [detalleId, setDetalleId] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+
+  const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
+  const limpiarFiltros = () => {
+    setBusqueda("");
+    setFechaDesde("");
+    setFechaHasta("");
+    setFiltrosAplicados({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+  };
+
+  const rowsConFiltros = useMemo(() => {
+    const q = normalizarEstado(filtrosAplicados.busqueda);
+    return (todas || []).filter((row) => {
+      if (q) {
+        const coincide = [
+          row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor,
+          row.id_bitrix, row.gestion_atc, row.supervisor, row.estatus_regularizacion,
+          String(row.id),
+        ].some((campo) => normalizarEstado(campo).includes(q));
+        if (!coincide) return false;
+      }
+      const fecha = fechaCalendarioEC(row.fecha_registro_sistema);
+      if (filtrosAplicados.fechaDesde && (!fecha || fecha < filtrosAplicados.fechaDesde)) return false;
+      if (filtrosAplicados.fechaHasta && (!fecha || fecha > filtrosAplicados.fechaHasta)) return false;
+      return true;
+    });
+  }, [todas, filtrosAplicados]);
+
+  const conteos = useMemo(() => {
+    const resultado = Object.fromEntries(BLOQUES_VALIDACION.map((bloque) => [bloque.id, 0]));
+    rowsConFiltros.forEach((row) => { resultado[bloqueDeRegistro(row)] += 1; });
+    return resultado;
+  }, [rowsConFiltros]);
+
+  const rowsFiltradas = useMemo(() => rowsConFiltros
+    .filter((row) => estadoActivo === "TODOS" || bloqueDeRegistro(row) === estadoActivo)
+    .sort((a, b) => String(a.fecha_registro_sistema || "").localeCompare(String(b.fecha_registro_sistema || ""))),
+  [rowsConFiltros, estadoActivo]);
+
+  const estadoSeleccionado = estadoActivo === "TODOS"
+    ? "TODOS"
+    : BLOQUES_VALIDACION.find((bloque) => bloque.id === estadoActivo)?.titulo || estadoActivo;
+
+  const columnas = [
+    "id", "estatus_regularizacion", "nombre_cliente_completo", "numero_identificacion",
+    "fecha_registro_sistema", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+    "supervisor", "gestion_atc", "detalle_regularizacion",
+  ];
+
+  return (
+    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div style={{ padding: "18px 18px 86px", position: "relative", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+          <button onClick={onVolver} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}>
+            ← Volver a Backoffice
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color: "#4f46e5", textTransform: "uppercase" }}>
+            Backoffice · Validación / Regularización
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Validación / Regularización</h2>
+              <p style={{ margin: "7px 0 0", color: "#64748b", fontSize: 12.5 }}>
+                Selecciona una tarjeta para consultar los registros de ese estado.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <button onClick={recargar} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 700, cursor: "pointer" }}>
+                Refrescar
+              </button>
+            </div>
+          </div>
+
+          <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") consultar(); }} placeholder="Buscar cliente, CI, asesor…" style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, minWidth: 240 }} />
+            <CampoRangoFecha label="Fecha de registro" desde={fechaDesde} hasta={fechaHasta} onDesde={setFechaDesde} onHasta={setFechaHasta} />
+            <button type="button" onClick={consultar} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #4f46e5", background: "#4f46e5", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>Consultar</button>
+            <button type="button" onClick={limpiarFiltros} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Limpiar filtros</button>
+          </div>
+        </div>
+
+        {error && <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{error}</div>}
+        {total > (todas || []).length && (todas || []).length > 0 && (
+          <div style={{ margin: "14px 18px 0", padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12, color: "#92400e", fontWeight: 700 }}>
+            Mostrando {(todas || []).length} de {total} registros por el límite actual de carga.
+          </div>
+        )}
+
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(205px, 1fr))", gap: 12 }}>
+          {[{ id: "TODOS", titulo: "Todos" }, ...BLOQUES_VALIDACION].map((bloque) => {
+            const activo = estadoActivo === bloque.id;
+            const cantidad = bloque.id === "TODOS" ? rowsConFiltros.length : conteos[bloque.id] || 0;
+            return (
+              <button key={bloque.id} type="button" onClick={() => setEstadoActivo(bloque.id)} style={{ width: "100%", minHeight: 54, padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${activo ? "#4f46e5" : "#e5e7eb"}`, background: activo ? "#eef2ff" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, boxShadow: activo ? "0 5px 16px rgba(79,70,229,.12)" : "none" }}>
+                <span style={{ fontSize: 11.5, fontWeight: 900, color: "#334155", textAlign: "left", textTransform: "uppercase" }}>{bloque.titulo}</span>
+                <span style={{ minWidth: 34, padding: "4px 9px", borderRadius: 10, background: "#eef2ff", color: "#4f46e5", fontSize: 13, fontWeight: 900, textAlign: "center" }}>{cantidad}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "0 18px 18px" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginBottom: 14 }}>
+            <div style={{ marginRight: "auto" }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em" }}>Estado seleccionado</div>
+              <h3 style={{ margin: "4px 0 0", fontSize: 18, color: "#4338ca", textTransform: "uppercase" }}>{estadoSeleccionado} · {rowsFiltradas.length}</h3>
+            </div>
+            <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Validacion_${empresa || "Todos"}`)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
+          </div>
+
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+            <div style={{ overflow: "auto", maxHeight: 590 }}>
+              <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+                <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
+                  <tr>{columnas.map((key) => <th key={key} style={{ padding: "11px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900, color: "#334155" }}>{FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase()}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {cargando && <tr><td colSpan={columnas.length} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>Cargando…</td></tr>}
+                  {!cargando && rowsFiltradas.length === 0 && <tr><td colSpan={columnas.length} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>Sin registros para {estadoSeleccionado}.</td></tr>}
+                  {!cargando && rowsFiltradas.map((row) => {
+                    const gestionDestacada = estadoActivo === "POR_REGULARIZAR" && [
+                      "ANALFABETO", "DESCUENTO CONADIS", "DESCUENTO 3RA EDAD",
+                    ].includes(normalizarEstado(row.gestion_atc));
+
+                    return (
+                    <tr
+                      key={row.id}
+                      onClick={() => setDetalleId(row.id)}
+                      style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
+                    >
+                      {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}>{key === "estatus_regularizacion" && !row[key] ? "SIN REVISAR" : valueForField(row, key)}</td>)}
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {detalleId && <PanelRegistros soloDetalle idInicial={detalleId} etiquetaContexto="Detalle de Validación / Regularización" onVolver={() => setDetalleId(null)} />}
+    </div>
+  );
+}
+
 /**
  * Registros = explorador de fechas + tabla completa.
  * La tabla no filtra en el navegador: recibe el día elegido y deja que el
@@ -5419,7 +5578,7 @@ export default function VistaBackoffice() {
   }
 
   if (sub.id === "validacion") {
-    return <TableroValidacion onVolver={volver} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
+    return <TablaValidacionRegularizacion onVolver={volver} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
   }
 
   if (sub.id === "welcome") {

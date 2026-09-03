@@ -61,12 +61,102 @@ async function siguientePuertoLibre() {
 }
 
 /**
+ * Devuelve el puerto (IP) de una línea al pool: vacía su proxy_config para que
+ * `siguientePuertoLibre()` lo vuelva a ofrecer a otra línea.
+ *
+ * Se usa cuando una línea deja de necesitar su IP de verdad:
+ *   - baja lógica de la línea
+ *   - sesión cerrada por WhatsApp (logged_out) tras agotar el reintento
+ *   - línea muerta hace mucho (ver reconciliarPuertos)
+ *
+ * NO se llama en una desconexión pasajera (corte de red): ahí la línea reconecta
+ * sola sobre su misma IP y robársela provocaría dos números en la misma IP.
+ */
+async function liberarPuertoDeLinea(lineId) {
+  if (!lineId) return false
+  try {
+    const { rowCount } = await query(
+      `UPDATE lines
+          SET proxy_enabled = false, proxy_config = '{}'::jsonb, updated_at = NOW()
+        WHERE id = $1
+          AND proxy_config->>'port' IS NOT NULL`,
+      [lineId]
+    )
+    if (rowCount) console.log(`[proxyPool] ♻️ Puerto liberado de la línea ${lineId} — vuelve al pool`)
+    return rowCount > 0
+  } catch (e) {
+    console.warn(`[proxyPool] No se pudo liberar el puerto de ${lineId}:`, e.message)
+    return false
+  }
+}
+
+/**
+ * Recupera puertos "colgados": líneas que reservan una IP pero ya no la usan.
+ *   - status 'logged_out'          → sesión cerrada, necesita QR + IP nueva
+ *   - 'disconnected' / 'error' con updated_at > 24 h → línea muerta
+ * NO toca líneas conectadas, conectando, esperando QR ni caídas hace poco.
+ * Devuelve cuántos puertos volvieron al pool.
+ */
+async function reconciliarPuertos() {
+  try {
+    const { rowCount } = await query(`
+      UPDATE lines
+         SET proxy_enabled = false, proxy_config = '{}'::jsonb, updated_at = NOW()
+       WHERE deleted_at IS NULL
+         AND proxy_config->>'port' IS NOT NULL
+         AND (
+              status = 'logged_out'
+           OR (status IN ('disconnected','error') AND updated_at < NOW() - INTERVAL '24 hours')
+         )
+    `)
+    if (rowCount) console.log(`[proxyPool] ♻️ reconciliarPuertos: ${rowCount} puerto(s) devuelto(s) al pool`)
+    return rowCount
+  } catch (e) {
+    console.warn('[proxyPool] reconciliarPuertos falló:', e.message)
+    return 0
+  }
+}
+
+/**
+ * Estado del pool para pintarlo en pantalla.
+ * { credenciales, total, en_uso, quemados, libres }
+ */
+async function estadoPool() {
+  await reconciliarPuertos()
+  try {
+    const [uso, quemados] = await Promise.all([
+      query(`
+        SELECT COUNT(*)::int AS n FROM lines l
+        WHERE l.deleted_at IS NULL
+          AND l.proxy_enabled = true
+          AND l.proxy_config->>'host' = $1
+          AND l.proxy_config->>'port' ~ '^[0-9]+$'
+          AND (l.proxy_config->>'port')::int BETWEEN $2 AND $3
+      `, [PROXY_HOST, PROXY_BASE_PORT, PROXY_MAX_PORT]),
+      query(`
+        SELECT COUNT(*)::int AS n FROM proxy_puertos_quemados
+        WHERE host = $1 AND puerto BETWEEN $2 AND $3
+      `, [PROXY_HOST, PROXY_BASE_PORT, PROXY_MAX_PORT]),
+    ])
+    const total    = PROXY_PUERTOS
+    const en_uso   = uso.rows[0].n
+    const quemadosN = quemados.rows[0].n
+    const libres   = Math.max(0, total - en_uso - quemadosN)
+    return { credenciales: hayCredenciales(), total, en_uso, quemados: quemadosN, libres }
+  } catch (e) {
+    console.warn('[proxyPool] estadoPool falló:', e.message)
+    return { credenciales: hayCredenciales(), total: PROXY_PUERTOS, en_uso: null, quemados: null, libres: null }
+  }
+}
+
+/**
  * Arma la configuración de proxy para una línea nueva.
  * Devuelve null si no hay credenciales o si el pool está agotado.
  */
 async function construirProxyAutomatico() {
   if (!hayCredenciales()) return null
   try {
+    await reconciliarPuertos()
     const puerto = await siguientePuertoLibre()
     if (puerto === null) {
       console.warn(
@@ -159,4 +249,7 @@ module.exports = {
   construirProxyAutomatico,
   quemarPuerto,
   rotarProxyDeLinea,
+  liberarPuertoDeLinea,
+  reconciliarPuertos,
+  estadoPool,
 }

@@ -79,7 +79,10 @@ async function getAll(req, res) {
       rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
       has_qr: bm ? !!bm.getQR(line.id) : false,
     }))
-    res.json({ success: true, data: lines })
+    // Estado del pool de proxies para el aviso visual (no rompe si falla)
+    let proxyPool = null
+    try { proxyPool = await estadoPool() } catch (e) { console.warn('[wa_lines.getAll] estadoPool:', e.message) }
+    res.json({ success: true, data: lines, meta: { proxyPool } })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
@@ -127,7 +130,7 @@ const MAX_LINEAS_POR_USUARIO = 1
 // La asignación de puertos/IPs vive en proxyPool.service (la comparten este
 // controlador y BaileysManager: evita huecos, salta IPs quemadas y rota al
 // re-vincular).
-const { construirProxyAutomatico } = require('../services/proxyPool.service')
+const { construirProxyAutomatico, liberarPuertoDeLinea, estadoPool } = require('../services/proxyPool.service')
 
 // Qué líneas reciben proxy automático, por su NOMBRE.
 // Antes solo las de envío masivo (ENVIO_1, ENVIO_2, ...); las líneas de
@@ -213,11 +216,23 @@ async function create(req, res) {
           'SELECT 1 FROM proxy_puertos_quemados WHERE host = $1 AND puerto = $2',
           [anterior.host, parseInt(anterior.port, 10)]
         )
-        if (!quemada.rows.length) {
+        // El puerto pudo reasignarse a otra línea activa mientras esta estuvo
+        // dada de baja: reclamarlo dejaría dos números en la misma IP (señal de
+        // robo de sesión). Si ya lo usa alguien, se pide uno fresco.
+        const ocupado = await query(
+          `SELECT 1 FROM lines
+            WHERE deleted_at IS NULL
+              AND id <> $3
+              AND proxy_config->>'host' = $1
+              AND proxy_config->>'port' = $2
+            LIMIT 1`,
+          [anterior.host, String(anterior.port), previa.rows[0].id]
+        )
+        if (!quemada.rows.length && !ocupado.rows.length) {
           cfgProxy = anterior
           usaProxy = true
         } else {
-          console.log(`[wa_lines] "${nombre}": su IP anterior (${anterior.port}) estaba retirada, se asignará otra`)
+          console.log(`[wa_lines] "${nombre}": su IP anterior (${anterior.port}) ${quemada.rows.length ? 'estaba retirada' : 'ya la usa otra línea'}, se asignará otra`)
         }
       }
     }
@@ -326,6 +341,8 @@ async function remove(req, res) {
       `UPDATE lines SET deleted_at = NOW(), status = 'deleted', updated_at = NOW() WHERE id = $1`,
       [id]
     )
+    // La línea ya no usa su IP: devolver el puerto al pool para otra línea.
+    try { await liberarPuertoDeLinea(id) } catch (e) { console.warn('[wa_lines.remove] liberarPuerto:', e.message) }
     res.json({ success: true, message: 'Línea dada de baja. El historial de chats se conserva.' })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
@@ -360,6 +377,16 @@ async function connect(req, res) {
         console.log(`[wa_lines] Línea "${owned.name}" → proxy asignado al reconectar: ${auto.host}:${auto.port}`)
       } else {
         console.warn(`[wa_lines] Línea "${owned.name}" va a conectar SIN proxy (no se pudo asignar uno automático — revisa PROXY_USER/PROXY_PASS o el pool)`)
+        // Si el proxy es obligatorio, avisar en pantalla en vez de dejar que
+        // BaileysManager tire un error genérico.
+        if (process.env.WA_PROXY_REQUIRED === 'true') {
+          let pool = null
+          try { pool = await estadoPool() } catch (e) {}
+          const detalle = pool && pool.credenciales === false
+            ? 'faltan credenciales de proxy (PROXY_USER / PROXY_PASS).'
+            : `el pool de IPs está agotado (${pool ? `${pool.en_uso}/${pool.total} en uso, ${pool.quemados} retiradas` : 'sin IPs libres'}).`
+          return res.status(409).json({ success: false, error: `No se puede conectar la línea: ${detalle} Libera o amplía IPs e inténtalo de nuevo.` })
+        }
       }
     }
 
@@ -370,6 +397,13 @@ async function connect(req, res) {
     res.json({ success: true, message: 'Conectando... espera el QR' })
   } catch (err) {
     console.error('[wa_lines.connect] ERROR:', err && (err.stack || err.message || err))
+    const msg = String(err?.message || '')
+    if (/PROXY_REQUIRED|proxy/i.test(msg)) {
+      return res.status(409).json({ success: false, error: 'La línea no tiene un proxy válido y el proxy es obligatorio. Revisa el pool de IPs.' })
+    }
+    if (msg.includes('LINEA_EN_OTRA_INSTANCIA')) {
+      return res.status(409).json({ success: false, error: 'Otra instancia del servicio ya está manejando esta línea. Espera unos segundos y reintenta.' })
+    }
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
@@ -401,6 +435,25 @@ async function getQR(req, res) {
     if (!qr) return res.status(404).json({ success: false, error: 'QR no disponible' })
     res.json({ success: true, qr })
   } catch (err) {
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+// Desconectar TODAS las líneas — solo ADMINISTRADOR.
+// Uso: recuperarse de sockets colgados ("Conectando…" eterno / "Generando QR…"
+// que no avanza). Cierra sesión de verdad en cada número (logout), así todas
+// quedan limpias y se vuelven a vincular por QR.
+async function resetAll(req, res) {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Solo un administrador puede reiniciar todas las líneas' })
+    const bm = req.app.get('baileysManager')
+    if (!bm || typeof bm.resetAll !== 'function') {
+      return res.status(503).json({ success: false, error: 'WhatsApp no inicializado' })
+    }
+    const total = await bm.resetAll({ logout: true })
+    res.json({ success: true, message: `${total} línea(s) desconectada(s). Cada asesor debe volver a escanear el QR.`, total })
+  } catch (err) {
+    console.error('[wa_lines.resetAll]', err && (err.stack || err.message))
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }
@@ -492,4 +545,4 @@ async function dashboard(req, res) {
   }
 }
 
-module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard, lineaLlevaProxy }
+module.exports = { getAll, getOne, create, update, remove, connect, disconnect, getQR, dashboard, resetAll, lineaLlevaProxy }

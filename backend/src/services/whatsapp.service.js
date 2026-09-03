@@ -57,32 +57,34 @@ const iniciarWhatsApp = async (appInstance) => {
 
     await campaignEngine.resumePendingOnBoot();
 
-    // Restaurar TODAS las líneas con sesión previa en disco.
+    // Restaurar SOLO las líneas que estaban realmente conectadas.
     //
-    // Se incluye 'error' a propósito: ese estado no significa solo "bloqueada
-    // por WhatsApp", también aparece al agotar los reintentos por un corte de
-    // red, y en ese caso la sesión guardada sigue siendo válida. Excluirlas
-    // hacía que se acumularan decenas de líneas caídas esperando un QR manual
-    // que en realidad no hacía falta.
+    // Antes se restauraban también 'disconnected'/'connecting'/'qr_ready'/'error':
+    // eso, al arrancar, disparaba decenas de sockets Baileys a la vez desde una
+    // sola instancia y por la misma IP → WhatsApp los estrangulaba y quedaban
+    // todos colgados en "connecting" sin emitir QR jamás. Las líneas en otro
+    // estado se reconectan cuando el asesor pulsa "Conectar QR".
     //
-    // Si la sesión ya no sirve, WhatsApp responde 401 y ahí sí se limpian las
-    // credenciales y se pide QR (ver BaileysManager, manejo de 'close').
-    // Solo se excluye 'logged_out': ahí la sesión fue cerrada explícitamente.
-    const { rows } = await pool.query(
-      `SELECT id, name FROM lines
-       WHERE status IN ('connected','disconnected','connecting','qr_ready','error')
-         AND last_connected IS NOT NULL
-         AND deleted_at IS NULL`
-    );
-    if (rows.length) {
-      console.log('[WA] Restaurando', rows.length, 'línea(s)...');
-      for (const line of rows) {
-        try {
-          await baileysManager.connect(line.id);
-          // Pausa breve entre líneas: evita golpear DB/CPU con todas a la vez
-          await new Promise(r => setTimeout(r, 1500));
+    // Se puede saltar del todo con WA_SKIP_BOOT_RESTORE=true.
+    if (process.env.WA_SKIP_BOOT_RESTORE === 'true') {
+      console.log('[WA] Restauración de líneas al arranque desactivada (WA_SKIP_BOOT_RESTORE)');
+    } else {
+      const { rows } = await pool.query(
+        `SELECT id, name FROM lines
+         WHERE status = 'connected'
+           AND last_connected IS NOT NULL
+           AND deleted_at IS NULL`
+      );
+      if (rows.length) {
+        console.log('[WA] Restaurando', rows.length, 'línea(s) conectada(s)...');
+        for (const line of rows) {
+          try {
+            await baileysManager.connect(line.id);
+            // Pausa amplia entre líneas: no golpear DB/CPU ni la IP con todas a la vez
+            await new Promise(r => setTimeout(r, 4000));
+          }
+          catch (e) { console.warn('[WA] Error restaurando', line.name, ':', e.message); }
         }
-        catch (e) { console.warn('[WA] Error restaurando', line.name, ':', e.message); }
       }
     }
     console.log('[WA] Módulo WhatsApp iniciado');

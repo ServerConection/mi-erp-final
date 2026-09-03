@@ -10,6 +10,25 @@ const db = require("../config/db");
 
 const PERFILES_GLOBALES = ["supervisor", "analista", "gerencia", "administrador"];
 
+const ESTADOS_VALIDOS = new Set([
+  "ACTIVO", "DETENIDO", "REPLANIFICADO", "PRESERVICIO", "FACTIBLE",
+  "PLANIFICADO", "PREPLANIFICADO", "ASIGNADO", "SIN ESTADO", "ANULADA",
+]);
+const PAGOS_VALIDOS = new Set(["EFEC", "TC", "CA", "CC"]);
+
+const normalizarEstado = (valor) => {
+  const estado = String(valor || "").trim().toUpperCase();
+  return ({
+    "RE-PLANIFICADO": "REPLANIFICADO",
+    "PRE-PLANIFICADO": "PREPLANIFICADO",
+    "PRE-SERVICIO": "PRESERVICIO",
+  })[estado] || estado;
+};
+const normalizarPago = (valor) => {
+  const pago = String(valor || "").trim().toUpperCase();
+  return pago === "CUENTA CORRIENTE" ? "CC" : pago;
+};
+
 // ── GET /api/ventas ─────────────────────────────────────────
 const obtenerVentas = async (req, res) => {
   try {
@@ -78,13 +97,12 @@ const crearVenta = async (req, res) => {
     const { id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
             observacion, check_cedula, check_foto_cartel, check_resumen } = req.body;
 
-    if (!estado) return res.status(400).json({ ok: false, mensaje: "El estado es requerido" });
-    if (!pago)   return res.status(400).json({ ok: false, mensaje: "El tipo de pago es requerido" });
-
-    const estadosValidos = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICADO", "ASIGNADO"];
-    const pagosValidos   = ["EFEC", "TC", "CA"];
-    if (!estadosValidos.includes(estado)) return res.status(400).json({ ok: false, mensaje: "Estado no válido" });
-    if (!pagosValidos.includes(pago))     return res.status(400).json({ ok: false, mensaje: "Pago no válido" });
+    const estadoNormalizado = normalizarEstado(estado);
+    const pagoNormalizado = normalizarPago(pago);
+    if (!estadoNormalizado) return res.status(400).json({ ok: false, mensaje: "El estado es requerido" });
+    if (!pagoNormalizado)   return res.status(400).json({ ok: false, mensaje: "El tipo de pago es requerido" });
+    if (!ESTADOS_VALIDOS.has(estadoNormalizado)) return res.status(400).json({ ok: false, mensaje: "Estado no válido" });
+    if (!PAGOS_VALIDOS.has(pagoNormalizado))     return res.status(400).json({ ok: false, mensaje: "Pago no válido" });
 
     const { rows: numRows } = await db.query(
       `SELECT COALESCE(MAX(numero_venta), 0) + 1 AS siguiente FROM ventas_registros WHERE usuario_id = $1`,
@@ -106,8 +124,8 @@ const crearVenta = async (req, res) => {
         limpiar(login),
         ingreso_telcos != null && ingreso_telcos !== "" ? ingreso_telcos : null,
         fecha_ingreso                  || null,
-        estado,
-        pago,
+        estadoNormalizado,
+        pagoNormalizado,
         tercerdad === true || tercerdad === "SI",
         limpiar(observacion),
         check_cedula === true          || check_cedula === "SI",
@@ -132,6 +150,13 @@ const crearVenta = async (req, res) => {
     if (err.code === "22007" || err.code === "22008") { // formato de fecha inválido
       return res.status(400).json({ ok: false, mensaje: "Una fecha tiene formato inválido. Revisa Ingreso Telcos / Fecha de ingreso.", detalle: err.message });
     }
+    if (err.code === "23514") {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "La base de datos aún no admite este estado o forma de pago. Ejecuta la migración de estados y pagos de ventas.",
+        detalle: err.constraint || err.message,
+      });
+    }
     res.status(500).json({ ok: false, mensaje: "Error al guardar la venta", detalle: err.message });
   }
 };
@@ -146,6 +171,12 @@ const editarVenta = async (req, res) => {
     const { id_bitrix, plan, valor_plan, login, ingreso_telcos, fecha_ingreso, estado, pago, tercerdad,
             observacion, check_cedula, check_foto_cartel, check_resumen } = req.body;
     const esAdmin = perfil?.toLowerCase() === "administrador";
+    const estadoNormalizado = estado === undefined ? undefined : normalizarEstado(estado);
+    const pagoNormalizado = pago === undefined ? undefined : normalizarPago(pago);
+    if (estadoNormalizado !== undefined && !ESTADOS_VALIDOS.has(estadoNormalizado))
+      return res.status(400).json({ ok: false, mensaje: "Estado no válido" });
+    if (pagoNormalizado !== undefined && !PAGOS_VALIDOS.has(pagoNormalizado))
+      return res.status(400).json({ ok: false, mensaje: "Pago no válido" });
 
     // Verificar existencia
     const { rows: existing } = await db.query(
@@ -188,8 +219,8 @@ const editarVenta = async (req, res) => {
           ? (ingreso_telcos !== "" && ingreso_telcos !== null ? ingreso_telcos : null)
           : registro.ingreso_telcos,
         fecha_ingreso !== undefined ? (fecha_ingreso || null) : registro.fecha_ingreso,
-        estado        || registro.estado,
-        pago          || registro.pago,
+        estadoNormalizado || registro.estado,
+        pagoNormalizado   || registro.pago,
         tercerdad !== undefined
           ? (tercerdad === true || tercerdad === "SI")
           : registro.tercerdad,
@@ -210,6 +241,13 @@ const editarVenta = async (req, res) => {
     res.json({ ok: true, data: rows[0] });
   } catch (err) {
     console.error("Error editarVenta:", err);
+    if (err.code === "23514") {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "La base de datos aún no admite este estado o forma de pago. Ejecuta la migración de estados y pagos de ventas.",
+        detalle: err.constraint || err.message,
+      });
+    }
     res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 };

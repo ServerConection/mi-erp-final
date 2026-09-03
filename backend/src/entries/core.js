@@ -31,7 +31,6 @@ app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
 app.use('/api/backoffice',        require('../routes/backoffice.routes'));
 app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'));
-app.use('/api/reporte-jefatura',  require('../routes/reporteJefatura.routes'));
 app.use('/api/reporte-detalle',   require('../routes/reporteDetalle.routes'));
 app.use('/api/bot-auditor',       require('../routes/botAuditor.routes'));
 app.use('/api/nexo-ia',           require('../routes/nexoIa.routes'));
@@ -42,8 +41,6 @@ app.use('/api/chat',              require('../routes/chat.routes'));
 app.use('/api/evaluaciones',      require('../routes/evaluaciones.routes'));
 app.use('/api/asistente',         require('../routes/asistente.routes'));
 app.use('/api/alertas',           require('../routes/alertas.routes'));
-app.use('/api/mundialito',        require('../routes/mundialito.routes'));
-app.use('/api/polla',             require('../routes/pollaMundialista.routes'));
 
 // ── APIs EXTERNAS — NO MOVER (URL pública fija) ──────────────
 app.use('/api/consultor',         require('../routes/consultor.routes'));
@@ -57,5 +54,5 @@ app.use('/uploads', express.static(uploadsPath, { maxAge: '7d', etag: true, last
 
 finalize(app);
 
-// withSocket: mundialito y alertas usan getIO() para marcadores/alertas en vivo.
+// withSocket: alertas usa getIO() para eventos en vivo.
 startHttp(app, { serviceName: 'core', withSocket: true });

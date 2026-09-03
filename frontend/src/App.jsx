@@ -45,9 +45,6 @@ const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
-const Mundialito           = lazy(() => import("./pages/Mundialito"));
-const PollaMundialista     = lazy(() => import("./pages/PollaMundialista"));
-const ReporteJefatura      = lazy(() => import("./pages/ReporteJefatura"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
@@ -62,7 +59,6 @@ const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
-const CumplimientoLeads    = lazy(() => import("./pages/CumplimientoLeads"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 
 // Spinner mínimo mientras se descarga el chunk
@@ -133,10 +129,6 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<VistaBackoffice />} />
-            <Route path="cumplimiento-leads"       element={<CumplimientoLeads />} />
-            <Route path="mundialito"               element={<Mundialito />} />
-            <Route path="polla-mundialista"        element={<PollaMundialista />} />
-            <Route path="reporte-jefatura"         element={<ReporteJefatura />} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
             <Route path="nexo-ia"                    element={<NexoIa />} />

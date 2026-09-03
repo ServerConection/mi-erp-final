@@ -19,7 +19,6 @@ app.use('/api/comparativa-indicadores', require('../routes/comparativaIndicadore
 app.use('/api/redes',                   require('../routes/redes.routes'));
 app.use('/api/forecast',                require('../routes/forecast.routes'));
 app.use('/api/coverage',                require('../routes/coverage.routes'));
-app.use('/api/cumplimiento-leads',      require('../routes/cumplimientoLeads.routes'));
 app.use('/api/llamadas',                require('../routes/llamadas.routes'));
 app.use('/api/kpi-comercial',           require('../routes/kpiComercial.routes'));
 

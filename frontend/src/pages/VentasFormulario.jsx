@@ -19,13 +19,20 @@ const mesActual = () => {
 
 const API = import.meta.env.VITE_API_URL;
 
-const ESTADOS = ["ACTIVO", "DETENIDO", "RE-PLANIFICADO", "FACTIBLE", "PLANIFICADO","PRE-PLANIFICADO", "ASIGNADO","SIN ESTADO", "ANULADA"];
-const PAGOS   = ["EFEC", "TC", "CA"];
+const ESTADOS = ["ACTIVO", "DETENIDO", "REPLANIFICADO", "PRESERVICIO", "FACTIBLE", "PLANIFICADO", "PREPLANIFICADO", "ASIGNADO", "SIN ESTADO", "ANULADA"];
+const PAGOS = [
+  { value: "EFEC", label: "EFEC" },
+  { value: "TC", label: "TC" },
+  { value: "CA", label: "CA" },
+  { value: "CC", label: "CC - CUENTA CORRIENTE" },
+];
 
 const ESTADO_ESTILOS = {
   ACTIVO:          "bg-emerald-50 text-emerald-700 border border-emerald-300",
   DETENIDO:        "bg-red-50 text-red-700 border border-red-300",
-  "RE-PLANIFICADO":  "bg-orange-50 text-orange-700 border border-orange-300",
+  REPLANIFICADO:    "bg-orange-50 text-orange-700 border border-orange-300",
+  PRESERVICIO:      "bg-violet-50 text-violet-700 border border-violet-300",
+  PREPLANIFICADO:   "bg-indigo-50 text-indigo-700 border border-indigo-300",
   FACTIBLE:        "bg-cyan-50 text-cyan-700 border border-cyan-300",
   PLANIFICADO:     "bg-blue-50 text-blue-700 border border-blue-300",
   ASIGNADO:        "bg-slate-100 text-slate-600 border border-slate-300",
@@ -36,6 +43,7 @@ const PAGO_ESTILOS = {
   EFEC: "bg-emerald-50 text-emerald-700",
   TC:   "bg-yellow-50 text-yellow-700",
   CA:   "bg-sky-50 text-sky-700",
+  CC:  "bg-purple-50 text-purple-700",
 };
 
 const inputCls = "w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-sm";
@@ -137,7 +145,7 @@ function ModalVenta({ modo, registro, onGuardar, onCerrar, cargando }) {
             <div>
               <label className={labelCls}>Pago</label>
               <select value={form.pago} onChange={e => set("pago", e.target.value)} className={selectCls}>
-                {PAGOS.map(p => <option key={p} value={p}>{p}</option>)}
+                {PAGOS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
           </div>
@@ -474,8 +482,8 @@ export default function Ventas() {
         {[{ label: "TODOS", val: ventasDelMes.length, icon: "📋" },
           ...ESTADOS.map(e => ({
             label: e, val: contadores[e] || 0,
-            icon: { ACTIVO:"✅", DETENIDO:"🔴", "RE-PLANIFICADO":"🔄",
-                    FACTIBLE:"🔵", PLANIFICADO:"📘", ASIGNADO:"📌" }[e]
+            icon: { ACTIVO:"✅", DETENIDO:"🔴", REPLANIFICADO:"🔄", PRESERVICIO:"🟣",
+                    FACTIBLE:"🔵", PLANIFICADO:"📘", PREPLANIFICADO:"🗓️", ASIGNADO:"📌" }[e]
           }))
         ].map(({ label, val, icon }) => (
           <button key={label} onClick={() => setFiltroEstado(label)}

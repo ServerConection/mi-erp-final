@@ -924,6 +924,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
       setLoading(true);
       const p = new URLSearchParams();
       if (q) p.set("buscar", q);
+      p.set("limit", "sin_limite");
       Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
       if (empresa && empresa !== "TODOS") p.set("empresa", empresa);   // ← NUEVO
       const qs = p.toString() ? `?${p.toString()}` : "";
@@ -2507,7 +2508,7 @@ function ExploradorFechas({
 }
 
 /** Carga compartida de registros para el explorador y el tablero. */
-function useRegistrosBackoffice(limite = 1000, empresa = "TODOS") {
+function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [cargando, setCargando] = useState(true);
@@ -2771,7 +2772,7 @@ function BloqueWelcome({
 }
 
 function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }) {
-  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [rows, setRows] = useState([]);
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -3629,7 +3630,7 @@ function ModalDiaAgendamientos({ iso, registros, onCerrar, onAbrirRegistro, colo
 }
 
 function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpresa }) {
-  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [diaModal, setDiaModal] = useState(null);
   const [detalleId, setDetalleId] = useState(null);
 
@@ -4059,7 +4060,7 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
 }
 
 function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
-  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [estadoActivo, setEstadoActivo] = useState("PRESERVICIO");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -4222,7 +4223,7 @@ function estadoNetlifeDe(row) {
 }
 
 function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
-  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [estadoActivo, setEstadoActivo] = useState("ACTIVO");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -4957,7 +4958,7 @@ function FiltroFechaBloque({ rows, filtro, onCambiar, color, fondo, borde, campo
 }
 
 function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }) {
-  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [rows, setRows] = useState([]);
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -5310,7 +5311,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
  * backend haga el filtro con fechaDesde/fechaHasta, que ya existía.
  */
 function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiarEmpresa, onAbrirRegistro }) {
-  const { rows, cargando, error, recargar } = useRegistrosBackoffice(1000, empresa);
+  const { rows, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
 
   if (!idInicial && !nav.dia && !nav.todos) {
     return (

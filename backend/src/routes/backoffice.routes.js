@@ -95,7 +95,6 @@ router.get('/', async (req, res) => {
   try {
     const {
       buscar = '', page = 1, limit = 100,
-      // ── Filtros nuevos (todos opcionales: si no vienen, no se aplican) ──
       fechaDesde = '', fechaHasta = '',                 // fecha_registro_sistema
       activacionDesde = '', activacionHasta = '',       // fecha_activacion_netlife
       login = '',                                        // netlife_login
@@ -104,7 +103,6 @@ router.get('/', async (req, res) => {
       estatusRegularizacion = '',                        // estatus_regularizacion
       empresa = '',
     } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = "WHERE estatus_envio != 'BORRADOR'";
     const params = [];
@@ -130,22 +128,20 @@ router.get('/', async (req, res) => {
     if (activacionDesde) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} >= ${P(activacionDesde)}`;
     if (activacionHasta) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} <= ${P(activacionHasta)}`;
 
-    // ── LOGIN NETLIFE (coincidencia parcial: se suele buscar por fragmento) ──
+    // ── LOGIN NETLIFE ────────────────────────────────────────────────────
     if (login.trim()) whereClause += ` AND netlife_login ILIKE ${P(`%${login.trim()}%`)}`;
 
     // ── ESTATUS NETLIFE / REGULARIZACIÓN / 3RA EDAD ──────────────────────
-    // Match EXACTO (case-insensitive) porque vienen de un catálogo cerrado.
     if (estatusNetlife.trim())
       whereClause += ` AND UPPER(TRIM(netlife_estatus_real)) = UPPER(TRIM(${P(estatusNetlife.trim())}))`;
     if (estatusRegularizacion.trim())
       whereClause += ` AND UPPER(TRIM(estatus_regularizacion)) = UPPER(TRIM(${P(estatusRegularizacion.trim())}))`;
     if (terceraEdad.trim())
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
+
     // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
-    // Alcance obligatorio según el token (no se puede saltar desde la URL).
     whereClause += filtroEmpresa(req, P);
 
-    // El selector de la UI solo puede estrechar dentro de lo permitido.
     const empresaPedida = empresa.trim().toUpperCase();
     const alcance = empresaDelUsuario(req);
     if (empresaPedida && empresaPedida !== 'TODOS') {
@@ -158,26 +154,32 @@ router.get('/', async (req, res) => {
       whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
     }
 
+    // Conteo total para la vista
     const countParams = [...params];
     const { rows: countRows } = await pool.query(
       `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
       countParams
     );
 
-    params.push(parseInt(limit), offset);
-    const limitParam = params.length - 1;
-    const offsetParam = params.length;
+    // ── GESTIÓN DE LÍMITE (Paginado o Todo) ──────────────────────────────
+    const sinLimite = limit === '0' || limit === 0 || limit === 'all' || limit === 'sin_limite';
+    let paginacionSql = '';
 
-    // SELECT * : la vista muestra TODAS las columnas de la tabla.
-    // Antes se devolvía un subconjunto fijo de 18 columnas, así que el resto
-    // ni siquiera llegaba al frontend. El límite de filas (LIMIT) sigue
-    // controlando el peso de la respuesta.
+    if (!sinLimite) {
+      const parsedLimit = parseInt(limit, 10) || 100;
+      const parsedPage = parseInt(page, 10) || 1;
+      const offset = (parsedPage - 1) * parsedLimit;
+
+      params.push(parsedLimit, offset);
+      paginacionSql = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    }
+
     const { rows } = await pool.query(`
       SELECT *
       FROM public.envios_ventas
       ${whereClause}
       ORDER BY id DESC
-      LIMIT $${limitParam} OFFSET $${offsetParam}
+      ${paginacionSql}
     `, params);
 
     res.json({ success: true, data: rows, total: countRows[0].total });
@@ -186,7 +188,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
   }
 });
-
 // ─── GET /api/backoffice/opciones ────────────────────────────────────────────
 // Valores distintos que existen realmente en la tabla, para poblar los combos
 // de los filtros. Así el usuario elige de una lista en vez de adivinar cómo
@@ -275,7 +276,7 @@ const CAMPOS_EDITABLES = new Set([
   'archivo_resumen',
   'links_documentos',
   'gestion_atc',
-  
+
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',

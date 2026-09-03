@@ -92,6 +92,7 @@ const INIT = {
   provincia: "", ciudad: "", parroquia_barrio: "",
   manzana_villa: "", referencia_ubicacion: "", coordenadas_gps: "",
   telf_celular_pin: "", telf_instalacion: "", email_cliente: "", tipo_cuenta: "",
+  nombre_cliente_completo: "",
   forma_pago: "",
   tipo_plan: "", plan_contratado_final: "",
   servicios_digitales: "", servicio_adicional: "",
@@ -109,7 +110,9 @@ const INIT = {
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
 function generarResumenVenta(form, user) {
   const trato = form.genero_cliente === "MUJER" ? "Sra" : "Sr";
-  const nombreCliente = `${form.apellidos_cliente} ${form.nombres_cliente}`.trim() || "—";
+  const nombreCliente = (form.nombre_cliente_completo && form.tipo_documento === 'RUC EMPRESA')
+    ? form.nombre_cliente_completo.trim()
+    : `${form.apellidos_cliente} ${form.nombres_cliente}`.trim() || "—";
   const asesor = user.nombre || user.usuario || form.codigo_asesor || "—";
   const plan = [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" ") || "—";
   const servicios = (form.servicios_digitales || "")
@@ -835,7 +838,7 @@ export default function NuevaVenta() {
     if (resumenEditado) return;
     setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) }));
   }, [
-    form.apellidos_cliente, form.nombres_cliente, form.genero_cliente,
+    form.apellidos_cliente, form.nombres_cliente, form.nombre_cliente_completo, form.genero_cliente,
     form.plan_contratado_final, form.tipo_plan, form.servicios_digitales,
     form.precio_regular_sin_imp, form.precio_regular, form.precio_promocion, form.meses_promocion, form.porcentaje_descuento,
     form.forma_pago, form.banco, form.ciclo_facturacion, form.costo_instalacion,
@@ -952,12 +955,13 @@ export default function NuevaVenta() {
       numero_identificacion: "Número de identificación",
       apellidos_cliente: "Apellidos del cliente",
       nombres_cliente: "Nombres del cliente",
-      genero_cliente: "Género",
-      estado_civil: "Estado civil",
-      fecha_nacimiento: "Fecha de nacimiento",
-      tipo_inmueble: "Tipo de inmueble",
-      aplica_descuento_3ra_edad: "Descuento de tercera edad",
-      regimen_vivienda: "Régimen de vivienda",
+        nombre_cliente_completo: "Nombre de la empresa",
+        genero_cliente: "Género",
+        estado_civil: "Estado civil",
+        fecha_nacimiento: "Fecha de nacimiento",
+        tipo_inmueble: "Tipo de inmueble",
+        aplica_descuento_3ra_edad: "Descuento de tercera edad",
+        regimen_vivienda: "Régimen de vivienda",
 
       calle_principal: "Calle principal",
       provincia: "Provincia",
@@ -1034,17 +1038,27 @@ export default function NuevaVenta() {
     if (!form.numero_identificacion.trim())
       e.numero_identificacion = "Requerido";
 
-    if (!form.apellidos_cliente.trim())
-      e.apellidos_cliente = "Requerido";
+    // Si el tipo de documento es RUC EMPRESA, pedir nombre de la empresa en lugar de apellidos/nombres
+    if (form.tipo_documento === 'RUC EMPRESA') {
+      if (!form.nombre_cliente_completo || !form.nombre_cliente_completo.trim()) {
+        e.nombre_cliente_completo = 'Requerido';
+      }
+    } else {
+      if (!form.apellidos_cliente.trim())
+        e.apellidos_cliente = "Requerido";
 
-    if (!form.nombres_cliente.trim())
-      e.nombres_cliente = "Requerido";
+      if (!form.nombres_cliente.trim())
+        e.nombres_cliente = "Requerido";
+    }
 
-    if (!form.genero_cliente)
-      e.genero_cliente = "Requerido";
+    // Género y estado civil no son obligatorios para RUC EMPRESA
+    if (form.tipo_documento !== 'RUC EMPRESA') {
+      if (!form.genero_cliente)
+        e.genero_cliente = "Requerido";
 
-    if (!form.estado_civil)
-      e.estado_civil = "Requerido";
+      if (!form.estado_civil)
+        e.estado_civil = "Requerido";
+    }
 
     if (!form.fecha_nacimiento)
       e.fecha_nacimiento = "Requerido";
@@ -1185,7 +1199,10 @@ export default function NuevaVenta() {
     setLoad(accion);
     try {
       // Construir payload mapeado a columnas de envios_ventas
-      const nombre_cliente_completo = `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
+      // Determinar nombre_cliente_completo: si es empresa use el campo unificado, sino apellidos + nombres
+  const nombre_cliente_completo = form.tipo_documento === 'RUC EMPRESA'
+    ? (form.nombre_cliente_completo || '').trim()
+    : `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
       const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
       const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user);
 
@@ -1464,26 +1481,39 @@ export default function NuevaVenta() {
               <FSel value={form.tipo_documento} onChange={set("tipo_documento")} options={TIPOS_DOC} />
               {err("tipo_documento")}
             </Row>
-            <Row label="Número de identificación" required>
+            <Row label={(form.tipo_documento === 'RUC EMPRESA' || form.tipo_documento === 'RUC PERSONAL') ? "RUC" : "Número de identificación"} required>
               <FIn value={form.numero_identificacion} onChange={set("numero_identificacion")} placeholder="Ej: 1712345678" />
               {err("numero_identificacion")}
             </Row>
-            <Row label="Apellidos completos" required>
-              <FIn value={form.apellidos_cliente} onChange={set("apellidos_cliente")} placeholder="Primer y segundo apellido" />
-              {err("apellidos_cliente")}
-            </Row>
-            <Row label="Nombres completos" required>
-              <FIn value={form.nombres_cliente} onChange={set("nombres_cliente")} placeholder="Primer y segundo nombre" />
-              {err("nombres_cliente")}
-            </Row>
-            <Row label="Género" required>
-              <Chips value={form.genero_cliente} onChange={set("genero_cliente")} options={GENEROS} />
-              {err("genero_cliente")}
-            </Row>
-            <Row label="Estado civil" required>
-              <FSel value={form.estado_civil} onChange={set("estado_civil")} options={ESTADOS_CIV} />
-              {err("estado_civil")}
-            </Row>
+            {form.tipo_documento === 'RUC EMPRESA' ? (
+              <Row label="Nombre de la empresa" required>
+                <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
+                {err("nombre_cliente_completo")}
+              </Row>
+            ) : (
+              <>
+                <Row label="Apellidos completos" required>
+                  <FIn value={form.apellidos_cliente} onChange={set("apellidos_cliente")} placeholder="Primer y segundo apellido" />
+                  {err("apellidos_cliente")}
+                </Row>
+                <Row label="Nombres completos" required>
+                  <FIn value={form.nombres_cliente} onChange={set("nombres_cliente")} placeholder="Primer y segundo nombre" />
+                  {err("nombres_cliente")}
+                </Row>
+              </>
+            )}
+            {form.tipo_documento !== 'RUC EMPRESA' && (
+              <Row label="Género" required>
+                <Chips value={form.genero_cliente} onChange={set("genero_cliente")} options={GENEROS} />
+                {err("genero_cliente")}
+              </Row>
+            )}
+            {form.tipo_documento !== 'RUC EMPRESA' && (
+              <Row label="Estado civil" required>
+                <FSel value={form.estado_civil} onChange={set("estado_civil")} options={ESTADOS_CIV} />
+                {err("estado_civil")}
+              </Row>
+            )}
             <Row label="Fecha de nacimiento" required>
               <FIn type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
               {err("fecha_nacimiento")}

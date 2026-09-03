@@ -12,7 +12,16 @@ const fs = require('fs')
 const pino = require('pino')
 const { query, transaction } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
-const { quemarPuerto } = require('./proxyPool.service')
+const { quemarPuerto, liberarPuertoDeLinea } = require('./proxyPool.service')
+const { useDbAuthState, migrarDesdeDisco, borrarSesion } = require('./baileysAuthPg.service')
+const lineLock = require('./lineLock.service')
+
+// WABOT-BITRIX / Opción B — dónde vive el estado de sesión de Baileys.
+//   'disco' (default) = useMultiFileAuthState, el comportamiento de siempre.
+//   'pg'              = Postgres, que es lo que permite sacar numInstances:1.
+// Arranca en 'disco' A PROPÓSITO: el cambio se activa por variable de entorno
+// cuando la migración esté verificada, no en el deploy que sube este código.
+const AUTH_STORE = (process.env.WA_AUTH_STORE || 'disco').toLowerCase()
 
 // Política fail-closed de proxy: si WA_PROXY_REQUIRED='true', ninguna línea
 // sin proxy VÁLIDO puede conectar directo (saldría por la IP del servidor,
@@ -31,6 +40,19 @@ class BaileysManager {
   constructor(io) {
     this.io = io
     this.instances = {}
+    // Si perdemos el lease de una línea (otra instancia la tomó), hay que
+    // cerrar el socket YA. Seguir conectados con credenciales que ya usa otro
+    // proceso es exactamente lo que WhatsApp castiga con bloqueo del número.
+    if (AUTH_STORE === 'pg') {
+      lineLock.onLeasePerdido(async (lineId) => {
+        const inst = this.instances[lineId]
+        if (!inst) return
+        try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+        delete this.instances[lineId]
+        this.io?.emit?.('line:status', { lineId, status: 'takeover' })
+        console.warn(`[Line ${lineId}] socket cerrado por takeover de otra instancia`)
+      })
+    }
     this.lidMap = {}
     this.lineOwners = {}   // lineId → userId autorizado a ver el QR
     this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
@@ -196,9 +218,24 @@ class BaileysManager {
       this._lidMapLoaded = true
     }
 
-    if (this.instances[lineId]?.sock) {
-      console.log(`[Line ${lineId}] Ya está conectada o conectando`)
-      return
+    const prev = this.instances[lineId]
+    if (prev?.sock) {
+      // Solo se respeta la instancia previa si sirve para algo: está conectada
+      // o tiene un QR vigente para escanear. Un socket atascado en 'connecting'
+      // sin QR es un zombi (típico tras un reinicio): se derriba y se reintenta,
+      // si no el modal se queda en "Generando QR…" para siempre.
+      if (prev.status === 'connected' || prev.qr) {
+        console.log(`[Line ${lineId}] Ya está conectada o con QR vigente`)
+        return
+      }
+      console.warn(`[Line ${lineId}] Instancia previa colgada en "${prev.status}" sin QR — se descarta y se reintenta`)
+      this._killing = this._killing || {}
+      this._killing[lineId] = true
+      if (prev._watchdog) { clearTimeout(prev._watchdog); prev._watchdog = null }
+      if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+      try { prev.sock?.end?.(undefined); prev.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+      await new Promise(r => setTimeout(r, 300))
     }
 
     // Credenciales: NUNCA se borran por adelantado.
@@ -227,7 +264,26 @@ class BaileysManager {
     const authDir = path.join(AUTH_BASE, lineId)
     fs.mkdirSync(authDir, { recursive: true })
 
-    const { state, saveCreds } = await useMultiFileAuthState(authDir)
+    let state, saveCreds
+    if (AUTH_STORE === 'pg') {
+      // Un solo dueño por línea. Sin esto, dos instancias podrían levantar la
+      // misma sesión y dos sockets con las mismas credenciales es la señal que
+      // WhatsApp lee como robo de sesión — la forma más rápida de quemar el
+      // número. Si no se consigue el lease, esta instancia NO conecta.
+      const tomada = await lineLock.adquirir(lineId)
+      if (!tomada) {
+        console.warn(`[Line ${lineId}] otra instancia ya tiene esta línea; no se conecta acá.`)
+        throw new Error('LINEA_EN_OTRA_INSTANCIA')
+      }
+      // Primer arranque en modo pg: se sube la sesión que ya está en disco en
+      // vez de pedir QR de nuevo. Idempotente, no pisa lo que ya esté en base.
+      try { await migrarDesdeDisco(lineId, authDir) } catch (e) {
+        console.warn(`[Line ${lineId}] migración disco→pg falló (sigue con lo que haya en base):`, e.message)
+      }
+      ;({ state, saveCreds } = await useDbAuthState(lineId))
+    } else {
+      ;({ state, saveCreds } = await useMultiFileAuthState(authDir))
+    }
     const { version } = await fetchLatestBaileysVersion()
     // makeInMemoryStore fue eliminado en Baileys v7 → mini-store propio compatible
     const store = this._createMessageStore()
@@ -303,6 +359,27 @@ class BaileysManager {
 
     this.instances[lineId] = { sock, store, status: 'connecting', qr: null }
     this._updateLineStatus(lineId, 'connecting')
+    // Ya hay socket nuevo vivo: si veníamos de derribar un zombi, el flag de
+    // "cierre intencional" ya cumplió su función. Los eventos tardíos del socket
+    // viejo se filtran por identidad de socket en el manejador de 'close'.
+    if (this._killing?.[lineId]) delete this._killing[lineId]
+
+    // Watchdog: si a los 60s sigue en 'connecting' sin QR (WhatsApp no responde,
+    // proxy caído, egress bloqueado), se cierra el socket colgado y se marca
+    // 'disconnected'. Así el modal deja de girar y el asesor puede reintentar.
+    this.instances[lineId]._watchdog = setTimeout(() => {
+      const inst = this.instances[lineId]
+      if (!inst || inst.status !== 'connecting' || inst.qr) return
+      console.warn(`[Line ${lineId}] ⏱️ 60s en "connecting" sin QR — se cierra el socket colgado`)
+      this._killing = this._killing || {}
+      this._killing[lineId] = true
+      try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+      this._updateLineStatus(lineId, 'disconnected')
+      this.io.emit('line:status', { lineId, status: 'disconnected' })
+      this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+    }, 60000)
+    if (this.instances[lineId]._watchdog.unref) this.instances[lineId]._watchdog.unref()
 
     sock.ev.on('creds.update', saveCreds)
 
@@ -347,6 +424,9 @@ class BaileysManager {
     })
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+      // Cualquier evento de conexión significa que el socket respondió: el
+      // watchdog de "colgado en connecting" ya no hace falta.
+      if (this.instances[lineId]?._watchdog) { clearTimeout(this.instances[lineId]._watchdog); this.instances[lineId]._watchdog = null }
       if (qr) {
         const QRCode = require('qrcode')
         const qrImage = await QRCode.toDataURL(qr)
@@ -380,6 +460,23 @@ class BaileysManager {
       }
 
       if (connection === 'close') {
+        const instActual = this.instances[lineId]
+        // Evento de un socket VIEJO que ya fue reemplazado por otro (p. ej. al
+        // derribar un zombi y reconectar): se ignora del todo, si no su lógica
+        // de reconexión pisaría al socket nuevo.
+        if (instActual && instActual.sock !== sock) {
+          console.log(`[Line ${lineId}] close de un socket anterior ya reemplazado — ignorado`)
+          return
+        }
+        // Cierre intencional (zombi derribado, watchdog, disconnect, resetAll):
+        // NO reconectar ni tocar estado, ya lo hizo quien lo cerró.
+        if (this._killing?.[lineId]) {
+          delete this._killing[lineId]
+          if (instActual && instActual.sock === sock) delete this.instances[lineId]
+          if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+          console.log(`[Line ${lineId}] cierre intencional — sin reconexión automática`)
+          return
+        }
         const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode
         // 401 = sesión cerrada · 403 = número restringido/prohibido por WhatsApp.
         // En ambos NO se auto-reconecta: reconectar en bucle ahoga la base de datos
@@ -434,6 +531,12 @@ class BaileysManager {
             } catch (e) {
               console.warn(`[Line ${lineId}] No se pudo retirar la IP:`, e.message)
             }
+          } else if (st === 'logged_out') {
+            // Sesión cerrada de verdad (el reintento por QR ya se agotó): la
+            // línea necesitará una IP nueva al re-vincular, así que su puerto
+            // actual vuelve al pool para otra línea. La IP NO se quema: no hubo
+            // bloqueo, solo un cierre de sesión.
+            try { await liberarPuertoDeLinea(lineId) } catch (e) { console.warn(`[Line ${lineId}] liberarPuerto:`, e.message) }
           }
           return
         }
@@ -674,6 +777,7 @@ class BaileysManager {
     for (const id of ids) {
       // Cancelar reconexiones pendientes
       if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
+      if (this.instances[id]?._watchdog) clearTimeout(this.instances[id]._watchdog)
       try {
         // end() cierra el socket sin hacer logout (conserva la sesión en disco)
         this.instances[id].sock?.end?.(undefined)
@@ -681,6 +785,48 @@ class BaileysManager {
       } catch (e) {}
       delete this.instances[id]
     }
+    // Soltar los leases para que otra instancia pueda tomar las líneas ya, sin
+    // esperar los 90s de vencimiento. En un deploy de Render esto es la
+    // diferencia entre reanudar en segundos o dejar las líneas mudas.
+    if (AUTH_STORE === 'pg') {
+      try { await lineLock.soltarTodo() } catch (e) { console.warn('[BaileysManager] soltarTodo falló:', e.message) }
+    }
+  }
+
+  // Desconexión masiva a pedido del administrador. logout:true cierra sesión de
+  // verdad en cada número (WhatsApp lo saca de "Dispositivos vinculados") y
+  // borra sus credenciales: todas quedan limpias y hay que re-escanear el QR.
+  // Sirve para salir de estados colgados en bloque ("Conectando…" eterno).
+  async resetAll({ logout = true } = {}) {
+    const ids = new Set(Object.keys(this.instances))
+    try {
+      const { rows } = await query(
+        `SELECT id FROM lines
+          WHERE deleted_at IS NULL
+            AND status IN ('connected','connecting','qr_ready','disconnected','error','logged_out')`
+      )
+      for (const r of rows) ids.add(r.id)
+    } catch (e) { console.warn('[resetAll] no se pudo listar líneas de BD:', e.message) }
+
+    let n = 0
+    for (const id of ids) {
+      // Frenar cualquier reconexión automática y matar el watchdog antes de tocar el socket
+      if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
+      delete this.reconnectAttempts[id]
+      if (this.instances[id]?._watchdog) { clearTimeout(this.instances[id]._watchdog); this.instances[id]._watchdog = null }
+      this._killing = this._killing || {}
+      this._killing[id] = true
+      try {
+        await this.disconnect(id, { wipeAuth: logout })
+        n++
+      } catch (e) {
+        console.warn(`[resetAll] línea ${id}:`, e.message)
+      }
+      // Ritmo suave: 30 logouts de golpe es un patrón feo para WhatsApp
+      await new Promise(r => setTimeout(r, 500))
+    }
+    console.log(`[BaileysManager] resetAll: ${n} línea(s) procesada(s) (logout=${logout})`)
+    return n
   }
 
   // Borra las credenciales locales de una línea. Sin esto, una sesión inválida
@@ -693,6 +839,13 @@ class BaileysManager {
         fs.rmSync(dir, { recursive: true, force: true })
         console.log(`[Line ${lineId}] 🧹 Credenciales locales borradas (sesión limpia)`)
       }
+      // En modo pg la verdad vive en la base: si se borra solo el disco, la
+      // sesión inválida sobrevive y el próximo "Conectar QR" vuelve a fallar.
+      if (AUTH_STORE === 'pg') {
+        borrarSesion(lineId)
+          .then((n) => console.log(`[Line ${lineId}] 🧹 ${n} clave(s) de sesión borradas en Postgres`))
+          .catch((e) => console.warn(`[Line ${lineId}] no se pudo borrar la sesión en Postgres:`, e.message))
+      }
       return true
     } catch (e) {
       console.warn(`[Line ${lineId}] No se pudieron borrar credenciales:`, e.message)
@@ -702,14 +855,22 @@ class BaileysManager {
 
   async disconnect(lineId, { wipeAuth = false } = {}) {
     const inst = this.instances[lineId]
+    // Marcar el cierre como intencional: el 'close' que dispara sock.logout()
+    // no debe programar una reconexión ni reescribir el estado.
+    this._killing = this._killing || {}
+    this._killing[lineId] = true
     // Cancelar cualquier reconexión programada: si no, el timer revive la línea
     if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
     delete this.reconnectAttempts[lineId]
+    if (inst?._watchdog) { clearTimeout(inst._watchdog); inst._watchdog = null }
 
     if (inst) {
       try { await inst.sock.logout() } catch (e) {}
       try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
       delete this.instances[lineId]
+      if (AUTH_STORE === 'pg') {
+        try { await lineLock.soltar(lineId) } catch (e) { console.warn(`[Line ${lineId}] soltar lease falló:`, e.message) }
+      }
     }
     if (wipeAuth) this._wipeAuth(lineId)
 

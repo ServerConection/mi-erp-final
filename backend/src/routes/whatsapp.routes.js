@@ -36,6 +36,7 @@ router.use(verificarToken);
 // ── LÍNEAS ────────────────────────────────────────────────────
 // OJO: /lines/dashboard va ANTES de /lines/:id, si no Express lo captura como id
 router.get   ('/lines/dashboard', linesCtrl.dashboard);
+router.post  ('/lines/reset-all', linesCtrl.resetAll);
 router.get   ('/lines',           linesCtrl.getAll);
 router.get   ('/lines/:id',       linesCtrl.getOne);
 router.post  ('/lines',           linesCtrl.create);

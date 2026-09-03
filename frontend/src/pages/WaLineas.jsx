@@ -57,6 +57,8 @@ export default function WaLineas() {
   const [newName, setNewName]   = useState("");
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
+  const [proxyPool, setProxyPool] = useState(null); // { credenciales, total, en_uso, quemados, libres }
+  const [resetting, setResetting] = useState(false);
   const qrPollRef = useRef(null);
   const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
 
@@ -71,6 +73,7 @@ export default function WaLineas() {
       const r = await fetch(`${API}/lines`, { headers: authH(false) });
       const d = await r.json();
       setLines(Array.isArray(d?.data) ? d.data : []);
+      setProxyPool(d?.meta?.proxyPool ?? null);
       if (d && d.success === false) setError(d.error || "Error cargando líneas");
     } catch { setError("Error cargando líneas"); }
     finally { setLoading(false); }
@@ -132,6 +135,13 @@ export default function WaLineas() {
         if (line) setLines(prev => prev.map(l => l.id === id ? { ...l, ...line } : l));
         const st = line?.rt_status || line?.status;
         if (st === "connected") { stopQrPoll(); setQrModal(null); load(); return; }
+        // El backend tiene un watchdog: si el socket se cuelga, lo cierra y la
+        // línea vuelve a 'disconnected'/'error'. No tiene sentido seguir pidiendo QR.
+        if ((st === "disconnected" || st === "error") && tries > 3) {
+          stopQrPoll(); setQrModal(null);
+          setError("No se pudo generar el QR (WhatsApp no respondió). Revisa el proxy de la línea y reintenta.");
+          load(); return;
+        }
 
         const rq = await fetch(`${API}/lines/${id}/qr`, { headers: authH(false) });
         if (rq.ok) {
@@ -139,7 +149,7 @@ export default function WaLineas() {
           if (dq.success && dq.qr) setQrModal({ lineId: id, qr: dq.qr });
         }
       } catch { /* reintenta en el siguiente ciclo */ }
-      if (tries > 60) stopQrPoll();
+      if (tries > 60) { stopQrPoll(); setError("El QR no se generó a tiempo. Reintenta en un momento."); setQrModal(null); }
     }, 2000);
   };
 
@@ -152,6 +162,23 @@ export default function WaLineas() {
       if (d.success) setLines(prev => prev.map(l => l.id === id ? { ...l, status: "disconnected" } : l));
       else setError(d.error || "No se pudo desconectar la línea");
     } catch { setError("No se pudo desconectar la línea"); }
+  };
+
+  const resetAll = async () => {
+    if (!confirm(
+      "¿Desconectar TODAS las líneas?\n\n" +
+      "• Se cierra la sesión de cada número (logout).\n" +
+      "• Todos los asesores tendrán que volver a escanear el QR.\n" +
+      "• Úsalo solo si las líneas están colgadas en \"Conectando…\" o el QR no aparece."
+    )) return;
+    setError(""); setResetting(true);
+    try {
+      const r = await fetch(`${API}/lines/reset-all`, { method: "POST", headers: authH(false) });
+      const d = await r.json();
+      if (d.success) { setQrModal(null); stopQrPoll(); load(); }
+      else setError(d.error || "No se pudo reiniciar las líneas");
+    } catch { setError("No se pudo reiniciar las líneas"); }
+    finally { setResetting(false); }
   };
 
   const remove = async (id) => {
@@ -178,14 +205,47 @@ export default function WaLineas() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          📱 Líneas WhatsApp
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Cada línea es un número de WhatsApp conectado. Escanea el QR desde tu teléfono.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            📱 Líneas WhatsApp
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Cada línea es un número de WhatsApp conectado. Escanea el QR desde tu teléfono.
+          </p>
+        </div>
+        {IS_ADMIN && (
+          <button
+            onClick={resetAll}
+            disabled={resetting}
+            title="Cierra sesión en todas las líneas. Úsalo si están colgadas."
+            className="shrink-0 text-xs border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {resetting ? "Desconectando…" : "Desconectar todas"}
+          </button>
+        )}
       </div>
+
+      {/* Aviso del pool de proxies (IPs) */}
+      {proxyPool && proxyPool.credenciales === false && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg px-3 py-2 mb-4">
+          ⚠️ No hay credenciales de proxy configuradas (<code>PROXY_USER</code> / <code>PROXY_PASS</code>).
+          Las líneas se conectarán por la IP del servidor.
+        </div>
+      )}
+      {proxyPool && proxyPool.credenciales !== false && proxyPool.libres === 0 && (
+        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 mb-4">
+          🛑 <b>Pool de proxies agotado.</b> No quedan IPs libres
+          ({proxyPool.en_uso} en uso, {proxyPool.quemados} retiradas de {proxyPool.total}).
+          Las líneas nuevas no podrán conectar hasta liberar o ampliar IPs.
+        </div>
+      )}
+      {proxyPool && proxyPool.credenciales !== false && proxyPool.libres > 0 && proxyPool.libres <= 5 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg px-3 py-2 mb-4">
+          ⚠️ Quedan solo <b>{proxyPool.libres}</b> IP(s) libres en el pool de proxies
+          ({proxyPool.en_uso}/{proxyPool.total} en uso). Considera ampliar el plan.
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 mb-4 flex items-center justify-between">

@@ -16,6 +16,10 @@ const CAMPOS_DOCUMENTO = [
   "foto_cedula_trasera",
   "foto_carnet",
   "archivo_resumen",
+  "archivo_planilla",
+  "archivo_nombramiento",
+  "archivo_registro_mercantil",
+  "archivo_ruc",
 ];
 const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 
@@ -50,6 +54,7 @@ const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
   { valor: "REGULARIZADO", etiqueta: "Regularizado" },
   { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
+  { valor: "NO REQUIERE REGULARIZAR", etiqueta: "No requiere regularizar" },
 ];
 
 function resultadoBienvenida(json, mensajeBase) {
@@ -675,13 +680,13 @@ function normalizarRegistro(row) {
 }
 
 const FIELD_LABELS = {
-  id: "ID",
+  id: "ID REGISTRO",
   estatus_envio: "ESTATUS ENVÍO",
   ip_origen: "IP ORIGEN",
   fecha_registro_sistema: "FECHA REGISTRO",
   mes_registro_sistema: "MES REGISTRO",
   dia_abc_registro_sistema: "DÍA REGISTRO",
-  codigo_asesor: "CÓDIGO ASESOR",
+  codigo_asesor: "ASESOR",
   id_bitrix: "ID BITRIX",
   distribuidor_autorizado: "DISTRIBUIDOR",
   supervisor: "SUPERVISOR",
@@ -694,7 +699,7 @@ const FIELD_LABELS = {
   tipo_cliente: "TIPO CLIENTE",
   genero_cliente: "GÉNERO",
   tipo_documento: "TIPO DOCUMENTO",
-  numero_identificacion: "IDENTIFICACIÓN",
+  numero_identificacion: "CÉDULA",
   nombre_cliente_completo: "CLIENTE",
   estado_civil: "ESTADO CIVIL",
   fecha_nacimiento: "FECHA NAC.",
@@ -737,17 +742,17 @@ const FIELD_LABELS = {
   auditado_por: "AUDITADO POR",
   inconsistencia_documental: "INCONSISTENCIA",
   observacion_auditoria: "OBS. AUDITORÍA",
-  errores_telcos: "ERRORES TELCOS",
+  errores_telcos: "OBSERVACIÓN TELCOS",
   estatus_regularizacion: "ESTATUS REG.",
   detalle_regularizacion: "DETALLE REG.",
-  fecha_regularizacion_atc: "FECHA REG. ATC",
+  fecha_regularizacion_atc: "FECHA REGULARIZACIÓN ATC",
   mes_regularizacion_atc: "MES REG. ATC",
   dia_abc_regularizacion_atc: "DÍA REG. ATC",
   mes_regularizacion: "MES REGULARIZACIÓN",
-  observacion_venta_original: "OBS. VENTA ORIGINAL",
+  observacion_venta_original: "OBSERVACIÓN ATC",
   observacion_gestion_cobranza: "OBS. COBRANZA",
   turno_agendado: "TURNO AGENDADO",
-  fecha_agenda: "FECHA AGENDA",
+  fecha_agenda: "FECHA AGENDAMIENTO",
   mes_agenda: "MES AGENDA",
   dia_abc_agenda: "DÍA AGENDA",
   banco: "BANCO",
@@ -762,6 +767,10 @@ const FIELD_LABELS = {
   foto_cedula_trasera: "FOTO CÉDULA TRASERA",
   foto_carnet: "FOTO CARNET",
   archivo_resumen: "ARCHIVO RESUMEN",
+  archivo_planilla: "PLANILLA",
+  archivo_nombramiento: "NOMBRAMIENTO",
+  archivo_registro_mercantil: "REGISTRO MERCANTIL",
+  archivo_ruc: "RUC",
   fecha_ingreso_telcos: "FECHA INGRESO TELCOS",
   gestion_atc: "GESTIÓN ATC",
 };
@@ -780,7 +789,13 @@ const TABLE_COLUMNS = [
   "estatus_regularizacion", "detalle_regularizacion", "gestion_atc", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
   "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
   "dia_abc_agenda", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
-  "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet", "archivo_resumen"
+  "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", ...CAMPOS_DOCUMENTO
+];
+
+const COLUMNAS_TABLAS_BACKOFFICE = [
+  "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
+  "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
+  "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
 ];
 
 const initialDetail = {
@@ -836,6 +851,12 @@ const initialDetail = {
   foto_cedula_trasera: "",
   foto_carnet: "",
   archivo_resumen: "",
+  archivo_planilla: "",
+  archivo_nombramiento: "",
+  archivo_registro_mercantil: "",
+  archivo_ruc: "",
+  fecha_activacion_netlife: "",
+  fecha_agenda: "",
   fecha_ingreso_telcos: "",
   gestion_atc: "",
 };
@@ -902,6 +923,23 @@ const FILTROS_VACIOS = {
   estatusRegularizacion: "",
 };
 
+function rangoMesActualEC() {
+  const hoy = fechaCalendarioEC(new Date());
+  return {
+    fechaDesde: hoy ? `${hoy.slice(0, 7)}-01` : "",
+    fechaHasta: hoy || "",
+  };
+}
+
+function filtrosFechaMesActualEC() {
+  const rango = rangoMesActualEC();
+  return {
+    ...rango,
+    activacionDesde: rango.fechaDesde,
+    activacionHasta: rango.fechaHasta,
+  };
+}
+
 const estilosFiltro = {
   campo: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
   label: { fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "#64748b", textTransform: "uppercase" },
@@ -935,7 +973,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, soloDetalle = false, empresa, onCambiarEmpresa }) {
+function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial = false, etiquetaContexto, soloDetalle = false, empresa, onCambiarEmpresa }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -955,15 +993,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   // filtrar en el navegador ni traer registros de más.
   const filtrosIniciales = fechaFija
     ? { ...FILTROS_VACIOS, fechaDesde: fechaFija, fechaHasta: fechaFija }
-    : FILTROS_VACIOS;
+    : sinFiltroFechaInicial
+      ? FILTROS_VACIOS
+      : { ...FILTROS_VACIOS, ...filtrosFechaMesActualEC() };
   // `filtros` contiene lo que el usuario está editando. La consulta solamente
   // usa la copia aplicada al pulsar el botón Consultar.
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const [filtrosAplicados, setFiltrosAplicados] = useState(filtrosIniciales);
   const [searchAplicada, setSearchAplicada] = useState("");
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
-  // false = se muestran TODAS las columnas de envios_ventas (con scroll horizontal)
-  const [vistaCompacta, setVistaCompacta] = useState(false);
   const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
   const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
   const filtrosActivos = Object.values(filtros).filter(Boolean).length;
@@ -1080,16 +1118,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
   // Se arma sobre las claves que REALMENTE vienen del backend, para que si
   // mañana se agrega una columna a la tabla aparezca sola, sin tocar código.
   const tableHeaders = useMemo(() => {
-    const delBackend = rows.length ? Object.keys(rows[0]) : [];
-    // TABLE_COLUMNS primero (mantiene el orden pensado), y al final las que
-    // el backend traiga y no estén listadas ahí.
-    const ordenadas = [
-      ...TABLE_COLUMNS.filter((k) => !delBackend.length || delBackend.includes(k)),
-      ...delBackend.filter((k) => !TABLE_COLUMNS.includes(k)),
-    ];
-    const cols = vistaCompacta ? ordenadas.slice(0, 12) : ordenadas;
-    return cols.map((key) => ({ key, label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase() }));
-  }, [rows, vistaCompacta]);
+    return COLUMNAS_TABLAS_BACKOFFICE.map((key) => ({
+      key,
+      label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
+    }));
+  }, []);
 
   const editableFields = useMemo(() => [
     "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta",
@@ -1111,6 +1144,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
     "dia_abc_agenda",
     // Ingreso a Telcos
     "fecha_ingreso_telcos",
+    "fecha_activacion_netlife",
 
     "observacion_venta_original",
     "observacion_gestion_cobranza",
@@ -1159,6 +1193,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
           "netlife_estatus_real",
           "fecha_regularizacion_atc",
           "fecha_ingreso_telcos",
+          "fecha_agenda",
+          "fecha_activacion_netlife",
           "novedades_atc",
         ],
       },
@@ -1167,8 +1203,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
         titulo: "Observaciones",
         campos: [
           "observacion_venta_original",
-          "observacion_gestion_cobranza",
+          "errores_telcos",
+          "resumen_venta",
         ],
+      },
+      {
+        titulo: "Documentos",
+        campos: CAMPOS_DOCUMENTO,
       },
     ];
 
@@ -1449,18 +1490,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                   </div>
                 </div>
 
-                {/* Cambio de vista: 12 columnas clave vs. la tabla completa */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
                   <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
                     {tableHeaders.length} columnas · {rows.length} registros
-                    {!vistaCompacta && <span style={{ color: "#94a3b8" }}> · desplazá en horizontal para ver el resto</span>}
+                    <span style={{ color: "#94a3b8" }}> · desplázate horizontalmente para ver el resto</span>
                   </span>
-                  <button
-                    onClick={() => setVistaCompacta((v) => !v)}
-                    style={{ padding: "7px 12px", borderRadius: 10, border: "1px solid #dbe4f0", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
-                  >
-                    {vistaCompacta ? "Ver todas las columnas" : "Vista compacta"}
-                  </button>
                 </div>
 
                 <TablaRegistros
@@ -1621,6 +1655,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, etiquetaContexto, solo
                               <option value="DESCUENTO CONADIS">Descuento conadis</option>
                               <option value="DESCUENTO 3RA EDAD">Descuento 3ra edad</option>
                             </select>
+                          ) : ["observacion_venta_original", "errores_telcos", "resumen_venta"].includes(field) ? (
+                            <textarea
+                              value={detail?.[field] ?? ""}
+                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                              rows={field === "resumen_venta" ? 9 : 5}
+                              style={{ width: "100%", minHeight: field === "resumen_venta" ? 190 : 115, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
+                            />
                           ) : (
                             <input
                               type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
@@ -2804,6 +2845,9 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [aviso, setAviso] = useState(null);
+  const [fechaDesdeWelcome, setFechaDesdeWelcome] = useState(() => rangoMesActualEC().fechaDesde);
+  const [fechaHastaWelcome, setFechaHastaWelcome] = useState(() => rangoMesActualEC().fechaHasta);
+  const [filtrosWelcome, setFiltrosWelcome] = useState(() => ({ busqueda: "", ...rangoMesActualEC() }));
   const [arrastrando, setArrastrando] = useState(null);
   const [sobreBloque, setSobreBloque] = useState(null);
   const [moviendo, setMoviendo] = useState(null);
@@ -2856,20 +2900,30 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     return () => clearInterval(intervalo);
   }, [recargar, cargarProgramaciones]);
 
-  const filtradas = (() => {
-    const q = normalizarEstado(busqueda);
-    if (!q) return rows;
+  const consultarWelcome = () => setFiltrosWelcome({ busqueda, fechaDesde: fechaDesdeWelcome, fechaHasta: fechaHastaWelcome });
+  const limpiarFiltrosWelcome = () => {
+    setBusqueda("");
+    setFechaDesdeWelcome("");
+    setFechaHastaWelcome("");
+    setFiltrosWelcome({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+  };
 
-    return rows.filter((r) =>
-      [
+  const filtradas = (() => {
+    const q = normalizarEstado(filtrosWelcome.busqueda);
+    return rows.filter((r) => {
+      if (q && ![
         r.nombre_cliente_completo,
         r.numero_identificacion,
         r.codigo_asesor,
         r.id_bitrix,
         r.netlife_login,
         String(r.id),
-      ].some((c) => normalizarEstado(c).includes(q))
-    );
+      ].some((c) => normalizarEstado(c).includes(q))) return false;
+      const fecha = fechaCalendarioEC(r.fecha_registro_sistema);
+      if (filtrosWelcome.fechaDesde && (!fecha || fecha < filtrosWelcome.fechaDesde)) return false;
+      if (filtrosWelcome.fechaHasta && (!fecha || fecha > filtrosWelcome.fechaHasta)) return false;
+      return true;
+    });
   })();
 
   const porBloque = { SIN_NOTIFICAR: [], PENDIENTES: [], NOTIFICADOS: [] };
@@ -3062,7 +3116,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfdf5)" }}>
+        <div style={{ padding: "18px 18px 86px", position: "relative", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfdf5)" }}>
           <button
             onClick={onVolver}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#047857", cursor: "pointer" }}
@@ -3085,17 +3139,27 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+              <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") consultarWelcome(); }}
                 placeholder="Buscar cliente, CI, login, asesor…"
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 250 }}
               />
+              <CampoRangoFecha label="Fecha de registro" desde={fechaDesdeWelcome} hasta={fechaHastaWelcome} onDesde={setFechaDesdeWelcome} onHasta={setFechaHastaWelcome} />
+              <button type="button" onClick={consultarWelcome} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #047857", background: "#047857", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>
+                🔍 Consultar
+              </button>
+              <button type="button" onClick={limpiarFiltrosWelcome} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                Limpiar filtros
+              </button>
               <BotonDescargaExcel
                 onClick={() => exportarAExcel(filtradas, `Reporte_Welcome_${empresa || "Todos"}`)}
                 color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
               />
+              </div>
+              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <button
                 onClick={recargar}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
@@ -3921,41 +3985,12 @@ function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
 
 /** Tabla de registros filtrados por estado, mismo estilo visual que la tabla
  *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
-const COLUMNAS_TABLA_PRESERVICIOS = [
-  "nombre_cliente_completo",
-  "numero_identificacion",
-  "codigo_asesor",
-  "id_bitrix",
-  "distribuidor_autorizado",
-  "netlife_login",
-  "netlife_estatus_real",
-  "fecha_ingreso_telcos",
-  "dias_pendientes",
-];
+const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_TABLAS_BACKOFFICE;
 
 function TablaPreservicios({ rows, onAbrirRegistro }) {
   const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
     key,
-    label:
-      key === "nombre_cliente_completo"
-        ? "CLIENTE"
-        : key === "numero_identificacion"
-          ? "IDENTIFICACIÓN"
-          : key === "codigo_asesor"
-            ? "ASESOR"
-            : key === "id_bitrix"
-              ? "ID BITRIX"
-              : key === "distribuidor_autorizado"
-                ? "DISTRIBUIDOR"
-                : key === "netlife_login"
-                  ? "LOGIN NETLIFE"
-                  : key === "netlife_estatus_real"
-                    ? "ESTATUS NETLIFE"
-                    : key === "fecha_ingreso_telcos"
-                      ? "INGRESO TELCOS"
-                      : key === "dias_pendientes"
-                        ? "DÍAS PENDIENTES"
-                        : FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
+    label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
   }));
 
   return (
@@ -4091,8 +4126,8 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   const [estadoActivo, setEstadoActivo] = useState("PRESERVICIO");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
+  const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
 
   const color = "#0891b2";
 
@@ -4254,12 +4289,12 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
   const [estadoActivo, setEstadoActivo] = useState("ACTIVO");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
+  const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
 
-  const [filtrosAplicados, setFiltrosAplicados] = useState({
-    busqueda: "", fechaDesde: "", fechaHasta: "",
-  });
+  const [filtrosAplicados, setFiltrosAplicados] = useState(() => ({
+    busqueda: "", ...rangoMesActualEC(),
+  }));
 
   const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
 
@@ -4306,19 +4341,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       );
   }, [rowsConFiltros, estadoActivo]);
 
-  const columnas = [
-    "id",
-    "netlife_estatus_real",
-    "nombre_cliente_completo",
-    "numero_identificacion",
-    "fecha_registro_sistema",
-    "codigo_asesor",
-    "id_bitrix",
-    "distribuidor_autorizado",
-    "supervisor",
-    "netlife_login",
-    "origen_venta",
-  ];
+  const columnas = COLUMNAS_TABLAS_BACKOFFICE;
 
   return (
     <div
@@ -4435,7 +4458,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                 disabled={cargando}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #ea580c", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}
               >
-                Consultar
+                🔍 Consultar
               </button>
 
               <button
@@ -5341,9 +5364,9 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   const [estadoActivo, setEstadoActivo] = useState("TODOS");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+  const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
+  const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
+  const [filtrosAplicados, setFiltrosAplicados] = useState(() => ({ busqueda: "", ...rangoMesActualEC() }));
 
   const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
   const limpiarFiltros = () => {
@@ -5386,11 +5409,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
     ? "TODOS"
     : BLOQUES_VALIDACION.find((bloque) => bloque.id === estadoActivo)?.titulo || estadoActivo;
 
-  const columnas = [
-    "id", "estatus_regularizacion", "nombre_cliente_completo", "numero_identificacion",
-    "fecha_registro_sistema", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
-    "supervisor", "gestion_atc", "detalle_regularizacion",
-  ];
+  const columnas = COLUMNAS_TABLAS_BACKOFFICE;
 
   return (
     <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -5421,7 +5440,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
           <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
             <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") consultar(); }} placeholder="Buscar cliente, CI, asesor…" style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, minWidth: 240 }} />
             <CampoRangoFecha label="Fecha de registro" desde={fechaDesde} hasta={fechaHasta} onDesde={setFechaDesde} onHasta={setFechaHasta} />
-            <button type="button" onClick={consultar} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #4f46e5", background: "#4f46e5", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>Consultar</button>
+            <button type="button" onClick={consultar} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #4f46e5", background: "#4f46e5", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>🔍 Consultar</button>
             <button type="button" onClick={limpiarFiltros} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Limpiar filtros</button>
           </div>
         </div>
@@ -5518,6 +5537,7 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
       onVolver={onVolver}
       idInicial={idInicial}
       fechaFija={nav.dia || undefined}
+      sinFiltroFechaInicial={nav.todos}
       etiquetaContexto={nav.dia ? etiquetaDia(nav.dia) : "Todos los registros"}
       empresa={empresa}
       onCambiarEmpresa={onCambiarEmpresa}

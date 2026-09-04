@@ -42,7 +42,7 @@ const BANCOS = [
   "COOP. DE AHORRO Y CRÉDITO ANDALUCÍA", "COOP. DE AHORRO Y CRÉDITO JEP"
 ];
 const TIPOS_TARJETA_CREDITO = [
-  "VISA", "MASTERCARD", "DINERS CLUB", "AMERICAN EXPRESS", "DISCOVER", "UNIONPAY",
+  "VISA", "MASTERCARD", "DINERS CLUB", "AMERICAN EXPRESS", "DISCOVER", "VISTA TITANIUM",
 ];
 const PROVINCIAS_ECUADOR = [
   "AZUAY", "BOLÍVAR", "CAÑAR", "CARCHI", "CHIMBORAZO", "COTOPAXI", "EL ORO",
@@ -59,7 +59,12 @@ const CIUDADES_ECUADOR = [
   "NARANJAL", "VINCES", "PLAYAS", "HUAQUILLAS", "YANTZAZA", "PUYO",
   "MONTUBIO", "OTAVALO", "CATAMAYO", "PASAJE", "JIPIJAPA", "TENA"
 ];
-const CICLOS_FACT = ["Del 1 al 31 de cada mes (débito automático por pago anticipado)", "Del 1 al 30/31 (pago contra factura)", "Otro"];
+const CICLO_FACTURACION_NUEVOS = "CICLO (I) DEL 1 AL 30 - 31 DE CADA MES";
+const CICLOS_FACT = [
+  CICLO_FACTURACION_NUEVOS,
+  "CICLO (II) DEL 8 AL 7 DE CADA MES",
+  "CICLO (III) DEL 15 AL 14 DE CADA MES",
+];
 const BENEFICIOS_LEY = ["SI", "NO"];
 
 // Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
@@ -103,10 +108,12 @@ const INIT = {
   // ── Datos para el resumen de venta auto-generado ──
   precio_regular_sin_imp: "", precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
   banco: "", ciclo_facturacion: "", costo_instalacion: "", descuento_instalacion: "",
+  sector_beneficiado: "NO", detalle_beneficio_sector: "",
   beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
   resumen_venta: "",
   // ── Documentos ──
-  foto_cedula_frontal: "",   foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "",
+  foto_cedula_frontal: "", foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "",
+  archivo_nombramiento: "", archivo_registro_mercantil: "", archivo_ruc: "",
 };
 
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
@@ -682,6 +689,11 @@ export default function NuevaVenta() {
             if (data.direccion_calles && !next.calle_principal) {
               next.calle_principal = data.direccion_calles;
             }
+            const descuentoInstalacionGuardado = String(data.descuento_instalacion || "");
+            if (descuentoInstalacionGuardado.includes("BENEFICIO ADICIONAL POR SECTOR")) {
+              next.sector_beneficiado = "SI";
+              next.detalle_beneficio_sector = descuentoInstalacionGuardado.split("BENEFICIO ADICIONAL POR SECTOR:")[1]?.trim() || "";
+            }
             return next;
           });
           setResumenEditado(true); // ya tiene resumen guardado, no lo pisamos automáticamente
@@ -879,8 +891,17 @@ export default function NuevaVenta() {
   };
 
   useEffect(() => {
+    const extraSector = form.sector_beneficiado === "SI"
+      ? ` + BENEFICIO ADICIONAL POR SECTOR${form.detalle_beneficio_sector ? `: ${form.detalle_beneficio_sector}` : ""}`
+      : "";
+
     if (form.forma_pago === "EFECTIVO") {
-      setForm((actual) => ({ ...actual, banco: "", tipo_cuenta: "", ciclo_facturacion: "" }));
+      setForm((actual) => ({
+        ...actual,
+        banco: "", tipo_cuenta: "", ciclo_facturacion: "",
+        costo_instalacion: "10.01",
+        descuento_instalacion: `94% - EFECTIVO; FACTURA DE INSTALACIÓN $10.01${extraSector}`,
+      }));
       setErrs((actual) => {
         const siguiente = { ...actual };
         delete siguiente.banco;
@@ -892,9 +913,25 @@ export default function NuevaVenta() {
       setForm((actual) => ({
         ...actual,
         tipo_cuenta: TIPOS_TARJETA_CREDITO.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
+        costo_instalacion: "0.00",
+        descuento_instalacion: `100% - TARJETA DE CRÉDITO${extraSector}`,
+      }));
+    } else if (PAGOS_CTA.includes(form.forma_pago)) {
+      setForm((actual) => ({
+        ...actual,
+        tipo_cuenta: PAGOS_CTA.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
+        costo_instalacion: "5.00",
+        descuento_instalacion: `97% - CUENTA BANCARIA; FACTURA DE INSTALACIÓN $5.00${extraSector}`,
+      }));
+    } else {
+      setForm((actual) => ({
+        ...actual,
+        ciclo_facturacion: "",
+        costo_instalacion: "",
+        descuento_instalacion: "",
       }));
     }
-  }, [form.forma_pago]);
+  }, [form.forma_pago, form.sector_beneficiado, form.detalle_beneficio_sector]);
 
   useEffect(() => {
     if (!calificaPara3raEdad && form.aplica_descuento_3ra_edad !== "NO" && form.aplica_descuento_3ra_edad !== "") {
@@ -1040,6 +1077,7 @@ export default function NuevaVenta() {
       email_cliente: "Correo electrónico",
 
       forma_pago: "Forma de pago",
+      tipo_cuenta: "Tipo de cuenta o tarjeta",
       tipo_plan: "Tipo de plan",
       banco: "Banco",
       ciclo_facturacion: "Ciclo de facturación",
@@ -1157,6 +1195,9 @@ export default function NuevaVenta() {
 
     if (!form.forma_pago)
       e.forma_pago = "Requerido";
+
+    if (form.forma_pago !== "EFECTIVO" && !form.tipo_cuenta)
+      e.tipo_cuenta = "Requerido";
 
     if (!form.tipo_plan)
       e.tipo_plan = "Requerido";
@@ -1332,6 +1373,9 @@ export default function NuevaVenta() {
         foto_carnet: form.foto_carnet || null,
         archivo_resumen: form.archivo_resumen || null,
         archivo_planilla: aplicaDescuento3raEdad ? (form.archivo_planilla || null) : null,
+        archivo_nombramiento: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_nombramiento || null) : null,
+        archivo_registro_mercantil: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_registro_mercantil || null) : null,
+        archivo_ruc: form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) ? (form.archivo_ruc || null) : null,
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
@@ -1833,7 +1877,7 @@ export default function NuevaVenta() {
               />
               {err("banco")}
             </Row>
-            <Row label="Tipo de cuenta">
+            <Row label="Tipo de cuenta" required={form.forma_pago !== "EFECTIVO"}>
               <FSel
                 value={form.tipo_cuenta}
                 onChange={set("tipo_cuenta")}
@@ -1841,17 +1885,35 @@ export default function NuevaVenta() {
                 disabled={form.forma_pago === "EFECTIVO"}
                 placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : form.forma_pago === PAGO_TC ? "Selecciona el tipo de tarjeta" : !form.banco ? "Primero selecciona el banco" : "Selecciona tipo de cuenta"}
               />
+              {err("tipo_cuenta")}
+              {form.forma_pago === PAGO_TC && (
+                <div style={{ marginTop: 8, padding: "9px 12px", borderRadius: 8, background: "#FFF7ED", border: "1px solid #FED7AA", color: "#9A3412", fontSize: 11.5, lineHeight: 1.6 }}>
+                  <strong>Guía por inicio de tarjeta:</strong> 37 American Express · 4 Visa · 5 Mastercard · 36 Diners · 65 Discover · 22 Vista Titanium.
+                </div>
+              )}
             </Row>
             <Row label="Ciclo de facturación" required={form.forma_pago !== "EFECTIVO"}>
-              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} disabled={form.forma_pago === "EFECTIVO"} placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : "Seleccionar…"} />
+              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} disabled={form.forma_pago === "EFECTIVO"} placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : "Selecciona el ciclo de facturación"} />
+              <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
+                Ciclo I: del 1 al 30-31 · Ciclo II: del 8 al 7 · Ciclo III: del 15 al 14.
+              </div>
               {err("ciclo_facturacion")}
             </Row>
+            <Row label="Sector beneficiado">
+              <Chips value={form.sector_beneficiado} onChange={set("sector_beneficiado")} options={["SI", "NO"]} />
+              {form.sector_beneficiado === "SI" && (
+                <FIn value={form.detalle_beneficio_sector} onChange={set("detalle_beneficio_sector")} placeholder="DETALLE DEL BENEFICIO ADICIONAL DEL SECTOR" />
+              )}
+              <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
+                Este beneficio es adicional e independiente de la forma de pago.
+              </div>
+            </Row>
             <Row label="Costo de instalación" required>
-              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="EJ: 145" />
+              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="Automático según forma de pago" readOnly />
               {err("costo_instalacion")}
             </Row>
             <Row label="Descuento en instalación" required>
-              <FIn value={form.descuento_instalacion} onChange={set("descuento_instalacion")} placeholder="EJ: 100% POR CONTRATAR CON TARJETA DE CRÉDITO" />
+              <FIn value={form.descuento_instalacion} onChange={set("descuento_instalacion")} placeholder="Automático según forma de pago" readOnly />
               {err("descuento_instalacion")}
             </Row>
             <Row label="Beneficios adicionales">
@@ -1920,6 +1982,27 @@ export default function NuevaVenta() {
                 <FileUpload label="planilla" value={form.archivo_planilla} uploading={uploading.archivo_planilla}
                   error={uploadErr.archivo_planilla} onRetry={() => reintentarSubida("archivo_planilla")}
                   onPick={(file) => subirArchivo("archivo_planilla", file)} />
+              </Row>
+            )}
+            {form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" && (
+              <>
+                <Row label="Nombramiento">
+                  <FileUpload label="nombramiento" value={form.archivo_nombramiento} uploading={uploading.archivo_nombramiento}
+                    error={uploadErr.archivo_nombramiento} onRetry={() => reintentarSubida("archivo_nombramiento")}
+                    onPick={(file) => subirArchivo("archivo_nombramiento", file)} />
+                </Row>
+                <Row label="Registro mercantil">
+                  <FileUpload label="registro mercantil" value={form.archivo_registro_mercantil} uploading={uploading.archivo_registro_mercantil}
+                    error={uploadErr.archivo_registro_mercantil} onRetry={() => reintentarSubida("archivo_registro_mercantil")}
+                    onPick={(file) => subirArchivo("archivo_registro_mercantil", file)} />
+                </Row>
+              </>
+            )}
+            {form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) && (
+              <Row label="RUC">
+                <FileUpload label="RUC" value={form.archivo_ruc} uploading={uploading.archivo_ruc}
+                  error={uploadErr.archivo_ruc} onRetry={() => reintentarSubida("archivo_ruc")}
+                  onPick={(file) => subirArchivo("archivo_ruc", file)} />
               </Row>
             )}
           </Seccion>

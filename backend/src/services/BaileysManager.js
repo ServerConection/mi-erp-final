@@ -12,7 +12,10 @@ const fs = require('fs')
 const pino = require('pino')
 const { query, transaction } = require('../config/db')
 const FlowEngine = require('./FlowEngine')
-const { quemarPuerto, liberarPuertoDeLinea } = require('./proxyPool.service')
+const {
+  quemarPuerto, liberarPuertoDeLinea, rotarProxyDeLinea,
+  construirProxyAutomatico, PROXY_BASE_PORT, PROXY_MAX_PORT,
+} = require('./proxyPool.service')
 const { useDbAuthState, migrarDesdeDisco, borrarSesion } = require('./baileysAuthPg.service')
 const lineLock = require('./lineLock.service')
 
@@ -291,6 +294,45 @@ class BaileysManager {
     const lineRow = await query('SELECT * FROM lines WHERE id = $1', [lineId])
     const line = lineRow.rows[0]
 
+    // Saneamiento del proxy ANTES de abrir el socket.
+    //
+    // Los puertos sticky del plan van de PROXY_BASE_PORT a PROXY_MAX_PORT. Si en
+    // la fila quedó guardado un puerto fuera de ese rango (típicamente de una
+    // configuración anterior del pool), el gateway no atiende ahí: el socket se
+    // queda esperando, WhatsApp nunca manda el QR y termina en "Código: 408".
+    // Desde fuera se ve como "el módulo de líneas no funciona", pero el módulo
+    // está bien — la IP no existe. Aquí se detecta y se reasigna una del pool.
+    if (line?.proxy_enabled && line?.proxy_config?.host) {
+      const puertoActual = parseInt(line.proxy_config.port, 10)
+      const fueraDeRango = !Number.isInteger(puertoActual)
+        || puertoActual < PROXY_BASE_PORT
+        || puertoActual > PROXY_MAX_PORT
+      if (fueraDeRango) {
+        console.warn(
+          `[Line ${lineId}] ⚠️ Puerto de proxy inválido (${line.proxy_config.port}); ` +
+          `el plan entrega ${PROXY_BASE_PORT}-${PROXY_MAX_PORT}. Se reasigna una IP del pool.`
+        )
+        try {
+          const nueva = await construirProxyAutomatico()
+          if (nueva) {
+            await query(
+              'UPDATE lines SET proxy_config = $1, updated_at = NOW() WHERE id = $2',
+              [JSON.stringify(nueva), lineId]
+            )
+            line.proxy_config = nueva
+            console.log(`[Line ${lineId}] ✅ Proxy reasignado a ${nueva.host}:${nueva.port}`)
+          } else {
+            console.error(
+              `[Line ${lineId}] ⛔ No se pudo reasignar el proxy: faltan PROXY_USER/PROXY_PASS ` +
+              'o el pool de puertos está agotado.'
+            )
+          }
+        } catch (e) {
+          console.error(`[Line ${lineId}] ⛔ Error reasignando proxy: ${e.message}`)
+        }
+      }
+    }
+
     // Fail-closed: con WA_PROXY_REQUIRED activo, una línea sin proxy válido
     // NO conecta directo. Se detiene ANTES de tocar el socket de Baileys.
     const proxyRequerido = process.env.WA_PROXY_REQUIRED === 'true'
@@ -539,6 +581,19 @@ class BaileysManager {
             try { await liberarPuertoDeLinea(lineId) } catch (e) { console.warn(`[Line ${lineId}] liberarPuerto:`, e.message) }
           }
           return
+        }
+
+        // Timeout (408): el socket nunca llegó a hablar con WhatsApp. Si la línea
+        // sale por proxy, lo más probable es que esa IP esté muerta; reintentar
+        // contra el mismo puerto solo gasta los 5 intentos y deja la línea sin QR.
+        // A partir del segundo fallo se rota a una IP limpia del pool.
+        if (statusCode === 408 && attempts >= 1) {
+          try {
+            const nueva = await rotarProxyDeLinea(lineId, 'timeout_408')
+            if (nueva) console.log(`[Line ${lineId}] ♻️ IP rotada tras timeout → ${nueva.host}:${nueva.port}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo rotar la IP tras timeout: ${e.message}`)
+          }
         }
 
         this._updateLineStatus(lineId, 'disconnected')

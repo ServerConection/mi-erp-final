@@ -282,6 +282,7 @@ const CAMPOS_EDITABLES = new Set([
   'observacion_venta_original', 'observacion_gestion_cobranza',
   'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
   'archivo_resumen',
+  'archivo_planilla', 'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
   'links_documentos',
   'gestion_atc',
 
@@ -293,6 +294,7 @@ const CAMPOS_EDITABLES = new Set([
 
   // Ingreso a Telcos (preservicios)
   'fecha_ingreso_telcos',
+  'fecha_activacion_netlife',
 ]);
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];

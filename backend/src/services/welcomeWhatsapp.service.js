@@ -1,6 +1,8 @@
 const pool = require('../config/db');
 
-const LINEA_WELCOME = 'NOTI_BACK';
+// Línea dedicada para las notificaciones del submódulo Welcome.
+// La comparación en la consulta es exacta (ignorando mayúsculas y espacios).
+const LINEA_WELCOME = 'ENVIO_NOTI_BACK';
 
 function normalizarTelefonoEcuador(valor) {
   let numero = String(valor || '').replace(/\D/g, '');
@@ -87,7 +89,7 @@ async function prepararWhatsappBienvenida(registro) {
   );
 
   if (!linea.rows.length) {
-    return { ok: false, motivo: 'linea_noti_back_no_encontrada' };
+    return { ok: false, motivo: 'linea_envio_noti_back_no_encontrada' };
   }
 
   return {

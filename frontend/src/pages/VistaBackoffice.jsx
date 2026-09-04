@@ -74,11 +74,13 @@ function resultadoBienvenida(json, mensajeBase) {
   }
 
   if (whatsapp?.encolado) {
-    exitos.push("WhatsApp de bienvenida en cola por NOTI_BACK");
+    exitos.push("WhatsApp de bienvenida en cola por ENVIO_NOTI_BACK");
   } else if (whatsapp?.encolado === false) {
     const motivos = {
       cliente_sin_telefono_valido: "el cliente no tiene un teléfono válido para WhatsApp",
-      linea_noti_back_no_encontrada: "no se encontró la línea NOTI_BACK",
+      linea_envio_noti_back_no_encontrada: "no se encontró la línea ENVIO_NOTI_BACK",
+      // Compatibilidad con respuestas pendientes de una versión anterior.
+      linea_noti_back_no_encontrada: "no se encontró la línea ENVIO_NOTI_BACK",
       error_al_encolar: "no se pudo registrar el WhatsApp de bienvenida",
     };
     advertencias.push(motivos[whatsapp.motivo] || "el WhatsApp no pudo encolarse");

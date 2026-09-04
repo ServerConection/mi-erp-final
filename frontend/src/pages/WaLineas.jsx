@@ -39,6 +39,15 @@ const STATUS_LABEL = {
   error:        "Error",
 };
 
+// La API entrega el estado persistido en BD (`status`) y el estado vivo de
+// Baileys (`rt_status`). Para la interfaz manda siempre el estado vivo; de lo
+// contrario, al recargar puede mostrarse "Desconectado" aunque el socket de
+// WhatsApp continúe conectado.
+const normalizarLinea = (line) => ({
+  ...line,
+  status: line?.rt_status || line?.status || "disconnected",
+});
+
 let _socket = null;
 const getSocket = () => {
   if (!_socket) {
@@ -72,7 +81,7 @@ export default function WaLineas() {
     try {
       const r = await fetch(`${API}/lines`, { headers: authH(false) });
       const d = await r.json();
-      setLines(Array.isArray(d?.data) ? d.data : []);
+      setLines(Array.isArray(d?.data) ? d.data.map(normalizarLinea) : []);
       setProxyPool(d?.meta?.proxyPool ?? null);
       if (d && d.success === false) setError(d.error || "Error cargando líneas");
     } catch { setError("Error cargando líneas"); }
@@ -83,14 +92,34 @@ export default function WaLineas() {
     load();
     const socket = getSocket();
     socket.on("line:status", ({ lineId, status }) => {
-      setLines(prev => prev.map(l => l.id === lineId ? { ...l, status } : l));
-      if (status !== "qr_ready" && qrModal?.lineId === lineId) setQrModal(null);
+      // Los parámetros de Express llegan como texto y los IDs de PostgreSQL
+      // suelen llegar como número. Compararlos de forma estricta impedía que
+      // varios eventos actualizasen la fila correspondiente.
+      setLines(prev => prev.map(l => String(l.id) === String(lineId) ? { ...l, status, rt_status: status } : l));
+      if (status !== "qr_ready") {
+        setQrModal(actual => String(actual?.lineId ?? "") === String(lineId) ? null : actual);
+      }
     });
+
+    // El socket puede perder un evento durante una suspensión del navegador o
+    // un despliegue. Reconciliar con el backend evita estados visuales viejos.
+    const refreshTimer = setInterval(load, 15000);
+    const refreshOnFocus = () => load();
+    const refreshOnVisible = () => { if (document.visibilityState === "visible") load(); };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisible);
     // No abrir QR por eventos automáticos de otras líneas. El modal solo se
     // abre desde connect(id), después de que el usuario pulsa "Conectar QR".
     // El polling HTTP de esa línea concreta actualiza luego la imagen.
-    return () => { socket.off("line:status"); socket.off("line:qr"); stopQrPoll(); };
-  }, []);
+    return () => {
+      socket.off("line:status");
+      socket.off("line:qr");
+      clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+      stopQrPoll();
+    };
+  }, [load]);
 
   const create = async () => {
     if (!newName.trim()) return;
@@ -131,8 +160,9 @@ export default function WaLineas() {
       try {
         const rl = await fetch(`${API}/lines`, { headers: authH(false) });
         const dl = await rl.json();
-        const line = (Array.isArray(dl?.data) ? dl.data : []).find(l => l.id === id);
-        if (line) setLines(prev => prev.map(l => l.id === id ? { ...l, ...line } : l));
+        const encontrada = (Array.isArray(dl?.data) ? dl.data : []).find(l => String(l.id) === String(id));
+        const line = encontrada ? normalizarLinea(encontrada) : null;
+        if (line) setLines(prev => prev.map(l => String(l.id) === String(id) ? { ...l, ...line } : l));
         const st = line?.rt_status || line?.status;
         if (st === "connected") { stopQrPoll(); setQrModal(null); load(); return; }
         // El backend tiene un watchdog: si el socket se cuelga, lo cierra y la

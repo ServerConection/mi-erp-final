@@ -121,6 +121,52 @@ const HAS_PLAN_VELSA = `(
     (jf2.plan_centro_red_comercial IS NOT NULL AND TRIM(jf2.plan_centro_red_comercial::text) <> '')
 )`;
 
+// ─────────────────────────────────────────────────────────────────────────
+// COLUMNAS DE PLANES COMERCIALES PARA EL EXPORT
+// El JOIN de planes (van / jf2) ya existía pero solo se usaba para calcular
+// es_venta_servicio; el Excel salía SIN los planes. Aquí se exponen:
+//   plan_comercial  → valor del plan contratado (primer plan_* no vacío)
+//   categoria_plan  → segmento comercial (HOGAR / PYME / GAMER / ...)
+//   plan_*          → columnas individuales, por si se necesita el detalle
+// NOTA: la vista Velsa (vw_jotform_velsa_netlife_completo) NO expone plan_gamer
+// (pregunta 241 de Jotform). Si se agrega a la vista, basta con sumarlo a
+// COLS_PLAN_VELSA y al SELECT del JOIN_PLAN_VELSA.
+// ─────────────────────────────────────────────────────────────────────────
+const valPlan = (alias, col) => `NULLIF(TRIM(${alias}.${col}::text), '')`;
+
+function buildSelectPlanes(alias, cols) {
+  const coalesce  = cols.map(([c]) => valPlan(alias, c)).join(', ');
+  const categoria = cols
+    .map(([c, label]) => `WHEN ${valPlan(alias, c)} IS NOT NULL THEN '${label}'`)
+    .join('\n          ');
+  const detalle = cols.map(([c]) => `${alias}.${c}`).join(',\n        ');
+  return `
+        COALESCE(${coalesce}) AS plan_comercial,
+        CASE
+          ${categoria}
+          ELSE NULL
+        END AS categoria_plan,
+        ${detalle}`;
+}
+
+const COLS_PLAN_NOVONET = [
+  ['plan_casa',               'HOGAR'],
+  ['plan_hogar_adulto_mayor', 'ADULTO MAYOR'],
+  ['plan_profesional',        'PROFESIONAL'],
+  ['plan_pyme',               'PYME'],
+  ['plan_pyme_corp',          'PYME CORP'],
+  ['plan_centro_comercial',   'CENTRO COMERCIAL'],
+];
+
+const COLS_PLAN_VELSA = [
+  ['plan_casa',                 'HOGAR'],
+  ['plan_hogar_adulto_mayor',   'ADULTO MAYOR'],
+  ['plan_profesional',          'PROFESIONAL'],
+  ['plan_pyme',                 'PYME'],
+  ['plan_pyme_corp',            'PYME CORP'],
+  ['plan_centro_red_comercial', 'CENTRO/RED COMERCIAL'],
+];
+
 // ── Definición de campos por empresa (fuente, id, fecha, hora, asesor, etapa-crm, estado-jot) ──
 const CFG = {
   novonet: {
@@ -133,6 +179,7 @@ const CFG = {
     estadoJot: `COALESCE(NULLIF(TRIM(UPPER(mb.j_netlife_estatus_real)), ''), 'SIN ESTADO')`,
     whereJot: `mb.j_id_bitrix IS NOT NULL`,
     joinPlan: JOIN_PLAN_NOVONET,
+    selectPlanes: buildSelectPlanes('van', COLS_PLAN_NOVONET),
     esVentaServicio: `(UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO' AND ${HAS_PLAN_NOVONET})`,
     selectExtra: `
       mb.b_id              AS id_crm,
@@ -155,6 +202,7 @@ const CFG = {
     estadoJot: `COALESCE(NULLIF(TRIM(UPPER(mv.estado_venta)), ''), 'SIN ESTADO')`,
     whereJot: `mv.id_jotform IS NOT NULL`,
     joinPlan: JOIN_PLAN_VELSA,
+    selectPlanes: buildSelectPlanes('jf2', COLS_PLAN_VELSA),
     esVentaServicio: `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA})`,
     selectExtra: `
       mv.id_crm            AS id_crm,
@@ -522,6 +570,7 @@ async function exportExcel(req, res) {
         UPPER(TRIM(${c.etapaCrm})) AS etapa_crm,
         ${c.estadoJot}        AS estado_jot,
         ${c.esVentaServicio} AS es_venta_servicio,
+        ${c.selectPlanes},
         COALESCE(r.estado_revision, 'PENDIENTE') AS estado_revision,
         r.observacion         AS observacion,
         r.revisado_por        AS revisado_por

@@ -58,7 +58,18 @@ export default function WaLineas() {
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
   const qrPollRef = useRef(null);
-  const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
+  const qrSocketRef = useRef(null);
+  const stopQrPoll = () => {
+    if (qrPollRef.current) {
+      clearInterval(qrPollRef.current);
+      qrPollRef.current = null;
+    }
+    if (qrSocketRef.current) {
+      const socket = getSocket();
+      socket.off(qrSocketRef.current.event, qrSocketRef.current.handler);
+      qrSocketRef.current = null;
+    }
+  };
 
   // Admin y perfiles gerenciales siempre pueden crear (sin límite).
   // El asesor solo si no tiene ninguna línea propia (si se le eliminó la
@@ -81,10 +92,9 @@ export default function WaLineas() {
     const socket = getSocket();
     socket.on("line:status", ({ lineId, status }) => {
       setLines(prev => prev.map(l => l.id === lineId ? { ...l, status } : l));
-      if (status !== "qr_ready" && qrModal?.lineId === lineId) setQrModal(null);
-    });
-    socket.on("line:qr", ({ lineId, qr }) => {
-      setQrModal({ lineId, qr });
+      if (status === "connected") {
+        setQrModal(current => current?.lineId === lineId ? null : current);
+      }
     });
     return () => { socket.off("line:status"); socket.off("line:qr"); stopQrPoll(); };
   }, []);
@@ -108,39 +118,47 @@ export default function WaLineas() {
 
   const connect = async (id) => {
     setError("");
+    // Abrir inmediatamente: el endpoint puede tardar mientras Baileys inicia.
+    // Además, se escucha solo el evento de la línea que el usuario solicitó.
+    setQrModal({ lineId: id, qr: null });
+    startQrPoll(id);
     try {
       const r = await fetch(`${API}/lines/${id}/connect`, { method: "POST", headers: authH(false) });
       const d = await r.json();
-      if (!d.success) { setError(d.error || "No se pudo conectar la línea"); return; }
-      // Feedback inmediato + obtener el QR por HTTP (confiable, no depende del socket)
-      setQrModal({ lineId: id, qr: null });   // muestra "Generando QR…"
-      startQrPoll(id);
-    } catch { setError("No se pudo conectar la línea"); }
+      if (!d.success) {
+        stopQrPoll();
+        setQrModal(null);
+        setError(d.error || "No se pudo conectar la línea");
+      }
+    } catch {
+      stopQrPoll();
+      setQrModal(null);
+      setError("No se pudo conectar la línea");
+    }
   };
 
-  // Pide el QR por HTTP cada 2s hasta que aparezca (Baileys lo regenera solo).
-  // Si la línea se conecta, cierra el modal. Máximo ~2 min.
+  const pollQr = async (id) => {
+    try {
+      const rq = await fetch(`${API}/lines/${id}/qr`, { headers: authH(false) });
+      if (!rq.ok) return;
+      const dq = await rq.json();
+      if (dq.success && dq.qr) setQrModal({ lineId: id, qr: dq.qr });
+    } catch { /* el intervalo vuelve a intentar */ }
+  };
+
+  // Socket para respuesta instantánea + HTTP como respaldo si el evento se
+  // emitió antes de que el navegador terminara de suscribirse.
   const startQrPoll = (id) => {
     stopQrPoll();
-    let tries = 0;
-    qrPollRef.current = setInterval(async () => {
-      tries++;
-      try {
-        const rl = await fetch(`${API}/lines`, { headers: authH(false) });
-        const dl = await rl.json();
-        const line = (Array.isArray(dl?.data) ? dl.data : []).find(l => l.id === id);
-        if (line) setLines(prev => prev.map(l => l.id === id ? { ...l, ...line } : l));
-        const st = line?.rt_status || line?.status;
-        if (st === "connected") { stopQrPoll(); setQrModal(null); load(); return; }
-
-        const rq = await fetch(`${API}/lines/${id}/qr`, { headers: authH(false) });
-        if (rq.ok) {
-          const dq = await rq.json();
-          if (dq.success && dq.qr) setQrModal({ lineId: id, qr: dq.qr });
-        }
-      } catch { /* reintenta en el siguiente ciclo */ }
-      if (tries > 60) stopQrPoll();
-    }, 2000);
+    const socket = getSocket();
+    const event = `line:qr:${id}`;
+    const handler = ({ qr }) => {
+      if (qr) setQrModal({ lineId: id, qr });
+    };
+    socket.on(event, handler);
+    qrSocketRef.current = { event, handler };
+    void pollQr(id);
+    qrPollRef.current = setInterval(() => { void pollQr(id); }, 2000);
   };
 
   const disconnect = async (id) => {

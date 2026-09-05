@@ -1705,7 +1705,7 @@ function ConsultaDescargaVelsa() {
     try {
       const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`);
       const result = await res.json();
-      if (result.success) setRows(result.rows);
+      if (result.success) setRows(result.rows || result.registros || []);
       else setError(result.error || 'Error al consultar');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }

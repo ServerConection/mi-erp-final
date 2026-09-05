@@ -1064,27 +1064,52 @@ async function getConsultaDescargaVelsa(req, res) {
     const hoy   = getFechaEcuador();
     const desde = req.query.fechaDesde || hoy;
     const hasta = req.query.fechaHasta || hoy;
-    const values  = [desde, hasta];
-    const filters = buildFilters(req.query, values);
 
+    // FIX: esta pantalla ("CONSULTA Y DESCARGA — VELSA") muestra la data CRUDA de
+    // Jotform, no la MV de indicadores. Antes consultaba la MV y devolvía la data
+    // en `registros`, mientras el frontend leía `rows`: quedaba rows=undefined y
+    // `rows.length` reventaba el render (pantalla en blanco). Ademas ninguna de
+    // las 21 columnas de la pantalla existe en la MV.
+    // Se consulta directamente la vista de Jotform (la misma que anuncia la UI) y
+    // se responde con `rows` + `registros` por compatibilidad.
     const result = await pool.query(`
       SELECT
-        mv.id_crm, mv.id_jotform, mv.asesor, mv.supervisor,
-        mv.etapa_crm, mv.estado_venta, mv.estado_regularizacion,
-        mv.fecha_creacion_crm, mv.fecha_registro_jotform, mv.fecha_activacion,
-        mv.forma_pago, mv.aplica_descuento, mv.ciudad, mv.origen,
-        mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
-        mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial,
-        ${VENTA_SERVICIO_VELSA_MV} AS es_venta_servicio
-      FROM ${MV}
-      ${JOIN_JF_VELSA_MV}
-      WHERE (mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
-          OR (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)
-      ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC LIMIT 10000
-    `, values);
+        jf.created_at,
+        jf.id_bitrix_ghl,
+        jf.id_negociacion_bitrix,
+        jf.codigo_asesor,
+        jf.nombre_y_codigo_asesor,
+        jf.plan_casa,
+        jf.plan_profesional,
+        jf.plan_pyme,
+        jf.plan_hogar_adulto_mayor,
+        jf.plan_pyme_corp,
+        jf.plan_centro_red_comercial,
+        jf.aplica_descuento,
+        jf.servicio_normales,
+        jf.inicio_sesion_netlife,
+        jf.estado_venta_netlife,
+        jf.forma_pago,
+        jf.fecha_ingresa_telcos,
+        jf.fecha_agenda,
+        jf.fecha_activacion_telcos,
+        jf.provincia,
+        jf.ciudad,
+        jf.observacion_venta,
+        jf.estado_regularizacion_novo,
+        jf.detalle_regularizacion
+      FROM public.vw_jotform_velsa_netlife_completo jf
+      WHERE (jf.created_at - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+      ORDER BY jf.created_at DESC
+      LIMIT 10000
+    `, [desde, hasta]);
 
-    res.json({ success: true, registros: result.rows, total: result.rowCount });
+    res.json({
+      success: true,
+      rows: result.rows,
+      registros: result.rows,
+      total: result.rowCount,
+    });
   } catch (error) {
     console.error('[CONSULTA-VELSA] Error:', error);
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message) });

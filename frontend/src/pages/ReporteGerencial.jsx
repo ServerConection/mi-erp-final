@@ -30,12 +30,34 @@ const num   = (v) => (v === null || v === undefined ? "—" : Number(v).toLocale
 const pct   = (v) => (v === null || v === undefined ? "—" : `${Number(v).toFixed(1)}%`);
 const dia   = (f) => (f ? f.slice(8, 10) + "/" + f.slice(5, 7) : "");
 
-function Kpi({ etiqueta, valor, ayuda, resaltado }) {
+// Variacion contra el periodo anterior. En casi todo, subir es bueno; en el
+// costo por venta es al reves, por eso `bajarEsBueno`.
+function Delta({ valor, bajarEsBueno = false }) {
+  if (valor === null || valor === undefined) return null;
+  const sube = valor > 0;
+  const bueno = bajarEsBueno ? !sube : sube;
+  if (Math.abs(valor) < 0.05) {
+    return <span className="text-[9px] font-bold text-stone-400">= igual</span>;
+  }
   return (
-    <div className={`rounded-xl border p-3 ${resaltado ? "border-stone-300 bg-stone-50" : "border-stone-200 bg-white"}`}>
+    <span className={`text-[9px] font-black ${bueno ? "text-emerald-600" : "text-red-600"}`}>
+      {sube ? "▲" : "▼"} {Math.abs(valor).toFixed(1)}%
+    </span>
+  );
+}
+
+// `pista` sale solo al pasar el mouse: explica el indicador sin ensuciar la
+// pantalla para quien ya lo conoce.
+function Kpi({ etiqueta, valor, ayuda, resaltado, pista, delta, bajarEsBueno }) {
+  return (
+    <div title={pista || ""}
+      className={`rounded-xl border p-3 transition-colors ${resaltado ? "border-stone-300 bg-stone-50" : "border-stone-200 bg-white"} ${pista ? "hover:border-stone-400 cursor-help" : ""}`}>
       <div className="text-[9px] font-black uppercase tracking-widest text-stone-400">{etiqueta}</div>
       <div className="text-lg font-black text-stone-800 leading-tight mt-0.5">{valor}</div>
-      {ayuda && <div className="text-[9px] text-stone-400 mt-0.5">{ayuda}</div>}
+      <div className="flex items-center gap-2 mt-0.5">
+        {ayuda && <span className="text-[9px] text-stone-400">{ayuda}</span>}
+        <Delta valor={delta} bajarEsBueno={bajarEsBueno} />
+      </div>
     </div>
   );
 }
@@ -44,6 +66,8 @@ function BloqueEmpresa({ emp }) {
   const t = TEMA[emp.empresa] || TEMA.novonet;
   const k = emp.kpis;
   const eq = emp.equilibrio;
+  const v  = emp.tendencia?.variacion;         // vs período anterior
+  const dp = emp.tendencia?.dentro_del_periodo; // hacia dónde iba dentro del período
 
   return (
     <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
@@ -62,14 +86,42 @@ function BloqueEmpresa({ emp }) {
         <div className="p-5 space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-            <Kpi etiqueta="Ingresos"      valor={num(k?.ingresos)} />
-            <Kpi etiqueta="Gestionables"  valor={num(k?.gestionables)} ayuda={pct(k?.pct_gestionable) + " de ingresos"} />
-            <Kpi etiqueta="Activas"       valor={num(k?.activas)} ayuda={pct(k?.pct_efectividad) + " de ingresos"} />
-            <Kpi etiqueta="Inversión"     valor={money(k?.inversion)} />
-            <Kpi etiqueta="Costo x venta" valor={money(k?.cpa)} ayuda="CPA" resaltado />
-            <Kpi etiqueta="Costo x lead"  valor={money(k?.cpl)} ayuda="CPL" />
-            <Kpi etiqueta="Efectividad"   valor={pct(k?.pct_efectividad)} ayuda="activas / ingresos" />
+            <Kpi etiqueta="Ingresos" valor={num(k?.ingresos)} delta={v?.ingresos}
+                 pista="Formularios que entraron en el período." />
+            <Kpi etiqueta="Gestionables" valor={num(k?.gestionables)} ayuda={pct(k?.pct_gestionable)}
+                 pista="Leads que NO cayeron en una etapa de descarte (duplicado, ATC, fuera de cobertura, zona peligrosa)." />
+            <Kpi etiqueta="Activas" valor={num(k?.activas)} delta={v?.activas}
+                 pista="Ventas instaladas, contadas por fecha de ingreso del lead." />
+            <Kpi etiqueta="Inversión" valor={money(k?.inversion)} delta={v?.inversion}
+                 pista="Inversión publicitaria registrada en el período." />
+            <Kpi etiqueta="Costo x venta" valor={money(k?.cpa)} ayuda="CPA" resaltado
+                 delta={v?.cpa} bajarEsBueno
+                 pista="Inversión ÷ activas. Es el número que se compara contra el ARPU: si lo supera, cada venta cuesta más de lo que deja." />
+            <Kpi etiqueta="Costo x lead" valor={money(k?.cpl)} ayuda="CPL"
+                 pista="Inversión ÷ ingresos. Cuánto cuesta traer un formulario." />
+            <Kpi etiqueta="Efectividad" valor={pct(k?.pct_efectividad)} ayuda="activas / ingresos"
+                 delta={v?.efectividad}
+                 pista="Qué porcentaje de lo que entró terminó instalado." />
           </div>
+
+          {/* Tendencia: comparativa y hacia donde iba dentro del periodo */}
+          {(emp.tendencia?.previo || dp?.activas) && (
+            <div className="flex flex-wrap items-center gap-4 text-[10px] text-stone-600 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2">
+              {emp.tendencia?.periodo_previo && (
+                <span title="Mismo número de días, justo antes del período elegido." className="cursor-help">
+                  <b>vs. período anterior</b> ({emp.tendencia.periodo_previo.desde} → {emp.tendencia.periodo_previo.hasta}):
+                  {" "}activas {num(emp.tendencia.previo?.activas)} · inversión {money(emp.tendencia.previo?.inversion)}
+                </span>
+              )}
+              {dp?.activas && (
+                <span title="Pendiente de las activas diarias dentro del período. Dice si venía subiendo o cayendo, algo que el total no muestra."
+                      className={`font-black cursor-help ${dp.activas.direccion === "SUBIENDO" ? "text-emerald-600" : dp.activas.direccion === "BAJANDO" ? "text-red-600" : "text-stone-500"}`}>
+                  {dp.activas.direccion === "SUBIENDO" ? "▲" : dp.activas.direccion === "BAJANDO" ? "▼" : "="} Dentro del período: {dp.activas.direccion.toLowerCase()}
+                  {dp.activas.por_dia ? ` (${dp.activas.por_dia > 0 ? "+" : ""}${dp.activas.por_dia} activas/día)` : ""}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Grafico: volumen (barras) + inversion (linea, eje derecho) */}
           <div style={{ width: "100%", height: 300 }}>
@@ -148,6 +200,51 @@ export default function ReporteGerencial() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
+  // Atajos de periodo: gerencia mira "el mes pasado" o "el trimestre", no
+  // fechas sueltas. Evita el error clasico de comparar medio mes contra un mes
+  // entero, que es lo que hace que un reporte se lea al reves.
+  const preset = (clave) => {
+    const hoy = new Date(hoyEc() + "T00:00:00Z");
+    const y = hoy.getUTCFullYear(), m = hoy.getUTCMonth();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    if (clave === "mes")      { setDesde(iso(new Date(Date.UTC(y, m, 1))));     setHasta(hoyEc()); }
+    if (clave === "anterior") { setDesde(iso(new Date(Date.UTC(y, m - 1, 1)))); setHasta(iso(new Date(Date.UTC(y, m, 0)))); }
+    if (clave === "trim")     { setDesde(iso(new Date(Date.UTC(y, m - 2, 1)))); setHasta(hoyEc()); }
+    if (clave === "anio")     { setDesde(iso(new Date(Date.UTC(y, 0, 1))));     setHasta(hoyEc()); }
+  };
+
+  // Descarga CSV con el detalle diario de ambas empresas. Se arma en el
+  // navegador con lo que ya esta en pantalla: lo que se descarga es
+  // exactamente lo que se esta viendo, no una segunda consulta que podria
+  // devolver otra cosa.
+  const descargarCsv = () => {
+    if (!data?.empresas?.length) return;
+    const cols = ["empresa", "fecha", "ingresos", "gestionables", "activas", "inversion", "cpa", "cpl"];
+    const filas = [cols.join(";")];
+    data.empresas.forEach((emp) =>
+      (emp.dias || []).forEach((d) =>
+        filas.push([emp.nombre, d.fecha, d.ingresos, d.gestionables, d.activas,
+                    d.inversion, d.cpa ?? "", d.cpl ?? ""].join(";"))));
+    // Resumen al final: lo primero que se mira al abrir el archivo.
+    filas.push("");
+    filas.push(["RESUMEN", "desde", data.rango.desde, "hasta", data.rango.hasta].join(";"));
+    data.empresas.forEach((emp) => {
+      const k = emp.kpis; if (!k) return;
+      filas.push([emp.nombre, "ingresos", k.ingresos, "gestionables", k.gestionables,
+                  "activas", k.activas, "inversion", k.inversion,
+                  "CPA", k.cpa ?? "", "CPL", k.cpl ?? "",
+                  "efectividad%", k.pct_efectividad ?? ""].join(";"));
+    });
+    // BOM para que Excel en español respete las tildes.
+    const blob = new Blob(["\uFEFF" + filas.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reporte_gerencial_${data.rango.desde}_${data.rango.hasta}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const cargar = useCallback(async () => {
     setCargando(true); setError("");
     try {
@@ -200,6 +297,24 @@ export default function ReporteGerencial() {
             className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-stone-900 hover:bg-stone-800 shadow transition-all active:scale-95 disabled:opacity-60">
             {cargando ? "Calculando…" : "🔄 Actualizar"}
           </button>
+          <button onClick={descargarCsv} disabled={!data || cargando}
+            title="Descarga el detalle diario de ambas empresas más el resumen, tal como se ve en pantalla."
+            className="h-[42px] px-5 rounded-xl text-[10px] font-black uppercase text-stone-700 bg-white border border-stone-300 hover:border-stone-500 transition-all active:scale-95 disabled:opacity-40">
+            ⬇️ Descargar
+          </button>
+        </div>
+
+        {/* Atajos de periodo */}
+        <div className="flex flex-wrap gap-2 mt-4">
+          {[["mes", "Mes actual"], ["anterior", "Mes anterior"], ["trim", "Últimos 3 meses"], ["anio", "Año actual"]].map(([clave, txt]) => (
+            <button key={clave} onClick={() => preset(clave)}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-full border border-stone-300 text-stone-600 hover:border-stone-800 hover:text-stone-900 transition-colors">
+              {txt}
+            </button>
+          ))}
+          <span className="text-[9px] text-stone-400 self-center ml-1">
+            Elige un atajo y pulsa Actualizar. Siempre se compara contra el período anterior del mismo largo.
+          </span>
         </div>
         {error && <p className="mt-3 text-[10px] font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg">⚠️ {error}</p>}
       </div>

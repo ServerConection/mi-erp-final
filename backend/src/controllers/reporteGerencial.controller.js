@@ -131,6 +131,53 @@ async function serieEmpresa(clave, { desde, hasta }) {
   };
 }
 
+// ── Tendencia dentro del periodo ────────────────────────────────────────────
+// Pendiente de una recta ajustada por minimos cuadrados sobre las activas
+// diarias. Interesa el SIGNO y la magnitud relativa, no el numero: dice si la
+// operacion venia subiendo o cayendo durante el periodo, algo que el total no
+// muestra (dos meses con las mismas ventas pueden ser uno creciendo y otro
+// desplomandose).
+function pendienteDiaria(dias, campo = 'activas') {
+  const n = dias.length;
+  if (n < 3) return null;                      // con menos de 3 puntos no hay tendencia
+  const y = dias.map((d) => Number(d[campo] || 0));
+  const sumX = (n - 1) * n / 2;
+  const sumY = y.reduce((a, v) => a + v, 0);
+  const sumXY = y.reduce((a, v, i) => a + i * v, 0);
+  const sumXX = y.reduce((a, _, i) => a + i * i, 0);
+  const den = n * sumXX - sumX * sumX;
+  if (den === 0) return null;
+  const pendiente = (n * sumXY - sumX * sumY) / den;   // unidades por dia
+  const promedio = sumY / n;
+  return {
+    por_dia: Number(pendiente.toFixed(2)),
+    // Cuanto representa esa pendiente frente al promedio diario: hace
+    // comparable a Novonet con Velsa aunque manejen volumenes distintos.
+    pct_diario: promedio > 0 ? Number(((pendiente / promedio) * 100).toFixed(2)) : null,
+    direccion: pendiente > 0.05 ? 'SUBIENDO' : pendiente < -0.05 ? 'BAJANDO' : 'ESTABLE',
+  };
+}
+
+// Variacion % contra el periodo anterior. null cuando la base es 0: un cambio
+// desde cero no es "infinito por ciento", simplemente no es comparable.
+const variacion = (actual, previo) => {
+  const a = Number(actual || 0), p = Number(previo || 0);
+  if (!p) return null;
+  return Number((((a - p) / p) * 100).toFixed(1));
+};
+
+// Periodo inmediatamente anterior, del mismo largo. Comparar septiembre contra
+// agosto solo tiene sentido si ambos miden la misma cantidad de dias.
+function rangoPrevio({ desde, hasta }) {
+  const d = new Date(desde + 'T00:00:00Z');
+  const h = new Date(hasta + 'T00:00:00Z');
+  const dias = Math.round((h - d) / 86400000) + 1;
+  const hastaPrev = new Date(d.getTime() - 86400000);
+  const desdePrev = new Date(hastaPrev.getTime() - (dias - 1) * 86400000);
+  const iso10 = (x) => x.toISOString().slice(0, 10);
+  return { desde: iso10(desdePrev), hasta: iso10(hastaPrev), dias };
+}
+
 async function getReporteGerencial(req, res) {
   const r = rango(req);
   if (!r) return res.status(400).json({ success: false, error: 'Rango de fechas inválido (máximo 400 días)' });
@@ -142,10 +189,37 @@ async function getReporteGerencial(req, res) {
   const arpuValido = Number.isFinite(arpu) && arpu > 0;
 
   try {
-    const [novonet, velsa] = await Promise.all([
+    const prev = rangoPrevio(r);
+    const [novonet, velsa, novonetPrev, velsaPrev] = await Promise.all([
       serieEmpresa('novonet', r),
       serieEmpresa('velsa', r),
+      serieEmpresa('novonet', prev),
+      serieEmpresa('velsa', prev),
     ]);
+
+    // Comparativa con el periodo anterior + hacia donde iba dentro del periodo.
+    const conTendencia = (emp, empPrev) => {
+      const k = emp.kpis, kp = empPrev?.kpis;
+      return {
+        ...emp,
+        tendencia: !k ? null : {
+          periodo_previo: prev,
+          previo: kp || null,
+          variacion: kp ? {
+            ingresos:  variacion(k.ingresos,  kp.ingresos),
+            activas:   variacion(k.activas,   kp.activas),
+            inversion: variacion(k.inversion, kp.inversion),
+            // En el CPA, BAJAR es bueno: cuesta menos traer una venta.
+            cpa:       variacion(k.cpa,       kp.cpa),
+            efectividad: variacion(k.pct_efectividad, kp.pct_efectividad),
+          } : null,
+          dentro_del_periodo: {
+            activas:  pendienteDiaria(emp.dias, 'activas'),
+            ingresos: pendienteDiaria(emp.dias, 'ingresos'),
+          },
+        },
+      };
+    };
 
     const equilibrio = (emp) => {
       if (!arpuValido || !emp.kpis) return null;
@@ -174,8 +248,8 @@ async function getReporteGerencial(req, res) {
         'así la inversión de un día se compara contra las ventas que esa inversión generó. ' +
         'Los días más recientes muestran un CPA alto porque sus ventas todavía no maduran.',
       empresas: [
-        { ...novonet, equilibrio: equilibrio(novonet) },
-        { ...velsa,   equilibrio: equilibrio(velsa) },
+        { ...conTendencia(novonet, novonetPrev), equilibrio: equilibrio(novonet) },
+        { ...conTendencia(velsa,   velsaPrev),   equilibrio: equilibrio(velsa) },
       ],
     });
   } catch (err) {

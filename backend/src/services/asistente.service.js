@@ -14,7 +14,7 @@
  */
 const pool = require('../config/db');
 const broadcastSvc = require('./broadcast.service');
-const { buscarFaq, listarFaq } = require('./asistente.faq');
+const { buscarFaq, fichasRelevantes, listarFaq } = require('./asistente.faq');
 
 // ── Fechas (Ecuador) ──────────────────────────────────────────
 const fechaEc = (d = new Date()) =>
@@ -263,6 +263,19 @@ const SYSTEM_PROMPT =
   `"descartes"=leads descartados. ` +
   `Formato: usa *negritas* para títulos y listas numeradas cuando muestres rankings.`;
 
+// Arma el mensaje del usuario: datos del ERP + manual de operacion.
+// Las fichas van SOLO si tienen que ver con la pregunta, y se marcan como la
+// unica fuente valida para ese tipo de dato: asi el modelo redacta con ellas en
+// vez de improvisar requisitos o penalidades, que es lo que no puede inventar.
+function contextoUsuario(pregunta, snapshot) {
+  const fichas = fichasRelevantes(pregunta, 3);
+  const manual = fichas.length
+    ? `\n\nMANUAL DE OPERACION (fuente oficial — si la pregunta es de proceso, responde SOLO con esto y no agregues datos que no esten aqui):\n` +
+      fichas.map((f) => `• ${f.pregunta}\n${f.respuesta}`).join('\n\n')
+    : '';
+  return `DATOS DEL ERP (JSON):\n${JSON.stringify(snapshot)}${manual}\n\nPREGUNTA: ${pregunta}`;
+}
+
 async function llamarOllama(pregunta, snapshot) {
   const base = process.env.OLLAMA_URL;
   if (!base) return null;
@@ -279,7 +292,7 @@ async function llamarOllama(pregunta, snapshot) {
         options: { temperature: 0.2, num_ctx: 8192 },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `DATOS DEL ERP (JSON):\n${JSON.stringify(snapshot)}\n\nPREGUNTA: ${pregunta}` },
+          { role: 'user', content: contextoUsuario(pregunta, snapshot) },
         ],
       }),
     });

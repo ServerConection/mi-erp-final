@@ -374,8 +374,31 @@ function buscarFaq(pregunta) {
   return { id: mejor.id, categoria: mejor.categoria, pregunta: mejor.pregunta, respuesta: mejor.respuesta };
 }
 
+/**
+ * Fichas mas parecidas a la pregunta, ordenadas por puntaje y SIN exigir el
+ * umbral. Sirven de contexto para la IA: aunque ninguna calce lo bastante para
+ * responder sola, el modelo puede redactar con ellas en la mano en vez de
+ * inventar. Es la diferencia entre un buscador y un asistente: si preguntan
+ * "un cliente en silla de ruedas que necesita", ninguna clave calza exacto pero
+ * la ficha de discapacidad es justo lo que hay que leer.
+ */
+function fichasRelevantes(pregunta, n = 3) {
+  const q = norm(pregunta);
+  if (!q) return [];
+  return INDICE
+    .map((f) => {
+      let puntaje = 0;
+      for (const clave of f._claves) if (claveCalza(q, clave)) puntaje += clave.length;
+      return { ficha: f, puntaje };
+    })
+    .filter((x) => x.puntaje > 0)
+    .sort((a, b) => b.puntaje - a.puntaje)
+    .slice(0, n)
+    .map(({ ficha }) => ({ pregunta: ficha.pregunta, respuesta: ficha.respuesta, categoria: ficha.categoria }));
+}
+
 // Listado para el panel de "Preguntas frecuentes" del asistente.
 const listarFaq = () =>
   FAQ.map(({ id, categoria, pregunta, respuesta }) => ({ id, categoria, pregunta, respuesta }));
 
-module.exports = { buscarFaq, listarFaq, FAQ, norm };
+module.exports = { buscarFaq, fichasRelevantes, listarFaq, FAQ, norm };

@@ -707,6 +707,18 @@ const getIndicadoresDashboard = async (req, res) => {
                     fechaCol: '_bc_date',
                     origenCol: 'b_origen',
                 })} AS descarte,
+                -- Denominador EXACTO del % de descarte de esta misma fila. Se
+                -- expone porque el total del equipo no puede salir de promediar
+                -- los porcentajes de cada asesor (eso pesa igual a uno con 2
+                -- leads que a uno con 200): la pantalla lo recalcula como
+                -- SUM(descarte_count) / SUM(descarte_base), que es como lo hace
+                -- Reporte D-1. Ojo: NO es lo mismo que la columna
+                -- "gestionables" de la fila, que usa otra ventana de fecha.
+                COUNT(DISTINCT b_id) FILTER (
+                    WHERE _bc_date BETWEEN $1::date AND $2::date
+                    AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                    AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                ) AS descarte_base,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
                     AND j_netlife_estatus_real NOT IN ('FUERA DE COBERTURA','DESISTE DEL SERVICIO','RECHAZADO')

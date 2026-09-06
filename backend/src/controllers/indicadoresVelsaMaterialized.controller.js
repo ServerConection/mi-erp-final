@@ -341,6 +341,14 @@ const queryKPI = (columna, filters) => {
       etapaCol: 'mv.etapa_crm',
       fechaCol: CRM_DATE,
     })} AS descarte,
+    -- Denominador EXACTO del % de descarte de esta fila (mismo criterio que la
+    -- expresion de arriba). La pantalla lo usa para calcular el total del
+    -- equipo como SUM(descarte_count)/SUM(descarte_base) en vez de promediar
+    -- porcentajes, que es lo que hacia que no cuadrara con Reporte D-1.
+    COUNT(DISTINCT mv.id_crm) FILTER (
+      WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+      AND ${esGestionableExpr('mv.etapa_crm')}
+    ) AS descarte_base,
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric

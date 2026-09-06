@@ -20,6 +20,7 @@
  */
 const pool = require('../config/db');
 const { esGestionableExpr } = require('../shared/etapas');
+const { construirForecastAgencias } = require('../shared/inversionRedes');
 
 const fechaEc = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
@@ -69,6 +70,13 @@ const SERIES = {
       FROM public.novonet_inversion_redes
       WHERE fecha::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY 1`,
+    // Filas SIN agrupar: el forecast de Redes → Reporte Data se calcula por
+    // agencia sobre las filas crudas, y se reutiliza tal cual para que el
+    // número de gerencia sea el MISMO que ve el equipo de pauta.
+    inversionCrudaSql: `
+      SELECT fecha::date AS fecha, origen, monto_usd
+      FROM public.novonet_inversion_redes
+      WHERE fecha::date BETWEEN $1::date AND $2::date`,
   },
   velsa: {
     nombre: 'Velsa',
@@ -86,6 +94,13 @@ const SERIES = {
       FROM public.velsa_inversion_redes
       WHERE fecha::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY 1`,
+    // En Velsa la columna se llama canal_publicidad, no origen (asimetría
+    // heredada de las dos tablas). Se aliasa para que el forecast compartido
+    // reciba siempre la misma forma.
+    inversionCrudaSql: `
+      SELECT fecha::date AS fecha, canal_publicidad AS origen, monto_usd
+      FROM public.velsa_inversion_redes
+      WHERE fecha::date BETWEEN $1::date AND $2::date`,
   },
 };
 
@@ -196,6 +211,110 @@ function rangoPrevio({ desde, hasta }) {
   return { desde: iso10(desdePrev), hasta: iso10(hastaPrev), dias };
 }
 
+// ── FORECAST MENSUAL ────────────────────────────────────────────────────────
+// El método es el MISMO que usa Redes → Reporte Data, y a propósito: si
+// gerencia y pauta proyectan distinto, la conversación se va en discutir cuál
+// número vale en vez de qué hacer. La fórmula, en claro:
+//
+//   promedio diario = acumulado ÷ días QUE TIENEN dato (no días transcurridos)
+//   proyección      = promedio diario × días del mes
+//
+// Dividir por días con dato y no por días transcurridos es deliberado: si la
+// pauta se carga con retraso, dividir por los transcurridos hunde el promedio
+// y la proyección sale corta justo cuando más se la mira.
+
+const ultimoDiaMes = (iso) => {
+  const [a, m] = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(a, m, 0)).getUTCDate();
+};
+const mesDe = (iso) => String(iso).slice(0, 7);
+
+/**
+ * Proyecta una métrica de la serie diaria con la fórmula de Reporte Data.
+ * Solo cuentan los días con valor > 0: un día sin cargar no es un día en cero,
+ * es un día sin dato, y meterlo como cero falsea el promedio hacia abajo.
+ */
+function proyectar(dias, campo, diasDelMes) {
+  const conDato = dias.filter(d => Number(d[campo]) > 0);
+  const acumulado = dias.reduce((a, d) => a + Number(d[campo] || 0), 0);
+  if (!conDato.length) return { acumulado: 0, dias_con_datos: 0, promedio_diario: 0, proyeccion_cierre: 0 };
+  const promedio = acumulado / conDato.length;
+  return {
+    acumulado: Number(acumulado.toFixed(2)),
+    dias_con_datos: conDato.length,
+    promedio_diario: Number(promedio.toFixed(2)),
+    proyeccion_cierre: Number((promedio * diasDelMes).toFixed(2)),
+  };
+}
+
+/**
+ * Salud financiera proyectada a fin de mes para una empresa.
+ * Toma SIEMPRE el mes del final del rango: es el mes que está corriendo y
+ * sobre el que todavía se puede decidir algo.
+ */
+function forecastMensual(emp, filasInversion, rangoConsultado, arpu) {
+  if (!emp?.dias?.length) return null;
+
+  const mes = mesDe(rangoConsultado.hasta);
+  const diasDelMes = ultimoDiaMes(rangoConsultado.hasta);
+  const delMes = emp.dias.filter(d => mesDe(d.fecha) === mes);
+  if (!delMes.length) return null;
+
+  const hoyEc = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date());
+  const finMes = `${mes}-${String(diasDelMes).padStart(2, '0')}`;
+  const hoyAcotado = hoyEc < `${mes}-01` ? `${mes}-01` : (hoyEc > finMes ? finMes : hoyEc);
+  const diaHoy = Number(hoyAcotado.slice(-2));
+
+  // Inversión: se delega en la MISMA función que Redes → Reporte Data, sobre
+  // las filas crudas, para que el total coincida hasta el centavo.
+  const porAgencia = construirForecastAgencias(
+    (filasInversion || []).filter(f => mesDe(f.fecha instanceof Date ? iso(f.fecha) : f.fecha) === mes),
+    { desde: `${mes}-01`, hasta: finMes, hoy: hoyAcotado }
+  );
+  const inversion = porAgencia.reduce((a, x) => ({
+    acumulado: a.acumulado + x.inversion_acumulada,
+    proyeccion_cierre: a.proyeccion_cierre + x.proyeccion_cierre,
+  }), { acumulado: 0, proyeccion_cierre: 0 });
+  inversion.acumulado = Number(inversion.acumulado.toFixed(2));
+  inversion.proyeccion_cierre = Number(inversion.proyeccion_cierre.toFixed(2));
+  inversion.por_gastar = Number(Math.max(inversion.proyeccion_cierre - inversion.acumulado, 0).toFixed(2));
+
+  const activas  = proyectar(delMes, 'activas',  diasDelMes);
+  const ingresos = proyectar(delMes, 'ingresos', diasDelMes);
+
+  const cpaProyectado = activas.proyeccion_cierre > 0
+    ? Number((inversion.proyeccion_cierre / activas.proyeccion_cierre).toFixed(2))
+    : null;
+
+  // Sin ARPU no hay plata proyectada, solo volumen. Se devuelve igual el resto:
+  // media respuesta útil es mejor que un null entero.
+  const financiero = (Number.isFinite(arpu) && arpu > 0) ? (() => {
+    const ingresoProyectado = activas.proyeccion_cierre * arpu;
+    return {
+      arpu,
+      ingreso_proyectado: Number(ingresoProyectado.toFixed(2)),
+      margen_proyectado: Number((ingresoProyectado - inversion.proyeccion_cierre).toFixed(2)),
+      rentable: ingresoProyectado >= inversion.proyeccion_cierre,
+      activas_necesarias: Math.ceil(inversion.proyeccion_cierre / arpu),
+      faltan_activas: Math.max(Math.ceil(inversion.proyeccion_cierre / arpu) - Math.round(activas.proyeccion_cierre), 0),
+    };
+  })() : null;
+
+  return {
+    mes,
+    dias_del_mes: diasDelMes,
+    dia_actual: diaHoy,
+    dias_restantes: Math.max(diasDelMes - diaHoy, 0),
+    metodo: 'Promedio de los días CON dato × días del mes (igual que Redes → Reporte Data).',
+    inversion,
+    activas,
+    ingresos,
+    cpa_proyectado: cpaProyectado,
+    financiero,
+    por_agencia: porAgencia,
+  };
+}
+
 async function getReporteGerencial(req, res) {
   const r = rango(req);
   if (!r) return res.status(400).json({ success: false, error: 'Rango de fechas inválido (máximo 400 días)' });
@@ -208,11 +327,26 @@ async function getReporteGerencial(req, res) {
 
   try {
     const prev = rangoPrevio(r);
-    const [novonet, velsa, novonetPrev, velsaPrev] = await Promise.all([
+    // Las filas crudas de inversión alimentan el forecast por agencia. Si la
+    // consulta falla, el reporte sale igual: el forecast es un extra, no puede
+    // tumbar la pantalla entera.
+    const inversionCruda = async (clave) => {
+      try {
+        const { rows } = await pool.query(SERIES[clave].inversionCrudaSql, [r.desde, r.hasta]);
+        return rows;
+      } catch (e) {
+        console.warn(`[ReporteGerencial] sin inversión cruda de ${clave}:`, e.message);
+        return [];
+      }
+    };
+
+    const [novonet, velsa, novonetPrev, velsaPrev, invNovonet, invVelsa] = await Promise.all([
       serieEmpresa('novonet', r),
       serieEmpresa('velsa', r),
       serieEmpresa('novonet', prev),
       serieEmpresa('velsa', prev),
+      inversionCruda('novonet'),
+      inversionCruda('velsa'),
     ]);
 
     // Comparativa con el periodo anterior + hacia donde iba dentro del periodo.
@@ -266,8 +400,10 @@ async function getReporteGerencial(req, res) {
         'así la inversión de un día se compara contra las ventas que esa inversión generó. ' +
         'Los días más recientes muestran un CPA alto porque sus ventas todavía no maduran.',
       empresas: [
-        { ...conTendencia(novonet, novonetPrev), equilibrio: equilibrio(novonet) },
-        { ...conTendencia(velsa,   velsaPrev),   equilibrio: equilibrio(velsa) },
+        { ...conTendencia(novonet, novonetPrev), equilibrio: equilibrio(novonet),
+          forecast: forecastMensual(novonet, invNovonet, r, arpu) },
+        { ...conTendencia(velsa,   velsaPrev),   equilibrio: equilibrio(velsa),
+          forecast: forecastMensual(velsa,   invVelsa,   r, arpu) },
       ],
     });
   } catch (err) {
@@ -276,4 +412,4 @@ async function getReporteGerencial(req, res) {
   }
 }
 
-module.exports = { getReporteGerencial, SERIES };
+module.exports = { getReporteGerencial, SERIES, forecastMensual, proyectar };

@@ -41,8 +41,23 @@ async function pedir(ruta, { method = 'GET', body, blob = false, form } = {}) {
   return data;
 }
 
+/** Arma el query string dejando fuera lo vacío, para no mandar ?empresa=&q= */
+const consulta = (obj = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined && v !== null && v !== '') p.set(k, v);
+  }
+  const s = p.toString();
+  return s ? `?${s}` : '';
+};
+
 export const hojasApi = {
-  listar:    (archivadas) => pedir(archivadas ? '/?archivadas=true' : '/'),
+  // Los filtros se resuelven en el servidor: filtrar en el navegador solo
+  // funciona mientras quepan todos los archivos en memoria.
+  listar:    (filtros = {}) => pedir(`/${consulta(filtros)}`),
+  filtros:   ()             => pedir('/filtros'),
+  auditoria: (f = {})       => pedir(`/auditoria${consulta(f)}`),
+  auditoriaCsv: (f = {})    => pedir(`/auditoria${consulta({ ...f, formato: 'csv' })}`, { blob: true }),
   crear:     (body)       => pedir('/', { method: 'POST', body }),
   detalle:   (id)         => pedir(`/${id}`),
   editar:    (id, body)   => pedir(`/${id}`, { method: 'PATCH', body }),

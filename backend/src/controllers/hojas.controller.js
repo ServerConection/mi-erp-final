@@ -30,10 +30,43 @@ exports.listar = async (req, res) => {
     const esAdmin = perfil === 'ADMINISTRADOR';
     const incluirArchivadas = esAdmin && req.query.archivadas === 'true';
 
+    // ── Segmentación ────────────────────────────────────────────────────────
+    // Antes la lista salía entera y el único filtro era un buscador de texto
+    // en el navegador. Con decenas de archivos eso es "todo contra todo": no
+    // se puede responder "qué se creó esta semana" ni "qué subió tal persona".
+    // Los filtros van en SQL, no en el cliente, para que sirvan igual cuando
+    // haya cientos de archivos.
+    const cond = ['(h.activo OR $3::boolean)', '($2::boolean OR h.creado_por = $1 OR p.id IS NOT NULL)'];
+    const params = [usuarioId, esAdmin, incluirArchivadas];
+    const agregar = (sql, valor) => { params.push(valor); cond.push(sql.replace('$?', '$' + params.length)); };
+
+    // Sobre qué fecha filtrar: cuándo se creó (default) o cuándo se tocó por última vez.
+    const campo = req.query.campoFecha === 'modificacion' ? 'h.updated_at' : 'h.created_at';
+    if (req.query.desde) agregar(`${campo} >= $?::date`, req.query.desde);
+    // 'hasta' es inclusive: el usuario que pone el día de hoy espera ver lo de hoy.
+    if (req.query.hasta) agregar(`${campo} < ($?::date + INTERVAL '1 day')`, req.query.hasta);
+
+    const creadoPor = parseInt(req.query.creadoPor, 10);
+    if (Number.isInteger(creadoPor) && creadoPor > 0) agregar('h.creado_por = $?::int', creadoPor);
+
+    if (req.query.empresa) agregar('UPPER(h.empresa) = UPPER($?)', String(req.query.empresa).trim());
+
+    // El buscador de texto pasa al servidor: filtrar en el navegador solo
+    // funciona mientras quepan todos los archivos en memoria.
+    const q = (req.query.q || '').trim();
+    if (q) {
+      params.push(`%${q}%`);
+      cond.push(`(h.nombre ILIKE $${params.length} OR h.descripcion ILIKE $${params.length})`);
+    }
+
     const { rows } = await pool.query(
       `SELECT h.id, h.nombre, h.descripcion, h.empresa, h.color,
               h.creado_por, h.activo, h.created_at, h.updated_at,
+              h.archivado_at,
               u.usuario, u.nombres, u.apellidos,
+              ua.usuario AS arch_usuario, ua.nombres AS arch_nombres, ua.apellidos AS arch_apellidos,
+              ult.usuario AS ult_usuario, ult.nombres AS ult_nombres, ult.apellidos AS ult_apellidos,
+              ult.fecha   AS ult_fecha,   ult.accion  AS ult_accion,
               CASE
                 WHEN $2::boolean          THEN 'ADMIN'
                 WHEN h.creado_por = $1    THEN 'DUENO'
@@ -44,12 +77,23 @@ exports.listar = async (req, res) => {
               (SELECT COUNT(*) FROM hoj_permisos pp WHERE pp.hoja_id = h.id)            AS total_compartidos
          FROM hoj_hojas h
          JOIN usuarios  u ON u.id = h.creado_por
+         LEFT JOIN usuarios ua ON ua.id = h.archivado_por
          LEFT JOIN hoj_permisos p
                 ON p.hoja_id = h.id AND p.usuario_id = $1
-        WHERE (h.activo OR $3::boolean)
-          AND ($2::boolean OR h.creado_por = $1 OR p.id IS NOT NULL)
+         -- Última acción registrada sobre la hoja: es lo que responde
+         -- "quién la tocó por última vez y cuándo", que updated_at por sí solo no dice.
+         LEFT JOIN LATERAL (
+              SELECT uu.usuario, uu.nombres, uu.apellidos,
+                     hh.created_at AS fecha, hh.accion
+                FROM hoj_historial hh
+                LEFT JOIN usuarios uu ON uu.id = hh.usuario_id
+               WHERE hh.hoja_id = h.id
+               ORDER BY hh.created_at DESC
+               LIMIT 1
+         ) ult ON true
+        WHERE ${cond.join('\n          AND ')}
         ORDER BY h.updated_at DESC`,
-      [usuarioId, esAdmin, incluirArchivadas]
+      params
     );
 
     res.json({
@@ -64,17 +108,191 @@ exports.listar = async (req, res) => {
         activo:            r.activo,
         nivel:             r.nivel,
         creador:           nombreCompleto(r),
+        creadorId:         r.creado_por,
         esMio:             r.creado_por === usuarioId,
         totalFilas:        Number(r.total_filas),
         totalColumnas:     Number(r.total_columnas),
         totalCompartidos:  Number(r.total_compartidos),
         createdAt:         r.created_at,
         updatedAt:         r.updated_at,
+        // Trazabilidad visible en la tarjeta, sin tener que abrir el archivo.
+        ultimaAccion:      r.ult_accion || null,
+        modificadoPor:     r.ult_usuario
+          ? ([r.ult_nombres, r.ult_apellidos].filter(Boolean).join(' ').trim() || r.ult_usuario)
+          : null,
+        modificadoAt:      r.ult_fecha || null,
+        archivadoPor:      r.arch_usuario
+          ? ([r.arch_nombres, r.arch_apellidos].filter(Boolean).join(' ').trim() || r.arch_usuario)
+          : null,
+        archivadoAt:       r.archivado_at || null,
       })),
     });
   } catch (error) {
     console.error('[hojas.listar]', error);
     res.status(500).json({ success: false, error: 'No se pudo cargar la lista de archivos' });
+  }
+};
+
+/**
+ * GET /api/hojas/filtros
+ * Valores reales para los desplegables del panel: solo aparecen las personas y
+ * las empresas que de verdad tienen archivos que ESTE usuario puede ver. Un
+ * desplegable con gente que no tiene archivos no ayuda, y uno con archivos
+ * ajenos filtra información.
+ */
+exports.opcionesFiltro = async (req, res) => {
+  try {
+    const { id: usuarioId, perfil } = req.user;
+    const esAdmin = perfil === 'ADMINISTRADOR';
+    const params = [usuarioId, esAdmin];
+
+    const [creadores, empresas] = await Promise.all([
+      pool.query(
+        `SELECT DISTINCT u.id, u.usuario, u.nombres, u.apellidos
+           FROM hoj_hojas h
+           JOIN usuarios u ON u.id = h.creado_por
+           LEFT JOIN hoj_permisos p ON p.hoja_id = h.id AND p.usuario_id = $1
+          WHERE h.activo
+            AND ($2::boolean OR h.creado_por = $1 OR p.id IS NOT NULL)`,
+        params
+      ),
+      pool.query(
+        `SELECT DISTINCT h.empresa
+           FROM hoj_hojas h
+           LEFT JOIN hoj_permisos p ON p.hoja_id = h.id AND p.usuario_id = $1
+          WHERE h.activo
+            AND ($2::boolean OR h.creado_por = $1 OR p.id IS NOT NULL)
+            AND h.empresa IS NOT NULL AND h.empresa <> ''
+          ORDER BY 1`,
+        params
+      ),
+    ]);
+
+    res.json({
+      success: true,
+      creadores: creadores.rows
+        .map(r => ({ id: r.id, nombre: nombreCompleto(r) }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      empresas: empresas.rows.map(r => r.empresa),
+    });
+  } catch (error) {
+    console.error('[hojas.opcionesFiltro]', error);
+    res.status(500).json({ success: false, error: 'No se pudieron cargar los filtros' });
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AUDITORÍA GENERAL
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Etiquetas legibles. La bitácora guarda códigos; una pantalla para personas
+// no debería mostrar "CELDA_EDITADA".
+const ETIQUETA_ACCION = {
+  HOJA_CREADA:       'Creó el archivo',
+  HOJA_EDITADA:      'Editó los datos del archivo',
+  HOJA_ARCHIVADA:    'Archivó el archivo',
+  HOJA_DESARCHIVADA: 'Restauró el archivo',
+  COLUMNA_CREADA:    'Agregó una columna',
+  COLUMNA_EDITADA:   'Editó una columna',
+  COLUMNA_ELIMINADA: 'Eliminó una columna',
+  FILA_CREADA:       'Agregó una fila',
+  FILA_ELIMINADA:    'Eliminó una fila',
+  CELDA_EDITADA:     'Editó una celda',
+  PERMISO_OTORGADO:  'Dio acceso a alguien',
+  PERMISO_REVOCADO:  'Quitó el acceso a alguien',
+  IMPORTACION:       'Importó un Excel',
+  EXPORTACION:       'Descargó el archivo',
+};
+
+/**
+ * GET /api/hojas/auditoria
+ * Bitácora CRUZANDO todos los archivos: quién hizo qué y cuándo.
+ *
+ * Solo aparecen los archivos que este usuario ya podía abrir — el panel no
+ * puede convertirse en una puerta trasera para ver movimientos de archivos
+ * ajenos. El ADMINISTRADOR ve todo, igual que en el resto del módulo.
+ *
+ * Con ?formato=csv devuelve el mismo resultado como archivo descargable.
+ */
+exports.auditoria = async (req, res) => {
+  try {
+    const { id: usuarioId, perfil } = req.user;
+    const esAdmin = perfil === 'ADMINISTRADOR';
+
+    const cond = ['($2::boolean OR h.creado_por = $1 OR p.id IS NOT NULL)'];
+    const params = [usuarioId, esAdmin];
+    const agregar = (sql, valor) => { params.push(valor); cond.push(sql.replace('$?', '$' + params.length)); };
+
+    if (req.query.desde) agregar('hh.created_at >= $?::date', req.query.desde);
+    if (req.query.hasta) agregar("hh.created_at < ($?::date + INTERVAL '1 day')", req.query.hasta);
+
+    const quien = parseInt(req.query.usuarioId, 10);
+    if (Number.isInteger(quien) && quien > 0) agregar('hh.usuario_id = $?::int', quien);
+
+    const hojaId = parseInt(req.query.hojaId, 10);
+    if (Number.isInteger(hojaId) && hojaId > 0) agregar('hh.hoja_id = $?::int', hojaId);
+
+    // Solo se aceptan acciones conocidas: evita que un parámetro raro cuele
+    // texto en la consulta y de paso avisa si el filtro está mal escrito.
+    if (req.query.accion && ETIQUETA_ACCION[req.query.accion]) agregar('hh.accion = $?', req.query.accion);
+
+    const csv = req.query.formato === 'csv';
+    const limite = csv ? 5000 : Math.min(parseInt(req.query.limite, 10) || 100, 500);
+    const desplazamiento = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    const sql = `
+      SELECT hh.id, hh.accion, hh.created_at, hh.valor_anterior, hh.valor_nuevo,
+             hh.hoja_id, h.nombre AS hoja_nombre, h.empresa,
+             c.nombre AS columna_nombre,
+             u.usuario, u.nombres, u.apellidos
+        FROM hoj_historial hh
+        JOIN hoj_hojas h ON h.id = hh.hoja_id
+        LEFT JOIN hoj_permisos p ON p.hoja_id = h.id AND p.usuario_id = $1
+        LEFT JOIN usuarios     u ON u.id = hh.usuario_id
+        LEFT JOIN hoj_columnas c ON c.id = hh.columna_id
+       WHERE ${cond.join('\n         AND ')}
+       ORDER BY hh.created_at DESC
+       LIMIT ${limite} OFFSET ${desplazamiento}`;
+
+    const { rows } = await pool.query(sql, params);
+
+    const registros = rows.map(r => ({
+      id:            r.id,
+      fecha:         r.created_at,
+      usuario:       [r.nombres, r.apellidos].filter(Boolean).join(' ').trim() || r.usuario || 'Sistema',
+      accion:        r.accion,
+      accionTexto:   ETIQUETA_ACCION[r.accion] || r.accion,
+      hojaId:        r.hoja_id,
+      archivo:       r.hoja_nombre,
+      empresa:       r.empresa,
+      columna:       r.columna_nombre,
+      valorAnterior: r.valor_anterior,
+      valorNuevo:    r.valor_nuevo,
+    }));
+
+    if (csv) {
+      const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const cabecera = ['Fecha', 'Usuario', 'Accion', 'Archivo', 'Empresa', 'Columna', 'Valor anterior', 'Valor nuevo'];
+      const lineas = registros.map(r => [
+        new Date(r.fecha).toISOString(), r.usuario, r.accionTexto,
+        r.archivo, r.empresa, r.columna, r.valorAnterior, r.valorNuevo,
+      ].map(escapar).join(';'));
+      // BOM para que Excel en español abra los acentos bien.
+      const contenido = '\uFEFF' + [cabecera.map(escapar).join(';'), ...lineas].join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="auditoria-archivos.csv"');
+      return res.send(contenido);
+    }
+
+    res.json({
+      success: true,
+      data: registros,
+      acciones: Object.entries(ETIQUETA_ACCION).map(([valor, texto]) => ({ valor, texto })),
+      hayMas: registros.length === limite,
+    });
+  } catch (error) {
+    console.error('[hojas.auditoria]', error);
+    res.status(500).json({ success: false, error: 'No se pudo cargar la auditoría' });
   }
 };
 
@@ -195,10 +413,24 @@ exports.archivar = async (req, res) => {
   try {
     const archivar = req.body.archivar !== false;
 
+    // Archivar saca el archivo del panel de todo el mundo y hasta ahora no
+    // dejaba rastro de quién lo hizo: quedaba como si se hubiera esfumado.
     await pool.query(
-      'UPDATE hoj_hojas SET activo = $2, updated_at = now() WHERE id = $1',
-      [req.hoja.id, !archivar]
+      `UPDATE hoj_hojas
+          SET activo        = $2,
+              updated_at    = now(),
+              archivado_por = CASE WHEN $3::boolean THEN $4::int ELSE NULL END,
+              archivado_at  = CASE WHEN $3::boolean THEN now()   ELSE NULL END
+        WHERE id = $1`,
+      [req.hoja.id, !archivar, archivar, req.user.id]
     );
+
+    await registrarHistorial({
+      hojaId: req.hoja.id,
+      accion: archivar ? 'HOJA_ARCHIVADA' : 'HOJA_DESARCHIVADA',
+      valorNuevo: req.hoja.nombre,
+      usuarioId: req.user.id,
+    });
 
     emitirAHoja(req.hoja.id, 'hoja:archivada', { hojaId: req.hoja.id, archivada: archivar });
     res.json({ success: true, data: { id: req.hoja.id, activo: !archivar } });

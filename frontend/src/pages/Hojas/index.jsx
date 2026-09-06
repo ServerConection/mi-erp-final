@@ -8,11 +8,22 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, FileSpreadsheet, Plus, Search, Users } from 'lucide-react';
+import { Archive, FileSpreadsheet, History, Plus, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { hojasApi } from '../../hooks/useHojas';
 import { Aviso, Cargando, ErrorBox, NivelBadge, Vacio, tiempoRelativo } from './ui';
 import HojaEditor from './HojaEditor';
 import NuevaHojaModal from './NuevaHojaModal';
+import AuditoriaPanel from './AuditoriaPanel';
+
+const SIN_FILTROS = { q: '', desde: '', hasta: '', creadoPor: '', empresa: '', campoFecha: 'creacion' };
+
+/** Fecha corta y legible: "5 sept 2026, 18:40". */
+export const fechaHora = (v) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  return d.toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' })
+    + ', ' + d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function ArchivosCompartidos() {
   const [hojas, setHojas]       = useState([]);
@@ -21,7 +32,10 @@ export default function ArchivosCompartidos() {
   const [error, setError]       = useState(null);
   const [abierta, setAbierta]   = useState(null);   // id de la hoja en el editor
   const [nueva, setNueva]       = useState(false);
-  const [busqueda, setBusqueda] = useState('');
+  const [filtros, setFiltros]   = useState(SIN_FILTROS);
+  const [opciones, setOpciones]  = useState({ creadores: [], empresas: [] });
+  const [verFiltros, setVerFiltros] = useState(false);
+  const [auditoria, setAuditoria]   = useState(false);
   const [aviso, setAviso]       = useState(null);
 
   const notificar = (mensaje, tipo = 'info') => setAviso({ mensaje, tipo });
@@ -30,7 +44,7 @@ export default function ArchivosCompartidos() {
     setCargando(true);
     setError(null);
     try {
-      const r = await hojasApi.listar();
+      const r = await hojasApi.listar(filtros);
       setHojas(r.data);
       setPuede(r.puedeCrear);
     } catch (e) {
@@ -38,9 +52,25 @@ export default function ArchivosCompartidos() {
     } finally {
       setCargando(false);
     }
+  }, [filtros]);
+
+  // Se espera un momento antes de consultar: escribir en el buscador no debe
+  // disparar una consulta por cada tecla.
+  useEffect(() => {
+    const t = setTimeout(() => { cargar(); }, filtros.q ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [cargar, filtros.q]);
+
+  // Los desplegables solo muestran personas y empresas que de verdad tienen
+  // archivos visibles para este usuario.
+  useEffect(() => {
+    hojasApi.filtros().then(r => setOpciones({ creadores: r.creadores || [], empresas: r.empresas || [] }))
+      .catch(() => { /* sin desplegables se puede seguir usando el resto */ });
   }, []);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  const cambiar = (campo, valor) => setFiltros(f => ({ ...f, [campo]: valor }));
+  const activos = Object.entries(filtros)
+    .filter(([k, v]) => v && k !== 'campoFecha').length;
 
   // Al volver del editor se recarga: pudieron cambiar filas, nombre o accesos.
   const volver = useCallback(() => { setAbierta(null); cargar(); }, [cargar]);
@@ -53,10 +83,13 @@ export default function ArchivosCompartidos() {
     );
   }
 
-  const q = busqueda.trim().toLowerCase();
-  const visibles = q
-    ? hojas.filter(h => h.nombre.toLowerCase().includes(q) || (h.descripcion || '').toLowerCase().includes(q))
-    : hojas;
+  if (auditoria) {
+    return <AuditoriaPanel onVolver={() => setAuditoria(false)} />;
+  }
+
+  // El filtrado ocurre en el servidor: aquí ya llega lo que corresponde.
+  const visibles = hojas;
+  const q = filtros.q.trim();
 
   const mios      = visibles.filter(h => h.esMio);
   const compartidos = visibles.filter(h => !h.esMio);
@@ -79,12 +112,36 @@ export default function ArchivosCompartidos() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
+              value={filtros.q}
+              onChange={(e) => cambiar('q', e.target.value)}
               placeholder="Buscar archivo…"
               className="w-48 rounded-md border border-slate-200 py-2 pl-8 pr-3 text-sm outline-none focus:border-blue-400"
             />
           </div>
+
+          <button
+            onClick={() => setVerFiltros(v => !v)}
+            title="Filtrar por fecha, por quién lo creó o por empresa"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition ${
+              activos > 0 || verFiltros
+                ? 'border-blue-300 bg-blue-50 text-blue-700'
+                : 'border-slate-200 text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filtros
+            {activos > 0 && (
+              <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{activos}</span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setAuditoria(true)}
+            title="Ver quién hizo qué y cuándo, en todos los archivos"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 transition hover:border-slate-300"
+          >
+            <History className="w-4 h-4" /> Auditoría
+          </button>
 
           {puedeCrear && (
             <button
@@ -97,15 +154,25 @@ export default function ArchivosCompartidos() {
         </div>
       </div>
 
+      {verFiltros && (
+        <BarraFiltros
+          filtros={filtros}
+          opciones={opciones}
+          onCambiar={cambiar}
+          onLimpiar={() => setFiltros(SIN_FILTROS)}
+          activos={activos}
+        />
+      )}
+
       {cargando ? <Cargando texto="Cargando tus archivos…" /> : error ? (
         <ErrorBox error={error} onReintentar={cargar} />
       ) : visibles.length === 0 ? (
         <Vacio
-          titulo={q ? 'Ningún archivo coincide' : 'Todavía no tienes archivos compartidos'}
-          texto={q ? 'Prueba con otro término.' : puedeCrear
+          titulo={q || activos > 0 ? 'Ningún archivo coincide' : 'Todavía no tienes archivos compartidos'}
+          texto={q || activos > 0 ? 'Prueba cambiando los filtros o el término de búsqueda.' : puedeCrear
             ? 'Crea uno y comparte el acceso con tu equipo: todos podrán escribir al mismo tiempo.'
             : 'Cuando un supervisor te comparta un archivo, aparecerá aquí.'}
-          accion={!q && puedeCrear && (
+          accion={!q && activos === 0 && puedeCrear && (
             <button onClick={() => setNueva(true)} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               Crear el primero
             </button>
@@ -176,9 +243,102 @@ function Tarjeta({ hoja, onAbrir }) {
         )}
       </div>
 
-      <p className="mt-2 text-[11px] text-slate-400">
-        {hoja.esMio ? 'Tuyo' : `De ${hoja.creador}`} · {tiempoRelativo(hoja.updatedAt)}
-      </p>
+      {/* Trazabilidad a la vista: quién lo creó y quién fue el último en
+          tocarlo. Antes había que abrir el archivo y mirar el historial. */}
+      <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
+        <p title={`Creado el ${fechaHora(hoja.createdAt)}`} className="cursor-help truncate">
+          Creado por <span className="text-slate-500">{hoja.esMio ? 'ti' : hoja.creador}</span>
+          {' · '}{fechaHora(hoja.createdAt)}
+        </p>
+        <p
+          title={hoja.modificadoAt ? `Última acción: ${fechaHora(hoja.modificadoAt)}` : 'Sin cambios registrados'}
+          className="cursor-help truncate"
+        >
+          {hoja.modificadoPor
+            ? <>Modificado por <span className="text-slate-500">{hoja.modificadoPor}</span> · {tiempoRelativo(hoja.modificadoAt)}</>
+            : <>Sin cambios desde su creación</>}
+        </p>
+        {!hoja.activo && hoja.archivadoPor && (
+          <p className="truncate text-amber-600" title={fechaHora(hoja.archivadoAt)}>
+            Archivado por {hoja.archivadoPor} · {tiempoRelativo(hoja.archivadoAt)}
+          </p>
+        )}
+      </div>
     </button>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FILTROS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function BarraFiltros({ filtros, opciones, onCambiar, onLimpiar, activos }) {
+  return (
+    <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <Campo etiqueta="Fecha de">
+          <select
+            value={filtros.campoFecha}
+            onChange={(e) => onCambiar('campoFecha', e.target.value)}
+            className="w-36 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+          >
+            <option value="creacion">Creación</option>
+            <option value="modificacion">Última modificación</option>
+          </select>
+        </Campo>
+
+        <Campo etiqueta="Desde">
+          <input type="date" value={filtros.desde} onChange={(e) => onCambiar('desde', e.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400" />
+        </Campo>
+
+        <Campo etiqueta="Hasta">
+          <input type="date" value={filtros.hasta} onChange={(e) => onCambiar('hasta', e.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400" />
+        </Campo>
+
+        <Campo etiqueta="Creado por">
+          <select
+            value={filtros.creadoPor}
+            onChange={(e) => onCambiar('creadoPor', e.target.value)}
+            className="w-44 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+          >
+            <option value="">Cualquiera</option>
+            {opciones.creadores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </Campo>
+
+        {opciones.empresas.length > 0 && (
+          <Campo etiqueta="Empresa">
+            <select
+              value={filtros.empresa}
+              onChange={(e) => onCambiar('empresa', e.target.value)}
+              className="w-36 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+            >
+              <option value="">Todas</option>
+              {opciones.empresas.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </Campo>
+        )}
+
+        {activos > 0 && (
+          <button
+            onClick={onLimpiar}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:text-slate-700"
+          >
+            <X className="w-3.5 h-3.5" /> Limpiar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Campo({ etiqueta, children }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{etiqueta}</span>
+      {children}
+    </label>
   );
 }

@@ -73,12 +73,20 @@ export default function HojaEditor({ hojaId, onVolver }) {
 
   const { avisarFoco } = useSocketHoja(hojaId, {
     // Un cambio que YO hice ya está pintado: ignoro el eco de mi propio evento.
-    'hoja:celda': ({ filaId, columnaId, valor, por }) => {
+    'hoja:celda': ({ filaId, columnaId, valor, por, ts }) => {
       if (por === yo) return;
       setDatos(d => d && ({
         ...d,
         filas: d.filas.map(f =>
-          f.id === filaId ? { ...f, valores: { ...f.valores, [columnaId]: valor } } : f
+          f.id === filaId
+            ? {
+                ...f,
+                valores: { ...f.valores, [columnaId]: valor },
+                // El rastro se actualiza junto con el valor: si no, el tooltip
+                // seguiría atribuyendo el dato a quien lo escribió antes.
+                rastro: { ...f.rastro, [columnaId]: { por, at: ts || new Date().toISOString() } },
+              }
+            : f
         ),
       }));
     },
@@ -153,7 +161,13 @@ export default function HojaEditor({ hojaId, onVolver }) {
       return {
         ...d,
         filas: d.filas.map(f =>
-          f.id === filaId ? { ...f, valores: { ...f.valores, [columnaId]: valor } } : f
+          f.id === filaId
+            ? {
+                ...f,
+                valores: { ...f.valores, [columnaId]: valor },
+                rastro: { ...f.rastro, [columnaId]: { por: yo, at: new Date().toISOString() } },
+              }
+            : f
         ),
       };
     });
@@ -414,6 +428,7 @@ export default function HojaEditor({ hojaId, onVolver }) {
                           seleccionada={activa}
                           editando={enEdicion}
                           focoAjeno={focosAjenos[`${fila.id}:${col.id}`]}
+                          rastro={fila.rastro?.[col.id]}
                           onSeleccionar={() => setSeleccion({ filaId: fila.id, columnaId: col.id })}
                           onEmpezarEdicion={() => { setSeleccion({ filaId: fila.id, columnaId: col.id }); setEditando({ filaId: fila.id, columnaId: col.id }); }}
                           onCambio={(v) => guardarCelda(fila.id, col.id, v)}

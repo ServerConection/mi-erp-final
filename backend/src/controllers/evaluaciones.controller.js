@@ -163,6 +163,7 @@ exports.listar = async (req, res) => {
     res.json({
       success: true,
       puedeCrear: req.puedeCrearEvaluaciones === true,
+      esAdministrador: esAdmin,
       data: rows.map(r => ({
         id: r.id, titulo: r.titulo, moduloTema: r.modulo_tema, empresa: r.empresa,
         notaMinima: r.nota_minima, tiempoLimiteMin: r.tiempo_limite_min, activa: r.activa, createdAt: r.created_at,
@@ -206,6 +207,35 @@ exports.misEvaluaciones = async (req, res) => {
   } catch (error) {
     console.error('[evaluaciones.misEvaluaciones]', error);
     res.status(500).json({ success: false, error: 'No se pudieron cargar tus evaluaciones' });
+  }
+};
+
+/**
+ * DELETE /api/evaluaciones/:evaluacionId
+ * Borra la evaluación y, en cascada, todos sus intentos. Solo ADMINISTRADOR
+ * (lo garantiza el middleware `soloAdministrador` en las rutas).
+ * Para "sacarla de circulación" sin perder el historial está `archivar`.
+ */
+exports.eliminar = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM eva_intentos WHERE evaluacion_id = $1`,
+      [req.evaluacion.id]
+    );
+    const intentosBorrados = rows[0]?.total || 0;
+
+    // eva_intentos.evaluacion_id tiene ON DELETE CASCADE (ver migración).
+    await pool.query(`DELETE FROM eva_evaluaciones WHERE id = $1`, [req.evaluacion.id]);
+
+    console.warn(
+      `[evaluaciones.eliminar] usuario=${req.user.id} borró evaluacion=${req.evaluacion.id} ` +
+      `("${req.evaluacion.titulo}") con ${intentosBorrados} intento(s)`
+    );
+
+    res.json({ success: true, data: { id: req.evaluacion.id, intentosBorrados } });
+  } catch (error) {
+    console.error('[evaluaciones.eliminar]', error);
+    res.status(500).json({ success: false, error: 'No se pudo eliminar la evaluación' });
   }
 };
 

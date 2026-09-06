@@ -3,12 +3,13 @@
  */
 
 import { useState } from 'react';
-import { Search, Download, X, Loader2, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Search, Download, X, Loader2, ChevronLeft, ChevronRight, FileSpreadsheet, Plus, SlidersHorizontal } from 'lucide-react';
 import { useListaTareas, descargarExcel } from '../../hooks/useTareas';
 import {
-  Cargando, ErrorBox, Vacio, EstadoBadge, PrioridadBadge, TipoBadge,
+  SkeletonTareas, ErrorBox, Vacio, EstadoBadge, PrioridadBadge, TipoBadge,
   AreaChip, Avatar, fmtFechaCorta, EmpresaBadge,
 } from './ui';
+import './tareas.css';
 
 const FILTROS_INICIALES = {
   q: '', estado: '', prioridad: '', tipo: '', area_id: '', empresa: '',
@@ -18,8 +19,8 @@ const FILTROS_INICIALES = {
 };
 
 const selectCls =
-  'rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 bg-white ' +
-  'focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400';
+  'rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 bg-white transition ' +
+  'focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400';
 
 export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
   const [f, setF] = useState(FILTROS_INICIALES);
@@ -51,28 +52,32 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
     <div className="space-y-4">
 
       {/* ── Barra de filtros ──────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+      <div className="tk-fade-up rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex gap-2 flex-wrap items-center">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[220px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={f.q} onChange={e => set('q', e.target.value)}
               placeholder="Buscar por título, descripción o código…"
-              className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400"
+              className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-sm transition
+                         focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400"
             />
           </div>
 
           <button onClick={exportar} disabled={descargando || tareas.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
             {descargando ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Excel
           </button>
 
           <button onClick={onNuevaTarea}
-            className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
-            + Nueva
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:from-blue-700 hover:to-violet-700">
+            <Plus size={15} /> Nueva
           </button>
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <SlidersHorizontal size={13} /> Filtros
         </div>
 
         <div className="flex gap-2 flex-wrap items-center">
@@ -130,7 +135,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
 
           {hayFiltros && (
             <button onClick={() => setF(FILTROS_INICIALES)}
-              className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 transition hover:border-rose-300 hover:text-rose-600">
               <X size={13} /> Limpiar
             </button>
           )}
@@ -139,16 +144,16 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
 
       {/* ── Tabla ─────────────────────────────────────────────────────────── */}
       {error ? <ErrorBox error={error} onReintentar={recargar} />
-      : cargando && tareas.length === 0 ? <Cargando />
+      : cargando && tareas.length === 0 ? <SkeletonTareas cantidad={6} />
       : tareas.length === 0 ? (
         <Vacio titulo="Sin resultados"
                texto="Ninguna tarea coincide con los filtros aplicados."
                icono={FileSpreadsheet} />
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="tk-fade-up rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+          <div className="tk-scroll overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-slate-50/80 border-b border-slate-200">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <Th onClick={() => ordenarPor('titulo')} activo={f.orden_por === 'titulo'} dir={f.orden_dir}>Tarea</Th>
                   <Th onClick={() => ordenarPor('estado')} activo={f.orden_por === 'estado'} dir={f.orden_dir}>Estado</Th>
@@ -162,7 +167,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
               <tbody className="divide-y divide-slate-100">
                 {tareas.map(t => (
                   <tr key={t.id} onClick={() => onAbrirTarea(t.id)}
-                    className={`cursor-pointer hover:bg-slate-50 transition ${t.esta_vencida ? 'bg-rose-50/40' : ''}`}>
+                    className={`tk-fila cursor-pointer hover:bg-blue-50/40 ${t.esta_vencida ? 'bg-rose-50/40' : ''}`}>
                     <td className="px-3 py-2.5 max-w-md">
                       <div className="flex items-center gap-2 mb-0.5">
                         <TipoBadge tipo={t.tipo} />
@@ -170,7 +175,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
                         <span className="text-[10px] font-mono text-slate-400">{t.codigo}</span>
                         {t.es_subtarea && <span className="text-[10px] text-slate-400">↳ subtarea</span>}
                       </div>
-                      <p className="font-medium text-slate-800 truncate">{t.titulo}</p>
+                      <p className="truncate font-medium text-slate-800">{t.titulo}</p>
                     </td>
                     <td className="px-3 py-2.5"><EstadoBadge estado={t.estado} /></td>
                     <td className="px-3 py-2.5"><PrioridadBadge prioridad={t.prioridad} /></td>
@@ -202,7 +207,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
           </div>
 
           {/* ── Paginación ──────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-sm text-slate-500">
+          <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-3 text-sm text-slate-500">
             <span>
               {paginacion.total} tarea{paginacion.total === 1 ? '' : 's'}
               {paginacion.paginas > 1 && ` · página ${paginacion.page} de ${paginacion.paginas}`}
@@ -210,11 +215,11 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
             {paginacion.paginas > 1 && (
               <div className="flex gap-1">
                 <button disabled={f.page <= 1} onClick={() => set('page', f.page - 1)}
-                  className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40">
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 transition hover:bg-slate-50 disabled:opacity-40">
                   <ChevronLeft size={15} />
                 </button>
                 <button disabled={f.page >= paginacion.paginas} onClick={() => set('page', f.page + 1)}
-                  className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40">
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 transition hover:bg-slate-50 disabled:opacity-40">
                   <ChevronRight size={15} />
                 </button>
               </div>
@@ -228,7 +233,7 @@ export default function TareasLista({ catalogos, onAbrirTarea, onNuevaTarea }) {
 
 function Th({ children, onClick, activo, dir }) {
   return (
-    <th className={`px-3 py-2 ${onClick ? 'cursor-pointer select-none hover:text-slate-700' : ''}`}
+    <th className={`px-3 py-2.5 ${onClick ? 'cursor-pointer select-none transition hover:text-blue-600' : ''} ${activo ? 'text-blue-600' : ''}`}
         onClick={onClick}>
       <span className="inline-flex items-center gap-1">
         {children}

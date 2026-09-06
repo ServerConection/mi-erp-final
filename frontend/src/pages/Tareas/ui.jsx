@@ -6,7 +6,8 @@
  */
 
 import { useEffect } from 'react';
-import { AlertTriangle, Inbox, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Inbox, Loader2, RotateCw, X } from 'lucide-react';
+import './tareas.css';
 
 // ── Diccionarios visuales ─────────────────────────────────────────────────────
 
@@ -137,27 +138,25 @@ export function Modal({ title, subtitle, wide, onClose, children, footer }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="tk-fade-in fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} max-h-[92vh] flex flex-col`}
-        style={{ animation: 'tareasFadeUp .18s ease' }}
+        className={`tk-pop bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} max-h-[92vh] flex flex-col`}
       >
-        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50/60 to-violet-50/40 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-slate-800">{title}</h2>
             {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white transition">
             <X size={20} />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-6 py-4 border-t border-slate-100 shrink-0">{footer}</div>}
+        <div className="tk-scroll p-6 overflow-y-auto flex-1">{children}</div>
+        {footer && <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 shrink-0">{footer}</div>}
       </div>
-      <style>{`@keyframes tareasFadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}`}</style>
     </div>
   );
 }
@@ -174,34 +173,69 @@ export function Drawer({ open, onClose, children, width = 'max-w-2xl' }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,.45)' }}
+    <div className="tk-fade-in fixed inset-0 z-50 flex justify-end"
+         style={{ background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(2px)' }}
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`bg-white h-full w-full ${width} shadow-2xl flex flex-col`}
-           style={{ animation: 'tareasSlideIn .2s ease' }}>
+      <div className={`tk-slide-in tk-scroll bg-white h-full w-full ${width} shadow-2xl flex flex-col`}>
         {children}
       </div>
-      <style>{`@keyframes tareasSlideIn{from{transform:translateX(40px);opacity:.6}to{transform:translateX(0);opacity:1}}`}</style>
     </div>
   );
 }
 
 export function Cargando({ texto = 'Cargando…' }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-      <Loader2 size={28} className="animate-spin mb-3" />
+    <div className="tk-fade-in flex flex-col items-center justify-center py-16 text-slate-400">
+      <Loader2 size={28} className="animate-spin mb-3 text-blue-500" />
       <p className="text-sm">{texto}</p>
+    </div>
+  );
+}
+
+/** Esqueleto de tarjetas de tarea — se siente más rápido que un spinner. */
+export function SkeletonTareas({ cantidad = 5 }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: cantidad }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="tk-skeleton mb-2 h-3 w-40 rounded" />
+          <div className="tk-skeleton mb-3 h-4 w-2/3 rounded" />
+          <div className="tk-skeleton h-3 w-1/3 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Esqueleto de KPIs. */
+export function SkeletonKpis({ cantidad = 4 }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {Array.from({ length: cantidad }).map((_, i) => (
+        <div key={i} className="tk-skeleton h-[74px] rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
+/** Barra de progreso con degradado. `valor` de 0 a 100. */
+export function BarraProgreso({ valor, alto = 'h-1.5' }) {
+  const pct = Math.max(0, Math.min(100, Number(valor) || 0));
+  return (
+    <div className={`w-full overflow-hidden rounded-full bg-slate-100 ${alto}`}>
+      <div className={`tk-bar ${alto} rounded-full`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
 
 export function Vacio({ titulo, texto, icono: Icono = Inbox, accion }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
-        <Icono size={26} className="text-slate-300" />
+    <div className="tk-fade-up flex flex-col items-center justify-center py-16 px-6 text-center">
+      <div className="tk-float w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 ring-1 ring-blue-100 flex items-center justify-center mb-4">
+        <Icono size={28} className="text-blue-400" />
       </div>
       <p className="font-semibold text-slate-700">{titulo}</p>
-      {texto && <p className="text-sm text-slate-400 mt-1 max-w-sm">{texto}</p>}
+      {texto && <p className="text-sm text-slate-500 mt-1 max-w-sm">{texto}</p>}
       {accion && <div className="mt-4">{accion}</div>}
     </div>
   );
@@ -210,7 +244,7 @@ export function Vacio({ titulo, texto, icono: Icono = Inbox, accion }) {
 export function ErrorBox({ error, onReintentar }) {
   const sinAcceso = error?.codigo === 'SIN_ACCESO_TAREAS';
   return (
-    <div className="m-6 rounded-xl border border-rose-200 bg-rose-50 p-5">
+    <div className="tk-fade-up m-6 rounded-xl border border-rose-200 bg-rose-50 p-5">
       <div className="flex gap-3">
         <AlertTriangle size={20} className="text-rose-500 shrink-0 mt-0.5" />
         <div>
@@ -220,8 +254,8 @@ export function ErrorBox({ error, onReintentar }) {
           <p className="text-sm text-rose-700 mt-1">{error?.message || 'Error desconocido'}</p>
           {onReintentar && !sinAcceso && (
             <button onClick={onReintentar}
-              className="mt-3 text-sm font-medium text-rose-700 underline hover:text-rose-900">
-              Reintentar
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-white/70 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-white">
+              <RotateCw size={13} /> Reintentar
             </button>
           )}
         </div>

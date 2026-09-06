@@ -41,6 +41,7 @@ export const evaluacionesApi = {
   mias:       () => pedir('/mias'),
   crear:      (body) => pedir('/', { method: 'POST', body }),
   archivar:   (id, activa) => pedir(`/${id}/archivar`, { method: 'PATCH', body: { activa } }),
+  eliminar:   (id) => pedir(`/${id}`, { method: 'DELETE' }),
 
   detalleParaTomar: (id) => pedir(`/${id}`),
   responder:        (id, respuestas) => pedir(`/${id}/responder`, { method: 'POST', body: { respuestas } }),

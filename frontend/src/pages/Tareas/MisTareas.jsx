@@ -4,9 +4,10 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Inbox, CheckCircle2, AlertTriangle, Clock, CalendarDays } from 'lucide-react';
+import { ChevronDown, ChevronRight, Inbox, CheckCircle2, AlertTriangle, Clock, CalendarDays, Plus } from 'lucide-react';
 import { useMisTareas, tareasApi } from '../../hooks/useTareas';
-import { Cargando, ErrorBox, Vacio } from './ui';
+import { ErrorBox, SkeletonKpis, SkeletonTareas, Vacio } from './ui';
+import './tareas.css';
 import TareaCard from './TareaCard';
 
 const GRUPOS = [
@@ -34,7 +35,14 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
     }
   }
 
-  if (cargando && !datos) return <Cargando texto="Cargando tus tareas…" />;
+  if (cargando && !datos) {
+    return (
+      <div className="space-y-5">
+        <SkeletonKpis />
+        <SkeletonTareas />
+      </div>
+    );
+  }
   if (error) return <ErrorBox error={error} onReintentar={recargar} />;
 
   const c = datos?.contadores || {};
@@ -44,7 +52,7 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
     <div className="space-y-5">
 
       {/* ── Contadores ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="tk-stagger grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi label="Vencidas" valor={c.vencidas} tono="rose"    icono={AlertTriangle} />
         <Kpi label="Vence hoy" valor={c.hoy}     tono="amber"   icono={Clock} />
         <Kpi label="Esta semana" valor={c.semana} tono="blue"   icono={CalendarDays} />
@@ -53,23 +61,18 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
 
       {/* ── Selector de rol ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           {[
             { id: 'responsable', label: 'Asignadas a mí' },
             { id: 'solicitante', label: 'Que yo pedí' },
           ].map(o => (
             <button key={o.id} onClick={() => setRol(o.id)}
-              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition
-                ${rol === o.id ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition
+                ${rol === o.id ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               {o.label}
             </button>
           ))}
         </div>
-
-        <button onClick={onNuevaTarea}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-          + Nueva tarea
-        </button>
       </div>
 
       {/* ── Grupos ────────────────────────────────────────────────────────── */}
@@ -81,8 +84,8 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
             : 'Crea una tarea y asígnala a quien corresponda para hacerle seguimiento.'}
           accion={
             <button onClick={onNuevaTarea}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-              Crear la primera
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:from-blue-700 hover:to-violet-700">
+              <Plus size={16} /> Crear la primera
             </button>
           }
         />
@@ -111,7 +114,7 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
                 </button>
 
                 {!cerrado && (
-                  <div className="space-y-2">
+                  <div className="tk-stagger space-y-2">
                     {items.map(t => (
                       <TareaCard key={t.id} tarea={t} yoId={yoId}
                         onAbrir={onAbrirTarea} onCambiarEstado={cambiarEstado} />
@@ -128,22 +131,26 @@ export default function MisTareas({ yoId, onAbrirTarea, onNuevaTarea, refrescarT
 }
 
 const TONOS = {
-  rose:  { caja: 'border-rose-200 bg-rose-50',       texto: 'text-rose-700',    icono: 'text-rose-400'    },
-  amber: { caja: 'border-amber-200 bg-amber-50',     texto: 'text-amber-700',   icono: 'text-amber-400'   },
-  blue:  { caja: 'border-blue-200 bg-blue-50',       texto: 'text-blue-700',    icono: 'text-blue-400'    },
-  slate: { caja: 'border-slate-200 bg-white',        texto: 'text-slate-700',   icono: 'text-slate-300'   },
+  rose:  { caja: 'border-rose-200 bg-rose-50/70',   texto: 'text-rose-700',   pill: 'from-rose-500 to-red-500 shadow-rose-100'      },
+  amber: { caja: 'border-amber-200 bg-amber-50/70', texto: 'text-amber-700',  pill: 'from-amber-500 to-orange-500 shadow-amber-100' },
+  blue:  { caja: 'border-blue-200 bg-blue-50/70',   texto: 'text-blue-700',   pill: 'from-blue-500 to-violet-500 shadow-blue-100'   },
+  slate: { caja: 'border-slate-200 bg-white',       texto: 'text-slate-700',  pill: 'from-slate-500 to-slate-600 shadow-slate-100'  },
 };
 
 function Kpi({ label, valor, tono, icono: Icono }) {
   const t = TONOS[tono] || TONOS.slate;
   const cero = !valor;
   return (
-    <div className={`rounded-xl border p-3.5 ${cero ? 'border-slate-200 bg-white' : t.caja}`}>
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-slate-500">{label}</p>
-        <Icono size={15} className={cero ? 'text-slate-300' : t.icono} />
+    <div className={`tk-card rounded-2xl border p-4 shadow-sm ${cero ? 'border-slate-200 bg-white' : t.caja}`}>
+      <div className="flex items-center gap-3">
+        <div className={`rounded-xl p-2.5 text-white shadow-md ${cero ? 'bg-slate-300' : `bg-gradient-to-br ${t.pill}`}`}>
+          <Icono size={16} />
+        </div>
+        <div className="min-w-0">
+          <p className={`text-2xl font-bold leading-none tabular-nums ${cero ? 'text-slate-300' : t.texto}`}>{valor ?? 0}</p>
+          <p className="mt-1 truncate text-xs text-slate-500">{label}</p>
+        </div>
       </div>
-      <p className={`text-2xl font-bold mt-1 ${cero ? 'text-slate-300' : t.texto}`}>{valor ?? 0}</p>
     </div>
   );
 }

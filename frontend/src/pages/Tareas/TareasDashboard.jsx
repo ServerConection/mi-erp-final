@@ -10,7 +10,8 @@ import {
 } from 'recharts';
 import { TrendingUp, AlertTriangle, Inbox, Clock, Eye } from 'lucide-react';
 import { tareasApi } from '../../hooks/useTareas';
-import { Cargando, ErrorBox, Vacio, EstadoBadge, Avatar, fmtFechaCorta } from './ui';
+import { SkeletonKpis, ErrorBox, Vacio, Avatar, BarraProgreso, fmtFechaCorta } from './ui';
+import './tareas.css';
 
 const COLOR_ESTADO = {
   PENDIENTE:   '#94a3b8',
@@ -36,7 +37,17 @@ export default function TareasDashboard({ onAbrirTarea }) {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  if (cargando && !d) return <Cargando texto="Calculando indicadores…" />;
+  if (cargando && !d) {
+    return (
+      <div className="space-y-5">
+        <SkeletonKpis />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="tk-skeleton h-72 rounded-2xl" />
+          <div className="tk-skeleton h-72 rounded-2xl lg:col-span-2" />
+        </div>
+      </div>
+    );
+  }
   if (error) return <ErrorBox error={error} onReintentar={cargar} />;
   if (!d) return null;
 
@@ -54,7 +65,7 @@ export default function TareasDashboard({ onAbrirTarea }) {
           <Eye size={14} /> Alcance: <strong className="text-slate-700">{d.alcance}</strong>
         </p>
         <select value={meses} onChange={e => setMeses(Number(e.target.value))}
-          className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10">
           <option value={3}>Últimos 3 meses</option>
           <option value={6}>Últimos 6 meses</option>
           <option value={12}>Últimos 12 meses</option>
@@ -62,7 +73,7 @@ export default function TareasDashboard({ onAbrirTarea }) {
       </div>
 
       {/* ── KPIs ──────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="tk-stagger grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi
           label="Cumplimiento a tiempo"
           valor={k.cumplimiento_pct === null ? '—' : `${k.cumplimiento_pct}%`}
@@ -145,7 +156,7 @@ export default function TareasDashboard({ onAbrirTarea }) {
           {d.por_persona.length === 0 ? (
             <p className="text-sm text-slate-400 py-6 text-center">Sin datos.</p>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
+            <div className="tk-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
               {d.por_persona.map(p => {
                 const max = Math.max(...d.por_persona.map(x => x.abiertas), 1);
                 return (
@@ -157,9 +168,8 @@ export default function TareasDashboard({ onAbrirTarea }) {
                         <span className="text-xs text-slate-400 shrink-0">{p.area}</span>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                          <div className="h-full rounded-full bg-blue-500"
-                               style={{ width: `${(p.abiertas / max) * 100}%` }} />
+                        <div className="flex-1">
+                          <BarraProgreso valor={(p.abiertas / max) * 100} alto="h-1.5" />
                         </div>
                         <span className="text-xs font-semibold text-slate-600 w-6 text-right">{p.abiertas}</span>
                         {p.vencidas > 0 && (
@@ -183,10 +193,10 @@ export default function TareasDashboard({ onAbrirTarea }) {
               No hay tareas vencidas.
             </p>
           ) : (
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            <div className="tk-scroll max-h-72 space-y-1.5 overflow-y-auto pr-1">
               {d.top_vencidas.map(t => (
                 <div key={t.id} onClick={() => onAbrirTarea(t.id)}
-                  className="rounded-lg border border-rose-100 bg-rose-50/50 px-3 py-2 cursor-pointer hover:bg-rose-50">
+                  className="tk-card cursor-pointer rounded-xl border border-rose-100 bg-rose-50/50 px-3 py-2.5 hover:border-rose-300 hover:bg-rose-50">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{t.titulo}</p>
@@ -214,31 +224,34 @@ const tooltipStyle = {
 };
 
 const TONOS = {
-  emerald: 'text-emerald-600',
-  blue:    'text-blue-600',
-  amber:   'text-amber-600',
-  rose:    'text-rose-600',
-  slate:   'text-slate-500',
+  emerald: { texto: 'text-emerald-600', pill: 'from-emerald-500 to-teal-500 shadow-emerald-100' },
+  blue:    { texto: 'text-blue-600',    pill: 'from-blue-500 to-violet-500 shadow-blue-100'     },
+  amber:   { texto: 'text-amber-600',   pill: 'from-amber-500 to-orange-500 shadow-amber-100'   },
+  rose:    { texto: 'text-rose-600',    pill: 'from-rose-500 to-red-500 shadow-rose-100'        },
+  slate:   { texto: 'text-slate-600',   pill: 'from-slate-500 to-slate-600 shadow-slate-100'    },
 };
 
 function Kpi({ label, valor, detalle, icono: Icono, tono }) {
+  const t = TONOS[tono] || TONOS.slate;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between">
+    <div className="tk-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium text-slate-500">{label}</p>
-        <Icono size={16} className={TONOS[tono] || TONOS.slate} />
+        <div className={`rounded-xl bg-gradient-to-br ${t.pill} p-2 text-white shadow-md`}>
+          <Icono size={14} />
+        </div>
       </div>
-      <p className={`text-3xl font-bold mt-1.5 ${TONOS[tono] || 'text-slate-800'}`}>{valor}</p>
-      {detalle && <p className="text-xs text-slate-400 mt-1">{detalle}</p>}
+      <p className={`mt-2 text-3xl font-bold tabular-nums ${t.texto}`}>{valor}</p>
+      {detalle && <p className="mt-1 text-xs text-slate-400">{detalle}</p>}
     </div>
   );
 }
 
 function Panel({ titulo, subtitulo, children, className = '' }) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-4 ${className}`}>
+    <div className={`tk-fade-up rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
       <h3 className="text-sm font-bold text-slate-700">{titulo}</h3>
-      {subtitulo && <p className="text-xs text-slate-400 mt-0.5 mb-2">{subtitulo}</p>}
+      {subtitulo && <p className="mt-0.5 mb-2 text-xs text-slate-400">{subtitulo}</p>}
       <div className={subtitulo ? '' : 'mt-3'}>{children}</div>
     </div>
   );

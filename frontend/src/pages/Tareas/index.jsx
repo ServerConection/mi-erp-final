@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { ClipboardList, ListFilter, BarChart3, Bell } from 'lucide-react';
+import { ClipboardList, ListFilter, BarChart3, Bell, CheckCheck, Plus } from 'lucide-react';
 import { useCatalogos, useNotificacionesTareas } from '../../hooks/useTareas';
 import { Cargando, ErrorBox, tiempoRelativo } from './ui';
 import MisTareas from './MisTareas';
@@ -15,6 +15,7 @@ import TareasLista from './TareasLista';
 import TareasDashboard from './TareasDashboard';
 import TareaFormModal from './TareaFormModal';
 import TareaDetallePanel from './TareaDetallePanel';
+import './tareas.css';
 
 export default function Tareas() {
   const { catalogos, cargando, error } = useCatalogos();
@@ -44,85 +45,120 @@ export default function Tareas() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-50">
 
       {/* ── Encabezado ────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Tareas y Acuerdos</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {[yo.area_nombre, yo.cargo_nombre, yo.empresa].filter(Boolean).join(' · ')}
-          </p>
-        </div>
-
-        {/* Campanita */}
-        <div className="relative">
-          <button onClick={() => setPanelNotis(v => !v)}
-            className="relative rounded-lg border border-slate-200 bg-white p-2 hover:bg-slate-50">
-            <Bell size={18} className="text-slate-600" />
-            {noti.noLeidas > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-rose-500
-                               text-white text-[10px] font-bold flex items-center justify-center px-1">
-                {noti.noLeidas > 99 ? '99+' : noti.noLeidas}
-              </span>
-            )}
-          </button>
-
-          {panelNotis && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setPanelNotis(false)} />
-              <div className="absolute right-0 top-full mt-2 z-40 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
-                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
-                  <span className="text-sm font-bold text-slate-700">Notificaciones</span>
-                  {noti.noLeidas > 0 && (
-                    <button onClick={noti.marcarTodas}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                      Marcar todas
-                    </button>
-                  )}
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {noti.items.length === 0 ? (
-                    <p className="px-4 py-8 text-sm text-slate-400 text-center">Sin notificaciones.</p>
-                  ) : noti.items.map(n => (
-                    <button key={n.id}
-                      onClick={() => {
-                        noti.marcarLeida(n.id);
-                        setAbierta(n.tarea_id);
-                        setPanelNotis(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 border-b border-slate-50 hover:bg-slate-50
-                        ${!n.leida ? 'bg-blue-50/40' : ''}`}>
-                      <div className="flex gap-2">
-                        {!n.leida && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
-                        <div className={!n.leida ? '' : 'pl-3.5'}>
-                          <p className="text-sm text-slate-700 leading-snug">{n.mensaje}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{tiempoRelativo(n.created_at)}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+      <div className="tk-hero border-b border-slate-200">
+        <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 p-3 text-white shadow-lg shadow-blue-200">
+                <ClipboardList className="h-6 w-6" />
               </div>
-            </>
-          )}
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">
+                  Tareas y Acuerdos
+                </h1>
+                <p className="text-sm text-slate-500">
+                  {[yo.area_nombre, yo.cargo_nombre, yo.empresa].filter(Boolean).join(' · ') || 'Seguimiento de compromisos'}
+                </p>
+              </div>
+            </div>
+
+            <div className="ml-auto flex items-center gap-3">
+              {/* Pestañas con indicador deslizante */}
+              <div className="relative flex rounded-xl bg-white/70 p-1 ring-1 ring-slate-200 backdrop-blur">
+                <span
+                  className="absolute inset-y-1 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 shadow-md shadow-blue-200 transition-all duration-300"
+                  style={{
+                    width: `calc((100% - 0.5rem) / ${TABS.length})`,
+                    left: `calc(0.25rem + ${Math.max(0, TABS.findIndex(t => t.id === tab))} * (100% - 0.5rem) / ${TABS.length})`,
+                  }}
+                />
+                {TABS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      tab === t.id ? 'text-white' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <t.icono size={15} /> {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Campanita */}
+              <div className="relative">
+                <button
+                  onClick={() => setPanelNotis(v => !v)}
+                  className="relative rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:bg-slate-50"
+                  title="Notificaciones"
+                >
+                  <Bell size={18} className="text-slate-600" />
+                  {noti.noLeidas > 0 && (
+                    <span className="tk-badge-pulse absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                      {noti.noLeidas > 99 ? '99+' : noti.noLeidas}
+                    </span>
+                  )}
+                </button>
+
+                {panelNotis && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setPanelNotis(false)} />
+                    <div className="tk-pop absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                      <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-blue-50/70 to-violet-50/50 px-4 py-3">
+                        <span className="text-sm font-bold text-slate-700">Notificaciones</span>
+                        {noti.noLeidas > 0 && (
+                          <button
+                            onClick={noti.marcarTodas}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 transition hover:text-blue-800"
+                          >
+                            <CheckCheck size={13} /> Marcar todas
+                          </button>
+                        )}
+                      </div>
+                      <div className="tk-scroll max-h-96 overflow-y-auto">
+                        {noti.items.length === 0 ? (
+                          <p className="px-4 py-10 text-center text-sm text-slate-400">Sin notificaciones.</p>
+                        ) : noti.items.map(n => (
+                          <button
+                            key={n.id}
+                            onClick={() => {
+                              noti.marcarLeida(n.id);
+                              setAbierta(n.tarea_id);
+                              setPanelNotis(false);
+                            }}
+                            className={`w-full border-b border-slate-50 px-4 py-2.5 text-left transition hover:bg-slate-50 ${!n.leida ? 'bg-blue-50/40' : ''}`}
+                          >
+                            <div className="flex gap-2">
+                              {!n.leida && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />}
+                              <div className={!n.leida ? '' : 'pl-3.5'}>
+                                <p className="text-sm leading-snug text-slate-700">{n.mensaje}</p>
+                                <p className="mt-0.5 text-xs text-slate-400">{tiempoRelativo(n.created_at)}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Nueva tarea */}
+              <button
+                onClick={() => setForm(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:from-blue-700 hover:to-violet-700"
+              >
+                <Plus size={16} /> Nueva tarea
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── Pestañas ──────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 border-b border-slate-200 mb-5">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition
-              ${tab === t.id
-                ? 'border-blue-600 text-blue-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-            <t.icono size={15} />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
+      <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
       {/* ── Contenido ─────────────────────────────────────────────────────── */}
       <div key={`${tab}-${version}`}>
         {tab === 'mis-tareas' && (
@@ -143,6 +179,8 @@ export default function Tareas() {
         {tab === 'dashboard' && puedeVerDashboard && (
           <TareasDashboard onAbrirTarea={setAbierta} />
         )}
+      </div>
+
       </div>
 
       {/* ── Overlays ──────────────────────────────────────────────────────── */}

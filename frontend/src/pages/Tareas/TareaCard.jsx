@@ -6,9 +6,10 @@
 import { useState } from 'react';
 import { MessageSquare, GitBranch, ChevronDown, Calendar } from 'lucide-react';
 import {
-  EstadoBadge, PrioridadBadge, TipoBadge, AreaChip, VencimientoBadge,
-  Avatar, fmtFechaCorta, ESTADO_UI, EmpresaBadge,
+  PrioridadBadge, TipoBadge, AreaChip, VencimientoBadge,
+  Avatar, fmtFechaCorta, ESTADO_UI, EmpresaBadge, BarraProgreso,
 } from './ui';
+import './tareas.css';
 
 const TRANSICIONES_RAPIDAS = {
   PENDIENTE:   [{ a: 'EN_PROCESO',  texto: 'Iniciar' }],
@@ -47,13 +48,15 @@ export default function TareaCard({ tarea, onAbrir, onCambiarEstado, yoId }) {
 
   return (
     <div
-      className={`group relative rounded-xl border bg-white p-4 transition-all hover:shadow-md
-        ${tarea.esta_vencida ? 'border-rose-200' : 'border-slate-200'}
+      className={`tk-card group relative overflow-hidden rounded-xl border bg-white p-4 shadow-sm hover:shadow-lg
+        ${tarea.esta_vencida ? 'border-rose-200' : 'border-slate-200 hover:border-blue-300'}
         ${cerrada ? 'opacity-70' : ''}`}
     >
-      {/* Franja de prioridad */}
-      {tarea.prioridad === 'URGENTE' && !cerrada && (
-        <span className="absolute left-0 top-4 bottom-4 w-1 rounded-r bg-rose-500" />
+      {/* Franja de prioridad a la izquierda */}
+      {!cerrada && (tarea.prioridad === 'URGENTE' || tarea.prioridad === 'ALTA') && (
+        <span
+          className={`absolute inset-y-0 left-0 w-1 ${tarea.prioridad === 'URGENTE' ? 'bg-rose-500' : 'bg-orange-400'}`}
+        />
       )}
 
       <div className="flex items-start justify-between gap-3">
@@ -66,7 +69,7 @@ export default function TareaCard({ tarea, onAbrir, onCambiarEstado, yoId }) {
             <VencimientoBadge tarea={tarea} />
           </div>
 
-          <h3 className={`font-semibold text-slate-800 leading-snug ${cerrada ? 'line-through text-slate-500' : ''}`}>
+          <h3 className={`font-semibold leading-snug transition-colors ${cerrada ? 'text-slate-500 line-through' : 'text-slate-800 group-hover:text-blue-700'}`}>
             {tarea.titulo}
           </h3>
 
@@ -130,12 +133,12 @@ export default function TareaCard({ tarea, onAbrir, onCambiarEstado, yoId }) {
           {menuAbierto && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuAbierto(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+              <div className="tk-pop absolute right-0 top-full mt-1 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                 {opciones.map(o => (
                   <button
                     key={o.a}
                     onClick={() => ejecutar(o.a)}
-                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-800"
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${ESTADO_UI[o.a]?.punto}`} />
                     {o.texto}
@@ -148,8 +151,9 @@ export default function TareaCard({ tarea, onAbrir, onCambiarEstado, yoId }) {
       </div>
 
       {tarea.progreso > 0 && tarea.progreso < 100 && (
-        <div className="mt-3 h-1 rounded-full bg-slate-100 overflow-hidden">
-          <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${tarea.progreso}%` }} />
+        <div className="mt-3 flex items-center gap-2">
+          <BarraProgreso valor={tarea.progreso} alto="h-1.5" />
+          <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{tarea.progreso}%</span>
         </div>
       )}
     </div>

@@ -48,11 +48,34 @@ function crearClienteBitrix({ request }) {
       LIMIT: limit,
     });
 
+  // Bitrix responde HTTP 400 en imopenlines.crm.chat.getLastId cuando la
+  // negociacion NO tiene chat de Canales Abiertos. Eso es lo NORMAL: la mayoria
+  // de los deals no nace de un chat. Tratarlo como excepcion tenia tres efectos
+  // en cadena, visibles en los logs de produccion como cientos de
+  // "Bitrix HTTP 400 en imopenlines.crm.chat.getLastId" por minuto:
+  //   1. el procesador abortaba ESE lead (catch + errores += 1), asi que el
+  //      lead sin chat nunca se guardaba;
+  //   2. al no guardarse, la siguiente corrida lo volvia a intentar — para
+  //      siempre, cada ciclo, con su llamada a Bitrix incluida;
+  //   3. como errores > 0, la corrida cerraba en 'PARCIAL' y nunca en
+  //      'COMPLETO', y el sincronizador usa ese estado para decidir si ya puede
+  //      pasar al modo incremental (2 dias). Resultado: barrido historico
+  //      completo en cada ciclo, indefinidamente.
+  // Devolviendo null se corta todo: el lead se guarda sin mensajes, la corrida
+  // cierra COMPLETO y el siguiente ciclo ya es incremental.
   async function resolverChatLead(crm, deal) {
-    const last = await request(crm, 'imopenlines.crm.chat.getLastId', {
-      CRM_ENTITY_TYPE: 'deal',
-      CRM_ENTITY: String(deal.ID),
-    });
+    let last;
+    try {
+      last = await request(crm, 'imopenlines.crm.chat.getLastId', {
+        CRM_ENTITY_TYPE: 'deal',
+        CRM_ENTITY: String(deal.ID),
+      });
+    } catch (error) {
+      // Solo los 4xx significan "no hay chat". Un 5xx o un timeout sigue
+      // siendo un fallo real y debe propagarse para que se reintente.
+      if (/HTTP 4\d\d/.test(error?.message || '')) return null;
+      throw error;
+    }
     if (!last?.result) return null;
     const chatId = String(last.result);
     const data = await obtenerChat(crm, chatId);

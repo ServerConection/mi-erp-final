@@ -39,8 +39,21 @@ function crearClienteBitrix({ request }) {
     return Array.isArray(data?.result) ? data.result[0] || null : data?.result || null;
   }
 
-  const obtenerContacto = (crm, contactId) =>
-    request(crm, 'crm.contact.get', { id: String(contactId) });
+  // Mismo caso que resolverChatLead: Bitrix devuelve 400 cuando el CONTACT_ID
+  // que trae el deal ya no existe (contacto borrado o fusionado). Si eso se
+  // lanza como excepcion, el procesador aborta el lead entero, el lead nunca se
+  // guarda y el siguiente ciclo lo vuelve a intentar — para siempre. Se
+  // devuelve { result: null }, que es exactamente lo que el procesador ya
+  // maneja para los deals sin CONTACT_ID: el lead se guarda sin nombre de
+  // cliente en vez de perderse.
+  async function obtenerContacto(crm, contactId) {
+    try {
+      return await request(crm, 'crm.contact.get', { id: String(contactId) });
+    } catch (error) {
+      if (/HTTP 4\d\d/.test(error?.message || '')) return { result: null };
+      throw error;
+    }
+  }
 
   const obtenerChat = (crm, chatId, limit = 200) =>
     request(crm, 'im.dialog.messages.get', {

@@ -2,7 +2,7 @@
  * WaInbox.jsx — Bandeja de conversaciones WhatsApp en el ERP
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
@@ -35,16 +35,9 @@ const authH = (json = true) => {
   return h;
 };
 
-let _socket = null;
-const getSocket = () => {
-  if (!_socket) {
-    _socket = io(import.meta.env.VITE_API_URL, {
-      auth: { token: localStorage.getItem("token") },
-      transports: ["websocket", "polling"],
-    });
-  }
-  return _socket;
-};
+// Delegado al socket unico de la app (ver utils/socketCompartido.js):
+// antes cada modulo abria el suyo y el backend veia 7 conexiones por usuario.
+const getSocket = () => getSocketCompartido();
 
 const STATUS_BADGE = {
   active:         "bg-green-100 text-green-700",

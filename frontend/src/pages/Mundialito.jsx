@@ -3,7 +3,7 @@
 // Tema oscuro con foto de fondo (transparencia alta).
 // =============================================================================
 import { useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 
 const API = import.meta.env.VITE_API_URL || "";
 const FONDO_URL = "/mundialito-bg.jpg"; // colocar imagen en frontend/public/
@@ -228,17 +228,27 @@ export default function Mundialito() {
   useEffect(() => { cargarDatosTorneo(torneo); }, [torneo]);
 
   useEffect(() => {
-    const s = io(API, { auth: { token: localStorage.getItem("token") } });
+    // Socket unico de la app. Este efecto depende de [torneo, soundOn]: antes
+    // creaba y cerraba una conexion cada vez que cambiaba cualquiera de los dos.
+    const s = getSocketCompartido();
     socketRef.current = s;
-    s.on("mundialito:gol", (data) => {
+    const onGol = (data) => {
       setGolOverlay(data);
       setConfettiKey(k => k + 1);
       if (soundOn) playGoalSound(0.5);
       cargarDatosTorneo(torneo);
-    });
-    s.on("mundialito:partido_cerrado", () => cargarDatosTorneo(torneo));
-    s.on("mundialito:sorteo", () => cargarDatosTorneo(torneo));
-    return () => { s.disconnect(); };
+    };
+    const onCerrado = () => cargarDatosTorneo(torneo);
+    const onSorteo  = () => cargarDatosTorneo(torneo);
+    s.on("mundialito:gol", onGol);
+    s.on("mundialito:partido_cerrado", onCerrado);
+    s.on("mundialito:sorteo", onSorteo);
+    // Solo se quitan LOS PROPIOS: la conexion es de toda la app.
+    return () => {
+      s.off("mundialito:gol", onGol);
+      s.off("mundialito:partido_cerrado", onCerrado);
+      s.off("mundialito:sorteo", onSorteo);
+    };
   }, [torneo, soundOn]);
 
   const crearTorneo = async () => {

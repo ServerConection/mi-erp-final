@@ -6,7 +6,7 @@
 // • Toast global de alertas en tiempo real (Socket.io)
 
 import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOAST GLOBAL — se puede importar y usar en DashboardLayout para que aparezca
@@ -16,13 +16,8 @@ let _socketGlobal = null;
 
 export const useAlertasSocket = (onAlerta) => {
   useEffect(() => {
-    if (!_socketGlobal) {
-      // 🔐 Conectar Socket.io con autenticación JWT
-      _socketGlobal = io(import.meta.env.VITE_API_URL, {
-        auth: { token: localStorage.getItem('token') },  // ← JWT token requerido
-        transports: ["websocket"]
-      });
-    }
+    // Socket unico de la app (antes abria uno propio, solo websocket).
+    if (!_socketGlobal) _socketGlobal = getSocketCompartido();
     _socketGlobal.on("alerta_supervisor", onAlerta);
     return () => _socketGlobal.off("alerta_supervisor", onAlerta);
   }, []);

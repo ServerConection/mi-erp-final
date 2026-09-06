@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
+import { getSocketCompartido } from '../utils/socketCompartido';
 
 const BASE = `${import.meta.env.VITE_API_URL}/api/chat`;
 
@@ -68,12 +68,8 @@ let socketCompartido = null;
 function obtenerSocket() {
   if (socketCompartido?.connected || socketCompartido?.connecting) return socketCompartido;
 
-  socketCompartido = io(import.meta.env.VITE_API_URL, {
-    auth: { token: localStorage.getItem('token') },
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionDelay: 1500,
-  });
+  // Socket unico de la app (ver utils/socketCompartido.js).
+  socketCompartido = getSocketCompartido();
   return socketCompartido;
 }
 

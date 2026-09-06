@@ -391,6 +391,9 @@ const ALL_MENU_ITEMS = [
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },
+  // Mapa de salud del ERP: solo administradores — muestra el estado interno.
+  { name: "Salud del sistema", path: "/salud", icon: "🩺",
+    accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
 
   // ── Formularios y guías ──────────────────────────────────────────────────
   { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },

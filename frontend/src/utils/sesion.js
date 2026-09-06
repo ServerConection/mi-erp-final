@@ -73,6 +73,40 @@ function esNuestroBackend(url) {
   }
 }
 
+/**
+ * INYECCION AUTOMATICA DEL BEARER
+ *
+ * El ERP tiene ~190 fetch() sueltos y solo un punado manda el header
+ * Authorization. Al cerrar con token los endpoints de /api/indicadores y
+ * /api/indicadores-velsa (antes publicos), todos esos fetch se caerian con 401.
+ * En vez de tocar 190 llamadas una por una — que es donde se olvida alguna y se
+ * rompe una pantalla — el mismo interceptor que ya vigila los 401 agrega el
+ * Bearer a cualquier request dirigida a NUESTRO backend.
+ *
+ * Reglas: no pisa un Authorization puesto a mano, no toca APIs externas y no
+ * toca las rutas de login/OTP (ahi todavia no hay token).
+ */
+function inyectarAuth(args) {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return args;
+
+    const entrada = args[0];
+    if (typeof entrada !== 'string') return args;   // Request(): se deja igual
+    if (!esNuestroBackend(entrada)) return args;
+    if (RUTAS_LOGIN_EXCLUIDAS.some(r => entrada.includes(r))) return args;
+
+    const init    = { ...(args[1] || {}) };
+    const headers = new Headers(init.headers || {});
+    if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+    init.headers = headers;
+
+    return [entrada, init, ...args.slice(2)];
+  } catch (_) {
+    return args;   // nunca romper el fetch por esto
+  }
+}
+
 let interceptorInstalado = false;
 
 export function instalarInterceptorSesion() {
@@ -82,7 +116,7 @@ export function instalarInterceptorSesion() {
   const fetchOriginal = window.fetch.bind(window);
 
   window.fetch = async (...args) => {
-    const respuesta = await fetchOriginal(...args);
+    const respuesta = await fetchOriginal(...inyectarAuth(args));
 
     try {
       const entrada = args[0];

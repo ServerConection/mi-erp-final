@@ -34,7 +34,11 @@ const subida = multer({
 router.use(verificarToken, accesoHojas);
 
 // ── Catálogos ─────────────────────────────────────────────────────────────────
-router.get('/usuarios', hojas.usuariosDisponibles);
+// OJO: todo lo que sea una ruta con nombre fijo va ANTES de '/:hojaId', si no
+// Express lo toma como si "filtros" o "auditoria" fueran el id de una hoja.
+router.get('/usuarios',  hojas.usuariosDisponibles);
+router.get('/filtros',   hojas.opcionesFiltro);
+router.get('/auditoria', hojas.auditoria);
 
 // ── Hojas ─────────────────────────────────────────────────────────────────────
 router.get   ('/',        hojas.listar);

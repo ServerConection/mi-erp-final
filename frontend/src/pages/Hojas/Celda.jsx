@@ -22,6 +22,7 @@ function CeldaBase({
   seleccionada,
   editando,
   focoAjeno,       // { nombre, color } si otra persona está parada aquí
+  rastro,          // { por, at } — quién escribió este valor y cuándo
   onSeleccionar,
   onEmpezarEdicion,
   onCambio,
@@ -142,13 +143,25 @@ function CeldaBase({
   // ── Modo reposo ────────────────────────────────────────────────────────────
   const bloqueada = !editable || columna.soloLectura;
 
+  // Trazabilidad discreta: el dato de quién escribió cada valor ya se guardaba,
+  // pero no se veía por ningún lado. Va en el tooltip para no ensuciar la
+  // grilla — aparece solo al pasar el mouse por encima.
+  const pista = (() => {
+    if (!rastro?.at) return mostrado || undefined;
+    const quien = rastro.por ? (usuarios.get(String(rastro.por)) || usuarios.get(rastro.por)) : null;
+    const cuando = new Date(rastro.at).toLocaleString('es-EC', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    return `${mostrado || '(vacío)'}\n— ${quien ? `${quien}, ` : ''}${cuando}`;
+  })();
+
   return (
     <div
       className={`${base} flex items-center gap-1 cursor-${bloqueada ? 'default' : 'cell'} ${bloqueada ? 'bg-slate-50/60' : 'bg-white hover:bg-slate-50'} overflow-hidden`}
       style={estilo}
       onClick={onSeleccionar}
       onDoubleClick={() => !bloqueada && onEmpezarEdicion()}
-      title={mostrado || undefined}
+      title={pista}
     >
       <span className="truncate">{mostrado}</span>
 
@@ -179,5 +192,6 @@ export default memo(CeldaBase, (a, b) =>
   a.editable === b.editable &&
   a.columna === b.columna &&
   a.usuarios === b.usuarios &&
-  a.focoAjeno?.usuarioId === b.focoAjeno?.usuarioId
+  a.focoAjeno?.usuarioId === b.focoAjeno?.usuarioId &&
+  a.rastro?.at === b.rastro?.at
 );

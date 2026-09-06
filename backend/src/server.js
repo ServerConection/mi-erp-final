@@ -2,6 +2,7 @@ const http    = require('http');
 const app     = require('./app');
 const { initSocket }      = require('./config/socket');
 const { initAlertas }     = require('./jobs/alertas.cron');
+const { asegurarTrazabilidadHojas } = require('./services/hojas.migracion');
 const { iniciarWhatsApp } = require('./services/whatsapp.service');
 const { refreshMaterializedView, initVelsaAutoRefresh } = require('./jobs/refreshVelsaMaterialized.cron');
 const { initConsultorVelsaRefresh } = require('./jobs/refreshConsultorVelsa.cron');
@@ -37,6 +38,8 @@ initSocket(server);
 server.listen(process.env.PORT, async () => {
   console.log('Backend corriendo en http://localhost:' + process.env.PORT);
   await initAlertas();
+  // Idempotente y tolerante a fallos: ver hojas.migracion.js
+  await asegurarTrazabilidadHojas();
   // Refresh VELSA: el refresco masivo se movio a un cron seguro y APAGADO por
   // defecto. Solo se activa con VELSA_MV_AUTOREFRESH='on' en el .env (usa
   // REFRESH CONCURRENTLY + cliente dedicado sin statement_timeout). Sin esa

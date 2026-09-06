@@ -64,9 +64,17 @@ exports.detalle = async (req, res) => {
     // Mapa fila → { columnaId: valor } para que el frontend no tenga que
     // recorrer un array plano en cada render.
     const valores = {};
+    // Rastro por celda: quién la escribió y cuándo. El dato ya se guardaba en
+    // hoj_celdas pero no salía del backend, así que la grilla no podía
+    // mostrarlo y había que abrir el historial para saber de quién era un valor.
+    const rastro = {};
     for (const c of celdas.rows) {
       if (!valores[c.fila_id]) valores[c.fila_id] = {};
       valores[c.fila_id][c.columna_id] = c.valor;
+      if (c.actualizado_por || c.updated_at) {
+        if (!rastro[c.fila_id]) rastro[c.fila_id] = {};
+        rastro[c.fila_id][c.columna_id] = { por: c.actualizado_por, at: c.updated_at };
+      }
     }
 
     res.json({
@@ -92,9 +100,12 @@ exports.detalle = async (req, res) => {
           soloLectura: c.solo_lectura,
         })),
         filas: filas.rows.map(f => ({
-          id:     f.id,
-          orden:  f.orden,
-          valores: valores[f.id] || {},
+          id:        f.id,
+          orden:     f.orden,
+          valores:   valores[f.id] || {},
+          rastro:    rastro[f.id] || {},
+          creadoPor: f.creado_por,
+          creadoAt:  f.created_at,
         })),
         usuarios: usuarios.rows.map(u => ({
           id:     u.id,
@@ -488,6 +499,16 @@ exports.exportar = async (req, res) => {
 
     const buffer = XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' });
     const archivo = `${req.hoja.nombre.replace(/[^\w\sáéíóúñÁÉÍÓÚÑ-]/g, '_').slice(0, 60)}.xlsx`;
+
+    // Descargar es sacar la información del ERP, y hasta ahora no dejaba
+    // ningún rastro. registrarHistorial traga sus propios errores, así que un
+    // fallo de auditoría nunca impide la descarga.
+    registrarHistorial({
+      hojaId: req.hoja.id,
+      accion: 'EXPORTACION',
+      valorNuevo: `${filas.rows.length} fila(s) descargadas como ${archivo}`,
+      usuarioId: req.user.id,
+    });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archivo)}"`);

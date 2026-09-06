@@ -11,7 +11,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { verificarToken } = require('../middleware/auth');
-const { accesoEvaluaciones, puedeCrearEvaluacion, cargarEvaluacion } = require('../middleware/evaluacionesAcceso');
+const { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion } = require('../middleware/evaluacionesAcceso');
 
 const ev = require('../controllers/evaluaciones.controller');
 
@@ -29,7 +29,8 @@ router.get ('/:evaluacionId', cargarEvaluacion(false), ev.detalleParaTomar);
 router.post('/:evaluacionId/responder', cargarEvaluacion(false), ev.responder);
 
 // ── Gestión y resultados (solo creador/admin) ────────────────────────────────
-router.patch('/:evaluacionId/archivar',           cargarEvaluacion(true), ev.archivar);
+router.patch ('/:evaluacionId/archivar',           cargarEvaluacion(true), ev.archivar);
+router.delete('/:evaluacionId',                    cargarEvaluacion(true), soloAdministrador, ev.eliminar);
 router.get  ('/:evaluacionId/resultados',          cargarEvaluacion(true), ev.resultados);
 router.get  ('/:evaluacionId/resultados/exportar', cargarEvaluacion(true), ev.exportarResultados);
 

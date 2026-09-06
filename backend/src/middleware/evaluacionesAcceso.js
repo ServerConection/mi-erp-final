@@ -29,6 +29,17 @@ const puedeCrearEvaluacion = (req, res, next) => {
   next();
 };
 
+/** Solo ADMINISTRADOR. Se usa para borrar definitivamente una evaluación. */
+const soloAdministrador = (req, res, next) => {
+  if (req.user?.perfil !== 'ADMINISTRADOR') {
+    return res.status(403).json({
+      success: false,
+      error: 'Solo un administrador puede eliminar evaluaciones. Puedes archivarla en su lugar.',
+    });
+  }
+  next();
+};
+
 /**
  * Carga la evaluación de :evaluacionId. `soloCreador` exige además que sea
  * ADMINISTRADOR o quien la creó (para editar/archivar/ver resultados).
@@ -61,4 +72,4 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
   }
 };
 
-module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, cargarEvaluacion, PERFILES_CREADORES };
+module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion, PERFILES_CREADORES };

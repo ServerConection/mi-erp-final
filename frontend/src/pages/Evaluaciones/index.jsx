@@ -9,12 +9,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Award, BarChart3, CheckCircle2, Clock, FileQuestion, GraduationCap, Hourglass,
-  Plus, Search, Sparkles, TrendingUp, Users,
+  Archive, ArchiveRestore, Award, BarChart3, CheckCircle2, Clock, FileQuestion,
+  GraduationCap, Hourglass, Plus, Search, Sparkles, Trash2, TrendingUp, Users,
 } from 'lucide-react';
 import { evaluacionesApi } from '../../hooks/useEvaluaciones';
 import {
-  Aviso, BarraProgreso, Chip, ErrorBox, EstadoBadge, SkeletonTarjetas, Vacio, fechaCorta,
+  Aviso, BarraProgreso, Chip, ErrorBox, EstadoBadge, Modal, SkeletonTarjetas, Vacio, fechaCorta,
 } from './ui';
 import CrearEvaluacionModal from './CrearEvaluacionModal';
 import TomarEvaluacion from './TomarEvaluacion';
@@ -318,6 +318,9 @@ function TabGestionar({ onVerResultados, notificar }) {
   const [error, setError]           = useState(null);
   const [modalNueva, setModalNueva] = useState(false);
   const [busqueda, setBusqueda]     = useState('');
+  const [esAdmin, setEsAdmin]       = useState(false);
+  const [porEliminar, setPorEliminar] = useState(null); // evaluación pendiente de confirmar
+  const [ocupado, setOcupado]       = useState(false);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -326,6 +329,7 @@ function TabGestionar({ onVerResultados, notificar }) {
       const r = await evaluacionesApi.listar();
       setLista(r.data);
       setPuede(r.puedeCrear);
+      setEsAdmin(r.esAdministrador === true);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -347,6 +351,34 @@ function TabGestionar({ onVerResultados, notificar }) {
   }, [lista]);
 
   const filtrada = useMemo(() => lista.filter(e => coincide(e, busqueda)), [lista, busqueda]);
+
+  const alternarArchivo = async (e) => {
+    setOcupado(true);
+    try {
+      await evaluacionesApi.archivar(e.id, !e.activa);
+      notificar(e.activa ? 'Evaluación archivada' : 'Evaluación reactivada', 'ok');
+      cargar();
+    } catch (err) {
+      notificar(err.message, 'error');
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const eliminar = async () => {
+    setOcupado(true);
+    try {
+      const r = await evaluacionesApi.eliminar(porEliminar.id);
+      const n = r.data?.intentosBorrados || 0;
+      notificar(n > 0 ? `Evaluación eliminada junto con ${n} respuesta(s)` : 'Evaluación eliminada', 'ok');
+      setPorEliminar(null);
+      cargar();
+    } catch (err) {
+      notificar(err.message, 'error');
+    } finally {
+      setOcupado(false);
+    }
+  };
 
   if (cargando) return <SkeletonTarjetas />;
   if (error) return <ErrorBox error={error} onReintentar={cargar} />;
@@ -396,12 +428,37 @@ function TabGestionar({ onVerResultados, notificar }) {
           {filtrada.map(e => {
             const tasa = e.totalIntentos ? Math.round((e.totalAprobados / e.totalIntentos) * 100) : 0;
             return (
-              <button
+              <div
                 key={e.id}
                 onClick={() => onVerResultados(e.id)}
-                className="eva-card eva-card-ring group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(ev) => { if (ev.key === 'Enter') onVerResultados(e.id); }}
+                className="eva-card eva-card-ring group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm"
               >
-                <div className="mb-2 flex items-start gap-2">
+                {/* Acciones — no deben disparar el click de la tarjeta */}
+                <div className="absolute right-3 top-3 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <button
+                    onClick={(ev) => { ev.stopPropagation(); alternarArchivo(e); }}
+                    disabled={ocupado}
+                    title={e.activa ? 'Archivar (deja de mostrarse a los asesores)' : 'Reactivar'}
+                    className="rounded-lg bg-white/90 p-1.5 text-slate-400 ring-1 ring-slate-200 transition hover:text-slate-700 disabled:opacity-40"
+                  >
+                    {e.activa ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
+                  </button>
+                  {esAdmin && (
+                    <button
+                      onClick={(ev) => { ev.stopPropagation(); setPorEliminar(e); }}
+                      disabled={ocupado}
+                      title="Eliminar definitivamente"
+                      className="rounded-lg bg-white/90 p-1.5 text-slate-400 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="mb-2 flex items-start gap-2 pr-16">
                   <h3 className="min-w-0 flex-1 line-clamp-2 font-semibold text-slate-800 group-hover:text-indigo-700">
                     {e.titulo}
                   </h3>
@@ -435,11 +492,18 @@ function TabGestionar({ onVerResultados, notificar }) {
                   Ver resultados
                   <span className="transition-transform group-hover:translate-x-1">→</span>
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
       )}
+
+      <ModalEliminar
+        evaluacion={porEliminar}
+        ocupado={ocupado}
+        onCerrar={() => setPorEliminar(null)}
+        onConfirmar={eliminar}
+      />
 
       <CrearEvaluacionModal
         abierto={modalNueva}
@@ -448,6 +512,66 @@ function TabGestionar({ onVerResultados, notificar }) {
         onError={(m) => notificar(m, 'error')}
       />
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CONFIRMACIÓN DE BORRADO (solo administrador)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function ModalEliminar({ evaluacion, ocupado, onCerrar, onConfirmar }) {
+  const [texto, setTexto] = useState('');
+
+  // Se limpia cada vez que se abre para otra evaluación
+  useEffect(() => { setTexto(''); }, [evaluacion?.id]);
+
+  if (!evaluacion) return null;
+  const confirmado = texto.trim().toUpperCase() === 'ELIMINAR';
+
+  return (
+    <Modal abierto onCerrar={onCerrar} titulo="Eliminar evaluación" ancho="max-w-md">
+      <p className="text-sm text-slate-600">
+        Vas a borrar <strong className="text-slate-800">{evaluacion.titulo}</strong> de forma permanente.
+      </p>
+
+      {evaluacion.totalIntentos > 0 && (
+        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">
+          También se borrarán las <strong>{evaluacion.totalIntentos}</strong> respuesta(s) de los asesores
+          y sus notas. Esto no se puede deshacer.
+        </p>
+      )}
+
+      <p className="mt-3 text-xs text-slate-500">
+        Si solo quieres que deje de aparecerles a los asesores, cierra esto y usa <strong>Archivar</strong>:
+        conserva el historial.
+      </p>
+
+      <label className="mt-4 block text-xs font-medium text-slate-500">
+        Escribe <span className="font-bold text-rose-600">ELIMINAR</span> para confirmar
+      </label>
+      <input
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        placeholder="ELIMINAR"
+        className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-50"
+      />
+
+      <div className="mt-5 flex gap-2.5">
+        <button
+          onClick={onCerrar}
+          className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={onConfirmar}
+          disabled={!confirmado || ocupado}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+        >
+          <Trash2 className="h-4 w-4" /> {ocupado ? 'Eliminando…' : 'Eliminar'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

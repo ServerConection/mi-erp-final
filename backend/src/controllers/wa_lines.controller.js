@@ -392,8 +392,10 @@ async function connect(req, res) {
 
     const bm = req.app.get('baileysManager')
     if (!bm) { console.error('[wa_lines.connect] baileysManager NO disponible en req.app'); return res.status(503).json({ success: false, error: 'WhatsApp no inicializado' }) }
-    // Pasar quién solicita: el QR se emite SOLO a este usuario (seguridad)
-    await bm.connect(id, req.user.id)
+    // Pasar quién solicita: el QR se emite SOLO a este usuario (seguridad).
+    // paraQr: lo pidió una persona para escanear, así que el emparejamiento
+    // sale sin proxy (ver BaileysManager). El resto de la operación no cambia.
+    await bm.connect(id, req.user.id, { paraQr: true })
     res.json({ success: true, message: 'Conectando... espera el QR' })
   } catch (err) {
     console.error('[wa_lines.connect] ERROR:', err && (err.stack || err.message || err))

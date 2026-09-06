@@ -165,6 +165,7 @@ async function construirProxyAutomatico() {
       )
       return null
     }
+    console.log(`[proxyPool] Puerto sticky asignado: ${PROXY_HOST}:${puerto} (rango del plan ${PROXY_BASE_PORT}-${PROXY_MAX_PORT})`)
     return {
       protocol: 'http',
       host: PROXY_HOST,

@@ -264,7 +264,11 @@ class BaileysManager {
     return lidNum
   }
 
-  async connect(lineId, requesterId = null) {
+  async connect(lineId, requesterId = null, opciones = {}) {
+    // paraQr: la conexión la pidió una persona desde el módulo de líneas para
+    // escanear un código, no es un reintento automático. Cambia una sola cosa:
+    // el emparejamiento no sale por el proxy (ver más abajo).
+    const { paraQr = false } = opciones
     // Cargar el LidMap UNA sola vez (antes: query a la DB en cada reconexión
     // mientras estuviera vacío → carga innecesaria durante tormentas de reconexión)
     if (!this._lidMapLoaded) {
@@ -415,7 +419,26 @@ class BaileysManager {
       },
     }
 
-    if (line?.proxy_enabled && line?.proxy_config?.host) {
+    // ── Por qué el QR sale SIN proxy ──────────────────────────────────────
+    // Con proxy, el socket moría con "Código: 408" (timeout) ANTES de que
+    // WhatsApp llegara a mandar el evento 'qr', en cuatro IPs seguidas del
+    // pool (1008, 1009, 1010, 1011). Que fallen cuatro IPs distintas
+    // exactamente igual descarta una IP quemada: el tráfico no pasa por ese
+    // gateway, y rotar la IP solo repetía el ciclo. Sin QR no se puede
+    // vincular ninguna línea.
+    //
+    // El emparejamiento es un evento puntual de segundos. Lo que quema la
+    // reputación de un número es el patrón de envío sostenido, y ESO sigue
+    // saliendo por el proxy: las reconexiones automáticas (paraQr=false), las
+    // campañas y los envíos del inbox no cambian en nada.
+    //
+    // WA_QR_SIN_PROXY='false' revierte este comportamiento.
+    const omitirProxyQr = paraQr && process.env.WA_QR_SIN_PROXY !== 'false'
+    if (omitirProxyQr && line?.proxy_enabled && line?.proxy_config?.host) {
+      console.warn(`[Line ${lineId}] 🔓 Vinculación por QR SIN proxy (WA_QR_SIN_PROXY). El proxy vuelve a aplicarse al reconectar y al enviar.`)
+    }
+
+    if (!omitirProxyQr && line?.proxy_enabled && line?.proxy_config?.host) {
       const pc = line.proxy_config
       const protocolo = (pc.protocol || 'socks5').toLowerCase()
       const proxyUrl = pc.username

@@ -38,6 +38,13 @@ const DELAY_MIN_SEGURO_SEGS      = parseInt(process.env.WA_CAMPANA_DELAY_MIN_SEG
 const LOTE_MAX_SEGURO            = parseInt(process.env.WA_CAMPANA_LOTE_MAX_SEGURO || '100', 10)
 const PAUSA_LOTE_MIN_SEGURA_SEGS = parseInt(process.env.WA_CAMPANA_PAUSA_LOTE_MIN_SEGURA || '60', 10)
 const CALENTAMIENTO_DIAS         = parseInt(process.env.WA_CALENTAMIENTO_DIAS || '14', 10)
+// 3. Corta-circuito por fallos seguidos (2026-09-06). Faltaba la guarda mas
+//    importante: si WhatsApp empieza a rechazar los envios, el motor seguia
+//    quemando el numero hasta terminar la lista. Los fallos consecutivos son
+//    la senal temprana de un bloqueo (o de la sesion caida). Al llegar al tope
+//    se PAUSA la campana entera; el contador se reinicia con cada envio bueno,
+//    asi que un fallo suelto (un numero invalido en la base) no la detiene.
+const FALLOS_SEGUIDOS_MAX        = parseInt(process.env.WA_CAMPANA_FALLOS_SEGUIDOS || '5', 10)
 const TOPE_CALENTAMIENTO_DIARIO  = parseInt(process.env.WA_TOPE_CALENTAMIENTO_DIARIO || '60', 10)
 
 // ¿La línea sigue en su ventana de calentamiento? Funcion pura para poder
@@ -236,6 +243,7 @@ class CampaignEngine {
     let processedInBatch = 0
     let enviosDesdeControl = 0
     const rotState = {}  // estado de rotación de variantes (cola barajada)
+    let fallosSeguidos = 0   // corta-circuito anti-bloqueo
 
     // Envío inicial a los números de control: solo la PRIMERA vez que corre
     // esta campaña (sent_count sigue en 0), no cada vez que se reanuda tras
@@ -314,9 +322,27 @@ class CampaignEngine {
       const recipient = pending.rows[0]
       // Rotación: usa TODAS las variantes en orden aleatorio antes de repetir
       const variant = this._nextVariant(rotState, variants)
-      await this._sendOne(camp, recipient, variant)
+      const enviado = await this._sendOne(camp, recipient, variant)
       processedInBatch++
       enviosDesdeControl++
+
+      // 🚨 Corta-circuito: varios fallos SEGUIDOS = senal de bloqueo o sesion
+      // caida. Un fallo suelto (numero invalido) no cuenta, porque el contador
+      // se reinicia con cada envio bueno.
+      fallosSeguidos = enviado ? 0 : fallosSeguidos + 1
+      if (fallosSeguidos >= FALLOS_SEGUIDOS_MAX) {
+        console.warn(
+          `[CampaignEngine] 🚨 ${fallosSeguidos} envios fallidos seguidos en "${camp.name}". ` +
+          `Se pausa la campana para proteger el numero: revisa el estado de la linea ` +
+          `antes de reanudar.`
+        )
+        await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [campaignId])
+        this._emit(campaignId, 'campaign:paused', {
+          campaignId, motivo: 'fallos_consecutivos', fallos: fallosSeguidos,
+        })
+        delete this.running[campaignId]
+        return
+      }
 
       // Cada WA_CONTROL_CADA_N envíos reales, se vuelve a tocar a los
       // números de control — mantiene la tasa de respuesta sana durante
@@ -445,6 +471,7 @@ class CampaignEngine {
         wa_number:   waNumber,
         variantId,
       })
+      return true   // lo usa el corta-circuito de fallos seguidos
     } catch (err) {
       console.warn(`[CampaignEngine] ❌ Falló envío a ${waNumber}: ${err.message}`)
       await query(
@@ -467,6 +494,7 @@ class CampaignEngine {
         wa_number:   waNumber,
         error:       err.message,
       })
+      return false  // lo usa el corta-circuito de fallos seguidos
     }
   }
 

@@ -201,7 +201,10 @@ async function getMessages(req, res) {
     if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
 
     const result = await query(
-      `SELECT id, direction, type, content, media_url, status, timestamp, node_type
+      // wa_msg_id es imprescindible: el inbox actualiza el doble check
+      // (entregado/leido) buscando la burbuja por ese id cuando llega el
+      // evento 'message:status'. Sin la columna, ese listener nunca acertaba.
+      `SELECT id, direction, type, content, media_url, status, timestamp, node_type, wa_msg_id
        FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC LIMIT 500`,
       [id]
     )

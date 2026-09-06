@@ -2,9 +2,15 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { enviarOTP } = require('../services/email.service');
+const { verificarToken, soloAdmin } = require('../middleware/auth');
 
-// Solo habilitar en entorno de desarrollo
-router.post('/test-email', async (req, res) => {
+// SEGURIDAD (2026-09): este endpoint envia un correo al destinatario que venga
+// en el body. La unica proteccion era NODE_ENV !== 'production': si esa variable
+// falta o llega mal escrita en el entorno, queda un relay abierto que cualquiera
+// usa para mandar correos con nuestra cuenta de envio (y quemar la reputacion
+// del dominio). Ahora ademas exige sesion de administrador. Ningun modulo del
+// frontend lo consume, asi que no rompe nada.
+router.post('/test-email', verificarToken, soloAdmin, async (req, res) => {
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ success: false, error: 'No disponible en producción' });
   }

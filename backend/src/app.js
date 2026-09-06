@@ -12,6 +12,7 @@ const passwordRoutes               = require('./routes/password.routes');
 const forgotRoutes                 = require('./routes/forgotPassword.routes');
 const testEmailRoutes              = require('./routes/test.email.routes');
 const saludRoutes                  = require('./routes/salud.routes');
+const reporteGerencialRoutes       = require('./routes/reporteGerencial.routes');
 const verifyOtpRoutes              = require('./routes/verify.otp.routes');
 const indicadoresRoutes            = require('./routes/indicadores.routes');
 const indicadoresVelsaRoutes       = require('./routes/indicadoresVelsa.routes');
@@ -123,6 +124,7 @@ app.use('/api/redes',             redesRoutes);
 app.use('/api/redes-velsa',       redesVelsaRoutes);
 // Mapa de salud del ERP: frescura de cada tabla/tuberia de datos.
 app.use('/api/salud',             saludRoutes);
+app.use('/api/reporte-gerencial', reporteGerencialRoutes);
 app.use('/api/alertas',           alertasRoutes);
 app.use('/api/ventas',            ventasRoutes);
 app.use('/api/analista',          analistaRoutes);

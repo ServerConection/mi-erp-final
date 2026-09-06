@@ -18,6 +18,23 @@ let scheduler      = null;
 
 // Ejecuta la migración del módulo (idempotente: CREATE TABLE IF NOT EXISTS)
 // Así no depende de correrla manualmente desde una PC local.
+// Tablas de WABOT-BITRIX: wa_auth_state (sesiones de Baileys en Postgres),
+// wa_line_locks y el mapeo con Bitrix. Va aparte y NO tumba el arranque si
+// falla: el modo 'disco' sigue funcionando sin estas tablas, así que un error
+// aquí no puede dejar a los asesores sin WhatsApp. Pero sin ellas
+// WA_AUTH_STORE='pg' no puede activarse, por eso se avisa fuerte.
+const ejecutarMigracionWabotBitrix = async () => {
+  try {
+    const sqlPath = path.join(__dirname, '../migrations/wabot_bitrix.sql');
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    await pool.query(sql);
+    console.log('[WA] Tablas WABOT-BITRIX verificadas (wa_auth_state, wa_line_locks, mapeo Bitrix)');
+  } catch (err) {
+    console.error('[WA] ⚠️ No se pudieron crear las tablas WABOT-BITRIX:', err.message);
+    console.error("[WA] ⚠️ WA_AUTH_STORE='pg' NO debe activarse hasta que esto pase.");
+  }
+};
+
 const ejecutarMigracion = async () => {
   try {
     const sqlPath = path.join(__dirname, '../migrations/whatsapp_schema.sql');
@@ -38,6 +55,7 @@ const iniciarWhatsApp = async (appInstance) => {
     const io = getIO();
 
     await ejecutarMigracion();
+    await ejecutarMigracionWabotBitrix();
 
     const authDir = process.env.WA_AUTH_DIR || path.join(__dirname, '../../auth_sessions');
     fs.mkdirSync(authDir, { recursive: true });

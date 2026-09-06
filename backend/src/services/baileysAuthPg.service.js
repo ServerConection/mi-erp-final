@@ -24,6 +24,20 @@ const pool = require('../config/db')
 const ser   = (valor) => JSON.stringify(valor, BufferJSON.replacer)
 const deser = (texto) => JSON.parse(texto, BufferJSON.reviver)
 
+/**
+ * MISMA transformación de nombre que usa useMultiFileAuthState en disco
+ * (`fixFileName`: '/' → '__', ':' → '-'). El key_id guardado en Postgres es
+ * idéntico al nombre del archivo sin '.json'.
+ *
+ * Esto importa mucho: así migrar una sesión del disco es copiar
+ * nombre-de-archivo → key_id, sin tener que revertir la transformación. Y
+ * revertirla es IMPOSIBLE de forma fiable, porque un id de sesión real
+ * ('5939...0:1@s.whatsapp.net') ya contiene guiones propios y no hay manera de
+ * saber cuáles venían de un ':'. Un solo id mal reconstruido corrompe la
+ * sesión y WhatsApp la cierra con 401 — es decir, QR nuevo para ese asesor.
+ */
+const fixKeyId = (nombre) => nombre.replace(/\//g, '__').replace(/:/g, '-')
+
 async function leer(lineId, keyId) {
   const r = await pool.query(
     'SELECT data FROM wa_auth_state WHERE line_id = $1 AND key_id = $2',
@@ -70,13 +84,16 @@ async function useDbAuthState(lineId) {
     get: async (type, ids) => {
       const out = {}
       if (!ids.length) return out
-      const keyIds = ids.map((id) => `${type}-${id}`)
+      // key_id transformado → id ORIGINAL que pidió Baileys. No se deriva del
+      // key_id (ver fixKeyId): se conserva el id tal cual vino.
+      const porKeyId = new Map(ids.map((id) => [fixKeyId(`${type}-${id}`), id]))
       const r = await pool.query(
         'SELECT key_id, data FROM wa_auth_state WHERE line_id = $1 AND key_id = ANY($2::text[])',
-        [lineId, keyIds]
+        [lineId, [...porKeyId.keys()]]
       )
       for (const row of r.rows) {
-        const id = row.key_id.slice(type.length + 1)
+        const id = porKeyId.get(row.key_id)
+        if (id === undefined) continue
         let valor
         try { valor = deser(row.data) } catch { continue }
         // Igual que el store de archivos: esta clave se rehidrata como proto.
@@ -95,7 +112,7 @@ async function useDbAuthState(lineId) {
       for (const type of Object.keys(data)) {
         for (const id of Object.keys(data[type])) {
           const valor = data[type][id]
-          const keyId = `${type}-${id}`
+          const keyId = fixKeyId(`${type}-${id}`)
           if (valor) inserts.push([keyId, ser(valor)])
           else deletes.push(keyId)
         }
@@ -146,7 +163,8 @@ async function migrarDesdeDisco(lineId, authDir, { forzar = false } = {}) {
   const archivos = fs.readdirSync(authDir).filter((f) => f.endsWith('.json'))
   let n = 0
   for (const archivo of archivos) {
-    const keyId = archivo.replace(/\.json$/, '').replace(/__/g, ':')
+    // Copia literal: el nombre del archivo YA es el key_id (ver fixKeyId).
+    const keyId = archivo.replace(/\.json$/, '')
     const texto = fs.readFileSync(path.join(authDir, archivo), 'utf-8')
     try {
       JSON.parse(texto) // solo valida que sea JSON; se guarda tal cual

@@ -36,6 +36,7 @@ const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 const Inventario           = lazy(() => import("./pages/Inventario"));
+const SaludSistema         = lazy(() => import("./pages/SaludSistema"));
 const Tareas               = lazy(() => import("./pages/Tareas"));
 const ArchivosCompartidos  = lazy(() => import("./pages/Hojas"));
 const ChatInterno          = lazy(() => import("./pages/Chat"));
@@ -120,6 +121,8 @@ export default function App() {
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
             <Route path="bitrix-live"              element={<BitrixLive />} />
             <Route path="inventario"               element={<Inventario />} />
+            {/* Mapa de salud: que tuberia de datos esta viva y cual se congelo */}
+            <Route path="salud"                    element={<SaludSistema />} />
             <Route path="tareas"                   element={<Tareas />} />
             <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
             <Route path="chat"                     element={<ChatInterno />} />

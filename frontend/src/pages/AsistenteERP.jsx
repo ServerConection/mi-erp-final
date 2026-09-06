@@ -28,12 +28,21 @@ export default function AsistenteERP() {
   const [input, setInput]           = useState("");
   const [enviando, setEnviando]     = useState(false);
   const [sugerencias, setSugerencias] = useState([]);
+  // Base de conocimiento: preguntas de PROCESO (requisitos, estados del
+  // cliente, descuentos). Se puede hojear sin preguntar nada — es el manual
+  // que hoy vive en la cabeza de un supervisor.
+  const [faq, setFaq] = useState([]);
+  const [faqAbierto, setFaqAbierto] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
     fetch(`${API}/sugerencias`, { headers: authH() })
       .then(r => r.json())
       .then(d => setSugerencias(Array.isArray(d?.data) ? d.data : []))
+      .catch(() => {});
+    fetch(`${API}/faq`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => setFaq(Array.isArray(d?.data) ? d.data : []))
       .catch(() => {});
   }, []);
 
@@ -100,6 +109,46 @@ export default function AsistenteERP() {
         )}
         <div ref={endRef} />
       </div>
+
+      {/* Preguntas frecuentes (base de conocimiento) */}
+      {faq.length > 0 && (
+        <div style={{ margin: "10px 0" }}>
+          <button
+            onClick={() => setFaqAbierto(a => !a)}
+            style={{
+              fontSize: "0.72rem", fontWeight: 700, padding: "0.35rem 0.8rem",
+              borderRadius: 999, border: "1px solid #1A3A6E", background: faqAbierto ? "#1A3A6E" : "#fff",
+              color: faqAbierto ? "#fff" : "#1A3A6E", cursor: "pointer",
+            }}>
+            {faqAbierto ? "▾" : "▸"} Preguntas frecuentes ({faq.length})
+          </button>
+
+          {faqAbierto && (
+            <div style={{ marginTop: 8, maxHeight: 260, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, background: "#f8fafc" }}>
+              {[...new Set(faq.map(f => f.categoria))].map(cat => (
+                <div key={cat} style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#1A3A6E", margin: "4px 2px" }}>
+                    {cat}
+                  </div>
+                  {faq.filter(f => f.categoria === cat).map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setFaqAbierto(false); preguntar(f.pregunta); }}
+                      disabled={enviando}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", fontSize: "0.72rem",
+                        padding: "0.35rem 0.6rem", borderRadius: 8, border: "1px solid transparent",
+                        background: "transparent", color: "#334155", cursor: "pointer",
+                      }}>
+                      {f.pregunta}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sugerencias */}
       {sugerencias.length > 0 && (

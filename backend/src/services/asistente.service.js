@@ -14,6 +14,7 @@
  */
 const pool = require('../config/db');
 const broadcastSvc = require('./broadcast.service');
+const { buscarFaq, listarFaq } = require('./asistente.faq');
 
 // ── Fechas (Ecuador) ──────────────────────────────────────────
 const fechaEc = (d = new Date()) =>
@@ -418,7 +419,17 @@ async function responder(pregunta) {
   if (!q) return { intent: 'ayuda', respuesta: AYUDA };
   if (/^(ayuda|help|opciones|menu|menú)$/i.test(q)) return { intent: 'ayuda', respuesta: AYUDA };
 
-  // 1) IA PRIMERO: snapshot de datos reales + llama3 responde libre
+  // 0) BASE DE CONOCIMIENTO primero. Las preguntas de PROCESO (requisitos,
+  //    estados del cliente, penalidades, descuentos) tienen una respuesta
+  //    oficial que no puede variar segun lo que improvise un modelo: son
+  //    reglas de negocio, no redaccion. Ademas sale al instante y sin costo.
+  //    Si ninguna ficha calza con confianza, la pregunta sigue a la IA.
+  const ficha = buscarFaq(q);
+  if (ficha) {
+    return { intent: 'faq', faq_id: ficha.id, categoria: ficha.categoria, respuesta: ficha.respuesta };
+  }
+
+  // 1) IA: snapshot de datos reales + llama3 responde libre
   if (process.env.OLLAMA_URL) {
     try {
       const snapshot = await construirSnapshot(q);
@@ -434,4 +445,4 @@ async function responder(pregunta) {
   return responderConReglas(q);
 }
 
-module.exports = { responder, INTENCIONES };
+module.exports = { responder, INTENCIONES, listarFaq };

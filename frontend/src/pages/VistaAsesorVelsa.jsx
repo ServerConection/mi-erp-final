@@ -525,7 +525,15 @@ export default function VistaAsesorVelsa() {
       ),
       activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
       regularizacion:  base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
-      pct_descarte:    (base.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
+      // Igual que la efectividad: total del equipo desde los totales, no
+      // promediando porcentajes. descarte_base es el denominador exacto de la
+      // fila; si el backend todavia no lo envia, se cae al promedio anterior.
+      pct_descarte: (() => {
+        const c = base.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+        const b = base.reduce((a, r) => a + Number(r.descarte_base  || 0), 0);
+        if (b > 0) return ((c / b) * 100).toFixed(1);
+        return (base.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1);
+      })(),
       // FIX 2026-09-06: igual que en Vista Asesor Novonet — la efectividad
       // global sale de los TOTALES (ingresos Jotform / gestionables), no del
       // promedio de los porcentajes por asesor, que pesaba igual a un asesor

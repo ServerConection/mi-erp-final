@@ -607,8 +607,17 @@ export default function VistaAsesor() {
     const totalGest    = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
 
     // Porcentajes globales del equipo
-    const pctDescarte    = base.length > 0
-      ? base.reduce((a, r) => a + Number(r.descarte || 0), 0) / base.length : 0;
+    // Mismo criterio que la efectividad: el % del equipo sale de los totales,
+    // no de promediar los porcentajes por asesor. descarte_base es el
+    // denominador exacto que usa la propia fila (no sirve "gestionables", que
+    // se calcula con otra ventana de fecha).
+    const totalDescCount = base.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+    const totalDescBase  = base.reduce((a, r) => a + Number(r.descarte_base  || 0), 0);
+    const pctDescarte    = totalDescBase > 0
+      ? (totalDescCount / totalDescBase) * 100
+      // Respaldo por si el backend aun no envia descarte_base (deploy a medias):
+      // se mantiene el comportamiento anterior en vez de mostrar 0.
+      : (base.length > 0 ? base.reduce((a, r) => a + Number(r.descarte || 0), 0) / base.length : 0);
     // FIX 2026-09-06: la efectividad global se recalcula desde los TOTALES, no
     // promediando los porcentajes de cada asesor. El promedio simple daba un
     // numero distinto al de Reporte D-1 (que es el correcto) porque pesa igual

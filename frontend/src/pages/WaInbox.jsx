@@ -137,9 +137,12 @@ export default function WaInbox() {
       setConversations(prev => [conv, ...prev.filter(c => c.id !== conv.id)]);
     });
     socket.on("message:new", (msg) => {
+      // El recargado va FUERA del updater: React puede invocar el updater dos
+      // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
-        const exists = prev.some(c => c.id === msg.conversation_id);
-        if (!exists && msg.conversation_id) loadConvs(); // conversación nueva → recargar lista
+        if (msg.conversation_id && !prev.some(c => c.id === msg.conversation_id)) {
+          queueMicrotask(() => loadConvs());   // conversación nueva → recargar lista
+        }
         return prev.map(c =>
           c.id === msg.conversation_id
             ? { ...c, last_msg_at: msg.timestamp, last_message: msg.content || msg.text,

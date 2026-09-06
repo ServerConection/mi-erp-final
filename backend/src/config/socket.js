@@ -73,6 +73,10 @@ const initSocket = (httpServer) => {
     }
   });
 
+  // Perfiles que ven todos los chats de su empresa en el inbox de WhatsApp.
+  // Debe coincidir con PERFILES_GERENCIALES de wa_conversations.controller.js.
+  const PERFILES_GERENCIALES_WA = ['SUPERVISOR', 'GERENCIA', 'ANALISTA'];
+
   // Manejo de conexiones
   _io.on('connection', (socket) => {
     const { perfil, empresa } = socket.user;
@@ -91,6 +95,13 @@ const initSocket = (httpServer) => {
       console.log('[SOCKET] Conectado:', socket.id, '(TV) -> tv:all');
     } else {
       socket.join('empresa:' + empresa);
+      // Inbox de WhatsApp: los perfiles gerenciales ven los chats de SU empresa
+      // (mismo criterio que visibilityCondition en wa_conversations.controller).
+      // Sala aparte de 'empresa:' porque esa la usan tambien los asesores, que
+      // solo deben ver los chats de sus propias lineas.
+      if (PERFILES_GERENCIALES_WA.includes(perfil)) {
+        socket.join('wa:empresa:' + empresa);
+      }
       console.log('[SOCKET] Conectado:', socket.id, '(' + perfil + '.' + empresa + ') -> empresa:' + empresa);
     }
 

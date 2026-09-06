@@ -58,6 +58,7 @@ class BaileysManager {
     }
     this.lidMap = {}
     this.lineOwners = {}   // lineId → userId autorizado a ver el QR
+    this._audienciaCache = {}  // lineId → { valor:{ownerId,empresa}, ts } (TTL 5 min)
     this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
     this.reconnectTimers = {}   // guard: una sola reconexión programada por línea
     this.reconnectAttempts = {} // contador de reintentos por línea (backoff)
@@ -102,6 +103,56 @@ class BaileysManager {
     if (!id) return
     this.sentByErp.add(id)
     setTimeout(() => this.sentByErp.delete(id), 120000)
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // A QUIEN SE LE MANDAN LOS EVENTOS DEL INBOX
+  //
+  // Antes todo esto salia con this.io.emit(...), es decir a TODOS los
+  // navegadores conectados: el contenido de cada mensaje de Novonet llegaba
+  // al navegador de un asesor de Velsa (la UI no lo pintaba, pero el dato
+  // viajaba). Ahora se acota a quien de verdad puede ver esa linea, con el
+  // mismo criterio que visibilityCondition() del controlador:
+  //   ADMINISTRADOR            -> broadcast:all
+  //   SUPERVISOR/GERENCIA/ANAL -> wa:empresa:<EMPRESA del dueño de la linea>
+  //   asesor dueño de la linea -> user:<id>
+  // Se emite con UNA sola llamada a io.to([...]) para que socket.io deduplique:
+  // si el dueño es ademas gerencial, recibe el mensaje una vez, no dos (eso
+  // duplicaria la burbuja en el chat abierto).
+  // Linea huerfana (created_by NULL): se conserva el emit global de siempre,
+  // porque esas lineas son visibles para todos los perfiles.
+  // ─────────────────────────────────────────────────────────────────────
+  async _audienciaLinea(lineId) {
+    const cacheada = this._audienciaCache[lineId]
+    if (cacheada && Date.now() - cacheada.ts < 5 * 60 * 1000) return cacheada.valor
+    let valor = null
+    try {
+      const r = await query(
+        `SELECT l.created_by AS owner_id, UPPER(COALESCE(u.empresa, '')) AS empresa
+         FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by
+         WHERE l.id = $1`,
+        [lineId]
+      )
+      if (r.rows.length) valor = { ownerId: r.rows[0].owner_id, empresa: r.rows[0].empresa }
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudo resolver la audiencia:`, e.message)
+    }
+    this._audienciaCache[lineId] = { valor, ts: Date.now() }
+    return valor
+  }
+
+  async _emitInbox(lineId, evento, payload) {
+    try {
+      const aud = await this._audienciaLinea(lineId)
+      if (!aud || !aud.ownerId) { this.io.emit(evento, payload); return }
+      const salas = ['broadcast:all', 'user:' + aud.ownerId]
+      if (aud.empresa) salas.push('wa:empresa:' + aud.empresa)
+      this.io.to(salas).emit(evento, payload)
+    } catch (e) {
+      // Nunca perder un mensaje del inbox por un fallo al acotar la audiencia.
+      console.warn('[BaileysManager] _emitInbox fallback global:', e.message)
+      this.io.emit(evento, payload)
+    }
   }
 
   // Emite el QR SOLO al usuario dueño/solicitante de la línea.
@@ -1142,10 +1193,13 @@ class BaileysManager {
       return
     }
 
-    this.io.emit('message:new', {
+    // wa_msg_id: sin el, el listener 'message:status' del inbox no puede
+    // encontrar la burbuja y el doble check (entregado/leido) nunca cambiaba.
+    await this._emitInbox(lineId, 'message:new', {
       conversation_id: conv.id,
       lineId, waNumber, text, content: text, direction: 'in',
       type: msgType, media_url: mediaUrl,
+      wa_msg_id: msg.key.id,
       timestamp: new Date().toISOString(),
     })
 
@@ -1215,10 +1269,11 @@ class BaileysManager {
     await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
     console.log(`[Line ${lineId}] 🔄 Sync saliente (otro dispositivo) → ${waNumber}`)
 
-    this.io.emit('message:new', {
+    await this._emitInbox(lineId, 'message:new', {
       conversation_id: conv.id,
       lineId, waNumber, text, content: text, direction: 'out',
       type: msgType, media_url: mediaUrl,
+      wa_msg_id: waMsgId,
       timestamp: new Date().toISOString(),
     })
   }
@@ -1239,7 +1294,7 @@ class BaileysManager {
         [nuevoEstado, waMsgId]
       )
       if (upd.rows.length) {
-        this.io.emit('message:status', {
+        await this._emitInbox(lineId, 'message:status', {
           wa_msg_id: waMsgId,
           status: nuevoEstado,
           conversation_id: upd.rows[0].conversation_id,
@@ -1312,8 +1367,13 @@ class BaileysManager {
       )
     } catch (e) {}
 
-    this.io.emit('message:new', {
-      lineId, waNumber, text: selectedLabel, direction: 'in',
+    // Sin conversation_id el inbox no sabia a que chat pertenecia: el voto
+    // no aparecia en la conversacion abierta y ademas disparaba una recarga
+    // completa de la lista en cada voto.
+    await this._emitInbox(lineId, 'message:new', {
+      conversation_id: conv.id,
+      lineId, waNumber, text: selectedLabel, content: selectedLabel,
+      direction: 'in', type: 'text',
       timestamp: new Date().toISOString(),
     })
 
@@ -1371,10 +1431,11 @@ class BaileysManager {
         [conv.id, lineId, waNumber, type, content, mediaUrl, waMsgId]
       )
       // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
-      this.io.emit('message:new', {
+      await this._emitInbox(lineId, 'message:new', {
         conversation_id: conv.id,
         lineId, waNumber, content, text: content, direction: 'out',
         type, media_url: mediaUrl,
+        wa_msg_id: waMsgId,
         timestamp: new Date().toISOString(),
       })
     } catch (e) {}

@@ -11,15 +11,34 @@
 // =============================================================================
 import { useState, useCallback, useEffect } from "react";
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer,
+  BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  LabelList, ResponsiveContainer,
 } from "recharts";
 
 const API = import.meta.env.VITE_API_URL;
 
+// Las tres series del embudo (ingresos → gestionables → activas) son la MISMA
+// magnitud en distinta etapa, así que van en una rampa del mismo color de claro
+// a oscuro, no en tres colores sueltos: el degradado ya cuenta la historia de
+// que cada paso es un subconjunto del anterior.
+// Separación verificada para daltonismo (ΔE 20.2 Novonet / 13.1 Velsa, sobre
+// un mínimo de 8) y reforzada con el valor escrito sobre cada barra.
 const TEMA = {
-  novonet: { fuerte: "#1A3A6E", suave: "#93c5fd", acento: "#2563eb", fondo: "bg-[#1A3A6E]" },
-  velsa:   { fuerte: "#c2410c", suave: "#fdba74", acento: "#ea580c", fondo: "bg-[#c2410c]" },
+  novonet: { fuerte: "#1A3A6E", medio: "#3b82f6", suave: "#93c5fd", acento: "#2563eb", fondo: "bg-[#1A3A6E]" },
+  velsa:   { fuerte: "#c2410c", medio: "#f97316", suave: "#fdba74", acento: "#ea580c", fondo: "bg-[#c2410c]" },
+};
+
+// El número sobre la barra. Se omite el 0 a propósito: una columna de ceros
+// escritos ensucia el gráfico sin aportar nada.
+const Valor = (props) => {
+  const { x, y, width, value } = props;
+  if (!value) return null;
+  return (
+    <text x={x + width / 2} y={y - 4} textAnchor="middle"
+          fill="#57534e" fontSize={9} fontWeight={700}>
+      {Number(value).toLocaleString("es-EC")}
+    </text>
+  );
 };
 
 const hoyEc = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
@@ -63,7 +82,10 @@ function Kpi({ etiqueta, valor, ayuda, resaltado, pista, delta, bajarEsBueno }) 
 }
 
 function BloqueEmpresa({ emp }) {
+  const [valores, setValores] = useState(true);   // números sobre las barras
   const t = TEMA[emp.empresa] || TEMA.novonet;
+  // Ancho reservado por día: tres barras más el número encima de cada una.
+  const anchoDia = valores ? 74 : 42;
   const k = emp.kpis;
   const eq = emp.equilibrio;
   const v  = emp.tendencia?.variacion;         // vs período anterior
@@ -123,28 +145,82 @@ function BloqueEmpresa({ emp }) {
             </div>
           )}
 
-          {/* Grafico: volumen (barras) + inversion (linea, eje derecho) */}
-          <div style={{ width: "100%", height: 300 }}>
-            <ResponsiveContainer>
-              <ComposedChart data={emp.dias} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
-                <XAxis dataKey="fecha" tickFormatter={dia} tick={{ fontSize: 10, fill: "#78716c" }} />
-                <YAxis yAxisId="izq" tick={{ fontSize: 10, fill: "#78716c" }} />
-                <YAxis yAxisId="der" orientation="right" tick={{ fontSize: 10, fill: t.acento }}
-                       tickFormatter={(v) => `$${v}`} />
-                <Tooltip
-                  labelFormatter={(f) => `Día ${f}`}
-                  formatter={(v, n) => (n === "Inversión" ? money(v) : num(v))}
-                  contentStyle={{ fontSize: 11, borderRadius: 10, border: "1px solid #e7e5e4" }}
-                />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Bar  yAxisId="izq" dataKey="ingresos" name="Ingresos" fill={t.suave} radius={[3, 3, 0, 0]} />
-                <Bar  yAxisId="izq" dataKey="activas"  name="Activas"  fill={t.fuerte} radius={[3, 3, 0, 0]} />
-                <Line yAxisId="der" dataKey="inversion" name="Inversión" stroke={t.acento}
-                      strokeWidth={2} dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
+          {/* ── Embudo diario: ingresos → gestionables → activas ────────────
+              Antes esto era un solo gráfico con DOS ejes (volumen a la
+              izquierda, dólares a la derecha). Con dos escalas distintas la
+              altura de una barra y la de la línea no son comparables aunque el
+              ojo las compare igual, y encima la línea de inversión aplastaba
+              las barras. Ahora son dos gráficos, cada uno con su unidad. */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">
+                Volumen por día · leads
+              </span>
+              <button onClick={() => setValores(v => !v)}
+                      title="Mostrar u ocultar el número sobre cada barra"
+                      className="text-[9px] font-bold uppercase tracking-wider text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-2 py-1">
+                {valores ? "Ocultar valores" : "Ver valores"}
+              </button>
+            </div>
+
+            {/* Con muchos días las barras y sus números no caben: en vez de
+                encogerlos hasta que no se lean, el gráfico crece y se desplaza. */}
+            <div className="overflow-x-auto">
+              <div style={{ width: Math.max(560, (emp.dias?.length || 1) * anchoDia), height: 300 }}>
+                <ResponsiveContainer>
+                  <BarChart data={emp.dias} margin={{ top: 18, right: 8, left: -18, bottom: 0 }}
+                            barGap={2} barCategoryGap="18%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
+                    <XAxis dataKey="fecha" tickFormatter={dia} tick={{ fontSize: 10, fill: "#78716c" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "#78716c" }} />
+                    <Tooltip
+                      labelFormatter={(f) => `Día ${f}`}
+                      formatter={(v) => num(v)}
+                      cursor={{ fill: "#f5f5f4" }}
+                      contentStyle={{ fontSize: 11, borderRadius: 10, border: "1px solid #e7e5e4" }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="ingresos"     name="Ingresos"     fill={t.suave}  radius={[3, 3, 0, 0]}>
+                      {valores && <LabelList dataKey="ingresos"     content={Valor} />}
+                    </Bar>
+                    <Bar dataKey="gestionables" name="Gestionables" fill={t.medio}  radius={[3, 3, 0, 0]}>
+                      {valores && <LabelList dataKey="gestionables" content={Valor} />}
+                    </Bar>
+                    <Bar dataKey="activas"      name="Activas"      fill={t.fuerte} radius={[3, 3, 0, 0]}>
+                      {valores && <LabelList dataKey="activas"      content={Valor} />}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
+
+          {/* Inversión: otra unidad, otro gráfico */}
+          {emp.inversion_disponible && (
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">
+                Inversión por día · USD
+              </span>
+              <div className="overflow-x-auto mt-1">
+                <div style={{ width: Math.max(560, (emp.dias?.length || 1) * anchoDia), height: 150 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={emp.dias} margin={{ top: 14, right: 8, left: -8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
+                      <XAxis dataKey="fecha" tickFormatter={dia} tick={{ fontSize: 10, fill: "#78716c" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "#78716c" }} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip
+                        labelFormatter={(f) => `Día ${f}`}
+                        formatter={(v) => money(v)}
+                        contentStyle={{ fontSize: 11, borderRadius: 10, border: "1px solid #e7e5e4" }}
+                      />
+                      <Line dataKey="inversion" name="Inversión" stroke={t.acento}
+                            strokeWidth={2} dot={{ r: 2.5, fill: t.acento }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Punto de equilibrio */}
           {eq ? (

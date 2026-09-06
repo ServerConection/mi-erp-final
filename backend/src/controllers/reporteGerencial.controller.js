@@ -37,12 +37,30 @@ function rango(req) {
 const SERIES = {
   novonet: {
     nombre: 'Novonet',
+    // La etapa del CRM NO se lee de mestra_bitrix. En esa tabla, la fila de
+    // JotForm (columnas j_*) y la del CRM (columnas b_*) son filas DISTINTAS:
+    // leer mb.b_etapa_de_la_negociacion desde la fila JotForm da siempre NULL,
+    // y como la expresión de gestionable exige IS NOT NULL, el resultado era
+    // 0 gestionables con 239 ingresos. Además el ETL de mestra_bitrix va
+    // atrasado frente al webhook. El Reporte D-1 (la fuente correcta) resuelve
+    // las dos cosas cruzando con vw_bitrix_novonet por j_id_bitrix = b_id, y
+    // eso es lo que se hace aquí.
+    //
+    // El cruce es LATERAL con LIMIT 1 a propósito: un LEFT JOIN normal
+    // duplicaría la fila si un deal apareciera dos veces en la vista, y los
+    // ingresos —que hoy están bien— empezarían a inflarse.
     sql: `
       SELECT mb.j_fecha_registro_sistema::date                       AS fecha,
              COUNT(*)::int                                            AS ingresos,
-             COUNT(*) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')})::int AS gestionables,
+             COUNT(*) FILTER (WHERE ${esGestionableExpr('crm.b_etapa_de_la_negociacion')})::int AS gestionables,
              COUNT(*) FILTER (WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO')::int    AS activas
       FROM public.mestra_bitrix mb
+      LEFT JOIN LATERAL (
+        SELECT b.b_etapa_de_la_negociacion
+          FROM public.vw_bitrix_novonet b
+         WHERE b.b_id::text = mb.j_id_bitrix::text
+         LIMIT 1
+      ) crm ON true
       WHERE mb.j_id_bitrix IS NOT NULL
         AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
       GROUP BY 1 ORDER BY 1`,

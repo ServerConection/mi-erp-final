@@ -32,6 +32,7 @@ app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
 app.use('/api/backoffice',        require('../routes/backoffice.routes'));
 app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'));
 app.use('/api/salud',require('../routes/salud.routes'));
+app.use('/api/reporte-gerencial',require('../routes/reporteGerencial.routes'));
 app.use('/api/reporte-detalle',   require('../routes/reporteDetalle.routes'));
 app.use('/api/bot-auditor',       require('../routes/botAuditor.routes'));
 app.use('/api/nexo-ia',           require('../routes/nexoIa.routes'));

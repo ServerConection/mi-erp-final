@@ -394,6 +394,9 @@ const ALL_MENU_ITEMS = [
   // Mapa de salud del ERP: solo administradores — muestra el estado interno.
   { name: "Salud del sistema", path: "/salud", icon: "🩺",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
+  // Reporte Gerencial: inversion, costo por venta y margen. Direccion y admin.
+  { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
+    accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
 
   // ── Formularios y guías ──────────────────────────────────────────────────
   { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },

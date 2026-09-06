@@ -606,11 +606,16 @@ export default function VistaAsesor() {
     const totalTarjeta = base.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
     const totalGest    = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
 
-    // Promedios ponderados para porcentajes
+    // Porcentajes globales del equipo
     const pctDescarte    = base.length > 0
       ? base.reduce((a, r) => a + Number(r.descarte || 0), 0) / base.length : 0;
-    const pctEfectividad = base.length > 0
-      ? base.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / base.length : 0;
+    // FIX 2026-09-06: la efectividad global se recalcula desde los TOTALES, no
+    // promediando los porcentajes de cada asesor. El promedio simple daba un
+    // numero distinto al de Reporte D-1 (que es el correcto) porque pesa igual
+    // a un asesor con 2 leads que a uno con 200: uno con 1 ingreso sobre 1
+    // gestionable aporta un 100% que empuja el promedio hacia arriba.
+    // Misma formula que D-1: ingresos Jotform / gestionables.
+    const pctEfectividad = totalGest > 0 ? (totalJot / totalGest) * 100 : 0;
     const pctTasaInst    = totalJot > 0 ? (totalActivas / totalJot) * 100 : 0;
     const pctTarjeta     = totalJot > 0 ? (totalTarjeta / totalJot) * 100 : 0;
 

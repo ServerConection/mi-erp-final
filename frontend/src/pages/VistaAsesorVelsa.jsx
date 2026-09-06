@@ -526,7 +526,15 @@ export default function VistaAsesorVelsa() {
       activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
       regularizacion:  base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
       pct_descarte:    (base.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
-      pct_efectividad: (base.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+      // FIX 2026-09-06: igual que en Vista Asesor Novonet — la efectividad
+      // global sale de los TOTALES (ingresos Jotform / gestionables), no del
+      // promedio de los porcentajes por asesor, que pesaba igual a un asesor
+      // con 2 leads que a uno con 200 y no cuadraba con Reporte D-1.
+      pct_efectividad: (() => {
+        const tJot  = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
+        const tGest = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+        return tGest > 0 ? ((tJot / tGest) * 100).toFixed(1) : "0.0";
+      })(),
       pct_instalacion: (base.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
       pct_tarjeta:     (() => {
         const totalJot = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);

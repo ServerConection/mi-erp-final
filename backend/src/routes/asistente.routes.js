@@ -25,4 +25,10 @@ router.get('/sugerencias', (req, res) => {
   res.json({ success: true, data: asistente.INTENCIONES.map(i => i.ejemplos) });
 });
 
+// GET /api/asistente/faq — base de conocimiento completa, para el panel de
+// "Preguntas frecuentes" del asistente (se puede leer sin preguntar nada).
+router.get('/faq', (req, res) => {
+  res.json({ success: true, data: asistente.listarFaq() });
+});
+
 module.exports = router;

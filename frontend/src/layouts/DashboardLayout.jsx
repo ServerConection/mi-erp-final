@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -16,14 +16,8 @@ let socketSingleton = null;
 
 const getSocket = () => {
   if (!socketSingleton) {
-    socketSingleton = io(API, {
-      auth: { token: localStorage.getItem('token') },
-      transports: ["websocket", "polling"],   // polling como fallback si WS falla
-      reconnection: true,
-      reconnectionAttempts: Infinity,         // nunca dejar de reintentar (broadcasts)
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
-    });
+    // Socket unico de la app (reconexion y token ya se manejan alli).
+    socketSingleton = getSocketCompartido();
     // Refrescar el token en cada reintento (si venció, el nuevo login lo repone)
     socketSingleton.io.on("reconnect_attempt", () => {
       socketSingleton.auth = { token: localStorage.getItem("token") };

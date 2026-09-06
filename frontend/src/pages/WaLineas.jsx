@@ -2,7 +2,7 @@
  * WaLineas.jsx — Gestión de líneas WhatsApp en el ERP
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 
@@ -48,16 +48,9 @@ const normalizarLinea = (line) => ({
   status: line?.rt_status || line?.status || "disconnected",
 });
 
-let _socket = null;
-const getSocket = () => {
-  if (!_socket) {
-    _socket = io(import.meta.env.VITE_API_URL, {
-      auth: { token: localStorage.getItem("token") },
-      transports: ["websocket", "polling"],
-    });
-  }
-  return _socket;
-};
+// Delegado al socket unico de la app (ver utils/socketCompartido.js):
+// antes cada modulo abria el suyo y el backend veia 7 conexiones por usuario.
+const getSocket = () => getSocketCompartido();
 
 export default function WaLineas() {
   const [lines, setLines]       = useState([]);

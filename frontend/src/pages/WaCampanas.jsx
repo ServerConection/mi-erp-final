@@ -2,7 +2,7 @@
  * WaCampanas.jsx — Gestión de campañas masivas WhatsApp en el ERP
  */
 import { useState, useEffect, useCallback } from "react";
-import { io } from "socket.io-client";
+import { getSocketCompartido } from "../utils/socketCompartido";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -108,25 +108,32 @@ export default function WaCampanas() {
 
   // ── Progreso en vivo por Socket.IO ──────────────────────────
   useEffect(() => {
-    const s = io(ORIGIN, { auth: { token: localStorage.getItem("token") } });
+    // Socket unico de la app. Este efecto depende de [load], asi que antes
+    // creaba y destruia una conexion cada vez que cambiaba: parte del vaiven
+    // "conectado -> desconectado" que se veia en los logs del backend.
+    const s = getSocketCompartido();
+    const handlers = {};
 
     // Actualiza contadores de una campaña sin recargar todo
     const patch = (campaignId, fn) =>
       setCampaigns(cs => cs.map(c => (c.id === campaignId ? fn(c) : c)));
 
-    s.on("campaign:progress", ({ campaignId, sent, failed, total }) =>
-      patch(campaignId, c => ({ ...c, sent_count: sent, failed_count: failed, total_recipients: total })));
-    s.on("campaign:started",   ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "running" })));
-    s.on("campaign:paused",    ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "paused" })));
-    s.on("campaign:cancelled", ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "cancelled" })));
-    s.on("campaign:completed", ({ campaignId }) => {
+    handlers["campaign:progress"] = ({ campaignId, sent, failed, total }) =>
+      patch(campaignId, c => ({ ...c, sent_count: sent, failed_count: failed, total_recipients: total }));
+    handlers["campaign:started"]   = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "running" }));
+    handlers["campaign:paused"]    = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "paused" }));
+    handlers["campaign:cancelled"] = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "cancelled" }));
+    handlers["campaign:completed"] = ({ campaignId }) => {
       patch(campaignId, c => ({ ...c, status: "completed" }));
       load(); // refresca stats finales
-    });
-    s.on("campaign:delivered", ({ campaignId }) =>
-      patch(campaignId, c => ({ ...c, delivered_count: (c.delivered_count || 0) + 1 })));
+    };
+    handlers["campaign:delivered"] = ({ campaignId }) =>
+      patch(campaignId, c => ({ ...c, delivered_count: (c.delivered_count || 0) + 1 }));
 
-    return () => s.disconnect();
+    for (const [evento, fn] of Object.entries(handlers)) s.on(evento, fn);
+
+    // Solo se quitan LOS PROPIOS: la conexion es de toda la app.
+    return () => { for (const [evento, fn] of Object.entries(handlers)) s.off(evento, fn); };
   }, [load]);
 
   const openNew = () => {

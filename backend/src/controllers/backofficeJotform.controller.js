@@ -139,7 +139,12 @@ function buildSelectPlanes(alias, cols) {
   const categoria = cols
     .map(([c, label]) => `WHEN ${valPlan(alias, c)} IS NOT NULL THEN '${label}'`)
     .join('\n          ');
-  const detalle = cols.map(([c]) => `${alias}.${c}`).join(',\n        ');
+  // El 3er elemento (opcional) es el nombre de salida: Velsa llama
+  // plan_centro_red_comercial a lo que Novonet llama plan_centro_comercial.
+  // Se renombra aquí para que el Excel de las dos empresas sea idéntico.
+  const detalle = cols
+    .map(([c, , salida]) => `${alias}.${c} AS ${salida || c}`)
+    .join(',\n        ');
   return `
         COALESCE(${coalesce}) AS plan_comercial,
         CASE
@@ -164,8 +169,106 @@ const COLS_PLAN_VELSA = [
   ['plan_profesional',          'PROFESIONAL'],
   ['plan_pyme',                 'PYME'],
   ['plan_pyme_corp',            'PYME CORP'],
-  ['plan_centro_red_comercial', 'CENTRO/RED COMERCIAL'],
+  ['plan_centro_red_comercial', 'CENTRO/RED COMERCIAL', 'plan_centro_comercial'],
 ];
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COLUMNAS DEL EXPORT — LAS MISMAS PARA NOVONET Y VELSA
+// ═══════════════════════════════════════════════════════════════════════════
+// Las dos empresas viven en tablas distintas y con nombres distintos: Novonet
+// en mestra_bitrix (columnas j_* de Jotform y b_* del CRM) y Velsa en la vista
+// mv_indicadores_velsa_completo. El Excel salía con columnas diferentes según
+// la empresa, así que no se podían pegar uno debajo del otro ni comparar.
+//
+// Esta tabla es el traductor: una fila por columna del Excel, con la expresión
+// que le corresponde a cada empresa. Lo que una empresa no tiene sale en NULL
+// EXPLÍCITO en vez de desaparecer — así las dos descargas tienen las mismas
+// columnas, en el mismo orden, y el hueco se ve como hueco.
+//
+// Para agregar una columna al Excel: una línea acá, y las dos empresas la
+// tienen. No hay que tocar nada más.
+const NULO = `NULL::text`;
+
+const COLUMNAS_EXPORT = [
+  // salida                    Novonet (mestra_bitrix mb)                  Velsa (mv_indicadores_velsa_completo mv)
+  ['id_crm',                  `mb.b_id::text`,                            `mv.id_crm::text`],
+  ['id_jotform',              `mb.j_id_bitrix::text`,                     `mv.id_jotform::text`],
+  ['fecha',                   `mb.j_fecha_registro_sistema::date::text`,   `(mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text`],
+  ['hora',                    `COALESCE(EXTRACT(HOUR FROM mb.j_fecha_registro_sistema::timestamp)::int, -1)`,
+                              `COALESCE(EXTRACT(HOUR FROM (mv.fecha_registro_jotform::timestamp - INTERVAL '5 hours'))::int, -1)`],
+
+  // El código de asesor es lo que permite cruzar esta descarga con nómina,
+  // comisiones y metas. Las dos empresas lo guardan, con otro nombre.
+  ['codigo_asesor',           `mb.j_codigo_asesor`,                       `mv.codigo_asesor`],
+  ['asesor',                  `COALESCE(NULLIF(TRIM(mb.b_persona_responsable), ''), 'SIN ASIGNAR')`,
+                              `COALESCE(NULLIF(TRIM(mv.asesor), ''), 'SIN ASIGNAR')`],
+  ['supervisor',              `mb.j_supervisor`,                          `mv.supervisor`],
+
+  ['etapa_crm',               `UPPER(TRIM(mb.b_etapa_de_la_negociacion))`, `UPPER(TRIM(mv.etapa_crm))`],
+  ['estado_jot',              `COALESCE(NULLIF(TRIM(UPPER(mb.j_netlife_estatus_real)), ''), 'SIN ESTADO')`,
+                              `COALESCE(NULLIF(TRIM(UPPER(mv.estado_venta)), ''), 'SIN ESTADO')`],
+
+  ['ciudad',                  `mb.j_ciudad`,                              `mv.ciudad`],
+  ['forma_pago',              `mb.j_forma_pago`,                          `mv.forma_pago`],
+  ['aplica_descuento',        `mb.j_aplica_descuento_3ra_edad`,           `mv.aplica_descuento`],
+  ['estado_regularizacion',   `mb.j_estatus_regularizacion`,              `mv.estado_regularizacion`],
+  ['detalle_regularizacion',  `mb.j_detalle_regularizacion`,              `mv.detalle_regularizacion`],
+  ['fecha_activacion',        `mb.j_fecha_activacion_netlife::text`,      `mv.fecha_activacion::text`],
+  ['fecha_agenda',            `mb.j_fecha_agenda::text`,                  `mv.fecha_agenda::text`],
+  ['login_netlife',           `mb.j_netlife_login`,                       `mv.inicio_sesion_netlife`],
+  ['origen',                  `mb.b_origen`,                              `mv.origen`],
+  ['fecha_creacion_crm',      `mb.b_creado_el_fecha::text`,               `mv.fecha_creacion_crm::text`],
+  ['fecha_modificacion_crm',  `mb.b_modificado_el_fecha::text`,           `mv.fecha_modificacion_crm::text`],
+
+  // Cada empresa registra algo que la otra no. La columna se mantiene igual
+  // para que el archivo sea el mismo; vacía donde no aplica.
+  ['novedades_atc',           `mb.j_novedades_atc`,                       NULO],
+  ['fecha_ingresa_telcos',    NULO,                                       `mv.fecha_ingresa_telcos::text`],
+  ['observacion_telcos',      NULO,                                       `mv.observacion_telcos`],
+];
+
+// ── Red de seguridad: columnas que la tabla puede no tener ──────────────────
+// mestra_bitrix y la vista de Velsa se han ido ampliando con el tiempo y no
+// están versionadas en este repo. Si una columna de arriba no existe todavía,
+// pedirla rompería TODA la descarga. Así que antes de armar el SELECT se
+// consulta qué columnas existen de verdad y las que falten salen vacías: se
+// pierde ese dato, no el archivo.
+const RELACIONES = { novonet: 'mestra_bitrix', velsa: 'mv_indicadores_velsa_completo' };
+const cacheColumnas = new Map();
+
+async function columnasReales(empresa) {
+  if (cacheColumnas.has(empresa)) return cacheColumnas.get(empresa);
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1`,
+    [RELACIONES[empresa]]
+  );
+  const set = new Set(rows.map((r) => r.column_name));
+  if (set.size) cacheColumnas.set(empresa, set);   // vacío = no cachear (vista aún no creada)
+  return set;
+}
+
+/** El SELECT del export para la empresa que toca, con las mismas columnas y en
+ *  el mismo orden en ambos casos. */
+async function selectExport(empresa) {
+  const idx = empresa === 'novonet' ? 1 : 2;
+  const alias = empresa === 'novonet' ? 'mb' : 'mv';
+  const existentes = await columnasReales(empresa);
+
+  const usable = (expr) => {
+    if (!existentes.size) return true;            // sin catálogo, no se filtra nada
+    const usadas = [...expr.matchAll(new RegExp(`\\b${alias}\\.([a-z0-9_]+)`, 'g'))];
+    return usadas.every(([, col]) => existentes.has(col));
+  };
+
+  return COLUMNAS_EXPORT
+    .map(([salida, ...exprs]) => {
+      const expr = exprs[idx - 1];
+      return `${usable(expr) ? expr : NULO} AS ${salida}`;
+    })
+    .join(',\n        ');
+}
 
 // ── Definición de campos por empresa (fuente, id, fecha, hora, asesor, etapa-crm, estado-jot) ──
 const CFG = {
@@ -561,15 +664,12 @@ async function exportExcel(req, res) {
       where.push(`COALESCE(r.estado_revision, 'PENDIENTE') = $${values.length}`);
     }
 
+    // Mismas columnas y mismo orden para las dos empresas (ver COLUMNAS_EXPORT).
     const sql = `
       SELECT
         ${c.idExterno}        AS id_externo,
-        ${c.fechaJot}::text   AS fecha,
-        ${c.horaJot}          AS hora,
-        ${c.asesor}           AS asesor,
-        UPPER(TRIM(${c.etapaCrm})) AS etapa_crm,
-        ${c.estadoJot}        AS estado_jot,
-        ${c.esVentaServicio} AS es_venta_servicio,
+        ${await selectExport(empresa)},
+        ${c.esVentaServicio}  AS es_venta_servicio,
         ${c.selectPlanes},
         COALESCE(r.estado_revision, 'PENDIENTE') AS estado_revision,
         r.observacion         AS observacion,
@@ -605,4 +705,6 @@ module.exports = {
   // desde otros módulos (p.ej. Productividad de asesores en TTHH), sin duplicar
   // la definición de columnas por empresa.
   CFG, EMPRESAS, esGestionableExpr, rangoFechas, validarEmpresa,
+  // Solo para las pruebas: la caché de columnas debe poder vaciarse.
+  _limpiarCacheColumnas: () => cacheColumnas.clear(),
 };

@@ -7,9 +7,9 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from "recharts";
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList} from "recharts";
 import TabReporteData from "./TabReporteData";
+import { ValorBarraH } from "../utils/etiquetaBarra";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -196,8 +196,12 @@ function TabCiudad({ fechaDesde, fechaHasta, canalesSel }) {
             <YAxis type="category" dataKey="ciudad" fontSize={11} width={110} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="n_leads" name="Leads" fill={C.primary} />
-            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} />
+            <Bar dataKey="n_leads" name="Leads" fill={C.primary} >
+              <LabelList dataKey="n_leads" content={ValorBarraH} />
+            </Bar>
+            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} >
+              <LabelList dataKey="venta_subida" content={ValorBarraH} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -269,9 +273,15 @@ function TabHora({ fechaDesde, fechaHasta, canalesSel }) {
             <YAxis fontSize={11} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="n_leads" name="Leads" fill={C.primary} />
-            <Bar dataKey="atc" name="ATC" fill={C.sky} />
-            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} />
+            <Bar dataKey="n_leads" name="Leads" fill={C.primary} >
+              <LabelList dataKey="n_leads" content={ValorBarraH} />
+            </Bar>
+            <Bar dataKey="atc" name="ATC" fill={C.sky} >
+              <LabelList dataKey="atc" content={ValorBarraH} />
+            </Bar>
+            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} >
+              <LabelList dataKey="venta_subida" content={ValorBarraH} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -339,7 +349,9 @@ function TabAtc({ fechaDesde, fechaHasta, canalesSel }) {
             <XAxis type="number" fontSize={11} />
             <YAxis type="category" dataKey="motivo" fontSize={11} width={160} />
             <Tooltip />
-            <Bar dataKey="cantidad" name="Leads" fill={C.warning} />
+            <Bar dataKey="cantidad" name="Leads" fill={C.warning} >
+              <LabelList dataKey="cantidad" content={ValorBarraH} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -417,9 +429,15 @@ function TabReporte({ fechaDesde, fechaHasta, canalesSel }) {
             <YAxis fontSize={11} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="inversion" name="Inversión USD" fill={C.cyan} />
-            <Bar dataKey="n_leads" name="Leads" fill={C.primary} />
-            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} />
+            <Bar dataKey="inversion" name="Inversión USD" fill={C.cyan} >
+              <LabelList dataKey="inversion" content={ValorBarraH} />
+            </Bar>
+            <Bar dataKey="n_leads" name="Leads" fill={C.primary} >
+              <LabelList dataKey="n_leads" content={ValorBarraH} />
+            </Bar>
+            <Bar dataKey="venta_subida" name="Venta Subida" fill={C.success} >
+              <LabelList dataKey="venta_subida" content={ValorBarraH} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -445,7 +463,9 @@ function TabReporte({ fechaDesde, fechaHasta, canalesSel }) {
               <XAxis dataKey="label" fontSize={11} />
               <YAxis fontSize={11} />
               <Tooltip />
-              <Bar dataKey="cantidad" name="Ventas" fill={C.violet} />
+              <Bar dataKey="cantidad" name="Ventas" fill={C.violet} >
+                <LabelList dataKey="cantidad" content={ValorBarraH} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

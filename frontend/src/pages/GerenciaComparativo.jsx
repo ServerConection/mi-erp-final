@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { ValorBarra } from "../utils/etiquetaBarra";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  PieChart, Pie, Cell, ResponsiveContainer,
-} from "recharts";
+  PieChart, Pie, Cell, ResponsiveContainer, LabelList} from "recharts";
 
 // ─── PALETA ──────────────────────────────────────────────────────────────────
 const C = {
@@ -337,8 +337,12 @@ export default function GerenciaComparativo() {
                     contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
                     formatter={(v, name) => [v.toLocaleString("es-EC"), name]}
                   />
-                  <Bar dataKey="nov" name="Novonet" fill={C.nov} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="vel" name="Velsa"   fill={C.vel} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="nov" name="Novonet" fill={C.nov} radius={[4, 4, 0, 0]} >
+                    <LabelList dataKey="nov" content={ValorBarra} />
+                  </Bar>
+                  <Bar dataKey="vel" name="Velsa"   fill={C.vel} radius={[4, 4, 0, 0]} >
+                    <LabelList dataKey="vel" content={ValorBarra} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -434,8 +438,12 @@ export default function GerenciaComparativo() {
                   <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="nov" name="Novonet" fill={C.nov} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="vel" name="Velsa"   fill={C.vel} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="nov" name="Novonet" fill={C.nov} radius={[4, 4, 0, 0]} >
+                    <LabelList dataKey="nov" content={ValorBarra} />
+                  </Bar>
+                  <Bar dataKey="vel" name="Velsa"   fill={C.vel} radius={[4, 4, 0, 0]} >
+                    <LabelList dataKey="vel" content={ValorBarra} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>

@@ -4,6 +4,7 @@
 // Disponible para todos los perfiles excepto ASESOR / CONSULTOR.
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { ValorBarraH } from "../utils/etiquetaBarra";
 import {
   ResponsiveContainer, FunnelChart, Funnel, LabelList, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, Legend,
@@ -325,8 +326,12 @@ export default function BackofficeJotform() {
               <YAxis tick={{ fill: "#64748b", fontSize: 11 }} />
               <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
               <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              <Bar dataKey="ingresados" name="Ingresados" fill="#6366f1" radius={[4,4,0,0]} />
-              <Bar dataKey="activos" name="Activos" fill="#34d399" radius={[4,4,0,0]} />
+              <Bar dataKey="ingresados" name="Ingresados" fill="#6366f1" radius={[4,4,0,0]} >
+                <LabelList dataKey="ingresados" content={ValorBarraH} />
+              </Bar>
+              <Bar dataKey="activos" name="Activos" fill="#34d399" radius={[4,4,0,0]} >
+                <LabelList dataKey="activos" content={ValorBarraH} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -367,6 +372,7 @@ export default function BackofficeJotform() {
                 <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,.1)" }} />
                 <Bar dataKey="cantidad" radius={[0,4,4,0]}>
                   {topEtapas.map((e, i) => <Cell key={i} fill={e.noGestionable ? "#f87171" : "#8b5cf6"} />)}
+                  <LabelList dataKey="cantidad" content={ValorBarraH} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

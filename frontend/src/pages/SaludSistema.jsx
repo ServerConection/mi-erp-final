@@ -17,7 +17,121 @@ const COLOR = {
   RETRASO:     { punto: "bg-amber-500",   chip: "bg-amber-50 text-amber-700 border-amber-200",       texto: "Con retraso" },
   CAIDO:       { punto: "bg-red-500",     chip: "bg-red-50 text-red-700 border-red-200",             texto: "Congelado" },
   DESCONOCIDO: { punto: "bg-stone-300",   chip: "bg-stone-50 text-stone-500 border-stone-200",       texto: "Sin dato" },
+  SIN_MEDIR:   { punto: "bg-stone-200",   chip: "bg-stone-50 text-stone-400 border-stone-200",       texto: "No se mide" },
 };
+
+// El color solo no alcanza: quien no distingue rojo de verde necesita otra
+// señal, y una impresión en blanco y negro también.
+const MAPA_ESTADO = {
+  OK:          { trazo: "#059669", relleno: "#ecfdf5", simbolo: "✓" },
+  RETRASO:     { trazo: "#d97706", relleno: "#fffbeb", simbolo: "!" },
+  CAIDO:       { trazo: "#dc2626", relleno: "#fef2f2", simbolo: "✕" },
+  DESCONOCIDO: { trazo: "#a8a29e", relleno: "#fafaf9", simbolo: "?" },
+  SIN_MEDIR:   { trazo: "#d6d3d1", relleno: "#fafaf9", simbolo: "·" },
+};
+
+// ── Diagrama de flujo del ERP ────────────────────────────────────────────────
+// Una lista dice qué está caído; no dice a quién le importa. Este dibujo pone
+// el recorrido completo: de dónde sale cada dato y qué pantallas se quedan sin
+// él. Cuando la Maestra Bitrix se congela, se ve la línea roja llegando hasta
+// Reporte D-1 y Vista Asesor — que es la pregunta que sigue siempre.
+const ANCHO_COL = 250, ALTO_FILA = 76, CAJA_W = 190, CAJA_H = 52, MARGEN_Y = 64;
+
+function MapaModulos({ mapa }) {
+  if (!mapa?.capas?.length) return null;
+
+  // Posición de cada nodo: la columna es su capa, la fila su orden dentro.
+  const pos = {};
+  mapa.capas.forEach((capa, col) => {
+    capa.nodos.forEach((n, fila) => {
+      pos[n.id] = { x: col * ANCHO_COL + 20, y: fila * ALTO_FILA + MARGEN_Y, nodo: n };
+    });
+  });
+
+  const filasMax = Math.max(...mapa.capas.map((c) => c.nodos.length));
+  const ancho = mapa.capas.length * ANCHO_COL + 20;
+  const alto  = filasMax * ALTO_FILA + MARGEN_Y + 20;
+
+  // Las conexiones se dibujan primero para que queden DEBAJO de las cajas.
+  const lineas = [];
+  for (const capa of mapa.capas) {
+    for (const n of capa.nodos) {
+      for (const destino of (n.alimenta || [])) {
+        const a = pos[n.id], b = pos[destino];
+        if (!a || !b) continue;
+        const x1 = a.x + CAJA_W, y1 = a.y + CAJA_H / 2;
+        const x2 = b.x,          y2 = b.y + CAJA_H / 2;
+        const medio = (x1 + x2) / 2;
+        // Rojo solo si el problema VIAJA por esta línea: el origen está mal.
+        const malo = a.nodo.estado === 'CAIDO' || a.nodo.estado === 'RETRASO';
+        lineas.push(
+          <path key={`${n.id}-${destino}`}
+            d={`M ${x1} ${y1} C ${medio} ${y1}, ${medio} ${y2}, ${x2} ${y2}`}
+            fill="none"
+            stroke={malo ? MAPA_ESTADO[a.nodo.estado].trazo : '#d6d3d1'}
+            strokeWidth={malo ? 2 : 1.2}
+            strokeDasharray={malo ? '' : '4 3'}
+          />
+        );
+      }
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-stone-100 bg-stone-50">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-stone-600">
+          Mapa de módulos · de dónde sale cada dato y quién depende de él
+        </h3>
+      </div>
+      <div className="overflow-x-auto p-4">
+        <svg width={ancho} height={alto} style={{ minWidth: ancho }}>
+          {/* títulos de capa */}
+          {mapa.capas.map((capa, col) => (
+            <text key={capa.id} x={col * ANCHO_COL + 20} y={28}
+                  fontSize={10} fontWeight={800} fill="#78716c"
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              {capa.nombre}
+            </text>
+          ))}
+
+          {lineas}
+
+          {mapa.capas.map((capa) => capa.nodos.map((n) => {
+            const p = pos[n.id];
+            const est = MAPA_ESTADO[n.estado] || MAPA_ESTADO.DESCONOCIDO;
+            const titulo = [n.detalle, n.medida && `Último: ${n.medida}`, n.causa && `Arrastrado por: ${n.causa}`]
+              .filter(Boolean).join('\n');
+            return (
+              <g key={n.id}>
+                <title>{titulo || n.nombre}</title>
+                <rect x={p.x} y={p.y} width={CAJA_W} height={CAJA_H} rx={9}
+                      fill={est.relleno} stroke={est.trazo} strokeWidth={1.5} />
+                <text x={p.x + 12} y={p.y + 21} fontSize={11} fontWeight={700} fill="#292524">
+                  {est.simbolo} {n.nombre.length > 24 ? n.nombre.slice(0, 23) + '…' : n.nombre}
+                </text>
+                <text x={p.x + 12} y={p.y + 38} fontSize={9} fill="#78716c">
+                  {n.causa && n.causa !== n.nombre
+                    ? `por ${n.causa.length > 22 ? n.causa.slice(0, 21) + '…' : n.causa}`
+                    : (n.medida || '')}
+                </text>
+              </g>
+            );
+          }))}
+        </svg>
+      </div>
+      <div className="flex flex-wrap gap-4 border-t border-stone-100 px-5 py-2 text-[10px] text-stone-500">
+        {Object.entries(MAPA_ESTADO).map(([k, v]) => (
+          <span key={k} className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded" style={{ background: v.relleno, border: `1.5px solid ${v.trazo}` }} />
+            {v.simbolo} {COLOR[k]?.texto || k}
+          </span>
+        ))}
+        <span className="ml-auto italic">Pasa el mouse por una caja para ver el detalle.</span>
+      </div>
+    </div>
+  );
+}
 
 const fmtHora = (iso) => {
   if (!iso) return "—";
@@ -93,6 +207,8 @@ export default function SaludSistema() {
         Este mapa consulta la base de producción (Render). Las tablas de JotForm viven en el
         Postgres local de la oficina y no son visibles desde aquí, por eso no aparecen.
       </p>
+
+      {data?.mapa && <MapaModulos mapa={data.mapa} />}
 
       {/* Componentes por grupo */}
       {Object.entries(grupos).map(([grupo, items]) => (

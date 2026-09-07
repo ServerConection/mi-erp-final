@@ -6,10 +6,10 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { jwtDecode } from "jwt-decode";
+import { ValorBarra } from "../utils/etiquetaBarra";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ComposedChart, Cell,
-} from "recharts";
+  Tooltip, Legend, ResponsiveContainer, ComposedChart, Cell, LabelList} from "recharts";
 
 const API = `${import.meta.env.VITE_API_URL}/api/forecast`;
 
@@ -278,8 +278,12 @@ function TabCampanas({ campanas, periodo, isAdmin, mes, anio, onRefresh }) {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar yAxisId="left" dataKey="leads" name="Leads" fill={CAMPANA_COLOR[selected] || "#6366f1"} opacity={0.8} radius={[3,3,0,0]} />
-                  <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#10b981" opacity={0.8} radius={[3,3,0,0]} />
+                  <Bar yAxisId="left" dataKey="leads" name="Leads" fill={CAMPANA_COLOR[selected] || "#6366f1"} opacity={0.8} radius={[3,3,0,0]} >
+                    <LabelList dataKey="leads" content={ValorBarra} />
+                  </Bar>
+                  <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#10b981" opacity={0.8} radius={[3,3,0,0]} >
+                    <LabelList dataKey="ventas" content={ValorBarra} />
+                  </Bar>
                   <Line yAxisId="right" type="monotone" dataKey="inversion" name="Inversión $" stroke="#f59e0b" strokeWidth={2} dot={false} />
                   {diario.dias[0]?.inv_objetivo_dia != null && (
                     <Line yAxisId="right" type="monotone" dataKey="inv_objetivo_dia" name="Objetivo diario $"
@@ -499,8 +503,11 @@ function TabResumen({ campanas, totales, periodo }) {
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={Object.values(CAMPANA_COLOR)[i] || "#6366f1"} />
               ))}
+              <LabelList dataKey="leads" content={ValorBarra} />
             </Bar>
-            <Bar dataKey="ventas" name="Ventas" fill="#10b981" radius={[4,4,0,0]} />
+            <Bar dataKey="ventas" name="Ventas" fill="#10b981" radius={[4,4,0,0]} >
+              <LabelList dataKey="ventas" content={ValorBarra} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -607,6 +614,17 @@ export default function Forecast() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Consolidado de las DOS empresas. Va aparte del dashboard por campaña
+  // porque responde otra pregunta: cuánto se va a gastar y cuánta gestión va a
+  // haber este mes en total. Si falla, el resto de la pantalla no se entera.
+  const [consolidado, setConsolidado] = useState(null);
+  useEffect(() => {
+    fetch(`${API}/consolidado?mes=${mes}&anio=${anio}`, { headers: headers() })
+      .then((r) => r.json())
+      .then((d) => setConsolidado(d.success ? d : null))
+      .catch(() => setConsolidado(null));
+  }, [mes, anio]);
+
   const tabs = [
     { id: "resumen",    label: "📊 Resumen general" },
     { id: "campanas",   label: "🎯 Por campaña" },
@@ -690,7 +708,10 @@ export default function Forecast() {
       {!loading && !error && data && (
         <>
           {tab === "resumen" && (
-            <TabResumen campanas={data.campanas} totales={data.totales} periodo={data.periodo} />
+            <>
+              <Consolidado c={consolidado} />
+              <TabResumen campanas={data.campanas} totales={data.totales} periodo={data.periodo} />
+            </>
           )}
           {tab === "campanas" && (
             <TabCampanas
@@ -713,6 +734,86 @@ export default function Forecast() {
           Sin datos publicitarios para {MESES[mes - 1]} {anio}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSOLIDADO NOVONET + VELSA
+// ═══════════════════════════════════════════════════════════════════════════
+// El resto del módulo abre por campaña. Esto es la vista de arriba: cuánto se
+// va a gastar y cuánta gestión va a haber este mes, sumando las dos empresas.
+//
+// Proyecta con el MISMO método que Redes → Reporte Data: promedio de los días
+// que TIENEN dato × días del mes. Dividir por días transcurridos hundiría el
+// promedio cada vez que la pauta se carga con retraso.
+function Consolidado({ c }) {
+  if (!c?.total) return null;
+
+  const money = (v) => (v === null || v === undefined ? "—" :
+    `$${Number(v).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const num = (v) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("es-EC"));
+
+  const bloques = [
+    { etiqueta: "Inversión", hoy: money(c.total.inversion.acumulado), fin: money(c.total.inversion.proyeccion_cierre),
+      pie: `faltan por gastar ${money(c.total.inversion.por_gastar)}` },
+    { etiqueta: "Gestión", hoy: num(c.total.gestionables.acumulado), fin: num(c.total.gestionables.proyeccion_cierre),
+      pie: "leads que se pueden trabajar" },
+    { etiqueta: "Ingresos", hoy: num(c.total.ingresos.acumulado), fin: num(c.total.ingresos.proyeccion_cierre),
+      pie: "formularios que entran" },
+    { etiqueta: "Activas", hoy: num(c.total.activas.acumulado), fin: num(c.total.activas.proyeccion_cierre),
+      pie: "ventas instaladas" },
+    { etiqueta: "Costo x venta", hoy: "", fin: money(c.total.cpa_proyectado),
+      pie: "inversión total ÷ ventas totales" },
+  ];
+
+  return (
+    <div className="mb-6 rounded-2xl border border-violet-200 bg-white overflow-hidden">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-violet-100 bg-violet-50 px-5 py-3">
+        <h3 className="text-[11px] font-black uppercase tracking-widest text-violet-800">
+          Proyección del mes · Novonet + Velsa
+        </h3>
+        <span className="text-[10px] text-violet-700/70" title={c.metodo}>
+          {c.mes} · día {c.dia_actual} de {c.dias_del_mes} · faltan {c.dias_restantes} ·{" "}
+          <span className="cursor-help underline decoration-dotted">cómo se calcula</span>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 p-5 md:grid-cols-5">
+        {bloques.map((b) => (
+          <div key={b.etiqueta}>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{b.etiqueta}</div>
+            <div className="flex items-baseline gap-1.5">
+              {b.hoy && <><span className="text-xs text-slate-400">{b.hoy}</span><span className="text-slate-300">→</span></>}
+              <span className="text-lg font-black text-slate-800">{b.fin}</span>
+            </div>
+            <div className="mt-0.5 text-[9px] text-slate-400">{b.pie}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* De dónde sale cada parte del total */}
+      <div className="border-t border-slate-100 px-5 py-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(c.empresas || []).map((e) => (
+            <div key={e.empresa} className="rounded-xl border border-slate-200 px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wider text-slate-600">{e.nombre}</div>
+              {e.forecast ? (
+                <div className="mt-1 text-[11px] text-slate-600">
+                  Inversión <b>{money(e.forecast.inversion.proyeccion_cierre)}</b>
+                  {" · "}Gestión <b>{num(Math.round(e.forecast.gestionables?.proyeccion_cierre || 0))}</b>
+                  {" · "}Activas <b>{num(Math.round(e.forecast.activas.proyeccion_cierre))}</b>
+                </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-amber-700">
+                  Sin datos este mes{e.error ? ` (${e.error})` : ""}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

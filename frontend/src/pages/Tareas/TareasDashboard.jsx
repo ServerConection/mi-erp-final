@@ -6,12 +6,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList} from 'recharts';
 import { TrendingUp, AlertTriangle, Inbox, Clock, Eye } from 'lucide-react';
 import { tareasApi } from '../../hooks/useTareas';
 import { SkeletonKpis, ErrorBox, Vacio, Avatar, BarraProgreso, fmtFechaCorta } from './ui';
 import './tareas.css';
+import { ValorApilado } from "../../utils/etiquetaBarra";
 
 const COLOR_ESTADO = {
   PENDIENTE:   '#94a3b8',
@@ -121,11 +121,19 @@ export default function TareasDashboard({ onAbrirTarea }) {
               <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-              <Bar dataKey="pendientes"  name="Pendientes"  stackId="a" fill="#94a3b8" />
-              <Bar dataKey="en_proceso"  name="En proceso"  stackId="a" fill="#3b82f6" />
-              <Bar dataKey="en_revision" name="En revisión" stackId="a" fill="#f59e0b" />
+              <Bar dataKey="pendientes"  name="Pendientes"  stackId="a" fill="#94a3b8" >
+                <LabelList dataKey="pendientes" content={ValorApilado} />
+              </Bar>
+              <Bar dataKey="en_proceso"  name="En proceso"  stackId="a" fill="#3b82f6" >
+                <LabelList dataKey="en_proceso" content={ValorApilado} />
+              </Bar>
+              <Bar dataKey="en_revision" name="En revisión" stackId="a" fill="#f59e0b" >
+                <LabelList dataKey="en_revision" content={ValorApilado} />
+              </Bar>
               <Bar dataKey="completadas" name="Completadas" stackId="a" fill="#10b981"
-                   radius={[4, 4, 0, 0]} />
+                   radius={[4, 4, 0, 0]} >
+                <LabelList dataKey="completadas" content={ValorApilado} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </Panel>

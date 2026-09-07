@@ -1,5 +1,6 @@
-import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList} from 'recharts';
 import { formatDuration, rankOrigins } from '../../utils/contactabilidadAnalytics.js';
+import { ValorBarraH } from "../../utils/etiquetaBarra";
 
 const panel = { background:'#fff', border:'1px solid #e2e8f0', borderRadius:12, padding:16, minWidth:0 };
 const th = {padding:'8px 7px',textAlign:'left',borderBottom:'1px solid #cbd5e1',color:'#475569',whiteSpace:'nowrap'};
@@ -23,10 +24,16 @@ export default function ContactabilidadRankings({ porOrigen = [], porAsesor = []
   return <div style={{display:'grid',gap:14}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(390px,1fr))',gap:14}}>
       <section style={panel}><h3 style={{margin:'0 0 4px'}}>Contactabilidad por origen</h3><p style={{margin:'0 0 12px',fontSize:12,color:'#64748b'}}>Ranking válido desde 10 leads; porcentajes incluyen muestra.</p>
-        {!origins.length?<Empty>Sin orígenes para este período.</Empty>:<ResponsiveContainer width="100%" height={Math.max(260,origins.length*34)}><BarChart data={origins} layout="vertical" margin={{left:25,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" domain={[0,100]} unit="%"/><YAxis type="category" dataKey="origen" width={125} tick={{fontSize:10}}/><Tooltip content={<OriginTooltip/>}/><Bar dataKey="tasa_contactabilidad" fill="#0ea5e9" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer>}
+        {!origins.length?<Empty>Sin orígenes para este período.</Empty>:<ResponsiveContainer width="100%" height={Math.max(260,origins.length*34)}><BarChart data={origins} layout="vertical" margin={{left:25,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" domain={[0,100]} unit="%"/><YAxis type="category" dataKey="origen" width={125} tick={{fontSize:10}}/><Tooltip content={<OriginTooltip/>}/><Bar dataKey="tasa_contactabilidad" fill="#0ea5e9" radius={[0,5,5,0]}>
+          <LabelList dataKey="tasa_contactabilidad" content={ValorBarraH} />
+        </Bar></BarChart></ResponsiveContainer>}
       </section>
       <section style={panel}><h3 style={{margin:'0 0 4px'}}>Carga y pendientes por asesor</h3><p style={{margin:'0 0 12px',fontSize:12,color:'#64748b'}}>Prioriza clientes esperando más de 30 minutos.</p>
-        {!advisers.length?<Empty>Sin asesores para este período.</Empty>:<ResponsiveContainer width="100%" height={Math.max(260,advisers.length*31)}><BarChart data={advisers} layout="vertical" margin={{left:25,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number"/><YAxis type="category" dataKey="asesor_nombre" width={145} tick={{fontSize:10}}/><Tooltip formatter={(v,n)=>[v,n==='pendientes_30m'?'> 30 min':'Leads']}/><Bar dataKey="leads" fill="#94a3b8" radius={[0,4,4,0]}/><Bar dataKey="pendientes_30m" fill="#ef4444" radius={[0,4,4,0]}/></BarChart></ResponsiveContainer>}
+        {!advisers.length?<Empty>Sin asesores para este período.</Empty>:<ResponsiveContainer width="100%" height={Math.max(260,advisers.length*31)}><BarChart data={advisers} layout="vertical" margin={{left:25,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number"/><YAxis type="category" dataKey="asesor_nombre" width={145} tick={{fontSize:10}}/><Tooltip formatter={(v,n)=>[v,n==='pendientes_30m'?'> 30 min':'Leads']}/><Bar dataKey="leads" fill="#94a3b8" radius={[0,4,4,0]}>
+          <LabelList dataKey="leads" content={ValorBarraH} />
+        </Bar><Bar dataKey="pendientes_30m" fill="#ef4444" radius={[0,4,4,0]}>
+          <LabelList dataKey="pendientes_30m" content={ValorBarraH} />
+        </Bar></BarChart></ResponsiveContainer>}
       </section>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(440px,1fr))',gap:14}}>

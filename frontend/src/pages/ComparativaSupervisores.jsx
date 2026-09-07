@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { ValorBarra } from "../utils/etiquetaBarra";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, LabelList,
@@ -284,10 +285,18 @@ export default function ComparativaSupervisores() {
                     wrapperStyle={{ fontSize: 9, paddingTop: 12 }}
                     formatter={v => <span style={{ color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>{v}</span>}
                   />
-                  <Bar dataKey="Leads"        fill="#475569" radius={[3,3,0,0]} />
-                  <Bar dataKey="Gestionables" fill="#818cf8" radius={[3,3,0,0]} />
-                  <Bar dataKey="Ing. JOT"     fill="#34d399" radius={[3,3,0,0]} />
-                  <Bar dataKey="Activas"      fill="#38bdf8" radius={[3,3,0,0]} />
+                  <Bar dataKey="Leads"        fill="#475569" radius={[3,3,0,0]} >
+                    <LabelList dataKey="Leads" content={ValorBarra} />
+                  </Bar>
+                  <Bar dataKey="Gestionables" fill="#818cf8" radius={[3,3,0,0]} >
+                    <LabelList dataKey="Gestionables" content={ValorBarra} />
+                  </Bar>
+                  <Bar dataKey="Ing. JOT"     fill="#34d399" radius={[3,3,0,0]} >
+                    <LabelList dataKey="Ing. JOT" content={ValorBarra} />
+                  </Bar>
+                  <Bar dataKey="Activas"      fill="#38bdf8" radius={[3,3,0,0]} >
+                    <LabelList dataKey="Activas" content={ValorBarra} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>

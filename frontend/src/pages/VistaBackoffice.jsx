@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
+import "../styles/VistaBackoffice.css";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -363,6 +364,16 @@ function BotonDescargaExcel({
       <span>📥</span>
       Descargar Excel
     </button>
+  );
+}
+
+function CargandoBackoffice({ filas = 4 }) {
+  return (
+    <div aria-label="Cargando registros" aria-busy="true" style={{ display: "grid", gap: 9 }}>
+      {Array.from({ length: filas }, (_, i) => (
+        <div key={i} className="bo-skeleton" />
+      ))}
+    </div>
   );
 }
 
@@ -864,11 +875,11 @@ function valueForField(row, key) {
 // escribe en el buscador o cambia un filtro todavía no aplicado.
 const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, selectedId, onSelect }) {
   return (
-    <div style={{ overflow: "auto", maxHeight: 700 }}>
+    <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 700 }}>
       {loading ? (
-        <div style={{ padding: 28, textAlign: "center", color: "#64748b" }}>Cargando registros...</div>
+        <div style={{ padding: 16 }}><CargandoBackoffice filas={7} /></div>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+        <table style={{ width: "100%", minWidth: Math.max(1800, headers.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
             <tr style={{ background: "#f8fafc" }}>
               {headers.map((h, i) => (
@@ -1366,12 +1377,12 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   };
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
         {!soloDetalle && (
           <>
-            <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div className="bo-header" style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+              <div className="bo-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
                   <button
                     onClick={onVolver}
@@ -1393,7 +1404,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
             <div style={{ display: "flex", gap: 18, padding: 18, minHeight: 760 }}>
               <div style={{ flex: 1, border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, background: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                <div className="bo-filter-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, background: "#f8fafc", borderBottom: "1px solid #e5e7eb", flexWrap: "wrap" }}>
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -2357,9 +2368,9 @@ function ExploradorFechas({
   const total = rows.length;
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div className="bo-header" style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
           <button
             onClick={onVolver}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}
@@ -2370,9 +2381,9 @@ function ExploradorFechas({
             {migaModulo}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div className="bo-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>{tituloModulo}</h2>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <button
                 onClick={() => navegar.aTodos()}
@@ -3060,9 +3071,9 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const notificados = porBloque.NOTIFICADOS.length;
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
-        <div style={{ padding: "18px 18px 86px", position: "relative", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfdf5)" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div className="bo-header" style={{ padding: "18px 18px 86px", position: "relative", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfdf5)" }}>
           <button
             onClick={onVolver}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#047857", cursor: "pointer" }}
@@ -3074,7 +3085,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             Backoffice · Welcome
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="bo-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
             <div>
               <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>
                 Welcome
@@ -3084,8 +3095,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="bo-filter-row bo-floating-filters" style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -3109,13 +3120,15 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
               />
               </div>
-              {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
-              <button
-                onClick={recargar}
-                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
-              >
-                Refrescar
-              </button>
+              <div className="bo-company-actions">
+                {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
+                <button
+                  onClick={recargar}
+                  style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
+                >
+                  Refrescar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3133,7 +3146,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
 
         {/* Resumen de los estados de Welcome */}
-        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+        <div className="bo-summary-grid" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
           <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
               Registros totales
@@ -3244,7 +3257,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
 
         <div style={{ padding: "0 18px 18px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+          <div className="bo-kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
             {BLOQUES_WELCOME.map((bloque) => {
               const activo = sobreBloque === bloque.id;
               const listaBloque = porBloque[bloque.id];
@@ -3766,9 +3779,9 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
   ];
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#fff7ed)" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div className="bo-header" style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#fff7ed)" }}>
           <button
             onClick={onVolver}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color, cursor: "pointer" }}
@@ -3833,8 +3846,8 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
           </div>
         </div>
 
-        <div style={{ padding: 20 }}>
-          {cargando && <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Cargando registros…</p>}
+        <div className="bo-main" style={{ padding: 20 }}>
+          {cargando && <CargandoBackoffice filas={5} />}
 
           {error && (
             <div style={{ padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
@@ -3843,7 +3856,10 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
           )}
 
           {!cargando && !error && rows.length === 0 && (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No hay registros con estado ASIGNADO.</p>
+            <div className="bo-empty-state">
+              <strong>No hay agendamientos disponibles</strong>
+              No existen registros con estado ASIGNADO y una fecha de agenda válida.
+            </div>
           )}
 
           {!cargando && !error && nivel === "anios" && anios.length > 0 && (
@@ -3968,7 +3984,7 @@ function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
  *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
 const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_TABLAS_BACKOFFICE;
 
-function TablaPreservicios({ rows, onAbrirRegistro }) {
+function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
   const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
     key,
     label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
@@ -4006,7 +4022,7 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
           Haz clic en un registro para ver el detalle
         </span>
       </div>
-      <div style={{ overflow: "auto", maxHeight: "min(640px, calc(100vh - 390px))" }}>
+      <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: "min(640px, calc(100vh - 390px))" }}>
         <table style={{ width: "100%", minWidth: Math.max(1800, headers.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
             <tr style={{ background: "#f8fafc" }}>
@@ -4034,8 +4050,11 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={headers.length} style={{ padding: 28, textAlign: "center", color: "#94a3b8" }}>
-                  Sin registros con este estado.
+                <td colSpan={headers.length} className="bo-empty-state">
+                  <strong>Sin registros para mostrar</strong>
+                  {filtrosActivos
+                    ? "No hay coincidencias con la búsqueda o el rango de fechas actual. Prueba con Limpiar filtros."
+                    : "No existen registros con este estado."}
                 </td>
               </tr>
             )}
@@ -4156,9 +4175,9 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   const estadoObj = ESTADOS_PRESERVICIOS.find((e) => e.id === estadoActivo);
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
-      <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
-        <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfeff)" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+      <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
+        <div className="bo-header" style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#ecfeff)" }}>
           <button
             onClick={onVolver}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color, cursor: "pointer" }}
@@ -4168,9 +4187,9 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", color, textTransform: "uppercase" }}>
             Backoffice · Preservicios
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="bo-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#111827" }}>Preservicios</h2>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <BotonDescargaExcel
                 onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Preservicios_${empresa || "Todos"}`)}
@@ -4192,7 +4211,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           </div>
         )}
 
-        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
+        <div className="bo-main bo-two-column" style={{ padding: 18, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
           {/* ── IZQUIERDA: cards de estado, en columna ────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
@@ -4208,8 +4227,8 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           </div>
 
           {/* ── DERECHA: filtros + tabla ──────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div className="bo-content-column" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+            <div className="bo-filter-row" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: estadoObj?.color }}>
                 {estadoObj?.titulo}
               </h3>
@@ -4243,7 +4262,16 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
               )}
             </div>
 
-            <TablaPreservicios rows={rowsFiltradas} onAbrirRegistro={(id) => setDetalleId(id)} />
+            <span className="bo-scroll-hint" aria-hidden="true">↔ Desliza horizontalmente para ver todas las columnas</span>
+            {cargando ? (
+              <CargandoBackoffice filas={6} />
+            ) : (
+              <TablaPreservicios
+                rows={rowsFiltradas}
+                filtrosActivos={Boolean(fechaDesde || fechaHasta || busqueda)}
+                onAbrirRegistro={(id) => setDetalleId(id)}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -4330,6 +4358,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
 
   return (
     <div
+      className="bo-page"
       style={{
         padding: 18,
         background: "#f3f4f6",
@@ -4346,6 +4375,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
         }}
       >
         <div
+          className="bo-header"
           style={{
             padding: "18px 18px 86px",
             position: "relative",
@@ -4374,6 +4404,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
           </button>
 
           <div
+            className="bo-toolbar"
             style={{
               fontSize: 11,
               fontWeight: 800,
@@ -4419,8 +4450,8 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
+              <div className="bo-filter-row bo-floating-filters" style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -4455,7 +4486,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               </button>
               </div>
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div className="bo-company-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 {onCambiarEmpresa && (
                   <FiltroEmpresa
                     valor={empresa}
@@ -4630,10 +4661,11 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
               background: "#fff",
             }}
           >
-            <div style={{ overflow: "auto", maxHeight: 590 }}>
+            <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 590 }}>
               <table
                 style={{
                   width: "100%",
+                  minWidth: Math.max(1800, columnas.length * 145),
                   borderCollapse: "separate",
                   borderSpacing: 0,
                   fontSize: 11,
@@ -5094,7 +5126,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   };
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
         <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
           <button
@@ -5403,7 +5435,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   const columnas = COLUMNAS_TABLAS_BACKOFFICE;
 
   return (
-    <div style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
+    <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15,23,42,.08)", overflow: "hidden" }}>
         <div style={{ padding: "18px 18px 86px", position: "relative", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg,#f8fafc,#eef2ff)" }}>
           <button onClick={onVolver} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, background: "#fff", border: "1px solid #dbe4f0", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#4f46e5", cursor: "pointer" }}>
@@ -5466,8 +5498,8 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
           </div>
 
           <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
-            <div style={{ overflow: "auto", maxHeight: 590 }}>
-              <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
+            <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 590 }}>
+              <table style={{ width: "100%", minWidth: Math.max(1800, columnas.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
                 <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                   <tr>{columnas.map((key) => <th key={key} style={{ padding: "11px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900, color: "#334155" }}>{FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase()}</th>)}</tr>
                 </thead>

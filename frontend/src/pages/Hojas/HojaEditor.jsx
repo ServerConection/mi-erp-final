@@ -71,6 +71,13 @@ export default function HojaEditor({ hojaId, onVolver }) {
     catch { return null; }
   }, []);
 
+  // Los asesores no descargan el archivo. El servidor lo rechaza igual
+  // (ver hojas.routes.js); acá solo se evita mostrar un botón que va a fallar.
+  const puedeDescargar = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('userProfile') || '{}')?.perfil !== 'ASESOR'; }
+    catch { return false; }
+  }, []);
+
   const { avisarFoco } = useSocketHoja(hojaId, {
     // Un cambio que YO hice ya está pintado: ignoro el eco de mi propio evento.
     'hoja:celda': ({ filaId, columnaId, valor, por, ts }) => {
@@ -354,7 +361,7 @@ export default function HojaEditor({ hojaId, onVolver }) {
           </div>
 
           <Boton onClick={() => setModal('historial')} icono={Clock} texto="Historial" />
-          <Boton onClick={exportar} icono={Download} texto="Excel" />
+          {puedeDescargar && <Boton onClick={exportar} icono={Download} texto="Excel" />}
 
           {escribible && (
             <>

@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, FileSpreadsheet, History, Plus, Search, SlidersHorizontal, Users, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, FileSpreadsheet, History, LayoutGrid, ListTree, Plus, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { hojasApi } from '../../hooks/useHojas';
 import { Aviso, Cargando, ErrorBox, NivelBadge, Vacio, tiempoRelativo } from './ui';
 import HojaEditor from './HojaEditor';
@@ -35,6 +35,10 @@ export default function ArchivosCompartidos() {
   const [filtros, setFiltros]   = useState(SIN_FILTROS);
   const [opciones, setOpciones]  = useState({ creadores: [], empresas: [] });
   const [verFiltros, setVerFiltros] = useState(false);
+  // Agrupado por defecto: con muchos archivos, una grilla plana obliga a
+  // aplicar filtros antes de poder ver nada. Agrupado se lee de un vistazo.
+  const [agrupado, setAgrupado]  = useState(true);
+  const [cerrados, setCerrados]  = useState({});   // qué nodos están plegados
   const [auditoria, setAuditoria]   = useState(false);
   const [aviso, setAviso]       = useState(null);
 
@@ -136,6 +140,15 @@ export default function ArchivosCompartidos() {
           </button>
 
           <button
+            onClick={() => setAgrupado(v => !v)}
+            title={agrupado ? 'Ver todos los archivos en una grilla' : 'Agrupar por quién lo creó y por fecha'}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 transition hover:border-slate-300"
+          >
+            {agrupado ? <LayoutGrid className="w-4 h-4" /> : <ListTree className="w-4 h-4" />}
+            {agrupado ? 'Ver grilla' : 'Agrupar'}
+          </button>
+
+          <button
             onClick={() => setAuditoria(true)}
             title="Ver quién hizo qué y cuándo, en todos los archivos"
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 transition hover:border-slate-300"
@@ -179,14 +192,23 @@ export default function ArchivosCompartidos() {
           )}
         />
       ) : (
-        <div className="space-y-6">
-          {mios.length > 0 && (
-            <Seccion titulo="Creados por mí" hojas={mios} onAbrir={setAbierta} />
-          )}
-          {compartidos.length > 0 && (
-            <Seccion titulo="Compartidos conmigo" hojas={compartidos} onAbrir={setAbierta} />
-          )}
-        </div>
+        agrupado ? (
+          <ArbolPorAsesor
+            hojas={visibles}
+            onAbrir={setAbierta}
+            cerrados={cerrados}
+            onAlternar={(k) => setCerrados(c => ({ ...c, [k]: !c[k] }))}
+          />
+        ) : (
+          <div className="space-y-6">
+            {mios.length > 0 && (
+              <Seccion titulo="Creados por mí" hojas={mios} onAbrir={setAbierta} />
+            )}
+            {compartidos.length > 0 && (
+              <Seccion titulo="Compartidos conmigo" hojas={compartidos} onAbrir={setAbierta} />
+            )}
+          </div>
+        )
       )}
 
       <NuevaHojaModal
@@ -197,6 +219,87 @@ export default function ArchivosCompartidos() {
       />
 
       <Aviso mensaje={aviso?.mensaje} tipo={aviso?.tipo} onCerrar={() => setAviso(null)} />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISTA AGRUPADA:  asesor → fecha → archivos de ese día
+// ══════════════════════════════════════════════════════════════════════════════
+// Responde de un vistazo "qué subió cada persona y cuándo", que es la pregunta
+// real. La grilla plana obligaba a filtrar antes de poder ver nada.
+
+const soloDia = (iso) => (iso ? String(iso).slice(0, 10) : '');
+const diaLargo = (iso) => {
+  if (!iso) return 'Sin fecha';
+  const d = new Date(`${soloDia(iso)}T12:00:00Z`);
+  return d.toLocaleDateString('es-EC', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+};
+
+function ArbolPorAsesor({ hojas, onAbrir, cerrados, onAlternar }) {
+  // { creador: { 'YYYY-MM-DD': [hoja, ...] } }
+  const porAsesor = {};
+  for (const h of hojas) {
+    const quien = h.creador || 'Sin asignar';
+    const dia = soloDia(h.createdAt) || 'sin-fecha';
+    (porAsesor[quien] ||= {});
+    (porAsesor[quien][dia] ||= []).push(h);
+  }
+
+  const asesores = Object.keys(porAsesor).sort((a, b) => a.localeCompare(b));
+
+  return (
+    <div className="space-y-2">
+      {asesores.map((asesor) => {
+        const dias = Object.keys(porAsesor[asesor]).sort().reverse();   // lo más nuevo arriba
+        const total = dias.reduce((a, d) => a + porAsesor[asesor][d].length, 0);
+        const cerradoAsesor = cerrados[asesor];
+
+        return (
+          <div key={asesor} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <button
+              onClick={() => onAlternar(asesor)}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
+            >
+              {cerradoAsesor ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              <span className="font-semibold text-slate-800">{asesor}</span>
+              <span className="text-[11px] text-slate-400">
+                {total} archivo{total === 1 ? '' : 's'} · {dias.length} día{dias.length === 1 ? '' : 's'}
+              </span>
+            </button>
+
+            {!cerradoAsesor && (
+              <div className="border-t border-slate-100">
+                {dias.map((dia) => {
+                  const clave = `${asesor}|${dia}`;
+                  const cerradoDia = cerrados[clave];
+                  const delDia = porAsesor[asesor][dia];
+                  return (
+                    <div key={clave} className="border-b border-slate-100 last:border-0">
+                      <button
+                        onClick={() => onAlternar(clave)}
+                        className="flex w-full items-center gap-2 bg-slate-50/60 px-4 py-2 pl-8 text-left hover:bg-slate-100/70"
+                      >
+                        {cerradoDia ? <ChevronRight className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                        <span className="text-xs font-medium capitalize text-slate-600">
+                          {dia === 'sin-fecha' ? 'Sin fecha' : diaLargo(dia)}
+                        </span>
+                        <span className="text-[11px] text-slate-400">({delDia.length})</span>
+                      </button>
+
+                      {!cerradoDia && (
+                        <div className="grid gap-3 p-4 pl-8 sm:grid-cols-2 lg:grid-cols-3">
+                          {delDia.map(h => <Tarjeta key={h.id} hoja={h} onAbrir={onAbrir} />)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

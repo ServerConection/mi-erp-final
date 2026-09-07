@@ -14,7 +14,7 @@ const express = require('express');
 const multer  = require('multer');
 const router  = express.Router();
 
-const { verificarToken } = require('../middleware/auth');
+const { verificarToken, noAsesor } = require('../middleware/auth');
 const { accesoHojas, puedeCrearHoja, exigeNivel } = require('../middleware/hojasAcceso');
 
 const hojas = require('../controllers/hojas.controller');
@@ -63,7 +63,11 @@ router.delete('/:hojaId/filas/:filaId',  exigeNivel('EDITOR'), datos.eliminarFil
 router.put   ('/:hojaId/celdas',         exigeNivel('EDITOR'), datos.guardarCelda);
 
 // ── Excel e historial ─────────────────────────────────────────────────────────
-router.get ('/:hojaId/exportar',  exigeNivel('LECTOR'), datos.exportar);
+// Descargar saca la base completa del ERP a un Excel que ya vive fuera de
+// nuestro control. Un asesor puede LEER y EDITAR lo que le compartieron, pero
+// no llevarse el archivo entero. El bloqueo va en el servidor, no escondiendo
+// el botón: esconderlo solo evita el clic, no la petición.
+router.get ('/:hojaId/exportar',  noAsesor, exigeNivel('LECTOR'), datos.exportar);
 router.post('/:hojaId/importar',  exigeNivel('EDITOR'), subida.single('archivo'), datos.importar);
 router.get ('/:hojaId/historial', exigeNivel('LECTOR'), datos.historial);
 

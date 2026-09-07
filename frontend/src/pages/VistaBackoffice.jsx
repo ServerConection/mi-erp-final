@@ -49,6 +49,13 @@ const CAMPOS_FECHA = [
   "fecha_ingreso_telcos",
 ];
 
+const COLUMNAS_EXPORTACION_BACKOFFICE = [
+  "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
+  "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
+  "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
+  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",
+];
+
 const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "__SIN_REVISAR__", etiqueta: "Sin Revisar" },
   { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
@@ -74,13 +81,13 @@ function resultadoBienvenida(json, mensajeBase) {
   }
 
   if (whatsapp?.encolado) {
-    exitos.push("WhatsApp de bienvenida en cola por ENVIO_NOTI_BACK");
+    exitos.push("WhatsApp de bienvenida en cola por NOTI_BACK");
   } else if (whatsapp?.encolado === false) {
     const motivos = {
       cliente_sin_telefono_valido: "el cliente no tiene un teléfono válido para WhatsApp",
-      linea_envio_noti_back_no_encontrada: "no se encontró la línea ENVIO_NOTI_BACK",
+      linea_envio_noti_back_no_encontrada: "no se encontró la línea NOTI_BACK",
       // Compatibilidad con respuestas pendientes de una versión anterior.
-      linea_noti_back_no_encontrada: "no se encontró la línea ENVIO_NOTI_BACK",
+      linea_noti_back_no_encontrada: "no se encontró la línea NOTI_BACK",
       error_al_encolar: "no se pudo registrar el WhatsApp de bienvenida",
     };
     advertencias.push(motivos[whatsapp.motivo] || "el WhatsApp no pudo encolarse");
@@ -167,23 +174,7 @@ async function exportarAExcel(data, nombreArchivo = "Reporte") {
     return texto;
   };
 
-  // Detectar todas las columnas existentes en todos los registros,
-  // no solamente las del primer registro.
-  const columnasDisponibles = [
-    ...new Set(
-      data.flatMap((row) => Object.keys(row || {}))
-    ),
-  ];
-
-  // Mantener primero el orden definido en TABLE_COLUMNS.
-  const columnasOrdenadas = [
-    ...TABLE_COLUMNS.filter((col) =>
-      columnasDisponibles.includes(col)
-    ),
-    ...columnasDisponibles.filter(
-      (col) => !TABLE_COLUMNS.includes(col)
-    ),
-  ];
+  const columnasOrdenadas = COLUMNAS_EXPORTACION_BACKOFFICE;
 
   // Preparar los registros.
   const filasFormateadas = data.map((row) => {
@@ -721,12 +712,12 @@ const FIELD_LABELS = {
   coordenadas_gps: "GPS",
   tipo_vivienda: "TIPO VIVIENDA",
   regimen_vivienda: "REGIMEN VIVIENDA",
-  plan_contratado_final: "PLAN",
-  servicios_digitales: "SERVICIOS",
+  plan_contratado_final: "PLAN CONTRATADO",
+  servicios_digitales: "EMPAQUETADO",
   forma_pago: "FORMA PAGO",
   detalle_bancario_ahorros: "DETALLE BANCARIO",
   valor_pago: "VALOR PAGO",
-  tipo_contrato: "TIPO CONTRATO",
+  tipo_contrato: "SERVICIOS ADICIONALES",
   links_documentos: "LINKS",
   estado_recaudacion: "ESTADO RECAUDACIÓN",
   fecha_recaudada: "FECHA RECAUDADA",
@@ -798,6 +789,7 @@ const COLUMNAS_TABLAS_BACKOFFICE = [
   "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
   "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
   "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
+  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",
 ];
 
 const initialDetail = {
@@ -1132,11 +1124,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "email_cliente", "provincia", "ciudad", "parroquia_barrio", "telf_celular_pin", "telf_celular_2",
     "direccion_calles", "referencia_ubicacion", "plan_contratado_final", "servicios_digitales", "forma_pago",
     "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
-    "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "estado_recaudacion", "netlife_login",
+    "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "netlife_login",
     "netlife_estatus_real", "calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por",
     "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
     "fecha_regularizacion_atc",
-    "mes_regularizacion",
     "novedades_atc",
 
     // Agendamiento
@@ -1169,7 +1160,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           "estatus_regularizacion",
           "detalle_regularizacion",
           "gestion_atc",
-          "mes_regularizacion"
+          "fecha_regularizacion_atc",
         ]
       },
 
@@ -1190,10 +1181,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       {
         titulo: "Netlife",
         campos: [
-          "estado_recaudacion",
           "netlife_login",
           "netlife_estatus_real",
-          "fecha_regularizacion_atc",
           "fecha_ingreso_telcos",
           "fecha_agenda",
           "fecha_activacion_netlife",
@@ -1612,27 +1601,28 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                             </select>
                             );
                           })() : field === "novedades_atc" ? (
-                            <select
+                            <textarea
                               value={detail?.[field] ?? ""}
                               onChange={(e) =>
                                 setDetail((prev) => ({ ...prev, [field]: e.target.value }))
                               }
+                              rows={4}
+                              placeholder="Escribe libremente las novedades ATC…"
                               style={{
                                 width: "100%",
+                                minHeight: 100,
                                 padding: "10px 12px",
                                 borderRadius: 8,
                                 border: "1px solid #dbe4f0",
                                 fontSize: 12,
+                                lineHeight: 1.5,
+                                resize: "vertical",
                                 outline: "none",
                                 color: "#111827",
                                 background: "#fff",
-                                cursor: "pointer",
+                                boxSizing: "border-box",
                               }}
-                            >
-                              <option value="">Seleccionar...</option>
-                              <option value="PENDIENTE">Pendiente</option>
-                              <option value="NOTIFICADO">Notificado</option>
-                            </select>
+                            />
                           ) : field === "gestion_atc" ? (
                             /* 📋 SELECT: GESTIÓN ATC */
                             <select
@@ -2589,6 +2579,8 @@ function mostrarFechaHoraWelcome(fecha) {
 function TarjetaWelcome({
   row, onAbrir, onArrastrar, arrastrando, moviendo,
   seleccionable = false, seleccionado = false, onSeleccionar,
+  tituloSeleccion = "Seleccionar para programar",
+  bloquearArrastre = false,
 }) {
   const estaMoviendose = moviendo === row.id;
 
@@ -2596,7 +2588,7 @@ function TarjetaWelcome({
     <div
       role="button"
       tabIndex={0}
-      draggable={!estaMoviendose}
+      draggable={!estaMoviendose && !bloquearArrastre}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(row.id));
@@ -2621,7 +2613,7 @@ function TarjetaWelcome({
         border: `1px solid ${arrastrando === row.id ? "#10b981" : "#e5e7eb"}`,
         borderRadius: 12,
         padding: 13,
-        cursor: estaMoviendose ? "wait" : "grab",
+        cursor: estaMoviendose ? "wait" : bloquearArrastre ? "default" : "grab",
         opacity: estaMoviendose ? 0.6 : 1,
         boxShadow: "0 2px 8px rgba(15,23,42,.05)",
         display: "flex",
@@ -2641,7 +2633,7 @@ function TarjetaWelcome({
               type="checkbox"
               checked={seleccionado}
               aria-label={`Seleccionar registro ${row.id}`}
-              title="Seleccionar para programar"
+              title={tituloSeleccion}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
               style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer" }}
@@ -2776,6 +2768,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [sobreBloque, setSobreBloque] = useState(null);
   const [moviendo, setMoviendo] = useState(null);
   const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [modoExportacion, setModoExportacion] = useState(false);
+  const [seleccionadosExportacion, setSeleccionadosExportacion] = useState(() => new Set());
   const [inicioEnvio, setInicioEnvio] = useState(() => valorFechaHoraLocal(new Date(Date.now() + 5 * 60 * 1000)));
   const [programaciones, setProgramaciones] = useState({});
   const [programando, setProgramando] = useState(false);
@@ -3032,6 +3026,36 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     }
   };
 
+  const cambiarSeleccionExportacion = (id, marcado) => {
+    setSeleccionadosExportacion((actuales) => {
+      const siguientes = new Set(actuales);
+      const clave = String(id);
+      if (marcado) siguientes.add(clave);
+      else siguientes.delete(clave);
+      return siguientes;
+    });
+  };
+
+  const seleccionarBloqueParaExportar = (bloqueId, marcado) => {
+    const idsBloque = porBloque[bloqueId].map((row) => String(row.id));
+    setSeleccionadosExportacion((actuales) => {
+      const siguientes = new Set(actuales);
+      idsBloque.forEach((id) => marcado ? siguientes.add(id) : siguientes.delete(id));
+      return siguientes;
+    });
+  };
+
+  const exportarWelcome = () => {
+    if (!seleccionadosExportacion.size) {
+      setAviso("⚠️ Selecciona al menos un registro para exportar.");
+      return;
+    }
+    const registrosExportar = filtradas.filter((row) => seleccionadosExportacion.has(String(row.id)));
+    exportarAExcel(registrosExportar, `Reporte_Welcome_${empresa || "Todos"}`);
+    setModoExportacion(false);
+    setSeleccionadosExportacion(new Set());
+  };
+
   const total = filtradas.length;
   const sinNotificar = porBloque.SIN_NOTIFICAR.length;
   const pendientes = porBloque.PENDIENTES.length;
@@ -3079,7 +3103,11 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 Limpiar filtros
               </button>
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(filtradas, `Reporte_Welcome_${empresa || "Todos"}`)}
+                onClick={() => {
+                  setModoExportacion(true);
+                  setSeleccionadosExportacion(new Set());
+                  setAviso("Selecciona los registros que deseas incluir o usa “Seleccionar todos” en cada columna.");
+                }}
                 color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
               />
               </div>
@@ -3157,6 +3185,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           </div>
         </div>
 
+        {!modoExportacion && (
         <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "center", fontSize: 12, fontWeight: 800, color: "#075985", cursor: "pointer" }}>
             <input
@@ -3194,6 +3223,27 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
           </div>
         </div>
+        )}
+
+        {modoExportacion && (
+          <div style={{ margin: "0 18px 18px", padding: "14px 16px", borderRadius: 14, border: "1px solid #a7f3d0", background: "linear-gradient(135deg,#ecfdf5,#f0fdf4)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", boxShadow: "0 4px 14px rgba(4,120,87,.08)" }}>
+            <div style={{ marginRight: "auto" }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#065f46" }}>Exportación de Welcome</div>
+              <div style={{ marginTop: 3, fontSize: 11.5, color: "#64748b" }}>
+                Marca registros individualmente o selecciona una columna completa.
+              </div>
+            </div>
+            <span style={{ padding: "6px 11px", borderRadius: 999, background: "#fff", border: "1px solid #a7f3d0", color: "#047857", fontSize: 12, fontWeight: 900 }}>
+              {seleccionadosExportacion.size} seleccionados
+            </span>
+            <button type="button" onClick={exportarWelcome} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #047857", background: "#047857", color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
+              📥 Exportar Excel
+            </button>
+            <button type="button" onClick={() => { setModoExportacion(false); setSeleccionadosExportacion(new Set()); setAviso(null); }} style={{ padding: "9px 13px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+              Cancelar
+            </button>
+          </div>
+        )}
 
         <div style={{ padding: "0 18px 18px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
@@ -3216,14 +3266,28 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                     transition: "background .15s, border-color .15s",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
-                    <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
-                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                      {bloque.titulo}
-                    </h3>
-                    <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
-                      {listaBloque.length}
-                    </span>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <span style={{ width: 4, height: 18, borderRadius: 4, background: bloque.color, flex: "none" }} />
+                      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: bloque.color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                        {bloque.titulo}
+                      </h3>
+                      <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: bloque.color, background: bloque.fondo, border: `1px solid ${bloque.borde}`, borderRadius: 999, padding: "2px 10px" }}>
+                        {listaBloque.length}
+                      </span>
+                    </div>
+                    {modoExportacion && (
+                      <label style={{ marginTop: 10, padding: "8px 10px", borderRadius: 9, border: `1px solid ${bloque.borde}`, background: bloque.fondo, display: "flex", alignItems: "center", gap: 8, color: bloque.color, fontSize: 11.5, fontWeight: 900, cursor: listaBloque.length ? "pointer" : "not-allowed" }}>
+                        <input
+                          type="checkbox"
+                          disabled={listaBloque.length === 0}
+                          checked={listaBloque.length > 0 && listaBloque.every((row) => seleccionadosExportacion.has(String(row.id)))}
+                          onChange={(e) => seleccionarBloqueParaExportar(bloque.id, e.target.checked)}
+                          style={{ width: 17, height: 17, accentColor: bloque.color }}
+                        />
+                        Seleccionar todos
+                      </label>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3240,9 +3304,13 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             onArrastrar={setArrastrando}
                             arrastrando={arrastrando}
                             moviendo={moviendo}
-                            seleccionable={bloque.id === "SIN_NOTIFICAR"}
-                            seleccionado={seleccionados.has(String(row.id))}
-                            onSeleccionar={cambiarSeleccion}
+                            seleccionable={modoExportacion || bloque.id === "SIN_NOTIFICAR"}
+                            seleccionado={modoExportacion
+                              ? seleccionadosExportacion.has(String(row.id))
+                              : seleccionados.has(String(row.id))}
+                            onSeleccionar={modoExportacion ? cambiarSeleccionExportacion : cambiarSeleccion}
+                            tituloSeleccion={modoExportacion ? "Seleccionar para exportar" : "Seleccionar para programar"}
+                            bloquearArrastre={modoExportacion}
                           />
                           {bloque.id === "SIN_NOTIFICAR" && (
                             <button

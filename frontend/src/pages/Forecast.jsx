@@ -6,10 +6,10 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { jwtDecode } from "jwt-decode";
+import { ValorBarra } from "../utils/etiquetaBarra";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ComposedChart, Cell,
-} from "recharts";
+  Tooltip, Legend, ResponsiveContainer, ComposedChart, Cell, LabelList} from "recharts";
 
 const API = `${import.meta.env.VITE_API_URL}/api/forecast`;
 
@@ -278,8 +278,12 @@ function TabCampanas({ campanas, periodo, isAdmin, mes, anio, onRefresh }) {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar yAxisId="left" dataKey="leads" name="Leads" fill={CAMPANA_COLOR[selected] || "#6366f1"} opacity={0.8} radius={[3,3,0,0]} />
-                  <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#10b981" opacity={0.8} radius={[3,3,0,0]} />
+                  <Bar yAxisId="left" dataKey="leads" name="Leads" fill={CAMPANA_COLOR[selected] || "#6366f1"} opacity={0.8} radius={[3,3,0,0]} >
+                    <LabelList dataKey="leads" content={ValorBarra} />
+                  </Bar>
+                  <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#10b981" opacity={0.8} radius={[3,3,0,0]} >
+                    <LabelList dataKey="ventas" content={ValorBarra} />
+                  </Bar>
                   <Line yAxisId="right" type="monotone" dataKey="inversion" name="Inversión $" stroke="#f59e0b" strokeWidth={2} dot={false} />
                   {diario.dias[0]?.inv_objetivo_dia != null && (
                     <Line yAxisId="right" type="monotone" dataKey="inv_objetivo_dia" name="Objetivo diario $"
@@ -499,8 +503,11 @@ function TabResumen({ campanas, totales, periodo }) {
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={Object.values(CAMPANA_COLOR)[i] || "#6366f1"} />
               ))}
+              <LabelList dataKey="leads" content={ValorBarra} />
             </Bar>
-            <Bar dataKey="ventas" name="Ventas" fill="#10b981" radius={[4,4,0,0]} />
+            <Bar dataKey="ventas" name="Ventas" fill="#10b981" radius={[4,4,0,0]} >
+              <LabelList dataKey="ventas" content={ValorBarra} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>

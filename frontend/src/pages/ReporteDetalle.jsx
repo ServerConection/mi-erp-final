@@ -7,9 +7,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
-  LineChart, Line, CartesianGrid, Legend, Cell,
-} from "recharts";
+  LineChart, Line, CartesianGrid, Legend, Cell, LabelList} from "recharts";
 import * as XLSX from "xlsx";
+import { ValorApilado } from "../utils/etiquetaBarra";
 
 const API = import.meta.env.VITE_API_URL;
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
@@ -325,6 +325,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
                 {porHora.map((row, i) => (
                   <Cell key={i} opacity={!fHoras.size || fHoras.has(row.hora) ? 1 : 0.25} />
                 ))}
+                              <LabelList dataKey={t} content={ValorApilado} />
               </Bar>
             ))}
           </BarChart>

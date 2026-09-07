@@ -7,6 +7,7 @@ import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/Feedba
 import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
+import { ValorBarra } from "../utils/etiquetaBarra";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -1525,10 +1526,18 @@ ${asesoresPDF.length>0?`
         <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }}
           formatter={v => ({ gestionables:'Gestionables', jot:'JOT', crm:'CRM V.Sub.', activos:'Activos',
             efect_jot:'% Ef.JOT', efect_crm:'% Ef.CRM', efect_pauta:'% Ef.Pauta' }[v] || v)} />
-        <Bar yAxisId="vol" dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#c4b5fd', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#8b5cf6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#c4b5fd', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="gestionables" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="jot" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="crm" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={12} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="activos" content={ValorBarra} />
+        </Bar>
         <Line yAxisId="pct" type="monotone" dataKey="efect_jot"   stroke="#10b981" strokeWidth={2} dot={{ r:3, fill:'#10b981', strokeWidth:0 }}>
           <LabelList dataKey="efect_jot"   position="top" style={{ fontSize:7, fill:'#10b981', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
         </Line>
@@ -1553,10 +1562,18 @@ ${asesoresPDF.length>0?`
         <Legend wrapperStyle={{ fontSize: 8, paddingTop: 4 }}
           formatter={v => ({ gestionables:'Gestionables', jot:'JOT', crm:'CRM V.Sub.', activos:'Activos',
             efect_jot:'% Ef.JOT', efect_crm:'% Ef.CRM', efect_pauta:'% Ef.Pauta' }[v] || v)} />
-        <Bar yAxisId="vol" dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#67e8f9', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} />
-        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} />
+        <Bar yAxisId="vol" dataKey="gestionables" fill="#06b6d4" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#67e8f9', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="gestionables" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="jot"          fill="#10b981" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#6ee7b7', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="jot" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="crm"          fill="#3b82f6" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#93c5fd', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="crm" content={ValorBarra} />
+        </Bar>
+        <Bar yAxisId="vol" dataKey="activos"      fill="#f59e0b" radius={[4,4,0,0]} barSize={20} label={{ position:'top', fill:'#fde68a', fontSize:8, fontWeight:900 }} >
+          <LabelList dataKey="activos" content={ValorBarra} />
+        </Bar>
         <Line yAxisId="pct" type="monotone" dataKey="efect_jot"   stroke="#10b981" strokeWidth={2.5} dot={{ r:4, fill:'#10b981', strokeWidth:0 }}>
           <LabelList dataKey="efect_jot"   position="top" style={{ fontSize:8, fill:'#10b981', fontWeight:800 }} formatter={v => v>0?`${v}%`:''} />
         </Line>

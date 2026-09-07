@@ -15,8 +15,9 @@
 //    dato inventado. Ver `deriveAsesorCC()` y la constante `CLASE_TIPO`.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList} from "recharts";
 import BitrixSesiones from "./BitrixSesiones";
+import { ValorBarra } from "../utils/etiquetaBarra";
 
 const API          = import.meta.env.VITE_API_URL || "http://localhost:3050";
 const REFRESH_SECS = 90;
@@ -733,8 +734,12 @@ function DetalleHorario({ asesor, emp, horas }) {
               <XAxis dataKey="label" tick={{fontSize:8,fill:cfg.color,fontWeight:'bold'}} axisLine={false} tickLine={false}/>
               <YAxis allowDecimals={false} tick={{fontSize:8,fill:cfg.color}} axisLine={false} tickLine={false} width={16}/>
               <Tooltip content={<ChartTip/>}/>
-              <Bar dataKey="leads" name="leads" fill={cfg.color} radius={[3,3,0,0]} maxBarSize={22}/>
-              <Bar dataKey="interacciones" name="interacciones" fill="#10b981" radius={[3,3,0,0]} maxBarSize={22}/>
+              <Bar dataKey="leads" name="leads" fill={cfg.color} radius={[3,3,0,0]} maxBarSize={22}>
+                <LabelList dataKey="leads" content={ValorBarra} />
+              </Bar>
+              <Bar dataKey="interacciones" name="interacciones" fill="#10b981" radius={[3,3,0,0]} maxBarSize={22}>
+                <LabelList dataKey="interacciones" content={ValorBarra} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
           <div className="mt-3 space-y-1 max-h-48 overflow-y-auto">
@@ -956,8 +961,12 @@ function GraficaGlobal({ empresa, asesores, horas }) {
                 <XAxis dataKey="label" tick={{fontSize:8,fontWeight:'bold',fill:'#94a3b8'}} axisLine={false} tickLine={false}/>
                 <YAxis allowDecimals={false} tick={{fontSize:8,fill:'#94a3b8'}} axisLine={false} tickLine={false} width={18}/>
                 <Tooltip content={<ChartTip/>}/>
-                <Bar dataKey="leads" name="leads" fill={cfg.color} radius={[4,4,0,0]} maxBarSize={28}/>
-                <Bar dataKey="interacciones" name="interacciones" fill="#10b981" radius={[4,4,0,0]} maxBarSize={28}/>
+                <Bar dataKey="leads" name="leads" fill={cfg.color} radius={[4,4,0,0]} maxBarSize={28}>
+                  <LabelList dataKey="leads" content={ValorBarra} />
+                </Bar>
+                <Bar dataKey="interacciones" name="interacciones" fill="#10b981" radius={[4,4,0,0]} maxBarSize={28}>
+                  <LabelList dataKey="interacciones" content={ValorBarra} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )

@@ -7,6 +7,8 @@ const { verificarToken, soloAdmin } = require('../middleware/auth');
 router.use(verificarToken);
 
 router.get('/dashboard',       ctrl.getDashboard);
+// Las dos empresas juntas, sin abrir por campaña.
+router.get('/consolidado',     ctrl.getConsolidado);
 router.get('/diario/:canal',   ctrl.getDiario);
 router.get('/ejecutivos',      ctrl.getEjecutivos);
 router.get('/objetivos',       ctrl.getObjetivos);

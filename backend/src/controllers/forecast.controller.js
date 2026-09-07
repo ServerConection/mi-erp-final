@@ -474,3 +474,105 @@ exports.upsertObjetivos = async (req, res) => {
     res.status(500).json({ ok: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSOLIDADO — las dos empresas juntas, sin abrir por campaña
+// ═══════════════════════════════════════════════════════════════════════════
+// El resto de este módulo mira campaña por campaña. Esto responde la pregunta
+// de arriba: cuánto vamos a gastar y cuánta gestión vamos a tener este mes,
+// sumando Novonet y Velsa.
+//
+// Usa la MISMA proyección que Redes → Reporte Data y que Reporte Gerencial:
+//
+//   promedio diario = acumulado ÷ días QUE TIENEN dato (no días transcurridos)
+//   proyección      = promedio diario × días del mes
+//
+// Se importa la función en vez de copiarla a propósito. Tres pantallas que
+// proyectan distinto es como no tener ninguna: la reunión se va en discutir
+// cuál número vale.
+const {
+  SERIES, serieEmpresa, forecastMensual, ultimoDiaMes,
+} = require('./reporteGerencial.controller');
+
+exports.getConsolidado = async (req, res) => {
+  try {
+    const hoy = new Date();
+    const anio = Number(req.query.anio) || hoy.getFullYear();
+    const mes  = Number(req.query.mes)  || hoy.getMonth() + 1;
+    const arpu = Number(req.query.arpu);
+
+    const mm = String(mes).padStart(2, '0');
+    const desde = `${anio}-${mm}-01`;
+    const hasta = `${anio}-${mm}-${String(ultimoDiaMes(`${anio}-${mm}-01`)).padStart(2, '0')}`;
+    const rango = { desde, hasta };
+
+    // Si una empresa falla, la otra se muestra igual: media pantalla útil es
+    // mejor que un error que no dice nada.
+    const porEmpresa = await Promise.all(
+      Object.keys(SERIES).map(async (clave) => {
+        try {
+          const serie = await serieEmpresa(clave, rango);
+          const { rows } = await pool.query(SERIES[clave].inversionCrudaSql, [desde, hasta]);
+          return {
+            empresa: clave,
+            nombre: SERIES[clave].nombre,
+            forecast: forecastMensual(serie, rows, rango, arpu),
+          };
+        } catch (e) {
+          console.warn(`[forecast.consolidado] ${clave}:`, e.message);
+          return { empresa: clave, nombre: SERIES[clave].nombre, forecast: null, error: e.message };
+        }
+      })
+    );
+
+    // Suma de lo que sí se pudo calcular.
+    const vivas = porEmpresa.filter((e) => e.forecast);
+    const sumar = (campo, prop) =>
+      Number(vivas.reduce((a, e) => a + Number(e.forecast[campo]?.[prop] || 0), 0).toFixed(2));
+
+    const invProy = sumar('inversion', 'proyeccion_cierre');
+    const actProy = sumar('activas', 'proyeccion_cierre');
+
+    const total = {
+      inversion: {
+        acumulado: sumar('inversion', 'acumulado'),
+        proyeccion_cierre: invProy,
+        por_gastar: Number(Math.max(invProy - sumar('inversion', 'acumulado'), 0).toFixed(2)),
+      },
+      gestionables: {
+        acumulado: sumar('gestionables', 'acumulado'),
+        proyeccion_cierre: Math.round(sumar('gestionables', 'proyeccion_cierre')),
+      },
+      ingresos: {
+        acumulado: sumar('ingresos', 'acumulado'),
+        proyeccion_cierre: Math.round(sumar('ingresos', 'proyeccion_cierre')),
+      },
+      activas: {
+        acumulado: sumar('activas', 'acumulado'),
+        proyeccion_cierre: Math.round(actProy),
+      },
+      // El CPA del conjunto NO es el promedio de los dos CPA: es la inversión
+      // total dividida por las ventas totales. Promediar porcentajes o ratios
+      // de tamaños distintos da un número que no existe.
+      cpa_proyectado: actProy > 0 ? Number((invProy / actProy).toFixed(2)) : null,
+    };
+
+    const ref = vivas[0]?.forecast;
+    res.json({
+      success: true,
+      mes: ref?.mes || `${anio}-${mm}`,
+      dias_del_mes: ref?.dias_del_mes ?? null,
+      dia_actual: ref?.dia_actual ?? null,
+      dias_restantes: ref?.dias_restantes ?? null,
+      metodo: 'Promedio de los días CON dato × días del mes (igual que Redes → Reporte Data).',
+      total,
+      empresas: porEmpresa,
+    });
+  } catch (err) {
+    console.error('[forecast.getConsolidado]', err);
+    res.status(500).json({
+      success: false,
+      error: process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message,
+    });
+  }
+};

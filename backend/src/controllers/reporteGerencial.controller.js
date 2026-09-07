@@ -279,8 +279,11 @@ function forecastMensual(emp, filasInversion, rangoConsultado, arpu) {
   inversion.proyeccion_cierre = Number(inversion.proyeccion_cierre.toFixed(2));
   inversion.por_gastar = Number(Math.max(inversion.proyeccion_cierre - inversion.acumulado, 0).toFixed(2));
 
-  const activas  = proyectar(delMes, 'activas',  diasDelMes);
-  const ingresos = proyectar(delMes, 'ingresos', diasDelMes);
+  const activas      = proyectar(delMes, 'activas',      diasDelMes);
+  const ingresos     = proyectar(delMes, 'ingresos',     diasDelMes);
+  // Gestión: los leads que de verdad se pueden trabajar. Es el volumen que
+  // importa para dimensionar el equipo, no el total que entró.
+  const gestionables = proyectar(delMes, 'gestionables', diasDelMes);
 
   const cpaProyectado = activas.proyeccion_cierre > 0
     ? Number((inversion.proyeccion_cierre / activas.proyeccion_cierre).toFixed(2))
@@ -309,6 +312,7 @@ function forecastMensual(emp, filasInversion, rangoConsultado, arpu) {
     inversion,
     activas,
     ingresos,
+    gestionables,
     cpa_proyectado: cpaProyectado,
     financiero,
     por_agencia: porAgencia,
@@ -412,4 +416,4 @@ async function getReporteGerencial(req, res) {
   }
 }
 
-module.exports = { getReporteGerencial, SERIES, forecastMensual, proyectar };
+module.exports = { getReporteGerencial, SERIES, serieEmpresa, forecastMensual, proyectar, ultimoDiaMes };

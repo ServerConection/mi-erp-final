@@ -350,7 +350,10 @@ function buildCicloFilas(d, dias) {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TabReporteData({ filtro }) {
+// `ruta` existe para que esta MISMA pantalla sirva a las dos empresas: Novonet
+// y Velsa devuelven el mismo contrato desde endpoints distintos. Duplicar el
+// componente habría significado arreglar cada bug dos veces.
+export default function TabReporteData({ filtro, ruta = "/api/redes/reporte-data", empresa = "novonet" }) {
   const hoy = new Date();
 
   const [anio,         setAnio]         = useState(hoy.getFullYear());
@@ -369,7 +372,7 @@ export default function TabReporteData({ filtro }) {
     dataLoaded.current = false;
     setCanalDetalle(null);
 
-    fetch(`${API}/api/redes/reporte-data?anio=${anio}&mes=${mes}`, { headers: cabecerasSesion() })
+    fetch(`${API}${ruta}?anio=${anio}&mes=${mes}`, { headers: cabecerasSesion() })
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.canales_disponibles) {
@@ -377,14 +380,14 @@ export default function TabReporteData({ filtro }) {
         }
       })
       .catch(() => {});
-  }, [anio, mes]);
+  }, [anio, mes, ruta]);
 
   const cargarDatos = useCallback((canalesSel_, anio_, mes_) => {
     setLoading(true);
     const params = new URLSearchParams({ anio: anio_, mes: mes_ });
     if (canalesSel_.length > 0) params.set("canales", canalesSel_.join(","));
 
-    fetch(`${API}/api/redes/reporte-data?${params}`, { headers: cabecerasSesion() })
+    fetch(`${API}${ruta}?${params}`, { headers: cabecerasSesion() })
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
@@ -397,7 +400,7 @@ export default function TabReporteData({ filtro }) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [ruta]);
 
   const handleCargar = () => cargarDatos(canalesSel, anio, mes);
 
@@ -1054,9 +1057,22 @@ ${horaData.length > 0 ? `
             <TablaHorizontal filas={buildEtapasFilas(data, dias)} dias={dias} accent={C.primary} />
           </Block>
 
-          <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
-            <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
-          </Block>
+          {data.status_jot?.length > 0 ? (
+            <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
+              <TablaHorizontal filas={buildJotFilas(data, dias)} dias={dias} accent={C.success} />
+            </Block>
+          ) : data.bloques_pendientes?.includes("status_jot") ? (
+            // Un bloque vacío sin explicación se lee como "el módulo está roto".
+            <Block title="Estatus Ventas JOT" accent={C.success} id="bloque-jot">
+              <div style={{ padding: 16, fontSize: 12, color: "#78716c", lineHeight: 1.6 }}>
+                Todavía no disponible para {empresa === "velsa" ? "Velsa" : "esta empresa"}.
+                Estos datos (ingresos JOT, activos, backlog, regularizados) viven en una fuente
+                distinta a la de Novonet y se están adaptando. El resto del reporte —
+                inversión, forecast, etapas, hora, ciudad, forma de pago y ciclo de venta —
+                sí está completo.
+              </div>
+            </Block>
+          ) : null}
 
           <Block title="Leads por Hora" accent={C.primary} id="bloque-hora">
             <TablaHora filas={data.hora || []} />

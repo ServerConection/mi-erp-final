@@ -906,24 +906,61 @@ const getIndicadoresDashboard = async (req, res) => {
             -- truncarse silenciosamente en rangos de fecha grandes.
         `;
 
+        // ── DETALLE BASE JOTFORM (NETLIFE) ──────────────────────────────────
+        // Alimenta la tabla azul del reporte y su botón EXCEL (el frontend arma
+        // las columnas con las claves de estas filas, así que lo que se agregue
+        // acá aparece en la pantalla Y en el Excel).
+        //
+        // 2026-09-07: Velsa mostraba más columnas que Novonet en la misma tabla
+        // (código de asesor, los planes, origen, etapa...), así que no se podían
+        // comparar ni pegar las dos descargas. Se completan las que faltaban
+        // usando los mismos nombres que Velsa.
+        //
+        // Dos detalles de implementación:
+        //   · Los planes NO están en mestra_bitrix: vienen del JOIN con
+        //     vista_analisis_novonet (van), el mismo que ya usa el resto del
+        //     archivo para decidir si una venta lleva servicio.
+        //   · Algunas columnas j_* se agregaron a mestra_bitrix en distintos
+        //     momentos y no están garantizadas. Se leen con to_jsonb(mb)->>'...'
+        //     en vez de mb.columna: si la columna no existe, esa celda sale
+        //     vacía en lugar de tumbar TODO el reporte.
+        //   · Novonet no trabaja con Telcos ni guarda la hora de llegada del
+        //     payload; esas columnas van vacías para que el archivo sea igual.
         const queryJotform = `
             SELECT
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
                 mb.j_id_bitrix AS "ID_CRM",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
-                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_novedades_atc AS "NOVEDADES_ATC",
-                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
-                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
-                mb.j_forma_pago AS "FORMA_PAGO",
-                mb.j_netlife_login AS "LOGIN",
-                mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
+                to_jsonb(mb) ->> 'j_id' AS "ID_JOT",
+                mb.b_etapa_de_la_negociacion AS "ETAPA",
+                mb.b_creado_el_fecha AS "FECHA_CREACION",
                 -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
                 -- y solo cae al histórico si el webhook no tiene dato. Ver
                 -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
-                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
+                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
+                mb.b_origen AS "ORIGEN",
+                mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
+                NULL::text AS "FECHA_CREADO_JOT",
+                to_jsonb(mb) ->> 'j_codigo_asesor' AS "COD_ASESOR_JOT",
+                mb.j_netlife_login AS "LOGIN",
+                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                NULL::text AS "OBSERVACION_TELCOS",
+                NULL::text AS "INGRESO_TELCOS",
+                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
+                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
+                mb.j_detalle_regularizacion AS "OBSERV_REGULARIZACION",
+                mb.j_novedades_atc AS "NOVEDADES_ATC",
+                van.plan_casa               AS "PLAN_CASA",
+                van.plan_pyme               AS "PLAN_PYME",
+                van.plan_profesional        AS "PLAN_PROFESIONAL",
+                van.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
+                van.plan_pyme_corp          AS "PLAN_PYME_CORP",
+                van.plan_centro_comercial   AS "PLAN_CENTRO_RED_COMERCIAL",
+                mb.j_forma_pago AS "FORMA_PAGO",
+                to_jsonb(mb) ->> 'j_aplica_descuento_3ra_edad' AS "APLICA_DESCUENTO",
+                mb.j_fecha_agenda AS "FECHA_AGENDA",
+                to_jsonb(mb) ->> 'j_observacion_venta_original' AS "OBSERVACION"
             FROM mestra_bitrix mb
+            ${JOIN_VAN_NOVONET}
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
@@ -949,16 +986,16 @@ const getIndicadoresDashboard = async (req, res) => {
         //   3) Respeta los mismos filtros y el asesor resuelto por webhook.
         const queryRegularizaciones = `
             SELECT
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_id_bitrix AS "ID_CRM",
                 mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_novedades_atc AS "NOVEDADES_ATC",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
-                mb.j_detalle_regularizacion AS "MOTIVO_REGULARIZAR",
+                mb.j_detalle_regularizacion AS "OBSERV_REGULARIZACION",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
-                mb.j_fecha_agenda AS "FECHA AGENDAMIENTO",
+                mb.j_fecha_agenda AS "FECHA_AGENDA",
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
             FROM mestra_bitrix mb
@@ -1159,7 +1196,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- ASESOR resuelto desde el webhook (mismo criterio que queryJotform)
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",
@@ -1190,7 +1227,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_id_bitrix AS "ID_CRM",
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
-                mb.j_fecha_registro_sistema AS "FECHACREACION_JOT",
+                mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",

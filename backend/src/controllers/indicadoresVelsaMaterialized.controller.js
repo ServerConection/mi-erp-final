@@ -616,6 +616,9 @@ SELECT
   mv.fecha_activacion AS "FECHA_ACTIVACION",
   mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
   mv.detalle_regularizacion AS "OBSERV_REGULARIZACION",
+  -- Novedades ATC solo existe en Novonet. Se deja la columna vacia para que las
+  -- dos descargas (Novonet y Velsa) tengan exactamente las mismas columnas.
+  NULL::text AS "NOVEDADES_ATC",
   mv.plan_casa AS "PLAN_CASA",
   mv.plan_pyme AS "PLAN_PYME",
   mv.plan_profesional AS "PLAN_PROFESIONAL",

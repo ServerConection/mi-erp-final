@@ -1,0 +1,234 @@
+.bo-page {
+  min-width: 0;
+}
+
+.bo-shell,
+.bo-main,
+.bo-content-column {
+  min-width: 0;
+}
+
+.bo-toolbar,
+.bo-filter-row,
+.bo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.bo-toolbar {
+  justify-content: space-between;
+}
+
+.bo-actions {
+  justify-content: flex-end;
+}
+
+.bo-filter-row > input[type="text"],
+.bo-filter-row > input:not([type]),
+.bo-search {
+  flex: 1 1 230px;
+  min-width: 180px !important;
+  max-width: 360px;
+}
+
+.bo-summary-grid,
+.bo-kanban-grid {
+  display: grid;
+  min-width: 0;
+}
+
+.bo-table-scroll {
+  overflow: auto !important;
+  min-width: 0;
+  scrollbar-gutter: stable;
+  scrollbar-color: #94a3b8 #e2e8f0;
+  scrollbar-width: auto;
+}
+
+.bo-table-scroll::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.bo-table-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.bo-table-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border: 2px solid #e2e8f0;
+  border-radius: 999px;
+}
+
+.bo-scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bo-floating-filters {
+  min-width: 0;
+}
+
+.bo-company-actions {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Welcome y Validación de Estado comparten una cabecera con acciones arriba y
+   filtros debajo. Se mantiene todo en el flujo para evitar superposiciones. */
+.bo-header:has(.bo-floating-filters) {
+  padding-bottom: 18px !important;
+}
+
+.bo-header:has(.bo-floating-filters) .bo-toolbar {
+  align-items: flex-start;
+}
+
+.bo-header:has(.bo-floating-filters) .bo-actions {
+  flex: 1 1 100%;
+  justify-content: flex-end !important;
+}
+
+.bo-header:has(.bo-floating-filters) .bo-floating-filters {
+  position: static !important;
+  order: 2;
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: 8px;
+  display: grid !important;
+  grid-template-columns: minmax(230px, 1fr) minmax(290px, auto) repeat(3, max-content);
+  align-items: end !important;
+}
+
+.bo-header:has(.bo-floating-filters) .bo-floating-filters > input {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.bo-empty-state {
+  padding: 30px 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.bo-empty-state strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #334155;
+}
+
+.bo-skeleton {
+  overflow: hidden;
+  position: relative;
+  min-height: 42px;
+  border-radius: 9px;
+  background: #e2e8f0;
+}
+
+.bo-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.72), transparent);
+  animation: bo-shimmer 1.25s infinite;
+}
+
+@keyframes bo-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (max-width: 1100px) {
+  .bo-two-column {
+    grid-template-columns: 220px minmax(0, 1fr) !important;
+  }
+
+  .bo-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .bo-kanban-grid {
+    grid-template-columns: repeat(2, minmax(280px, 1fr)) !important;
+  }
+
+  .bo-header:has(.bo-floating-filters) .bo-floating-filters {
+    grid-template-columns: minmax(220px, 1fr) minmax(285px, 1fr) repeat(2, max-content);
+  }
+}
+
+@media (max-width: 780px) {
+  .bo-page {
+    padding: 10px !important;
+  }
+
+  .bo-header,
+  .bo-main {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .bo-two-column,
+  .bo-summary-grid,
+  .bo-kanban-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .bo-actions,
+  .bo-toolbar {
+    align-items: stretch;
+  }
+
+  .bo-actions > button,
+  .bo-actions > [role="group"] {
+    flex: 1 1 auto;
+  }
+
+  .bo-filter-row > *,
+  .bo-search {
+    max-width: none !important;
+  }
+
+  .bo-filter-row > input,
+  .bo-filter-row > button {
+    flex: 1 1 100%;
+  }
+
+  .bo-header:has(.bo-floating-filters) {
+    padding-bottom: 14px !important;
+  }
+
+  .bo-floating-filters {
+    position: static !important;
+    margin-top: 14px;
+    width: 100%;
+    align-items: stretch !important;
+    display: flex !important;
+  }
+
+  .bo-company-actions {
+    position: static;
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-skeleton::after {
+    animation: none;
+  }
+}

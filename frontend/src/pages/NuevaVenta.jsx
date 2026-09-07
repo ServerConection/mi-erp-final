@@ -874,7 +874,7 @@ export default function NuevaVenta() {
 
   useEffect(() => {
     if (!alertaDescuento) return undefined;
-    const timeout = setTimeout(() => setAlertaDescuento(null), 3000);
+    const timeout = setTimeout(() => setAlertaDescuento(null), 5000);
     return () => clearTimeout(timeout);
   }, [alertaDescuento]);
 
@@ -886,7 +886,7 @@ export default function NuevaVenta() {
     }
     const esNo = String(valor).trim().toUpperCase() === "NO";
     setAlertaDescuento(
-      `Verifica que la cédula ingresada no corresponda a una persona analfabeta ni tenga descuento Conadis${esNo ? ", y que tampoco tenga descuento por tercera edad" : ""}.`
+      `Verifica que la cédula ingresada no corresponda a una persona analfabeta y que no tiene Conadis${esNo ? ", y que tampoco tenga descuento por tercera edad" : ""}.`
     );
   };
 
@@ -898,7 +898,7 @@ export default function NuevaVenta() {
     if (form.forma_pago === "EFECTIVO") {
       setForm((actual) => ({
         ...actual,
-        banco: "", tipo_cuenta: "", ciclo_facturacion: "",
+        banco: "", tipo_cuenta: "",
         costo_instalacion: "10.01",
         descuento_instalacion: `94% - EFECTIVO; FACTURA DE INSTALACIÓN $10.01${extraSector}`,
       }));
@@ -906,7 +906,6 @@ export default function NuevaVenta() {
         const siguiente = { ...actual };
         delete siguiente.banco;
         delete siguiente.tipo_cuenta;
-        delete siguiente.ciclo_facturacion;
         return siguiente;
       });
     } else if (form.forma_pago === PAGO_TC) {
@@ -1205,7 +1204,7 @@ export default function NuevaVenta() {
     if (form.forma_pago !== "EFECTIVO" && !form.banco)
       e.banco = "Requerido";
 
-    if (form.forma_pago !== "EFECTIVO" && !form.ciclo_facturacion)
+    if (!form.ciclo_facturacion)
       e.ciclo_facturacion = "Requerido";
 
     if (!form.costo_instalacion)
@@ -1892,8 +1891,8 @@ export default function NuevaVenta() {
                 </div>
               )}
             </Row>
-            <Row label="Ciclo de facturación" required={form.forma_pago !== "EFECTIVO"}>
-              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} disabled={form.forma_pago === "EFECTIVO"} placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : "Selecciona el ciclo de facturación"} />
+            <Row label="Ciclo de facturación" required>
+              <FSel value={form.ciclo_facturacion} onChange={set("ciclo_facturacion", { preserveCase: true })} options={CICLOS_FACT} placeholder="Selecciona el ciclo de facturación" />
               <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
                 Ciclo I: del 1 al 30-31 · Ciclo II: del 8 al 7 · Ciclo III: del 15 al 14.
               </div>

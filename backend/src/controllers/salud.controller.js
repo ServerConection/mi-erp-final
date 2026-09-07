@@ -62,15 +62,11 @@ const CHEQUEOS = [
     verde: 60, amarillo: 180,
     sql: `SELECT MAX(finalizado_at)::timestamptz AS ultimo, COUNT(*)::int AS total FROM public.contactabilidad_sync_runs`,
   },
-  {
-    id: 'cierre_diario',
-    nombre: 'Cierre diario',
-    grupo: 'Respaldos',
-    critico: false,
-    detalle: 'Respaldo de las 23:50. Se considera al dia si corrio en las ultimas 26 horas.',
-    verde: 1560, amarillo: 2880,
-    sql: `SELECT MAX(creado_en)::timestamptz AS ultimo, COUNT(*)::int AS total FROM public.cierre_diario_log`,
-  },
+  // El cierre diario NO va en esta lista: su bitácora (cierre_diario_log) vive
+  // en la base local de la PC de oficina, que este servidor no puede consultar
+  // — por eso el chequeo salía siempre en DESCONOCIDO y no vigilaba nada.
+  // Ahora se evalúa aparte, con el latido que el propio proceso escribe aquí.
+  // Ver estadoCierreDiario().
 ];
 
 // Chequeos que no miden frescura sino un conteo (se evaluan aparte).
@@ -88,6 +84,53 @@ async function estadoLineasWhatsApp() {
     estado: total === 0 ? 'DESCONOCIDO' : conectadas === 0 ? 'CAIDO' : conectadas < total ? 'RETRASO' : 'OK',
     medida: `${conectadas} de ${total} conectadas`,
     ultimo: null, total,
+  };
+}
+
+// El cierre diario corre en una PC de la oficina, no aquí, y guarda en una base
+// local que este servidor no ve. Lo único que cruza es el latido que el propio
+// proceso escribe en Render al terminar. Si la PC se apaga, si Postgres local no
+// levanta o si el cierre revienta, el latido deja de llegar y esto se pone rojo
+// solo — que es el punto: nadie debería tener que acordarse de ir a revisarlo.
+async function estadoCierreDiario() {
+  const base = {
+    id: 'cierre_diario', nombre: 'Cierre diario (PC de oficina)', grupo: 'Respaldos',
+    critico: false,
+    detalle: 'Congela cada noche a las 23:50 cómo cerró el día en Bitrix y JotForm. Corre en la PC de la oficina: si está apagada a esa hora, esa noche se pierde y no se recupera sola.',
+  };
+
+  const { rows } = await pool.query(
+    `SELECT fecha_cierre, filas_total, tablas_ok, tablas_error, detalle, actualizado_en
+       FROM public.cierre_diario_estado WHERE id = 1`
+  );
+
+  if (!rows.length) {
+    return { ...base, estado: 'CAIDO', medida: 'nunca reportó',
+      detalle: base.detalle + ' Todavía no llegó ningún aviso: el proceso no ha terminado una corrida desde que se instaló la vigilancia.' };
+  }
+
+  const r = rows[0];
+  const horas = (Date.now() - new Date(r.actualizado_en).getTime()) / 3600000;
+
+  // Corre una vez al día: hasta 26 h es normal (margen para que el reloj de la
+  // PC y el del servidor no coincidan al minuto). Pasadas 36 h ya se saltó una
+  // noche entera.
+  let estado = horas <= 26 ? 'OK' : horas <= 36 ? 'RETRASO' : 'CAIDO';
+
+  // Un latido fresco pero con tablas en error es peor que uno viejo: el
+  // respaldo de anoche quedó incompleto y nadie se enteró.
+  if (Number(r.tablas_error) > 0) estado = 'CAIDO';
+
+  const cuando = new Date(r.fecha_cierre).toISOString().slice(0, 10);
+  const medida = Number(r.tablas_error) > 0
+    ? `${r.tablas_error} tabla(s) con error el ${cuando}`
+    : `${cuando} · ${Number(r.filas_total).toLocaleString('es-EC')} filas`;
+
+  return {
+    ...base, estado, medida,
+    ultimo: r.actualizado_en,
+    total: Number(r.filas_total),
+    detalle: base.detalle + (r.detalle ? ` Último cierre — ${r.detalle}` : ''),
   };
 }
 
@@ -143,7 +186,7 @@ async function getSalud(req, res) {
     }
   }
 
-  for (const extra of [estadoLineasWhatsApp, estadoColaNexoIa]) {
+  for (const extra of [estadoLineasWhatsApp, estadoColaNexoIa, estadoCierreDiario]) {
     try { componentes.push(await extra()); }
     catch (err) {
       componentes.push({

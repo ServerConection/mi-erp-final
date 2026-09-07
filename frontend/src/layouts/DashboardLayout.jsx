@@ -380,9 +380,13 @@ const ALL_MENU_ITEMS = [
     isChild: true, group: "backoffice" },
 
   // ── Resumenes ────────────────────────────────────────────────────────────
-  { name: "Resumenes", path: null, icon: "📦", isGroup: true, groupId: "resumenes" },
-  { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
-  { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
+  // Retirado del menú a pedido de gerencia (2026-09-06): no se usaba.
+  // Las rutas /resumen-novonet y /resumen-velsa siguen existiendo y funcionando
+  // por si alguien tiene el enlace guardado; solo se quitó la entrada del menú.
+  // Para devolverlo, descomentar estas tres líneas.
+  // { name: "Resumenes", path: null, icon: "📦", isGroup: true, groupId: "resumenes" },
+  // { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
+  // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },

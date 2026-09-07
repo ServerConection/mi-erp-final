@@ -59,12 +59,8 @@ export default function HomeModules() {
     { title: "Comparativa Supervisores", path: "/comparativa-supervisores", icon: TrendingUp, accent: "azul", cat: "analitica",
       desc: "Análisis detallado: casos asignados vs gestionables, ingresos JOT, activas y eficiencia por supervisor.",
       rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
-    { title: "Resumen NOVONET", path: "/resumen-novonet", icon: PieChart, accent: "azul", cat: "analitica",
-      desc: "Analítica de calidad de ventas NOVONET: aprobación, regularización, auditoría y ranking de asesores.",
-      rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
-    { title: "Resumen VELSA", path: "/resumen-velsa", icon: PieChart, accent: "naranja", cat: "analitica",
-      desc: "Analítica de calidad de ventas VELSA: aprobación, regularización, auditoría y ranking de asesores.",
-      rolesPermitidos: ['ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
+    // Resumen NOVONET / VELSA retirados de la portada a pedido de gerencia
+    // (2026-09-06). Las rutas siguen vivas; solo se quitó la tarjeta.
     { title: "Reportería Vidika", path: "/vidika", icon: BarChart3, accent: "cian", cat: "analitica",
       desc: "Panel de reportería en tiempo real. Sesión automática integrada con el ERP.",
       rolesPermitidos: ['ANALISTA', 'COORDINADOR', 'ADMINISTRADOR', 'GERENCIA'] },

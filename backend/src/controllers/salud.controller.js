@@ -163,6 +163,130 @@ function evaluarFrescura(chequeo, ultimo, total) {
   return { estado, medida, edad_minutos: edad, total };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPA DE MÓDULOS
+// ═══════════════════════════════════════════════════════════════════════════
+// La lista de chequeos dice QUÉ está caído. No dice a quién le importa.
+// Este mapa agrega lo que falta: de dónde sale cada dato y qué pantallas
+// dependen de él, para que "mestra_bitrix congelada" se lea directamente como
+// "Reporte D-1 y Vista Asesor están mostrando números viejos".
+//
+// `mide` engancha el nodo con un chequeo real; los nodos sin `mide` son piezas
+// del recorrido que no tienen medición propia (una fuente externa, una
+// pantalla) y heredan el estado de lo que los alimenta.
+const CAPAS = [
+  {
+    id: 'fuentes', nombre: 'Fuentes externas',
+    nodos: [
+      { id: 'bitrix',     nombre: 'Bitrix24',   alimenta: ['webhook', 'mestra_bitrix'] },
+      { id: 'jotform',    nombre: 'JotForm',    alimenta: ['mestra_bitrix', 'mv_velsa'] },
+      { id: 'wintracker', nombre: 'WinTracker', alimenta: ['inversion'] },
+      { id: 'whatsapp',   nombre: 'WhatsApp',   alimenta: ['lineas_wa'] },
+    ],
+  },
+  {
+    id: 'ingesta', nombre: 'Ingesta',
+    nodos: [
+      { id: 'webhook',        nombre: 'Leads del webhook', mide: 'bitrix_webhook_leads', alimenta: ['redes', 'contactabilidad_n'] },
+      { id: 'mestra_bitrix',  nombre: 'Maestra Bitrix',    mide: 'mestra_bitrix',        alimenta: ['reporte_d1', 'vista_asesor', 'gerencial'] },
+      { id: 'inversion',      nombre: 'Inversión en redes', alimenta: ['redes', 'gerencial'] },
+      { id: 'lineas_wa',      nombre: 'Líneas de WhatsApp', mide: 'whatsapp_lineas',     alimenta: ['wabot'] },
+      { id: 'contactabilidad_n', nombre: 'Contactabilidad', mide: 'contactabilidad',     alimenta: ['contactabilidad_ui'] },
+    ],
+  },
+  {
+    id: 'analitica', nombre: 'Analítica',
+    nodos: [
+      { id: 'mv_velsa', nombre: 'Vista materializada Velsa', mide: 'mv_velsa', alimenta: ['vista_asesor_velsa', 'gerencial', 'redes_velsa'] },
+      { id: 'nexo_ia',  nombre: 'Cola de Nexo IA',           mide: 'nexo_ia',  alimenta: ['nexo_ui'] },
+    ],
+  },
+  {
+    id: 'pantallas', nombre: 'Lo que ve la gente',
+    nodos: [
+      { id: 'reporte_d1',         nombre: 'Reporte D-1' },
+      { id: 'vista_asesor',       nombre: 'Vista Asesor' },
+      { id: 'vista_asesor_velsa', nombre: 'Vista Asesor Velsa' },
+      { id: 'gerencial',          nombre: 'Reporte Gerencial' },
+      { id: 'redes',              nombre: 'Redes Novonet' },
+      { id: 'redes_velsa',        nombre: 'Redes Velsa' },
+      { id: 'wabot',              nombre: 'Wabot' },
+      { id: 'contactabilidad_ui', nombre: 'Contactabilidad' },
+      { id: 'nexo_ui',            nombre: 'Nexo IA' },
+    ],
+  },
+  {
+    id: 'respaldo', nombre: 'Respaldo',
+    nodos: [
+      { id: 'cierre', nombre: 'Cierre diario', mide: 'cierre_diario' },
+    ],
+  },
+];
+
+const PEOR = { OK: 0, DESCONOCIDO: 1, RETRASO: 2, CAIDO: 3 };
+
+/**
+ * Arma el mapa con el estado ya propagado.
+ *
+ * Una pantalla no se mide sola: está mal cuando lo está algo de lo que come.
+ * Se propaga el PEOR estado de sus fuentes, y se deja escrito cuál fue, que es
+ * la pregunta siguiente inevitable ("¿y por qué está en rojo?").
+ */
+function construirMapa(componentes) {
+  const porId = Object.fromEntries(componentes.map((c) => [c.id, c]));
+
+  // quién alimenta a quién (la relación viene declarada al revés)
+  const entradas = {};
+  for (const capa of CAPAS) {
+    for (const n of capa.nodos) {
+      for (const destino of (n.alimenta || [])) (entradas[destino] ||= []).push(n.id);
+    }
+  }
+
+  const estados = {};
+  const motivos = {};
+
+  // Las capas están en orden de dependencia, así que una sola pasada alcanza:
+  // cuando se evalúa un nodo, todo lo que lo alimenta ya tiene estado.
+  for (const capa of CAPAS) {
+    for (const n of capa.nodos) {
+      const propio = n.mide ? (porId[n.mide]?.estado || 'DESCONOCIDO') : null;
+      let peor = propio || 'OK';
+      let culpable = propio && propio !== 'OK' ? n.nombre : null;
+
+      for (const origen of (entradas[n.id] || [])) {
+        const e = estados[origen] || 'DESCONOCIDO';
+        if (PEOR[e] > PEOR[peor]) { peor = e; culpable = motivos[origen] || nombreDe(origen); }
+      }
+      // Un nodo sin medición ni fuentes no se pinta en rojo por las dudas.
+      if (!propio && !(entradas[n.id] || []).length) peor = 'SIN_MEDIR';
+
+      estados[n.id] = peor;
+      motivos[n.id] = culpable;
+    }
+  }
+
+  return {
+    capas: CAPAS.map((capa) => ({
+      id: capa.id, nombre: capa.nombre,
+      nodos: capa.nodos.map((n) => ({
+        id: n.id, nombre: n.nombre,
+        alimenta: n.alimenta || [],
+        estado: estados[n.id],
+        // Por qué está así: el nodo que lo arrastró, o él mismo.
+        causa: estados[n.id] === 'OK' || estados[n.id] === 'SIN_MEDIR' ? null : motivos[n.id],
+        medida: n.mide ? porId[n.mide]?.medida : null,
+        detalle: n.mide ? porId[n.mide]?.detalle : null,
+      })),
+    })),
+  };
+}
+
+const nombreDe = (id) => {
+  for (const capa of CAPAS) for (const n of capa.nodos) if (n.id === id) return n.nombre;
+  return id;
+};
+
 async function getSalud(req, res) {
   const componentes = [];
 
@@ -196,6 +320,8 @@ async function getSalud(req, res) {
     }
   }
 
+  const mapa = construirMapa(componentes);
+
   const cuenta = (e) => componentes.filter((c) => c.estado === e).length;
   const hayCriticoCaido = componentes.some((c) => c.critico && c.estado === 'CAIDO');
 
@@ -211,6 +337,7 @@ async function getSalud(req, res) {
       estado_general: hayCriticoCaido ? 'CAIDO' : cuenta('CAIDO') || cuenta('RETRASO') ? 'RETRASO' : 'OK',
     },
     componentes,
+    mapa,
   });
 }
 

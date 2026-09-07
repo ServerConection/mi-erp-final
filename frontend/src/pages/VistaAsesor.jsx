@@ -114,15 +114,31 @@ function IndicadorBadge({ label, value, icon, colorBg, colorText, colorBorder, s
 function ClienteModal({ cliente, onClose }) {
   if (!cliente) return null;
 
+  // Los nombres de las columnas ahora son los mismos que en Velsa, para poder
+  // comparar y pegar las dos descargas.
   const LABELS = {
-    FECHACREACION_JOT:    "Fecha registro",
+    FECHA_CREACION_JOT:   "Fecha registro",
     ID_CRM:               "ID CRM",
+    ID_JOT:               "ID Jotform",
+    ETAPA:                "Etapa CRM",
+    FECHA_CREACION:       "Fecha creación CRM",
+    ORIGEN:               "Origen",
+    COD_ASESOR_JOT:       "Código asesor",
     ESTADO_NETLIFE:       "Estado Netlife",
     FECHA_ACTIVACION:     "Fecha activación",
     NOVEDADES_ATC:        "Novedades ATC",
     ESTADO_REGULARIZACION:"Estado regularización",
-    MOTIVO_REGULARIZAR:   "Motivo regularización",
+    OBSERV_REGULARIZACION:"Motivo regularización",
+    PLAN_CASA:            "Plan casa",
+    PLAN_PYME:            "Plan pyme",
+    PLAN_PROFESIONAL:     "Plan profesional",
+    PLAN_HOGAR_ADULTO_MAYOR: "Plan adulto mayor",
+    PLAN_PYME_CORP:       "Plan pyme corp",
+    PLAN_CENTRO_RED_COMERCIAL: "Plan centro comercial",
     FORMA_PAGO:           "Forma de pago",
+    APLICA_DESCUENTO:     "Aplica descuento",
+    FECHA_AGENDA:         "Fecha agendamiento",
+    OBSERVACION:          "Observación",
     LOGIN:                "Login Netlife",
     ASESOR:               "Asesor",
     SUPERVISOR_ASIGNADO:  "Supervisor",
@@ -211,7 +227,7 @@ function ClienteModal({ cliente, onClose }) {
                 <div key={key} style={{
                   background: "#f8fafc", borderRadius: 10,
                   border: "1px solid #f1f5f9", padding: "10px 12px",
-                  gridColumn: ["NOVEDADES_ATC","MOTIVO_REGULARIZAR"].includes(key) ? "1 / -1" : "auto",
+                  gridColumn: ["NOVEDADES_ATC","OBSERV_REGULARIZACION","OBSERVACION"].includes(key) ? "1 / -1" : "auto",
                 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8",
                     textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>

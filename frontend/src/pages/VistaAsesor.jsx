@@ -301,7 +301,15 @@ function AsesorCard({ row, rank }) {
   const etapas = row.etapasJot || [];
 
   const descarte       = Number(row.descarte || 0);
-  const efectividad    = Number(row.efectividad_real || 0);
+  // EFECTIVIDAD (2026-09-07, definicion de negocio): ingresos CRM sobre
+  // gestionables. Es decir, de los leads que se podian trabajar, cuantos
+  // terminaron en VENTA SUBIDA en el CRM. Antes se usaba efectividad_real, que
+  // divide los ingresos de Jotform (no del CRM) y ademas con otra ventana de
+  // fecha, por eso no cuadraba con el total del equipo.
+  const gestionablesRow = Number(row.gestionables || 0);
+  const efectividad    = gestionablesRow > 0
+    ? (Number(row.ventas_crm || 0) / gestionablesRow) * 100
+    : 0;
   const tasaInstalacion = Number(row.tasa_instalacion || 0);
   const pctTarjeta     = Number(row.tarjeta_credito || 0) > 0 && Number(row.ingresos_reales || 0) > 0
     ? ((Number(row.tarjeta_credito) / Number(row.ingresos_reales)) * 100)
@@ -634,19 +642,21 @@ export default function VistaAsesor() {
       // Respaldo por si el backend aun no envia descarte_base (deploy a medias):
       // se mantiene el comportamiento anterior en vez de mostrar 0.
       : (base.length > 0 ? base.reduce((a, r) => a + Number(r.descarte || 0), 0) / base.length : 0);
-    // FIX 2026-09-06: la efectividad global se recalcula desde los TOTALES, no
-    // promediando los porcentajes de cada asesor. El promedio simple daba un
-    // numero distinto al de Reporte D-1 (que es el correcto) porque pesa igual
-    // a un asesor con 2 leads que a uno con 200: uno con 1 ingreso sobre 1
-    // gestionable aporta un 100% que empuja el promedio hacia arriba.
-    // Misma formula que D-1: ingresos Jotform / gestionables.
-    const pctEfectividad = totalGest > 0 ? (totalJot / totalGest) * 100 : 0;
+    // EFECTIVIDAD: ingresos CRM / gestionables (definicion de negocio,
+    // 2026-09-07). De los leads trabajables, cuantos terminaron en venta subida.
+    //
+    // Se calcula desde los TOTALES, no promediando los porcentajes de cada
+    // asesor (FIX 2026-09-06): el promedio simple pesa igual a un asesor con 2
+    // leads que a uno con 200, y uno con 1 venta sobre 1 gestionable aporta un
+    // 100% que empuja el numero hacia arriba.
+    const totalCrm = base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
+    const pctEfectividad = totalGest > 0 ? (totalCrm / totalGest) * 100 : 0;
     const pctTasaInst    = totalJot > 0 ? (totalActivas / totalJot) * 100 : 0;
     const pctTarjeta     = totalJot > 0 ? (totalTarjeta / totalJot) * 100 : 0;
 
     return {
       gestionables:   totalGest,
-      ingresos_crm:   base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+      ingresos_crm:   totalCrm,
       ingresos_jot:   totalJot,
       // FIX 2026-08-18: "real_mes" (totalActivas) YA incluye el backlog (activadas
       // este mes sin importar cuándo se registraron). "Activas mes" ahora muestra

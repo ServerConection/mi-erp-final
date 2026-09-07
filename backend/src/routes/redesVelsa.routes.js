@@ -10,6 +10,7 @@ const {
   getMonitoreoHora,
   getMonitoreoAtc,
   getReporteData,
+  getReporteDataMensual,
   getAgenciasCanal,
   upsertAgenciaCanal,
   getResumenPorAgencia,
@@ -27,6 +28,9 @@ router.get('/monitoreo-ciudad', getMonitoreoCiudad);
 router.get('/monitoreo-hora', getMonitoreoHora);
 router.get('/monitoreo-atc', getMonitoreoAtc);
 router.get('/reporte', getReporteData);
+// Reporte Data mensual — mismo contrato que /api/redes/reporte-data de NOVONET,
+// para que la pantalla sea literalmente la misma con otra URL base.
+router.get('/reporte-data', getReporteDataMensual);
 router.get('/agencias', getAgenciasCanal);
 router.post('/agencias', noAsesor, upsertAgenciaCanal);
 router.get('/resumen-agencias', getResumenPorAgencia);

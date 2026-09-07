@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const { esLeadTotalExpr, esGestionableExpr, esDescarteExpr } = require('../shared/etapas');
 const { fechaWebhookExpr, etapaWebhookExpr, horaWebhookExpr } = require('../shared/webhookRedes');
-const { resolverCanalInversion } = require('../shared/inversionRedes');
+const { resolverCanalInversion, construirForecastAgencias } = require('../shared/inversionRedes');
 const { asegurarInversionReciente } = require('../services/inversionFreshness.service');
 
 const FECHA = fechaWebhookExpr('w');
@@ -170,9 +170,212 @@ async function getMonitoreoAtc(req,res){try{const {desde,hasta}=fechas(req.query
 
 async function getReporteData(req,res){try{await asegurarInversionReciente();const {desde,hasta}=fechas(req.query),canales=seleccion(req.query),fi=filtroInversion(canales);const diario=(await consultarDiario(desde,hasta,canales)).rows;const dias=(await pool.query(`SELECT to_char(d,'YYYY-MM-DD') fecha FROM generate_series($1::date,$2::date,'1 day') d`,[desde,hasta])).rows.map(r=>r.fecha);const inv=(await pool.query(`SELECT fecha,SUM(monto_usd) inversion FROM velsa_inversion_redes WHERE fecha BETWEEN $1 AND $2 ${fi.sql} GROUP BY 1`,[desde,hasta,...fi.params])).rows;const map={};for(const r of diario){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};for(const k of ['n_leads','gestionables','atc','venta_subida'])map[f][k]+=Number(r[k]||0);map[f].descartados+=Number(r.descarte||0);}for(const r of inv){const f=new Date(r.fecha).toISOString().slice(0,10);if(!map[f])map[f]={n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0};map[f].inversion=Number(r.inversion||0);}const inversion=dias.map(fecha=>({fecha,...(map[fecha]||{n_leads:0,gestionables:0,atc:0,venta_subida:0,descartados:0,inversion:0})}));const fake={query:{...req.query,fechaDesde:desde,fechaHasta:hasta,canales:canales.join(',')}};let ciudad,hora;await getMonitoreoCiudad(fake,{json:x=>{ciudad=x.porCiudad}});await getMonitoreoHora(fake,{json:x=>{hora=x.porHora}});const canalesDisp=await pool.query(`SELECT ${AGENCIA} canal_publicidad,COUNT(*) n_leads FROM bitrix_webhook_leads w WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date GROUP BY 1 ORDER BY 2 DESC`,[desde,hasta]);let pago=[],ciclo=[];try{const[pg,cv]=await Promise.all([consultarFormaPago(desde,hasta,canales),consultarCicloVenta(desde,hasta,canales)]);pago=pg.rows;ciclo=cv.rows;}catch(e){console.error('[redes-velsa/reporte] bloques JotForm no disponibles:',e.message);}res.json({success:true,meta:{dias,fechaDesde:desde,fechaHasta:hasta},inversion,pago,ciclo,ciudad:ciudad||[],hora:hora||[],canales_disponibles:canalesDisp.rows});}catch(e){responderError(res,'reporte',e);}}
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REPORTE DATA MENSUAL — el mismo de Redes NOVONET, para VELSA
+// ═══════════════════════════════════════════════════════════════════════════
+// FASE 1: todo lo que sale del webhook (fuente viva, idéntica en las dos
+// empresas) más forma de pago y ciclo de venta, que en Velsa llegan por la MV.
+//
+// Lo que NO entra todavía y por qué: en Novonet los bloques "Estatus Ventas
+// JOT" y los denominadores de costo (activos del mes, backlog, preplaneados,
+// asignados, preservicio) se leen de las columnas j_* de mestra_bitrix, que es
+// una fuente que Velsa no usa. Van en la fase 2, adaptados a su MV. Se
+// devuelven en cero explícitamente en vez de omitirse, para que la pantalla
+// sepa que existen y los muestre vacíos en lugar de romperse.
+
+const nombreDia = (y, m, d) => ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][new Date(y, m - 1, d).getDay()];
+
+/** Igual que en Novonet: el front espera estos nombres, no los internos. */
+const mapEtapasVelsa = (r) => ({
+  ...r,
+  total_leads:  Number(r.n_leads || 0),
+  negociables:  Number(r.gestionables || 0),
+  venta_subida: Number(r.venta_subida || 0),
+  seguimiento:  Number(r.seguimiento_negociacion || 0),
+  atc_soporte:  Number(r.atc || 0),
+  zonas_peligrosas: Number(r.zona_peligrosa || 0),
+});
+
+async function getReporteDataMensual(req, res) {
+  try {
+    await asegurarInversionReciente();
+
+    const y = Number(req.query.anio) || new Date().getFullYear();
+    const m = Number(req.query.mes)  || new Date().getMonth() + 1;
+    const ultimo = new Date(y, m, 0).getDate();
+    const mm = String(m).padStart(2, '0');
+    const desde = `${y}-${mm}-01`;
+    const hasta = `${y}-${mm}-${String(ultimo).padStart(2, '0')}`;
+
+    const canales = seleccion(req.query);
+    const f  = filtroAgencia(canales);
+    const fi = filtroInversion(canales);
+    const donde = `FROM bitrix_webhook_leads w
+       WHERE w.empresa = 'velsa' AND ${FECHA} BETWEEN $1::date AND $2::date ${f.sql}`;
+    const params = [desde, hasta, ...f.params];
+
+    // ── Etapas por día ──────────────────────────────────────────────────────
+    const diario = (await pool.query(
+      `SELECT EXTRACT(DAY FROM ${FECHA})::int dia, ${selectMetricas} ${donde} GROUP BY 1 ORDER BY 1`,
+      params
+    )).rows;
+    const etapas = diario.map(mapEtapasVelsa);
+    const porDia = Object.fromEntries(etapas.map(x => [Number(x.dia), x]));
+
+    // ── Inversión del mes ───────────────────────────────────────────────────
+    // Las filas crudas sirven para dos cosas: el total por día de la tabla de
+    // costos y el forecast por agencia, que se calcula con la MISMA función
+    // que Novonet para que las dos empresas proyecten igual.
+    const invCrudo = (await pool.query(
+      `SELECT fecha::date fecha, canal_publicidad AS origen, monto_usd
+         FROM velsa_inversion_redes
+        WHERE fecha BETWEEN $1::date AND $2::date ${fi.sql}`,
+      [desde, hasta, ...fi.params]
+    )).rows;
+
+    const invDia = {};
+    for (const x of invCrudo) {
+      const agenciaInv = resolverCanalInversion(x.origen);
+      if (canales.length && !canales.includes(agenciaInv)) continue;
+      const d = new Date(x.fecha).getUTCDate();
+      invDia[d] = (invDia[d] || 0) + Number(x.monto_usd || 0);
+    }
+
+    // Una fila por día del mes, aunque no haya movimiento: la tabla es una
+    // matriz de días y un hueco correría las columnas.
+    const inversion = Array.from({ length: ultimo }, (_, i) => {
+      const d = i + 1, x = porDia[d] || {};
+      return {
+        dia: d,
+        inversion_usd: invDia[d] || 0,
+        n_leads:      Number(x.total_leads || 0),
+        negociables:  Number(x.negociables || 0),
+        venta_subida: Number(x.venta_subida || 0),
+        // Fase 2 — hoy Velsa no tiene el lado JotForm de estos denominadores.
+        ingreso_jot: 0, ingreso_bitrix_mismo_dia: 0,
+        activos_mes: 0, activo_backlog: 0,
+        preplaneados: 0, asignados: 0, preservicio: 0,
+      };
+    });
+
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date());
+    const hoyAcotado = hoy < desde ? desde : (hoy > hasta ? hasta : hoy);
+
+    // ── Hora, ciudad, ATC ───────────────────────────────────────────────────
+    const [hora, horaDia, ciudad, atc] = await Promise.all([
+      pool.query(`SELECT ${HORA} hora,
+             COUNT(*) FILTER (WHERE ${esLeadTotalExpr(ETAPA)}) n_leads,
+             COUNT(*) FILTER (WHERE ${ETAPA} ~* 'ATC|SOPORTE') atc
+           ${donde} GROUP BY 1 ORDER BY 1`, params),
+      pool.query(`SELECT EXTRACT(DAY FROM ${FECHA})::int dia, ${HORA} hora,
+             COUNT(*) FILTER (WHERE ${esLeadTotalExpr(ETAPA)}) n_leads,
+             COUNT(*) FILTER (WHERE ${ETAPA} ~* 'ATC|SOPORTE') atc
+           ${donde} GROUP BY 1,2 ORDER BY 1,2`, params),
+      pool.query(`SELECT COALESCE(NULLIF(BTRIM(w.city),''),'SIN CIUDAD') ciudad,
+             ''::text provincia,
+             COUNT(*) FILTER (WHERE ${esLeadTotalExpr(ETAPA)}) total_leads,
+             COUNT(*) FILTER (WHERE ${ETAPA} ~* 'VENTA SUBIDA') activos,
+             0::bigint ingresos_jot
+           ${donde} GROUP BY 1 ORDER BY total_leads DESC`, params),
+      pool.query(`SELECT COALESCE(NULLIF(BTRIM(w.motivo_atc),''),${ETAPA},'SIN MOTIVO') motivo_atc,
+             COUNT(*) cantidad
+           ${donde} AND ${ETAPA} ~* 'ATC|SOPORTE' GROUP BY 1 ORDER BY 2 DESC`, params),
+    ]);
+
+    // ── Forma de pago y ciclo de venta, por día ─────────────────────────────
+    // Si la MV está refrescando, estos dos bloques quedan vacíos y el reporte
+    // sale igual: son un añadido, no pueden tumbar la pantalla.
+    let pago = [], ciclo = [];
+    try {
+      const [pg, cv] = await Promise.all([
+        formaPagoPorDia(desde, hasta, canales),
+        cicloVentaPorDia(desde, hasta, canales),
+      ]);
+      pago = pg.rows; ciclo = cv.rows;
+    } catch (e) {
+      console.error('[redes-velsa/reporte-data] bloques de la MV no disponibles:', e.message);
+    }
+
+    res.json({
+      success: true,
+      empresa: 'velsa',
+      meta: {
+        anio: y, mes: m,
+        dias: Array.from({ length: ultimo }, (_, i) => ({ dia: i + 1, nombre: nombreDia(y, m, i + 1) })),
+      },
+      canales_disponibles: (await catalogoAgenciasVelsa()),
+      inversion,
+      forecast_agencias: construirForecastAgencias(invCrudo, { desde, hasta, hoy: hoyAcotado }),
+      etapas,
+      status_jot: [],          // fase 2
+      pago,
+      ciclo,
+      ciudad: ciudad.rows.map(x => ({
+        ...x,
+        pct_activos: Number(x.total_leads) ? +(Number(x.activos) / Number(x.total_leads) * 100).toFixed(1) : 0,
+      })),
+      hora: hora.rows,
+      hora_dia: horaDia.rows,
+      atc_motivos: atc.rows,
+      atc_totales: atc.rows,
+      // La pantalla usa esto para explicar por qué hay bloques vacíos en vez
+      // de dejar al usuario pensando que el módulo está roto.
+      bloques_pendientes: ['status_jot', 'denominadores_jot'],
+    });
+  } catch (e) { responderError(res, 'reporte data', e); }
+}
+
+async function catalogoAgenciasVelsa() {
+  const r = await pool.query(
+    `SELECT COALESCE(NULLIF(BTRIM(agencia),''),'SIN AGENCIA') canal,
+            array_agg(origen ORDER BY origen) lineas
+       FROM velsa_lineas_canal GROUP BY 1 ORDER BY 1`
+  );
+  return r.rows;
+}
+
+/** Forma de pago desglosada por día, igual que Novonet. */
+async function formaPagoPorDia(desde, hasta, canales) {
+  const f = filtroAgencia(canales);
+  return pool.query(`
+    SELECT EXTRACT(DAY FROM ${FECHA})::int dia,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%CUENTA%')   pago_cuenta,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%EFECTIVO%') pago_efectivo,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%TARJETA%')  pago_tarjeta,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%CUENTA%'   AND jf.fecha_activacion_date BETWEEN $1::date AND $2::date) pago_cuenta_activa,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%EFECTIVO%' AND jf.fecha_activacion_date BETWEEN $1::date AND $2::date) pago_efectivo_activa,
+      COUNT(*) FILTER (WHERE jf.forma_pago ILIKE '%TARJETA%'  AND jf.fecha_activacion_date BETWEEN $1::date AND $2::date) pago_tarjeta_activa
+    FROM bitrix_webhook_leads w ${jotVelsaLateral}
+    WHERE w.empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date ${f.sql}
+    GROUP BY 1 ORDER BY 1`, [desde, hasta, ...f.params]);
+}
+
+/** Ciclo de venta por día: días entre la creación del lead y su activación. */
+async function cicloVentaPorDia(desde, hasta, canales) {
+  const f = filtroAgencia(canales);
+  return pool.query(`
+    SELECT dia,
+      COUNT(*) FILTER (WHERE dias = 0) ciclo_0,
+      COUNT(*) FILTER (WHERE dias = 1) ciclo_1,
+      COUNT(*) FILTER (WHERE dias = 2) ciclo_2,
+      COUNT(*) FILTER (WHERE dias = 3) ciclo_3,
+      COUNT(*) FILTER (WHERE dias = 4) ciclo_4,
+      COUNT(*) FILTER (WHERE dias >= 5) ciclo_mas5
+    FROM (
+      SELECT EXTRACT(DAY FROM ${FECHA})::int dia,
+             (jf.fecha_activacion_date - ${FECHA}) dias
+      FROM bitrix_webhook_leads w ${jotVelsaLateral}
+      WHERE w.empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date
+        AND jf.fecha_activacion_date IS NOT NULL ${f.sql}
+    ) t
+    WHERE dias >= 0
+    GROUP BY 1 ORDER BY 1`, [desde, hasta, ...f.params]);
+}
+
 async function getAgenciasCanal(req,res){try{const r=await pool.query(`SELECT NULLIF(BTRIM(w.source),'') origen,COUNT(*) n_leads,COALESCE(MAX(m.agencia),'VELSA') agencia FROM bitrix_webhook_leads w LEFT JOIN velsa_lineas_canal m ON m.origen=NULLIF(BTRIM(w.source),'') WHERE empresa='velsa' AND NULLIF(BTRIM(w.source),'') IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`);res.json({success:true,origenes:r.rows});}catch(e){responderError(res,'agencias',e);}}
 async function upsertAgenciaCanal(req,res){try{const items=Array.isArray(req.body.items)?req.body.items:[req.body],out=[];for(const x of items){if(!x.origen)return res.status(400).json({success:false,message:'Cada registro requiere origen'});if(!String(x.agencia||'').trim()){await pool.query('DELETE FROM velsa_lineas_canal WHERE origen=$1',[x.origen]);out.push({origen:x.origen,agencia:null});}else{const r=await pool.query(`INSERT INTO velsa_lineas_canal(origen,agencia,creado_por,actualizado_en) VALUES($1,$2,$3,now()) ON CONFLICT(origen) DO UPDATE SET agencia=EXCLUDED.agencia,creado_por=EXCLUDED.creado_por,actualizado_en=now() RETURNING *`,[x.origen,String(x.agencia).trim(),req.user?.usuario||'desconocido']);out.push(r.rows[0]);}}res.json({success:true,data:out});}catch(e){responderError(res,'guardar agencia',e);}}
 async function getResumenPorAgencia(req,res){try{await asegurarInversionReciente();const {desde,hasta}=fechas(req.query),f=filtroAgencia(seleccion(req.query));const r=await pool.query(`SELECT COALESCE(m.agencia,'VELSA') agencia,COUNT(*) FILTER(WHERE ${esLeadTotalExpr(ETAPA)}) n_leads,COUNT(*) FILTER(WHERE ${esGestionableExpr(ETAPA)}) gestionables,COUNT(*) FILTER(WHERE ${ETAPA}~*'ATC|SOPORTE') atc,COUNT(*) FILTER(WHERE ${ETAPA}~*'VENTA SUBIDA') venta_subida,COUNT(*) FILTER(WHERE ${esDescarteExpr(ETAPA)}) descartados FROM bitrix_webhook_leads w LEFT JOIN velsa_lineas_canal m ON m.origen=NULLIF(BTRIM(w.source),'') WHERE empresa='velsa' AND ${FECHA} BETWEEN $1::date AND $2::date ${f.sql} GROUP BY 1 ORDER BY 2 DESC`,[desde,hasta,...f.params]);res.json({success:true,porAgencia:r.rows.map(x=>{const n=Number(x.n_leads||0),g=Number(x.gestionables||0),v=Number(x.venta_subida||0);return{...x,n_leads:n,gestionables:g,atc:Number(x.atc||0),venta_subida:v,descartados:Number(x.descartados||0),pct_venta_subida:g?+(v/g*100).toFixed(1):0,inversion:0,cpl:null,costo_venta:null};})});}catch(e){responderError(res,'resumen agencias',e);}}
 
 function responderError(res,seccion,error){console.error(`Error Redes VELSA webhook (${seccion}):`,error);res.status(500).json({success:false,message:`Error al obtener ${seccion}`,error:process.env.NODE_ENV==='production'?'Error interno del servidor':error.message});}
-module.exports={getCanalesDisponibles,getMonitoreoRedesVelsa,getTendenciaDiaria,getInversion,upsertInversion,getMonitoreoCiudad,getMonitoreoHora,getMonitoreoAtc,getReporteData,getAgenciasCanal,upsertAgenciaCanal,getResumenPorAgencia};
+module.exports={getReporteDataMensual,getCanalesDisponibles,getMonitoreoRedesVelsa,getTendenciaDiaria,getInversion,upsertInversion,getMonitoreoCiudad,getMonitoreoHora,getMonitoreoAtc,getReporteData,getAgenciasCanal,upsertAgenciaCanal,getResumenPorAgencia};

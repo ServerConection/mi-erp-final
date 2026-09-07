@@ -81,6 +81,131 @@ function Kpi({ etiqueta, valor, ayuda, resaltado, pista, delta, bajarEsBueno }) 
   );
 }
 
+// ── Proyección a fin de mes ─────────────────────────────────────────────────
+// Usa el MISMO método que Redes → Reporte Data: promedio de los días que
+// tienen dato × días del mes. Se comparte a propósito — si gerencia y pauta
+// proyectan distinto, la reunión se va en discutir cuál número vale.
+function Forecast({ f, k }) {
+  if (!f) return null;
+  const fin = f.financiero;
+  const cpaSube = k?.cpa && f.cpa_proyectado ? f.cpa_proyectado > k.cpa : false;
+
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <span className="text-[10px] font-black uppercase tracking-widest text-stone-600">
+          Proyección a fin de mes · {f.mes}
+        </span>
+        <span className="text-[9px] text-stone-400" title={f.metodo}>
+          día {f.dia_actual} de {f.dias_del_mes} · faltan {f.dias_restantes} · <span className="cursor-help underline decoration-dotted">cómo se calcula</span>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+        <Proj etiqueta="Inversión" hoy={money(f.inversion.acumulado)} fin={money(f.inversion.proyeccion_cierre)}
+              pie={`faltan por gastar ${money(f.inversion.por_gastar)}`} />
+        <Proj etiqueta="Activas" hoy={num(f.activas.acumulado)} fin={num(Math.round(f.activas.proyeccion_cierre))}
+              pie={`${num(f.activas.promedio_diario)}/día en ${f.activas.dias_con_datos} días con dato`} />
+        <Proj etiqueta="Ingresos" hoy={num(f.ingresos.acumulado)} fin={num(Math.round(f.ingresos.proyeccion_cierre))}
+              pie={`${num(f.ingresos.promedio_diario)}/día`} />
+        <Proj etiqueta="Costo x venta" hoy={money(k?.cpa)} fin={money(f.cpa_proyectado)}
+              pie={cpaSube ? "va a subir" : "va a bajar o se mantiene"}
+              color={f.cpa_proyectado == null ? "" : cpaSube ? "text-red-700" : "text-emerald-700"} />
+      </div>
+
+      {fin ? (
+        <div className={`rounded-lg border p-3 ${fin.rentable ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="text-[9px] uppercase text-stone-500">Ingreso proyectado</div>
+              <div className="font-black text-stone-800">{money(fin.ingreso_proyectado)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-stone-500">Margen proyectado</div>
+              <div className={`font-black ${fin.margen_proyectado >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {money(fin.margen_proyectado)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-stone-500">Activas para cubrir la pauta</div>
+              <div className="font-black text-stone-800">{num(fin.activas_necesarias)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-stone-500">
+                {fin.faltan_activas > 0 ? "Faltan" : "Sobre el punto"}
+              </div>
+              <div className={`font-black ${fin.faltan_activas > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                {fin.faltan_activas > 0
+                  ? num(fin.faltan_activas)
+                  : num(Math.round(f.activas.proyeccion_cierre) - fin.activas_necesarias)}
+              </div>
+            </div>
+          </div>
+          <p className="text-[10px] text-stone-500 mt-2">
+            Si el mes sigue al ritmo de hoy, cierra {fin.rentable ? "en positivo" : "en negativo"}:
+            {" "}{money(fin.ingreso_proyectado)} de las ventas contra {money(f.inversion.proyeccion_cierre)} de pauta.
+          </p>
+        </div>
+      ) : (
+        <p className="text-[10px] text-stone-400">
+          Escribe el ARPU arriba para ver el margen proyectado del mes.
+        </p>
+      )}
+
+      {f.por_agencia?.length > 0 && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-left text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200">
+                <th className="py-1 font-medium">Agencia</th>
+                <th className="py-1 font-medium text-right">Gastado</th>
+                <th className="py-1 font-medium text-right">Proyección</th>
+                <th className="py-1 font-medium text-right">Por gastar</th>
+                <th className="py-1 font-medium text-right">Prom./día</th>
+                <th className="py-1 font-medium">Último dato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {f.por_agencia.map((a) => (
+                <tr key={a.agencia} className="border-b border-stone-100 last:border-0">
+                  <td className="py-1 font-bold text-stone-700">
+                    {a.agencia}
+                    {a.atrasada && (
+                      <span title="La última carga de inversión es anterior a hoy: la proyección se queda corta hasta que se actualice."
+                            className="ml-1.5 text-[8px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 cursor-help">
+                        atrasada
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1 text-right text-stone-600">{money(a.inversion_acumulada)}</td>
+                  <td className="py-1 text-right font-bold text-stone-800">{money(a.proyeccion_cierre)}</td>
+                  <td className="py-1 text-right text-stone-600">{money(a.gasto_proyectado_restante)}</td>
+                  <td className="py-1 text-right text-stone-600">{money(a.promedio_diario)}</td>
+                  <td className="py-1 text-stone-500">{a.ultima_fecha}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Proj({ etiqueta, hoy, fin, pie, color = "" }) {
+  return (
+    <div>
+      <div className="text-[9px] uppercase text-stone-500">{etiqueta}</div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-stone-400 text-xs">{hoy}</span>
+        <span className="text-stone-300">→</span>
+        <span className={`font-black ${color || "text-stone-800"}`}>{fin}</span>
+      </div>
+      {pie && <div className="text-[9px] text-stone-400 mt-0.5">{pie}</div>}
+    </div>
+  );
+}
+
 function BloqueEmpresa({ emp }) {
   const [valores, setValores] = useState(true);   // números sobre las barras
   const t = TEMA[emp.empresa] || TEMA.novonet;
@@ -262,6 +387,8 @@ function BloqueEmpresa({ emp }) {
               Escribe arriba cuánto deja en promedio una venta (ARPU) para ver el punto de equilibrio.
             </p>
           )}
+
+          <Forecast f={emp.forecast} k={k} />
         </div>
       )}
     </div>

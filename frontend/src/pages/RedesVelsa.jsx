@@ -9,6 +9,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import TabReporteData from "./TabReporteData";
 
 const C = {
   primary: "#1e3a8a", sky: "#0ea5e9", success: "#059669",
@@ -141,6 +142,7 @@ function TabSwitcher({ tab, setTab }) {
     { id: "hora", label: "🕐 Hora" },
     { id: "atc", label: "🎧 Motivos ATC" },
     { id: "reporte", label: "🗂️ Reporte mensual" },
+    { id: "reporte-data", label: "📑 Reporte Data" },
   ];
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, borderBottom: `2px solid ${C.border}`, paddingBottom: 10 }}>
@@ -783,6 +785,13 @@ export default function RedesVelsa() {
       {tab === "hora" && <TabHora fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
       {tab === "atc" && <TabAtc fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
       {tab === "reporte" && <TabReporte fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
+
+      {/* Exactamente la misma pantalla que Redes NOVONET, apuntada al endpoint
+          de Velsa: los dos devuelven el mismo contrato. Trae su propio
+          selector de año/mes, por eso no recibe el rango de fechas de arriba. */}
+      {tab === "reporte-data" && (
+        <TabReporteData ruta="/api/redes-velsa/reporte-data" empresa="velsa" />
+      )}
 
       {tab === "resumen" && (
       <>

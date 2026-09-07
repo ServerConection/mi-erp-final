@@ -49,12 +49,17 @@ const CAMPOS_FECHA = [
   "fecha_ingreso_telcos",
 ];
 
-const COLUMNAS_EXPORTACION_BACKOFFICE = [
+// Fuente única de columnas para todas las tablas y todas las exportaciones.
+// Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
+// mantienen sincronizados automáticamente con el archivo Excel.
+const COLUMNAS_TABLAS_BACKOFFICE = [
   "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
   "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
   "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
   "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",
 ];
+
+const COLUMNAS_EXPORTACION_BACKOFFICE = COLUMNAS_TABLAS_BACKOFFICE;
 
 const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "__SIN_REVISAR__", etiqueta: "Sin Revisar" },
@@ -783,13 +788,6 @@ const TABLE_COLUMNS = [
   "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
   "dia_abc_agenda", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
   "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", ...CAMPOS_DOCUMENTO
-];
-
-const COLUMNAS_TABLAS_BACKOFFICE = [
-  "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
-  "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
-  "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
-  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",
 ];
 
 const initialDetail = {
@@ -4008,8 +4006,8 @@ function TablaPreservicios({ rows, onAbrirRegistro }) {
           Haz clic en un registro para ver el detalle
         </span>
       </div>
-      <div style={{ overflow: "auto", maxHeight: 640 }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+      <div style={{ overflow: "auto", maxHeight: "min(640px, calc(100vh - 390px))" }}>
+        <table style={{ width: "100%", minWidth: Math.max(1800, headers.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
             <tr style={{ background: "#f8fafc" }}>
               {headers.map((h, i) => (
@@ -4120,21 +4118,9 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
     [todas]
   );
 
-  const conteos = useMemo(() => {
-    const acc = { PRESERVICIO: 0, FACTIBLE: 0, REPLANIFICADO: 0 };
-    for (const r of rowsClasificadas) {
-      const e = clasificarPreservicio(r);
-      if (e) acc[e]++;
-    }
-    return acc;
-  }, [rowsClasificadas]);
-
-  // Filtro final: estado seleccionado + búsqueda + rango de fecha_registro_sistema
-  const rowsFiltradas = useMemo(() => {
+  const rowsConFiltros = useMemo(() => {
     const q = normalizarEstado(busqueda);
     return rowsClasificadas.filter((r) => {
-      if (clasificarPreservicio(r) !== estadoActivo) return false;
-
       if (q) {
         const coincide = [
           r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor,
@@ -4146,10 +4132,26 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (fechaDesde && (!iso || iso < fechaDesde)) return false;
       if (fechaHasta && (!iso || iso > fechaHasta)) return false;
-
       return true;
     });
-  }, [rowsClasificadas, estadoActivo, busqueda, fechaDesde, fechaHasta]);
+  }, [rowsClasificadas, busqueda, fechaDesde, fechaHasta]);
+
+  const conteos = useMemo(() => {
+    const acc = { PRESERVICIO: 0, FACTIBLE: 0, REPLANIFICADO: 0 };
+    for (const r of rowsConFiltros) {
+      const e = clasificarPreservicio(r);
+      if (e) acc[e]++;
+    }
+    return acc;
+  }, [rowsConFiltros]);
+
+  // Filtro final: estado seleccionado + búsqueda + rango de fecha_registro_sistema
+  const rowsFiltradas = useMemo(() => {
+    return rowsConFiltros.filter((r) => {
+      if (clasificarPreservicio(r) !== estadoActivo) return false;
+      return true;
+    });
+  }, [rowsConFiltros, estadoActivo]);
 
   const estadoObj = ESTADOS_PRESERVICIOS.find((e) => e.id === estadoActivo);
 
@@ -4190,7 +4192,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           </div>
         )}
 
-        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "260px 1fr", gap: 18, alignItems: "start" }}>
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
           {/* ── IZQUIERDA: cards de estado, en columna ────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {cargando && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
@@ -4206,7 +4208,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
           </div>
 
           {/* ── DERECHA: filtros + tabla ──────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: estadoObj?.color }}>
                 {estadoObj?.titulo}

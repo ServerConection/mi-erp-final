@@ -98,6 +98,43 @@ const HAS_PLAN_VELSA_MV = `(
 const VENTA_SERVICIO_VELSA_MV = `(UPPER(TRIM(mv.estado_venta)) = 'ACTIVO' AND ${HAS_PLAN_VELSA_MV})`;
 
 
+
+// ── SUPERVISOR DEL MES (catalogo de asesores Velsa) ────────────────────────
+// El supervisor venia del CRM: el responsable ACTUAL del asesor. Si a alguien
+// lo cambian de equipo hoy, los reportes de meses anteriores se reescribian
+// solos con el supervisor nuevo, y el historico dejaba de cuadrar.
+//
+// Ahora se pregunta al catalogo por mes (public.catalogo_asesores_velsa, ver
+// migrations/catalogo_asesores_velsa.sql) usando la fecha del propio registro.
+// Si el asesor no esta en el catalogo, o no hay catalogo de ese mes, se cae al
+// supervisor del CRM — nunca queda vacio.
+const COL_SUPERVISOR = 'mv.supervisor';
+
+// Arranca con el valor viejo y solo cambia si la funcion existe de verdad en la
+// base. Asi el modulo sigue funcionando si el SQL del catalogo todavia no se
+// corrio (deploy antes que la migracion), en vez de tumbar todo Velsa.
+let EXPR_SUPERVISOR = COL_SUPERVISOR;
+
+pool.query(`SELECT to_regprocedure('public.supervisor_velsa(text,date)') IS NOT NULL AS existe`)
+  .then(({ rows }) => {
+    if (!rows[0] || !rows[0].existe) {
+      console.warn('[VELSA] catalogo de asesores por mes no instalado: el supervisor sigue saliendo del CRM');
+      return;
+    }
+    EXPR_SUPERVISOR = `COALESCE(
+      public.supervisor_velsa(
+        mv.codigo_asesor,
+        COALESCE(mv.fecha_registro_jotform, mv.fecha_creacion_crm)::date
+      ),
+      mv.supervisor
+    )`;
+    console.log('[VELSA] supervisor tomado del catalogo del mes');
+  })
+  .catch((e) => console.warn('[VELSA] no se pudo verificar el catalogo de asesores:', e.message));
+
+/** Traduce la columna de agrupacion: el supervisor sale del catalogo del mes. */
+const campoSupervisor = (columna) => (columna === COL_SUPERVISOR ? EXPR_SUPERVISOR : columna);
+
 // ── Normalización de nombre de asesor/supervisor (FIX 2026-08-27) ──────────
 // Bitrix no usa catálogo de empleados: mv.asesor/mv.supervisor llegan como
 // texto libre. Dos problemas detectados en pantalla real:
@@ -134,7 +171,7 @@ function buildFilters(q, values) {
   // el seleccionado, mezclando datos entre asesores. Mismo fix aplicado en
   // indicadores.controller.js (dashboard NOVONET).
   if (asesor)               { values.push(asesor);                     f += ` AND (${normalizarAsesorSQL('mv.asesor')}) = $${values.length}`; }
-  if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND mv.supervisor ILIKE $${values.length}`; }
+  if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND ${EXPR_SUPERVISOR} ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); f += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }
   if (etapaCRM)             { values.push(`%${etapaCRM}%`);             f += ` AND mv.etapa_crm ILIKE $${values.length}`; }
@@ -204,7 +241,7 @@ const queryKPI = (columna, filters) => {
   // no devolvía el supervisor del asesor en NINGÚN caso, así que el frontend
   // (VistaAsesorVelsa.jsx, AsesorCard) siempre mostraba "Sin supervisor" —
   // leía row.supervisor, un campo que esta consulta nunca generó.
-  const esSupervisor = columna === 'mv.supervisor';
+  const esSupervisor = columna === COL_SUPERVISOR;
   // FIX (2026-08-27) — causa real de "Alexandra Pacheco" (y otros) repetidos
   // en el dropdown de asesor: este GROUP BY incluia sup_nombre como columna 2,
   // asi que un asesor con MAS DE UN supervisor asociado en el rango (aunque
@@ -213,11 +250,11 @@ const queryKPI = (columna, filters) => {
   // en "asesores" y por lo tanto en el dropdown (que solo hace .map() sin
   // dedup). sup_nombre ahora es un MAX() (agregado), no una columna de
   // agrupacion: siempre 1 sola fila por asesor, con UN supervisor representativo.
-  const extraSelect  = esSupervisor ? '' : `, COALESCE(NULLIF(MAX(${normalizarAsesorSQL('mv.supervisor')}), ''), 'SIN ASIGNAR') AS sup_nombre`;
+  const extraSelect  = esSupervisor ? '' : `, COALESCE(NULLIF(MAX(${normalizarAsesorSQL(EXPR_SUPERVISOR)}), ''), 'SIN ASIGNAR') AS sup_nombre`;
   const extraGroup   = '';
   return `
   SELECT
-    COALESCE(NULLIF(${normalizarAsesorSQL(columna)}, ''), 'SIN ASIGNAR') AS nombre_grupo
+    COALESCE(NULLIF(${normalizarAsesorSQL(campoSupervisor(columna))}, ''), 'SIN ASIGNAR') AS nombre_grupo
     ${extraSelect},
     -- ── LEADS TOTALES ────────────────────────────────────────────────────
     -- COUNT(DISTINCT id del lado CRM) + excluye las etapas DUPLICADO /
@@ -397,7 +434,7 @@ const queryKPI = (columna, filters) => {
 // grupos "fantasma" por espacios extra en mv.asesor/mv.supervisor.
 const queryBacklog = (columna, filters) => `
   SELECT
-    COALESCE(NULLIF(${normalizarAsesorSQL(columna)}, ''), 'SIN ASIGNAR') AS nombre_grupo,
+    COALESCE(NULLIF(${normalizarAsesorSQL(campoSupervisor(columna))}, ''), 'SIN ASIGNAR') AS nombre_grupo,
     COUNT(DISTINCT mv.id_jotform)::int AS backlog
   FROM ${MV}
   WHERE mv.id_jotform IS NOT NULL
@@ -601,7 +638,7 @@ SELECT
   -- más abajo); con el alias viejo el modal SIEMPRE mostraba "Sin supervisor"
   -- para clientes abiertos desde la tabla "Detalle base Jotform Velsa", aunque
   -- el dato sí venía en la fila bajo la clave equivocada.
-  mv.supervisor AS "SUPERVISOR_ASIGNADO",
+  ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
   mv.origen AS "ORIGEN",
   -- FIX 2026-08-18: faltaba esta columna (el modal la busca como
   -- "FECHA_CREACION_JOT", igual que qVentasActivasMes) — sin ella, el modal
@@ -695,7 +732,7 @@ LIMIT 6000
       SELECT
         mv.id_crm AS "ID_CRM",
         mv.asesor AS "ASESOR",
-        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
         mv.estado_venta AS "ESTADO_NETLIFE",
@@ -726,7 +763,7 @@ LIMIT 6000
       SELECT
         mv.id_crm AS "ID_CRM",
         mv.asesor AS "ASESOR",
-        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
         mv.estado_venta AS "ESTADO_NETLIFE",
@@ -758,7 +795,7 @@ LIMIT 6000
       SELECT
         mv.id_crm AS "ID_CRM",
         mv.asesor AS "ASESOR",
-        mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
         mv.estado_venta AS "ESTADO_NETLIFE",
@@ -871,7 +908,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
 
     const qMon = (columna) => `
       SELECT
-        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+        COALESCE(${campoSupervisor(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS real_mes_leads,
         COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date = $2::date AND ${esGestionableExpr('mv.etapa_crm')}) AS real_dia_leads,
         COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date) AS crm_acumulado,
@@ -884,7 +921,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
     `;
     const qJotHoy = (columna) => `
       SELECT
-        COALESCE(${columna}, 'SIN ASIGNAR') AS nombre_grupo,
+        COALESCE(${campoSupervisor(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(*)::int AS v_subida_jot_hoy,
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos_jot_hoy,
         COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS venta_servicio_jot_hoy
@@ -1168,7 +1205,7 @@ async function getDetalleCRMData(req, res) {
       SELECT DISTINCT
         mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
         mv.fecha_creacion_crm AS "FECHA_CREACION_CRM",
-        mv.asesor AS "ASESOR", mv.supervisor AS "SUPERVISOR_ASIGNADO",
+        mv.asesor AS "ASESOR", ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_modificacion_crm AS "FECHA_MODIFICACION", mv.origen AS "ORIGEN"
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
@@ -1198,7 +1235,7 @@ async function getActivasVelsa(req, res) {
 
     const result = await pool.query(`
       SELECT
-        COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS supervisor,
+        COALESCE(NULLIF(${normalizarAsesorSQL(EXPR_SUPERVISOR)}, ''), 'SIN ASIGNAR') AS supervisor,
         COALESCE(NULLIF(${normalizarAsesorSQL('mv.asesor')}, ''), 'SIN ASIGNAR') AS asesor,
         COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activas,
         COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS venta_servicio,
@@ -1227,7 +1264,7 @@ async function getBacklogVelsa(req, res) {
 
     const result = await pool.query(`
       SELECT
-        COALESCE(NULLIF(${normalizarAsesorSQL('mv.supervisor')}, ''), 'SIN ASIGNAR') AS supervisor,
+        COALESCE(NULLIF(${normalizarAsesorSQL(EXPR_SUPERVISOR)}, ''), 'SIN ASIGNAR') AS supervisor,
         COALESCE(NULLIF(${normalizarAsesorSQL('mv.asesor')}, ''), 'SIN ASIGNAR') AS asesor,
         COUNT(DISTINCT mv.id_jotform)::int AS backlog
       FROM ${MV}
@@ -1259,7 +1296,7 @@ async function getActivacionesPorDiaVelsa(req, res) {
 
     let filters = '';
     if (req.query.asesor)      { values.push(`%${req.query.asesor}%`);      filters += ` AND mv.asesor ILIKE $${values.length}`; }
-    if (req.query.supervisor)  { values.push(`%${req.query.supervisor}%`);  filters += ` AND mv.supervisor ILIKE $${values.length}`; }
+    if (req.query.supervisor)  { values.push(`%${req.query.supervisor}%`);  filters += ` AND ${EXPR_SUPERVISOR} ILIKE $${values.length}`; }
     if (req.query.estadoVenta) { values.push(`%${req.query.estadoVenta}%`); filters += ` AND mv.estado_venta ILIKE $${values.length}`; }
 
     const result = await pool.query(`

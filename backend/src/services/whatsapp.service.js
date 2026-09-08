@@ -75,34 +75,67 @@ const iniciarWhatsApp = async (appInstance) => {
 
     await campaignEngine.resumePendingOnBoot();
 
-    // Restaurar SOLO las líneas que estaban realmente conectadas.
+    // Restaurar las líneas que TIENEN SESIÓN EN DISCO, no las que la base
+    // dice que estaban conectadas.
     //
-    // Antes se restauraban también 'disconnected'/'connecting'/'qr_ready'/'error':
-    // eso, al arrancar, disparaba decenas de sockets Baileys a la vez desde una
-    // sola instancia y por la misma IP → WhatsApp los estrangulaba y quedaban
-    // todos colgados en "connecting" sin emitir QR jamás. Las líneas en otro
-    // estado se reconectan cuando el asesor pulsa "Conectar QR".
+    // Por qué cambió: el filtro anterior era `status = 'connected'`. Una línea
+    // que se cae un momento agota sus 5 reintentos y queda en 'disconnected' o
+    // 'error', y NADA revierte ese estado. El arranque siguiente ya no la mira,
+    // así que no vuelve a levantarse nunca — aunque su sesión siga intacta en
+    // disco. Con el tiempo la lista de 'connected' se vacía y el servidor deja
+    // de levantar líneas perfectamente válidas: el asesor termina escaneando un
+    // QR nuevo cuando la sesión vieja seguía sirviendo.
+    // (Auditoría 08/09/2026: 87 sesiones válidas en disco contra 0 líneas en
+    // 'connected' en la base.)
     //
-    // Se puede saltar del todo con WA_SKIP_BOOT_RESTORE=true.
+    // Ahora manda el disco: si la línea tiene creds.json, tiene sesión y se
+    // intenta levantar sin QR. 'logged_out' queda fuera a propósito — ahí
+    // WhatsApp cerró la sesión de verdad y sí hace falta escanear de nuevo.
+    //
+    // Se puede saltar del todo con WA_SKIP_BOOT_RESTORE=true, y limitar cuántas
+    // se levantan por arranque con WA_BOOT_RESTORE_MAX (0 = todas).
     if (process.env.WA_SKIP_BOOT_RESTORE === 'true') {
       console.log('[WA] Restauración de líneas al arranque desactivada (WA_SKIP_BOOT_RESTORE)');
     } else {
       const { rows } = await pool.query(
-        `SELECT id, name FROM lines
-         WHERE status = 'connected'
-           AND last_connected IS NOT NULL
-           AND deleted_at IS NULL`
+        `SELECT id, name, status FROM lines
+          WHERE deleted_at IS NULL
+            AND status <> 'logged_out'
+          ORDER BY last_connected DESC NULLS LAST`
       );
-      if (rows.length) {
-        console.log('[WA] Restaurando', rows.length, 'línea(s) conectada(s)...');
-        for (const line of rows) {
+
+      // El disco es la fuente de verdad: sin creds.json no hay sesión que reusar
+      // y conectar solo serviría para pedir un QR que nadie está mirando.
+      const conSesion = rows.filter(l =>
+        fs.existsSync(path.join(authDir, String(l.id), 'creds.json'))
+      );
+
+      const tope = parseInt(process.env.WA_BOOT_RESTORE_MAX || '0', 10);
+      const aRestaurar = tope > 0 ? conSesion.slice(0, tope) : conSesion;
+
+      const sinSesion = rows.length - conSesion.length;
+      console.log(
+        `[WA] Líneas candidatas: ${rows.length} · con sesión en disco: ${conSesion.length}` +
+        ` · sin sesión (necesitan QR): ${sinSesion}` +
+        (tope > 0 && conSesion.length > tope ? ` · tope por arranque: ${tope}` : '')
+      );
+
+      if (aRestaurar.length) {
+        console.log('[WA] Restaurando', aRestaurar.length, 'línea(s) con sesión guardada...');
+        let ok = 0, fallidas = 0;
+        for (const line of aRestaurar) {
           try {
             await baileysManager.connect(line.id);
+            ok++;
             // Pausa amplia entre líneas: no golpear DB/CPU ni la IP con todas a la vez
             await new Promise(r => setTimeout(r, 4000));
           }
-          catch (e) { console.warn('[WA] Error restaurando', line.name, ':', e.message); }
+          catch (e) {
+            fallidas++;
+            console.warn('[WA] Error restaurando', line.name, ':', e.message);
+          }
         }
+        console.log(`[WA] Restauración terminada: ${ok} iniciada(s), ${fallidas} con error`);
       }
     }
     console.log('[WA] Módulo WhatsApp iniciado');

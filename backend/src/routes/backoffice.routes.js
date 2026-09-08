@@ -275,7 +275,7 @@ const CAMPOS_EDITABLES = new Set([
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
   'resumen_venta',
   'estado_recaudacion', 'netlife_login', 'netlife_estatus_real',
-  'calidad_venta_analista', 'novedades_atc', 'venta_efectiva',
+  'calidad_venta_analista', 'novedades_atc', 'estado_welcome', 'venta_efectiva',
   'auditoria_documentos', 'auditado_por', 'inconsistencia_documental',
   'observacion_auditoria', 'errores_telcos', 'estatus_regularizacion',
   'detalle_regularizacion', 'fecha_regularizacion_atc', 'mes_regularizacion',
@@ -339,7 +339,7 @@ router.post('/welcome/programar', async (req, res) => {
       `SELECT id
        FROM public.envios_ventas
        WHERE id = ANY($1::bigint[])
-         AND COALESCE(UPPER(TRIM(novedades_atc)), '') NOT IN ('NOTIFICADO', 'PENDIENTE')
+         AND COALESCE(UPPER(TRIM(estado_welcome)), 'SIN_NOTIFICAR') = 'SIN_NOTIFICAR'
        ORDER BY array_position($1::bigint[], id::bigint)`,
       [ids]
     );
@@ -363,7 +363,7 @@ router.post('/welcome/programar', async (req, res) => {
         [registroId, fechaProgramada.toISOString(), req.user.id]
       );
       await client.query(
-        `UPDATE public.envios_ventas SET novedades_atc='PENDIENTE' WHERE id=$1`,
+        `UPDATE public.envios_ventas SET estado_welcome='PENDIENTE' WHERE id=$1`,
         [registroId]
       );
       programaciones.push({ registro_id: registroId, scheduled_at: fechaProgramada.toISOString(), status: 'pending' });
@@ -398,8 +398,8 @@ router.post('/welcome/programaciones/:registroId/cancelar', async (req, res) => 
     }
     await pool.query(
       `UPDATE public.envios_ventas
-       SET novedades_atc=NULL
-       WHERE id=$1 AND UPPER(TRIM(COALESCE(novedades_atc, '')))='PENDIENTE'`,
+       SET estado_welcome='SIN_NOTIFICAR'
+       WHERE id=$1 AND UPPER(TRIM(COALESCE(estado_welcome, '')))='PENDIENTE'`,
       [registroId]
     );
     res.json({ success: true });
@@ -437,15 +437,23 @@ router.put('/:id', async (req, res) => {
       payload[clave] = valor === '' ? null : valor;
     }
 
+    if (Object.prototype.hasOwnProperty.call(payload, 'estado_welcome')) {
+      const estadoWelcome = String(payload.estado_welcome || 'SIN_NOTIFICAR').trim().toUpperCase();
+      if (!['SIN_NOTIFICAR', 'PENDIENTE', 'NOTIFICADO'].includes(estadoWelcome)) {
+        return res.status(400).json({ success: false, error: 'Estado Welcome inválido' });
+      }
+      payload.estado_welcome = estadoWelcome;
+    }
+
     // El correo se dispara únicamente al entrar a NOTIFICADO. Guardar otros
     // campos de un registro que ya estaba notificado no debe reenviarlo.
     let debeEnviarBienvenida = false;
-    if (String(payload.novedades_atc || '').trim().toUpperCase() === 'NOTIFICADO') {
+    if (String(payload.estado_welcome || '').trim().toUpperCase() === 'NOTIFICADO') {
       const anterior = await pool.query(
-        'SELECT novedades_atc FROM public.envios_ventas WHERE id = $1',
+        'SELECT estado_welcome FROM public.envios_ventas WHERE id = $1',
         [id]
       );
-      const estadoAnterior = String(anterior.rows[0]?.novedades_atc || '').trim().toUpperCase();
+      const estadoAnterior = String(anterior.rows[0]?.estado_welcome || '').trim().toUpperCase();
       debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
     }
 
@@ -534,8 +542,8 @@ router.put('/:id', async (req, res) => {
     // Pendiente, su tarea futura debe quedar anulada para evitar un envío
     // sorpresa después de haber cambiado el estado.
     if (
-      Object.prototype.hasOwnProperty.call(payload, 'novedades_atc') &&
-      String(payload.novedades_atc || '').trim().toUpperCase() !== 'PENDIENTE'
+      Object.prototype.hasOwnProperty.call(payload, 'estado_welcome') &&
+      String(payload.estado_welcome || '').trim().toUpperCase() !== 'PENDIENTE'
     ) {
       await pool.query(
         `UPDATE welcome_notifications

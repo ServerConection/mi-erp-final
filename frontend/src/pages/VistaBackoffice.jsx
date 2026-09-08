@@ -746,6 +746,8 @@ const FIELD_LABELS = {
   dia_abc_activacion_netlife: "DÍA ACTIVACIÓN",
   calidad_venta_analista: "CALIDAD VENTA",
   novedades_atc: "NOVEDADES",
+  estado_welcome: "ESTADO WELCOME",
+  fecha_notificacion_welcome: "FECHA NOTIFICACIÓN WELCOME",
   venta_efectiva: "VENTA EFECTIVA",
   auditoria_documentos: "AUDITORÍA DOC.",
   auditado_por: "AUDITADO POR",
@@ -793,7 +795,7 @@ const TABLE_COLUMNS = [
   "direccion_calles", "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps", "tipo_vivienda", "regimen_vivienda",
   "plan_contratado_final", "servicios_digitales", "forma_pago", "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
   "links_documentos", "estado_recaudacion", "fecha_recaudada", "mes_recaudada", "dia_abc_recaudada", "netlife_login", "netlife_estatus_real",
-  "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc",
+  "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc", "estado_welcome", "fecha_notificacion_welcome",
   "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
   "estatus_regularizacion", "detalle_regularizacion", "gestion_atc", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
   "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
@@ -850,6 +852,8 @@ const initialDetail = {
   fecha_regularizacion_atc: "",
   mes_regularizacion: "",
   novedades_atc: "",
+  estado_welcome: "SIN_NOTIFICAR",
+  fecha_notificacion_welcome: "",
   foto_cedula_frontal: "",
   foto_cedula_trasera: "",
   foto_carnet: "",
@@ -1137,7 +1141,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "netlife_estatus_real", "calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por",
     "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
     "fecha_regularizacion_atc",
-    "novedades_atc",
+    "novedades_atc", "estado_welcome",
 
     // Agendamiento
     "turno_agendado",
@@ -1196,6 +1200,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           "fecha_agenda",
           "fecha_activacion_netlife",
           "novedades_atc",
+          "estado_welcome",
         ],
       },
 
@@ -1609,7 +1614,17 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               ))}
                             </select>
                             );
-                          })() : field === "novedades_atc" ? (
+                          })() : field === "estado_welcome" ? (
+                            <select
+                              value={detail?.estado_welcome || "SIN_NOTIFICAR"}
+                              onChange={(e) => setDetail((prev) => ({ ...prev, estado_welcome: e.target.value }))}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
+                            >
+                              <option value="SIN_NOTIFICAR">Sin notificar</option>
+                              <option value="PENDIENTE">Pendiente</option>
+                              <option value="NOTIFICADO">Notificado</option>
+                            </select>
+                          ) : field === "novedades_atc" ? (
                             <textarea
                               value={detail?.[field] ?? ""}
                               onChange={(e) =>
@@ -2538,17 +2553,15 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
 // Solo entran registros con `netlife_estatus_real = ACTIVO`.
 // Se ordenan por `fecha_activacion_netlife` de la más antigua a la más reciente,
 // para dar prioridad a las activaciones que llevan más tiempo esperando.
-// `novedades_atc` funciona como discriminador:
-//   vacío              → SIN NOTIFICAR
-//   "NOTIFICADO"       → NOTIFICADOS
+// `estado_welcome` controla este flujo sin modificar las novedades de ATC.
 const BLOQUES_WELCOME = [
-  { id: "SIN_NOTIFICAR", titulo: "Sin notificar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "" },
+  { id: "SIN_NOTIFICAR", titulo: "Sin notificar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "SIN_NOTIFICAR" },
   { id: "PENDIENTES", titulo: "Pendiente", color: "#1d4ed8", fondo: "#eff6ff", borde: "#93c5fd", valorBD: "PENDIENTE" },
   { id: "NOTIFICADOS", titulo: "Notificados", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "NOTIFICADO" },
 ];
 
 function estadoWelcome(row) {
-  const v = normalizarEstado(row?.novedades_atc);
+  const v = normalizarEstado(row?.estado_welcome);
   if (v === "PENDIENTE") return "PENDIENTES";
   return v === "NOTIFICADO" ? "NOTIFICADOS" : "SIN_NOTIFICAR";
 }
@@ -2965,10 +2978,10 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     const destino = BLOQUES_WELCOME.find((b) => b.id === bloqueDestino);
     if (!destino) return;
 
-    const valorPrevio = row.novedades_atc ?? "";
+    const valorPrevio = row.estado_welcome ?? "SIN_NOTIFICAR";
 
     setRows((prev) =>
-      prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: destino.valorBD } : r))
+      prev.map((r) => (String(r.id) === idStr ? { ...r, estado_welcome: destino.valorBD } : r))
     );
     setMoviendo(id);
     setAviso(null);
@@ -2980,7 +2993,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ novedades_atc: destino.valorBD }),
+        body: JSON.stringify({ estado_welcome: destino.valorBD }),
       });
 
       const j = await r.json().catch(() => ({}));
@@ -2993,7 +3006,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       setAviso(`${resultado.type === "error" ? "⚠️" : "✅"} ${resultado.msg}`);
     } catch (e) {
       setRows((prev) =>
-        prev.map((r) => (String(r.id) === idStr ? { ...r, novedades_atc: valorPrevio } : r))
+        prev.map((r) => (String(r.id) === idStr ? { ...r, estado_welcome: valorPrevio } : r))
       );
       setAviso(`❌ No se pudo mover #${id}: ${e.message}. La tarjeta volvió a su bloque.`);
     } finally {
@@ -3008,7 +3021,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     // "Notificados"; si el servidor falla, vuelve a "Sin notificar".
     const anterior = rows;
     setRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, novedades_atc: "NOTIFICADO" } : r))
+      prev.map((r) => (r.id === id ? { ...r, estado_welcome: "NOTIFICADO" } : r))
     );
 
     try {
@@ -3018,7 +3031,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ novedades_atc: "NOTIFICADO" }),
+        body: JSON.stringify({ estado_welcome: "NOTIFICADO" }),
       });
 
       const j = await r.json().catch(() => ({}));
@@ -3167,7 +3180,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               {sinNotificar}
             </div>
             <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
-              Novedades ATC vacío
+              Estado Welcome = SIN NOTIFICAR
             </div>
           </div>
 
@@ -3179,7 +3192,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               {pendientes}
             </div>
             <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
-              Novedades ATC = PENDIENTE
+              Estado Welcome = PENDIENTE
             </div>
           </div>
 
@@ -3191,7 +3204,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               {notificados}
             </div>
             <div style={{ marginTop: 7, fontSize: 11.5, color: "#64748b" }}>
-              Novedades ATC = NOTIFICADO
+              Estado Welcome = NOTIFICADO
             </div>
           </div>
         </div>
@@ -3369,7 +3382,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 11.5, color: "#64748b" }}>
             <b>Prioridad:</b> los registros de Welcome están ordenados por <b>Fecha de activación</b>, del más antiguo al más reciente.
             <br />
-            <b>Drag &amp; drop:</b> arrastra cualquier tarjeta entre «Sin notificar», «Pendiente» y «Notificados». El cambio actualiza <b>NOVEDADES</b> automáticamente; también puedes cambiarlo desde el select del detalle.
+            <b>Drag &amp; drop:</b> arrastra cualquier tarjeta entre «Sin notificar», «Pendiente» y «Notificados». El cambio actualiza <b>ESTADO WELCOME</b> automáticamente; también puedes cambiarlo desde el select del detalle.
           </div>
         </div>
         {detalleId && (

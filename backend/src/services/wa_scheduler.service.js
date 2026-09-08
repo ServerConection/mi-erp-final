@@ -203,7 +203,9 @@ class SchedulerService {
               [tarea.id]
             )
             await query(
-              `UPDATE public.envios_ventas SET novedades_atc='NOTIFICADO' WHERE id=$1`,
+              `UPDATE public.envios_ventas
+               SET estado_welcome='NOTIFICADO', fecha_notificacion_welcome=NOW()
+               WHERE id=$1`,
               [tarea.registro_id]
             )
             this.io.emit('welcome:notificado', { registroId: tarea.registro_id })

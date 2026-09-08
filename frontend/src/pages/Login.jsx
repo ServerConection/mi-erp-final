@@ -9,6 +9,12 @@ const API = "https://erp-backend-v1-qhk2.onrender.com";
 ───────────────────────────────────────────────────────────────────────────── */
 export default function Login() {
   const navigate = useNavigate();
+  const navegarSegunPerfil = (user) => {
+    if ((user?.perfil || '').toUpperCase() !== 'TV') return '/';
+    return (user?.empresa || '').toUpperCase() === 'VELSA'
+      ? '/seguimiento-velsa'
+      : '/seguimiento-ventas';
+  };
 
   const [paso, setPaso]               = useState(1);
   const [formData, setFormData]       = useState({ usuario: "", contraseña: "" });
@@ -48,7 +54,7 @@ export default function Login() {
       if (data.bypass && data.token) {
         localStorage.setItem("token", data.token);
         localStorage.setItem("userProfile", JSON.stringify(data.user));
-        navigate("/");
+        navigate(navegarSegunPerfil(data.user));
         return;
       }
       setUsuarioId(data.usuario_id);
@@ -76,7 +82,7 @@ export default function Login() {
       if (!data.success) { setError(data.error || "Código incorrecto o expirado."); return; }
       localStorage.setItem("token", data.token);
       localStorage.setItem("userProfile", JSON.stringify(data.user));
-      navigate("/");
+      navigate(navegarSegunPerfil(data.user));
     } catch {
       setError("Error de conexión con el servidor.");
     } finally {

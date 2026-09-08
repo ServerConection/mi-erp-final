@@ -93,7 +93,7 @@ const SUP_PALETTE = [
   { accent: "#dc2626", light: "#fef2f2", text: "#991b1b", border: "#fca5a5" },
   { accent: "#d97706", light: "#fffbeb", text: "#78350f", border: "#fcd34d" },
 ];
-const supColor = (i) => SUP_PALETTE[i % SUP_PALETTE.length];
+const supColor = () => SUP_PALETTE[0];
 
 // Colores de posición: oro, plata, bronce
 const RANK_COLORS = [
@@ -101,16 +101,61 @@ const RANK_COLORS = [
   { bg: "#f1f5f9", border: "#cbd5e1", text: "#475569", dot: "#94a3b8" },
   { bg: "#fef3c7", border: "#fcd34d", text: "#92400e", dot: "#d97706" },
 ];
+const RANK_ROW_BG = ["#ffedd5", "#e2e8f0", "#ffffff", "#ffffff"];
 const rankColor = (i) => RANK_COLORS[i] || { bg: "#f8fafc", border: "#e2e8f0", text: "#94a3b8", dot: "#cbd5e1" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILA DE ASESOR
 // ─────────────────────────────────────────────────────────────────────────────
-function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
+function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }) {
   const rc = rankColor(rank);
   const jot = Number(asesor.ingresos_reales || 0);
   const act = Number(asesor.real_mes || 0) + Number(asesor.backlog || 0);
-  const barW = maxJot > 0 ? Math.round((jot / maxJot) * 100) : 0;
+  const crm = Number(asesor.ventas_crm || 0);
+  const crmDia = Number(asesor.ventas_del_dia || 0);
+  const gestionables = Number(asesor.gestionables || 0);
+  const descartes = Number(asesor.descarte_count || 0);
+  const pctDescarte = gestionables > 0 ? (descartes / gestionables) * 100 : 0;
+  const barW = maxCrm > 0 ? Math.round((crm / maxCrm) * 100) : 0;
+
+  if (compact) {
+    const tier = Math.min(rank, 3);
+    const metricas = [
+      { label: "Jotform", value: jot, color: "#0284c7" },
+      { label: "Activas", value: act, color: "#10b981" },
+      { label: "CRM", value: crm, color: accentColor },
+      { label: "CRM día", value: crmDia, color: "#0f172a" },
+      { label: "Gestionables", value: gestionables, color: "#475569" },
+      { label: "% descarte", value: `${pctDescarte.toFixed(1)}%`, color: pctDescarte > 30 ? "#dc2626" : "#059669" },
+    ];
+
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 10px", borderBottom: "1px solid #f1f5f9",
+        background: RANK_ROW_BG[tier],
+        boxShadow: tier === 0 ? "inset 4px 0 0 #f97316" : tier === 1 ? "inset 3px 0 0 #94a3b8" : "none",
+        animation: isNew ? "rowFlash 2.4s ease-out forwards" : "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: "1 1 46%" }}>
+          <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, background: rc.bg, border: `1px solid ${rc.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 900, color: rc.text }}>{rank + 1}</div>
+          <div style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: accentColor + "18", border: `1px solid ${accentColor}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: accentColor }}>{initials(asesor.nombre_grupo)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div title={asesor.nombre_grupo} style={{ fontSize: 9, fontWeight: 800, color: "#0f172a", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asesor.nombre_grupo}</div>
+            <div style={{ height: 3, marginTop: 5, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}><div style={{ width: `${barW}%`, height: "100%", background: accentColor, borderRadius: 2 }} /></div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4, flex: "1 1 54%", minWidth: 0 }}>
+          {metricas.map((metrica) => (
+            <div key={metrica.label} title={metrica.label} style={{ textAlign: "center", padding: "5px 1px", background: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: metrica.color, lineHeight: 1 }}>{metrica.value}</div>
+              <div style={{ marginTop: 2, fontSize: 5.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{metrica.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -118,13 +163,15 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
         display: "flex", alignItems: "center", gap: 10,
         padding: "10px 16px",
         borderBottom: "1px solid #f1f5f9",
+        background: "#ffffff",
+        boxShadow: "none",
         transition: isNew ? "none" : "background .12s",
         cursor: "default",
         animation: isNew ? "rowFlash 2.4s ease-out forwards" : "none",
         position: "relative",
       }}
       onMouseEnter={e => { if (!isNew) e.currentTarget.style.background = "#f8fafc"; }}
-      onMouseLeave={e => { if (!isNew) e.currentTarget.style.background = "transparent"; }}
+      onMouseLeave={e => { if (!isNew) e.currentTarget.style.background = "#ffffff"; }}
     >
       {isNew && (
         <span style={{
@@ -206,21 +253,35 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
       {/* Divisor */}
       <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
 
-      {/* % del grupo */}
-      <div style={{ textAlign: "center", minWidth: 40, flexShrink: 0 }}>
+      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: accentColor, lineHeight: 1 }}>{crm}</div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>CRM</div>
+      </div>
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{crmDia}</div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>CRM día</div>
+      </div>
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+      <div style={{ textAlign: "center", minWidth: 58, flexShrink: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#475569", lineHeight: 1 }}>{gestionables}</div>
+        <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>Gestionables</div>
+      </div>
+      <div style={{ width: 1, height: 28, background: "#e2e8f0", flexShrink: 0 }} />
+      <div style={{ textAlign: "center", minWidth: 52, flexShrink: 0 }}>
         <div style={{
           display: "inline-block",
-          background: accentColor + "12",
-          border: `1px solid ${accentColor}30`,
+          background: pctDescarte > 30 ? "#fef2f2" : "#f0fdf4",
+          border: `1px solid ${pctDescarte > 30 ? "#fecaca" : "#bbf7d0"}`,
           borderRadius: 6,
           padding: "2px 6px",
-          fontSize: 11, fontWeight: 800, color: accentColor,
+          fontSize: 11, fontWeight: 800, color: pctDescarte > 30 ? "#dc2626" : "#059669",
           lineHeight: 1.4,
         }}>
-          {pct}%
+          {pctDescarte.toFixed(1)}%
         </div>
         <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 3 }}>
-          del grupo
+          Descarte
         </div>
       </div>
     </div>
@@ -232,10 +293,15 @@ function AsesorRow({ asesor, rank, pct, maxJot, accentColor, isNew }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function SupervisorCard({ supervisor, asesores, idx, newNames }) {
   const cfg = supColor(idx);
-  const sorted = [...asesores].sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0));
-  const maxJot = Math.max(...sorted.map(a => Number(a.ingresos_reales || 0)), 1);
+  const sorted = [...asesores].sort((a, b) => Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0));
+  const maxCrm = Math.max(...sorted.map(a => Number(a.ventas_crm || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
   const totAct = sorted.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0);
+  const totCrm = sorted.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
+  const totCrmDia = sorted.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0);
+  const totGestionables = sorted.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+  const totDescartes = sorted.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+  const pctDescarte = totGestionables > 0 ? (totDescartes / totGestionables) * 100 : 0;
 
   return (
     <div style={{
@@ -250,7 +316,7 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
       <div style={{
         padding: "14px 16px 12px",
         borderBottom: "1px solid #f1f5f9",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
+        display: "flex", flexDirection: "column", gap: 12,
         background: "#fafafa",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -277,51 +343,32 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
         </div>
 
         {/* Totales del supervisor */}
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: cfg.accent, lineHeight: 1 }}>{totJot}</div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Jotform</div>
-          </div>
-          <div style={{ width: 1, height: 28, background: "#e2e8f0" }} />
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#334155", lineHeight: 1 }}>{totAct}</div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Activas</div>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, width: "100%" }}>
+          {[
+            ["Jotform", totJot, "#0284c7"], ["Activas", totAct, "#10b981"], ["CRM", totCrm, cfg.accent],
+            ["CRM día", totCrmDia, "#0f172a"], ["Gestionables", totGestionables, "#475569"],
+            ["% descarte", `${pctDescarte.toFixed(1)}%`, pctDescarte > 30 ? "#dc2626" : "#059669"],
+          ].map(([label, value, color]) => (
+            <div key={label} style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 19, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+              <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>{label}</div>
+            </div>
+          ))}
         </div>
-      </div>
-
-      {/* Cabecera de columnas */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "5px 16px",
-        background: "#f8fafc",
-        borderBottom: "1px solid #f1f5f9",
-      }}>
-        <div style={{ width: 26, flexShrink: 0 }} />
-        <div style={{ width: 30, flexShrink: 0 }} />
-        <div style={{ flex: 1 }} />
-        <div style={{ minWidth: 52, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Jot</div>
-        <div style={{ width: 1 }} />
-        <div style={{ minWidth: 48, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>Activas</div>
-        <div style={{ width: 1 }} />
-        <div style={{ minWidth: 40, textAlign: "center", fontSize: 8, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase" }}>% Grupo</div>
       </div>
 
       {/* Filas */}
       <div>
         {sorted.map((asesor, i) => {
-          const pct = totJot > 0
-            ? Math.round((Number(asesor.ingresos_reales || 0) / totJot) * 100)
-            : 0;
           return (
             <AsesorRow
               key={asesor.nombre_grupo}
               asesor={asesor}
               rank={i}
-              pct={pct}
-              maxJot={maxJot}
+              maxCrm={maxCrm}
               accentColor={cfg.accent}
               isNew={newNames.has(asesor.nombre_grupo)}
+              compact
             />
           );
         })}
@@ -342,10 +389,15 @@ function SupervisorCard({ supervisor, asesores, idx, newNames }) {
 // RANKING GENERAL
 // ─────────────────────────────────────────────────────────────────────────────
 function RankingGeneral({ asesores, supColorMap, newNames }) {
-  const sorted = [...asesores].sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0));
-  const maxJot = Math.max(...sorted.map(a => Number(a.ingresos_reales || 0)), 1);
+  const sorted = [...asesores].sort((a, b) => Number(b.ventas_crm || 0) - Number(a.ventas_crm || 0));
+  const maxCrm = Math.max(...sorted.map(a => Number(a.ventas_crm || 0)), 1);
   const totJot = sorted.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
   const totAct = sorted.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0);
+  const totCrm = sorted.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
+  const totCrmDia = sorted.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0);
+  const totGestionables = sorted.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+  const totDescartes = sorted.reduce((a, r) => a + Number(r.descarte_count || 0), 0);
+  const pctDescarte = totGestionables > 0 ? (totDescartes / totGestionables) * 100 : 0;
 
   return (
     <div style={{
@@ -384,16 +436,18 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{totJot}</div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Total Jot</div>
-          </div>
-          <div style={{ width: 1, height: 32, background: "#e2e8f0" }} />
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#475569", lineHeight: 1 }}>{totAct}</div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 1 }}>Total Activas</div>
-          </div>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {[
+            ["Total Jot", totJot, "#0284c7"], ["Total Activas", totAct, "#10b981"],
+            ["Ingresos CRM", totCrm, "#ea580c"], ["CRM día", totCrmDia, "#0ea5e9"],
+            ["Gestionables", totGestionables, "#8b5cf6"],
+            ["% descarte", `${pctDescarte.toFixed(1)}%`, pctDescarte > 30 ? "#dc2626" : "#059669"],
+          ].map(([label, value, color]) => (
+            <div key={label} style={{ textAlign: "right", minWidth: 54 }}>
+              <div style={{ fontSize: 21, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+              <div style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginTop: 2 }}>{label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -427,7 +481,7 @@ function RankingGeneral({ asesores, supColorMap, newNames }) {
               asesor={asesor}
               rank={i}
               pct={pct}
-              maxJot={maxJot}
+              maxCrm={maxCrm}
               accentColor={accent}
               isNew={newNames.has(asesor.nombre_grupo)}
             />
@@ -592,6 +646,19 @@ export default function Seguimientovelsa() {
   const prevJotMap = useRef({});
   const liderTimer = useRef(null);
   const styleInjected = useRef(false);
+  const contentRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === contentRef.current);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) contentRef.current?.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
+  };
 
   const [filtros, setFiltros] = useState({
     fechaDesde: getPrimerDiaMes(),
@@ -697,8 +764,8 @@ export default function Seguimientovelsa() {
       map[sup].push(a);
     });
     return Object.entries(map).sort(([, a], [, b]) => {
-      const ta = a.reduce((s, r) => s + Number(r.ingresos_reales || 0), 0);
-      const tb = b.reduce((s, r) => s + Number(r.ingresos_reales || 0), 0);
+      const ta = a.reduce((s, r) => s + Number(r.ventas_crm || 0), 0);
+      const tb = b.reduce((s, r) => s + Number(r.ventas_crm || 0), 0);
       return tb - ta;
     });
   }, [asesores]);
@@ -714,11 +781,19 @@ export default function Seguimientovelsa() {
   const totales = useMemo(() => ({
     jot: asesores.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
     act: asesores.reduce((a, r) => a + Number(r.real_mes || 0) + Number(r.backlog || 0), 0),
+    crm: asesores.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
+    crmDia: asesores.reduce((a, r) => a + Number(r.ventas_del_dia || 0), 0),
+    gestionables: asesores.reduce((a, r) => a + Number(r.gestionables || 0), 0),
+    descartes: asesores.reduce((a, r) => a + Number(r.descarte_count || 0), 0),
   }), [asesores]);
+
+  const pctDescarteTotal = totales.gestionables > 0
+    ? (totales.descartes / totales.gestionables) * 100
+    : 0;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{
+    <div ref={contentRef} style={{
       minHeight: "100vh",
       background: "#f1f5f9",
       color: "#0f172a",
@@ -757,6 +832,14 @@ export default function Seguimientovelsa() {
               }}>
                 Ranking de ventas
               </h1>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
+                style={{ background: "#fff", border: "1px solid #fed7aa", borderRadius: 8, padding: "6px 10px", color: "#c2410c", fontSize: 10, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                {isFullscreen ? "⤢ Salir" : "⤡ Pantalla completa"}
+              </button>
             </div>
             <p style={{ margin: 0, fontSize: 11, color: "#64748b", fontWeight: 500 }}>
               Ingresos Jotform y activas totales por asesor · Velsa · agrupado por supervisor
@@ -775,6 +858,10 @@ export default function Seguimientovelsa() {
               { label: "Total activas", val: totales.act, color: "#eab308" },
               { label: "Supervisores", val: grupos.length, color: "#ef4444" },
               { label: "Asesores", val: asesores.length, color: "#fb923c" },
+              { label: "Ingresos CRM", val: totales.crm, color: "#ea580c" },
+              { label: "Ingresos CRM día", val: totales.crmDia, color: "#0ea5e9" },
+              { label: "Gestionables", val: totales.gestionables, color: "#8b5cf6" },
+              { label: "% descarte", val: `${pctDescarteTotal.toFixed(1)}%`, color: pctDescarteTotal > 30 ? "#dc2626" : "#059669" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: "#fff", border: "1px solid #e2e8f0",
@@ -877,7 +964,7 @@ export default function Seguimientovelsa() {
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
             gap: 16,
             marginBottom: 32,
           }}>

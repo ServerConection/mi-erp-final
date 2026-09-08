@@ -102,8 +102,8 @@ const RANK_COLORS = [
   { bg: "#fef3c7", border: "#fcd34d", text: "#92400e", dot: "#d97706" },
 ];
 
-// Degradado de fondo por posición: 1º fuerte, 2º medio, 3º+ blanco
-const RANK_ROW_BG = ["#38bdf8", "#bae6fd", "#ffffff", "#ffffff"];
+// Fondo por posición: el Top 1 conserva el destaque sin sacrificar contraste.
+const RANK_ROW_BG = ["#bae6fd", "#e2e8f0", "#ffffff", "#ffffff"];
 
 const rankColor = (i) => RANK_COLORS[i] || { bg: "#f8fafc", border: "#e2e8f0", text: "#94a3b8", dot: "#cbd5e1" };
 
@@ -124,7 +124,9 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
   if (compact) {
     const tier = Math.min(rank, 3);
     const rowBg = RANK_ROW_BG[tier];
-    const isDark = tier === 0;   // solo el 1er lugar tiene fondo fuerte → texto blanco
+    // Todos los puestos usan texto oscuro; sobre el antiguo celeste intenso
+    // los números claros del Top 1 resultaban difíciles de leer.
+    const isDark = false;
     const nameColor = isDark ? "#ffffff" : "#0f172a";
     const labelColor = isDark ? "rgba(255,255,255,.65)" : "#94a3b8";
     const metricBg = isDark ? "rgba(255,255,255,.14)" : (tier === 0 ? "#f8fafc" : "#f8fafc");
@@ -145,6 +147,11 @@ function AsesorRow({ asesor, rank, maxCrm, accentColor, isNew, compact = false }
         display: "flex", alignItems: "center", gap: 8,
         padding: "9px 10px", borderBottom: "1px solid #f1f5f9",
         background: rowBg,
+        boxShadow: tier === 0
+          ? "inset 4px 0 0 #0284c7"
+          : tier === 1
+            ? "inset 3px 0 0 #94a3b8"
+            : "none",
         animation: isNew ? "rowFlash 2.4s ease-out forwards" : "none",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: "1 1 46%" }}>
@@ -733,6 +740,19 @@ export default function Seguimientoventas() {
   const prevJotMap = useRef({});
   const liderTimer = useRef(null);
   const styleInjected = useRef(false);
+  const contentRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === contentRef.current);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) contentRef.current?.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
+  };
 
   const [filtros, setFiltros] = useState({
     fechaDesde: getPrimerDiaMes(),
@@ -867,7 +887,7 @@ export default function Seguimientoventas() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{
+    <div ref={contentRef} style={{
       minHeight: "100vh",
       background: "#f1f5f9",
       color: "#0f172a",
@@ -906,6 +926,14 @@ export default function Seguimientoventas() {
               }}>
                 Ranking de ventas
               </h1>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
+                style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", color: "#334155", fontSize: 10, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                {isFullscreen ? "⤢ Salir" : "⤡ Pantalla completa"}
+              </button>
             </div>
             <p style={{ margin: 0, fontSize: 11, color: "#64748b", fontWeight: 500 }}>
               Ingresos CRM, gestionables y descarte por asesor · agrupado por supervisor

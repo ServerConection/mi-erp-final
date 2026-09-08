@@ -477,6 +477,15 @@ export default function DashboardLayout() {
       userRef.current = parsedUser;   // ← siempre actualizado
       setUser(parsedUser);
 
+      const perfil = (parsedUser.perfil || '').toUpperCase();
+      const empresa = (parsedUser.empresa || '').toUpperCase();
+      if (perfil === 'TV') {
+        const rutaTV = empresa === 'NOVONET'
+          ? '/seguimiento-ventas'
+          : empresa === 'VELSA' ? '/seguimiento-velsa' : '/';
+        if (location.pathname !== rutaTV) navigate(rutaTV, { replace: true });
+      }
+
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
         setPermisos(parsedUser.permisos);
       } else {
@@ -531,13 +540,14 @@ export default function DashboardLayout() {
     const p = (user.perfil  || '').toUpperCase();
     const e = (user.empresa || '').toUpperCase();
 
-    // Special-case route protection: users with perfil 'TV' may only access their Vista Asesor page
+    // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
-      const allowedName = empresaUpper === 'NOVONET' ? 'Vista Asesor NOVONET' : (empresaUpper === 'VELSA' ? 'Vista Asesor VELSA' : null);
-      if (itemActual.group !== 'vista-asesor' || itemActual.name !== allowedName) {
-        navigate('/');
+      const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : null);
+      const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : '/');
+      if (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName) {
+        navigate(rutaTV, { replace: true });
       }
       return;
     }
@@ -563,13 +573,13 @@ export default function DashboardLayout() {
   if (!user) return null;
 
   const passaAcceso = (item) => {
-    // If user profile is 'TV', only show the Vista Asesor group and the matching subitem by company
+    // El perfil TV solo ve el grupo Seguimiento y la vista de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
-      if (item.group !== 'vista-asesor') return false;
-      if (empresaUpper === 'NOVONET') return item.name === 'Vista Asesor NOVONET';
-      if (empresaUpper === 'VELSA') return item.name === 'Vista Asesor VELSA';
+      if (item.group !== 'seguimiento') return false;
+      if (empresaUpper === 'NOVONET') return item.name === 'Seguimiento NOVONET';
+      if (empresaUpper === 'VELSA') return item.name === 'Seguimiento VELSA';
       return false; // other companies: no access
     }
 

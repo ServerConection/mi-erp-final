@@ -23,7 +23,7 @@ const datos = require('../controllers/hojasDatos.controller');
 // Excel en memoria: no tocamos disco por un archivo que se procesa y se tira.
 const subida = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 5 * 1024 * 1024 },
+  limits:  { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ok = /\.(xlsx|xls|csv)$/i.test(file.originalname);
     cb(ok ? null : new Error('Solo se admiten archivos .xlsx, .xls o .csv'), ok);
@@ -78,7 +78,7 @@ router.use((err, req, res, next) => {
     const grande = err.code === 'LIMIT_FILE_SIZE';
     return res.status(400).json({
       success: false,
-      error: grande ? 'El archivo supera los 5 MB' : (err.message || 'Archivo inválido'),
+      error: grande ? 'El archivo supera los 10 MB' : (err.message || 'Archivo inválido'),
     });
   }
   next();

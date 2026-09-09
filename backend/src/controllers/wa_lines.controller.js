@@ -521,6 +521,7 @@ async function dashboard(req, res) {
       ase.lineas.push({
         id: l.id, name: l.name, phone_number: l.phone_number,
         estado: l.estado, last_connected: l.last_connected,
+        created_at: l.created_at,
       })
       ase.total++;  emp.total++
       if (l.conectada) { ase.conectadas++; emp.conectadas++ }

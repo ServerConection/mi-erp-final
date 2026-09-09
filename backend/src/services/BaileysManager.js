@@ -1094,15 +1094,15 @@ class BaileysManager {
     } catch (e) { /* ignorar */ }
   }
 
-  async sendText(lineId, to, text) {
+  async sendText(lineId, to, text, { inboxNoteId, messageId } = {}) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
     const jid = await this._resolveSendJid(lineId, to)
     console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
     await this._simulateTyping(inst.sock, jid, (text || '').length)
-    const result = await inst.sock.sendMessage(jid, { text })
+    const result = await inst.sock.sendMessage(jid, { text }, messageId ? { messageId } : {})
     this._markSentByErp(result?.key?.id)
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id, inboxNoteId)
     return result
   }
 
@@ -1137,7 +1137,7 @@ class BaileysManager {
     console.log(`[Line ${lineId}] → Menú numerado enviado`)
   }
 
-  async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption, mediaUrl }) {
+  async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption, mediaUrl, inboxNoteId, messageId }) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
     const jid = await this._resolveSendJid(lineId, to)
@@ -1151,9 +1151,9 @@ class BaileysManager {
       msgContent.audio = buffer
       msgContent.mimetype = mimetype
     }
-    const result = await inst.sock.sendMessage(jid, msgContent)
+    const result = await inst.sock.sendMessage(jid, msgContent, messageId ? { messageId } : {})
     this._markSentByErp(result?.key?.id)
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id, inboxNoteId)
     return result
   }
 
@@ -1304,6 +1304,9 @@ class BaileysManager {
   // ── Acks de campañas: marca delivered/read en campaign_recipients ──
   // Baileys status: 2=server ack, 3=delivery ack, 4=read
   async _handleDeliveryAck(lineId, waMsgId, status) {
+    if (status >= 2) {
+      await require('./inboxBitrixNotes.service').getInboxBitrixNotes().recordReceipt(lineId, waMsgId)
+    }
     if (status < 3) return
 
     // ── Inbox: reflejar entregado/leído en el mensaje (✓✓ estilo WhatsApp) ──
@@ -1443,15 +1446,16 @@ class BaileysManager {
     })
   }
 
-  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null) {
+  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null, inboxNoteId = null) {
     if (!content && !mediaUrl) return   // no guardar burbujas vacías
     try {
       const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
       await query(
         `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp)
-         VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW())`,
-        [conv.id, lineId, waNumber, type, content, mediaUrl, waMsgId]
+          (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp, metadata)
+         VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW(),$8::jsonb)`,
+        [conv.id, lineId, waNumber, type, content, mediaUrl, waMsgId,
+          JSON.stringify(inboxNoteId ? { inbox_bitrix_note_id: inboxNoteId } : {})]
       )
       // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
       await this._emitInbox(lineId, 'message:new', {

@@ -954,7 +954,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 van.plan_profesional        AS "PLAN_PROFESIONAL",
                 van.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
                 van.plan_pyme_corp          AS "PLAN_PYME_CORP",
-                van.plan_centro_comercial   AS "PLAN_CENTRO_RED_COMERCIAL",
+                -- PLAN GAMER (2026-09): en Novonet el plan gamer se guarda en
+                -- plan_centro_comercial. Se renombra la columna del Excel para que
+                -- diga lo que de verdad trae.
+                van.plan_centro_comercial   AS "PLAN_GAMER",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 to_jsonb(mb) ->> 'j_aplica_descuento_3ra_edad' AS "APLICA_DESCUENTO",
                 mb.j_fecha_agenda AS "FECHA_AGENDA",

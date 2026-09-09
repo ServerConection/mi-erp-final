@@ -661,12 +661,24 @@ SELECT
   mv.plan_profesional AS "PLAN_PROFESIONAL",
   mv.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
   mv.plan_pyme_corp AS "PLAN_PYME_CORP",
-  mv.plan_centro_red_comercial AS "PLAN_CENTRO_RED_COMERCIAL",
+  -- PLAN GAMER (2026-09): la pregunta q241_planGamer del formulario nunca se
+  -- mapeo a columna, asi que la MV no la trae y las ventas gamer salian con
+  -- TODOS los planes vacios. Se lee directo del JSON de la vista de Jotform,
+  -- sin tocar la MV ni el esquema. Ocupa el lugar de la antigua columna
+  -- PLAN_CENTRO_RED_COMERCIAL (a pedido: esa no se usaba y el gamer si).
+  jfg.plan_gamer AS "PLAN_GAMER",
   mv.forma_pago AS "FORMA_PAGO",
   mv.aplica_descuento AS "APLICA_DESCUENTO",
   mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
+LEFT JOIN (
+    SELECT id_bitrix_ghl,
+           MAX(NULLIF(TRIM(answers->'241'->>'answer'), '')) AS plan_gamer
+      FROM public.vw_jotform_velsa_netlife_completo
+     WHERE NULLIF(TRIM(answers->'241'->>'answer'), '') IS NOT NULL
+     GROUP BY id_bitrix_ghl
+) jfg ON jfg.id_bitrix_ghl::text = mv.id_crm::text
 WHERE mv.fecha_registro_jotform IS NOT NULL
 AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
 ${filters}
@@ -1133,6 +1145,7 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.plan_hogar_adulto_mayor,
         jf.plan_pyme_corp,
         jf.plan_centro_red_comercial,
+        NULLIF(TRIM(jf.answers->'241'->>'answer'), '') AS plan_gamer,
         jf.aplica_descuento,
         jf.servicio_normales,
         jf.inicio_sesion_netlife,

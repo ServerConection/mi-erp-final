@@ -7,7 +7,7 @@ const conversation = { id: 'conv', line_id: 'line', wa_number: '593999999999', b
 const env = { BITRIX_NOVONET_URL: 'https://novonet.bitrix24.es/rest/1/test' };
 function harness(responses = []) {
   const queries = [], calls = [];
-  const db = { query: async (sql, values) => { queries.push({sql, values}); return { rows: [] }; } };
+  const db = { query: async (sql, values) => { queries.push({sql, values}); return { rows: sql.startsWith('SELECT c.id') ? [{id:'c'}] : [] }; } };
   const service = createInboxBitrixNotes({ db, env, request: async (method, params) => {
     calls.push({method, params});
     const response = responses.shift();
@@ -16,6 +16,49 @@ function harness(responses = []) {
   }});
   return { service, queries, calls };
 }
+
+test('cliente se identifica como recibido y no atribuye el mensaje al asesor', () => {
+  const text=buildComment({id:'incoming',payload:{direction:'in',actor:'Cliente Ana',text:'Necesito información',phone:'5939'},sent_at:'2026-09-09T15:00:00Z'});
+  assert.match(text,/Recibido del cliente/);
+  assert.match(text,/Cliente: Cliente Ana/);
+  assert.doesNotMatch(text,/Asesor:/);
+});
+
+test('el ciclo de publicación se programa cada 60 segundos', () => {
+  const periods=[];
+  const h=createInboxBitrixNotes({db:{query:async()=>({rows:[]})},env,
+    schedule:(fn,ms)=>{periods.push(ms);return {unref(){}};},unschedule:()=>{}});
+  h.start();h.start();h.stop();
+  assert.deepEqual(periods,[60000]);
+});
+
+test('persistencia del entrante conserva guardado y encolado en una sola consulta', async () => {
+  const h=harness();
+  await h.service.persistIncoming({conversationId:'c',lineId:'l',waNumber:'5939',type:'text',text:'Hola',waMsgId:'wa-in',clientName:'Ana'});
+  const sql=h.queries.find(q=>q.sql.includes('INSERT INTO messages'))?.sql || '';
+  assert.match(sql,/INSERT INTO inbox_bitrix_notes/);
+  assert.match(sql,/FROM saved/);
+  assert.match(sql,/'NOVONET'/);
+  assert.equal(h.calls.length,0,'recibir no llama directamente a Bitrix');
+});
+
+test('con la sincronización desactivada se sigue guardando el entrante', async () => {
+  const queries=[];
+  const h=createInboxBitrixNotes({db:{query:async(sql)=>{queries.push(sql);return {rows:[{id:'message'}]};}},env:{...env,WA_INBOX_BITRIX_NOTES:'false'}});
+  const result=await h.persistIncoming({conversationId:'c',lineId:'l',waNumber:'5939',type:'text',text:'Hola',waMsgId:'wa-in'});
+  assert.equal(result.rows[0].id,'message');
+  assert.equal(queries.length,1);
+  assert.doesNotMatch(queries[0],/inbox_bitrix_notes/);
+});
+
+test('entrantes no elegibles no dependen de la tabla de notas', async () => {
+  const queries=[];
+  const h=createInboxBitrixNotes({env,db:{query:async(sql)=>{queries.push(sql);return {rows:[]};}}});
+  await h.persistIncoming({conversationId:'c',lineId:'l',waNumber:'5939',type:'text',text:'Hola',waMsgId:'wa-in'});
+  assert.equal(queries.length,2);
+  assert.ok(queries[1].startsWith('INSERT INTO messages'));
+  assert.ok(queries.every(sql=>!sql.includes('inbox_bitrix_notes')));
+});
 
 test('solo NOVONET con ID positivo; la empresa de la línea prevalece sobre admin', () => {
   assert.equal(eligibleDeal(conversation, user), '123');

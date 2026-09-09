@@ -6,9 +6,10 @@ const notif    = require('../models/notificaciones');
 const waSvc    = require('../services/whatsapp.service');
 const { ejecutarAlertas } = require('../jobs/alertas.cron');
 const QRCode   = require('qrcode');
+const { verificarToken } = require('../middleware/auth');
 
 // GET /api/alertas/resumen — conteos por canal para el dashboard
-router.get('/resumen', async (req, res) => {
+router.get('/resumen', verificarToken, async (req, res) => {
   try {
     const [resumen, porCondicion, historial] = await Promise.all([
       notif.getResumen(),
@@ -22,11 +23,15 @@ router.get('/resumen', async (req, res) => {
 });
 
 // GET /api/alertas/whatsapp/estado — estado de conexión WhatsApp
-router.get('/whatsapp/estado', (req, res) => {
+router.get('/whatsapp/estado', verificarToken, (req, res) => {
   res.json({ success: true, ...waSvc.getEstado() });
 });
 
 // GET /api/alertas/whatsapp/qr — devuelve el QR como imagen base64
+// SIN verificarToken A PROPOSITO (2026-09): el flujo de vinculacion actual
+// necesita abrir el QR sin sesion. Es un pendiente conocido de seguridad —
+// quien escanee este QR vincula la linea a su dispositivo. Cerrarlo cuando
+// se rehaga ese flujo.
 router.get('/whatsapp/qr', async (req, res) => {
   try {
     const qrRaw = waSvc.getQR();
@@ -48,7 +53,7 @@ router.get('/whatsapp/qr', async (req, res) => {
 });
 
 // POST /api/alertas/ejecutar — dispara el job manualmente (para pruebas)
-router.post('/ejecutar', async (req, res) => {
+router.post('/ejecutar', verificarToken, async (req, res) => {
   try {
     await ejecutarAlertas();
     res.json({ success: true, mensaje: 'Job de alertas ejecutado' });

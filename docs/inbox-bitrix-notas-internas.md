@@ -1,8 +1,8 @@
 # Inbox a comentarios internos de NOVONET
 
-Al enviar desde Inbox en una conversación vinculada a una negociación de NOVONET,
+Al recibir del cliente o enviar desde Inbox en una conversación vinculada a una negociación de NOVONET,
 el backend guarda un comentario en el historial de esa negociación. El comentario
-incluye texto, asesor de ERP, número, hora de Ecuador y una referencia única.
+incluye texto, cliente o asesor de ERP, número, hora de Ecuador y una referencia única.
 La autoría técnica en Bitrix corresponde al usuario del webhook; el asesor real
 figura en el texto. Los adjuntos se registran por nombre, sin copiar su contenido.
 
@@ -12,9 +12,9 @@ NOVONET. Esta validación no demuestra que el asesor haya elegido al cliente cor
 
 ## Alcance
 
-- Nuevos envíos manuales de Inbox con ID de negociación y línea NOVONET.
-- Líneas sin propietario usan la empresa del usuario que envía.
-- No se importa historial ni se copian campañas, bots, mensajes entrantes o envíos
+- Nuevos mensajes del cliente y envíos manuales de Inbox con ID de negociación y línea NOVONET.
+- Líneas sin propietario usan la empresa del usuario que envía; sus entrantes no se copian porque no se puede determinar la empresa.
+- No se importa historial ni se copian campañas, bots o envíos
   desde el teléfono. No se habilita Bitrix a WhatsApp.
 - El comentario es interno al CRM, visible según permisos de la negociación.
 - Los mensajes de texto admiten hasta 50 000 caracteres para evitar truncar la copia.
@@ -42,7 +42,7 @@ un comentario de éxito. Si Bitrix falla, el envío de WhatsApp no se repite: so
 reintenta el comentario con espera creciente hasta una hora. Los errores se guardan
 por código, sin credenciales ni texto del mensaje en los logs de sincronización.
 
-El trabajador procesa hasta diez trabajos por ciclo, cada cinco segundos, en serie.
+El trabajador inicia un ciclo cada 60 segundos y al arrancar el servicio. Procesa en serie hasta 100 notas o 45 segundos de trabajo por ciclo; una llamada en curso puede exceder ese tiempo. Con acumulación o errores la demora puede superar un minuto.
 Reclama trabajos con `SKIP LOCKED`; tras un reinicio puede recuperar una reserva
 abandonada en treinta minutos. Antes de repetir un POST ambiguo busca la referencia
 en los comentarios existentes. Si la reconciliación excede cien páginas, conserva
@@ -81,4 +81,6 @@ node --test backend/test/inbox-bitrix-notes.test.js backend/test/inbox-bitrix-co
 Usa tablas temporales que ocultan los nombres de producción dentro de una sola
 conexión y termina con `ROLLBACK`; las llamadas Bitrix son simuladas. Comprueba
 persistencia, reintento, ausencia de publicación antes de enviar, fallos WhatsApp
-y recuperación de recibos. No inicia sesiones ni envía mensajes de WhatsApp reales.
+y recuperación de recibos, captura entrante, duplicados y exclusión de otras empresas. No inicia sesiones ni envía mensajes de WhatsApp reales.
+
+Los entrantes se guardan junto con su nota pendiente en una sola operación SQL. Solo los mensajes insertados por primera vez generan notas. Se captura el ID vinculado en ese momento. Al reconectar WhatsApp pueden recuperarse mensajes de los últimos 15 minutos que aún no existan en Inbox; no se importa el historial completo.

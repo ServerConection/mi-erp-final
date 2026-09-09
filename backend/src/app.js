@@ -86,6 +86,24 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'interest-cohort=()');
+
+  // CSP en modo REPORT-ONLY (2026-09). No bloquea nada todavia: el navegador
+  // solo avisa por consola de lo que la politica cortaria. Se deja asi unos
+  // dias para revisar los avisos con el frontend real; cuando no salga ninguno,
+  // se cambia la cabecera a 'Content-Security-Policy' y ahi si empieza a
+  // bloquear. Cambiarla a modo activo sin revisar los avisos rompe la pantalla.
+  res.setHeader('Content-Security-Policy-Report-Only', [
+    "default-src 'self'",
+    // Vite compila con estilos en linea; sin 'unsafe-inline' la UI sale sin CSS
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https:",
+    "script-src 'self'",
+    "connect-src 'self' " + allowedOrigins.join(' '),
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
   if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
@@ -102,6 +120,15 @@ app.use(contactabilidadWebhookRoutes);
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
 const rateLimit = require('./middleware/rateLimit');
 app.use(rateLimit);
+
+// SEGURIDAD (2026-09): las rutas de sesion son las unicas que responden sin
+// token, asi que son la puerta natural para saturar el servidor con cuerpos
+// enormes. Un login son tres campos: 64kb sobra y devuelve 413 si se pasa.
+// TIENE que ir ANTES del express.json general: el primero que parsea gana,
+// y si el de 10mb corre primero el limite chico nunca se aplica.
+// El limite general de 10mb se deja igual porque hay modulos que suben
+// imagenes y hojas grandes.
+app.use(['/api/auth', '/api/otp'], express.json({ limit: '64kb' }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));

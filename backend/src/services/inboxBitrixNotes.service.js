@@ -11,19 +11,20 @@ function eligibleDeal(conversation, user) {
 const plain = value => String(value || '').replace(/\[/g, '［').replace(/\]/g, '］');
 function buildComment(job) {
   const p = job.payload;
+  const incoming = p.direction === 'in';
   const date = new Intl.DateTimeFormat('es-EC', {
     timeZone: 'America/Guayaquil', dateStyle: 'short', timeStyle: 'medium', hour12: false,
   }).format(new Date(job.sent_at));
   return [
-    'WhatsApp · Enviado desde Inbox · Registro interno',
-    `Asesor: ${plain(p.actor)}`, `Número: +${plain(p.phone)}`,
+    incoming ? 'WhatsApp · Recibido del cliente · Registro interno' : 'WhatsApp · Enviado desde Inbox · Registro interno',
+    `${incoming ? 'Cliente' : 'Asesor'}: ${plain(p.actor)}`, `Número: +${plain(p.phone)}`,
     `Fecha: ${date} (Ecuador)`, '', plain(p.text),
-    p.filename ? `Archivo enviado por WhatsApp: ${plain(p.filename)}` : '',
+    p.filename ? `Archivo ${incoming ? 'recibido' : 'enviado'} por WhatsApp: ${plain(p.filename)}` : '',
     '', `Referencia Inbox: ${job.id}`,
   ].filter(x => x !== undefined).join('\n');
 }
 
-function createInboxBitrixNotes({ db, env = process.env, request, logger = console }) {
+function createInboxBitrixNotes({ db, env = process.env, request, logger = console, schedule = setInterval, unschedule = clearInterval }) {
   let schemaReady;
   let timer;
   let running = false;
@@ -62,6 +63,38 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
     const response = await call('crm.deal.get', {id: String(id).trim()});
     if (String(response.result?.ID) !== String(id).trim()) throw new Error('Negociación no encontrada en NOVONET');
     return response.result;
+  }
+  async function persistIncoming({conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl,clientName,messageAt}) {
+    const insert = `INSERT INTO messages
+      (conversation_id,line_id,wa_number,direction,type,content,wa_msg_id,dedupe_key,media_url,timestamp)
+      VALUES ($1,$2,$3,'in',$4,$5,$6,$6,$7,$8::timestamptz)
+      ON CONFLICT (line_id,dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`;
+    const timestamp = messageAt && Number.isFinite(new Date(messageAt).getTime()) ? new Date(messageAt) : new Date();
+    const values = [conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl || null,timestamp];
+    if (!configured() || env.WA_INBOX_BITRIX_NOTES === 'false') {
+      return db.query(`${insert} RETURNING id`,values);
+    }
+    const eligibility = await db.query(`SELECT c.id FROM conversations c
+      JOIN lines l ON l.id=c.line_id JOIN usuarios u ON u.id=l.created_by
+      WHERE c.id=$1 AND c.line_id=$2 AND UPPER(TRIM(u.empresa))='NOVONET'
+      AND TRIM(c.bitrix_deal_id) ~ '^[1-9][0-9]{0,14}$'`,[conversationId,lineId]);
+    if (!eligibility.rows.length) return db.query(`${insert} RETURNING id`,values);
+    await ensureSchema();
+    // The message and its internal copy are committed together. Only a newly
+    // inserted message produces a note; replays never copy it a second time.
+    // Capture the current deal and line owner instead of looking them up later.
+    return db.query(`WITH saved AS (${insert} RETURNING *), queued AS (
+      INSERT INTO inbox_bitrix_notes (id,deal_id,payload,status,wa_msg_id,sent_at)
+      SELECT s.id,TRIM(c.bitrix_deal_id),jsonb_build_object(
+        'conversation_id',s.conversation_id,'line_id',s.line_id,'phone',s.wa_number,
+        'direction','in','actor',COALESCE(NULLIF($9::text,''),'Cliente'),
+        'text',COALESCE(s.content,''),'filename',$10::text),
+        'pending',s.wa_msg_id,s.timestamp
+      FROM saved s JOIN conversations c ON c.id=s.conversation_id AND c.line_id=s.line_id
+      JOIN lines l ON l.id=s.line_id JOIN usuarios u ON u.id=l.created_by
+      WHERE UPPER(TRIM(u.empresa))='NOVONET' AND TRIM(c.bitrix_deal_id) ~ '^[1-9][0-9]{0,14}$'
+      ON CONFLICT (id) DO NOTHING
+    ) SELECT id FROM saved`, [...values,clientName || '',mediaUrl ? path.basename(mediaUrl) : (type !== 'text' ? type : null)]);
   }
   async function prepare({conversation, user, text, filename}) {
     if (env.WA_INBOX_BITRIX_NOTES === 'false') return null;
@@ -159,11 +192,12 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
         FROM messages m WHERE n.status IN ('waiting_send','failed') AND n.created_at < NOW()-INTERVAL '2 minutes'
         AND m.line_id=(n.payload->>'line_id')::uuid AND m.timestamp >= n.created_at
         AND m.direction='out' AND (m.wa_msg_id=n.wa_msg_id OR m.metadata->>'inbox_bitrix_note_id'=n.id::text)`);
-      for (let i = 0; i < 10; i++) {
+      const startedAt = Date.now();
+      for (let i = 0; i < 100 && Date.now()-startedAt < 45000; i++) {
         const result = await db.query(`WITH candidate AS (
           SELECT id FROM inbox_bitrix_notes
           WHERE status IN ('pending','retry','processing') AND next_attempt_at <= NOW()
-          ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
+          ORDER BY COALESCE(sent_at,created_at),created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
         ) UPDATE inbox_bitrix_notes n SET status='processing', attempts=n.attempts+1,
           next_attempt_at=NOW()+INTERVAL '30 minutes', updated_at=NOW()
           FROM candidate WHERE n.id=candidate.id RETURNING n.*`);
@@ -176,12 +210,12 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
   }
   function start() {
     if (timer || !configured() || env.WA_INBOX_BITRIX_NOTES === 'false') return;
-    timer = setInterval(() => { void tick(); }, 5000);
+    timer = schedule(() => { void tick(); }, 60000);
     timer.unref();
     void tick();
   }
-  function stop() { if (timer) clearInterval(timer); timer = null; }
-  return {prepare,confirm,fail,recordReceipt,validateDeal,ensureSchema,deliver,tick,start,stop,configured};
+  function stop() { if (timer) unschedule(timer); timer = null; }
+  return {prepare,persistIncoming,confirm,fail,recordReceipt,validateDeal,ensureSchema,deliver,tick,start,stop,configured};
 }
 
 let singleton;

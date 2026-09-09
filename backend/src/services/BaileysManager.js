@@ -1198,14 +1198,11 @@ class BaileysManager {
     }
 
     try {
-      const saved = await query(
-        `INSERT INTO messages
-          (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, dedupe_key, media_url, timestamp)
-         VALUES ($1,$2,$3,'in',$4,$5,$6,$6,$7,NOW())
-         ON CONFLICT (line_id, dedupe_key) WHERE dedupe_key IS NOT NULL
-         DO NOTHING RETURNING id`,
-        [conv.id, lineId, waNumber, msgType, text, msg.key.id, mediaUrl]
-      )
+      const saved = await require('./inboxBitrixNotes.service').getInboxBitrixNotes().persistIncoming({
+        conversationId: conv.id, lineId, waNumber, type: msgType, text,
+        waMsgId: msg.key.id, mediaUrl, clientName: pushName,
+        messageAt: Number(msg.messageTimestamp || 0) ? new Date(Number(msg.messageTimestamp)*1000) : null,
+      })
       if (!saved.rows.length) {
         console.info(`[Line ${lineId}] Mensaje duplicado ignorado: ${msg.key.id}`)
         return

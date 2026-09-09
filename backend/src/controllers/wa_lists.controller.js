@@ -21,9 +21,10 @@ async function getAll(req, res) {
       where = `WHERE l.created_by = $${params.length}`
     }
     const result = await query(`
-      SELECT l.*,
+      SELECT l.*, u.usuario AS owner_username,
         (SELECT COUNT(*)::int FROM contact_list_items WHERE list_id = l.id) AS contact_count
       FROM contact_lists l
+      LEFT JOIN usuarios u ON l.created_by = u.id
       ${where}
       ORDER BY l.created_at DESC
     `, params)

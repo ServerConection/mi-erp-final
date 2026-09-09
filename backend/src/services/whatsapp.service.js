@@ -72,6 +72,8 @@ const iniciarWhatsApp = async (appInstance) => {
 
     timeoutService.start();
     scheduler.start();
+    // Inbox -> comentarios internos de NOVONET. También se inicia en el monolito.
+    require('./inboxBitrixNotes.service').getInboxBitrixNotes().start();
 
     await campaignEngine.resumePendingOnBoot();
 

@@ -1,6 +1,7 @@
 const { query } = require('../config/db')
 const fs = require('fs')
 const path = require('path')
+const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 
 // ── Bitrix: solo NOVONET; la credencial vive exclusivamente en el entorno ──
 const BITRIX_WEBHOOKS = {
@@ -239,6 +240,8 @@ async function getMessages(req, res) {
 
 // ── Enviar mensaje manual desde el inbox ─────────────────────
 async function sendMessage(req, res) {
+  let inboxNote = null
+  let whatsappSent = false
   try {
     const { id } = req.params
     const { takeover, media_url, media_type, media_filename } = req.body
@@ -264,6 +267,12 @@ async function sendMessage(req, res) {
       }
     }
 
+    const notes = getInboxBitrixNotes()
+    const prepareNote = () => notes.prepare({
+      conversation: c, user: req.user, text,
+      filename: media_url ? (media_filename || path.basename(media_url)) : null,
+    })
+    let sent
     if (media_url) {
       // Enviar imagen/documento (subido antes con POST /api/wa/upload)
       let buffer
@@ -276,16 +285,27 @@ async function sendMessage(req, res) {
         if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'Archivo no existe' })
         buffer = fs.readFileSync(filePath)
       }
-      await bm.sendMedia(c.line_id, c.wa_number, {
+      inboxNote = await prepareNote()
+      sent = await bm.sendMedia(c.line_id, c.wa_number, {
         type:     media_type || 'image',
         buffer,
         mimetype: guessMime(media_filename || media_url),
         filename: media_filename || path.basename(media_url),
         caption:  text || '',
         mediaUrl: media_url,
+        inboxNoteId: inboxNote?.id,
+        messageId: inboxNote?.waMsgId,
       })
     } else {
-      await bm.sendText(c.line_id, c.wa_number, text)
+      inboxNote = await prepareNote()
+      sent = await bm.sendText(c.line_id, c.wa_number, text, { inboxNoteId: inboxNote?.id, messageId: inboxNote?.waMsgId })
+    }
+    whatsappSent = true
+    try { await notes.confirm(inboxNote, sent?.key?.id) }
+    catch (_) {
+      // The worker recovers from the receipt stored with the outbound message.
+      // Never turn this into a failed WhatsApp response: that invites resends.
+      console.warn('[Inbox-Bitrix] confirmación pendiente de recuperación', inboxNote?.id)
     }
 
     // Si se pidió takeover, pausar bot por 24h
@@ -301,6 +321,12 @@ async function sendMessage(req, res) {
 
     res.json({ success: true })
   } catch (err) {
+    if (whatsappSent) {
+      return res.json({ success: true, warning: 'WhatsApp enviado; actualización interna pendiente. No reenvíes el mensaje.' })
+    }
+    if (inboxNote) {
+      try { await getInboxBitrixNotes().fail(inboxNote) } catch (_) {}
+    }
     console.error('[wa_conversations.sendMessage] ERROR:', err && (err.stack || err.message || err))
     // Mensajes claros para el vendedor según el tipo de fallo
     const msg = (err && err.message) || ''
@@ -476,6 +502,15 @@ async function startFromBitrix(req, res) {
 
     const lineId = chosen.id
 
+    if (bitrixId) {
+      const lineOwner = await query('SELECT u.empresa AS line_empresa FROM lines l LEFT JOIN usuarios u ON u.id=l.created_by WHERE l.id=$1', [lineId])
+      if (companyOf(lineOwner.rows[0] || {}, req.user) !== 'NOVONET') {
+        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox está disponible para líneas NOVONET' })
+      }
+      try { await getInboxBitrixNotes().validateDeal(bitrixId) }
+      catch (_) { return res.status(400).json({ success: false, error: 'No se pudo validar la negociación en NOVONET. Revisa el ID e intenta nuevamente.' }) }
+    }
+
     // Registrar la identidad real del número en WhatsApp (maneja LID) para
     // que una respuesta temprana del cliente caiga en ESTA conversación.
     try { await bm.resolveWaJid(lineId, waNumber) } catch (e) {}
@@ -526,6 +561,14 @@ async function setBitrixId(req, res) {
     const bitrixId = String(req.body.bitrix_id || '').trim()
     const owned = await findOwnedConversation(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
+    if (bitrixId) {
+      if (companyOf(owned, req.user) !== 'NOVONET') {
+        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox está disponible para líneas NOVONET' })
+      }
+      try { await getInboxBitrixNotes().validateDeal(bitrixId) }
+      catch (_) { return res.status(400).json({ success: false, error: 'No se pudo validar la negociación en NOVONET. Revisa el ID e intenta nuevamente.' }) }
+    }
 
     await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId || null, id])
     res.json({ success: true, data: { id, bitrix_deal_id: bitrixId || null } })

@@ -71,7 +71,8 @@ async function events(req, res) {
   const b = req.body || {}
   const evento = b.event || ''
   if (!tokenValido(req)) {
-    console.warn('[WABOT-BITRIX] evento con application_token inválido, descartado:', evento)
+    const recibido = req.body?.auth?.application_token || req.body?.application_token || '(vacio)'
+    console.warn('[WABOT-BITRIX] evento con application_token invalido, descartado. evento=', evento, 'token_recibido=', recibido)
     return res.status(401).json({ ok: false })
   }
   res.json({ ok: true })

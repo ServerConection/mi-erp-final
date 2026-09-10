@@ -93,6 +93,24 @@ const speedBar = (v, max = 2000) => {
   return Math.min(100, Math.max(6, (n / max) * 100));
 };
 
+// En HOME/TERCERA EDAD la velocidad real viene embebida en el nombre del
+// plan ("Plan 850 Mbps"); la columna "velocidad" del catálogo para esas
+// filas es en realidad el tipo de conexión (Simétrica/Asimétrica), no un
+// número. GAMER/PYME/PRO sí traen la velocidad directa en esa columna.
+function megasDe(row) {
+  const enNombre = String(row?.plan_base || "").match(/(\d+)\s*Mbps/i);
+  if (enNombre) return Number(enNombre[1]);
+  return velNum(row?.velocidad);
+}
+function tipoConexion(row) {
+  if (velNum(row?.velocidad) != null) return null; // esa columna ya es el número
+  return row?.velocidad || null; // "Simétrica" / "Asimétrica"
+}
+function megasLabel(n) {
+  if (n == null) return "—";
+  return n >= 1000 ? `${(n / 1000).toFixed(1)} Gbps` : `${n} Mbps`;
+}
+
 // Precio efectivo de una fila del catálogo según la forma de pago elegida.
 // Solo HOME trae promos TC/Cuenta (columnas tc_pvp/cta_pvp); el resto de
 // tipos siempre usa precio_con_iva, igual que en la versión de abril 2026.
@@ -353,7 +371,7 @@ function PanelTabla({ catalogo }) {
     .filter(c => c.tipo_plan === tipoActivo)
     .filter(c => !q || `${c.plan_base} ${c.empaquetado} ${c.equipo || ""}`.toLowerCase().includes(q));
   const tieneProm = filas.some(f => f.tc_pvp != null || f.cta_pvp != null);
-  const tieneVelocidad = filas.some(f => f.velocidad);
+  const tieneVelocidad = filas.some(f => f.velocidad || megasDe(f) != null);
 
   return (
     <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, overflow: "hidden" }}>
@@ -392,7 +410,7 @@ function PanelTabla({ catalogo }) {
               <tr key={i}>
                 <td style={{ ...td, fontWeight: 700 }}>{f.plan_base}</td>
                 <td style={td}>{f.empaquetado}</td>
-                {tieneVelocidad && <td style={td}>{f.velocidad || "—"}</td>}
+                {tieneVelocidad && <td style={td}>{megasLabel(megasDe(f))}{tipoConexion(f) ? ` · ${tipoConexion(f)}` : ""}</td>}
                 <td style={td}>{fmt$(f.precio_sin_iva)}</td>
                 <td style={{ ...td, fontWeight: 700, color: "#a5b4fc" }}>{fmt$(f.precio_con_iva)}</td>
                 {tieneProm && <>
@@ -509,13 +527,13 @@ function PanelSmart({ catalogo }) {
       filtrados = base.filter(r => precioEfectivo(r, pago) <= presupuesto * 1.1);
     } else if (tipo === "pyme") {
       filtrados = base.filter(r => {
-        const v = velNum(r.velocidad);
+        const v = megasDe(r);
         return precioEfectivo(r, pago) <= presupuesto * 1.15 && (v == null || v >= Math.max(velMin, 200));
       });
     } else {
       // hogar (HOME) y tercera_edad
       filtrados = base.filter(r => {
-        const v = velNum(r.velocidad);
+        const v = megasDe(r);
         return precioEfectivo(r, pago) <= presupuesto * 1.1 && (v == null || v >= velMin);
       });
     }
@@ -797,14 +815,16 @@ function PlanCard({ plan, idx, tipo, pago, destacado, selected, onClick }) {
         <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 4, lineHeight: 1.3 }}>{nombrePlan(plan)}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <div style={{ fontSize: 28, fontWeight: 900, color: color, letterSpacing: "-1px", lineHeight: 1 }}>
-            {velLabel(plan.velocidad)}
+            {megasLabel(megasDe(plan))}
           </div>
-          <div style={{ fontSize: 9, color: "#475569", fontWeight: 700, lineHeight: 1.3 }}>FIBRA<br/>ÓPTICA</div>
+          <div style={{ fontSize: 9, color: "#475569", fontWeight: 700, lineHeight: 1.3 }}>
+            {tipoConexion(plan) && <>{tipoConexion(plan)}<br/></>}FIBRA<br/>ÓPTICA
+          </div>
         </div>
         <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 99, height: 4, marginBottom: 8 }}>
           <div style={{
             background: `linear-gradient(90deg, ${color}, ${color}80)`,
-            borderRadius: 99, height: 4, width: `${speedBar(plan.velocidad)}%`, transition: "width 0.5s"
+            borderRadius: 99, height: 4, width: `${speedBar(megasDe(plan))}%`, transition: "width 0.5s"
           }} />
         </div>
       </div>
@@ -863,8 +883,9 @@ function PlanDetalle({ plan, idx, tipo, pago }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 24 }}>
         <div>
           <div style={{ fontSize: 10, color: color, fontWeight: 800, letterSpacing: "0.1em", marginBottom: 12 }}>DETALLES DEL PLAN</div>
-          <Row icon="⚡" label="Velocidad" value={velLabel(plan.velocidad)} />
-          <Row icon="🔄" label="Tipo" value={plan.tipo_plan} />
+          <Row icon="⚡" label="Velocidad" value={megasLabel(megasDe(plan))} />
+          <Row icon="🔄" label="Categoría" value={plan.tipo_plan} />
+          {tipoConexion(plan) && <Row icon="🔀" label="Conexión" value={tipoConexion(plan)} />}
           <Row icon="📡" label="Equipo" value={plan.equipo || "—"} />
           {facturas > 0 && <Row icon="📅" label="Facturas con dcto" value={`${facturas} meses`} />}
           {dsto > 0 && <Row icon="🏷️" label="Descuento" value={fmtPct(dsto)} />}
@@ -885,7 +906,7 @@ function PlanDetalle({ plan, idx, tipo, pago }) {
 
         <div>
           <div style={{ fontSize: 10, color: color, fontWeight: 800, letterSpacing: "0.1em", marginBottom: 12 }}>💬 ARGUMENTOS DE VENTA</div>
-          <ArgVenta velocidad={plan.velocidad} tipo={tipo} precio={precio} plan={plan} dsto={dsto} />
+          <ArgVenta velocidad={megasDe(plan)} tipo={tipo} precio={precio} plan={plan} dsto={dsto} />
         </div>
       </div>
     </div>

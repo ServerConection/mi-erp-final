@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const {
-  install, settings, events,
+  install, settings, events, placementInbox,
   registrarConector, listarCanales, activarCanal, estado,
 } = require('../controllers/bitrixConnector.controller')
 const { verificarToken, noAsesor } = require('../middleware/auth')
@@ -13,6 +13,8 @@ router.get('/install',   install)
 router.post('/events',   events)
 router.get('/settings',  settings)
 router.post('/settings', settings)
+router.get('/placement-inbox',  placementInbox)
+router.post('/placement-inbox', placementInbox)
 
 // Administración desde el ERP.
 router.get('/estado',    verificarToken, estado)

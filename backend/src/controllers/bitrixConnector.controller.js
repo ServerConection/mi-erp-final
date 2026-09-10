@@ -53,6 +53,20 @@ async function install(req, res) {
   }
 }
 
+// ── Placement embebido (pestaña "WABOT" en el Deal, ícono de menú, etc.) ────
+// Bitrix abre los placements con POST, y el frontend (sitio estático) no
+// sabe responder POST -> devuelve vacío y la pestaña sale en blanco. Esta
+// ruta sí responde (GET y POST) y redirige al Inbox real del ERP.
+async function placementInbox(req, res) {
+  const destino = `${process.env.ERP_FRONTEND_URL || 'https://erp-frontend-v1.onrender.com'}/whatsapp/inbox`
+  res.set('Content-Type', 'text/html; charset=utf-8')
+  return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#fff">
+<script>window.location.replace(${JSON.stringify(destino)});</script>
+<noscript><a href="${destino}">Abrir WABOT Inbox</a></noscript>
+</body></html>`)
+}
+
 // ── Iframe de configuración del conector ────────────────────────────────────
 async function settings(req, res) {
   res.set('Content-Type', 'text/html; charset=utf-8')
@@ -181,4 +195,4 @@ async function estado(req, res) {
   } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
 }
 
-module.exports = { install, settings, events, registrarConector, listarCanales, activarCanal, estado }
+module.exports = { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado }

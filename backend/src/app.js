@@ -83,7 +83,12 @@ app.use(cors(corsOptions));
 // SEGURIDAD: Headers de seguridad nativos (sin dependencia helmet)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // WABOT-BITRIX: install/settings los abre Bitrix24 dentro de un iframe en
+  // SU dominio (bitrix24.es). SAMEORIGIN se lo bloquearia ("rechazo la
+  // conexion" en el navegador), por eso estas dos rutas quedan afuera.
+  if (!req.path.startsWith('/api/bitrix-connector/install') && !req.path.startsWith('/api/bitrix-connector/settings')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'interest-cohort=()');

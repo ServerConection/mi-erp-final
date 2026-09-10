@@ -70,6 +70,8 @@ async function events(req, res) {
   // El trabajo real va después de responder.
   const b = req.body || {}
   const evento = b.event || ''
+  // TEMPORAL: ver exactamente que manda Bitrix cuando abren la app. Borrar despues.
+  console.log('[WABOT-BITRIX] body crudo recibido en /events:', JSON.stringify(b))
   if (!tokenValido(req)) {
     const recibido = req.body?.auth?.application_token || req.body?.application_token || '(vacio)'
     console.warn('[WABOT-BITRIX] evento con application_token invalido, descartado. evento=', evento, 'token_recibido=', recibido)

@@ -86,7 +86,7 @@ app.use((req, res, next) => {
   // WABOT-BITRIX: install/settings los abre Bitrix24 dentro de un iframe en
   // SU dominio (bitrix24.es). SAMEORIGIN se lo bloquearia ("rechazo la
   // conexion" en el navegador), por eso estas dos rutas quedan afuera.
-  if (!req.path.startsWith('/api/bitrix-connector/install') && !req.path.startsWith('/api/bitrix-connector/settings')) {
+  if (!req.path.startsWith('/api/bitrix-connector/install') && !req.path.startsWith('/api/bitrix-connector/settings') && !req.path.startsWith('/api/bitrix-connector/placement-inbox')) {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   }
   res.setHeader('X-XSS-Protection', '1; mode=block');

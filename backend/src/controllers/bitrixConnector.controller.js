@@ -20,7 +20,8 @@ const APP_TOKEN = process.env.BITRIX_APP_TOKEN || ''
 /** Bitrix manda application_token en cada evento; sin él no se procesa nada. */
 function tokenValido(req) {
   if (!APP_TOKEN) return false
-  const t = req.body?.auth?.application_token || req.body?.application_token || ''
+  const b = req.body || {}
+  const t = b.auth?.application_token || b.application_token || b.APPLICATION_TOKEN || ''
   return t === APP_TOKEN
 }
 
@@ -29,9 +30,6 @@ async function install(req, res) {
   try {
     const b = req.body || {}
     const auth = b.auth || b
-    // TEMPORAL: para capturar el application_token una sola vez tras reinstalar.
-    // Borrar esta linea despues de leerlo en los logs y guardarlo en BITRIX_APP_TOKEN.
-    console.log('[WABOT-BITRIX] application_token recibido:', b.auth?.application_token || b.application_token || '(no vino ninguno)')
     if (!auth.access_token || !auth.refresh_token) {
       return res.status(400).send('Faltan tokens en el callback de instalación')
     }
@@ -70,13 +68,37 @@ async function events(req, res) {
   // El trabajo real va después de responder.
   const b = req.body || {}
   const evento = b.event || ''
-  // TEMPORAL: ver exactamente que manda Bitrix cuando abren la app. Borrar despues.
-  console.log('[WABOT-BITRIX] body crudo recibido en /events:', JSON.stringify(b))
   if (!tokenValido(req)) {
-    const recibido = req.body?.auth?.application_token || req.body?.application_token || '(vacio)'
-    console.warn('[WABOT-BITRIX] evento con application_token invalido, descartado. evento=', evento, 'token_recibido=', recibido)
+    console.warn('[WABOT-BITRIX] evento con application_token invalido, descartado:', evento)
     return res.status(401).json({ ok: false })
   }
+
+  // Bitrix llama a esta MISMA ruta cuando alguien ABRE la app desde el menu:
+  // no trae 'event', trae AUTH_ID/REFRESH_ID sueltos (son el access/refresh
+  // token). Se aprovecha para guardar o refrescar los tokens OAuth cada vez
+  // que alguien abre la app, sin depender de que el install inicial funcionara.
+  if (!evento && b.AUTH_ID && b.REFRESH_ID) {
+    try {
+      await bitrixApp.guardarTokens({
+        access_token: b.AUTH_ID,
+        refresh_token: b.REFRESH_ID,
+        expires_in: b.AUTH_EXPIRES || 3600,
+        member_id: b.member_id,
+        scope: b.APPLICATION_SCOPE,
+      })
+      console.log('[WABOT-BITRIX] Tokens OAuth guardados/refrescados desde la apertura de la app.')
+    } catch (e) {
+      console.error('[WABOT-BITRIX] no se pudo guardar tokens al abrir la app:', e.message)
+    }
+    res.set('Content-Type', 'text/html; charset=utf-8')
+    return res.send('<html><body style="font-family:system-ui;padding:24px">'
+      + '<h3>WABOT-BITRIX</h3><p>La app esta activa. Las lineas de WhatsApp se administran desde el ERP.</p>'
+      + '</body></html>')
+  }
+
+  // Se responde 200 SIEMPRE y lo antes posible: Bitrix reintenta ante un no-200
+  // y un reintento acá significa mandarle el mensaje dos veces al cliente.
+  // El trabajo real va después de responder.
   res.json({ ok: true })
 
   try {

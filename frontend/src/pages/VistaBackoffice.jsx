@@ -710,6 +710,7 @@ const FIELD_LABELS = {
   tipo_documento: "TIPO DOCUMENTO",
   numero_identificacion: "CÉDULA",
   nombre_cliente_completo: "CLIENTE",
+  representante_legal: "REPRESENTANTE LEGAL",
   estado_civil: "ESTADO CIVIL",
   fecha_nacimiento: "FECHA NAC.",
   mes_nacimiento: "MES NAC.",
@@ -1137,7 +1138,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
     "nombre_atc", "clausulas", "lider_comercial",
     // Cliente
-    "nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente",
+    "nombre_cliente_completo", "representante_legal", "numero_identificacion", "tipo_documento", "tipo_cliente", "genero_cliente",
     "estado_civil", "fecha_nacimiento", "email_cliente", "telf_celular_pin",
     "telf_celular_2", "telf_fijo", "aplica_descuento_3ra_edad",
     // Dirección / vivienda
@@ -1190,6 +1191,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         titulo: "Cliente",
         campos: [
           "nombre_cliente_completo",
+          "representante_legal",
+          "tipo_documento",
           "numero_identificacion",
           "tipo_cliente",
           "genero_cliente",
@@ -1278,10 +1281,20 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     return grupos
       .map((g) => ({
         ...g,
-        campos: g.campos.filter((f) => editableFields.includes(f)),
+        campos: g.campos.filter((f) => {
+          if (!editableFields.includes(f)) return false;
+          const empresa = detail?.tipo_documento === "RUC EMPRESA";
+          const juridico = detail?.tipo_cliente === "JURÍDICO";
+          if (f === "representante_legal") return empresa;
+          if (["genero_cliente", "estado_civil"].includes(f)) return !empresa;
+          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
+          if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento);
+          if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(detail?.aplica_descuento_3ra_edad || "");
+          return true;
+        }),
       }))
       .filter((g) => g.campos.length);
-  }, [editableFields]);
+  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad]);
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -1617,7 +1630,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                       {sec.campos.map((field) => (
                         <div key={field}>
                           <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                            {FIELD_LABELS[field] || field}
+                            {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA" ? "NOMBRE DE LA EMPRESA" : FIELD_LABELS[field] || field}
                           </label>
 
                           {esCampoDocumento(field) ? (
@@ -1629,6 +1642,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                               onAlert={setAlert}
                             />
+                          ) : ["tipo_documento", "tipo_cliente"].includes(field) ? (
+                            <select value={detail?.[field] || ""}
+                              onChange={e => setDetail(prev => ({ ...prev, [field]: e.target.value,
+                                ...(field === "tipo_documento" && e.target.value !== "RUC EMPRESA" ? { representante_legal: "" } : {}),
+                              }))}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}>
+                              <option value="">Seleccionar...</option>
+                              {(field === "tipo_documento" ? ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"] : ["NATURAL", "JURÍDICO"]).map(value => <option key={value} value={value}>{value}</option>)}
+                            </select>
                           ) : field === "estatus_regularizacion" ? (() => {
                             const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
                             const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"

@@ -20,6 +20,7 @@ const {
     esDescarteExactoExpr,
     descarteIndicadoresExpr,
     ETAPAS_NO_GESTIONABLES,
+    esIngresoJotformExpr,
 } = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -290,7 +291,13 @@ const queryKPI = (columna, filters) => {
       AND ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${CRM_DATE} = ${JF_DATE}
     ) AS ventas_del_dia,
-    COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date) AS ingresos_reales,
+    -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO ni
+    -- PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes era COUNT(*) sin
+    -- más condición que el rango de fecha (mismo fix que Novonet).
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+    ) AS ingresos_reales,
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${CRM_DATE} = ${JF_DATE}
@@ -387,8 +394,14 @@ const queryKPI = (columna, filters) => {
       AND ${esGestionableExpr('mv.etapa_crm')}
     ) AS descarte_base,
 
+    -- Numerador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales,
+    -- FIX 2026-09-10: antes no excluía DUPLICADO/PRESERVICIO/DESISTE DEL
+    -- SERVICIO/FIN DE GESTION).
     ROUND( COALESCE(
-      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+      )::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
@@ -397,7 +410,11 @@ const queryKPI = (columna, filters) => {
 
     ROUND( COALESCE(
       COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
-      / NULLIF(COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date), 0)
+      -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
+      / NULLIF(COUNT(*) FILTER (
+          WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+          AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+        ), 0)
     , 0) * 100, 2) AS tasa_instalacion,
 
     ROUND( COALESCE(
@@ -408,10 +425,14 @@ const queryKPI = (columna, filters) => {
         ), 0)
     , 0) * 100, 2) AS efectividad_activas_vs_pauta,
 
+    -- FIX (2026-09-10): antes excluía solo PRESERVICIO/DESISTE DEL SERVICIO
+    -- (hardcodeado aquí). Ahora usa esIngresoJotformExpr() de shared/etapas.js,
+    -- que además excluye DUPLICADO y FIN DE GESTION — misma regla que
+    -- "ingresos_reales" (equivalente exacto al fix de Novonet).
     ROUND( COALESCE(
       COUNT(*) FILTER (
         WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-        AND UPPER(TRIM(mv.estado_venta)) NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
+        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
       )::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date

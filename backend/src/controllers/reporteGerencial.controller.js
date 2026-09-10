@@ -19,7 +19,7 @@
  * fuente falla, la otra empresa igual se muestra.
  */
 const pool = require('../config/db');
-const { esGestionableExpr } = require('../shared/etapas');
+const { esGestionableExpr, esIngresoJotformExpr } = require('../shared/etapas');
 const { construirForecastAgencias } = require('../shared/inversionRedes');
 
 const fechaEc = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -52,7 +52,11 @@ const SERIES = {
     // ingresos —que hoy están bien— empezarían a inflarse.
     sql: `
       SELECT mb.j_fecha_registro_sistema::date                       AS fecha,
-             COUNT(*)::int                                            AS ingresos,
+             -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
+             -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
+             -- Antes era COUNT(*) sin más condición (mismo fix que
+             -- indicadores.controller.js / kpiComercial.controller.js).
+             COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('crm.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')})::int AS ingresos,
              COUNT(*) FILTER (WHERE ${esGestionableExpr('crm.b_etapa_de_la_negociacion')})::int AS gestionables,
              COUNT(*) FILTER (WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO')::int    AS activas
       FROM public.mestra_bitrix mb
@@ -82,7 +86,11 @@ const SERIES = {
     nombre: 'Velsa',
     sql: `
       SELECT (mv.fecha_registro_jotform - INTERVAL '5 hours')::date   AS fecha,
-             COUNT(*)::int                                            AS ingresos,
+             -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
+             -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
+             -- Antes era COUNT(*) sin más condición (mismo fix que
+             -- indicadoresVelsaMaterialized.controller.js).
+             COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::int AS ingresos,
              COUNT(*) FILTER (WHERE ${esGestionableExpr('mv.etapa_crm')})::int          AS gestionables,
              COUNT(*) FILTER (WHERE UPPER(TRIM(mv.estado_venta)) = 'ACTIVO')::int       AS activas
       FROM public.mv_indicadores_velsa_completo mv

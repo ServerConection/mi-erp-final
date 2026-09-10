@@ -9,6 +9,11 @@
 //   - estado:              ENCIMA / EN_LINEA / DEBAJO
 // =============================================================================
 const pool = require('../config/db');
+// FUENTE ÚNICA DE VERDAD (regla de gerencia 2026-09-10): "ingresos jotform" no
+// cuenta DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Mismo
+// criterio que indicadores.controller.js / indicadoresVelsaMaterialized /
+// kpiComercial.controller.js — ver backend/src/shared/etapas.js.
+const { esIngresoJotformExpr } = require('../shared/etapas');
 
 const VENTANA_HISTORICA_DIAS = 90;
 const TOLERANCIA_PCT         = 10;  // ±10% se considera "en linea"
@@ -30,8 +35,9 @@ function clasificarEstado(actual, promedio) {
 // Constructor de query: parametriza la tabla y la columna timestamp
 // NOTA: se castea la columna a TIMESTAMPTZ para compatibilidad con AT TIME ZONE
 //       cuando el campo esta almacenado como text en la BD.
-function buildQuery(tabla, colFecha) {
+function buildQuery(tabla, colFecha, etapaCol, estadoCol) {
   const col = `(${colFecha}::timestamptz)`;
+  const filtroIngresoJotform = esIngresoJotformExpr(etapaCol, estadoCol);
   return `
     WITH historico AS (
       SELECT
@@ -43,6 +49,7 @@ function buildQuery(tabla, colFecha) {
       WHERE ${colFecha} IS NOT NULL
         AND (${col} AT TIME ZONE 'America/Guayaquil') >= (NOW() AT TIME ZONE 'America/Guayaquil') - INTERVAL '${VENTANA_HISTORICA_DIAS} days'
         AND (${col} AT TIME ZONE 'America/Guayaquil') <  DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Guayaquil'))
+        AND ${filtroIngresoJotform}
       GROUP BY 1, 2, 3
     ),
     promedio AS (
@@ -59,6 +66,7 @@ function buildQuery(tabla, colFecha) {
              COUNT(*) AS ingresos_hoy
       FROM ${tabla}
       WHERE DATE(${col} AT TIME ZONE 'America/Guayaquil') = DATE(NOW() AT TIME ZONE 'America/Guayaquil')
+        AND ${filtroIngresoJotform}
       GROUP BY 1
     ),
     serie_horas AS (
@@ -80,18 +88,22 @@ function buildQuery(tabla, colFecha) {
 
 // Endpoint generico que recibe empresa
 async function obtenerReporteJefatura(empresa) {
-  let tabla, colFecha;
+  let tabla, colFecha, etapaCol, estadoCol;
   if (empresa === 'NOVONET') {
     tabla = 'public.mestra_bitrix';
     colFecha = 'j_fecha_registro_sistema';
+    etapaCol = 'b_etapa_de_la_negociacion';
+    estadoCol = 'j_netlife_estatus_real';
   } else if (empresa === 'VELSA') {
     tabla = 'public.mv_indicadores_velsa_completo';
     colFecha = 'fecha_registro_jotform';
+    etapaCol = 'etapa_crm';
+    estadoCol = 'estado_venta';
   } else {
     throw new Error('empresa invalida (NOVONET | VELSA)');
   }
 
-  const q = buildQuery(tabla, colFecha);
+  const q = buildQuery(tabla, colFecha, etapaCol, estadoCol);
   const r = await pool.query(q);
 
   const { hora: horaActual } = getEcuadorHourDow();

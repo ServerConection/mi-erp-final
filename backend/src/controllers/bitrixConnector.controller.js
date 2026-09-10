@@ -29,6 +29,9 @@ async function install(req, res) {
   try {
     const b = req.body || {}
     const auth = b.auth || b
+    // TEMPORAL: para capturar el application_token una sola vez tras reinstalar.
+    // Borrar esta linea despues de leerlo en los logs y guardarlo en BITRIX_APP_TOKEN.
+    console.log('[WABOT-BITRIX] application_token recibido:', b.auth?.application_token || b.application_token || '(no vino ninguno)')
     if (!auth.access_token || !auth.refresh_token) {
       return res.status(400).send('Faltan tokens en el callback de instalación')
     }

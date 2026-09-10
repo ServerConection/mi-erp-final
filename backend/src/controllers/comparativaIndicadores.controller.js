@@ -13,7 +13,8 @@ const {
     esGestionableExpr,
     esDescarteExpr,
     ETAPAS_NO_GESTIONABLES,
-    esPorRegularizarExpr
+    esPorRegularizarExpr,
+    esIngresoJotformExpr,
 } = require('../shared/etapas');
 
 const getFechaEcuador = () =>
@@ -110,13 +111,18 @@ const getComparativaSupervisores = async (req, res) => {
           WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
         ) AS gestionables,
+        -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO
+        -- ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes contaba
+        -- todo el rango sin más condición (mismo fix que indicadores.controller.js).
         COUNT(DISTINCT mb.j_id_bitrix) FILTER (
           WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+          AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
         ) AS ingresos_jot,
         COUNT(DISTINCT mb.j_id_bitrix) FILTER (
           WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
           AND mb.j_netlife_estatus_real = 'ACTIVO'
         ) AS activas,
+        -- Denominador = INGRESOS JOTFORM limpios (misma regla que arriba).
         ROUND(
           COUNT(DISTINCT mb.j_id_bitrix) FILTER (
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
@@ -124,6 +130,7 @@ const getComparativaSupervisores = async (req, res) => {
           )::numeric /
           NULLIF(COUNT(DISTINCT mb.j_id_bitrix) FILTER (
             WHERE mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
+            AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
           ), 0) * 100, 1
         ) AS tasa_instalacion,
         COUNT(DISTINCT mb.j_id_bitrix) FILTER (
@@ -191,7 +198,10 @@ const getComparativaSupervisores = async (req, res) => {
             WHEN mb.j_fecha_registro_sistema::date <= (SELECT pd + 21 FROM primer_dom) THEN 4
             ELSE 5
           END AS num_semana,
-          COUNT(DISTINCT mb.j_id_bitrix) AS ingresos_jot,
+          -- Mismo criterio de "ingresos jotform" que la tabla de totales de arriba.
+          COUNT(DISTINCT mb.j_id_bitrix) FILTER (
+            WHERE ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
+          ) AS ingresos_jot,
           COUNT(DISTINCT mb.j_id_bitrix) FILTER (
             WHERE mb.j_netlife_estatus_real = 'ACTIVO'
           ) AS activas

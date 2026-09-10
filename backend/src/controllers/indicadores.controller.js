@@ -17,7 +17,8 @@ const {
     sqlListaUpper: _sqlListaUpper,
     esPorRegularizarExpr,
     descarteIndicadoresExpr,
-    esDescarteExactoExpr
+    esDescarteExactoExpr,
+    esIngresoJotformExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
 const {
@@ -653,7 +654,13 @@ const getIndicadoresDashboard = async (req, res) => {
     AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
     AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS gestionables,
-                COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date) AS ingresos_reales,
+                COUNT(*) FILTER (
+                    -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
+                    -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
+                    -- Antes era COUNT(*) sin más condición que el rango de fecha.
+                    WHERE _jf_date BETWEEN $1::date AND $2::date
+                    AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
+                ) AS ingresos_reales,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
                 ) AS activas,
@@ -725,7 +732,11 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND ${esPorRegularizarExpr('j_estatus_regularizacion')}
                 ) AS regularizacion,
                 ROUND( COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
+                    -- Numerador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
+                    COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
+                    )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
@@ -733,7 +744,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date), 0)
+                    -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
+                    / NULLIF(COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
+                    ), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
@@ -743,9 +758,13 @@ const getIndicadoresDashboard = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND( COALESCE(
+                    -- FIX (2026-09-10): antes excluía solo PRESERVICIO/DESISTE DEL
+                    -- SERVICIO (hardcodeado aquí). Ahora usa esIngresoJotformExpr()
+                    -- de shared/etapas.js, que además excluye DUPLICADO y FIN DE
+                    -- GESTION — misma regla que "ingresos_reales".
                     COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
-                        AND j_netlife_estatus_real NOT IN ('PRESERVICIO','DESISTE DEL SERVICIO')
+                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date

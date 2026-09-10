@@ -248,6 +248,43 @@ const ESTADOS_ANULAN_REGULARIZACION = [
 const esRegularizacionNetaExpr = (colEstatus, colEstadoVenta) =>
     `(${esPorRegularizarExpr(colEstatus)} AND UPPER(TRIM(COALESCE(${colEstadoVenta}, ''))) NOT IN ${sqlListaUpper(ESTADOS_ANULAN_REGULARIZACION)})`;
 
+// ── (5) INGRESOS JOTFORM "LIMPIOS" ──────────────────────────────────────────
+// Regla de gerencia (2026-09-10): "Ingresos Jotform" (y todo cálculo que lo
+// use como insumo: efectividad, tasa de instalación, eficiencia) NO debe
+// contar un registro cuando:
+//   · su ETAPA DE NEGOCIACIÓN (CRM) es DUPLICADO → no es un ingreso nuevo,
+//     es el mismo cliente ya registrado.
+//   · su ESTADO DE SERVICIO/NETLIFE es PRESERVICIO, DESISTE DEL SERVICIO o
+//     FIN DE GESTION → la venta no llegó a buen término, es ruido operativo
+//     igual que el resto de exclusiones de este archivo.
+// Antes "ingresos_reales" contaba TODO lo que cae en el rango de fecha, sin
+// mirar ninguna de las dos columnas (confirmado en indicadores.controller.js
+// e indicadoresVelsaMaterialized.controller.js: COUNT(*) FILTER (WHERE
+// _jf_date/JF_DATE BETWEEN $1 AND $2), sin más condición).
+// Un registro sin etapa o sin estado (NULL/vacío) SÍ cuenta — mismo criterio
+// de "no penalizar dato faltante" que esLeadTotalExpr/esGestionableExpr.
+const ETAPAS_EXCLUIDAS_INGRESO_JOTFORM = [
+    'DUPLICADO',
+    'DUPLLICADO', // typo real encontrado en los datos del CRM (ver ETAPAS_NO_SUMAN_LEAD)
+];
+const ESTADOS_EXCLUIDOS_INGRESO_JOTFORM = [
+    'PRESERVICIO',
+    'DESISTE DEL SERVICIO',
+    'FIN DE GESTION',
+    'FIN DE GESTIÓN', // variante con tilde, por si el dato viene así
+];
+
+/**
+ * ingreso_jotform = SI ⇔ la etapa de negociación NO es DUPLICADO y el
+ * estado de servicio/Netlife NO es PRESERVICIO / DESISTE DEL SERVICIO /
+ * FIN DE GESTION.
+ * @param {string} etapaCol  columna de etapa de negociación (CRM)
+ * @param {string} estadoCol columna de estado de servicio/Netlife (Jotform)
+ */
+const esIngresoJotformExpr = (etapaCol, estadoCol) =>
+    `(UPPER(TRIM(COALESCE(${etapaCol}, ''))) NOT IN ${sqlListaUpper(ETAPAS_EXCLUIDAS_INGRESO_JOTFORM)} ` +
+    `AND UPPER(TRIM(COALESCE(${estadoCol}, ''))) NOT IN ${sqlListaUpper(ESTADOS_EXCLUIDOS_INGRESO_JOTFORM)})`;
+
 module.exports = {
     ETAPAS_NO_SUMAN_LEAD,
     ETAPAS_NO_GESTIONABLES_BASE,
@@ -268,4 +305,7 @@ module.exports = {
     ESTADOS_ANULAN_REGULARIZACION,
     esPorRegularizarExpr,
     esRegularizacionNetaExpr,
+    ETAPAS_EXCLUIDAS_INGRESO_JOTFORM,
+    ESTADOS_EXCLUIDOS_INGRESO_JOTFORM,
+    esIngresoJotformExpr,
 };

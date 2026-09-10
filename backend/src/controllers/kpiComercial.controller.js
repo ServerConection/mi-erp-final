@@ -32,7 +32,7 @@
 
 const pool = require('../config/db');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr } = require('../shared/etapas');
+const { esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
 
 const errorResponse = (res, etiqueta, err) => {
   console.error(`[KpiComercial][${etiqueta}]`, err.message);
@@ -126,9 +126,14 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
+        -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO
+        -- ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes era
+        -- COUNT(*) sin más condición que el rango de fecha (mismo fix que
+        -- indicadores.controller.js / indicadoresVelsaMaterialized.controller.js).
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
+              AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
         )                                                  AS ingresos_jot,
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango

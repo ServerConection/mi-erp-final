@@ -118,4 +118,47 @@ async function llamar(metodo, params = {}, { _reintento = false } = {}) {
   }
 }
 
-module.exports = { llamar, guardarTokens, leerTokens, refrescar, tokenVigente, configurado, PORTAL }
+/**
+ * ── SSO del placement (auto-login del asesor en el embed "WABOT Inbox") ────
+ *
+ * Cuando Bitrix abre el placement (CRM_DEAL_DETAIL_TAB) manda, entre otros
+ * campos, AUTH_ID: el access_token de la SESIÓN DEL USUARIO QUE ABRIÓ LA
+ * PESTAÑA (no el de nuestra app). Ese AUTH_ID es justamente lo que permite
+ * preguntarle a Bitrix "¿quién sos realmente?" sin confiar en nada que venga
+ * del navegador: se llama a user.current CON ESE auth, y la respuesta la
+ * arma Bitrix, no el cliente.
+ *
+ * Verificación de DOMAIN como defensa adicional: si alguien intentara abrir
+ * este endpoint apuntando a un portal distinto al configurado, se corta acá
+ * antes de gastar la llamada.
+ */
+async function usuarioActualPorAuthId(domain, authId) {
+  if (!domain || !authId) throw new Error('BITRIX_SSO_FALTAN_DATOS')
+
+  const dominioLimpio = String(domain).toLowerCase().replace(/[^a-z0-9.\-]/g, '')
+  const portalHost = PORTAL.replace(/^https?:\/\//i, '').toLowerCase()
+  if (!portalHost || dominioLimpio !== portalHost) {
+    throw new Error('BITRIX_SSO_DOMINIO_NO_CONFIABLE')
+  }
+
+  const controlador = new AbortController()
+  const t = setTimeout(() => controlador.abort(), 15000)
+  try {
+    const res = await fetch(`https://${dominioLimpio}/rest/user.current.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth: authId }),
+      signal: controlador.signal,
+    })
+    const json = await res.json()
+    if (json.error || !json.result) {
+      // No se loguea authId/AUTH_ID en texto plano: es un token de sesión.
+      throw new Error(`BITRIX_SSO_AUTH_INVALIDO: ${json.error_description || json.error || 'sin resultado'}`)
+    }
+    return json.result // { ID, EMAIL, NAME, LAST_NAME, ACTIVE, ... }
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+module.exports = { llamar, guardarTokens, leerTokens, refrescar, tokenVigente, configurado, PORTAL, usuarioActualPorAuthId }

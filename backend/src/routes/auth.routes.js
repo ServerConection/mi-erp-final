@@ -146,6 +146,85 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * POST /auth/bitrix-exchange
+ * SSO desde el placement de Bitrix ("pestaña WABOT" en el Deal).
+ *
+ * El backend del conector (bitrixConnector.controller.js → placementInbox)
+ * ya validó la identidad real contra Bitrix (user.current con el AUTH_ID de
+ * la sesión del asesor) y emitió un código de un solo uso de 60s. Este
+ * endpoint solo canjea ese código por un JWT real — el mismo que emite
+ * /auth/login — sin volver a tocar Bitrix.
+ *
+ * El UPDATE ... WHERE used = false RETURNING es atómico: dos canjes en
+ * paralelo con el mismo código nunca pueden ganar los dos.
+ */
+router.post('/bitrix-exchange', async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code || typeof code !== 'string' || code.length < 10) {
+      return res.status(400).json({ success: false, error: 'Código inválido' });
+    }
+
+    const canje = await pool.query(
+      `UPDATE bitrix_sso_codes
+          SET used = true
+        WHERE code = $1 AND used = false AND expires_at > NOW()
+        RETURNING usuario_id`,
+      [code]
+    );
+
+    if (canje.rows.length === 0) {
+      return res.status(401).json({ success: false, error: 'Código inválido o expirado' });
+    }
+
+    const usuarioId = canje.rows[0].usuario_id;
+    const result = await pool.query(
+      `SELECT id, usuario, empresa, perfil, nombres, apellidos, activo
+       FROM usuarios WHERE id = $1`,
+      [usuarioId]
+    );
+    const user = result.rows[0];
+
+    if (!user || user.activo !== 'SI') {
+      return res.status(403).json({ success: false, error: 'Usuario desactivado. Contacta al administrador.' });
+    }
+
+    const perfil = user.perfil?.toUpperCase() || '';
+    const empresa = user.empresa?.toUpperCase() || '';
+    const permisos = obtenerPermisosUsuario(empresa, perfil);
+    const urlReporte = USUARIOS_ESPECIALES.has(user.usuario)
+      ? URL_REPORTES.especiales
+      : (URL_REPORTES[perfil] || '');
+
+    const token = jwt.sign(
+      { id: user.id, empresa, perfil },
+      process.env.JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    await registrarIntento(user.usuario, req.ip || req.connection.remoteAddress, true, 'SSO Bitrix (embed WABOT)');
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        usuario: user.usuario,
+        perfil,
+        empresa,
+        nombre: `${user.nombres} ${user.apellidos}`,
+        url_reporte: urlReporte,
+        permisos
+      }
+    });
+
+  } catch (error) {
+    console.error('[auth.routes] bitrix-exchange:', error);
+    return res.status(500).json({ success: false, error: 'Error interno del servidor' });
+  }
+});
+
+/**
  * GET /auth/permisos
  * Obtener permisos del usuario autenticado
  * Headers: Authorization: Bearer <token>

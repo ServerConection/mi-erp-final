@@ -11,6 +11,7 @@
  * La autenticidad se valida con application_token, que Bitrix manda en cada
  * request y es el único secreto compartido que tenemos con el portal.
  */
+const crypto = require('crypto')
 const pool = require('../config/db')
 const bitrixApp = require('../services/bitrixApp.service')
 const conector = require('../services/bitrixConnector.service')
@@ -53,18 +54,69 @@ async function install(req, res) {
   }
 }
 
-// ── Placement embebido (pestaña "WABOT" en el Deal, ícono de menú, etc.) ────
-// Bitrix abre los placements con POST, y el frontend (sitio estático) no
-// sabe responder POST -> devuelve vacío y la pestaña sale en blanco. Esta
-// ruta sí responde (GET y POST) y redirige al Inbox real del ERP.
-async function placementInbox(req, res) {
-  const destino = `${process.env.ERP_FRONTEND_URL || 'https://erp-frontend-v1.onrender.com'}/whatsapp/inbox`
-  res.set('Content-Type', 'text/html; charset=utf-8')
-  return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+const FRONTEND_URL = (process.env.ERP_FRONTEND_URL || 'https://erp-frontend-v1.onrender.com').replace(/\/+$/, '')
+
+function paginaRedirect(destino) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;background:#fff">
 <script>window.location.replace(${JSON.stringify(destino)});</script>
 <noscript><a href="${destino}">Abrir WABOT Inbox</a></noscript>
-</body></html>`)
+</body></html>`
+}
+
+// ── Placement embebido (pestaña "WABOT" en el Deal) ─────────────────────────
+// Bitrix abre los placements con POST, y el frontend (sitio estático) no
+// sabe responder POST -> devuelve vacío y la pestaña sale en blanco. Esta
+// ruta sí responde (GET y POST).
+//
+// Además hace el SSO: Bitrix manda AUTH_ID (la sesión del asesor que abrió
+// la pestaña) y DOMAIN. Con eso se le pregunta A BITRIX quién es de verdad
+// (user.current) — nunca se confía en un email o id que venga del cliente.
+// Si el correo de Bitrix coincide con un usuario ACTIVO del ERP, se emite un
+// código de un solo uso (60s de vida) y se redirige al embed del frontend
+// con ese código — jamás con el JWT real en la URL. Si algo falla o no
+// coincide, cae de forma segura al login manual normal.
+async function placementInbox(req, res) {
+  res.set('Content-Type', 'text/html; charset=utf-8')
+  const irALoginManual = () => res.send(paginaRedirect(`${FRONTEND_URL}/whatsapp/inbox`))
+
+  try {
+    const b = (req.body && Object.keys(req.body).length) ? req.body : (req.query || {})
+    const authId = b.AUTH_ID || b.auth_id
+    const domain = b.DOMAIN || b.domain
+
+    if (!authId || !domain) return irALoginManual()
+
+    // 1) Confirmar identidad real contra Bitrix (nunca confiar en el cliente)
+    const usuarioBitrix = await bitrixApp.usuarioActualPorAuthId(domain, authId)
+    const email = String(usuarioBitrix.EMAIL || '').trim().toLowerCase()
+    if (!email) { console.warn('[WABOT-BITRIX] SSO: user.current sin EMAIL'); return irALoginManual() }
+
+    // 2) Ese correo debe pertenecer a un usuario del ERP, activo
+    const r = await pool.query(
+      `SELECT id FROM usuarios WHERE LOWER(correo) = $1 AND activo = 'SI' LIMIT 1`,
+      [email]
+    )
+    if (r.rows.length === 0) {
+      console.warn('[WABOT-BITRIX] SSO: sin usuario ERP activo para ese correo de Bitrix')
+      return irALoginManual()
+    }
+    const usuarioId = r.rows[0].id
+
+    // 3) Código de un solo uso, vida corta: el frontend lo canjea por el JWT
+    //    real en /api/auth/bitrix-exchange. El JWT nunca viaja en la URL.
+    const code = crypto.randomBytes(32).toString('hex')
+    await pool.query(
+      `INSERT INTO bitrix_sso_codes (code, usuario_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '60 seconds')`,
+      [code, usuarioId]
+    )
+
+    return res.send(paginaRedirect(`${FRONTEND_URL}/embed/inbox?code=${code}`))
+  } catch (e) {
+    console.error('[WABOT-BITRIX] placementInbox SSO falló, cae a login manual:', e.message)
+    return irALoginManual()
+  }
 }
 
 // ── Iframe de configuración del conector ────────────────────────────────────

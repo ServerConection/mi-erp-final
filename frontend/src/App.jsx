@@ -62,6 +62,8 @@ const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
+// Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
+const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
 // Spinner mínimo mientras se descarga el chunk
 const PageLoader = () => (
@@ -153,6 +155,12 @@ export default function App() {
           </Route>
 
           <Route path="tv" element={<TVMode />} />
+
+          {/* Embed SSO para Bitrix: réplica de Wazzup, solo el módulo Inbox,
+              sin DashboardLayout (sin sidebar). Se autentica sola con el
+              código de un solo uso que manda placementInbox. */}
+          <Route path="embed/inbox" element={<EmbedInbox />} />
+
           <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
       </Suspense>

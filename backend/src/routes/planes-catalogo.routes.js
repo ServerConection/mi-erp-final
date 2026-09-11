@@ -97,40 +97,47 @@ function expandirFilaHome({ nombre, adicionales, paramountExtra, precios, promos
 // ─── Parsers por hoja ────────────────────────────────────────────────────────
 // Devuelven arrays de registros ya expandidos.
 function parseHome(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
+  // SEPTIEMBRE 2026: el Excel agregó la columna "Beneficio extra MINI UPS"
+  // (D) y movió el header una fila abajo (ahora fila 6, datos desde fila 7).
+  // Todo lo que antes estaba en D..V se recorrió una columna a la derecha
+  // (ahora E..W). Ver nota al inicio del archivo si vuelve a desalinearse.
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 6, defval: null }); // desde fila 7
   const out = [];
   for (const r of rows) {
     if (!r.A || !/^plan/i.test(String(r.A))) continue;
     out.push(...expandirFilaHome({
       nombre: r.A,
-      adicionales: r.D,
-      paramountExtra: r.I,
-      precios: { sinIva: num(r.F) },
+      adicionales: r.E,
+      paramountExtra: r.J,
+      precios: { sinIva: num(r.G) },
       promos: {
-        tc_dsto:      num(r.J),  // 0.35 = 35%
-        tc_facturas:  num(r.K),
-        tc_pvp:       round2(num(r.O)),
-        cta_dsto:     num(r.Q),
-        cta_facturas: num(r.R),
-        cta_pvp:      round2(num(r.V)),
+        tc_dsto:      num(r.K),  // 0.35 = 35%
+        tc_facturas:  num(r.L),
+        tc_pvp:       round2(num(r.P)),
+        cta_dsto:     num(r.R),
+        cta_facturas: num(r.S),
+        cta_pvp:      round2(num(r.W)),
       },
-    }).map(x => ({ ...x, tipo_plan: 'HOME', velocidad: limpiar(r.B), plan_promocion: limpiar(r.E), equipo: limpiar(r.C) })));
+    }).map(x => ({ ...x, tipo_plan: 'HOME', velocidad: limpiar(r.B), plan_promocion: limpiar(r.F), equipo: limpiar(r.C) })));
   }
   return out;
 }
 
 function parseTerceraEdad(ws) {
+  // SEPTIEMBRE 2026: misma columna nueva "Beneficio extra MINI UPS" (D)
+  // insertada aquí también, corriendo D..J una columna a la derecha
+  // (ahora E..K). El header sigue en la fila 5 (sin cambio de fila).
   const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
   const out = [];
   for (const r of rows) {
     if (!r.A || !/^plan/i.test(String(r.A))) continue;
     out.push(...expandirFilaHome({
       nombre: r.A,
-      adicionales: r.D,
-      paramountExtra: r.J,
-      precios: { sinIva: num(r.G) },
+      adicionales: r.E,
+      paramountExtra: r.K,
+      precios: { sinIva: num(r.H) },
       promos: {}, // esta hoja no tiene promociones
-    }).map(x => ({ ...x, tipo_plan: 'TERCERA EDAD', velocidad: limpiar(r.B), plan_promocion: limpiar(r.E), equipo: limpiar(r.C) })));
+    }).map(x => ({ ...x, tipo_plan: 'TERCERA EDAD', velocidad: limpiar(r.B), plan_promocion: limpiar(r.F), equipo: limpiar(r.C) })));
   }
   return out;
 }

@@ -15,8 +15,8 @@
  *   N Leads Total      = leads creados en el rango
  *   N Leads Gestion    = toda etapa salvo familias no gestionables centralizadas
  *   % Gest vs Totales  = gestion / total
- *   Efect. vs Leads    = Venta Subida / total
- *   Efect. vs Gestion  = Venta Subida / gestion
+ *   Efect. vs Leads    = Ingresos JOT v?lidos / total
+ *   Efect. vs Gestion  = Ingresos JOT v?lidos / gestion
  *   Descarte %         = Descarte / gestion      ← sobre GESTIONABLES, no total
  *   Ingresos CRM       = cantidad en etapa Venta Subida
  *   Ingresos Jot       = registros Jotform creados en el rango
@@ -31,8 +31,9 @@
  */
 
 const pool = require('../config/db');
+const { ORIGENES_NOVONET, filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr } = require('../shared/etapas');
+const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
 
 const errorResponse = (res, etiqueta, err) => {
   console.error(`[KpiComercial][${etiqueta}]`, err.message);
@@ -108,11 +109,13 @@ WITH datos AS (
             -- KPI comercial venía inflado.
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
               AND ${esLeadTotalExpr('mb.b_etapa_de_la_negociacion')}
+              AND __DISCRIMINACION__
         )                                                  AS leads_total,
 
         COUNT(DISTINCT mb.b_id) FILTER (
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
               AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
+              AND __DISCRIMINACION__
         )                                                  AS leads_gestion,
 
         COUNT(DISTINCT mb.b_id) FILTER (
@@ -126,9 +129,14 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
+        -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO
+        -- ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes era
+        -- COUNT(*) sin más condición que el rango de fecha (mismo fix que
+        -- indicadores.controller.js / indicadoresVelsaMaterialized.controller.js).
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
+              AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
         )                                                  AS ingresos_jot,
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango
@@ -182,8 +190,9 @@ WITH datos AS (
                   BETWEEN $1::date AND $2::date
               AND ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
         )                                                  AS por_regularizar
-    FROM public.__VISTA__ mb
+    FROM __VISTA__ mb
     __JOIN_EMPLEADOS__
+    WHERE __FILTROS__
     GROUP BY 1
 ),
 metas AS (
@@ -238,8 +247,8 @@ const derivar = (f) => {
     ...f,
     activas_backlog: activasBacklog,
     pct_gestion_vs_total: pct(f.leads_gestion, f.leads_total),
-    pct_efect_vs_leads:   pct(f.ingresos_crm,  f.leads_total),
-    pct_efect_vs_gestion: pct(f.ingresos_crm,  f.leads_gestion),
+    pct_efect_vs_leads:   pct(f.ingresos_jot,  f.leads_total),
+    pct_efect_vs_gestion: pct(f.ingresos_jot,  f.leads_gestion),
     pct_descarte:         pct(f.descarte_n,    f.leads_gestion),
     pct_tasa_activacion:  pct(f.activas_totales, f.ingresos_jot),
     // Los tres van sobre INGRESOS JOTFORM del rango, según definió gerencia
@@ -316,17 +325,27 @@ async function getKpiComercial(req, res) {
       ? 'VELSA' : 'NOVONET';
 
     // NOVONET: el supervisor sale de public.empleados (por nombre exacto y mes)
-    // VELSA:   no hay equipos — todo el personal responde a las dos supervisoras,
-    //          así que va como un solo grupo. Los datos de supervisor que trae
-    //          la MV están incompletos (55% vacío) y con nombres duplicados.
+    // VELSA: misma fuente, fecha local y supervisor mensual que el dashboard.
     const cfg = empresa === 'VELSA'
       ? {
-          vista: 'vw_bitrix_velsa',
-          supervisor: `'ALEXANDRA PACHECO · DARIANA LEONARDI'`,
+          vista: `(SELECT mv.id_crm AS b_id, mv.id_jotform AS j_id_bitrix,
+            mv.asesor AS b_persona_responsable, mv.etapa_crm AS b_etapa_de_la_negociacion,
+            mv.origen AS b_origen, mv.fecha_creacion_crm::date AS b_creado_el_fecha,
+            (mv.fecha_registro_jotform - INTERVAL '5 hours')::date AS j_fecha_registro_sistema,
+            mv.fecha_activacion_date AS j_fecha_activacion_netlife,
+            mv.fecha_activacion AS fecha_activacion_filtro,
+            mv.estado_venta AS j_netlife_estatus_real,
+            mv.estado_regularizacion AS j_estatus_regularizacion,
+            mv.forma_pago AS j_forma_pago, mv.aplica_descuento AS j_aplica_descuento_3ra_edad,
+            CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) AS j_plan_contratado_final,
+            ${require('./indicadoresVelsaMaterialized.controller').getSupervisorExpr()} AS supervisor
+            FROM public.mv_indicadores_velsa_completo mv)`,
+          supervisor: `COALESCE(MAX(mb.supervisor), 'SIN ASIGNAR')`,
           joinEmpleados: '',
         }
       : {
-          vista: 'vw_bitrix_novonet',
+          vista: 'public.vw_bitrix_novonet',
           supervisor: `COALESCE(MAX(e.supervisor), 'SIN ASIGNAR')`,
           joinEmpleados: `
             LEFT JOIN LATERAL (
@@ -334,18 +353,76 @@ async function getKpiComercial(req, res) {
                 FROM public.empleados e2
                 WHERE e2.nombre_completo = mb.b_persona_responsable
                 ORDER BY
-                    CASE WHEN e2.codigo = EXTRACT(MONTH FROM $1::date)::text THEN 0 ELSE 1 END,
+                    CASE WHEN e2.codigo = EXTRACT(MONTH FROM COALESCE(
+                      public.parse_fecha_flex(mb.b_cerrado::text),
+                      public.parse_fecha_flex(mb.b_creado_el_fecha::text)
+                    ))::text THEN 0 ELSE 1 END,
                     e2.codigo::int DESC
                 LIMIT 1
             ) e ON TRUE`,
         };
 
+    const values = [rango.desde, rango.hasta, empresa];
+    const q = req.query;
+    const filtros = [
+      `(mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+        OR public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+        OR public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date)`];
+    const exactos = (col, value) => {
+      const lista = (Array.isArray(value) ? value : String(value).split(',')).map(v => v.trim().toUpperCase()).filter(Boolean);
+      if (lista.length) { values.push(lista); filtros.push(`UPPER(TRIM(${col})) = ANY($${values.length}::text[])`); }
+    };
+    const parcial = (col, value) => {
+      if (value) { values.push(`%${value}%`); filtros.push(`${col} ILIKE $${values.length}`); }
+    };
+    if (q.asesor) {
+      const col = empresa === 'VELSA'
+        ? require('./indicadoresVelsaMaterialized.controller').normalizarAsesorSQL('mb.b_persona_responsable')
+        : 'mb.b_persona_responsable';
+      exactos(col, q.asesor);
+    }
+    parcial(empresa === 'VELSA' ? 'mb.supervisor' : 'e.supervisor', q.supervisor);
+    parcial('mb.j_netlife_estatus_real', q.estadoNetlife);
+    parcial('mb.j_netlife_estatus_real', q.etapaJotform);
+    parcial('mb.j_estatus_regularizacion', q.estadoRegularizacion);
+    if (q.etapaCRM) {
+      if (empresa === 'VELSA') parcial('mb.b_etapa_de_la_negociacion', q.etapaCRM);
+      else exactos('mb.b_etapa_de_la_negociacion', q.etapaCRM);
+    }
+    if (q.idBitrix) {
+      values.push(String(q.idBitrix));
+      filtros.push(`(mb.b_id::text = $${values.length} OR mb.j_id_bitrix::text = $${values.length})`);
+    }
+    if (q.gestionables === 'si' || q.gestionables === 'no') filtros.push(
+      `${q.gestionables === 'no' ? 'NOT ' : ''}${esGestionableExpr('mb.b_etapa_de_la_negociacion')}`);
+    const porOrigen = origenes => filtroOrigenBitrix({
+      empresa: 'novonet', deal: dealNovonet(), origenes, values,
+    }).replace(/^ AND /, '');
+    if (empresa === 'NOVONET') filtros.push(porOrigen(ORIGENES_NOVONET));
+    if (q.origen) {
+      if (empresa === 'NOVONET') filtros.push(porOrigen(String(q.origen).split(',')));
+      else exactos('mb.b_origen', q.origen);
+    }
+    if (q.canal && empresa === 'NOVONET') {
+      const { CANAL_ORIGENES_MAP } = require('./indicadores.controller');
+      const origenes = [...new Set(String(q.canal).split(',').flatMap(v => CANAL_ORIGENES_MAP[v.trim()] || [v.trim()]))];
+      filtros.push(porOrigen(origenes));
+    }
+    if (q.fechaActivacionDesde && q.fechaActivacionHasta) {
+      values.push(q.fechaActivacionDesde, q.fechaActivacionHasta);
+      const fecha = empresa === 'VELSA' ? 'mb.fecha_activacion_filtro::date' : 'public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)';
+      filtros.push(`${fecha} BETWEEN $${values.length - 1}::date AND $${values.length}::date`);
+    }
+    // Usar callbacks: los regex SQL contienen $ seguido de comilla, que
+    // String.replace interpreta como un patrón de sustitución ($').
     const sql = SQL_BASE
-      .replace('__VISTA__', cfg.vista)
-      .replace('__SUPERVISOR__', cfg.supervisor)
-      .replace('__JOIN_EMPLEADOS__', cfg.joinEmpleados);
+      .replace('__VISTA__', () => cfg.vista)
+      .replace('__SUPERVISOR__', () => cfg.supervisor)
+      .replace('__JOIN_EMPLEADOS__', () => cfg.joinEmpleados)
+      .replace('__FILTROS__', () => filtros.join(' AND '))
+      .replaceAll('__DISCRIMINACION__', () => empresa === 'NOVONET' ? sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion') : 'TRUE');
 
-    const { rows } = await pool.query(sql, [rango.desde, rango.hasta, empresa]);
+    const { rows } = await pool.query(sql, values);
 
     // Nivel ASESOR — fusiona primero variantes de nombre corto/completo que
     // claveAsesorSQL no haya cubierto todavia (ver fusionarPorNombreSimilar).

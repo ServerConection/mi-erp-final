@@ -3,6 +3,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { getSocketCompartido } from "../utils/socketCompartido";
+import WaCreationDateFilter from "../components/WaCreationDateFilter";
+import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -81,6 +83,7 @@ export default function WaCampanas() {
   const [saving, setSaving]         = useState(false);
   const [detail, setDetail]         = useState(null); // campaign con variantes
   const [search, setSearch]         = useState("");
+  const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [uploadingIdx, setUploadingIdx] = useState(null); // índice de variante subiendo imagen
 
   // Normaliza la respuesta de la API: SIEMPRE devuelve un array
@@ -300,7 +303,7 @@ export default function WaCampanas() {
   };
 
   const filtered = (Array.isArray(campaigns) ? campaigns : []).filter(c =>
-    (c.name || "").toLowerCase().includes(search.toLowerCase())
+    (c.name || "").toLowerCase().includes(search.toLowerCase()) && matchesCreationDate(c.created_at, creationDates)
   );
 
   if (loading) return (
@@ -330,11 +333,13 @@ export default function WaCampanas() {
       />
 
       {/* Lista */}
+      <WaCreationDateFilter value={creationDates} onChange={setCreationDates} />
+      <p className="text-xs text-slate-500 mb-3">{filtered.length} de {campaigns.length} campañas</p>
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <div className="text-5xl mb-3">📣</div>
           <div className="font-medium text-slate-500">No hay campañas</div>
-          <div className="text-sm mt-1">Crea una para empezar</div>
+          <div className="text-sm mt-1">{campaigns.length ? "No hay campañas que coincidan con los filtros seleccionados." : "Crea una para empezar"}</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -350,6 +355,7 @@ export default function WaCampanas() {
                     <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
                       👤 {camp.owner_username || "—"}
                     </span>
+                    <span className="text-xs text-slate-500">Creación: {formatCreationDate(camp.created_at)}</span>
                   </div>
                   <div className="flex gap-4 mt-1 text-xs text-slate-500">
                     <span>📤 {camp.sent_count}/{camp.total_recipients}</span>

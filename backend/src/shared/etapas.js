@@ -248,7 +248,29 @@ const ESTADOS_ANULAN_REGULARIZACION = [
 const esRegularizacionNetaExpr = (colEstatus, colEstadoVenta) =>
     `(${esPorRegularizarExpr(colEstatus)} AND UPPER(TRIM(COALESCE(${colEstadoVenta}, ''))) NOT IN ${sqlListaUpper(ESTADOS_ANULAN_REGULARIZACION)})`;
 
+// ── (5) INGRESOS JOTFORM "LIMPIOS" ──────────────────────────────────────────
+// Regla ratificada: la elegibilidad depende del ESTADO JOT, no de la etapa CRM.
+// Estas exclusiones solo afectan el numerador; nunca filtrar los gestionables.
+const ETAPAS_EXCLUIDAS_INGRESO_JOTFORM = [];
+const ESTADOS_EXCLUIDOS_INGRESO_JOTFORM = [
+    'PRESERVICIO',
+    'FIN DE GESTION',
+    'FIN DE GESTIÓN',
+    'DESISTE DE SERVICIO',
+    'DESISTE DEL SERVICIO',
+    'DUPLICADO',
+    'DUPLLICADO',
+    'SIN ASUNTO',
+];
+
+const esEstadoIngresoJotformValidoExpr = (col) =>
+    `UPPER(REGEXP_REPLACE(TRIM(COALESCE(${col}, '')), '\\s+', ' ', 'g')) NOT IN ${sqlListaUpper(ESTADOS_EXCLUIDOS_INGRESO_JOTFORM)}`;
+
+// Firma compatible con consumidores existentes: etapaCol ya no restringe JOT.
+const esIngresoJotformExpr = (_etapaCol, estadoCol) => esEstadoIngresoJotformValidoExpr(estadoCol);
+
 module.exports = {
+    esEstadoIngresoJotformValidoExpr,
     ETAPAS_NO_SUMAN_LEAD,
     ETAPAS_NO_GESTIONABLES_BASE,
     ETAPAS_NO_GESTIONABLES,
@@ -268,4 +290,7 @@ module.exports = {
     ESTADOS_ANULAN_REGULARIZACION,
     esPorRegularizarExpr,
     esRegularizacionNetaExpr,
+    ETAPAS_EXCLUIDAS_INGRESO_JOTFORM,
+    ESTADOS_EXCLUIDOS_INGRESO_JOTFORM,
+    esIngresoJotformExpr,
 };

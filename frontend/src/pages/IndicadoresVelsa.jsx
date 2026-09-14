@@ -504,15 +504,21 @@ export default function ReporteVelsa() {
   // ── Tablas KPI comerciales de VELSA ────────────────────────────────────────
   // Mismo endpoint que Novonet, cambia solo ?empresa=VELSA.
   // Aislado: si falla, las tablas salen vacías y el resto del dashboard sigue.
+  const kpiRequestRef = useRef(0);
   const fetchKpiComercial = useCallback(async (f) => {
+    const requestId = ++kpiRequestRef.current;
+    setKpiComercial({ supervisores: [], asesores: [], total: null });
     try {
       const p = new URLSearchParams({ empresa: 'VELSA' });
-      if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
-      if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
+      Object.entries(f || {}).forEach(([key, value]) => {
+        if (value !== '' && value != null) p.set(key, Array.isArray(value) ? value.join(',') : String(value));
+      });
       const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
       const r = await res.json();
+      if (requestId !== kpiRequestRef.current) return;
       setKpiComercial(r?.success ? r.data : { supervisores: [], asesores: [], total: null });
     } catch (e) {
+      if (requestId !== kpiRequestRef.current) return;
       console.error('[KPI-COMERCIAL-VELSA]', e);
       setKpiComercial({ supervisores: [], asesores: [], total: null });
     }
@@ -1427,8 +1433,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={0}  variant="stone" label="Leads Totales"        meta={metaDinamica(METAS_COMERCIALES_VELSA.leadsTotales, filtros.fechaDesde, filtros.fechaHasta)} real={stats.leadsGestionables}               color="border-l-orange-500" tooltip={TIP.leadsTotales} />
             <KpiMini index={1}  variant="stone" label="Gestionables"         meta={metaDinamica(METAS_COMERCIALES_VELSA.gestionables, filtros.fechaDesde, filtros.fechaHasta)} real={stats.gestionables}                    color="border-l-amber-500" tooltip={TIP.gestionables} />
             <KpiMini index={2}  variant="stone" label="% Leads Gestionables"   meta={METAS_COMERCIALES_VELSA.pctGestionables}                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" tooltip={TIP.pctGestionablesVsTotales} />
-            <KpiMini index={3}  variant="stone" label="Efect. vs Leads Tot." meta={METAS_COMERCIALES_VELSA.efectVsLeads}                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" tooltip={TIP.efectividadVsLeadsTotales} />
-            <KpiMini index={4}  variant="stone" label="Efect. vs Gestion."   meta={METAS_COMERCIALES_VELSA.efectVsGestion}                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" tooltip={TIP.efectividad} />
+            <KpiMini index={3}  variant="stone" label="JOT / Leads Tot." meta={METAS_COMERCIALES_VELSA.efectVsLeads}                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" tooltip={TIP.efectividadVsLeadsTotales} />
+            <KpiMini index={4}  variant="stone" label="Efectividad"   meta={METAS_COMERCIALES_VELSA.efectVsGestion}                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" tooltip={TIP.efectividad} />
             <KpiMini index={5}  variant="stone" label="Descarte %"           meta={METAS_COMERCIALES_VELSA.descarte}                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" tooltip={TIP.descarte} />
             <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRM, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" tooltip={TIP.ventasCRM} />
             <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRMDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -1446,7 +1452,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             {/* ALINEACIÓN CON NOVONET (2026-08-17)
                 Velsa tenía DOS tarjetas que Novonet no tiene:
                   · "Efic. Pauta" (efectividad_activas_vs_pauta) — Novonet la
-                    RETIRÓ y la reemplazó por "Efect. vs Leads Tot." (index 3),
+                    RETIRÓ y la reemplazó por "JOT / Leads Tot." (index 3),
                     que ya está arriba. Tener las dos duplicaba el mismo
                     concepto con dos denominadores distintos y por eso los
                     números de Velsa nunca coincidían con los de Novonet.
@@ -2134,10 +2140,10 @@ function HorizontalTable({ title, data, hasScroll, isAsesor = false }) {
     ventas_dia_form:        safeData.reduce((a, r) => a + Number(r.ventas_dia_form || 0), 0),
     venta_seguimiento:      safeData.reduce((a, r) => a + Number(r.venta_seguimiento || 0), 0),
     regularizacion:         safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
-    efectividad_real:       (safeData.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+    efectividad_real:       calcularStatsIndicadores({ asesores: safeData }).efectividad,
     descarte:               (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
     tasa_instalacion:       (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
-    eficiencia:             (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
+    eficiencia:             calcularStatsIndicadores({ asesores: safeData }).efectividad,
   };
   const totalTarjetaCredito = safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
   const totalTerceraEdad    = safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0);

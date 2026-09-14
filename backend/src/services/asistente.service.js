@@ -15,6 +15,11 @@
 const pool = require('../config/db');
 const broadcastSvc = require('./broadcast.service');
 const { buscarFaq, fichasRelevantes, listarFaq } = require('./asistente.faq');
+// FUENTE ÚNICA DE VERDAD (regla de gerencia 2026-09-10): "ingresos jotform" no
+// cuenta DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Mismo
+// criterio que indicadores.controller.js / indicadoresVelsaMaterialized /
+// kpiComercial.controller.js — ver backend/src/shared/etapas.js.
+const { esIngresoJotformExpr } = require('../shared/etapas');
 
 // ── Fechas (Ecuador) ──────────────────────────────────────────
 const fechaEc = (d = new Date()) =>
@@ -60,6 +65,7 @@ const SRC = {
     // j_fecha_registro_sistema sigue siendo TEXTO con formatos mezclados.
     // El ::date directo REVIENTA con valores tipo 'Aug 15 2026'.
     fJot: `public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)`,
+    estado: 'mb.j_netlife_estatus_real',
     activo: `mb.j_netlife_estatus_real = 'ACTIVO'`,
     tarjeta: `mb.j_forma_pago ILIKE '%TARJETA%'`,
     // Nombre de columna estaba truncado: j_aplica_descuento_ → no existe
@@ -73,6 +79,7 @@ const SRC = {
     etapa: 'mv.etapa_crm',
     fLead: 'mv.fecha_creacion_crm::date',
     fJot: `(mv.fecha_registro_jotform - INTERVAL '5 hours')::date`,
+    estado: 'mv.estado_venta',
     activo: `mv.estado_venta = 'ACTIVO'`,
     tarjeta: `mv.forma_pago ILIKE '%TARJETA%'`,
     tercera: `mv.aplica_descuento ILIKE '%TERCERA%'`,
@@ -135,7 +142,9 @@ async function resumenEmpresa(emp, rango) {
   const [leads, ventasCrm, jot, activas, descartes, vdia] = await Promise.all([
     totalCon(emp, rango, null, s.fLead),
     totalCon(emp, rango, `UPPER(${s.etapa}) = 'VENTA SUBIDA'`, s.fLead),
-    totalCon(emp, rango, null, s.fJot),
+    // INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO ni
+    // PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
+    totalCon(emp, rango, esIngresoJotformExpr(s.etapa, s.estado), s.fJot),
     totalCon(emp, rango, s.activo, s.fJot),
     totalCon(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead),
     ventasDelDia(emp, rango),
@@ -176,7 +185,7 @@ async function consultaAsesor(nombre, rango) {
         SELECT COALESCE(${s.asesor},'') AS asesor,
           COUNT(*) FILTER (WHERE ${s.fLead} BETWEEN $2::date AND $3::date)::int AS leads,
           COUNT(*) FILTER (WHERE UPPER(${s.etapa})='VENTA SUBIDA' AND ${s.fLead} BETWEEN $2::date AND $3::date)::int AS ventas_subidas,
-          COUNT(*) FILTER (WHERE ${s.fJot} BETWEEN $2::date AND $3::date)::int AS ingresos_jot,
+          COUNT(*) FILTER (WHERE ${s.fJot} BETWEEN $2::date AND $3::date AND ${esIngresoJotformExpr(s.etapa, s.estado)})::int AS ingresos_jot,
           COUNT(*) FILTER (WHERE ${s.activo} AND ${s.fJot} BETWEEN $2::date AND $3::date)::int AS activas,
           COUNT(*) FILTER (WHERE UPPER(${s.etapa}) LIKE 'DESCARTE%' AND ${s.fLead} BETWEEN $2::date AND $3::date)::int AS descartes
         FROM ${s.tabla}
@@ -206,7 +215,8 @@ async function construirSnapshot(q) {
       const [resumen, topVentas, topJot, topActivas, topDescartes, topLeads] = await Promise.all([
         resumenEmpresa(emp, rango),
         topPorAsesor(emp, rango, `UPPER(${s.etapa}) = 'VENTA SUBIDA'`, s.fLead),
-        topPorAsesor(emp, rango, null, s.fJot),
+        // Mismo criterio de "ingresos jotform" que resumenEmpresa().
+        topPorAsesor(emp, rango, esIngresoJotformExpr(s.etapa, s.estado), s.fJot),
         topPorAsesor(emp, rango, s.activo, s.fJot),
         topPorAsesor(emp, rango, `UPPER(${s.etapa}) LIKE 'DESCARTE%'`, s.fLead),
         topPorAsesor(emp, rango, null, s.fLead),

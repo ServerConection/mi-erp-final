@@ -710,6 +710,7 @@ const FIELD_LABELS = {
   tipo_documento: "TIPO DOCUMENTO",
   numero_identificacion: "CÉDULA",
   nombre_cliente_completo: "CLIENTE",
+  representante_legal: "REPRESENTANTE LEGAL",
   estado_civil: "ESTADO CIVIL",
   fecha_nacimiento: "FECHA NAC.",
   mes_nacimiento: "MES NAC.",
@@ -1132,29 +1133,40 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   }, []);
 
   const editableFields = useMemo(() => [
-    "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta",
-    "nombre_cliente_completo", "numero_identificacion", "tipo_cliente", "genero_cliente", "fecha_nacimiento",
-    "email_cliente", "provincia", "ciudad", "parroquia_barrio", "telf_celular_pin", "telf_celular_2",
-    "direccion_calles", "referencia_ubicacion", "plan_contratado_final", "servicios_digitales", "forma_pago",
-    "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
-    "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", "netlife_login",
-    "netlife_estatus_real", "calidad_venta_analista", "venta_efectiva", "auditoria_documentos", "auditado_por",
-    "inconsistencia_documental", "observacion_auditoria", "errores_telcos", "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
-    "fecha_regularizacion_atc",
-    "novedades_atc", "estado_welcome",
-
+    // Venta
+    "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+    "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
+    "nombre_atc", "clausulas", "lider_comercial",
+    // Cliente
+    "nombre_cliente_completo", "representante_legal", "numero_identificacion", "tipo_documento", "tipo_cliente", "genero_cliente",
+    "estado_civil", "fecha_nacimiento", "email_cliente", "telf_celular_pin",
+    "telf_celular_2", "telf_fijo", "aplica_descuento_3ra_edad",
+    // Dirección / vivienda
+    "provincia", "ciudad", "parroquia_barrio", "direccion_calles",
+    "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
+    "tipo_vivienda", "regimen_vivienda",
+    // Plan y pago
+    "plan_contratado_final", "servicios_digitales", "forma_pago", "banco",
+    "detalle_bancario_ahorros", "valor_pago", "tipo_contrato", "ciclo_facturacion",
+    "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
+    "beneficios_de_ley", "plazo_contrato_meses",
+    // Registro / regularización
+    "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
+    "fecha_regularizacion_atc", "mes_regularizacion",
+    // Netlife
+    "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
+    "fecha_activacion_netlife", "novedades_atc", "estado_welcome",
     // Agendamiento
-    "turno_agendado",
-    "fecha_agenda",
-    "mes_agenda",
-    "dia_abc_agenda",
-    // Ingreso a Telcos
-    "fecha_ingreso_telcos",
-    "fecha_activacion_netlife",
-
-    "observacion_venta_original",
-    "observacion_gestion_cobranza",
-    ...CAMPOS_DOCUMENTO
+    "turno_agendado", "fecha_agenda", "mes_agenda", "dia_abc_agenda",
+    // Auditoría
+    "calidad_venta_analista", "venta_efectiva", "auditoria_documentos",
+    "auditado_por", "inconsistencia_documental",
+    // Observaciones
+    "observacion_venta_original", "observacion_gestion_cobranza",
+    "errores_telcos", "observacion_auditoria", "resumen_venta",
+    // Documentos
+    "links_documentos",
+    ...CAMPOS_DOCUMENTO,
   ], []);
 
   // ── Agrupación del detalle en secciones ────────────────────────────────
@@ -1168,63 +1180,121 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const seccionesDetalle = useMemo(() => {
     const grupos = [
       {
-        titulo: "Registro",
+        titulo: "Venta",
+        campos: [
+          "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+          "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
+          "nombre_atc", "clausulas", "lider_comercial",
+        ],
+      },
+      {
+        titulo: "Cliente",
+        campos: [
+          "nombre_cliente_completo",
+          "representante_legal",
+          "tipo_documento",
+          "numero_identificacion",
+          "tipo_cliente",
+          "genero_cliente",
+          "estado_civil",
+          "fecha_nacimiento",
+          "email_cliente",
+          "telf_celular_pin",
+          "telf_celular_2",
+          "telf_fijo",
+          "aplica_descuento_3ra_edad",
+        ],
+      },
+      {
+        titulo: "Dirección y vivienda",
+        campos: [
+          "provincia", "ciudad", "parroquia_barrio", "direccion_calles",
+          "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
+          "tipo_vivienda", "regimen_vivienda",
+        ],
+      },
+      {
+        titulo: "Plan y pago",
+        campos: [
+          "plan_contratado_final", "servicios_digitales", "forma_pago", "banco",
+          "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
+          "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
+          "beneficios_adicionales", "beneficios_de_ley", "plazo_contrato_meses",
+        ],
+      },
+      {
+        titulo: "Registro / Regularización",
         campos: [
           "estatus_regularizacion",
           "detalle_regularizacion",
           "gestion_atc",
           "fecha_regularizacion_atc",
-        ]
-      },
-
-      {
-        titulo: "Cliente",
-        campos: [
-          "nombre_cliente_completo",
-          "numero_identificacion",
-          "tipo_cliente",
-          "genero_cliente",
-          "fecha_nacimiento",
-          "email_cliente",
-          "telf_celular_pin",
-          "telf_celular_2",
+          "mes_regularizacion",
         ],
       },
-
       {
         titulo: "Netlife",
         campos: [
           "netlife_login",
           "netlife_estatus_real",
           "fecha_ingreso_telcos",
-          "fecha_agenda",
           "fecha_activacion_netlife",
           "novedades_atc",
           "estado_welcome",
         ],
       },
-
+      {
+        titulo: "Agendamiento",
+        campos: [
+          "turno_agendado",
+          "fecha_agenda",
+          "mes_agenda",
+          "dia_abc_agenda",
+        ],
+      },
+      {
+        titulo: "Auditoría",
+        campos: [
+          "calidad_venta_analista",
+          "venta_efectiva",
+          "auditoria_documentos",
+          "auditado_por",
+          "inconsistencia_documental",
+        ],
+      },
       {
         titulo: "Observaciones",
         campos: [
           "observacion_venta_original",
+          "observacion_gestion_cobranza",
           "errores_telcos",
+          "observacion_auditoria",
           "resumen_venta",
         ],
       },
       {
         titulo: "Documentos",
-        campos: CAMPOS_DOCUMENTO,
+        campos: ["links_documentos", ...CAMPOS_DOCUMENTO],
       },
     ];
 
     return grupos
       .map((g) => ({
         ...g,
-        campos: g.campos.filter((f) => editableFields.includes(f)),
+        campos: g.campos.filter((f) => {
+          if (!editableFields.includes(f)) return false;
+          const empresa = detail?.tipo_documento === "RUC EMPRESA";
+          const juridico = detail?.tipo_cliente === "JURÍDICO";
+          if (f === "representante_legal") return empresa;
+          if (["genero_cliente", "estado_civil"].includes(f)) return !empresa;
+          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
+          if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento);
+          if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(detail?.aplica_descuento_3ra_edad || "");
+          return true;
+        }),
       }))
       .filter((g) => g.campos.length);
-  }, [editableFields]);
+  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad]);
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -1450,12 +1520,12 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                         placeholder="Login o parte del login"
                       />
                     </div>
-                  <CampoSelect
-  label="Estatus Netlife"
-  valor={filtros.estatusNetlife}
-  onChange={(v) => setFiltro("estatusNetlife", v)}
-  opciones={ESTATUS_NETLIFE}
-/>
+                    <CampoSelect
+                      label="Estatus Netlife"
+                      valor={filtros.estatusNetlife}
+                      onChange={(v) => setFiltro("estatusNetlife", v)}
+                      opciones={ESTATUS_NETLIFE}
+                    />
                     <CampoSelect
                       label="Estatus regularización"
                       valor={filtros.estatusRegularizacion}
@@ -1481,15 +1551,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                     </button>
                     {filtrosActivos > 0 && (
                       <>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
-                        {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} seleccionado{filtrosActivos > 1 ? "s" : ""}
-                      </span>
-                      <button
-                        onClick={limpiarFiltros}
-                        style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                      >
-                        Limpiar filtros
-                      </button>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 12px" }}>
+                          {filtrosActivos} filtro{filtrosActivos > 1 ? "s" : ""} seleccionado{filtrosActivos > 1 ? "s" : ""}
+                        </span>
+                        <button
+                          onClick={limpiarFiltros}
+                          style={{ padding: "6px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                        >
+                          Limpiar filtros
+                        </button>
                       </>
                     )}
                   </div>
@@ -1560,7 +1630,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                       {sec.campos.map((field) => (
                         <div key={field}>
                           <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                            {FIELD_LABELS[field] || field}
+                            {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA" ? "NOMBRE DE LA EMPRESA" : FIELD_LABELS[field] || field}
                           </label>
 
                           {esCampoDocumento(field) ? (
@@ -1572,6 +1642,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                               onAlert={setAlert}
                             />
+                          ) : ["tipo_documento", "tipo_cliente"].includes(field) ? (
+                            <select value={detail?.[field] || ""}
+                              onChange={e => setDetail(prev => ({ ...prev, [field]: e.target.value,
+                                ...(field === "tipo_documento" && e.target.value !== "RUC EMPRESA" ? { representante_legal: "" } : {}),
+                              }))}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}>
+                              <option value="">Seleccionar...</option>
+                              {(field === "tipo_documento" ? ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"] : ["NATURAL", "JURÍDICO"]).map(value => <option key={value} value={value}>{value}</option>)}
+                            </select>
                           ) : field === "estatus_regularizacion" ? (() => {
                             const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
                             const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"
@@ -1582,37 +1661,37 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                             );
 
                             return (
-                            <select
-                              value={valorSeleccionado}
-                              onChange={(e) => {
-                                const valor = e.target.value === "__SIN_REVISAR__"
-                                  ? ""
-                                  : e.target.value.toUpperCase();
-                                setDetail((prev) => ({ ...prev, [field]: valor }));
-                              }}
-                              style={{
-                                width: "100%",
-                                padding: "10px 12px",
-                                borderRadius: 8,
-                                border: "1px solid #dbe4f0",
-                                fontSize: 12,
-                                outline: "none",
-                                color: "#111827",
-                                background: "#fff",
-                                cursor: "pointer",
-                              }}
-                            >
-                              {estadoActual && !esValorConocido && (
-                                <option value={valorSeleccionado} disabled>
-                                  Estado actual: {estadoActual}
-                                </option>
-                              )}
-                              {OPCIONES_ESTATUS_REGULARIZACION.map((opcion) => (
-                                <option key={opcion.valor} value={opcion.valor}>
-                                  {opcion.etiqueta}
-                                </option>
-                              ))}
-                            </select>
+                              <select
+                                value={valorSeleccionado}
+                                onChange={(e) => {
+                                  const valor = e.target.value === "__SIN_REVISAR__"
+                                    ? ""
+                                    : e.target.value.toUpperCase();
+                                  setDetail((prev) => ({ ...prev, [field]: valor }));
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 12px",
+                                  borderRadius: 8,
+                                  border: "1px solid #dbe4f0",
+                                  fontSize: 12,
+                                  outline: "none",
+                                  color: "#111827",
+                                  background: "#fff",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {estadoActual && !esValorConocido && (
+                                  <option value={valorSeleccionado} disabled>
+                                    Estado actual: {estadoActual}
+                                  </option>
+                                )}
+                                {OPCIONES_ESTATUS_REGULARIZACION.map((opcion) => (
+                                  <option key={opcion.valor} value={opcion.valor}>
+                                    {opcion.etiqueta}
+                                  </option>
+                                ))}
+                              </select>
                             );
                           })() : field === "estado_welcome" ? (
                             <select
@@ -3110,28 +3189,28 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
 
             <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="bo-filter-row bo-floating-filters" style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") consultarWelcome(); }}
-                placeholder="Buscar cliente, CI, login, asesor…"
-                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 250 }}
-              />
-              <CampoRangoFecha label="Fecha de registro" desde={fechaDesdeWelcome} hasta={fechaHastaWelcome} onDesde={setFechaDesdeWelcome} onHasta={setFechaHastaWelcome} />
-              <button type="button" onClick={consultarWelcome} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #047857", background: "#047857", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>
-                🔍 Consultar
-              </button>
-              <button type="button" onClick={limpiarFiltrosWelcome} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                Limpiar filtros
-              </button>
-              <BotonDescargaExcel
-                onClick={() => {
-                  setModoExportacion(true);
-                  setSeleccionadosExportacion(new Set());
-                  setAviso("Selecciona los registros que deseas incluir o usa “Seleccionar todos” en cada columna.");
-                }}
-                color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
-              />
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") consultarWelcome(); }}
+                  placeholder="Buscar cliente, CI, login, asesor…"
+                  style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 250 }}
+                />
+                <CampoRangoFecha label="Fecha de registro" desde={fechaDesdeWelcome} hasta={fechaHastaWelcome} onDesde={setFechaDesdeWelcome} onHasta={setFechaHastaWelcome} />
+                <button type="button" onClick={consultarWelcome} disabled={cargando} style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #047857", background: "#047857", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}>
+                  🔍 Consultar
+                </button>
+                <button type="button" onClick={limpiarFiltrosWelcome} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Limpiar filtros
+                </button>
+                <BotonDescargaExcel
+                  onClick={() => {
+                    setModoExportacion(true);
+                    setSeleccionadosExportacion(new Set());
+                    setAviso("Selecciona los registros que deseas incluir o usa “Seleccionar todos” en cada columna.");
+                  }}
+                  color="#047857" fondo="#f0fdf4" borde="#a7f3d0"
+                />
               </div>
               <div className="bo-company-actions">
                 {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
@@ -3210,43 +3289,43 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         </div>
 
         {!modoExportacion && (
-        <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "center", fontSize: 12, fontWeight: 800, color: "#075985", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={porBloque.SIN_NOTIFICAR.length > 0 && seleccionados.size === porBloque.SIN_NOTIFICAR.length}
-              onChange={(e) => seleccionarTodosSinNotificar(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#0284c7" }}
-            />
-            Seleccionar todos
-          </label>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 10, fontWeight: 900, color: "#0369a1", letterSpacing: ".08em", textTransform: "uppercase" }}>
-              Fecha y hora de envío inicial
+          <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "center", fontSize: 12, fontWeight: 800, color: "#075985", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={porBloque.SIN_NOTIFICAR.length > 0 && seleccionados.size === porBloque.SIN_NOTIFICAR.length}
+                onChange={(e) => seleccionarTodosSinNotificar(e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: "#0284c7" }}
+              />
+              Seleccionar todos
             </label>
-            <input
-              type="datetime-local"
-              value={inicioEnvio}
-              min={valorFechaHoraLocal(new Date())}
-              onChange={(e) => setInicioEnvio(e.target.value)}
-              style={{ padding: "9px 11px", borderRadius: 9, border: "1px solid #7dd3fc", background: "#fff", color: "#0f172a", fontSize: 12 }}
-            />
-          </div>
 
-          <button
-            type="button"
-            disabled={programando || seleccionados.size === 0 || !inicioEnvio}
-            onClick={programarSeleccionados}
-            style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: programando || seleccionados.size === 0 ? "#94a3b8" : "#0284c7", color: "#fff", fontSize: 12, fontWeight: 900, cursor: programando || seleccionados.size === 0 ? "not-allowed" : "pointer" }}
-          >
-            {programando ? "Programando…" : `Enviar a pendiente (${seleccionados.size})`}
-          </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 900, color: "#0369a1", letterSpacing: ".08em", textTransform: "uppercase" }}>
+                Fecha y hora de envío inicial
+              </label>
+              <input
+                type="datetime-local"
+                value={inicioEnvio}
+                min={valorFechaHoraLocal(new Date())}
+                onChange={(e) => setInicioEnvio(e.target.value)}
+                style={{ padding: "9px 11px", borderRadius: 9, border: "1px solid #7dd3fc", background: "#fff", color: "#0f172a", fontSize: 12 }}
+              />
+            </div>
 
-          <div style={{ marginLeft: "auto", maxWidth: 360, fontSize: 11.5, lineHeight: 1.55, color: "#475569" }}>
-            El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
+            <button
+              type="button"
+              disabled={programando || seleccionados.size === 0 || !inicioEnvio}
+              onClick={programarSeleccionados}
+              style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: programando || seleccionados.size === 0 ? "#94a3b8" : "#0284c7", color: "#fff", fontSize: 12, fontWeight: 900, cursor: programando || seleccionados.size === 0 ? "not-allowed" : "pointer" }}
+            >
+              {programando ? "Programando…" : `Enviar a pendiente (${seleccionados.size})`}
+            </button>
+
+            <div style={{ marginLeft: "auto", maxWidth: 360, fontSize: 11.5, lineHeight: 1.55, color: "#475569" }}>
+              El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
+            </div>
           </div>
-        </div>
         )}
 
         {modoExportacion && (
@@ -4465,38 +4544,38 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
 
             <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
               <div className="bo-filter-row bo-floating-filters" style={{ position: "absolute", left: 18, bottom: 18, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") consultar(); }}
-                placeholder="Buscar cliente, CI, login, asesor…"
-                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, minWidth: 240 }}
-              />
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") consultar(); }}
+                  placeholder="Buscar cliente, CI, login, asesor…"
+                  style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 12, minWidth: 240 }}
+                />
 
-              <CampoRangoFecha
-                label="Fecha de registro"
-                desde={fechaDesde}
-                hasta={fechaHasta}
-                onDesde={setFechaDesde}
-                onHasta={setFechaHasta}
-              />
+                <CampoRangoFecha
+                  label="Fecha de registro"
+                  desde={fechaDesde}
+                  hasta={fechaHasta}
+                  onDesde={setFechaDesde}
+                  onHasta={setFechaHasta}
+                />
 
-              <button
-                type="button"
-                onClick={consultar}
-                disabled={cargando}
-                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #ea580c", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}
-              >
-                🔍 Consultar
-              </button>
+                <button
+                  type="button"
+                  onClick={consultar}
+                  disabled={cargando}
+                  style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #ea580c", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: cargando ? "wait" : "pointer" }}
+                >
+                  🔍 Consultar
+                </button>
 
-              <button
-                type="button"
-                onClick={limpiarFiltros}
-                style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-              >
-                Limpiar filtros
-              </button>
+                <button
+                  type="button"
+                  onClick={limpiarFiltros}
+                  style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                >
+                  Limpiar filtros
+                </button>
               </div>
 
               <div className="bo-company-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -4507,20 +4586,20 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                   />
                 )}
 
-              <button
-                onClick={recargar}
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #fed7aa",
-                  background: "#fff7ed",
-                  color: "#c2410c",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Refrescar
-              </button>
+                <button
+                  onClick={recargar}
+                  style={{
+                    padding: "9px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #fed7aa",
+                    background: "#fff7ed",
+                    color: "#c2410c",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Refrescar
+                </button>
               </div>
             </div>
           </div>
@@ -5439,7 +5518,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   const rowsFiltradas = useMemo(() => rowsConFiltros
     .filter((row) => estadoActivo === "TODOS" || bloqueDeRegistro(row) === estadoActivo)
     .sort((a, b) => String(a.fecha_registro_sistema || "").localeCompare(String(b.fecha_registro_sistema || ""))),
-  [rowsConFiltros, estadoActivo]);
+    [rowsConFiltros, estadoActivo]);
 
   const estadoSeleccionado = estadoActivo === "TODOS"
     ? "TODOS"
@@ -5525,13 +5604,13 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
                     ].includes(normalizarEstado(row.gestion_atc));
 
                     return (
-                    <tr
-                      key={row.id}
-                      onClick={() => setDetalleId(row.id)}
-                      style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
-                    >
-                      {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}>{key === "estatus_regularizacion" && !row[key] ? "SIN REVISAR" : valueForField(row, key)}</td>)}
-                    </tr>
+                      <tr
+                        key={row.id}
+                        onClick={() => setDetalleId(row.id)}
+                        style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
+                      >
+                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}>{key === "estatus_regularizacion" && !row[key] ? "SIN REVISAR" : valueForField(row, key)}</td>)}
+                      </tr>
                     );
                   })}
                 </tbody>

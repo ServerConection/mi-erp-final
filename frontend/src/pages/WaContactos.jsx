@@ -2,6 +2,8 @@
  * WaContactos.jsx — Contactos y listas de difusión WhatsApp en el ERP
  */
 import { useState, useEffect, useCallback } from "react";
+import WaCreationDateFilter from "../components/WaCreationDateFilter";
+import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 const authH = (json = true) => {
@@ -22,6 +24,8 @@ export default function WaContactos() {
   const [detail, setDetail]     = useState(null); // lista abierta
   const [listItems, setListItems] = useState([]);
   const [bulkText, setBulkText] = useState("");
+  const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
+  const [creator, setCreator] = useState("");
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -97,7 +101,14 @@ export default function WaContactos() {
     setListItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const filteredLists    = lists.filter(l => l.name.toLowerCase().includes(search.toLowerCase()));
+  const creatorLabel = (list) => list.owner_username || (list.created_by != null ? `Usuario #${list.created_by}` : "Sin creador registrado");
+  const creators = [...new Map(lists.map(list => [String(list.created_by ?? "unknown"), creatorLabel(list)])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  const filteredLists = lists.filter(l =>
+    l.name.toLowerCase().includes(search.toLowerCase()) &&
+    matchesCreationDate(l.created_at, creationDates) &&
+    (!creator || String(l.created_by ?? "unknown") === creator)
+  );
   const filteredContacts = contacts.filter(c =>
     (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
     (c.wa_number || "").includes(search)
@@ -148,11 +159,21 @@ export default function WaContactos() {
       {/* === LISTAS === */}
       {tab === "lists" && (
         <>
+          <WaCreationDateFilter value={creationDates} onChange={setCreationDates} />
+          <label className="flex flex-col gap-1 text-xs text-slate-500 mb-4">
+            Creado por
+            <select value={creator} onChange={e => setCreator(e.target.value)}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700">
+              <option value="">Todos los usuarios</option>
+              {creators.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </label>
+          <p className="text-xs text-slate-500 mb-3">{filteredLists.length} de {lists.length} listas</p>
           {filteredLists.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <div className="text-5xl mb-3">📋</div>
               <div className="font-medium text-slate-500">No hay listas</div>
-              <div className="text-sm mt-1">Crea una lista para organizar tus contactos</div>
+              <div className="text-sm mt-1">{lists.length ? "No hay listas que coincidan con los filtros seleccionados." : "Crea una lista para organizar tus contactos"}</div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -162,6 +183,11 @@ export default function WaContactos() {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-800">{lst.name}</div>
                     {lst.description && <div className="text-xs text-slate-500 truncate">{lst.description}</div>}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 mt-1">
+                      <span>Creado por: {creatorLabel(lst)}</span>
+                      <span>Creación: {formatCreationDate(lst.created_at)}</span>
+                      <span>{lst.contact_count ?? 0} contactos</span>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => openListDetail(lst)}

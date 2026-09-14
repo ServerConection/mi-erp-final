@@ -264,7 +264,7 @@ const CAMPOS_EDITABLES = new Set([
   'supervisor', 'origen_venta', 'venta_nueva_o_reingreso', 'turno',
   'nombre_atc', 'clausulas', 'lider_comercial',
   'tipo_cliente', 'genero_cliente', 'tipo_documento', 'numero_identificacion',
-  'nombre_cliente_completo', 'estado_civil', 'fecha_nacimiento', 'email_cliente',
+  'nombre_cliente_completo', 'representante_legal', 'estado_civil', 'fecha_nacimiento', 'email_cliente',
   'aplica_descuento_3ra_edad', 'telf_celular_pin', 'telf_celular_2', 'telf_fijo',
   'provincia', 'ciudad', 'parroquia_barrio', 'direccion_calles',
   'direccion_manzana_villa', 'referencia_ubicacion', 'coordenadas_gps',
@@ -422,7 +422,7 @@ router.put('/:id', async (req, res) => {
     // Sin esto, cualquier perfil no-ASESOR podía editar ventas de la otra
     // empresa mandando el id directo al endpoint.
     const { rows: actual } = await pool.query(
-      'SELECT distribuidor_autorizado FROM public.envios_ventas WHERE id = $1',
+      'SELECT distribuidor_autorizado, tipo_documento FROM public.envios_ventas WHERE id = $1',
       [id]
     );
     if (actual.length === 0)
@@ -435,6 +435,11 @@ router.put('/:id', async (req, res) => {
     for (const [clave, valor] of Object.entries(req.body || {})) {
       if (!CAMPOS_EDITABLES.has(clave)) continue; // descarta id y todo lo no permitido
       payload[clave] = valor === '' ? null : valor;
+    }
+
+    if ('representante_legal' in payload || 'tipo_documento' in payload) {
+      const tipoDocumento = 'tipo_documento' in payload ? payload.tipo_documento : actual[0].tipo_documento;
+      if (tipoDocumento !== 'RUC EMPRESA') payload.representante_legal = null;
     }
 
     if (Object.prototype.hasOwnProperty.call(payload, 'estado_welcome')) {

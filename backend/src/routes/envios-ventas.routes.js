@@ -134,7 +134,7 @@ const COLUMNAS_VENTA = [
   'origen_venta', 'venta_nueva_o_reingreso', 'turno',
   'nombre_atc', 'clausulas', 'lider_comercial',
   'tipo_cliente', 'genero_cliente', 'tipo_documento',
-  'numero_identificacion', 'nombre_cliente_completo',
+  'numero_identificacion', 'nombre_cliente_completo', 'representante_legal',
   'estado_civil', 'fecha_nacimiento',
   'email_cliente', 'aplica_descuento_3ra_edad',
   'telf_celular_pin', 'telf_celular_2', 'telf_fijo',
@@ -451,16 +451,19 @@ router.post('/', async (req, res) => {
       b.aplica_descuento_3ra_edad = null;
     }
 
+    b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
     const placeholdersVenta = COLUMNAS_VENTA.map((_, i) => `$${i + 5}`).join(', ');
 
     const { rows } = await pool.query(`
       INSERT INTO public.envios_ventas (
         estatus_envio, ip_origen, fecha_registro_sistema, usuario_id,
-        ${COLUMNAS_VENTA.join(', ')}
+        ${COLUMNAS_VENTA.join(', ')}, fecha_ingreso_telcos
       ) VALUES (
         $1, $2, $3, $4,
-        ${placeholdersVenta}
+        ${placeholdersVenta},
+        CASE WHEN $1 = 'BORRADOR' THEN NULL
+          ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date END
       )
       RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
     `, [t(b.estatus_envio), ip_origen, fecha_registro_sistema, req.user.id, ...valores]);
@@ -509,11 +512,16 @@ router.put('/:id', async (req, res) => {
     }
 
     const sets = COLUMNAS_VENTA.map((c, i) => `${c} = $${i + 2}`).join(', ');
+    b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
 
     const { rows } = await pool.query(`
       UPDATE public.envios_ventas
-      SET estatus_envio = $${COLUMNAS_VENTA.length + 2}, ${sets}
+      SET estatus_envio = $${COLUMNAS_VENTA.length + 2}, ${sets},
+          fecha_ingreso_telcos = CASE
+            WHEN $${COLUMNAS_VENTA.length + 2} = 'BORRADOR' THEN NULL
+            ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date
+          END
       WHERE id = $1
       RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
     `, [id, ...valores, nuevoEstatus]);

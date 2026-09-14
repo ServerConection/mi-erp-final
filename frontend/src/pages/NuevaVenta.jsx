@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import FotoCartel from "../components/FotoCartel";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -100,6 +101,7 @@ const INIT = {
   manzana_villa: "", referencia_ubicacion: "", coordenadas_gps: "",
   telf_celular_pin: "", telf_instalacion: "", email_cliente: "", tipo_cuenta: "",
   nombre_cliente_completo: "",
+  representante_legal: "",
   forma_pago: "",
   tipo_plan: "", plan_contratado_final: "",
   servicios_digitales: "", servicio_adicional: "",
@@ -1334,6 +1336,7 @@ export default function NuevaVenta() {
         tipo_documento: form.tipo_documento || null,
         numero_identificacion: form.numero_identificacion || null,
         nombre_cliente_completo,
+        representante_legal: form.tipo_documento === "RUC EMPRESA" ? (form.representante_legal || "").trim() || null : null,
         genero_cliente: form.genero_cliente || null,
         estado_civil: form.estado_civil || null,
         fecha_nacimiento: form.fecha_nacimiento || null,
@@ -1617,10 +1620,16 @@ export default function NuevaVenta() {
               {err("numero_identificacion")}
             </Row>
             {form.tipo_documento === 'RUC EMPRESA' ? (
+              <>
               <Row label="Nombre de la empresa" required>
                 <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
                 {err("nombre_cliente_completo")}
               </Row>
+              <Row label="Representante legal">
+                <FIn value={form.representante_legal} onChange={set("representante_legal")}
+                  placeholder="Nombres y apellidos completos del representante legal" />
+              </Row>
+              </>
             ) : (
               <>
                 <Row label="Apellidos completos" required>
@@ -1951,6 +1960,9 @@ export default function NuevaVenta() {
               >
                 🔄 Regenerar automáticamente
               </button>
+            </Row>
+            <Row label="Foto cartel">
+              <FotoCartel form={form} />
             </Row>
           </Seccion>
 

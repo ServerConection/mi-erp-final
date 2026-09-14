@@ -48,6 +48,10 @@ for (const empresa of ['NOVONET', 'VELSA']) {
     assert.equal(payload.data.total.pct_efect_vs_gestion, 30);
     assert.equal(payload.data.supervisores[0].pct_efect_vs_gestion, 30);
     const { sql, values } = queries[0];
+    // Regresión: el filtro gestionables contiene regex terminados en $'.
+    // Sustituirlo como string duplicaba el sufijo del SQL y rompía PostgreSQL.
+    assert.equal((sql.match(/metas AS \(/g) || []).length, 1);
+    assert.ok(sql.includes(etapas.esGestionableExpr('mb.b_etapa_de_la_negociacion')));
     assert.doesNotMatch(sql, /__[A-Z]+__/);
     assert.doesNotMatch(sql, /O'Neil/);
     assert.ok(values.includes("%Equipo O'Neil%"));

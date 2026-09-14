@@ -407,12 +407,14 @@ async function getKpiComercial(req, res) {
       const fecha = empresa === 'VELSA' ? 'mb.fecha_activacion_filtro::date' : 'public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)';
       filtros.push(`${fecha} BETWEEN $${values.length - 1}::date AND $${values.length}::date`);
     }
+    // Usar callbacks: los regex SQL contienen $ seguido de comilla, que
+    // String.replace interpreta como un patrón de sustitución ($').
     const sql = SQL_BASE
-      .replace('__VISTA__', cfg.vista)
-      .replace('__SUPERVISOR__', cfg.supervisor)
-      .replace('__JOIN_EMPLEADOS__', cfg.joinEmpleados)
-      .replace('__FILTROS__', filtros.join(' AND '))
-      .replaceAll('__DISCRIMINACION__', empresa === 'NOVONET' ? sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion') : 'TRUE');
+      .replace('__VISTA__', () => cfg.vista)
+      .replace('__SUPERVISOR__', () => cfg.supervisor)
+      .replace('__JOIN_EMPLEADOS__', () => cfg.joinEmpleados)
+      .replace('__FILTROS__', () => filtros.join(' AND '))
+      .replaceAll('__DISCRIMINACION__', () => empresa === 'NOVONET' ? sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion') : 'TRUE');
 
     const { rows } = await pool.query(sql, values);
 

@@ -496,8 +496,6 @@ export default function ReporteComercialCore() {
 
   // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
   const abortRef = useRef(null);
-  // Ref para el pre-fetch en background (no bloquea UI)
-  const prefetchRef = useRef(null);
 
   // Listas estables para los dropdowns — nunca se borran al filtrar
   const [allSupervisores, setAllSupervisores] = useState([]);
@@ -517,34 +515,7 @@ export default function ReporteComercialCore() {
     if (nuevasAlertas.length > 0) { setAlertas(nuevasAlertas); nuevasAlertas.forEach(a => setTimeout(() => setAlertas(prev => prev.filter(x => x.id !== a.id)), a.duracion)); }
   };
 
-  // ── Pre-fetch silencioso ─────────────────────────────────────────────────
-  // Dispara las otras 2 tabs en background una vez que el dashboard cargó.
-  // No actualiza estado de loading — el usuario no lo nota. Sólo "calienta"
-  // el caché del servidor (2 min TTL). Si el usuario cambia de tab mientras
-  // sigue corriendo, el fetch activo se cancela y la tab carga desde caché.
-  const prefetchBackground = useCallback((filtrosActivos) => {
-    if (prefetchRef.current) prefetchRef.current.abort();
-    const ctrl = new AbortController();
-    prefetchRef.current = ctrl;
-    const pMon = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries({ asesor: filtrosActivos.asesor, supervisor: filtrosActivos.supervisor })
-          .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
-          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
-      )
-    );
-    const p180 = new URLSearchParams(Object.fromEntries(
-      Object.entries(filtrosActivos)
-        .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
-        .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
-    ));
-    // Fire-and-forget: no await, no setLoading
-    Promise.allSettled([
-      fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${pMon}`, { signal: ctrl.signal }),
-      fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p180}`, { signal: ctrl.signal }),
-    ]).catch(() => {});
-  }, []);
-
+  // Las otras pestañas se consultan cuando el usuario las abre.
   const fetchDashboard = async (filtrosOverride) => {
     // Cancela fetch anterior para evitar race conditions / loading stuck
     if (abortRef.current) abortRef.current.abort();
@@ -576,8 +547,7 @@ export default function ReporteComercialCore() {
           if (result.asesores?.length)     setAllAsesores(result.asesores);
         }
         mostrarAlertas(result.supervisores);
-        // Pre-calentar las otras tabs en background (sin bloquear UI)
-        prefetchBackground(filtrosActivos);
+
       }
     } catch (e) {
       if (e.name !== 'AbortError') console.error("Error Dashboard:", e);
@@ -644,8 +614,13 @@ export default function ReporteComercialCore() {
 
   // ── Fetch aislado de las tablas KPI comerciales ────────────────────────────
   const kpiRequestRef = useRef(0);
+  const kpiAbortRef = useRef(null);
+  useEffect(() => () => kpiAbortRef.current?.abort(), []);
   const fetchKpiComercial = useCallback(async (f) => {
     const requestId = ++kpiRequestRef.current;
+    kpiAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    kpiAbortRef.current = ctrl;
     setKpiComercial({ supervisores: [], asesores: [], total: null });
     try {
       const p = new URLSearchParams();
@@ -654,12 +629,13 @@ export default function ReporteComercialCore() {
       });
       // Este endpoint SI exige JWT (verificarToken + noAsesor), a diferencia
       // del resto de /api/indicadores. Sin este header devuelve 401.
-      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`, { signal: ctrl.signal });
       const r   = await res.json();
       if (requestId !== kpiRequestRef.current) return;
       if (r?.success) setKpiComercial(r.data);
       else setKpiComercial({ supervisores: [], asesores: [], total: null });
     } catch (e) {
+      if (e.name === "AbortError") return;
       if (requestId !== kpiRequestRef.current) return;
       console.error('[KPI-COMERCIAL]', e);
       setKpiComercial({ supervisores: [], asesores: [], total: null });

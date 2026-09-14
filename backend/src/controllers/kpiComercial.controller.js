@@ -31,6 +31,7 @@
  */
 
 const pool = require('../config/db');
+const { ORIGENES_NOVONET, filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
 const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
 
@@ -394,13 +395,18 @@ async function getKpiComercial(req, res) {
     }
     if (q.gestionables === 'si' || q.gestionables === 'no') filtros.push(
       `${q.gestionables === 'no' ? 'NOT ' : ''}${esGestionableExpr('mb.b_etapa_de_la_negociacion')}`);
-    if (q.origen) exactos('mb.b_origen', q.origen);
+    const porOrigen = origenes => filtroOrigenBitrix({
+      empresa: 'novonet', deal: dealNovonet(), origenes, values,
+    }).replace(/^ AND /, '');
+    if (empresa === 'NOVONET') filtros.push(porOrigen(ORIGENES_NOVONET));
+    if (q.origen) {
+      if (empresa === 'NOVONET') filtros.push(porOrigen(String(q.origen).split(',')));
+      else exactos('mb.b_origen', q.origen);
+    }
     if (q.canal && empresa === 'NOVONET') {
       const { CANAL_ORIGENES_MAP } = require('./indicadores.controller');
       const origenes = [...new Set(String(q.canal).split(',').flatMap(v => CANAL_ORIGENES_MAP[v.trim()] || [v.trim()]))];
-      values.push(origenes);
-      filtros.push(`(mb.b_origen = ANY($${values.length}::text[]) OR mb.j_id_bitrix::text IN (
-        SELECT mb2.b_id::text FROM public.mestra_bitrix mb2 WHERE mb2.b_origen = ANY($${values.length}::text[]) AND mb2.b_id IS NOT NULL))`);
+      filtros.push(porOrigen(origenes));
     }
     if (q.fechaActivacionDesde && q.fechaActivacionHasta) {
       values.push(q.fechaActivacionDesde, q.fechaActivacionHasta);

@@ -947,7 +947,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- a la etapa histórica de mestra_bitrix solo si el webhook no tiene
                 -- ese deal todavía.
                 COALESCE(NULLIF(TRIM(bwl.etapa_bitrix), ''), NULLIF(TRIM(mb.b_etapa_de_la_negociacion), '')) AS "ETAPA",
-                mb.b_creado_el_fecha AS "FECHA_CREACION",
+                -- FIX (2026-09-14, a pedido): FECHA_CREACION debe ser igual a
+                -- FECHA_CREACION_JOT (antes usaba mb.b_creado_el_fecha, que sale
+                -- vacío en filas que solo llegaron por Jotform).
+                mb.j_fecha_registro_sistema AS "FECHA_CREACION",
                 -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
                 -- y solo cae al histórico si el webhook no tiene dato. Ver
                 -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').

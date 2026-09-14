@@ -446,7 +446,14 @@ export default function DashboardLayout() {
   const [user, setUser]                             = useState(null);
   const [permisos, setPermisos]                     = useState([]);
   const [sidebarOpen, setSidebarOpen]               = useState(false);
-  const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
+    // Si el ERP se abre DENTRO de un iframe (por ejemplo la pestaña WABOT en
+  // Bitrix), el menú lateral arranca contraído — no hay espacio para el
+  // menú completo ahí, y adentro de Bitrix no tiene sentido navegar a otros
+  // módulos del ERP. En una pestaña normal del navegador (no embebida) se
+  // comporta exactamente igual que siempre, expandido.
+  const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(() => {
+    try { return window.self !== window.top; } catch { return true; }
+  });
   const [broadcast, setBroadcast]                   = useState(null);
   // Grupos colapsables del menú (abierto si la ruta actual pertenece al grupo)
   const [openGroups, setOpenGroups] = useState(() => {

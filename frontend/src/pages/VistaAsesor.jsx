@@ -486,11 +486,11 @@ function AsesorCard({ row, rank }) {
           <BarProgress label="Leads"   value={Number(row.gestionables || 0)}   meta={METAS.gestionables} color="#0ea5e9" />
           <BarProgress label="CRM"     value={Number(row.ventas_crm || 0)}      meta={METAS.ingresos_crm} color="#8b5cf6" />
           <BarProgress label="Jotform" value={Number(row.ingresos_reales || 0)} meta={METAS.ingresos_jot} color="#10b981" />
-          <BarProgress label="Activas" value={Number(row.real_mes || 0)}        meta={METAS.activas}      color="#f59e0b" />
+          <BarProgress label="Activas" value={Math.max(0, Number(row.real_mes || 0) - Number(row.backlog || 0))} meta={METAS.activas} color="#f59e0b" />
           <div style={{ fontSize: 10, color: "#94a3b8", paddingTop: 2 }}>
-            Mes <strong style={{ color: "#f59e0b" }}>{Number(row.real_mes || 0)}</strong>
+                Mes <strong style={{ color: "#f59e0b" }}>{Math.max(0, Number(row.real_mes || 0) - Number(row.backlog || 0))}</strong>
             {" · "}BL <strong style={{ color: "#60a5fa" }}>{Number(row.backlog || 0)}</strong>
-            {" · "}Tot <strong style={{ color: "#0f172a" }}>{Number(row.real_mes || 0) + Number(row.backlog || 0)}</strong>
+                {" · "}Tot <strong style={{ color: "#0f172a" }}>{Number(row.real_mes || 0)}</strong>
             {" · "}Reg <strong style={{ color: "#f97316" }}>{Number(row.regularizacion || 0)}</strong>
           </div>
         </div>
@@ -874,9 +874,10 @@ export default function VistaAsesor() {
         <StripCard index={0} label="Leads gestionables" value={totales.gestionables}  color="#0ea5e9" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={1} label="Ingresos CRM"       value={totales.ingresos_crm}  color="#8b5cf6" meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={2} label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
-        <StripCard index={3} label="Activas mes"        value={ventasActivas.length}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={3} label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={4} label="Backlog"            value={totales.backlog}       color="#64748b" />
-        <StripCard index={5} label="Regularización"     value={totales.regularizacion} color="#f97316" />
+        <StripCard index={5} label="Activas totales"    value={totales.activas_tot}   color="#0f172a" />
+        <StripCard index={6} label="Regularización"     value={totales.regularizacion} color="#f97316" />
       </div>
 
       {/* ── STRIP TOTALES — fila 2: indicadores de calidad (nuevos) ── */}

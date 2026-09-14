@@ -31,7 +31,7 @@
  */
 
 const pool = require('../config/db');
-const { ORIGENES_NOVONET, filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
+const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
 const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
 
@@ -398,7 +398,6 @@ async function getKpiComercial(req, res) {
     const porOrigen = origenes => filtroOrigenBitrix({
       empresa: 'novonet', deal: dealNovonet(), origenes, values,
     }).replace(/^ AND /, '');
-    if (empresa === 'NOVONET') filtros.push(porOrigen(ORIGENES_NOVONET));
     if (q.origen) {
       if (empresa === 'NOVONET') filtros.push(porOrigen(String(q.origen).split(',')));
       else exactos('mb.b_origen', q.origen);

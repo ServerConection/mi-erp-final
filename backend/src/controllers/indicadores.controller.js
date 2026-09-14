@@ -939,8 +939,14 @@ const getIndicadoresDashboard = async (req, res) => {
         const queryJotform = `
             SELECT
                 mb.j_id_bitrix AS "ID_CRM",
-                to_jsonb(mb) ->> 'j_id' AS "ID_JOT",
-                mb.b_etapa_de_la_negociacion AS "ETAPA",
+                -- FIX (2026-09-14, a pedido): ID_JOT debe ser el mismo Deal ID que
+                -- ID_CRM (antes traía el id interno del submission de Jotform).
+                mb.j_id_bitrix AS "ID_JOT",
+                -- FIX (2026-09-14, a pedido): ETAPA debe reflejar la etapa VIVA de
+                -- Bitrix (bwl.etapa_bitrix, ya joineado arriba por Deal ID), cayendo
+                -- a la etapa histórica de mestra_bitrix solo si el webhook no tiene
+                -- ese deal todavía.
+                COALESCE(NULLIF(TRIM(bwl.etapa_bitrix), ''), NULLIF(TRIM(mb.b_etapa_de_la_negociacion), '')) AS "ETAPA",
                 mb.b_creado_el_fecha AS "FECHA_CREACION",
                 -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
                 -- y solo cae al histórico si el webhook no tiene dato. Ver

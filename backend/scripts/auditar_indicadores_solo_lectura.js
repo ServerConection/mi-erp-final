@@ -67,6 +67,7 @@ async function main() {
       fechaActivacionDesde: rango.fechaDesde, fechaActivacionHasta: rango.fechaHasta,
       ...(empresa === 'NOVONET' ? { canal: 'ARTS' } : { origen: 'AUDITORIA' }),
     }];
+    if (process.argv.includes('--detalle')) variantes.splice(1);
     for (const [index, filtros] of variantes.entries()) {
       const q = { ...rango, ...filtros };
       const comercialQueries = await capture(comercial.getKpiComercial, q);
@@ -91,6 +92,14 @@ async function main() {
         const totales = pairs.map(([c, d]) => ({ campo: c, tabla: sum(cRows, c), panel: sum(dRows, d) }));
         console.log(JSON.stringify({ empresa, totales }));
         if (totales.some(x => x.tabla !== x.panel)) process.exitCode = 1;
+        const detalle = dashboardQueries.find(x => x.sql.includes('AS "ESTADO_NETLIFE"') && x.sql.includes('AS "ORIGEN"'));
+        const { esEstadoIngresoJotformValidoExpr } = require('../src/shared/etapas');
+        const detalleResumen = (await checked(`SELECT COUNT(*)::int AS filas,
+          COUNT(*) FILTER (WHERE ${esEstadoIngresoJotformValidoExpr('d."ESTADO_NETLIFE"')})::int AS validos,
+          COUNT(*) FILTER (WHERE NULLIF(BTRIM(d."ORIGEN"), '') IS NULL)::int AS sin_origen
+          FROM (${detalle.sql}) d`, detalle.values)).rows[0];
+        console.log(JSON.stringify({ empresa, detalleJot: detalleResumen }));
+        if (detalleResumen.validos !== sum(cRows, 'ingresos_jot')) process.exitCode = 1;
       }
     }
   }

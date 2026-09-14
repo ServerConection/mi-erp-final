@@ -15,6 +15,7 @@ function cargar(rows) {
         return { rows };
       } };
       if (name === '../shared/etapas') return etapas;
+      if (name === '../shared/origenIndicadores') return require('../src/shared/origenIndicadores');
       if (name === './indicadores.controller') return { CANAL_ORIGENES_MAP: { ARTS: ['BASE 593-979083368'] } };
       if (name === './indicadoresVelsaMaterialized.controller') return {
         getSupervisorExpr: () => 'mv.supervisor', normalizarAsesorSQL: col => col,
@@ -63,10 +64,16 @@ for (const empresa of ['NOVONET', 'VELSA']) {
     for (const etapa of ['PRESERVICIO', 'FIN DE GESTIÓN', 'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO', 'DUPLICADO', 'SIN ASUNTO']) assert.ok(sql.includes(`'${etapa}'`));
     assert.ok(!etapas.ESTADOS_EXCLUIDOS_INGRESO_JOTFORM.includes('ELIMINADO'));
     if (empresa === 'VELSA') {
+      assert.doesNotMatch(sql, /origen_bwl/);
+      assert.match(sql, /UPPER\(TRIM\(mb.b_origen\)\) = ANY/);
       assert.match(sql, /FROM public.mv_indicadores_velsa_completo mv/);
       assert.match(sql, /INTERVAL '5 hours'/);
       assert.match(sql, /mb.supervisor ILIKE/);
     } else {
+      for (const origen of require('../src/shared/origenIndicadores').ORIGENES_NOVONET) {
+        assert.ok(values.includes(origen.toUpperCase()));
+      }
+      assert.match(sql, /origen_bwl.empresa = 'novonet'/);
       assert.match(sql, /FROM public.vw_bitrix_novonet mb/);
       assert.match(sql, /e.supervisor ILIKE/);
     }

@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+const { ORIGENES_NOVONET, filtroOrigenBitrix, dealNovonet, normalizarOrigenExpr } = require('../shared/origenIndicadores');
+const filtroOrigenNovonet = (values, origenes = ORIGENES_NOVONET, alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,6 +140,7 @@ const getEtapasCache = async () => {
     pool.query(`SELECT source AS origen, COUNT(*)::int AS total
                 FROM public.bitrix_webhook_leads
                 WHERE empresa = 'novonet'
+                  AND ${normalizarOrigenExpr('source')} IN ${_sqlListaUpper(ORIGENES_NOVONET)}
                   AND NULLIF(TRIM(source), '') IS NOT NULL
                   AND ${esLeadTotalExpr('etapa_bitrix')}
                 GROUP BY 1
@@ -322,8 +325,8 @@ const getIndicadoresDashboard = async (req, res) => {
         }
 
         let values = [desde, hasta];
-        let filtersJoin = '';
-        let filtersNoJoin = '';
+        let filtersJoin = filtroOrigenNovonet(values);
+        let filtersNoJoin = filtersJoin;
 
         // Filtro ASESOR: soporta multi-selección. Acepta '?asesor=A,B,C' (lista
         // separada por comas) o '?asesor=A&asesor=B' (array desde el frontend).
@@ -424,21 +427,9 @@ const getIndicadoresDashboard = async (req, res) => {
             const seleccion   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
             const origenesSel = [...new Set(seleccion.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
             if (origenesSel.length) {
-            const origenesCanal = origenesSel;
-            const startIdx = values.length + 1;
-            const placeholders = origenesCanal.map((_, i) => `$${startIdx + i}`).join(', ');
-            values.push(...origenesCanal);
-            const origenFilter = `(
-                mb.b_origen IN (${placeholders})
-                OR mb.j_id_bitrix::text IN (
-                    SELECT mb2.b_id::text
-                    FROM mestra_bitrix mb2
-                    WHERE mb2.b_origen IN (${placeholders})
-                      AND mb2.b_id IS NOT NULL
-                )
-            )`;
-            filtersJoin   += ` AND ${origenFilter}`;
-            filtersNoJoin += ` AND ${origenFilter}`;
+            const origenFilter = filtroOrigenNovonet(values, origenesSel);
+            filtersJoin += origenFilter;
+            filtersNoJoin += origenFilter;
             }
         }
         // Filtro FECHA DE ACTIVACIÓN (opcional, independiente del rango principal
@@ -493,7 +484,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // — NO el ASESOR_RESUELTO de queryJotform, porque estas queries no
         // hacen JOIN al webhook de responsables).
         let valuesDia = [desde, hasta];
-        let filtrosDia = ` AND ${esEstadoIngresoJotformValidoExpr('mb_jot.j_netlife_estatus_real')}`;
+        let filtrosDia = ` AND ${esEstadoIngresoJotformValidoExpr('mb_jot.j_netlife_estatus_real')}` + filtroOrigenNovonet(valuesDia, ORIGENES_NOVONET, 'mb_jot');
         if (asesorQuery) {
             const listaAsesoresDia = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
                 .map(a => a.trim()).filter(Boolean);
@@ -539,15 +530,10 @@ const getIndicadoresDashboard = async (req, res) => {
             filtrosDia += ` AND NOT ${esGestionableExpr('mb_crm.b_etapa_de_la_negociacion')}`;
         }
         if (canal) {
-            const seleccionDia   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
-            const origenesSelDia = [...new Set(seleccionDia.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
-            if (origenesSelDia.length) {
-                const startIdxDia = valuesDia.length + 1;
-                const placeholdersDia = origenesSelDia.map((_, i) => `$${startIdxDia + i}`).join(', ');
-                valuesDia.push(...origenesSelDia);
-                filtrosDia += ` AND mb_crm.b_origen IN (${placeholdersDia})`;
-            }
+            const origenes = String(canal).split(',').flatMap(v => CANAL_ORIGENES_MAP[v.trim()] || [v.trim()]);
+            filtrosDia += filtroOrigenNovonet(valuesDia, origenes, 'mb_jot');
         }
+
         if (fechaActivacionDesde && fechaActivacionHasta) {
             valuesDia.push(fechaActivacionDesde, fechaActivacionHasta);
             const idxDesdeDia = valuesDia.length - 1;
@@ -961,7 +947,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
-                mb.b_origen AS "ORIGEN",
+                bwl.source AS "ORIGEN",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 NULL::text AS "FECHA_CREADO_JOT",
                 to_jsonb(mb) ->> 'j_codigo_asesor' AS "COD_ASESOR_JOT",
@@ -1428,8 +1414,8 @@ LEFT JOIN LATERAL (
 ) e ON true`;
 
         let values = [iniciomes, hoy];
-        let filtersJoin = '';
-        let filtersNoJoin = '';
+        let filtersJoin = filtroOrigenNovonet(values);
+        let filtersNoJoin = filtersJoin;
 
         if (asesor) {
             const listaAsesoresMon = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
@@ -1520,8 +1506,8 @@ LEFT JOIN LATERAL (
         `;
 
         const valuesJotHoy = [hoy];
-        let filtersJotHoy = ` AND ${esEstadoIngresoJotformValidoExpr('mb.j_netlife_estatus_real')}`;
-        let jotHoyParamOffset = 1;
+        let filtersJotHoy = ` AND ${esEstadoIngresoJotformValidoExpr('mb.j_netlife_estatus_real')}` + filtroOrigenNovonet(valuesJotHoy);
+        let jotHoyParamOffset = valuesJotHoy.length;
 
         if (asesor) {
             const listaAsesoresJotHoy = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
@@ -1610,7 +1596,7 @@ const getReporte180 = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-        let filtersNoJoin = '';
+        let filtersNoJoin = filtroOrigenNovonet(values);
 
         if (asesor) {
             values.push(`%${asesor}%`);
@@ -1668,25 +1654,9 @@ const getReporte180 = async (req, res) => {
         // Base Jotform" (TablaKpiComercial) y antes NO leía "canal" de la query
         // string, así que el filtro de origen no afectaba estos datos.
         if (canal) {
-            const seleccion180   = String(canal).split(',').map(s => s.trim()).filter(Boolean);
-            const origenesSel180 = [...new Set(seleccion180.flatMap(v => CANAL_ORIGENES_MAP[v] || [v]))];
-            if (origenesSel180.length) {
-                const startIdx180 = values.length + 1;
-                const placeholders180 = origenesSel180.map((_, i) => `$${startIdx180 + i}`).join(', ');
-                values.push(...origenesSel180);
-                filtersNoJoin += ` AND (
-                    mb.b_origen IN (${placeholders180})
-                    OR mb.j_id_bitrix::text IN (
-                        SELECT mb2.b_id::text
-                        FROM mestra_bitrix mb2
-                        WHERE mb2.b_origen IN (${placeholders180})
-                          AND mb2.b_id IS NOT NULL
-                    )
-                )`;
-            }
+            const origenes = String(canal).split(',').flatMap(v => CANAL_ORIGENES_MAP[v.trim()] || [v.trim()]);
+            filtersNoJoin += filtroOrigenNovonet(values, origenes);
         }
-        // Filtro FECHA DE ACTIVACIÓN (opcional, ver getIndicadoresDashboard para
-        // la explicación completa). Cero impacto si no se envía.
         if (fechaActivacionDesde && fechaActivacionHasta) {
             values.push(fechaActivacionDesde, fechaActivacionHasta);
             const idxDesde180 = values.length - 1;
@@ -1994,7 +1964,7 @@ const getActivacionesPorDia = async (req, res) => {
         const desde = req.query.fechaDesde || hoy;
         const hasta = req.query.fechaHasta || hoy;
         const values = [desde, hasta];
-        let filters = '';
+        let filters = filtroOrigenNovonet(values);
 
         if (req.query.asesor) {
             values.push(`%${req.query.asesor}%`);

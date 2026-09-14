@@ -22,10 +22,12 @@ async function main() {
       console.log('No hay placements CRM_DEAL_DETAIL_TAB registrados.')
       return
     }
+    // OJO: la RESPUESTA de Bitrix usa minúsculas (handler, title) aunque el
+    // BIND se hace con mayúsculas (HANDLER, TITLE) — son cosas distintas.
     console.log(`Encontrados ${r.length} placement(s) CRM_DEAL_DETAIL_TAB:\n`)
     r.forEach((p, i) => {
-      console.log(`[${i + 1}] TITLE: ${p.TITLE || '(sin título)'}`)
-      console.log(`    HANDLER: ${p.HANDLER}`)
+      console.log(`[${i + 1}] TITLE: ${p.title || '(sin título)'}`)
+      console.log(`    HANDLER: ${p.handler}`)
       console.log('')
     })
     console.log('El que hay que CONSERVAR es el que termina en /api/bitrix-connector/placement-inbox')

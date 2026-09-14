@@ -20,6 +20,7 @@ const {
     esDescarteExactoExpr,
     descarteIndicadoresExpr,
     ETAPAS_NO_GESTIONABLES,
+    esEstadoIngresoJotformValidoExpr,
     esIngresoJotformExpr,
 } = require('../shared/etapas');
 
@@ -365,7 +366,7 @@ const queryKPI = (columna, filters) => {
     -- calculaban en JS (mergeBacklog) con denominadores distintos, y por eso
     -- los % de Velsa nunca cuadraban con los de Novonet.
     ROUND( COALESCE(
-      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
@@ -962,6 +963,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
       ${JOIN_JF_VELSA_MV}
       WHERE mv.fecha_registro_jotform IS NOT NULL
         AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date = $1::date
+        AND ${esEstadoIngresoJotformValidoExpr('mv.estado_venta')}
       GROUP BY 1
     `;
 
@@ -977,6 +979,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
       return {
         ...r,
         v_subida_jot_hoy: Number(j.v_subida_jot_hoy||0),
+        real_efectividad: Number(r.real_dia_leads) > 0 ? Number(j.v_subida_jot_hoy || 0) / Number(r.real_dia_leads) * 100 : 0,
         activos_jot_hoy: Number(j.activos_jot_hoy||0),
         venta_servicio_jot_hoy: Number(j.venta_servicio_jot_hoy||0),
       };
@@ -1007,7 +1010,7 @@ async function getReporte180Velsa(req, res) {
 
     const qKPIs = `
       SELECT
-        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
+        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}) AS ingresos_jot,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_servicio,
         -- FIX (2026-08-19): denominador unificado a solo fecha de creación CRM
@@ -1018,7 +1021,7 @@ async function getReporte180Velsa(req, res) {
           / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
+          COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::numeric
           / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
@@ -1375,6 +1378,8 @@ async function forceRefreshVelsa(req, res) {
 }
 
 module.exports = {
+  getSupervisorExpr: () => EXPR_SUPERVISOR,
+  normalizarAsesorSQL,
   getIndicadoresDashboardVelsa,
   getMonitoreoDiarioVelsa,
   getReporte180Velsa,

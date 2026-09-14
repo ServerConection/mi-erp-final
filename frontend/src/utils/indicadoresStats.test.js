@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 
 import { calcularStatsIndicadores } from './indicadoresStats.js';
 
+test('efectividad del equipo usa JOT válido y todos los gestionables, ponderados', () => {
+  const stats = calcularStatsIndicadores({ asesores: [
+    { gestionables: 10, ingresos_reales: 8, ventas_crm: 2 },
+    { gestionables: 90, ingresos_reales: 12, ventas_crm: 40 },
+  ] });
+  assert.equal(stats.efectividad, '20.0');
+  assert.equal(calcularStatsIndicadores().efectividad, '0.0');
+});
+
 test('las tarjetas se calculan desde asesores y no desde supervisores divergentes', () => {
   const data = {
     porcentajeTarjeta: 25,

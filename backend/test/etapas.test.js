@@ -3,6 +3,19 @@ const assert = require('node:assert/strict');
 
 const { esEtapaGestionable, esGestionableExpr } = require('../src/shared/etapas');
 
+test('correo ratificado: elegibilidad JOT depende solo del estado, con cinco exclusiones', () => {
+  const { esIngresoJotformExpr, ESTADOS_EXCLUIDOS_INGRESO_JOTFORM } = require('../src/shared/etapas');
+  const sql = esIngresoJotformExpr('etapa_crm', 'estado_jot');
+  assert.doesNotMatch(sql, /etapa_crm/);
+  assert.match(sql, /estado_jot/);
+  assert.match(sql, /REGEXP_REPLACE/);
+  assert.deepEqual(ESTADOS_EXCLUIDOS_INGRESO_JOTFORM, [
+    'PRESERVICIO', 'FIN DE GESTION', 'FIN DE GESTIÓN',
+    'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO',
+    'DUPLICADO', 'DUPLLICADO', 'SIN ASUNTO',
+  ]);
+});
+
 test('clasifica variantes conceptuales de etapas no gestionables', () => {
   const noGestionables = [
     'duplicado',

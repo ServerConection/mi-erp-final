@@ -18,6 +18,7 @@ const {
     esPorRegularizarExpr,
     descarteIndicadoresExpr,
     esDescarteExactoExpr,
+    esEstadoIngresoJotformValidoExpr,
     esIngresoJotformExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
@@ -321,8 +322,8 @@ const getIndicadoresDashboard = async (req, res) => {
         }
 
         let values = [desde, hasta];
-        let filtersJoin = "";
-        let filtersNoJoin = "";
+        let filtersJoin = '';
+        let filtersNoJoin = '';
 
         // Filtro ASESOR: soporta multi-selección. Acepta '?asesor=A,B,C' (lista
         // separada por comas) o '?asesor=A&asesor=B' (array desde el frontend).
@@ -492,7 +493,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // — NO el ASESOR_RESUELTO de queryJotform, porque estas queries no
         // hacen JOIN al webhook de responsables).
         let valuesDia = [desde, hasta];
-        let filtrosDia = "";
+        let filtrosDia = ` AND ${esEstadoIngresoJotformValidoExpr('mb_jot.j_netlife_estatus_real')}`;
         if (asesorQuery) {
             const listaAsesoresDia = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
                 .map(a => a.trim()).filter(Boolean);
@@ -630,12 +631,13 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS ventas_crm,
                 0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')})::numeric
                     / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         -- CAMBIO (2026-07-28): denominador de efectividad por FECHA DE CREACION
                         -- (_bc_date) en vez de fecha de cerrado. Antes: WHERE _bcerrado_date BETWEEN ...
                         WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_realz,
                 COUNT(*) FILTER (
@@ -737,9 +739,10 @@ const getIndicadoresDashboard = async (req, res) => {
                         WHERE _jf_date BETWEEN $1::date AND $2::date
                         AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
+                    / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
@@ -752,9 +755,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE (_jf_parsed_date BETWEEN $1::date AND $2::date OR _bc_date BETWEEN $1::date AND $2::date)
+                    / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS efectividad_activas_vs_pauta,
                 ROUND( COALESCE(
@@ -766,9 +770,10 @@ const getIndicadoresDashboard = async (req, res) => {
                         WHERE _jf_date BETWEEN $1::date AND $2::date
                         AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     )::numeric
-                    / NULLIF(COUNT(*) FILTER (
+                    / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
                     ), 0)
                 , 0) * 100, 2) AS eficiencia
             FROM _base
@@ -1423,8 +1428,8 @@ LEFT JOIN LATERAL (
 ) e ON true`;
 
         let values = [iniciomes, hoy];
-        let filtersJoin = "";
-        let filtersNoJoin = "";
+        let filtersJoin = '';
+        let filtersNoJoin = '';
 
         if (asesor) {
             const listaAsesoresMon = (Array.isArray(asesor) ? asesor : String(asesor).split(','))
@@ -1466,7 +1471,7 @@ LEFT JOIN LATERAL (
                     WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS real_mes_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE ${parseFecha('mb.b_cerrado')} = $2::date
+                    WHERE ${parseFecha('mb.b_creado_el_fecha')} = $2::date
                     AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
                 ) AS real_dia_leads,
                 COUNT(DISTINCT mb.b_id) FILTER (
@@ -1476,7 +1481,7 @@ LEFT JOIN LATERAL (
                     WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
                 ) AS crm_dia,
                 COUNT(DISTINCT mb.b_id) FILTER (
-                    WHERE ${parseFecha('mb.b_cerrado')} = $2::date
+                    WHERE ${parseFecha('mb.b_creado_el_fecha')} = $2::date
                     AND mb.b_etapa_de_la_negociacion = 'VENTA SUBIDA'
                 ) AS v_subida_crm_hoy,
                 ROUND(COALESCE(
@@ -1503,7 +1508,7 @@ LEFT JOIN LATERAL (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND ${VENTA_SERVICIO_VAN}
                 ) AS real_venta_servicio
-            FROM public.mestra_bitrix mb
+            FROM public.vw_bitrix_novonet mb
             ${joinMonitoreo}
             ${JOIN_VAN_NOVONET}
             WHERE (
@@ -1515,7 +1520,7 @@ LEFT JOIN LATERAL (
         `;
 
         const valuesJotHoy = [hoy];
-        let filtersJotHoy = "";
+        let filtersJotHoy = ` AND ${esEstadoIngresoJotformValidoExpr('mb.j_netlife_estatus_real')}`;
         let jotHoyParamOffset = 1;
 
         if (asesor) {
@@ -1570,7 +1575,7 @@ LEFT JOIN LATERAL (
                     v_subida_jot_hoy:      jot ? Number(jot.v_subida_jot_hoy)      : 0,
                     activos_jot_hoy:       jot ? Number(jot.activos_jot_hoy)       : 0,
                     venta_servicio_jot_hoy: jot ? Number(jot.venta_servicio_jot_hoy) : 0,
-                    real_efectividad:      jot ? Number(jot.real_efectividad)      : 0,
+                    real_efectividad: Number(row.real_dia_leads) > 0 ? Number(jot?.v_subida_jot_hoy || 0) / Number(row.real_dia_leads) * 100 : 0,
                 };
             });
         };
@@ -1605,7 +1610,7 @@ const getReporte180 = async (req, res) => {
         const hasta = fechaHasta ? fechaHasta : hoy;
 
         let values = [desde, hasta];
-        let filtersNoJoin = "";
+        let filtersNoJoin = '';
 
         if (asesor) {
             values.push(`%${asesor}%`);
@@ -1694,6 +1699,7 @@ const getReporte180 = async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1716,12 +1722,12 @@ const getReporte180 = async (req, res) => {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-                    )::numeric
-                    / NULLIF(COUNT(*) FILTER (
-                        WHERE (${parseFecha('mb.j_fecha_registro_sistema')} BETWEEN $1::date AND $2::date OR ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date)
+                        AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
+                    )::numeric / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
+                        WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}
-                    ), 0)
-                , 0) * 100, 2) AS pct_efectividad,
+                        AND ${sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion')}
+                    ), 0), 0) * 100, 2) AS pct_efectividad,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
@@ -1733,7 +1739,7 @@ const getReporte180 = async (req, res) => {
                         AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
-            FROM public.mestra_bitrix mb
+            FROM public.vw_bitrix_novonet mb
             ${JOIN_VAN_NOVONET}
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
@@ -2045,6 +2051,7 @@ const forceRefreshNovonet = async (req, res) => {
 };
 
 module.exports = {
+    CANAL_ORIGENES_MAP,
     getIndicadoresDashboard,
     getMonitoreoDiario,
     getReporte180,

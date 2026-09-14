@@ -19,7 +19,7 @@
  * fuente falla, la otra empresa igual se muestra.
  */
 const pool = require('../config/db');
-const { esGestionableExpr, esIngresoJotformExpr } = require('../shared/etapas');
+const { esGestionableExpr, esIngresoJotformExpr, sumaReporteExpr } = require('../shared/etapas');
 const { construirForecastAgencias } = require('../shared/inversionRedes');
 
 const fechaEc = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -51,24 +51,25 @@ const SERIES = {
     // duplicaría la fila si un deal apareciera dos veces en la vista, y los
     // ingresos —que hoy están bien— empezarían a inflarse.
     sql: `
-      SELECT mb.j_fecha_registro_sistema::date                       AS fecha,
-             -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
-             -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
-             -- Antes era COUNT(*) sin más condición (mismo fix que
-             -- indicadores.controller.js / kpiComercial.controller.js).
-             COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('crm.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')})::int AS ingresos,
-             COUNT(*) FILTER (WHERE ${esGestionableExpr('crm.b_etapa_de_la_negociacion')})::int AS gestionables,
-             COUNT(*) FILTER (WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO')::int    AS activas
-      FROM public.mestra_bitrix mb
-      LEFT JOIN LATERAL (
-        SELECT b.b_etapa_de_la_negociacion
-          FROM public.vw_bitrix_novonet b
-         WHERE b.b_id::text = mb.j_id_bitrix::text
-         LIMIT 1
-      ) crm ON true
-      WHERE mb.j_id_bitrix IS NOT NULL
-        AND mb.j_fecha_registro_sistema::date BETWEEN $1::date AND $2::date
-      GROUP BY 1 ORDER BY 1`,
+      WITH diarios AS (
+        SELECT public.parse_fecha_flex(mb.b_creado_el_fecha::text) AS fecha, 0::int AS ingresos,
+          COUNT(DISTINCT mb.b_id) FILTER (WHERE ${esGestionableExpr('mb.b_etapa_de_la_negociacion')} AND ${sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion')})::int AS gestionables,
+          0::int AS activas
+        FROM public.vw_bitrix_novonet mb
+        WHERE public.parse_fecha_flex(mb.b_creado_el_fecha::text) BETWEEN $1::date AND $2::date
+        GROUP BY 1
+        UNION ALL
+        SELECT public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) AS fecha,
+          COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')})::int AS ingresos,
+          0::int AS gestionables,
+          COUNT(*) FILTER (WHERE UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO')::int AS activas
+        FROM public.vw_bitrix_novonet mb
+        WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+        GROUP BY 1
+      )
+      SELECT fecha, SUM(ingresos)::int AS ingresos, SUM(gestionables)::int AS gestionables,
+        SUM(activas)::int AS activas
+      FROM diarios GROUP BY fecha ORDER BY fecha`,
     inversionSql: `
       SELECT fecha::date AS fecha, COALESCE(SUM(monto_usd), 0)::numeric AS inversion
       FROM public.novonet_inversion_redes
@@ -85,18 +86,25 @@ const SERIES = {
   velsa: {
     nombre: 'Velsa',
     sql: `
-      SELECT (mv.fecha_registro_jotform - INTERVAL '5 hours')::date   AS fecha,
-             -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
-             -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
-             -- Antes era COUNT(*) sin más condición (mismo fix que
-             -- indicadoresVelsaMaterialized.controller.js).
-             COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::int AS ingresos,
-             COUNT(*) FILTER (WHERE ${esGestionableExpr('mv.etapa_crm')})::int          AS gestionables,
-             COUNT(*) FILTER (WHERE UPPER(TRIM(mv.estado_venta)) = 'ACTIVO')::int       AS activas
-      FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.id_jotform IS NOT NULL
-        AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-      GROUP BY 1 ORDER BY 1`,
+      WITH diarios AS (
+        SELECT mv.fecha_creacion_crm::date AS fecha, 0::int AS ingresos,
+          COUNT(DISTINCT mv.id_crm) FILTER (WHERE ${esGestionableExpr('mv.etapa_crm')})::int AS gestionables,
+          0::int AS activas
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+        GROUP BY 1
+        UNION ALL
+        SELECT (mv.fecha_registro_jotform - INTERVAL '5 hours')::date AS fecha,
+          COUNT(*) FILTER (WHERE ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::int AS ingresos,
+          0::int AS gestionables,
+          COUNT(*) FILTER (WHERE UPPER(TRIM(mv.estado_venta)) = 'ACTIVO')::int AS activas
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+        GROUP BY 1
+      )
+      SELECT fecha, SUM(ingresos)::int AS ingresos, SUM(gestionables)::int AS gestionables,
+        SUM(activas)::int AS activas
+      FROM diarios GROUP BY fecha ORDER BY fecha`,
     inversionSql: `
       SELECT fecha::date AS fecha, COALESCE(SUM(monto_usd), 0)::numeric AS inversion
       FROM public.velsa_inversion_redes
@@ -167,7 +175,7 @@ async function serieEmpresa(clave, { desde, hasta }) {
       cpa: div(inversion, activas),
       cpl: div(inversion, ingresos),
       pct_gestionable: div(gestionables * 100, ingresos),
-      pct_efectividad: div(activas * 100, ingresos),   // activas sobre ingresos
+      pct_efectividad: div(ingresos * 100, gestionables),
     },
   };
 }

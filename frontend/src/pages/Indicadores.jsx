@@ -643,18 +643,24 @@ export default function ReporteComercialCore() {
   };
 
   // ── Fetch aislado de las tablas KPI comerciales ────────────────────────────
+  const kpiRequestRef = useRef(0);
   const fetchKpiComercial = useCallback(async (f) => {
+    const requestId = ++kpiRequestRef.current;
+    setKpiComercial({ supervisores: [], asesores: [], total: null });
     try {
       const p = new URLSearchParams();
-      if (f?.fechaDesde) p.set('fechaDesde', f.fechaDesde);
-      if (f?.fechaHasta) p.set('fechaHasta', f.fechaHasta);
+      Object.entries(f || {}).forEach(([key, value]) => {
+        if (value !== '' && value != null) p.set(key, Array.isArray(value) ? value.join(',') : String(value));
+      });
       // Este endpoint SI exige JWT (verificarToken + noAsesor), a diferencia
       // del resto de /api/indicadores. Sin este header devuelve 401.
       const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/kpi-comercial?${p}`);
       const r   = await res.json();
+      if (requestId !== kpiRequestRef.current) return;
       if (r?.success) setKpiComercial(r.data);
       else setKpiComercial({ supervisores: [], asesores: [], total: null });
     } catch (e) {
+      if (requestId !== kpiRequestRef.current) return;
       console.error('[KPI-COMERCIAL]', e);
       setKpiComercial({ supervisores: [], asesores: [], total: null });
     }
@@ -1787,8 +1793,8 @@ ${asesoresPDF.length>0?`
             <KpiMini index={0} label="Leads Totales"        meta={METAS_COMERCIALES.leadsTotales}    real={stats.leadsGestionables}                color="border-l-emerald-500" tooltip={TIP.leadsTotales} />
             <KpiMini index={1} label="Gestionables"         meta={METAS_COMERCIALES.gestionables}    real={stats.gestionables}                     color="border-l-violet-500" tooltip={TIP.gestionables} />
             <KpiMini index={2} label="% Leads Gestionables"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
-            <KpiMini index={3} label="Efect. vs Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
-            <KpiMini index={4} label="Efect. vs Gestion."   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
+            <KpiMini index={3} label="JOT / Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
+            <KpiMini index={4} label="Efectividad"   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
             <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" tooltip={TIP.descarte} />
             <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" tooltip={TIP.ventasCRM} />
             <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -2579,10 +2585,10 @@ function HorizontalTable({ title, data, hasScroll, isAsesor = false }) {
     ventas_dia_form:        safeData.reduce((a, r) => a + Number(r.ventas_dia_form || 0), 0),
     venta_seguimiento:      safeData.reduce((a, r) => a + Number(r.venta_seguimiento || 0), 0),
     regularizacion:         safeData.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
-    efectividad_real:       (safeData.reduce((a, r) => a + Number(r.efectividad_real || 0), 0) / n).toFixed(1),
+    efectividad_real:       calcularStatsIndicadores({ asesores: safeData }).efectividad,
     descarte:               (safeData.reduce((a, r) => a + Number(r.descarte || 0), 0) / n).toFixed(1),
     tasa_instalacion:       (safeData.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
-    eficiencia:             (safeData.reduce((a, r) => a + Number(r.eficiencia || 0), 0) / n).toFixed(1),
+    eficiencia:             calcularStatsIndicadores({ asesores: safeData }).efectividad,
   };
   const totalTarjetaCredito = safeData.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
   const totalTerceraEdad    = safeData.reduce((a, r) => a + Number(r.tercera_edad || 0), 0);

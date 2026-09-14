@@ -246,7 +246,7 @@ function BloqueEmpresa({ emp }) {
                  pista="Inversión ÷ activas. Es el número que se compara contra el ARPU: si lo supera, cada venta cuesta más de lo que deja." />
             <Kpi etiqueta="Costo x lead" valor={money(k?.cpl)} ayuda="CPL"
                  pista="Inversión ÷ ingresos. Cuánto cuesta traer un formulario." />
-            <Kpi etiqueta="Efectividad" valor={pct(k?.pct_efectividad)} ayuda="activas / ingresos"
+            <Kpi etiqueta="Efectividad" valor={pct(k?.pct_efectividad)} ayuda="Ingresos JOT validos / todos los gestionables"
                  delta={v?.efectividad}
                  pista="Qué porcentaje de lo que entró terminó instalado." />
           </div>

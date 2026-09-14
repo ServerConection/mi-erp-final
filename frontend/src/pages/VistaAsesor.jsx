@@ -301,14 +301,10 @@ function AsesorCard({ row, rank }) {
   const etapas = row.etapasJot || [];
 
   const descarte       = Number(row.descarte || 0);
-  // EFECTIVIDAD (2026-09-07, definicion de negocio): ingresos CRM sobre
-  // gestionables. Es decir, de los leads que se podian trabajar, cuantos
-  // terminaron en VENTA SUBIDA en el CRM. Antes se usaba efectividad_real, que
-  // divide los ingresos de Jotform (no del CRM) y ademas con otra ventana de
-  // fecha, por eso no cuadraba con el total del equipo.
+  // Efectividad ratificada: ingresos JOT validos / todos los gestionables.
   const gestionablesRow = Number(row.gestionables || 0);
   const efectividad    = gestionablesRow > 0
-    ? (Number(row.ventas_crm || 0) / gestionablesRow) * 100
+    ? (Number(row.ingresos_reales || 0) / gestionablesRow) * 100
     : 0;
   const tasaInstalacion = Number(row.tasa_instalacion || 0);
   const pctTarjeta     = Number(row.tarjeta_credito || 0) > 0 && Number(row.ingresos_reales || 0) > 0
@@ -642,15 +638,9 @@ export default function VistaAsesor() {
       // Respaldo por si el backend aun no envia descarte_base (deploy a medias):
       // se mantiene el comportamiento anterior en vez de mostrar 0.
       : (base.length > 0 ? base.reduce((a, r) => a + Number(r.descarte || 0), 0) / base.length : 0);
-    // EFECTIVIDAD: ingresos CRM / gestionables (definicion de negocio,
-    // 2026-09-07). De los leads trabajables, cuantos terminaron en venta subida.
-    //
-    // Se calcula desde los TOTALES, no promediando los porcentajes de cada
-    // asesor (FIX 2026-09-06): el promedio simple pesa igual a un asesor con 2
-    // leads que a uno con 200, y uno con 1 venta sobre 1 gestionable aporta un
-    // 100% que empuja el numero hacia arriba.
+    // Total ponderado: ingresos JOT validos / gestionables.
     const totalCrm = base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0);
-    const pctEfectividad = totalGest > 0 ? (totalCrm / totalGest) * 100 : 0;
+    const pctEfectividad = totalGest > 0 ? (totalJot / totalGest) * 100 : 0;
     const pctTasaInst    = totalJot > 0 ? (totalActivas / totalJot) * 100 : 0;
     const pctTarjeta     = totalJot > 0 ? (totalTarjeta / totalJot) * 100 : 0;
 

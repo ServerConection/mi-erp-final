@@ -24,10 +24,10 @@ export const TOOLTIPS_INDICADORES = {
     "De cada 100 leads que entran, cuántos son realmente trabajables. Gestionables ÷ Leads Totales. Si baja, está entrando más basura (ATC, fuera de cobertura).",
 
   efectividadVsLeadsTotales:
-    "De cada 100 leads que ENTRARON (no solo los trabajables), cuántos se convirtieron en venta Jotform. Mide la calidad de la pauta, no del asesor.",
+    "Ingresos JOT válidos ÷ total de leads discriminados × 100, dentro de los filtros aplicados.",
 
   efectividad:
-    "De cada 100 leads trabajables (gestionables), cuántos terminaron en venta registrada en Jotform. Es el indicador principal del asesor.",
+    "Ingresos JOT válidos ÷ leads gestionables × 100, dentro de los filtros aplicados.",
 
   descarte:
     "De lo gestionable, qué porcentaje se perdió. Ojo: el divisor usa una ventana de fecha más amplia que la de \"Gestionables\" en pantalla (a propósito).",
@@ -45,7 +45,7 @@ export const TOOLTIPS_INDICADORES = {
     "Ventas que NO se cerraron el mismo día: necesitaron seguimiento. Es Ingresos Tot. Jot menos Ingresos CRM día.",
 
   ingresosReales:
-    "Todas las ventas registradas en Jotform en el rango (fecha JOT). Cuenta filas, no IDs únicos: un cliente con 3 servicios son 3 ventas.",
+    "Ingresos JOT del rango, excluyendo Preservicio, Fin de gestión, Desiste de Servicio, Duplicado y Sin Asunto. Se acepta también la variante Desiste del Servicio. La etapa CRM no excluye ingresos JOT.",
 
   activaMes:
     "De las activadas en el rango, las que ADEMÁS se registraron en Jotform dentro del mismo rango: vendido y activado en el mismo mes.",

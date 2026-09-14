@@ -70,9 +70,7 @@ for (const empresa of ['NOVONET', 'VELSA']) {
       assert.match(sql, /INTERVAL '5 hours'/);
       assert.match(sql, /mb.supervisor ILIKE/);
     } else {
-      for (const origen of require('../src/shared/origenIndicadores').ORIGENES_NOVONET) {
-        assert.ok(values.includes(origen.toUpperCase()));
-      }
+      assert.ok(!values.includes('API 484')); // No imponer los valores iniciales del frontend.
       assert.match(sql, /origen_bwl.empresa = 'novonet'/);
       assert.match(sql, /FROM public.vw_bitrix_novonet mb/);
       assert.match(sql, /e.supervisor ILIKE/);
@@ -100,4 +98,13 @@ test('sin resultados devuelve ambas tablas vacías y efectividades cero', async 
   assert.equal(payload.data.supervisores.length, 0);
   assert.equal(payload.data.total.pct_efect_vs_leads, 0);
   assert.equal(payload.data.total.pct_efect_vs_gestion, 0);
+});
+
+test('sin selección de origen no se impone un límite fijo en NOVONET', async () => {
+  const { handler, queries } = cargar([]);
+  await handler({ query: { fechaDesde: '2026-09-01', fechaHasta: '2026-09-14' } }, {
+    json() {}, status(code) { assert.fail(`HTTP ${code}`); },
+  });
+  assert.doesNotMatch(queries[0].sql, /origen_bwl/);
+  assert.equal(queries[0].values.length, 3);
 });

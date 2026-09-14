@@ -1,6 +1,6 @@
 const pool = require('../config/db');
-const { ORIGENES_NOVONET, filtroOrigenBitrix, dealNovonet, normalizarOrigenExpr } = require('../shared/origenIndicadores');
-const filtroOrigenNovonet = (values, origenes = ORIGENES_NOVONET, alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
+const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
+const filtroOrigenNovonet = (values, origenes = [], alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ const getEtapasCache = async () => {
     pool.query(`SELECT source AS origen, COUNT(*)::int AS total
                 FROM public.bitrix_webhook_leads
                 WHERE empresa = 'novonet'
-                  AND ${normalizarOrigenExpr('source')} IN ${_sqlListaUpper(ORIGENES_NOVONET)}
+
                   AND NULLIF(TRIM(source), '') IS NOT NULL
                   AND ${esLeadTotalExpr('etapa_bitrix')}
                 GROUP BY 1
@@ -484,7 +484,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // — NO el ASESOR_RESUELTO de queryJotform, porque estas queries no
         // hacen JOIN al webhook de responsables).
         let valuesDia = [desde, hasta];
-        let filtrosDia = ` AND ${esEstadoIngresoJotformValidoExpr('mb_jot.j_netlife_estatus_real')}` + filtroOrigenNovonet(valuesDia, ORIGENES_NOVONET, 'mb_jot');
+        let filtrosDia = ` AND ${esEstadoIngresoJotformValidoExpr('mb_jot.j_netlife_estatus_real')}`;
         if (asesorQuery) {
             const listaAsesoresDia = (Array.isArray(asesorQuery) ? asesorQuery : String(asesorQuery).split(','))
                 .map(a => a.trim()).filter(Boolean);

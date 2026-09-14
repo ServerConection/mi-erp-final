@@ -188,7 +188,21 @@ function buildFilters(q, values) {
     const lista = String(origen).split(',').map(v => v.trim()).filter(Boolean);
     if (lista.length) {
       const ph = lista.map(v => { values.push(v); return `UPPER(TRIM($${values.length}))`; }).join(', ');
-      f += ` AND UPPER(TRIM(COALESCE(mv.origen, ''))) IN (${ph})`;
+      // FIX (2026-09-14): mv.origen viene de negociaciones_reporteria (sync por
+      // lotes) y no existe para leads que solo llegaron por Jotform, así que el
+      // filtro global de Origen no cascadeaba a esas filas (mismo bug ya resuelto
+      // en indicadores.controller.js / NOVONET vía origenIndicadores.js). Se
+      // agrega el mismo EXISTS por Deal ID contra bitrix_webhook_leads (fuente
+      // viva), sin tocar mv.origen ni la vista materializada.
+      f += ` AND (
+        UPPER(TRIM(COALESCE(mv.origen, ''))) IN (${ph})
+        OR EXISTS (
+          SELECT 1 FROM public.bitrix_webhook_leads bwl_o
+          WHERE bwl_o.empresa = 'velsa'
+            AND BTRIM(bwl_o.bitrix_id::text) = BTRIM(COALESCE(mv.id_crm, mv.id_jotform)::text)
+            AND UPPER(TRIM(COALESCE(bwl_o.source, ''))) IN (${ph})
+        )
+      )`;
     }
   }
   // Filtro GESTIONABLES: 'si' = solo gestionables, 'no' = solo NO gestionables
@@ -650,9 +664,15 @@ async function getIndicadoresDashboardVelsa(req, res) {
     `;
     const qNetlife = `
 SELECT
-  mv.id_crm AS "ID_CRM",
-  mv.id_registro AS "ID_JOT",
-  mv.etapa_crm AS "ETAPA",
+  -- FIX (2026-09-14, a pedido): ID_CRM e ID_JOT deben mostrar siempre el mismo
+  -- Deal ID. Antes ID_JOT usaba mv.id_registro (quedaba NULL en filas que solo
+  -- tienen lado Jotform, ver id_registro en refreshVelsa.materialized.sql).
+  COALESCE(mv.id_crm, mv.id_jotform) AS "ID_CRM",
+  COALESCE(mv.id_crm, mv.id_jotform) AS "ID_JOT",
+  -- FIX (2026-09-14, a pedido): ETAPA debe reflejar la etapa VIVA de Bitrix
+  -- (bwl_v.etapa_bitrix, joineada abajo por Deal ID), cayendo a la etapa de
+  -- negociaciones_reporteria (sync por lotes) solo si el webhook no la tiene.
+  COALESCE(NULLIF(TRIM(bwl_v.etapa_bitrix), ''), NULLIF(TRIM(mv.etapa_crm), '')) AS "ETAPA",
   mv.fecha_creacion_crm AS "FECHA_CREACION",
   mv.asesor AS "ASESOR",
   -- FIX 2026-08-18: antes "SUPERVISOR" — el modal ClienteModal (frontend)
@@ -661,7 +681,10 @@ SELECT
   -- para clientes abiertos desde la tabla "Detalle base Jotform Velsa", aunque
   -- el dato sí venía en la fila bajo la clave equivocada.
   ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
-  mv.origen AS "ORIGEN",
+  -- FIX (2026-09-14, a pedido): ORIGEN debe resolverse por Deal ID contra la
+  -- fuente viva (bwl_v.source), cayendo a mv.origen solo si el webhook no
+  -- tiene ese deal todavía.
+  COALESCE(NULLIF(TRIM(bwl_v.source), ''), NULLIF(TRIM(mv.origen), '')) AS "ORIGEN",
   -- FIX 2026-08-18: faltaba esta columna (el modal la busca como
   -- "FECHA_CREACION_JOT", igual que qVentasActivasMes) — sin ella, el modal
   -- no mostraba la fecha de registro Jotform para clientes de esta tabla.
@@ -694,6 +717,12 @@ SELECT
   mv.fecha_agenda AS "FECHA_AGENDA",
   mv.observacion AS "OBSERVACION"
 FROM public.mv_indicadores_velsa_completo mv
+-- FIX (2026-09-14): resuelve ORIGEN/ETAPA por Deal ID contra la fuente viva.
+-- Solo a nivel de consulta (no toca la MV: tiene vistas dependientes, ver
+-- enable_mv_velsa_concurrent_refresh.sql).
+LEFT JOIN public.bitrix_webhook_leads bwl_v
+       ON bwl_v.empresa = 'velsa'
+      AND BTRIM(bwl_v.bitrix_id::text) = BTRIM(COALESCE(mv.id_crm, mv.id_jotform)::text)
 LEFT JOIN (
     SELECT id_bitrix_ghl,
            MAX(NULLIF(TRIM(answers->'241'->>'answer'), '')) AS plan_gamer

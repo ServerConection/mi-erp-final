@@ -83,13 +83,21 @@ async function placementInbox(req, res) {
   try {
     const b = (req.body && Object.keys(req.body).length) ? req.body : (req.query || {})
     const authId = b.AUTH_ID || b.auth_id
-    const domain = b.DOMAIN || b.domain
+
+    // Bitrix ya NO manda DOMAIN/domain en el placement de esta app (se
+    // confirmo en logs: solo llegan AUTH_ID, SERVER_ENDPOINT, member_id,
+    // etc). En su lugar manda SERVER_ENDPOINT, la URL REST del portal
+    // (ej. https://novonet.bitrix24.es/rest/) -- de ahi sacamos el dominio.
+    let domain = b.DOMAIN || b.domain
+    if (!domain) {
+      const endpoint = b.SERVER_ENDPOINT || b.server_endpoint
+      if (endpoint) {
+        try { domain = new URL(endpoint).hostname } catch (_) { /* endpoint invalido, sigue sin domain */ }
+      }
+    }
     console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s tieneDomain=%s', req.method, !!authId, !!domain)
 
     if (!authId || !domain) {
-      // TEMPORAL: no logueamos valores (AUTH_ID es un token de sesion), solo
-      // los NOMBRES de campo que mando Bitrix, para saber por cual vino el
-      // dominio en vez de DOMAIN/domain.
       console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID/DOMAIN, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))
       return irALoginManual()
     }

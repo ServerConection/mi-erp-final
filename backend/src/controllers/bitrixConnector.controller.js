@@ -84,8 +84,9 @@ async function placementInbox(req, res) {
     const b = (req.body && Object.keys(req.body).length) ? req.body : (req.query || {})
     const authId = b.AUTH_ID || b.auth_id
     const domain = b.DOMAIN || b.domain
+    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s tieneDomain=%s', req.method, !!authId, !!domain)
 
-    if (!authId || !domain) return irALoginManual()
+    if (!authId || !domain) { console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID/DOMAIN, cae a login manual'); return irALoginManual() }
 
     // 1) Confirmar identidad real contra Bitrix (nunca confiar en el cliente)
     const usuarioBitrix = await bitrixApp.usuarioActualPorAuthId(domain, authId)
@@ -262,4 +263,23 @@ async function estado(req, res) {
   } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
 }
 
-module.exports = { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado }
+// ── TEMPORAL: diagnóstico de la pestaña WABOT del Deal ──────────────────────
+// Muestra qué HANDLER tiene Bitrix realmente registrado para el placement
+// CRM_DEAL_DETAIL_TAB. Protegido con el mismo APP_TOKEN que ya usamos para
+// validar eventos de Bitrix (no expone nada nuevo). Solo lectura: no cambia
+// nada en Bitrix ni en nuestra base. Borrar este endpoint una vez resuelto
+// el diagnóstico del tab WABOT.
+async function debugPlacement(req, res) {
+  if (!APP_TOKEN || req.query.token !== APP_TOKEN) {
+    return res.status(404).json({ success: false })
+  }
+  try {
+    const todos = await bitrixApp.llamar('placement.get', {})
+    const deal = (todos || []).filter(p => p.PLACEMENT === 'CRM_DEAL_DETAIL_TAB')
+    return res.json({ success: true, placements_deal_detail_tab: deal, total_placements: (todos || []).length })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+}
+
+module.exports = { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado, debugPlacement }

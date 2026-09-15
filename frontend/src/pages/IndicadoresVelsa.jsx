@@ -369,6 +369,7 @@ export default function ReporteVelsa() {
     dataNetlife: [],
     estadosNetlife: [],
     graficoEmbudo: [],
+    graficoEmbudoPorDia: [],
     graficoBarrasDia: [],
     graficoActivacionesDia: [],
     etapasCRM: [],
@@ -949,6 +950,59 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   };
 
   const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
+
+  // ── Embudo por día (barra apilada) ──────────────────────────────────────
+  // Orden/color de las etapas = mismo orden que ya usa la leyenda de la
+  // derecha (data.graficoEmbudo, de mayor a menor total), para que el color
+  // de cada etapa sea idéntico en la leyenda y en los segmentos de la barra.
+  const etapasEmbudoOrdenadas = useMemo(
+    () => (data.graficoEmbudo || []).map(e => e.etapa),
+    [data.graficoEmbudo]
+  );
+
+  // Pivotea [{fecha, etapa, total}, ...] → una fila por día con una columna
+  // por etapa (para apilar) + _total (suma del día, para la etiqueta y el
+  // tooltip). Mismos filtros que el total general (misma query en backend),
+  // así que la suma de todas las barras siempre cuadra con TOTAL: {totalBaseEmbudo}.
+  const dataEmbudoPorDia = useMemo(() => {
+    const porFecha = new Map();
+    (data.graficoEmbudoPorDia || []).forEach(r => {
+      const fechaStr = r.fecha instanceof Date ? r.fecha.toISOString() : String(r.fecha || '');
+      const key = fechaStr.split('T')[0];
+      if (!key) return;
+      if (!porFecha.has(key)) {
+        porFecha.set(key, { fecha: key, fechaDia: formatFechaCorta(fechaStr), _total: 0 });
+      }
+      const fila  = porFecha.get(key);
+      const etapa = r.etapa || 'SIN ETAPA';
+      fila[etapa] = (fila[etapa] || 0) + Number(r.total || 0);
+      fila._total += Number(r.total || 0);
+    });
+    return Array.from(porFecha.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [data.graficoEmbudoPorDia]);
+
+  // Tooltip del embudo por día: desglosa cada etapa presente ese día + el
+  // total (mismo total que muestra la etiqueta encima de la barra).
+  const TooltipEmbudoDia = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    const visibles = payload.filter(p => Number(p.value) > 0);
+    const total = visibles.reduce((s, p) => s + Number(p.value || 0), 0);
+    return (
+      <div style={{ backgroundColor: '#0c0a09', border: '1px solid #292524', borderRadius: 8, padding: '10px 12px', fontSize: 10, minWidth: 170, maxHeight: 260, overflowY: 'auto' }}>
+        <p style={{ color: '#fff', fontWeight: 900, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #292524', paddingBottom: 4 }}>DÍA {label}</p>
+        {visibles.map((p, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 3 }}>
+            <span style={{ color: '#a8a29e', textTransform: 'uppercase' }}>{p.name}</span>
+            <span style={{ fontWeight: 900, color: p.fill || p.color }}>{p.value}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, paddingTop: 4, marginTop: 4, borderTop: '1px solid #292524' }}>
+          <span style={{ color: '#a8a29e' }}>TOTAL</span>
+          <span style={{ fontWeight: 900, color: '#fff' }}>{total}</span>
+        </div>
+      </div>
+    );
+  };
 
   // Planes por categoría (Hogar / Pymes / Adulto Mayor) — pestaña REPORTE D-1
   const PLANES_CAT_DASH = data.planesPorCategoria || {};

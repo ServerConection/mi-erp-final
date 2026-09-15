@@ -596,6 +596,20 @@ async function getIndicadoresDashboardVelsa(req, res) {
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
     `;
+    // ── NUEVO: mismo embudo, desglosado por día + etapa (barra apilada) ─────
+    // Mismo universo/filtros que qEmbudo (misma MV, mismo rango, mismos
+    // filters) para que el total por día siempre cuadre con el total general
+    // del embudo — solo cambia el GROUP BY (agrega la fecha).
+    const qEmbudoPorDia = `
+      SELECT
+        mv.fecha_creacion_crm::date::text AS fecha,
+        UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa,
+        COUNT(DISTINCT mv.id_crm)::int AS total
+      FROM ${MV}
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY mv.fecha_creacion_crm::date, UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA')))
+      ORDER BY fecha ASC
+    `;
     const qPorDia = `
       SELECT
         (mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text AS fecha,
@@ -879,7 +893,7 @@ LIMIT 6000
 
     const [
       resSup, resAses, resBkSup, resBkAses,
-      resEstados, resEmbudo, resDia,
+      resEstados, resEmbudo, resEmbudoDia, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
       resOrigenes, resPorRegularizar, resBacklogDetalle,
@@ -890,6 +904,7 @@ LIMIT 6000
       pool.query(queryBacklog('mv.asesor',     filtersBk), valuesBk),
       pool.query(qEstados,   valuesMain),
       pool.query(qEmbudo,    valuesMain),
+      pool.query(qEmbudoPorDia, valuesMain),
       pool.query(qPorDia,    valuesMain),
       pool.query(qEtapasCRM),
       pool.query(qEtapasJot),
@@ -924,6 +939,7 @@ LIMIT 6000
       dataNetlife:           resNetlife.rows,
       estadosNetlife:        resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
       graficoEmbudo:         resEmbudo.rows,
+      graficoEmbudoPorDia:   resEmbudoDia.rows,
       graficoBarrasDia:      resDia.rows,
       graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por fecha_activacion_date
       etapasCRM:             resEtapasCRM.rows.map(r => r.etapa),

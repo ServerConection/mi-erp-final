@@ -1,5 +1,5 @@
 /**
- * Reporte Data de Redes VELSA — fase 1.
+ * Reporte Data de Redes VELSA.
  *
  * La pantalla es la MISMA que la de Novonet con otra URL base, así que lo
  * único que la puede romper es que el contrato de la respuesta no coincida.
@@ -72,7 +72,7 @@ test('arma una fila por cada dia del mes, aunque no haya movimiento', async () =
   } finally { limpiar(velsaPath, dbPath, freshPath) }
 })
 
-test('los bloques de la fase 2 vienen en cero y declarados, no ausentes', async () => {
+test('sin registros JotForm los bloques vienen vacíos y declarados', async () => {
   preparar()
   delete require.cache[velsaPath]
   const velsa = require(velsaPath)
@@ -80,12 +80,37 @@ test('los bloques de la fase 2 vienen en cero y declarados, no ausentes', async 
     const r = resFalso()
     await velsa.getReporteDataMensual({ query: { anio: 2026, mes: 9 } }, r)
     assert.deepEqual(r.cuerpo.status_jot, [])
-    assert.ok(r.cuerpo.bloques_pendientes.includes('status_jot'),
-      'la pantalla necesita saber que el bloque está pendiente, no roto')
+    assert.deepEqual(r.cuerpo.bloques_pendientes, [])
     const d1 = r.cuerpo.inversion[0]
     for (const campo of ['ingreso_jot', 'activos_mes', 'activo_backlog', 'preplaneados', 'asignados', 'preservicio']) {
       assert.equal(d1[campo], 0, `${campo} debe venir en 0 explícito`)
     }
+  } finally { limpiar(velsaPath, dbPath, freshPath) }
+})
+
+test('incluye ingresos y activaciones JotForm reales por día', async () => {
+  preparar((sql) => {
+    if (sql.includes('FROM filtrados') && sql.includes('ingreso_bitrix_mismo_dia'))
+      return { rows: [{ dia: 2, ingreso_jot: 3, ingreso_bitrix_mismo_dia: 2, activos_mes: 1, activo_backlog: 0, preplaneados: 1, asignados: 1, preservicio: 0 }] }
+    if (sql.includes('FROM filtrados') && sql.includes('total_ventas_jot'))
+      return { rows: [{ dia: 2, ingreso_jot: 3, ingreso_bitrix: 2, activos: 1, total_ventas_jot: 3 }] }
+    if (sql.includes('FROM jot WHERE') && sql.includes('pago_cuenta'))
+      return { rows: [{ dia: 2, pago_cuenta: 2, pago_efectivo: 1 }] }
+    if (sql.includes('FROM jot WHERE') && sql.includes('ciclo_0'))
+      return { rows: [{ dia: 2, ciclo_0: 1, ciclo_1: 1 }] }
+    return { rows: [] }
+  })
+  delete require.cache[velsaPath]
+  const velsa = require(velsaPath)
+  try {
+    const r = resFalso()
+    await velsa.getReporteDataMensual({ query: { anio: 2026, mes: 9 } }, r)
+    assert.equal(r.cuerpo.inversion[1].ingreso_jot, 3)
+    assert.equal(r.cuerpo.inversion[1].activos_mes, 1)
+    assert.equal(r.cuerpo.status_jot[0].activos, 1)
+    assert.equal(r.cuerpo.pago[0].pago_cuenta, 2)
+    assert.equal(r.cuerpo.ciclo[0].ciclo_0, 1)
+    assert.deepEqual(r.cuerpo.bloques_pendientes, [])
   } finally { limpiar(velsaPath, dbPath, freshPath) }
 })
 

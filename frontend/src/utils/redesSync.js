@@ -1,8 +1,9 @@
-export async function forzarSyncInversion({ apiBase = '', token, fetchImpl = fetch, from, to } = {}) {
+export async function forzarSyncInversion({ apiBase = '', token, fetchImpl = fetch, from, to, empresa = 'novonet' } = {}) {
   const body = {};
   if (from) body.from = from;
   if (to) body.to = to;
-  const response = await fetchImpl(`${apiBase}/api/redes/sync-inversion`, {
+  const ruta = empresa === 'velsa' ? 'redes-velsa' : 'redes';
+  const response = await fetchImpl(`${apiBase}/api/${ruta}/sync-inversion`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

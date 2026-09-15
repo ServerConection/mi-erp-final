@@ -168,7 +168,7 @@ function TablaCiudad({ filas }) {
   if (!filas?.length) return <p className="p-4 text-[11px] italic" style={{color:C.muted}}>Sin datos por ciudad para el período.</p>;
   return <table className="text-[11px] border-collapse w-full"><thead style={{background:C.bgHeader}}><tr>{['CIUDAD','PROVINCIA','LEADS','INGRESOS JOT','ACTIVOS','% ACTIVACIÓN'].map(h=><th key={h} className="px-3 py-2 border-b text-center" style={{borderColor:C.border,color:C.slate}}>{h}</th>)}</tr></thead><tbody>{filas.map((r,i)=><tr key={`${r.ciudad}-${i}`} className="border-b" style={{borderColor:C.border}}><td className="px-3 py-2 font-black">{r.ciudad||'SIN CIUDAD'}</td><td className="px-3 py-2">{r.provincia||'—'}</td><td className="px-3 py-2 text-center font-black">{n(r.total_leads)}</td><td className="px-3 py-2 text-center">{n(r.ingresos_jot)}</td><td className="px-3 py-2 text-center" style={{color:C.success}}>{n(r.activos)}</td><td className="px-3 py-2 text-center font-black">{pf(r.pct_activos)}</td></tr>)}</tbody></table>;
 }
-function buildInversionFilas(d, dias) {
+function buildInversionFilas(d) {
   if (!d.inversion || d.inversion.length === 0) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
 
@@ -264,7 +264,7 @@ function buildEtapasFilas(d, dias) {
 }
 
 // BLOQUE 3: Estatus ventas JOT
-function buildJotFilas(d, dias) {
+function buildJotFilas(d) {
   if (!d.status_jot) return [];
   const g = (k) => byDiaMap(d.status_jot, "dia", k);
 
@@ -353,7 +353,7 @@ function buildCicloFilas(d, dias) {
 // `ruta` existe para que esta MISMA pantalla sirva a las dos empresas: Novonet
 // y Velsa devuelven el mismo contrato desde endpoints distintos. Duplicar el
 // componente habría significado arreglar cada bug dos veces.
-export default function TabReporteData({ filtro, ruta = "/api/redes/reporte-data", empresa = "novonet" }) {
+export default function TabReporteData({ ruta = "/api/redes/reporte-data", empresa = "novonet" }) {
   const hoy = new Date();
 
   const [anio,         setAnio]         = useState(hoy.getFullYear());
@@ -363,46 +363,62 @@ export default function TabReporteData({ filtro, ruta = "/api/redes/reporte-data
   const [canalDetalle, setCanalDetalle] = useState(null);
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState("");
 
   const dataLoaded = useRef(false);
+  const reportRequest = useRef(null);
 
   useEffect(() => {
-    setCanalesSel([]);
-    setData(null);
-    dataLoaded.current = false;
-    setCanalDetalle(null);
-
-    fetch(`${API}${ruta}?anio=${anio}&mes=${mes}`, { headers: cabecerasSesion() })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success && d.canales_disponibles) {
-          setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
-        }
-      })
-      .catch(() => {});
-  }, [anio, mes, ruta]);
-
-  const cargarDatos = useCallback((canalesSel_, anio_, mes_) => {
-    setLoading(true);
-    const params = new URLSearchParams({ anio: anio_, mes: mes_ });
-    if (canalesSel_.length > 0) params.set("canales", canalesSel_.join(","));
-
-    fetch(`${API}${ruta}?${params}`, { headers: cabecerasSesion() })
+    const controller = new AbortController();
+    const catalogUrl = empresa === "velsa"
+      ? `${API}/api/redes-velsa/canales?fechaDesde=${anio}-${String(mes).padStart(2, "0")}-01&fechaHasta=${anio}-${String(mes).padStart(2, "0")}-${new Date(anio, mes, 0).getDate()}`
+      : `${API}${ruta}?anio=${anio}&mes=${mes}`;
+    fetch(catalogUrl, { headers: cabecerasSesion(), signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
-          setData(d);
-          dataLoaded.current = true;
-          if (d.canales_disponibles) {
-            setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
-          }
+          const available = empresa === "velsa" ? d.canales : d.canales_disponibles;
+          if (available) setCanalesDisp(available.map((c) => c.canal || c.canal_publicidad));
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
+    return () => controller.abort();
+  }, [anio, mes, ruta, empresa]);
+
+  useEffect(() => () => reportRequest.current?.abort(), []);
+
+  const cargarDatos = useCallback(async (canalesSel_, anio_, mes_) => {
+    reportRequest.current?.abort();
+    const controller = new AbortController();
+    reportRequest.current = controller;
+    const timer = setTimeout(() => controller.abort("timeout"), 45000);
+    setLoading(true);
+    setError("");
+    const params = new URLSearchParams({ anio: anio_, mes: mes_ });
+    if (canalesSel_.length > 0) params.set("canales", canalesSel_.join(","));
+    try {
+      const response = await fetch(`${API}${ruta}?${params}`, { headers: cabecerasSesion(), signal: controller.signal });
+      const d = await response.json();
+      if (!response.ok || !d.success) throw new Error(d.message || `Error HTTP ${response.status} al generar el reporte`);
+      if (!d.meta?.dias || !Array.isArray(d.inversion)) throw new Error("El backend devolvió un reporte incompleto");
+      setData(d);
+      dataLoaded.current = true;
+      if (d.canales_disponibles) setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
+    } catch (e) {
+      if (controller.signal.reason === "timeout") setError("El backend tardó más de 45 segundos. Intenta de nuevo o revisa el servicio de reportes.");
+      else if (!controller.signal.aborted) setError(e.message || "No se pudo generar el reporte");
+    } finally {
+      clearTimeout(timer);
+      if (reportRequest.current === controller) { reportRequest.current = null; setLoading(false); }
+    }
   }, [ruta]);
 
   const handleCargar = () => cargarDatos(canalesSel, anio, mes);
+  const cambiarPeriodo = (setter, value) => {
+    reportRequest.current?.abort();
+    setCanalesSel([]); setData(null); dataLoaded.current = false; setCanalDetalle(null); setError("");
+    setter(value);
+  };
 
   const toggleCanal = (canal) => {
     setCanalesSel((prev) => {
@@ -566,28 +582,6 @@ export default function TabReporteData({ filtro, ruta = "/api/redes/reporte-data
       `<div style="width:160px;font-size:5.8pt;text-align:right;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">${label}</div>` +
       `<div style="flex:1;background:#e2e8f0;border-radius:3px;height:13px;overflow:hidden;"><div style="width:${maxVal>0?Math.max(2,Math.round(val/maxVal*100)):2}%;height:100%;background:${color};border-radius:3px;print-color-adjust:exact;-webkit-print-color-adjust:exact;"></div></div>` +
       `<div style="width:72px;font-size:5.8pt;color:#1A3A6E;font-weight:700">${extra||val}</div></div>`;
-
-    const buildTableHTML = (filas, dias_) => {
-      if (!filas || filas.length === 0) return '<p style="color:#94a3b8;padding:8px;font-size:7pt">Sin datos</p>';
-      const headers = dias_.map(d => `<th>${d.dia}<br/><span>${(d.nombre || '').substring(0,3)}</span></th>`).join('');
-      const rows = filas.map(f => {
-        if (f.separador) return `<tr><td colspan="${dias_.length + 2}" class="sep-row">${f.label}</td></tr>`;
-        const cells = dias_.map(d => {
-          const val = f.byDia?.[Number(d.dia)];
-          const pct = f.pctDia?.[Number(d.dia)];
-          let display = '';
-          if (f.fmt) display = f.fmt(val) || '—';
-          else if (f.showPct) display = fmtCantPct(val, pct) || '—';
-          else display = (val !== undefined && val !== null && n(val) !== 0) ? String(n(val)) : '—';
-          return `<td>${display}</td>`;
-        }).join('');
-        const totVal = f.fmt ? f.fmt(f.total) :
-                       f.showPct ? fmtCantPct(f.total, f.totalPct) :
-                       (f.total !== null && f.total !== undefined ? String(n(f.total) % 1 !== 0 ? n(f.total).toFixed(2) : n(f.total)) : '—');
-        return `<tr><td class="tdn" style="color:${f.color || '#475569'}">${f.label}</td>${cells}<td class="tot">${totVal}</td></tr>`;
-      }).join('');
-      return `<table><thead><tr><th style="text-align:left;min-width:200px">MÉTRICA</th>${headers}<th>TOTAL</th></tr></thead><tbody>${rows}</tbody></table>`;
-    };
 
     const kpis = [
       { l: 'Leads Totales',    v: totLeads,                     c: '#2563eb', bg: '#eff6ff' },
@@ -853,13 +847,13 @@ ${horaData.length > 0 ? `
           </div>
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}
+            <select value={anio} onChange={(e) => cambiarPeriodo(setAnio, Number(e.target.value))}
               className="border rounded-lg px-2.5 py-1.5 text-[12px] font-semibold outline-none bg-white cursor-pointer"
               style={{ borderColor: C.border, color: C.slate }}>
               {[2024, 2025, 2026, 2027].map((y) => <option key={y}>{y}</option>)}
             </select>
 
-            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}
+            <select value={mes} onChange={(e) => cambiarPeriodo(setMes, Number(e.target.value))}
               className="border rounded-lg px-2.5 py-1.5 text-[12px] font-semibold outline-none bg-white cursor-pointer"
               style={{ borderColor: C.border, color: C.slate }}>
               {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
@@ -947,7 +941,7 @@ ${horaData.length > 0 ? `
                 </span>
               )}
 
-              {loading && dataLoaded.current && (
+              {loading && data && (
                 <span className="text-[11px] font-medium ml-2 flex items-center gap-1" style={{ color: C.muted }}>
                   <span className="inline-block w-2 h-2 border border-current rounded-full animate-spin border-t-transparent" />
                   Actualizando...
@@ -981,9 +975,10 @@ ${horaData.length > 0 ? `
         )}
       </div>
 
-      {loading && !dataLoaded.current && (
+      {loading && !data && (
         <div className="text-center py-16 text-sm font-medium" style={{ color: C.muted }}>Generando reporte...</div>
       )}
+      {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{error}</div>}
 
       {data && (
         <div style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}>

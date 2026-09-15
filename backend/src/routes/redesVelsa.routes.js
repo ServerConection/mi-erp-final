@@ -14,8 +14,13 @@ const {
   getAgenciasCanal,
   upsertAgenciaCanal,
   getResumenPorAgencia,
+  getAsesoresVsPauta,
+  getGraficosRedesVelsa,
+  getMetasVelsa,
+  upsertMetasVelsa,
 } = require('../controllers/redesVelsaWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
+const { forceSyncInversion } = require('../controllers/redesWintracker.controller');
 
 router.use(verificarToken);
 
@@ -34,5 +39,10 @@ router.get('/reporte-data', getReporteDataMensual);
 router.get('/agencias', getAgenciasCanal);
 router.post('/agencias', noAsesor, upsertAgenciaCanal);
 router.get('/resumen-agencias', getResumenPorAgencia);
+router.get('/asesores-vs-pauta', getAsesoresVsPauta);
+router.get('/graficos', getGraficosRedesVelsa);
+router.get('/metas', getMetasVelsa);
+router.post('/metas', noAsesor, upsertMetasVelsa);
+router.post('/sync-inversion', noAsesor, forceSyncInversion);
 
 module.exports = router;

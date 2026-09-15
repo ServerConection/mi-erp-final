@@ -276,7 +276,7 @@ async function debugPlacement(req, res) {
   try {
     const todos = await bitrixApp.llamar('placement.get', {})
     const deal = (todos || []).filter(p => p.PLACEMENT === 'CRM_DEAL_DETAIL_TAB')
-    return res.json({ success: true, placements_deal_detail_tab: deal, total_placements: (todos || []).length })
+    return res.json({ success: true, placements_deal_detail_tab: deal, total_placements: (todos || []).length, todos_los_placements: todos })
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message })
   }

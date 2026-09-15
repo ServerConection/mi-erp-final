@@ -128,23 +128,25 @@ async function llamar(metodo, params = {}, { _reintento = false } = {}) {
  * del navegador: se llama a user.current CON ESE auth, y la respuesta la
  * arma Bitrix, no el cliente.
  *
- * Verificación de DOMAIN como defensa adicional: si alguien intentara abrir
- * este endpoint apuntando a un portal distinto al configurado, se corta acá
- * antes de gastar la llamada.
+ * NO se recibe el dominio del request: esta app sirve un solo portal
+ * (NOVONET), así que se usa siempre el PORTAL configurado por variable de
+ * entorno -- nunca un dato que venga del navegador. Antes se intentaba
+ * validar un DOMAIN/SERVER_ENDPOINT que mandaba Bitrix, pero confirmado en
+ * producción: Bitrix ya no manda DOMAIN, y SERVER_ENDPOINT es el servidor
+ * genérico de OAuth (oauth.bitrix.info), no el portal del cliente. Usar
+ * siempre nuestro propio PORTAL es más simple y más seguro (cero
+ * dependencia de datos del cliente).
  */
-async function usuarioActualPorAuthId(domain, authId) {
-  if (!domain || !authId) throw new Error('BITRIX_SSO_FALTAN_DATOS')
+async function usuarioActualPorAuthId(authId) {
+  if (!authId) throw new Error('BITRIX_SSO_FALTAN_DATOS')
 
-  const dominioLimpio = String(domain).toLowerCase().replace(/[^a-z0-9.\-]/g, '')
   const portalHost = PORTAL.replace(/^https?:\/\//i, '').toLowerCase()
-  if (!portalHost || dominioLimpio !== portalHost) {
-    throw new Error(`BITRIX_SSO_DOMINIO_NO_CONFIABLE (recibido="${dominioLimpio}" esperado="${portalHost}")`)
-  }
+  if (!portalHost) throw new Error('BITRIX_SSO_PORTAL_NO_CONFIGURADO')
 
   const controlador = new AbortController()
   const t = setTimeout(() => controlador.abort(), 15000)
   try {
-    const res = await fetch(`https://${dominioLimpio}/rest/user.current.json`, {
+    const res = await fetch(`https://${portalHost}/rest/user.current.json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auth: authId }),

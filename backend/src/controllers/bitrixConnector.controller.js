@@ -84,26 +84,21 @@ async function placementInbox(req, res) {
     const b = (req.body && Object.keys(req.body).length) ? req.body : (req.query || {})
     const authId = b.AUTH_ID || b.auth_id
 
-    // Bitrix ya NO manda DOMAIN/domain en el placement de esta app (se
-    // confirmo en logs: solo llegan AUTH_ID, SERVER_ENDPOINT, member_id,
-    // etc). En su lugar manda SERVER_ENDPOINT, la URL REST del portal
-    // (ej. https://novonet.bitrix24.es/rest/) -- de ahi sacamos el dominio.
-    let domain = b.DOMAIN || b.domain
-    if (!domain) {
-      const endpoint = b.SERVER_ENDPOINT || b.server_endpoint
-      if (endpoint) {
-        try { domain = new URL(endpoint).hostname } catch (_) { /* endpoint invalido, sigue sin domain */ }
-      }
-    }
-    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s tieneDomain=%s', req.method, !!authId, !!domain)
+    // NO se necesita DOMAIN del request: esta app sirve un solo portal, asi
+    // que usuarioActualPorAuthId ya usa siempre el PORTAL configurado por
+    // variable de entorno (ver comentario en bitrixApp.service.js). Antes se
+    // intentaba validar un DOMAIN/SERVER_ENDPOINT que Bitrix ya no manda
+    // (o manda como el servidor generico oauth.bitrix.info), lo que tumbaba
+    // el SSO siempre.
+    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s', req.method, !!authId)
 
-    if (!authId || !domain) {
-      console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID/DOMAIN, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))
+    if (!authId) {
+      console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))
       return irALoginManual()
     }
 
     // 1) Confirmar identidad real contra Bitrix (nunca confiar en el cliente)
-    const usuarioBitrix = await bitrixApp.usuarioActualPorAuthId(domain, authId)
+    const usuarioBitrix = await bitrixApp.usuarioActualPorAuthId(authId)
     const email = String(usuarioBitrix.EMAIL || '').trim().toLowerCase()
     if (!email) { console.warn('[WABOT-BITRIX] SSO: user.current sin EMAIL'); return irALoginManual() }
 

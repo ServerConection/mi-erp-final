@@ -32,16 +32,22 @@ async function getAll(req, res) {
     if (line_id) { params.push(line_id); where.push(`line_id = $${params.length}`) }
     if (search)  { params.push(`%${search}%`); where.push(`(name ILIKE $${params.length} OR wa_number ILIKE $${params.length})`) }
     if (tag)     { params.push(tag); where.push(`$${params.length} = ANY(tags)`) }
-    if (!isAdmin(req)) { params.push(req.user.id); where.push(`created_by = $${params.length}`) }
+    if (!isAdmin(req)) {
+      params.push(req.user.id)
+      where.push(`(created_by = $${params.length} OR EXISTS (
+        SELECT 1 FROM lines l WHERE l.id = contacts.line_id
+        AND (l.created_by = $${params.length} OR (l.created_by IS NULL AND contacts.created_by IS NULL))
+      ))`)
+    }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    params.push(parseInt(limit))
-    params.push(parseInt(offset))
+    params.push(Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 200)))
+    params.push(Math.max(0, Number.parseInt(offset, 10) || 0))
 
     const result = await query(
       `SELECT id, wa_number, name, email, line_id, tags, metadata, is_blocked, first_seen, last_seen
        FROM contacts ${whereSql}
-       ORDER BY last_seen DESC NULLS LAST
+       ORDER BY last_seen DESC NULLS LAST, id DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     )

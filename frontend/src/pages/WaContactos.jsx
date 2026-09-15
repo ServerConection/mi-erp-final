@@ -31,13 +31,18 @@ export default function WaContactos() {
 
   const load = useCallback(async () => {
     try {
-      const [rL, rC] = await Promise.all([
-        fetch(`${API}/lists`,    { headers: authH(false) }),
-        fetch(`${API}/contacts`, { headers: authH(false) }),
-      ]);
-      const [dL, dC] = await Promise.all([rL.json(), rC.json()]);
+      const rL = await fetch(`${API}/lists`, { headers: authH(false) });
+      const dL = await rL.json();
+      const allContacts = [];
+      for (let offset = 0; ; offset += 500) {
+        const response = await fetch(`${API}/contacts?limit=500&offset=${offset}`, { headers: authH(false) });
+        const page = await response.json();
+        if (!response.ok || !page.success) throw new Error(page.error || "No se pudieron cargar los contactos");
+        allContacts.push(...asArray(page));
+        if (allContacts.length >= page.total || asArray(page).length < 500) break;
+      }
       setLists(asArray(dL));
-      setContacts(asArray(dC));
+      setContacts(allContacts);
     } catch (e) {
       console.error("[WaContactos] Error cargando:", e);
     } finally {

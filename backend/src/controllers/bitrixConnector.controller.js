@@ -122,7 +122,8 @@ async function placementInbox(req, res) {
     let dealId = ''
     try {
       const opts = typeof b.PLACEMENT_OPTIONS === 'string' ? JSON.parse(b.PLACEMENT_OPTIONS) : b.PLACEMENT_OPTIONS
-      dealId = String(opts?.ID || '').trim()
+      dealId = String(opts?.ID || opts?.ENTITY_ID || opts?.entityId || b.ENTITY_ID || '').trim()
+      if (!/^[1-9]\d{0,14}$/.test(dealId)) dealId = ''
     } catch (_) { /* sin deal_id -> Inbox completo, comportamiento de siempre */ }
 
     const qsDeal = dealId ? `&deal_id=${encodeURIComponent(dealId)}` : ''

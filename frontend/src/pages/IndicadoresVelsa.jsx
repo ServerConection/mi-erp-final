@@ -176,7 +176,7 @@ function ChartArea({ h = 300, children }) {
 }
 
 /** Multi-select dropdown para Campaña/Origen */
-function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "orange" }) {
+function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "orange", placeholder = "TODAS LAS CAMPAÑAS" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -192,7 +192,7 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "o
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)} className={btnCls}>
-        <span className="truncate">{value.length === 0 ? 'TODAS LAS CAMPAÑAS' : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
+        <span className="min-w-0 break-words">{value.length === 0 ? placeholder : value.length === 1 ? value[0] : `${value.length} SELECCIONADAS`}</span>
         <span className={`text-${accentColor}-400 text-[8px] shrink-0`}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
@@ -206,7 +206,7 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "o
             <label key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-stone-50 cursor-pointer text-[9px] font-bold text-stone-700 border-b border-stone-50 last:border-0">
               <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)}
                 className={`accent-${accentColor}-500 w-3 h-3 shrink-0`} />
-              <span className="truncate">{opt}</span>
+              <span className="break-words">{opt}</span>
             </label>
           ))}
           {options.length === 0 && <div className="px-3 py-3 text-[9px] text-stone-400 uppercase">Sin opciones</div>}
@@ -215,6 +215,21 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "o
     </div>
   );
 }
+
+const nombresCanonicosVelsa = {
+  'byron vistin cunez': 'BYRON FERNANDO VISTIN CUÑEZ',
+  'byron fernando vistin cunez': 'BYRON FERNANDO VISTIN CUÑEZ',
+  'damian viera': 'DAMIAN ARIEL VIERA JACOME',
+  'damian ariel viera jacome': 'DAMIAN ARIEL VIERA JACOME',
+  'karina torres': 'KARINA MARICELA TORRES AMAGUAÑA',
+  'karina maricela torres amaguana': 'KARINA MARICELA TORRES AMAGUAÑA',
+  'melany mayerli guano santin': 'MELANY MAYERLI GUAÑO SANTIN',
+  'melany mayerly guano santin': 'MELANY MAYERLI GUAÑO SANTIN',
+  'rossana alvarado cruz': 'ROSSANNA MARIBEL ALVARADO CRUZ',
+  'rossanna alvarado cruz': 'ROSSANNA MARIBEL ALVARADO CRUZ',
+  'rossanna alvarado': 'ROSSANNA MARIBEL ALVARADO CRUZ',
+  'rossanna maribel alvarado cruz': 'ROSSANNA MARIBEL ALVARADO CRUZ',
+};
 
 // ======================================================
 // COMPONENTE PRINCIPAL
@@ -453,7 +468,21 @@ export default function ReporteVelsa() {
 
   // ── Nombres de asesores para el dropdown ─────────────────────────────────
   const nombresAsesores = useMemo(
-    () => [...(data.asesores || [])].sort((a, b) => (a.nombre_grupo > b.nombre_grupo ? 1 : -1)),
+    () => {
+      const nombres = new Map();
+      for (const asesor of data.asesores || []) {
+        const original = String(asesor.nombre_grupo || '').replace(/[\u200b\ufeff]/g, '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
+        const claveOriginal = original.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+        const nombre = nombresCanonicosVelsa[claveOriginal] || original;
+        const clave = nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+        if (!clave) continue;
+        const actual = nombres.get(clave);
+        if (!actual || (actual === actual.toUpperCase() && nombre !== nombre.toUpperCase())) {
+          nombres.set(clave, nombre);
+        }
+      }
+      return [...nombres.values()].sort((a, b) => a.localeCompare(b, 'es'));
+    },
     [data.asesores]
   );
 
@@ -988,17 +1017,22 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     const visibles = payload.filter(p => Number(p.value) > 0);
     const total = visibles.reduce((s, p) => s + Number(p.value || 0), 0);
     return (
-      <div style={{ backgroundColor: '#0c0a09', border: '1px solid #292524', borderRadius: 8, padding: '10px 12px', fontSize: 10, minWidth: 170, maxHeight: 260, overflowY: 'auto' }}>
+      <div style={{ backgroundColor: '#0c0a09', border: '1px solid #292524', borderRadius: 8, padding: '10px 12px', fontSize: 10, minWidth: 320, maxWidth: 'min(420px, calc(100vw - 32px))' }}>
         <p style={{ color: '#fff', fontWeight: 900, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #292524', paddingBottom: 4 }}>DÍA {label}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 40px 48px', gap: 12, marginBottom: 4, color: '#78716c', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>
+          <span>Etapa</span><span style={{ textAlign: 'right' }}>Cant.</span><span style={{ textAlign: 'right' }}>% día</span>
+        </div>
         {visibles.map((p, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 3 }}>
-            <span style={{ color: '#a8a29e', textTransform: 'uppercase' }}>{p.name}</span>
-            <span style={{ fontWeight: 900, color: p.fill || p.color }}>{p.value}</span>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 40px 48px', gap: 12, alignItems: 'start', marginBottom: 3 }}>
+            <span style={{ color: '#a8a29e', textTransform: 'uppercase', overflowWrap: 'anywhere' }}>{p.name}</span>
+            <span style={{ fontWeight: 900, color: p.fill || p.color, textAlign: 'right' }}>{p.value}</span>
+            <span style={{ fontWeight: 900, color: '#fff', textAlign: 'right' }}>{((Number(p.value) / total) * 100).toFixed(1)}%</span>
           </div>
         ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, paddingTop: 4, marginTop: 4, borderTop: '1px solid #292524' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 40px 48px', gap: 12, paddingTop: 4, marginTop: 4, borderTop: '1px solid #292524' }}>
           <span style={{ color: '#a8a29e' }}>TOTAL</span>
-          <span style={{ fontWeight: 900, color: '#fff' }}>{total}</span>
+          <span style={{ fontWeight: 900, color: '#fff', textAlign: 'right' }}>{total}</span>
+          <span style={{ fontWeight: 900, color: '#fff', textAlign: 'right' }}>100%</span>
         </div>
       </div>
     );
@@ -1152,8 +1186,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-        {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => {
+      <div className="w-[180px] shrink-0 flex flex-col gap-1.5 py-1 pr-1">
+        {(data.graficoEmbudo || []).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
           return (
             <div key={index} className="flex items-center gap-2 min-w-0">
@@ -1342,12 +1376,12 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               </div>
 
               {/* ASESOR — multi-select con nombres reales del backend */}
-              <div className="flex flex-col gap-2">
+              <div className="lg:col-span-2 flex flex-col gap-2 min-w-0">
                 <label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>
                 <MultiSelectCanal
                   value={filtros.asesor}
                   onChange={vals => updateFiltro('asesor', vals)}
-                  options={nombresAsesores.map(a => a.nombre_grupo)}
+                  options={nombresAsesores}
                   accentColor="orange"
                   placeholder="TODOS LOS ASESORES"
                 />
@@ -2060,11 +2094,11 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
                 value={filtros.fechaActivacionHasta || ''} onChange={e => updateFiltro180('fechaActivacionHasta', e.target.value)} />
             </div>
           </div>
-          <div className="flex flex-col gap-2"><label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>
+          <div className="lg:col-span-2 flex flex-col gap-2 min-w-0"><label className="text-[9px] font-black text-stone-500 italic uppercase">ASESOR</label>
             <select className={selectCls} value={filtros.asesor} onChange={e => updateFiltro180('asesor', e.target.value)}>
               <option value="">TODOS</option>
-              {nombresAsesores.map((a) => (
-                <option key={a.nombre_grupo} value={a.nombre_grupo}>{a.nombre_grupo}</option>
+              {nombresAsesores.map((nombre) => (
+                <option key={nombre} value={nombre}>{nombre}</option>
               ))}
             </select>
           </div>

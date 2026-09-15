@@ -90,7 +90,7 @@ async function placementInbox(req, res) {
     // intentaba validar un DOMAIN/SERVER_ENDPOINT que Bitrix ya no manda
     // (o manda como el servidor generico oauth.bitrix.info), lo que tumbaba
     // el SSO siempre.
-    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s', req.method, !!authId)
+    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s scope=%s', req.method, !!authId, b.APPLICATION_SCOPE || b.application_scope || 'sin-scope')
 
     if (!authId) {
       console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))

@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const {
   install, settings, events, placementInbox,
-  registrarConector, listarCanales, activarCanal, estado, debugPlacement,
+  registrarConector, listarCanales, activarCanal, estado,
 } = require('../controllers/bitrixConnector.controller')
 const { verificarToken, noAsesor } = require('../middleware/auth')
 
@@ -15,9 +15,6 @@ router.get('/settings',  settings)
 router.post('/settings', settings)
 router.get('/placement-inbox',  placementInbox)
 router.post('/placement-inbox', placementInbox)
-
-// TEMPORAL: diagnóstico, ver comentario en el controller. Protegido con token.
-router.get('/debug-placement', debugPlacement)
 
 // Administración desde el ERP.
 router.get('/estado',    verificarToken, estado)

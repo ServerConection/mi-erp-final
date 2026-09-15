@@ -86,14 +86,12 @@ async function placementInbox(req, res) {
 
     // NO se necesita DOMAIN del request: esta app sirve un solo portal, asi
     // que usuarioActualPorAuthId ya usa siempre el PORTAL configurado por
-    // variable de entorno (ver comentario en bitrixApp.service.js). Antes se
-    // intentaba validar un DOMAIN/SERVER_ENDPOINT que Bitrix ya no manda
-    // (o manda como el servidor generico oauth.bitrix.info), lo que tumbaba
-    // el SSO siempre.
-    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s scope=%s', req.method, !!authId, b.APPLICATION_SCOPE || b.application_scope || 'sin-scope')
+    // variable de entorno (ver comentario en bitrixApp.service.js). Bitrix
+    // no manda DOMAIN de forma confiable en este placement.
+    console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s', req.method, !!authId)
 
     if (!authId) {
-      console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))
+      console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID, cae a login manual')
       return irALoginManual()
     }
 
@@ -272,23 +270,4 @@ async function estado(req, res) {
   } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
 }
 
-// ── TEMPORAL: diagnóstico de la pestaña WABOT del Deal ──────────────────────
-// Muestra qué HANDLER tiene Bitrix realmente registrado para el placement
-// CRM_DEAL_DETAIL_TAB. Protegido con el mismo APP_TOKEN que ya usamos para
-// validar eventos de Bitrix (no expone nada nuevo). Solo lectura: no cambia
-// nada en Bitrix ni en nuestra base. Borrar este endpoint una vez resuelto
-// el diagnóstico del tab WABOT.
-async function debugPlacement(req, res) {
-  if (!APP_TOKEN || req.query.token !== APP_TOKEN) {
-    return res.status(404).json({ success: false })
-  }
-  try {
-    const todos = await bitrixApp.llamar('placement.get', {})
-    const deal = (todos || []).filter(p => p.PLACEMENT === 'CRM_DEAL_DETAIL_TAB')
-    return res.json({ success: true, placements_deal_detail_tab: deal, total_placements: (todos || []).length, todos_los_placements: todos })
-  } catch (e) {
-    return res.status(500).json({ success: false, message: e.message })
-  }
-}
-
-module.exports = { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado, debugPlacement }
+module.exports = { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado }

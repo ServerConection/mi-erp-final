@@ -86,7 +86,13 @@ async function placementInbox(req, res) {
     const domain = b.DOMAIN || b.domain
     console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s tieneDomain=%s', req.method, !!authId, !!domain)
 
-    if (!authId || !domain) { console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID/DOMAIN, cae a login manual'); return irALoginManual() }
+    if (!authId || !domain) {
+      // TEMPORAL: no logueamos valores (AUTH_ID es un token de sesion), solo
+      // los NOMBRES de campo que mando Bitrix, para saber por cual vino el
+      // dominio en vez de DOMAIN/domain.
+      console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID/DOMAIN, cae a login manual. campos recibidos: %s', Object.keys(b).join(','))
+      return irALoginManual()
+    }
 
     // 1) Confirmar identidad real contra Bitrix (nunca confiar en el cliente)
     const usuarioBitrix = await bitrixApp.usuarioActualPorAuthId(domain, authId)

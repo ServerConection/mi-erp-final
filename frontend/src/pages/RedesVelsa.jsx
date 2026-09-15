@@ -9,6 +9,13 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList} from "recharts";
 import TabReporteData from "./TabReporteData";
+import RedesVelsaGeneral from "./RedesVelsaGeneral";
+import RedesVelsaGraphs from "./RedesVelsaGraphs";
+import RedesVelsaAsesores from "./RedesVelsaAsesores";
+import RedesVelsaComparativo from "./RedesVelsaComparativo";
+import RedesVelsaMetas from "./RedesVelsaMetas";
+import RedesVelsaPautas from "./RedesVelsaPautas";
+import { forzarSyncInversion } from "../utils/redesSync";
 import { ValorBarraH } from "../utils/etiquetaBarra";
 
 const C = {
@@ -29,18 +36,18 @@ const formatFecha = (f) => { if (!f) return "—"; const [, m, d] = String(f).sp
 const API    = import.meta.env.VITE_API_URL;
 const apiUrl = (r, p) => `${API}/api/redes-velsa/${r}?${p}`;
 
-function KpiCard({ label, value, color, icon }) {
+function KpiCard({ label, value, color, icon, sub }) {
   return (
     <div style={{
-      background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12,
-      padding: "14px 16px", flex: 1, minWidth: 140,
-      borderTop: `3px solid ${color}`,
+      background: `linear-gradient(135deg,${color}10,${color}04)`, border: `1px solid ${color}25`, borderRadius: 16,
+      padding: "12px 16px", flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 12,
+      boxShadow: `0 4px 16px ${color}10`,
     }}>
-      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-        {icon} {label}
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: C.slate, marginTop: 4 }}>
-        {value}
+      <div style={{ width: 40, height: 40, borderRadius: 12, background: `${color}18`, display: "grid", placeItems: "center", fontSize: 18, flexShrink: 0 }}>{icon}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, color, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.65 }}>{label}</div>
+        <div style={{ fontSize: 20, fontWeight: 900, color, lineHeight: 1.2 }}>{value}</div>
+        {sub && <div style={{ fontSize: 11, color: C.muted }}>{sub}</div>}
       </div>
     </div>
   );
@@ -97,7 +104,7 @@ function InversionForm({ canalesDisponibles, onGuardado }) {
                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
         </div>
         <div>
-          <label style={{ display: "block", fontSize: 11, color: C.muted, marginBottom: 4 }}>Origen (canal_publicidad)</label>
+          <label style={{ display: "block", fontSize: 11, color: C.muted, marginBottom: 4 }}>Agencia</label>
           <select value={canal} onChange={(e) => setCanal(e.target.value)}
                   style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, minWidth: 220 }}>
             <option value="">— Selecciona —</option>
@@ -121,8 +128,7 @@ function InversionForm({ canalesDisponibles, onGuardado }) {
         )}
       </div>
       <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
-        Se guarda una sola línea por (fecha + origen): si ya existe, se actualiza el monto. No hay catálogo de orígenes —
-        elige el valor crudo tal como llega de Bitrix/GHL/JotForm.
+        Se guarda una sola línea por fecha y agencia. Si ya existe, se actualiza el monto.
       </div>
     </div>
   );
@@ -136,22 +142,28 @@ function InversionForm({ canalesDisponibles, onGuardado }) {
 
 function TabSwitcher({ tab, setTab }) {
   const tabs = [
-    { id: "resumen", label: "📊 Resumen" },
-    { id: "agencias", label: "🏢 Agencias" },
+    { id: "resumen", label: "📊 Monitoreo General" },
+    { id: "graficos", label: "📈 Gráficos Gerencia" },
+    { id: "asesorvpauta", label: "⚡ Asesores vs Pauta" },
+    { id: "metas", label: "🎯 Metas vs Logros" },
+    { id: "comparativo", label: "🔀 Comparativo" },
+    { id: "pautas", label: "🔬 Análisis Pautas" },
     { id: "ciudad", label: "🌎 Ciudad" },
     { id: "hora", label: "🕐 Hora" },
     { id: "atc", label: "🎧 Motivos ATC" },
     { id: "reporte", label: "🗂️ Reporte mensual" },
     { id: "reporte-data", label: "📑 Reporte Data" },
+    { id: "agencias", label: "🏢 Agencias" },
+    { id: "proximamente", label: "🚀 Próximamente" },
   ];
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, borderBottom: `2px solid ${C.border}`, paddingBottom: 10 }}>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 28, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 5, boxShadow: "0 2px 5px #1e3a8a0c" }}>
       {tabs.map((t) => (
         <button key={t.id} onClick={() => setTab(t.id)}
           style={{
             border: "none", background: tab === t.id ? C.primary : "transparent",
             color: tab === t.id ? "#fff" : C.slate,
-            borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            borderRadius: 12, padding: "10px 16px", fontSize: 12, fontWeight: 900, textTransform: "uppercase", cursor: "pointer",
           }}>
           {t.label}
         </button>
@@ -166,8 +178,7 @@ function TabCiudad({ fechaDesde, fechaHasta, canalesSel }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => { setLoading(true); setError(null); });
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
     fetch(apiUrl("monitoreo-ciudad", params.toString()), { headers: authHeaders() })
@@ -243,8 +254,7 @@ function TabHora({ fechaDesde, fechaHasta, canalesSel }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => { setLoading(true); setError(null); });
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
     fetch(apiUrl("monitoreo-hora", params.toString()), { headers: authHeaders() })
@@ -322,8 +332,7 @@ function TabAtc({ fechaDesde, fechaHasta, canalesSel }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => { setLoading(true); setError(null); });
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
     fetch(apiUrl("monitoreo-atc", params.toString()), { headers: authHeaders() })
@@ -335,14 +344,12 @@ function TabAtc({ fechaDesde, fechaHasta, canalesSel }) {
 
   return (
     <>
-      <div style={{ fontSize: 12, color: "#92400e", marginBottom: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px" }}>
-        ⚠️ <b>Diferencia importante con NOVONET:</b> {aviso || "VELSA no tiene un campo de motivo ATC detallado (texto libre) como NOVONET. Este desglose usa la etapa del CRM de cada lead como aproximación."}
-      </div>
+      {aviso && <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 12px" }}>ℹ️ {aviso}</div>}
       {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
       {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>{error}</div>}
 
       <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Leads por etapa del CRM (no-venta)</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Motivos ATC y etapas CRM</h3>
         <ResponsiveContainer width="100%" height={Math.max(260, data.length * 32)}>
           <BarChart data={data} layout="vertical" margin={{ left: 140 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
@@ -361,7 +368,7 @@ function TabAtc({ fechaDesde, fechaHasta, canalesSel }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
-              <th style={{ padding: "8px 6px" }}>Etapa CRM (aprox. a "motivo")</th>
+              <th style={{ padding: "8px 6px" }}>Motivo ATC / etapa CRM</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
             </tr>
           </thead>
@@ -385,8 +392,7 @@ function TabReporte({ fechaDesde, fechaHasta, canalesSel }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => { setLoading(true); setError(null); });
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
     fetch(apiUrl("reporte", params.toString()), { headers: authHeaders() })
@@ -543,8 +549,7 @@ function TabAgencias({ fechaDesde, fechaHasta, canalesSel, refreshTick, onCambio
   };
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => { setLoading(true); setError(null); });
     cargarOrigenes();
     const params = new URLSearchParams({ fechaDesde, fechaHasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
@@ -697,74 +702,112 @@ export default function RedesVelsa() {
   const hoy = getFechaHoy();
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [filtro, setFiltro] = useState({ desde: hoy, hasta: hoy });
   const [canalesDisponibles, setCanalesDisponibles] = useState([]);
   const [canalesSel, setCanalesSel] = useState([]);
   const [totales, setTotales] = useState(null);
   const [porCanal, setPorCanal] = useState([]);
   const [tendencia, setTendencia] = useState([]);
+  const [diario, setDiario] = useState([]);
+  const [ciudadGeneral, setCiudadGeneral] = useState(null);
+  const [horaGeneral, setHoraGeneral] = useState(null);
+  const [atcGeneral, setAtcGeneral] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [tab, setTab] = useState("resumen");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+
+  const sincronizarInversion = async () => {
+    setSyncing(true); setSyncMsg("");
+    try {
+      const result = await forzarSyncInversion({ apiBase: API, token: localStorage.getItem("token"), from: filtro.desde, to: filtro.hasta, empresa: "velsa" });
+      setSyncMsg(result.message || "Inversión actualizada");
+      setRefreshTick(t => t + 1);
+    } catch (e) { setSyncMsg(e.message); }
+    finally { setSyncing(false); }
+  };
 
   useEffect(() => {
-    fetch(apiUrl("canales", `fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`), { headers: authHeaders() })
+    fetch(apiUrl("canales", `fechaDesde=${filtro.desde}&fechaHasta=${filtro.hasta}`), { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => { if (d.success) setCanalesDisponibles(d.canales || []); })
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fechaDesde, fechaHasta]);
+  }, [filtro.desde, filtro.hasta, refreshTick]);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    const params = new URLSearchParams({ fechaDesde, fechaHasta });
+    const controller = new AbortController();
+    queueMicrotask(() => { if (!controller.signal.aborted) { setLoading(true); setError(null); } });
+    const params = new URLSearchParams({ fechaDesde: filtro.desde, fechaHasta: filtro.hasta });
     if (canalesSel.length) params.set("canales", canalesSel.join(","));
 
     Promise.all([
-      fetch(apiUrl("monitoreo", params.toString()), { headers: authHeaders() }).then((r) => r.json()),
-      fetch(apiUrl("tendencia", params.toString()), { headers: authHeaders() }).then((r) => r.json()),
+      fetch(apiUrl("monitoreo", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
+      fetch(apiUrl("tendencia", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
+      fetch(apiUrl("monitoreo-ciudad", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
+      fetch(apiUrl("monitoreo-hora", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
+      fetch(apiUrl("monitoreo-atc", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
+      fetch(apiUrl("inversion", params.toString()), { headers: authHeaders(), signal: controller.signal }).then((r) => r.json()),
     ])
-      .then(([m, t]) => {
-        if (m.success) { setTotales(m.totales); setPorCanal(m.porCanal || []); }
+      .then(([m, t, c, h, a, inv]) => {
+        if (controller.signal.aborted) return;
+        if (m.success) {
+          setTotales(m.totales); setPorCanal(m.porCanal || []);
+          const invMap = new Map();
+          for (const r of inv.data || []) {
+            const agency = String(r.canal_publicidad || "").toUpperCase().replace(/^__WINTRACKER_(ARTS|VIDIKA|VELSA)__$/, "$1");
+            const key = `${String(r.fecha).slice(0, 10)}|${agency}`;
+            invMap.set(key, (invMap.get(key) || 0) + Number(r.monto_usd || 0));
+          }
+          setDiario((m.data || []).map((r) => {
+            const inversion = invMap.get(`${String(r.fecha).slice(0, 10)}|${r.canal_publicidad}`) || 0;
+            return { ...r, inversion, cpl: Number(r.n_leads) && inversion ? inversion / Number(r.n_leads) : null };
+          }));
+        }
         else setError(m.message || "Error al cargar monitoreo");
         if (t.success) setTendencia(t.data || []);
+        if (c.success) setCiudadGeneral(c);
+        if (h.success) setHoraGeneral(h);
+        if (a.success) setAtcGeneral(a);
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [fechaDesde, fechaHasta, canalesSel, refreshTick]);
-
-  const tendenciaFmt = useMemo(
-    () => tendencia.map((r) => ({ ...r, fechaLabel: formatFecha(r.fecha) })),
-    [tendencia]
-  );
+      .catch((e) => { if (e.name !== "AbortError") setError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [filtro, canalesSel, refreshTick]);
 
   const toggleCanal = (c) => {
     setCanalesSel((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
   };
 
   return (
-    <div style={{ padding: 20, background: C.light, minHeight: "100vh" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 800, color: C.slate, margin: 0 }}>
-          🚩 Redes VELSA — Monitoreo de Orígenes
-        </h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
-                 style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
-          <span style={{ color: C.muted, fontSize: 13 }}>a</span>
-          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
-                 style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
+    <div className="min-h-screen p-5 md:p-7 erp-page-bg">
+      <div className="flex flex-wrap items-start justify-between gap-5 mb-7">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black shadow-sm" style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>V</div>
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>Monitoreo Redes VELSA</h1>
+          <span className="text-[11px] font-black px-2.5 py-1 rounded-full uppercase" style={{ background: `${C.success}15`, color: C.success }}>● Live</span>
+        </div>
+        <div className="bg-white border rounded-2xl shadow-sm px-5 py-3 flex flex-wrap items-end gap-3" style={{ borderColor: C.border }}>
+          {[["Desde", fechaDesde, setFechaDesde], ["Hasta", fechaHasta, setFechaHasta]].map(([label, value, setter]) => (
+            <div key={label} className="flex flex-col gap-1">
+              <label className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.muted }}>{label}</label>
+              <input type="date" value={value} onChange={(e) => setter(e.target.value)} className="border rounded-xl px-3 py-2 text-[11px] font-bold bg-white [color-scheme:light]" style={{ borderColor: C.border }} />
+            </div>
+          ))}
+          <button onClick={() => setFiltro({ desde: fechaDesde, hasta: fechaHasta })} disabled={!fechaDesde || !fechaHasta || fechaDesde > fechaHasta}
+            className="px-6 py-2 rounded-xl text-[12px] font-black uppercase text-white shadow-sm disabled:opacity-50" style={{ background: `linear-gradient(135deg,${C.primary},#1e40af)` }}>Aplicar</button>
+          <button onClick={sincronizarInversion} disabled={syncing} className="px-4 py-2 rounded-xl text-[12px] font-black uppercase text-white disabled:opacity-50" style={{ background: `linear-gradient(135deg,${C.violet},#5b21b6)` }}>{syncing ? "Consultando…" : "↻ Forzar inversión"}</button>
+          <span className="text-[11px] font-medium uppercase" style={{ color: C.muted }}>Período activo: <b>{filtro.desde} → {filtro.hasta}</b></span>
+          {syncMsg && <span className="text-[11px] font-bold" style={{ color: C.muted }}>{syncMsg}</span>}
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
-        ℹ️ El filtro usa las <b>agencias asignadas</b> en el catálogo y agrupa automáticamente todas sus líneas de origen.
-      </div>
-
       {/* Filtro de agencias */}
-      {canalesDisponibles.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+      <div className="bg-white rounded-2xl border shadow-sm px-5 py-3 mb-5 flex flex-wrap items-center gap-3" style={{ borderColor: C.border }}>
+        <span className="text-[11px] font-black uppercase tracking-widest" style={{ color: C.primary }}>▏ Agencia</span>
+        {canalesDisponibles.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {canalesDisponibles.map((c) => {
             const activo = canalesSel.includes(c.canal_publicidad);
             return (
@@ -785,26 +828,25 @@ export default function RedesVelsa() {
               ✕ Limpiar filtro
             </button>
           )}
-        </div>
-      )}
-
-      <InversionForm canalesDisponibles={canalesDisponibles} onGuardado={() => setRefreshTick((t) => t + 1)} />
+        </div>)}
+      </div>
 
       <TabSwitcher tab={tab} setTab={setTab} />
 
       {tab === "agencias" && (
+        <><InversionForm canalesDisponibles={canalesDisponibles} onGuardado={() => setRefreshTick((t) => t + 1)} />
         <TabAgencias
-          fechaDesde={fechaDesde}
-          fechaHasta={fechaHasta}
+          fechaDesde={filtro.desde}
+          fechaHasta={filtro.hasta}
           canalesSel={canalesSel}
           refreshTick={refreshTick}
           onCambio={() => setRefreshTick((t) => t + 1)}
-        />
+        /></>
       )}
-      {tab === "ciudad" && <TabCiudad fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
-      {tab === "hora" && <TabHora fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
-      {tab === "atc" && <TabAtc fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
-      {tab === "reporte" && <TabReporte fechaDesde={fechaDesde} fechaHasta={fechaHasta} canalesSel={canalesSel} />}
+      {tab === "ciudad" && <TabCiudad fechaDesde={filtro.desde} fechaHasta={filtro.hasta} canalesSel={canalesSel} />}
+      {tab === "hora" && <TabHora fechaDesde={filtro.desde} fechaHasta={filtro.hasta} canalesSel={canalesSel} />}
+      {tab === "atc" && <TabAtc fechaDesde={filtro.desde} fechaHasta={filtro.hasta} canalesSel={canalesSel} />}
+      {tab === "reporte" && <TabReporte fechaDesde={filtro.desde} fechaHasta={filtro.hasta} canalesSel={canalesSel} />}
 
       {/* Exactamente la misma pantalla que Redes NOVONET, apuntada al endpoint
           de Velsa: los dos devuelven el mismo contrato. Trae su propio
@@ -813,106 +855,18 @@ export default function RedesVelsa() {
         <TabReporteData ruta="/api/redes-velsa/reporte-data" empresa="velsa" />
       )}
 
-      {tab === "resumen" && (
-      <>
-      {error && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: C.danger, borderRadius: 8, padding: 12, marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
+      {tab === "metas" && <RedesVelsaMetas filtro={filtro} canalesSel={canalesSel} porCanal={porCanal} />}
+      {tab === "pautas" && <RedesVelsaPautas filtro={filtro} canalesSel={canalesSel} porCanal={porCanal} tendencia={tendencia} />}
 
-      {loading && <div style={{ color: C.muted, marginBottom: 12 }}>Cargando…</div>}
+      {tab === "asesorvpauta" && <RedesVelsaAsesores filtro={filtro} canalesSel={canalesSel} porCanal={porCanal} />}
+      {tab === "comparativo" && <RedesVelsaComparativo filtro={filtro} canalesSel={canalesSel} />}
 
-      {totales && (
-        <>
-          {/* KPIs */}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-            <KpiCard label="Leads" value={fmtNum(totales.n_leads)} color={C.primary} icon="📥" />
-            <KpiCard label="ATC" value={fmtNum(totales.atc)} color={C.sky} icon="🎧" />
-            <KpiCard label="Venta Subida" value={fmtNum(totales.venta_subida)} color={C.success} icon="✅" />
-            <KpiCard label="% Venta Subida" value={fmtPct(totales.pct_venta_subida)} color={C.success} icon="📈" />
-            <KpiCard label="Descartados" value={fmtNum(totales.descartados)} color={C.danger} icon="🗑️" />
-            <KpiCard label="% Descartado" value={fmtPct(totales.pct_descartado)} color={C.danger} icon="📉" />
-            <KpiCard label="Activos (JotForm)" value={fmtNum(totales.activos_jotform)} color={C.violet} icon="🟢" />
-            <KpiCard label="Rechazados (JotForm)" value={fmtNum(totales.rechazado_jotform)} color={C.warning} icon="🔶" />
-            <KpiCard label="Inversión Total" value={fmtUsd(totales.inversion_total)} color={C.cyan} icon="💰" />
-            <KpiCard label="CPL Promedio" value={fmtUsd(totales.cpl_promedio)} color={C.cyan} icon="🎯" />
-            <KpiCard label="Costo x Venta" value={fmtUsd(totales.costo_venta_promedio)} color={C.cyan} icon="🏷️" />
-          </div>
+      {tab === "proximamente" && <div className="text-center py-28 text-slate-500"><div className="text-5xl mb-4">🚀</div><b>Próximamente</b></div>}
 
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-            {/* Tendencia diaria */}
-            <div style={{ flex: 2, minWidth: 380, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Tendencia diaria</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={tendenciaFmt}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                  <XAxis dataKey="fechaLabel" fontSize={11} />
-                  <YAxis fontSize={11} />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="n_leads" name="Leads" stroke={C.primary} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="atc" name="ATC" stroke={C.sky} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="venta_subida" name="Venta Subida" stroke={C.success} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="descartados" name="Descartados" stroke={C.danger} strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+      {tab === "graficos" && <RedesVelsaGraphs filtro={filtro} canalesSel={canalesSel} tendencia={tendencia} porCanal={porCanal} totales={totales} hora={horaGeneral} atc={atcGeneral} refreshTick={refreshTick} />}
 
-            {/* Distribución por canal */}
-            <div style={{ flex: 1, minWidth: 280, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Distribución por origen</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={porCanal} dataKey="n_leads" nameKey="canal_publicidad" outerRadius={90} label={({ canal_publicidad }) => canal_publicidad}>
-                    {porCanal.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+      {tab === "resumen" && <><>{error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 mb-4">{error}</div>}</><RedesVelsaGeneral totales={totales} porCanal={porCanal} diario={diario} ciudad={ciudadGeneral} hora={horaGeneral} atc={atcGeneral} loading={loading} /></>}
 
-          {/* Tabla por canal */}
-          <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, overflowX: "auto" }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: C.slate, marginTop: 0 }}>Detalle por origen</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${C.border}`, textAlign: "left" }}>
-                  <th style={{ padding: "8px 6px" }}>Origen</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Leads</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>ATC</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Venta Subida</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Descartados</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>% Venta Subida</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Inversión</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>CPL</th>
-                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Costo x Venta</th>
-                </tr>
-              </thead>
-              <tbody>
-                {porCanal.map((row) => (
-                  <tr key={row.canal_publicidad} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: "8px 6px", fontWeight: 600 }}>{row.canal_publicidad}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.n_leads)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtNum(row.atc)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right", color: C.success, fontWeight: 700 }}>{fmtNum(row.venta_subida)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right", color: C.danger }}>{fmtNum(row.descartados)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                      {fmtPct(row.gestionables > 0 ? (row.venta_subida / row.gestionables) * 100 : 0)}
-                    </td>
-                    <td style={{ padding: "8px 6px", textAlign: "right" }}>{fmtUsd(row.inversion)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan, fontWeight: 700 }}>{fmtUsd(row.cpl)}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "right", color: C.cyan }}>{fmtUsd(row.costo_venta)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-      </>
-      )}
     </div>
   );
 }

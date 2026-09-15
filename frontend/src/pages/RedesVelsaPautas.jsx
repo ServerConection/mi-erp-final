@@ -1,0 +1,64 @@
+import { useEffect, useMemo, useState } from "react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
+import { ChartCard } from "./ChartFrame";
+import { cabecerasSesion } from "../utils/sesion";
+
+const C = { blue: "#1e3a8a", green: "#059669", red: "#ef4444", orange: "#f59e0b", violet: "#7c3aed", gray: "#64748b", border: "#e2e8f0" };
+const n = v => Number(v || 0), pct = (a, b) => b ? 100 * n(a) / n(b) : 0, usd = v => `$${n(v).toFixed(2)}`;
+const tone = score => score >= 60 ? C.green : score >= 35 ? C.orange : C.red;
+const modes = [["resumen", "Resumen"], ["comparativa", "Comparativa"], ["radar", "Radar"], ["cuadrante", "Cuadrante"], ["tendencia", "Tendencia"]];
+
+function Kpi({ title, value, sub, color = C.blue }) { return <div className="rounded-2xl border p-4" style={{ borderColor: `${color}35`, background: `${color}08` }}><p className="text-[11px] font-black uppercase tracking-widest" style={{ color }}>{title}</p><b className="text-xl" style={{ color }}>{value}</b><p className="text-[11px] text-slate-500">{sub}</p></div>; }
+function Panel({ title, children, sub }) { return <section className="bg-white border rounded-2xl shadow-sm overflow-hidden" style={{ borderColor: C.border }}><div className="p-4 border-b"><h3 className="text-xs font-black uppercase tracking-widest text-blue-900">{title}</h3>{sub && <p className="text-[11px] text-slate-500">{sub}</p>}</div><div className="p-5">{children}</div></section>; }
+
+export default function RedesVelsaPautas({ filtro, canalesSel, porCanal, tendencia }) {
+  const [jot, setJot] = useState([]), [mode, setMode] = useState("resumen"), [error, setError] = useState(""), [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const controller = new AbortController(), q = new URLSearchParams({ fechaDesde: filtro.desde, fechaHasta: filtro.hasta });
+    if (canalesSel.length) q.set("canales", canalesSel.join(","));
+    fetch(`${import.meta.env.VITE_API_URL}/api/redes-velsa/graficos?${q}`, { headers: cabecerasSesion(), signal: controller.signal })
+      .then(r => r.json()).then(d => { if (!d.success) throw new Error(d.message); setJot(d.jotPorAgencia || []); setError(""); setLoading(false); })
+      .catch(e => { if (e.name !== "AbortError") { setError(e.message); setLoading(false); } });
+    return () => controller.abort();
+  }, [filtro, canalesSel]);
+  const data = useMemo(() => {
+    const map = Object.fromEntries(jot.map(r => [r.agencia, r]));
+    const all = porCanal.map(r => {
+      const leads = n(r.n_leads), neg = n(r.gestionables), atc = n(r.atc), spend = n(r.inversion), activos = n(map[r.canal_publicidad]?.activos), ingresos = n(map[r.canal_publicidad]?.ingreso_jot);
+      return { ...r, name: r.canal_publicidad, leads, neg, atc, spend, activos, ingresos, contacto: pct(neg, leads), atcPct: pct(atc, leads), calidad: pct(Math.max(0, leads - atc), leads), efectividad: pct(activos, leads), cpl: leads && spend ? spend / leads : null, cpa: activos && spend ? spend / activos : null, roas: activos && spend ? activos * 25 / spend : null };
+    });
+    const maxCpl = Math.max(0, ...all.map(r => n(r.cpl)));
+    return all.map(r => ({ ...r, icp: Math.round(Math.max(0, Math.min(100, r.efectividad * .4 + r.contacto * .25 + r.calidad * .2 + (r.cpl != null && maxCpl ? Math.max(0, 100 - r.cpl / maxCpl * 100) : r.calidad) * .15))) })).sort((a, b) => b.icp - a.icp);
+  }, [porCanal, jot]);
+  const leads = data.reduce((s, r) => s + r.leads, 0), neg = data.reduce((s, r) => s + r.neg, 0), atc = data.reduce((s, r) => s + r.atc, 0);
+  const active = data.reduce((s, r) => s + r.activos, 0), spend = data.reduce((s, r) => s + r.spend, 0), winner = data[0];
+  const cplRows = data.filter(r => r.cpl != null), medianCpl = cplRows.length ? [...cplRows].sort((a, b) => a.cpl - b.cpl)[Math.floor(cplRows.length / 2)].cpl : null;
+  const medianEf = data.length ? [...data].sort((a, b) => a.efectividad - b.efectividad)[Math.floor(data.length / 2)].efectividad : 0;
+  const groups = [
+    ["Estrella", "Bajo CPL y alta efectividad", C.green, data.filter(r => r.cpl != null && r.cpl <= medianCpl && r.efectividad >= medianEf)],
+    ["Optimizable", "Alta efectividad, CPL caro", C.orange, data.filter(r => r.cpl != null && r.cpl > medianCpl && r.efectividad >= medianEf)],
+    ["Potencial", "Bajo CPL y efectividad menor", C.blue, data.filter(r => r.cpl != null && r.cpl <= medianCpl && r.efectividad < medianEf)],
+    ["Revisar", "CPL caro y efectividad menor", C.red, data.filter(r => r.cpl != null && r.cpl > medianCpl && r.efectividad < medianEf)],
+  ];
+  const radar = ["Efectividad", "Contacto", "Calidad", "Inversión"].map(axis => ({ axis, ...Object.fromEntries(data.map(r => [r.name, axis === "Efectividad" ? r.efectividad : axis === "Contacto" ? r.contacto : axis === "Calidad" ? r.calidad : r.cpl == null ? 0 : Math.max(0, 100 - r.cpl / Math.max(1, ...data.map(x => n(x.cpl))) * 100)])) }));
+  const insights = [
+    winner && `${winner.name} lidera el ICP con ${winner.icp}/100; contactabilidad ${winner.contacto.toFixed(1)}%.`,
+    data.find(r => r.icp < 35) && `${data.find(r => r.icp < 35).name} tiene ICP bajo; revisa segmentación y conversión.`,
+    data.filter(r => r.atcPct > 40).length && `${data.filter(r => r.atcPct > 40).map(r => r.name).join(", ")} supera 40% ATC; revisa calidad de leads.`,
+    cplRows.length && `${[...cplRows].sort((a, b) => a.cpl - b.cpl)[0].name} registra el CPL más bajo (${usd([...cplRows].sort((a, b) => a.cpl - b.cpl)[0].cpl)}).`,
+    data.some(r => !r.spend) && `${data.filter(r => !r.spend).map(r => r.name).join(", ")} no tiene inversión registrada; CPL y ROAS no se pueden calcular.`,
+  ].filter(Boolean);
+  if (loading) return <p className="text-center py-20 text-slate-500">Cargando análisis de pautas…</p>;
+  return <div className="space-y-6">
+    <div className="rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-violet-50 p-6 flex justify-between flex-wrap gap-4"><div><h2 className="text-sm font-black uppercase tracking-widest text-blue-950">🔬 Análisis de pautas <span className="text-xs rounded-full bg-blue-100 px-2 py-1 ml-2">{data.length} canales · {filtro.desde} → {filtro.hasta}</span></h2><p className="text-xs text-slate-600 mt-2">Tasa de contacto · CPL · costo por activado · ROAS estimado · Índice de Calidad de Pauta (ICP 0–100)</p></div>{winner && <div className="rounded-xl bg-white p-3 border text-xs">🏆 Mejor pauta (ICP)<b className="block text-emerald-700">{winner.name} — {winner.icp} pts</b></div>}</div>
+    {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</p>}
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3"><Kpi title="Leads totales" value={leads} sub={`${data.length} canales activos`} /><Kpi title="T. contacto" value={`${pct(neg, leads).toFixed(1)}%`} sub="Gestionables / leads" color={C.orange} /><Kpi title="% ATC global" value={`${pct(atc, leads).toFixed(1)}%`} sub={`${atc} leads ATC`} color={C.red} /><Kpi title="Efectividad" value={`${pct(active, leads).toFixed(1)}%`} sub={`${active} activaciones JOT`} color={C.green} /><Kpi title="CPL promedio" value={leads && spend ? usd(spend / leads) : "—"} sub="Inversión / leads" color={C.orange} /><Kpi title="CP activado" value={active && spend ? usd(spend / active) : "—"} sub="Inversión / activación" color={C.violet} /><Kpi title="ROAS estimado" value={active && spend ? `${(active * 25 / spend).toFixed(1)}x` : "—"} sub="Ticket supuesto $25" color={C.blue} /></div>
+    <Panel title="Índice de Calidad de Pauta (ICP)" sub="40% efectividad JOT · 25% contacto · 20% calidad (sin ATC) · 15% eficiencia de CPL"><div className="flex flex-wrap justify-center gap-7">{data.map(r => <div key={r.name} className="text-center w-28"><div className="mx-auto w-20 h-20 rounded-full grid place-items-center border-[7px] text-lg font-black" style={{ borderColor: `${tone(r.icp)}55`, color: tone(r.icp) }}>{r.icp}<small className="text-[9px]">/100</small></div><b className="block text-[11px] mt-2 text-slate-700">{r.name}</b><span className="text-[10px] text-slate-500">EF {r.efectividad.toFixed(1)}% · ATC {r.atcPct.toFixed(1)}%</span></div>)}</div><p className="text-center text-[11px] text-slate-500 border-t pt-3 mt-4">🟢 ICP ≥ 60 Excelente · 🟠 35–59 Aceptable · 🔴 &lt; 35 Atención</p></Panel>
+    <div className="inline-flex flex-wrap rounded-xl bg-white border p-1 gap-1">{modes.map(([key, label]) => <button key={key} onClick={() => setMode(key)} className={`rounded-lg px-4 py-2 text-[11px] font-black uppercase ${mode === key ? "bg-blue-900 text-white" : "text-slate-600"}`}>{label}</button>)}</div>
+    {mode === "resumen" && <div className="grid xl:grid-cols-2 gap-5"><Panel title="Ranking de pautas" sub="Ordenado de mejor a peor ICP">{data.map((r, i) => <div key={r.name} className="rounded-xl border p-3 mb-2" style={{ borderColor: `${tone(r.icp)}35`, background: `${tone(r.icp)}08` }}><div className="flex justify-between text-xs font-black"><span>{i + 1}. {r.name}</span><span style={{ color: tone(r.icp) }}>{r.icp} ICP</span></div><div className="grid grid-cols-4 text-[10px] text-center mt-2"><span>Contacto<br /><b>{r.contacto.toFixed(1)}%</b></span><span>Efect.<br /><b>{r.efectividad.toFixed(1)}%</b></span><span>ATC<br /><b>{r.atcPct.toFixed(1)}%</b></span><span>CPL<br /><b>{r.cpl == null ? "—" : usd(r.cpl)}</b></span></div><div className="h-1 rounded-full bg-white mt-2"><div className="h-1 rounded-full" style={{ width: `${r.icp}%`, background: tone(r.icp) }} /></div></div>)}</Panel><div className="space-y-5"><Panel title="Cuadrante de pautas" sub="CPL vs efectividad; medianas del período"><div className="grid grid-cols-2 gap-2">{groups.map(([title, sub, color, rows]) => <div key={title} className="rounded-xl p-3 border" style={{ background: `${color}10`, borderColor: `${color}30` }}><b className="text-xs" style={{ color }}>{title}</b><p className="text-[10px] text-slate-500">{sub}</p>{rows.map(r => <p key={r.name} className="text-[11px] bg-white rounded-lg p-1 mt-1">{r.name} · {usd(r.cpl)} · {r.efectividad.toFixed(1)}%</p>)}</div>)}</div></Panel><Panel title="Insights automáticos" sub="Detectados con los datos del período">{insights.map((v, i) => <p key={i} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-[11px] mb-2">{v}</p>)}</Panel></div></div>}
+    {mode === "comparativa" && <Panel title="Comparativa de agencias"><div className="overflow-auto"><table className="w-full text-xs whitespace-nowrap"><thead><tr>{["Agencia", "Leads", "Contacto", "ATC", "Ingresos JOT", "Activos", "Efectividad", "Inversión", "CPL", "CP activado", "ICP"].map(h => <th key={h} className="p-2 text-left border-b">{h}</th>)}</tr></thead><tbody>{data.map(r => <tr key={r.name}><td className="p-2 border-b font-bold">{r.name}</td>{[r.leads, `${r.contacto.toFixed(1)}%`, `${r.atcPct.toFixed(1)}%`, r.ingresos, r.activos, `${r.efectividad.toFixed(1)}%`, usd(r.spend), r.cpl == null ? "—" : usd(r.cpl), r.cpa == null ? "—" : usd(r.cpa), r.icp].map((v, i) => <td key={i} className="p-2 border-b">{v}</td>)}</tr>)}</tbody></table></div></Panel>}
+    {mode === "radar" && <ChartCard title="Radar de calidad de pautas" subtitle="Comparación normalizada por agencia" height={390}><RadarChart data={radar}><PolarGrid /><PolarAngleAxis dataKey="axis" /><PolarRadiusAxis domain={[0, 100]} />{data.map((r, i) => <Radar key={r.name} name={r.name} dataKey={r.name} stroke={[C.blue, C.green, C.orange, C.violet, C.red][i % 5]} fill={[C.blue, C.green, C.orange, C.violet, C.red][i % 5]} fillOpacity={.07} />)}<Tooltip /></RadarChart></ChartCard>}
+    {mode === "cuadrante" && <ChartCard title="CPL vs efectividad" subtitle="Cada punto corresponde a una agencia con inversión registrada" height={350}><ScatterChart><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" dataKey="cpl" name="CPL" unit="$" /><YAxis type="number" dataKey="efectividad" name="Efectividad" unit="%" /><Tooltip cursor={{ strokeDasharray: "3 3" }} /><Scatter data={cplRows} name="Pautas" fill={C.violet} /></ScatterChart></ChartCard>}
+    {mode === "tendencia" && <div className="grid xl:grid-cols-2 gap-5"><ChartCard title="Tendencia diaria de leads e inversión" height={330}><AreaChart data={tendencia}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="fecha" fontSize={10} /><YAxis /><Tooltip /><Area dataKey="n_leads" name="Leads" stroke={C.blue} fill={`${C.blue}35`} /><Area dataKey="inversion" name="Inversión" stroke={C.violet} fill={`${C.violet}35`} /></AreaChart></ChartCard><ChartCard title="ICP por agencia" height={330}><BarChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" fontSize={10} /><YAxis domain={[0, 100]} /><Tooltip /><Bar dataKey="icp" fill={C.green} /></BarChart></ChartCard></div>}
+  </div>;
+}

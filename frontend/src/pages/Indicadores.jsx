@@ -220,6 +220,29 @@ const TooltipEmbudo = ({ active, payload }) => {
   );
 };
 
+// Tooltip del embudo por día (barra apilada): desglosa cada etapa presente
+// ese día + el total (mismo total que muestra la etiqueta encima de la barra).
+const TooltipEmbudoDia = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const visibles = payload.filter(p => Number(p.value) > 0);
+  const total = visibles.reduce((s, p) => s + Number(p.value || 0), 0);
+  return (
+    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[170px] max-h-[260px] overflow-y-auto">
+      <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">DÍA {label}</p>
+      {visibles.map((p, i) => (
+        <div key={i} className="flex justify-between gap-4 mb-1">
+          <span className="text-slate-400 truncate uppercase">{p.name}</span>
+          <span className="font-black shrink-0" style={{ color: p.fill || p.color }}>{p.value}</span>
+        </div>
+      ))}
+      <div className="flex justify-between gap-4 pt-1 border-t border-slate-700">
+        <span className="text-slate-400">TOTAL</span>
+        <span className="font-black text-white">{total}</span>
+      </div>
+    </div>
+  );
+};
+
 // ======================================================
 // MODAL FULLSCREEN PARA GRÁFICAS
 // ======================================================
@@ -476,7 +499,7 @@ export default function ReporteComercialCore() {
   const [refreshing, setRefreshing]     = useState(false);   // ← botón "Forzar Refresh"
   const [alertas, setAlertas]           = useState([]);
   const [diaFiltrado, setDiaFiltrado]   = useState(null);
-  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
+  const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoEmbudoPorDia: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
   // Tablas KPI comerciales (estructura pedida por gerencia). Aisladas: si el
@@ -1261,6 +1284,36 @@ ${asesoresPDF.length>0?`
 
   const totalBaseEmbudo = (data.graficoEmbudo || []).reduce((acc, item) => acc + Number(item.total || 0), 0) || 1;
 
+  // ── Embudo por día (barra apilada) ──────────────────────────────────────
+  // Orden/color de las etapas = mismo orden que ya usa la leyenda de la
+  // derecha (data.graficoEmbudo, de mayor a menor total), para que el color
+  // de cada etapa sea idéntico en la leyenda y en los segmentos de la barra.
+  const etapasEmbudoOrdenadas = useMemo(
+    () => (data.graficoEmbudo || []).map(e => e.etapa),
+    [data.graficoEmbudo]
+  );
+
+  // Pivotea [{fecha, etapa, total}, ...] → una fila por día con una columna
+  // por etapa (para apilar) + _total (suma del día, para la etiqueta y el
+  // tooltip). Mismos filtros que el total general (misma query en backend),
+  // así que la suma de todas las barras siempre cuadra con TOTAL: {totalBaseEmbudo}.
+  const dataEmbudoPorDia = useMemo(() => {
+    const porFecha = new Map();
+    (data.graficoEmbudoPorDia || []).forEach(r => {
+      const fechaStr = r.fecha instanceof Date ? r.fecha.toISOString() : String(r.fecha || '');
+      const key = fechaStr.split('T')[0];
+      if (!key) return;
+      if (!porFecha.has(key)) {
+        porFecha.set(key, { fecha: key, fechaDia: formatFechaCorta(fechaStr), _total: 0 });
+      }
+      const fila  = porFecha.get(key);
+      const etapa = r.etapa || 'SIN ETAPA';
+      fila[etapa] = (fila[etapa] || 0) + Number(r.total || 0);
+      fila._total += Number(r.total || 0);
+    });
+    return Array.from(porFecha.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [data.graficoEmbudoPorDia]);
+
   // Planes por categoría (Hogar / Pymes / Adulto Mayor) — pestaña REPORTE D-1
   const PLANES_CAT_DASH = data.planesPorCategoria || {};
   const FILAS_PLANES_DASH = [
@@ -1456,19 +1509,21 @@ ${asesoresPDF.length>0?`
     <div className="flex gap-4 h-full">
       <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data.graficoEmbudo || []} margin={{top:24,right:8,left:0,bottom:64}} barCategoryGap="18%">
+          <BarChart data={dataEmbudoPorDia} margin={{top:24,right:8,left:0,bottom:34}} barCategoryGap="22%">
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
-            <XAxis dataKey="etapa" axisLine={false} tickLine={false}
-              tick={{fill:'#94a3b8',fontSize:8,fontWeight:700}}
-              interval={0} angle={-38} textAnchor="end"/>
+            <XAxis dataKey="fechaDia" axisLine={false} tickLine={false}
+              tick={{fill:'#94a3b8',fontSize:9,fontWeight:700}}/>
             <YAxis axisLine={false} tickLine={false} tick={{fill:'#94a3b8',fontSize:9}}/>
-            <Tooltip content={<TooltipEmbudo/>}/>
-            <Bar dataKey="total" radius={[6,6,0,0]} isAnimationActive={false}>
-              {(data.graficoEmbudo || []).map((_,index)=>(
-                <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]}/>
-              ))}
-              <LabelList dataKey="total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
-            </Bar>
+            <Tooltip content={<TooltipEmbudoDia/>}/>
+            {etapasEmbudoOrdenadas.map((etapa, index) => (
+              <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
+                fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]}
+                radius={index === etapasEmbudoOrdenadas.length - 1 ? [6,6,0,0] : [0,0,0,0]}>
+                {index === etapasEmbudoOrdenadas.length - 1 && (
+                  <LabelList dataKey="_total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
+                )}
+              </Bar>
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -1088,6 +1088,21 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY total DESC
         `;
 
+        // ── NUEVO: mismo embudo, desglosado por día + etapa (barra apilada) ─────
+        // Mismo universo/filtros que queryEmbudo (misma tabla, mismo rango,
+        // mismos filtersNoJoin) para que el total por día siempre cuadre con el
+        // total general del embudo — solo cambia el GROUP BY (agrega la fecha).
+        const queryEmbudoPorDia = `
+            SELECT
+                mb.b_creado_el_fecha AS fecha,
+                COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
+                COUNT(DISTINCT mb.b_id)::int AS total
+            FROM public.vw_bitrix_novonet mb
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            GROUP BY mb.b_creado_el_fecha, mb.b_etapa_de_la_negociacion
+            ORDER BY fecha ASC
+        `;
+
         const queryPorDia = `
             SELECT
                 public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) AS fecha,
@@ -1142,13 +1157,14 @@ const getIndicadoresDashboard = async (req, res) => {
         // ── Lote 1: KPIs + agregaciones (6 queries) ─ Lote 2: tablas + backlogs ──
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).
         // queryMetasGlobales reemplaza a queryTerceraEdad + queryTarjeta (−1 query, −1 scan).
-        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resDia, resMetasGlobales]] = await Promise.all([
+        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resMetasGlobales]] = await Promise.all([
             getEtapasCache(),
             Promise.all([
                 pool.query(queryKPI('e.supervisor'), values),
                 pool.query(queryKPI('mb.b_persona_responsable'), values),
                 pool.query(queryEstados, values),
                 pool.query(queryEmbudo, values),
+                pool.query(queryEmbudoPorDia, values),
                 pool.query(queryPorDia, values),
                 pool.query(queryMetasGlobales, values),
             ]),
@@ -1332,6 +1348,14 @@ const getIndicadoresDashboard = async (req, res) => {
             total: Number(r.total || 0),
         }));
 
+        // NUEVO: mismas filas que graficoEmbudo pero desglosadas por día — el
+        // frontend las pivotea para la barra apilada por día en /indicadores.
+        const graficoEmbudoPorDia = resEmbudoDia.rows.map(r => ({
+            fecha: r.fecha,
+            etapa: r.etapa,
+            total: Number(r.total || 0),
+        }));
+
         // ── Desempaquetar la query consolidada de metas globales ────────────────
         const rowMetas = resMetasGlobales.rows[0] || {};
         const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
@@ -1355,6 +1379,7 @@ const getIndicadoresDashboard = async (req, res) => {
             dataNetlife: resNet.rows,
             estadosNetlife,
             graficoEmbudo,
+            graficoEmbudoPorDia,
             graficoBarrasDia: resDia.rows,
             graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por j_fecha_activacion_netlife
             etapasCRM: etapasCache.etapasCRM,

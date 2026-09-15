@@ -48,7 +48,7 @@ async function phoneFromDeal(empresa, dealId) {
     if (contact) {
       phoneRaw = contact.PHONE?.[0]?.VALUE || null
       const nm = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim()
-      if (nm) contactName = nm
+      if (nm && phoneRaw) contactName = nm
     }
   }
   // 2) Fallback: empresa vinculada
@@ -56,7 +56,7 @@ async function phoneFromDeal(empresa, dealId) {
     const company = await bitrixGet(empresa, 'crm.company.get', { ID: deal.COMPANY_ID })
     if (company) {
       phoneRaw = company.PHONE?.[0]?.VALUE || null
-      if (company.TITLE) contactName = company.TITLE
+      if (company.TITLE && phoneRaw) contactName = company.TITLE
     }
   }
 
@@ -155,7 +155,7 @@ async function getAll(req, res) {
 
     // Parámetros extra: el usuario actual (para sus propios no leídos) y el límite
     params.push(req.user.id);        const pUser  = params.length
-    params.push(parseInt(limit));    const pLimit = params.length
+    params.push(bitrix_deal_id ? 1 : Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100))); const pLimit = params.length
 
     // Los no leídos se calculan POR USUARIO: mensajes entrantes posteriores a
     // la última vez que ESTE usuario abrió la conversación.
@@ -462,7 +462,7 @@ async function startFromBitrix(req, res) {
     // 1) Determinar el número: directo o desde Bitrix
     let waNumber = ''
     let contactName = null
-    if (phoneIn) {
+    if (phoneIn && !bitrixId) {
       waNumber = normalizePhoneEC(phoneIn)
       if (!waNumber) return res.status(400).json({ success: false, error: 'Número de teléfono inválido' })
     } else {
@@ -523,20 +523,25 @@ async function startFromBitrix(req, res) {
 
     // 3) Crear/abrir conversación (reusa si ya existe una abierta)
     const existing = await query(
-      `SELECT * FROM conversations WHERE line_id=$1 AND wa_number=$2 AND status != 'closed' ORDER BY started_at DESC LIMIT 1`,
-      [lineId, waNumber]
+      `SELECT * FROM conversations WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
+       AND ($3::text IS NULL OR bitrix_deal_id=$3 OR bitrix_deal_id IS NULL)
+       ORDER BY (bitrix_deal_id=$3) DESC NULLS LAST, started_at DESC LIMIT 1`,
+      [lineId, waNumber, bitrixId || null]
     )
     let conv
     if (existing.rows.length) {
       conv = existing.rows[0]
       if (bitrixId) await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId, conv.id])
+      if (bitrixId && contactName) {
+        await query(`UPDATE contacts SET name=$1 WHERE wa_number=$2 AND line_id=$3`, [contactName, waNumber, lineId])
+      }
     } else {
       const contactRes = await query(
         `INSERT INTO contacts (wa_number, line_id, name)
          VALUES ($1,$2,$3)
-         ON CONFLICT (wa_number, line_id) DO UPDATE SET name=COALESCE(contacts.name, EXCLUDED.name), last_seen=NOW()
+         ON CONFLICT (wa_number, line_id) DO UPDATE SET name=CASE WHEN $4::boolean THEN EXCLUDED.name ELSE COALESCE(contacts.name, EXCLUDED.name) END, last_seen=NOW()
          RETURNING id`,
-        [waNumber, lineId, contactName || null]
+        [waNumber, lineId, contactName || null, Boolean(bitrixId && contactName)]
       )
       const ins = await query(
         `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id, status, bitrix_deal_id)

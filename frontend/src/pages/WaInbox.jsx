@@ -73,7 +73,10 @@ export default function WaInbox({ dealId = null } = {}) {
   const [search, setSearch]               = useState("");
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);          // evita closure viejo en el socket
+  const conversationsRef = useRef([]);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+  useEffect(() => { setSelected(null); setMessages([]); setConversations([]); setLoading(true); }, [dealId]);
 
   // Bitrix: modal nueva conversación e ingreso de ID
   const [bitrixModal, setBitrixModal] = useState(null); // "new" | "add"
@@ -116,7 +119,9 @@ export default function WaInbox({ dealId = null } = {}) {
       const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
       const data = asArray(d);
-      setConversations(dealId ? data.slice(0, 1) : data);
+      const scoped = dealId ? data.filter(c => String(c.bitrix_deal_id) === String(dealId)).slice(0, 1) : data;
+      setConversations(scoped);
+      setSelected(current => current && !scoped.some(c => c.id === current.id) ? null : current);
     } catch (e) {
       console.error("[WaInbox] Error cargando:", e);
     } finally {
@@ -131,7 +136,7 @@ export default function WaInbox({ dealId = null } = {}) {
     try {
       const r = await fetch(`${API}/conversations/${convId}/messages`, { headers: authH(false) });
       const d = await r.json();
-      setMessages(asArray(d));
+      if (selectedRef.current?.id === convId) setMessages(asArray(d));
       if (scroll) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) {
       console.error("[WaInbox] Error cargando mensajes:", e);
@@ -141,15 +146,16 @@ export default function WaInbox({ dealId = null } = {}) {
   useEffect(() => {
     // La carga inicial la hace el efecto del filtro (lineFilter). Aquí solo el socket.
     const socket = getSocket();
-    socket.on("conversation:new", (conv) => {
+    const onConversation = (conv) => {
       // En modo negociación, ignora conversaciones de otros Deals/clientes.
       if (dealId && String(conv.bitrix_deal_id || "") !== String(dealId)) return;
       setConversations(prev => {
         const next = [conv, ...prev.filter(c => c.id !== conv.id)];
         return dealId ? next.slice(0, 1) : next;
       });
-    });
-    socket.on("message:new", (msg) => {
+    };
+    const onMessage = (msg) => {
+      if (dealId && !conversationsRef.current.some(c => c.id === msg.conversation_id)) return;
       // El recargado va FUERA del updater: React puede invocar el updater dos
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
@@ -167,18 +173,24 @@ export default function WaInbox({ dealId = null } = {}) {
         setMessages(prev => [...prev, { ...msg, content: msg.content || msg.text }]);
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       }
-    });
+    };
     // Actualiza ✓✓ (entregado/leído) en vivo
-    socket.on("message:status", ({ wa_msg_id, status }) => {
+    const onStatus = ({ wa_msg_id, status }) => {
       setMessages(prev => prev.map(m => m.wa_msg_id === wa_msg_id ? { ...m, status } : m));
-    });
+    };
     // Chat duplicado (LID) fusionado con el real → quitar el duplicado de la lista
-    socket.on("conversation:merged", ({ from }) => {
+    const onMerged = ({ from }) => {
       setConversations(prev => prev.filter(c => c.id !== from));
       setSelected(s => (s && s.id === from ? null : s));
-    });
-    return () => { socket.off("conversation:new"); socket.off("message:new"); socket.off("message:status"); socket.off("conversation:merged"); };
-  }, []);
+    };
+    const onConnect = () => loadConvs(lineFilter);
+    socket.on("conversation:new", onConversation);
+    socket.on("message:new", onMessage);
+    socket.on("message:status", onStatus);
+    socket.on("conversation:merged", onMerged);
+    socket.on("connect", onConnect);
+    return () => { socket.off("conversation:new", onConversation); socket.off("message:new", onMessage); socket.off("message:status", onStatus); socket.off("conversation:merged", onMerged); socket.off("connect", onConnect); };
+  }, [dealId, loadConvs, lineFilter]);
 
   useEffect(() => {
     if (selected) loadMessages(selected.id);
@@ -314,6 +326,9 @@ export default function WaInbox({ dealId = null } = {}) {
   const startConversation = async () => {
     if (bitrixBusy) return;
     const body = {};
+    if (dealId) {
+      body.bitrix_id = String(dealId);
+    } else
     if (newMode === "phone") {
       if (!newPhone.trim()) return;
       body.phone = newPhone.trim();
@@ -332,8 +347,8 @@ export default function WaInbox({ dealId = null } = {}) {
       });
       const d = await r.json();
       if (!d.success) { alert(d.error || "No se pudo iniciar la conversación"); return; }
-      setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)]);
-      setSelected(d.data);
+      if (!dealId || String(d.data.bitrix_deal_id) === String(dealId)) setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)].slice(0, dealId ? 1 : undefined));
+      if (!dealId || String(d.data.bitrix_deal_id) === String(dealId)) setSelected(d.data);
       setBitrixModal(null); setBitrixId(""); setNewPhone("");
     } catch (e) {
       alert("Error al iniciar la conversación");

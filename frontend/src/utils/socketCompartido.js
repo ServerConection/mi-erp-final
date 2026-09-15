@@ -23,7 +23,11 @@ import { io } from "socket.io-client";
 let socket = null;
 
 export function getSocketCompartido() {
-  if (socket) return socket;
+  if (socket) {
+    socket.auth = { token: localStorage.getItem("token") };
+    if (!socket.connected && !socket.active) socket.connect();
+    return socket;
+  }
 
   socket = io(import.meta.env.VITE_API_URL, {
     auth: { token: localStorage.getItem("token") },
@@ -35,7 +39,7 @@ export function getSocketCompartido() {
 
   // Tras reconectar, reenviar el token vigente: si el usuario renovo sesion, el
   // handshake viejo ya no sirve y entraria como invitado.
-  socket.on("reconnect_attempt", () => {
+  socket.io.on("reconnect_attempt", () => {
     socket.auth = { token: localStorage.getItem("token") };
   });
 

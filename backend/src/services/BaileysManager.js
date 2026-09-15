@@ -1191,7 +1191,8 @@ class BaileysManager {
       try {
         await query(
           `UPDATE contacts SET name = $1, last_seen = NOW()
-           WHERE wa_number = $2 AND line_id = $3 AND (name IS NULL OR name = '')`,
+           WHERE wa_number = $2 AND line_id = $3 AND (name IS NULL OR name = '')
+             AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = contacts.id AND c.bitrix_deal_id IS NOT NULL)`,
           [pushName, waNumber, lineId]
         )
       } catch (e) {}

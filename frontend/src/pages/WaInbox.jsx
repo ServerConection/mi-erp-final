@@ -56,7 +56,12 @@ const timeAgo = (ts) => {
   return new Date(ts).toLocaleDateString("es-GT", { day: "numeric", month: "short" });
 };
 
-export default function WaInbox() {
+// dealId (opcional): cuando WaInbox se abre embebido en la pestaña WABOT de
+// una negociación de Bitrix (ver EmbedInbox.jsx), esta prop viene con el ID
+// de esa negociación y el Inbox se acota a SU conversación — nunca a la
+// bandeja completa. Sin dealId (uso normal en /whatsapp/inbox) el
+// comportamiento es exactamente el de siempre.
+export default function WaInbox({ dealId = null } = {}) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading]             = useState(true);
   const [selected, setSelected]           = useState(null);
@@ -98,16 +103,26 @@ export default function WaInbox() {
 
   const loadConvs = useCallback(async (lineId = "") => {
     try {
-      const qs = lineId ? `?line_id=${encodeURIComponent(lineId)}` : "";
+      // Modo "negociación" (dealId presente): se filtra por bitrix_deal_id en
+      // vez de por línea, y de lo que devuelva el backend nos quedamos solo
+      // con la más reciente. Si por algún motivo quedaron varias
+      // conversaciones vinculadas al mismo Deal (p. ej. una prueba vieja),
+      // las demás no se muestran acá — siguen visibles desde el Inbox
+      // completo, fuera de Bitrix. El backend igual sigue aplicando sus
+      // reglas de visibilidad por perfil: esto solo agrega un filtro más.
+      const qs = dealId
+        ? `?bitrix_deal_id=${encodeURIComponent(dealId)}`
+        : (lineId ? `?line_id=${encodeURIComponent(lineId)}` : "");
       const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
-      setConversations(asArray(d));
+      const data = asArray(d);
+      setConversations(dealId ? data.slice(0, 1) : data);
     } catch (e) {
       console.error("[WaInbox] Error cargando:", e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dealId]);
 
   // Recargar al cambiar el filtro de línea/usuario
   useEffect(() => { loadConvs(lineFilter); }, [lineFilter, loadConvs]);
@@ -127,7 +142,12 @@ export default function WaInbox() {
     // La carga inicial la hace el efecto del filtro (lineFilter). Aquí solo el socket.
     const socket = getSocket();
     socket.on("conversation:new", (conv) => {
-      setConversations(prev => [conv, ...prev.filter(c => c.id !== conv.id)]);
+      // En modo negociación, ignora conversaciones de otros Deals/clientes.
+      if (dealId && String(conv.bitrix_deal_id || "") !== String(dealId)) return;
+      setConversations(prev => {
+        const next = [conv, ...prev.filter(c => c.id !== conv.id)];
+        return dealId ? next.slice(0, 1) : next;
+      });
     });
     socket.on("message:new", (msg) => {
       // El recargado va FUERA del updater: React puede invocar el updater dos
@@ -163,6 +183,14 @@ export default function WaInbox() {
   useEffect(() => {
     if (selected) loadMessages(selected.id);
   }, [selected]);
+
+  // Modo negociación: si hay exactamente una conversación (la única que se
+  // muestra en este modo) y todavía no hay nada seleccionado, se abre sola —
+  // en la pestaña de un Deal no tiene sentido obligar a un clic extra.
+  useEffect(() => {
+    if (!dealId || selected) return;
+    if (conversations.length === 1) selectConv(conversations[0]);
+  }, [dealId, conversations, selected]);
 
   // ── Respaldo en vivo: refresco automático cada 30s ──────────────────────
   // Garantiza que los vendedores vean la actividad con menos de 1 minuto de
@@ -348,50 +376,67 @@ export default function WaInbox() {
       <div className={`flex flex-col border-r border-slate-200 bg-white ${selected ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0`}>
         <div className="p-3 border-b border-slate-100">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-slate-800">💬 Inbox</h2>
-            <button onClick={() => { setBitrixId(""); setBitrixModal("new"); }}
-              title="Iniciar conversación con un ID de negociación de Bitrix"
-              className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-              + Nueva
-            </button>
-          </div>
-          <input type="text" placeholder="Buscar…" value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
-
-          {/* Filtro por usuario/línea (admin y supervisor) */}
-          {CAN_PICK_LINE && lines.length > 0 && (
-            <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2 bg-white">
-              <option value="">👥 Todos los asesores / líneas</option>
-              {lines.map(l => (
-                <option key={l.id} value={l.id}>
-                  {l.owner_username ? `${l.owner_username} — ` : ""}{l.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <div className="flex gap-1">
-            {[
-              { key: "all",            label: "Todos" },
-              { key: "active",         label: "Activos" },
-              { key: "human_takeover", label: "Humano" },
-              { key: "closed",         label: "Cerrados" },
-            ].map(f => (
-              <button key={f.key} onClick={() => setFilter(f.key)}
-                className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
-                  filter === f.key ? "bg-green-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                }`}>
-                {f.label}
+            <h2 className="font-bold text-slate-800">{dealId ? `💬 Negociación #${dealId}` : "💬 Inbox"}</h2>
+            {!dealId && (
+              <button onClick={() => { setBitrixId(""); setBitrixModal("new"); }}
+                title="Iniciar conversación con un ID de negociación de Bitrix"
+                className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                + Nueva
               </button>
-            ))}
+            )}
           </div>
+          {/* Buscador, filtro por línea y filtro de estado: no aplican en modo
+              negociación (acotado a un solo Deal), así que se ocultan. */}
+          {!dealId && (
+            <>
+              <input type="text" placeholder="Buscar…" value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
+
+              {/* Filtro por usuario/línea (admin y supervisor) */}
+              {CAN_PICK_LINE && lines.length > 0 && (
+                <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2 bg-white">
+                  <option value="">👥 Todos los asesores / líneas</option>
+                  {lines.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.owner_username ? `${l.owner_username} — ` : ""}{l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="flex gap-1">
+                {[
+                  { key: "all",            label: "Todos" },
+                  { key: "active",         label: "Activos" },
+                  { key: "human_takeover", label: "Humano" },
+                  { key: "closed",         label: "Cerrados" },
+                ].map(f => (
+                  <button key={f.key} onClick={() => setFilter(f.key)}
+                    className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
+                      filter === f.key ? "bg-green-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    }`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
+            <div className="text-center py-12 px-4 text-slate-400">
               <div className="text-3xl mb-2">💬</div>
-              <div className="text-sm">No hay conversaciones</div>
+              <div className="text-sm">
+                {dealId ? `Esta negociación (#${dealId}) no tiene ningún chat de WhatsApp vinculado todavía.` : "No hay conversaciones"}
+              </div>
+              {dealId && (
+                <button onClick={() => { setBitrixId(dealId); setNewMode("bitrix"); setBitrixModal("new"); }}
+                  title="Vincular un chat de WhatsApp a esta negociación"
+                  className="mt-3 text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                  + Vincular esta negociación
+                </button>
+              )}
             </div>
           ) : filtered.map(conv => (
             <button key={conv.id} onClick={() => selectConv(conv)}
@@ -449,7 +494,9 @@ export default function WaInbox() {
               <div className="text-xs text-slate-500">+{selected.wa_number}</div>
             </div>
             <div className="flex gap-2">
-              {selected.bitrix_deal_id ? (
+              {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
+                  negociación en Bitrix -- el enlace/botón sería redundante. */}
+              {!dealId && (selected.bitrix_deal_id ? (
                 <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
                   onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}
                   title={`Abrir negociación ${selected.bitrix_deal_id} en Bitrix`}
@@ -462,7 +509,7 @@ export default function WaInbox() {
                   className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
                   + ID Bitrix
                 </button>
-              )}
+              ))}
               <button onClick={() => exportChatPDF({
                   wa_number: selected.wa_number,
                   contact_name: selected.contact_name,

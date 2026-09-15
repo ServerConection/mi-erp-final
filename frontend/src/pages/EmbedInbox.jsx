@@ -23,6 +23,10 @@ const API = import.meta.env.VITE_API_URL;
 
 export default function EmbedInbox() {
   const [estado, setEstado] = useState("cargando"); // cargando | listo | error
+  // ID de la negociación de Bitrix desde la que se abrió esta pestaña (si
+  // vino). No es un dato sensible: solo le dice al Inbox qué conversación
+  // mostrar; el acceso real lo sigue controlando el JWT de la sesión.
+  const [dealId, setDealId] = useState(null);
   const yaCanjeado = useRef(false);
 
   useEffect(() => {
@@ -31,6 +35,8 @@ export default function EmbedInbox() {
 
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    const dealIdParam = params.get("deal_id");
+    if (dealIdParam) setDealId(dealIdParam);
 
     if (!code) {
       setEstado("error");
@@ -91,7 +97,7 @@ export default function EmbedInbox() {
     );
   }
 
-  return <WaInbox />;
+  return <WaInbox dealId={dealId} />;
 }
 
 const estilos = {

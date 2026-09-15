@@ -112,7 +112,21 @@ async function placementInbox(req, res) {
       [code, usuarioId]
     )
 
-    return res.send(paginaRedirect(`${FRONTEND_URL}/embed/inbox?code=${code}`))
+    // 4) ID de la negociación desde la que se abrió la pestaña: Bitrix lo manda
+    //    en PLACEMENT_OPTIONS (JSON) para el placement CRM_DEAL_DETAIL_TAB. NO
+    //    es un dato sensible -- solo le dice al Inbox qué conversación filtrar;
+    //    la identidad y el acceso a los chats los sigue decidiendo el backend
+    //    con el JWT real (el code de arriba), nunca este ID. Si el formato no
+    //    calza por lo que sea, se sigue de largo sin deal_id y cae al Inbox
+    //    completo de siempre -- nunca rompe el login.
+    let dealId = ''
+    try {
+      const opts = typeof b.PLACEMENT_OPTIONS === 'string' ? JSON.parse(b.PLACEMENT_OPTIONS) : b.PLACEMENT_OPTIONS
+      dealId = String(opts?.ID || '').trim()
+    } catch (_) { /* sin deal_id -> Inbox completo, comportamiento de siempre */ }
+
+    const qsDeal = dealId ? `&deal_id=${encodeURIComponent(dealId)}` : ''
+    return res.send(paginaRedirect(`${FRONTEND_URL}/embed/inbox?code=${code}${qsDeal}`))
   } catch (e) {
     console.error('[WABOT-BITRIX] placementInbox SSO falló, cae a login manual:', e.message)
     return irALoginManual()

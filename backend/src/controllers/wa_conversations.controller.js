@@ -522,11 +522,19 @@ async function startFromBitrix(req, res) {
     try { await bm.resolveWaJid(lineId, waNumber) } catch (e) {}
 
     // 3) Crear/abrir conversación (reusa si ya existe una abierta)
+    // Un mismo número de WhatsApp tiene UNA sola conversación viva por línea,
+    // sin importar cuántas negociaciones de Bitrix tenga el cliente. Antes,
+    // si ya había una conversación abierta ligada a OTRA negociación, se
+    // creaba una segunda conversación en paralelo para la nueva negociación
+    // -> quedaban dos conversaciones "abiertas" para el mismo número y los
+    // mensajes NUEVOS de WhatsApp (que no traen ID de negociación) podían
+    // terminar en la conversación equivocada. Por eso acá siempre se reusa
+    // la conversación abierta más reciente y solo se actualiza su
+    // bitrix_deal_id (abajo), en vez de bifurcar por negociación.
     const existing = await query(
       `SELECT * FROM conversations WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
-       AND ($3::text IS NULL OR bitrix_deal_id=$3 OR bitrix_deal_id IS NULL)
-       ORDER BY (bitrix_deal_id=$3) DESC NULLS LAST, started_at DESC LIMIT 1`,
-      [lineId, waNumber, bitrixId || null]
+       ORDER BY started_at DESC LIMIT 1`,
+      [lineId, waNumber]
     )
     let conv
     if (existing.rows.length) {

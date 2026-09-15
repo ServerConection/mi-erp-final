@@ -138,7 +138,7 @@ async function usuarioActualPorAuthId(domain, authId) {
   const dominioLimpio = String(domain).toLowerCase().replace(/[^a-z0-9.\-]/g, '')
   const portalHost = PORTAL.replace(/^https?:\/\//i, '').toLowerCase()
   if (!portalHost || dominioLimpio !== portalHost) {
-    throw new Error('BITRIX_SSO_DOMINIO_NO_CONFIABLE')
+    throw new Error(`BITRIX_SSO_DOMINIO_NO_CONFIABLE (recibido="${dominioLimpio}" esperado="${portalHost}")`)
   }
 
   const controlador = new AbortController()

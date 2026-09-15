@@ -8,6 +8,7 @@ import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
+import { colorEtapaEmbudo } from "../utils/embudoColores";
 import { 
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
@@ -939,7 +940,6 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   // divide una sola vez. Evita promediar porcentajes de supervisores.
   const stats = useMemo(() => calcularStatsIndicadores(data), [data]);
 
-  const COLORES_EMBUDO = ['#f97316','#fb923c','#fdba74','#fbbf24','#34d399','#10b981'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={11} fontWeight="900" dominantBaseline="middle">{value}</text>;
   const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 8} fill="#fb923c" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
@@ -1127,27 +1127,28 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
-            data={data.graficoEmbudo || []}
-            margin={{ top: 20, right: 10, left: 0, bottom: 80 }}
-            barCategoryGap="15%"
+            data={dataEmbudoPorDia}
+            margin={{ top: 24, right: 10, left: 0, bottom: 34 }}
+            barCategoryGap="22%"
           >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c1917" />
             <XAxis
-              dataKey="etapa"
+              dataKey="fechaDia"
               axisLine={false}
               tickLine={false}
-              tick={<CustomXAxisTickVertical />}
-              interval={0}
+              tick={{ fill: '#78716c', fontSize: 9, fontWeight: 700 }}
             />
             <YAxis axisLine={false} tickLine={false} tick={{ fill: '#57534e', fontSize: 9 }} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#0c0a09', border: 'none', borderRadius: '8px', fontSize: '10px' }}
-              formatter={(value) => [value, 'Total']}
-            />
-            <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={28}>
-              {(data.graficoEmbudo || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]} />)}
-              <LabelList dataKey="total" content={CustomEmbudoLabel} />
-            </Bar>
+            <Tooltip content={<TooltipEmbudoDia />} />
+            {etapasEmbudoOrdenadas.map((etapa, index) => (
+              <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
+                fill={colorEtapaEmbudo(etapa)}
+                radius={index === etapasEmbudoOrdenadas.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
+                {index === etapasEmbudoOrdenadas.length - 1 && (
+                  <LabelList dataKey="_total" content={CustomEmbudoLabel} />
+                )}
+              </Bar>
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -1156,7 +1157,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
           const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
           return (
             <div key={index} className="flex items-center gap-2 min-w-0">
-              <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
+              <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: colorEtapaEmbudo(entry.etapa) }} />
               <span className="text-[8px] text-stone-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
               <span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span>
               <span className="text-[8px] font-bold text-stone-500 shrink-0">({pct}%)</span>

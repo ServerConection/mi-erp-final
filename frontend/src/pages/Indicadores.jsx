@@ -8,6 +8,7 @@ import { fetchConSesion } from "../utils/sesion";
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
+import { colorEtapaEmbudo } from "../utils/embudoColores";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, LabelList, Legend
@@ -1271,7 +1272,6 @@ ${asesoresPDF.length>0?`
 
   const META_DIA = 65;
   const ETAPAS_JOTFORM  = ['ACTIVO','ASIGNADO','PREPLANIIFICADO','PLANIIFICADO','RECHAZADO','REPLANIFICADO','DESISTE DEL SERVICIO','PRESERVICIO','FIN DE GESTION','FACTIBLE'];
-  const COLORES_EMBUDO  = ['#10b981','#34d399','#6ee7b7','#fbbf24','#f97316','#ef4444'];
 
   const CustomBarLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y + 18} fill="#ffffff" textAnchor="middle" fontSize={10} fontWeight="900">{value}</text>;
   const CustomActivosLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 4} fill="#60a5fa" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
@@ -1516,7 +1516,7 @@ ${asesoresPDF.length>0?`
             <Tooltip content={<TooltipEmbudoDia/>}/>
             {etapasEmbudoOrdenadas.map((etapa, index) => (
               <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
-                fill={COLORES_EMBUDO[index % COLORES_EMBUDO.length]}
+                fill={colorEtapaEmbudo(etapa)}
                 radius={index === etapasEmbudoOrdenadas.length - 1 ? [6,6,0,0] : [0,0,0,0]}>
                 {index === etapasEmbudoOrdenadas.length - 1 && (
                   <LabelList dataKey="_total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
@@ -1531,7 +1531,7 @@ ${asesoresPDF.length>0?`
           const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
           return (
             <div key={index} className="flex items-center gap-2 min-w-0">
-              <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO[index % COLORES_EMBUDO.length] }} />
+              <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: colorEtapaEmbudo(entry.etapa) }} />
               <span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span>
               <span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span>
               <span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span>

@@ -228,17 +228,22 @@ const TooltipEmbudoDia = ({ active, payload, label }) => {
   const visibles = payload.filter(p => Number(p.value) > 0);
   const total = visibles.reduce((s, p) => s + Number(p.value || 0), 0);
   return (
-    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[170px] max-h-[260px] overflow-y-auto">
+    <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[320px] max-w-[min(420px,calc(100vw-32px))]">
       <p className="font-black text-white mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">DÍA {label}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)_40px_48px] gap-3 mb-1 text-[9px] font-bold text-slate-500 uppercase">
+        <span>Etapa</span><span className="text-right">Cant.</span><span className="text-right">% día</span>
+      </div>
       {visibles.map((p, i) => (
-        <div key={i} className="flex justify-between gap-4 mb-1">
-          <span className="text-slate-400 truncate uppercase">{p.name}</span>
-          <span className="font-black shrink-0" style={{ color: p.fill || p.color }}>{p.value}</span>
+        <div key={i} className="grid grid-cols-[minmax(0,1fr)_40px_48px] gap-3 items-start mb-1">
+          <span className="text-slate-400 uppercase break-words">{p.name}</span>
+          <span className="font-black text-right" style={{ color: p.fill || p.color }}>{p.value}</span>
+          <span className="font-black text-right text-white">{((Number(p.value) / total) * 100).toFixed(1)}%</span>
         </div>
       ))}
-      <div className="flex justify-between gap-4 pt-1 border-t border-slate-700">
+      <div className="grid grid-cols-[minmax(0,1fr)_40px_48px] gap-3 pt-1 border-t border-slate-700">
         <span className="text-slate-400">TOTAL</span>
-        <span className="font-black text-white">{total}</span>
+        <span className="font-black text-white text-right">{total}</span>
+        <span className="font-black text-white text-right">100%</span>
       </div>
     </div>
   );
@@ -1528,7 +1533,7 @@ ${asesoresPDF.length>0?`
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-        {(data.graficoEmbudo || []).slice(0, 12).map((entry, index) => {
+          {(data.graficoEmbudo || []).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudo) * 100).toFixed(1);
           return (
             <div key={index} className="flex items-center gap-2 min-w-0">
@@ -2381,7 +2386,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-        {(embudoCRM || []).slice(0, 15).map((entry, index) => {
+          {(embudoCRM || []).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudoCRM) * 100).toFixed(1);
           return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_CRM[index % COLORES_EMBUDO_CRM.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
         })}
@@ -2410,7 +2415,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
-        {(embudoJotform || []).slice(0, 15).map((entry, index) => {
+        {(embudoJotform || []).map((entry, index) => {
           const pct = ((Number(entry.total) / totalBaseEmbudoJOT) * 100).toFixed(1);
           return <div key={index} className="flex items-center gap-2 min-w-0"><div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: COLORES_EMBUDO_JOT[index % COLORES_EMBUDO_JOT.length] }} /><span className="text-[8px] text-slate-400 truncate leading-tight flex-1 uppercase">{entry.etapa}</span><span className="text-[8px] font-black text-slate-800 shrink-0">{entry.total}</span><span className="text-[8px] font-bold text-slate-400 shrink-0">({pct}%)</span></div>;
         })}

@@ -151,14 +151,21 @@ const campoSupervisor = (columna) => (columna === COL_SUPERVISOR ? EXPR_SUPERVIS
 // Agregar aquí nuevos pares apenas se detecten (agregar el WHEN en MAYÚSCULAS).
 function normalizarAsesorSQL(campo) {
   const limpio = `REGEXP_REPLACE(BTRIM(REPLACE(REPLACE(REPLACE(${campo}::text, CHR(160), ' '), CHR(8203), ''), CHR(65279), '')), '\\s+', ' ', 'g')`;
+  const clave = `TRANSLATE(UPPER(${limpio}), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')`;
   return `
-    CASE UPPER(${limpio})
-      WHEN 'KARINA TORRES' THEN 'Karina Torres'
-      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'Karina Torres'
-      WHEN 'ROSSANNA ALVARADO' THEN 'Rossanna Alvarado'
-      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'Rossanna Alvarado'
-      WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
-      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'Damian Viera'
+    CASE ${clave}
+      WHEN 'KARINA TORRES' THEN 'KARINA MARICELA TORRES AMAGUAÑA'
+      WHEN 'KARINA MARICELA TORRES AMAGUANA' THEN 'KARINA MARICELA TORRES AMAGUAÑA'
+      WHEN 'ROSSANA ALVARADO CRUZ' THEN 'ROSSANNA MARIBEL ALVARADO CRUZ'
+      WHEN 'ROSSANNA ALVARADO CRUZ' THEN 'ROSSANNA MARIBEL ALVARADO CRUZ'
+      WHEN 'ROSSANNA ALVARADO' THEN 'ROSSANNA MARIBEL ALVARADO CRUZ'
+      WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'ROSSANNA MARIBEL ALVARADO CRUZ'
+      WHEN 'DAMIAN VIERA' THEN 'DAMIAN ARIEL VIERA JACOME'
+      WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'DAMIAN ARIEL VIERA JACOME'
+      WHEN 'BYRON VISTIN CUNEZ' THEN 'BYRON FERNANDO VISTIN CUÑEZ'
+      WHEN 'BYRON FERNANDO VISTIN CUNEZ' THEN 'BYRON FERNANDO VISTIN CUÑEZ'
+      WHEN 'MELANY MAYERLI GUANO SANTIN' THEN 'MELANY MAYERLI GUAÑO SANTIN'
+      WHEN 'MELANY MAYERLY GUANO SANTIN' THEN 'MELANY MAYERLI GUAÑO SANTIN'
       ELSE ${limpio}
     END`;
 }
@@ -172,7 +179,13 @@ function buildFilters(q, values) {
   // registros de OTRO asesor cuyo nombre compartiera una porción de texto con
   // el seleccionado, mezclando datos entre asesores. Mismo fix aplicado en
   // indicadores.controller.js (dashboard NOVONET).
-  if (asesor)               { values.push(asesor);                     f += ` AND (${normalizarAsesorSQL('mv.asesor')}) = $${values.length}`; }
+  if (asesor) {
+    const lista = String(asesor).split(',').map(v => v.trim()).filter(Boolean);
+    if (lista.length) {
+      values.push(lista);
+      f += ` AND UPPER(${normalizarAsesorSQL('mv.asesor')}) = ANY(SELECT UPPER(nombre) FROM UNNEST($${values.length}::text[]) AS nombre)`;
+    }
+  }
   if (supervisor)           { values.push(`%${supervisor}%`);           f += ` AND ${EXPR_SUPERVISOR} ILIKE $${values.length}`; }
   if (estadoNetlife)        { values.push(`%${estadoNetlife}%`);        f += ` AND mv.estado_venta ILIKE $${values.length}`; }
   if (estadoRegularizacion) { values.push(`%${estadoRegularizacion}%`); f += ` AND mv.estado_regularizacion ILIKE $${values.length}`; }

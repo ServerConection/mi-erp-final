@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 
@@ -79,6 +79,22 @@ const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
   if (!token) return <Navigate to="/login" replace />;
   return children;
+};
+
+// Botones flotantes (soporte WhatsApp, chat interno, tareas): se ocultan en
+// las rutas /embed/* -- son el iframe "WABOT Inbox" dentro de Bitrix, y ahí
+// no pintan botones internos del ERP encima del chat del cliente.
+const FloatingWidgets = () => {
+  const location = useLocation();
+  if (location.pathname.startsWith("/embed/")) return null;
+  return (
+    <>
+      {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas excepto embeds */}
+      <WhatsAppSupportButton />
+      {/* Botones flotantes de Chat interno y Tareas asignadas — solo con sesión activa */}
+      <ChatTareasFloatingButtons />
+    </>
+  );
 };
 
 export default function App() {
@@ -165,11 +181,7 @@ export default function App() {
       </Routes>
       </Suspense>
 
-      {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas */}
-      <WhatsAppSupportButton />
-
-      {/* Botones flotantes de Chat interno y Tareas asignadas — solo con sesión activa */}
-      <ChatTareasFloatingButtons />
+      <FloatingWidgets />
     </BrowserRouter>
   );
 }

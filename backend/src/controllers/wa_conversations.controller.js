@@ -132,11 +132,17 @@ async function findOwnedConversation(req, id) {
 // ── LISTAR conversaciones (inbox) ────────────────────────────
 async function getAll(req, res) {
   try {
-    const { line_id, status, search, limit = 100 } = req.query
+    const { line_id, status, search, limit = 100, bitrix_deal_id } = req.query
     const where = []
     const params = []
 
     if (line_id) { params.push(line_id); where.push(`c.line_id = $${params.length}`) }
+    // Vista de la pestaña WABOT dentro de un Deal de Bitrix: filtra por la
+    // negociación puntual. Se suma con AND a las demás condiciones (incluida
+    // visibilityCondition más abajo) — nunca la reemplaza, así que un asesor
+    // sigue sin poder ver conversaciones de otro asesor aunque sepa el
+    // bitrix_deal_id.
+    if (bitrix_deal_id) { params.push(bitrix_deal_id); where.push(`c.bitrix_deal_id = $${params.length}`) }
     if (status)  { params.push(status);  where.push(`c.status = $${params.length}`) }
     if (search)  {
       params.push(`%${search}%`)

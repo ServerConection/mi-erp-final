@@ -925,6 +925,7 @@ class BaileysManager {
     const ids = Object.keys(this.instances)
     console.log(`[BaileysManager] Cerrando ${ids.length} línea(s) por apagado limpio...`)
     for (const id of ids) {
+      await this._updateLineStatus(id, 'connecting')
       // Cancelar reconexiones pendientes
       if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
       if (this.instances[id]?._watchdog) clearTimeout(this.instances[id]._watchdog)
@@ -1164,11 +1165,13 @@ class BaileysManager {
     const jid = await this._resolveSendJid(lineId, to)
     const msgContent = { caption: caption || '' }
     if (type === 'image') msgContent.image = buffer
+    else if (type === 'video') msgContent.video = buffer
     else if (type === 'document') {
       msgContent.document = buffer
       msgContent.mimetype = mimetype
       msgContent.fileName = filename
     } else if (type === 'audio') {
+      delete msgContent.caption
       msgContent.audio = buffer
       msgContent.mimetype = mimetype
     }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
@@ -46,6 +47,7 @@ function WhatsAppIcon({ className }) {
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WhatsAppSupportButton() {
+  const inbox = useLocation().pathname.includes("/inbox");
   const [abierto, setAbierto] = useState(false);
   const [opcionElegida, setOpcionElegida] = useState(null);
 
@@ -80,7 +82,7 @@ export default function WhatsAppSupportButton() {
         type="button"
         onClick={() => setAbierto(true)}
         aria-label="Abrir chat de soporte por WhatsApp"
-        className="fixed bottom-6 right-6 z-[999] group"
+        className={`fixed ${inbox ? "top-28" : "bottom-6"} right-6 z-[999] group`}
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 animate-ping" />
         <span

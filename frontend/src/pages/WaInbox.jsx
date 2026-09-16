@@ -2,6 +2,7 @@
  * WaInbox.jsx — Bandeja de conversaciones WhatsApp en el ERP
  */
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import InboxAudioRecorder from "../components/InboxAudioRecorder";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 
@@ -158,7 +159,8 @@ export default function WaInbox({ dealId = null } = {}) {
       // En modo negociación, ignora conversaciones de otros Deals/clientes.
       if (dealId && String(conv.bitrix_deal_id || "") !== String(dealId)) return;
       setConversations(prev => {
-        const next = [conv, ...prev.filter(c => c.id !== conv.id)];
+        const existing = prev.find(c => c.id === conv.id);
+        const next = [{ ...existing, ...conv }, ...prev.filter(c => c.id !== conv.id)];
         return dealId ? next.slice(0, 1) : next;
       });
     };
@@ -266,8 +268,10 @@ export default function WaInbox({ dealId = null } = {}) {
         body: JSON.stringify({ text }),   // el backend espera "text"
       });
       const d = await r.json();
-      if (!d.success) alert(d.error || "No se pudo enviar");
+      if (!d.success) { setNewMsg(text); alert(d.error || "No se pudo enviar"); }
       loadMessages(selected.id);          // refresca para ver el mensaje enviado
+    } catch (e) {
+      setNewMsg(text); alert(e.message || "No se pudo enviar el mensaje");
     } finally { setSending(false); }
   };
 
@@ -291,14 +295,15 @@ export default function WaInbox({ dealId = null } = {}) {
         body: JSON.stringify({
           text: newMsg.trim(),   // el texto escrito va como caption (opcional)
           media_url: dUp.data.url,
-          media_type: dUp.data.mimetype?.startsWith("image/") ? "image" : "document",
+          media_type: dUp.data.mimetype?.startsWith("image/") ? "image" : dUp.data.mimetype?.startsWith("video/") ? "video" : dUp.data.mimetype?.startsWith("audio/") ? "audio" : "document",
           media_filename: dUp.data.originalname,
         }),
       });
       const d = await r.json();
-      if (!d.success) alert(d.error || "No se pudo enviar");
+      if (!d.success) { alert(d.error || "No se pudo enviar"); return false; }
       setNewMsg("");
       loadMessages(selected.id);
+      return true;
     } catch (e) {
       console.error("[WaInbox] Error enviando archivo:", e);
       alert("Error enviando el archivo");
@@ -585,6 +590,8 @@ export default function WaInbox({ dealId = null } = {}) {
                     </a>
                   ) : msg.media_url && msg.type === "audio" ? (
                     <audio controls src={mediaSrc(msg.media_url)} className="max-w-full mb-1" />
+                  ) : msg.media_url && msg.type === "video" ? (
+                    <video controls src={mediaSrc(msg.media_url)} className="max-w-full max-h-72 rounded-lg mb-1" />
                   ) : msg.media_url ? (
                     <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
                       className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>
@@ -608,12 +615,13 @@ export default function WaInbox({ dealId = null } = {}) {
           </div>
 
           {/* Input */}
-          <div className="bg-white border-t border-slate-200 p-3 flex gap-2 items-center">
+          <div className="bg-white border-t border-slate-200 p-3 pr-24 flex flex-wrap gap-2 items-center">
+            <InboxAudioRecorder key={selected.id} onSend={sendFile} disabled={uploading || sending} />
             <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-xl hover:bg-slate-100 transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
               title="Enviar imagen o PDF">
               {uploading ? "⏳" : "📎"}
               <input
-                type="file" accept="image/*,.pdf"
+                type="file" accept="image/*,video/*,audio/*,.pdf"
                 className="hidden"
                 disabled={uploading}
                 onChange={e => { sendFile(e.target.files?.[0]); e.target.value = ""; }}
@@ -624,7 +632,7 @@ export default function WaInbox({ dealId = null } = {}) {
               placeholder="Escribe un mensaje…"
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
               className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-green-400"
             />
             <button onClick={send} disabled={sending || !newMsg.trim()}

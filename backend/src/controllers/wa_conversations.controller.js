@@ -82,6 +82,8 @@ function guessMime(filename) {
   const map = {
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
     '.webp': 'image/webp', '.pdf': 'application/pdf',
+    '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'audio/webm',
+    '.ogg': 'audio/ogg; codecs=opus', '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
   }
   return map[ext] || 'application/octet-stream'
 }

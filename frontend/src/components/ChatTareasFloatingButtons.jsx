@@ -26,6 +26,7 @@ const tieneSesion = () => !!localStorage.getItem("token");
 // Botón: Chat interno (con badge de no leídos, actualizado por socket)
 // ─────────────────────────────────────────────────────────────────────────────
 function BotonChatInterno() {
+  const inbox = useLocation().pathname.includes("/inbox");
   const navigate = useNavigate();
   const location = useLocation();
   const [noLeidos, setNoLeidos] = useState(0);
@@ -63,7 +64,7 @@ function BotonChatInterno() {
       onClick={() => navigate("/chat")}
       aria-label={noLeidos > 0 ? `Chat interno, ${noLeidos} sin leer` : "Abrir chat interno"}
       title="Chat interno"
-      className="fixed bottom-[92px] right-6 z-[999] group"
+      className={`fixed ${inbox ? "top-[180px]" : "bottom-[92px]"} right-6 z-[999] group`}
     >
       <span
         className="relative flex items-center justify-center w-14 h-14 rounded-full text-white
@@ -95,6 +96,7 @@ function BotonChatInterno() {
 // Botón: Tareas asignadas (solo aparece si el usuario tiene tareas pendientes)
 // ─────────────────────────────────────────────────────────────────────────────
 function BotonTareasAsignadas() {
+  const inbox = useLocation().pathname.includes("/inbox");
   const navigate = useNavigate();
   const location = useLocation();
   const { datos, recargar } = useMisTareas("responsable");
@@ -116,7 +118,7 @@ function BotonTareasAsignadas() {
       onClick={() => navigate("/tareas")}
       aria-label={`Tareas asignadas, ${total} pendientes`}
       title="Tareas asignadas"
-      className="fixed bottom-[160px] right-6 z-[999] group"
+      className={`fixed ${inbox ? "top-[248px]" : "bottom-[160px]"} right-6 z-[999] group`}
     >
       <span
         className="relative flex items-center justify-center w-14 h-14 rounded-full text-white

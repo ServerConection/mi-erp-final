@@ -56,6 +56,7 @@ const iniciarWhatsApp = async (appInstance) => {
 
     await ejecutarMigracion();
     await ejecutarMigracionWabotBitrix();
+    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/wa_line_downtime.sql'), 'utf8'));
 
     const authDir = process.env.WA_AUTH_DIR || path.join(__dirname, '../../auth_sessions');
     fs.mkdirSync(authDir, { recursive: true });

@@ -480,6 +480,8 @@ async function dashboard(req, res) {
 
     const { rows } = await query(`
       SELECT l.id, l.name, l.phone_number, l.status, l.last_connected, l.created_at,
+             l.disconnected_since, l.last_disconnected_at, l.last_reconnected_at,
+             l.downtime_seconds, l.last_downtime_seconds,
              l.created_by, u.id AS usuario_id, u.perfil,
              COALESCE(UPPER(u.empresa), 'SIN EMPRESA') AS empresa,
              COALESCE(u.usuario, 'SIN ASIGNAR')        AS usuario,
@@ -524,6 +526,9 @@ async function dashboard(req, res) {
         id: l.id, name: l.name, phone_number: l.phone_number,
         estado: l.estado, last_connected: l.last_connected,
         created_at: l.created_at,
+        disconnected_since: l.disconnected_since,
+        downtime_seconds: Number(l.downtime_seconds || 0),
+        last_downtime_seconds: Number(l.last_downtime_seconds || 0),
       })
       ase.total++;  emp.total++
       if (l.conectada) { ase.conectadas++; emp.conectadas++ }

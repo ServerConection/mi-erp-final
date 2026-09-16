@@ -76,7 +76,7 @@ async function getAll(req, res) {
     const bm = req.app.get('baileysManager')
     const lines = result.rows.map(line => sanitizarLinea({
       ...line,
-      rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
+      rt_status: bm?.instances?.[line.id] ? bm.getStatus(line.id) : (line.status === 'connected' ? 'connecting' : line.status),
       has_qr: bm ? !!bm.getQR(line.id) : false,
     }))
     // Estado del pool de proxies para el aviso visual (no rompe si falla)
@@ -106,7 +106,7 @@ async function getOne(req, res) {
       success: true,
       data: sanitizarLinea({
         ...line,
-        rt_status: bm ? bm.getStatus(line.id) : 'disconnected',
+        rt_status: bm?.instances?.[line.id] ? bm.getStatus(line.id) : (line.status === 'connected' ? 'connecting' : line.status),
         has_qr: bm ? !!bm.getQR(line.id) : false,
       }),
     })
@@ -466,7 +466,7 @@ async function resetAll(req, res) {
 async function dashboard(req, res) {
   try {
     const params = []
-    const conds = ['l.deleted_at IS NULL']
+    const conds = ["UPPER(TRIM(u.activo)) = 'SI'"]
 
     if (!isAdmin(req)) {
       if (isSupervisor(req)) {
@@ -474,18 +474,18 @@ async function dashboard(req, res) {
         conds.push(`UPPER(u.empresa) = $${params.length}`)
       } else {
         params.push(req.user.id)
-        conds.push(`l.created_by = $${params.length}`)
+        conds.push(`u.id = $${params.length}`)
       }
     }
 
     const { rows } = await query(`
       SELECT l.id, l.name, l.phone_number, l.status, l.last_connected, l.created_at,
-             l.created_by,
+             l.created_by, u.id AS usuario_id, u.perfil,
              COALESCE(UPPER(u.empresa), 'SIN EMPRESA') AS empresa,
              COALESCE(u.usuario, 'SIN ASIGNAR')        AS usuario,
              TRIM(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre_completo
-      FROM lines l
-      LEFT JOIN usuarios u ON l.created_by = u.id
+      FROM usuarios u
+      LEFT JOIN lines l ON l.created_by = u.id AND l.deleted_at IS NULL
       WHERE ${conds.join(' AND ')}
       ORDER BY empresa ASC, usuario ASC, l.created_at ASC
     `, params)
@@ -493,11 +493,11 @@ async function dashboard(req, res) {
     // Estado en vivo desde BaileysManager (más fiable que el guardado en BD)
     const bm = req.app.get('baileysManager')
     const lineas = rows.map(r => {
-      const rt = bm ? bm.getStatus(r.id) : null
+      const rt = bm && r.id ? bm.getStatus(r.id) : null
       // Si Baileys no tiene la línea en memoria devuelve 'disconnected'; en ese
       // caso conservamos el último estado conocido de BD (logged_out / error),
       // que es más informativo para saber por qué no está conectada.
-      const estado = (rt && rt !== 'disconnected') ? rt : (r.status || 'disconnected')
+      const estado = bm?.instances?.[r.id] ? rt : (r.status === 'connected' ? 'connecting' : r.status || 'disconnected')
       return { ...r, estado, conectada: estado === 'connected' }
     })
 
@@ -512,12 +512,14 @@ async function dashboard(req, res) {
         emp.asesores[l.usuario] = {
           usuario: l.usuario,
           nombre: l.nombre_completo || l.usuario,
+          perfil: l.perfil,
           total: 0,
           conectadas: 0,
           lineas: [],
         }
       }
       const ase = emp.asesores[l.usuario]
+      if (!l.id) continue
       ase.lineas.push({
         id: l.id, name: l.name, phone_number: l.phone_number,
         estado: l.estado, last_connected: l.last_connected,
@@ -529,7 +531,12 @@ async function dashboard(req, res) {
 
     const data = Object.values(porEmpresa).map(e => ({
       ...e,
-      asesores: Object.values(e.asesores).sort((a, b) => a.usuario.localeCompare(b.usuario)),
+      asesores: Object.values(e.asesores).map(a => ({ ...a,
+        no_conectadas: a.total - a.conectadas,
+        alerta: a.total === 0 ? 'Sin líneas asignadas' :
+          (String(a.perfil).toUpperCase() === 'ASESOR' && a.total > 1) ? 'Asesor con más de 1 línea' :
+          (String(a.perfil).toUpperCase() === 'SUPERVISOR' && a.total > 3) ? 'Supervisor con más de 3 líneas' : null,
+      })).sort((a, b) => a.usuario.localeCompare(b.usuario)),
     }))
 
     res.json({
@@ -537,7 +544,7 @@ async function dashboard(req, res) {
       data,
       resumen: {
         empresas:   data.length,
-        lineas:     lineas.length,
+        lineas:     lineas.filter(l => l.id).length,
         conectadas: lineas.filter(l => l.conectada).length,
         asesores:   data.reduce((n, e) => n + e.asesores.length, 0),
       },

@@ -108,9 +108,24 @@ const iniciarWhatsApp = async (appInstance) => {
 
       // El disco es la fuente de verdad: sin creds.json no hay sesión que reusar
       // y conectar solo serviría para pedir un QR que nadie está mirando.
-      const conSesion = rows.filter(l =>
-        fs.existsSync(path.join(authDir, String(l.id), 'creds.json'))
-      );
+      const pgAuth = (process.env.WA_AUTH_STORE || 'disco').toLowerCase() === 'pg';
+      const sesionesPg = pgAuth ? (await pool.query(
+        "SELECT line_id, data FROM wa_auth_state WHERE key_id='creds'"
+      )).rows : [];
+      const registradas = new Set(sesionesPg.filter(r => {
+        try { return JSON.parse(r.data)?.registered === true; } catch { return false; }
+      }).map(r => String(r.line_id)));
+      const conSesion = rows.filter(l => {
+        if (pgAuth) return registradas.has(String(l.id));
+        try { return JSON.parse(fs.readFileSync(path.join(authDir, String(l.id), 'creds.json'), 'utf8')).registered === true; }
+        catch { return false; }
+      });
+      // Un QR o socket de un proceso anterior ya no existe. Conservar la línea,
+      // pero quitar estados transitorios que no pueden completarse tras el deploy.
+      for (const l of rows.filter(r => !conSesion.includes(r) && ['connecting', 'qr_ready', 'connected'].includes(r.status))) {
+        await pool.query("UPDATE lines SET status='logged_out' WHERE id=$1", [l.id]);
+      }
+      for (const l of conSesion) await pool.query("UPDATE lines SET status='connecting' WHERE id=$1", [l.id]);
 
       const tope = parseInt(process.env.WA_BOOT_RESTORE_MAX || '0', 10);
       const aRestaurar = tope > 0 ? conSesion.slice(0, tope) : conSesion;

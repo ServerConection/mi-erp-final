@@ -339,11 +339,11 @@ const queryKPI = (columna, filters) => {
     -- distinto de real_mes, que va por fecha de activación).
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND ${VENTA_SERVICIO_VELSA_MV}
     ) AS activas,
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND ${VENTA_SERVICIO_VELSA_MV}
     ) AS total_activas_calculada,
     -- ── ACTIVAS (definición de gerencia, 2026-08, ajustada 2026-08-13) ────
     -- real_mes   = ACTIVAS TOTALES: todo lo activado en el rango
@@ -355,12 +355,12 @@ const queryKPI = (columna, filters) => {
     COUNT(*) FILTER (
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
-      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND ${VENTA_SERVICIO_VELSA_MV}
     ) AS real_mes,
     COUNT(*) FILTER (
       WHERE mv.fecha_activacion IS NOT NULL
       AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
-      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND ${VENTA_SERVICIO_VELSA_MV}
       AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     ) AS activa_mes,
     COUNT(*) FILTER (
@@ -377,7 +377,7 @@ const queryKPI = (columna, filters) => {
     ) AS tarjeta_credito,
     COUNT(*) FILTER (
       WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%'
-      AND mv.estado_venta = ${ESTADO_ACTIVO}
+      AND ${VENTA_SERVICIO_VELSA_MV}
       AND ${JF_DATE} BETWEEN $1::date AND $2::date
     ) AS tercera_edad,
     -- REGULARIZACION: criterio NOVONET — excluye los estados que no aplican.
@@ -437,7 +437,7 @@ const queryKPI = (columna, filters) => {
     , 0) * 100, 2) AS efectividad_real,
 
     ROUND( COALESCE(
-      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV})::numeric
       -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
       / NULLIF(COUNT(*) FILTER (
           WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
@@ -446,7 +446,7 @@ const queryKPI = (columna, filters) => {
     , 0) * 100, 2) AS tasa_instalacion,
 
     ROUND( COALESCE(
-      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO})::numeric
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV})::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
@@ -490,7 +490,7 @@ const queryBacklog = (columna, filters) => `
     AND mv.fecha_activacion IS NOT NULL
     AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < $1::date
     AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
-    AND mv.estado_venta = ${ESTADO_ACTIVO}
+    AND ${VENTA_SERVICIO_VELSA_MV}
     ${filters}
   GROUP BY 1
 `;
@@ -574,7 +574,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
 
         SELECT ${ESTADO_ACTIVO} AS estado, COUNT(*) AS total
         FROM ${MV}
-        WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+        WHERE ${VENTA_SERVICIO_VELSA_MV}
         AND mv.fecha_activacion IS NOT NULL
         AND mv.fecha_activacion::date BETWEEN $1::date AND $2::date
         ${filters}
@@ -628,7 +628,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
         (mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text AS fecha,
         EXTRACT(DAY FROM (mv.fecha_registro_jotform - INTERVAL '5 hours')::date)::int AS dia,
         COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos
+        COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS activos
       FROM ${MV}
       WHERE mv.fecha_registro_jotform IS NOT NULL
         AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
@@ -642,7 +642,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
         mv.fecha_activacion_date::date::text AS fecha,
         COUNT(*)::int AS activaciones
       FROM ${MV}
-      WHERE mv.fecha_activacion_date IS NOT NULL
+      WHERE ${VENTA_SERVICIO_VELSA_MV}
+        AND mv.fecha_activacion_date IS NOT NULL
         AND mv.fecha_activacion_date::date BETWEEN $1::date AND $2::date ${filters}
       GROUP BY mv.fecha_activacion_date::date
       ORDER BY mv.fecha_activacion_date::date ASC
@@ -677,8 +678,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
     `;
     const qTercera = `
       SELECT
-        COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO}) AS total_tercera,
-        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO}) AS total_activos
+        COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND ${VENTA_SERVICIO_VELSA_MV}) AS total_tercera,
+        COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV}) AS total_activos
       FROM ${MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
@@ -781,7 +782,7 @@ LIMIT 6000
         ) AS hogar_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_activos,
         COUNT(*) FILTER (
@@ -793,7 +794,7 @@ LIMIT 6000
         ) AS pymes_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND (
             (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
             (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
@@ -805,7 +806,7 @@ LIMIT 6000
         ) AS adulto_mayor_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_activos
       FROM ${MV}
@@ -829,7 +830,7 @@ LIMIT 6000
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
-      WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+      WHERE ${VENTA_SERVICIO_VELSA_MV}
         AND mv.fecha_activacion IS NOT NULL
         AND ${enPeriodoSeleccionadoExpr('mv.fecha_activacion::date')}
         -- FIX (bind mismatch, mismo bug que en Novonet): esta query no usa $1/$2
@@ -860,7 +861,7 @@ LIMIT 6000
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
-      WHERE mv.estado_venta = ${ESTADO_ACTIVO}
+      WHERE ${VENTA_SERVICIO_VELSA_MV}
         AND mv.fecha_activacion IS NOT NULL
         AND ${backlogEnPeriodoSeleccionadoExpr(
           'mv.fecha_activacion::date',
@@ -1015,7 +1016,7 @@ async function getMonitoreoDiarioVelsa(req, res) {
       SELECT
         COALESCE(${campoSupervisor(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
         COUNT(*)::int AS v_subida_jot_hoy,
-        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activos_jot_hoy,
+        COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS activos_jot_hoy,
         COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS venta_servicio_jot_hoy
       FROM ${MV}
       ${JOIN_JF_VELSA_MV}
@@ -1069,7 +1070,7 @@ async function getReporte180Velsa(req, res) {
     const qKPIs = `
       SELECT
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}) AS ingresos_jot,
-        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND mv.estado_venta = ${ESTADO_ACTIVO}) AS ventas_activas,
+        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_activas,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_servicio,
         -- FIX (2026-08-19): denominador unificado a solo fecha de creación CRM
         -- (antes: creación CRM O registro Jotform). Mismo criterio de queryKPI
@@ -1083,8 +1084,8 @@ async function getReporte180Velsa(req, res) {
           / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date),0)
+          COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND ${VENTA_SERVICIO_VELSA_MV} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV} AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date),0)
         ,0)*100,2) AS pct_tercera_edad
       FROM ${MV}
       ${JOIN_JF_VELSA_MV}
@@ -1129,7 +1130,7 @@ async function getReporte180Velsa(req, res) {
         ) AS hogar_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_casa IS NOT NULL AND TRIM(mv.plan_casa::text) <> ''
         ) AS hogar_activos,
         COUNT(*) FILTER (
@@ -1141,7 +1142,7 @@ async function getReporte180Velsa(req, res) {
         ) AS pymes_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND (
             (mv.plan_pyme IS NOT NULL AND TRIM(mv.plan_pyme::text) <> '') OR
             (mv.plan_pyme_corp IS NOT NULL AND TRIM(mv.plan_pyme_corp::text) <> '')
@@ -1153,7 +1154,7 @@ async function getReporte180Velsa(req, res) {
         ) AS adulto_mayor_ingresados,
         COUNT(*) FILTER (
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
-          AND mv.estado_venta = ${ESTADO_ACTIVO}
+          AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
         ) AS adulto_mayor_activos
       FROM ${MV}
@@ -1332,7 +1333,7 @@ async function getActivasVelsa(req, res) {
       SELECT
         COALESCE(NULLIF(${normalizarAsesorSQL(EXPR_SUPERVISOR)}, ''), 'SIN ASIGNAR') AS supervisor,
         COALESCE(NULLIF(${normalizarAsesorSQL('mv.asesor')}, ''), 'SIN ASIGNAR') AS asesor,
-        COUNT(*) FILTER (WHERE mv.estado_venta = ${ESTADO_ACTIVO})::int AS activas,
+        COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS activas,
         COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV})::int AS venta_servicio,
         COUNT(*)::int AS total_jotform
       FROM ${MV}
@@ -1366,7 +1367,7 @@ async function getBacklogVelsa(req, res) {
       WHERE mv.id_jotform IS NOT NULL
         AND mv.fecha_registro_jotform IS NOT NULL
         AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date < $1::date
-        AND mv.estado_venta = ${ESTADO_ACTIVO}
+        AND ${VENTA_SERVICIO_VELSA_MV}
         ${filters}
       GROUP BY 1,2 ORDER BY backlog DESC
     `, values);
@@ -1399,7 +1400,8 @@ async function getActivacionesPorDiaVelsa(req, res) {
         mv.fecha_activacion_date::date::text AS fecha,
         COUNT(*)::int AS activaciones
       FROM public.mv_indicadores_velsa_completo mv
-      WHERE mv.fecha_activacion_date IS NOT NULL
+      WHERE ${VENTA_SERVICIO_VELSA_MV}
+        AND mv.fecha_activacion_date IS NOT NULL
         AND mv.fecha_activacion_date::date BETWEEN $1::date AND $2::date
         ${filters}
       GROUP BY mv.fecha_activacion_date::date

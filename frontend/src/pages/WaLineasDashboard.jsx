@@ -76,10 +76,10 @@ export default function WaLineasDashboard() {
   }, []);
 
   useEffect(() => {
-    load();
+    const initial = setTimeout(load, 0);
     // Refresco periódico: el estado de conexión cambia solo
     const t = setInterval(load, 20000);
-    return () => clearInterval(t);
+    return () => { clearTimeout(initial); clearInterval(t); };
   }, [load]);
 
   // Filtros en cliente (búsqueda por asesor/número/nombre de línea)
@@ -142,7 +142,7 @@ export default function WaLineasDashboard() {
   );
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto">
+    <div className="p-4 md:p-6 w-full mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-slate-800">📊 Control de líneas WhatsApp</h1>
         <p className="text-sm text-slate-500 mt-1">
@@ -174,6 +174,18 @@ export default function WaLineasDashboard() {
       )}
 
       {/* Controles */}
+      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+        {data.map(emp => <section key={emp.empresa} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 bg-slate-50 border-b"><h2 className="font-bold text-slate-800">{emp.empresa} · Usuarios activos</h2><p className="text-xs text-slate-500">Resumen de todas las líneas asignadas, independiente del filtro de fechas</p></div>
+          <div className="max-h-[480px] overflow-auto"><table className="w-full text-xs"><thead className="sticky top-0 bg-white shadow-sm"><tr>{['Usuario', 'Totales', 'Conectadas', 'No conectadas', 'Alerta'].map(h => <th key={h} className="p-3 text-left">{h}</th>)}</tr></thead><tbody>
+            {emp.asesores.filter(a => !q || `${a.usuario} ${a.nombre}`.toLowerCase().includes(q)).map(a => <tr key={a.usuario} className={`border-t ${a.alerta ? 'bg-red-50' : ''}`}>
+              <td className="p-3"><b>{a.usuario}</b><span className="block text-slate-500">{a.nombre}</span><small className="text-slate-400">{a.perfil}</small></td>
+              <td className="p-3 font-bold">{a.total}</td><td className="p-3 font-bold text-green-700">{a.conectadas}</td><td className="p-3 font-bold text-amber-700">{a.total - a.conectadas}</td><td className="p-3 text-red-700 font-semibold">{a.alerta || (a.total > a.conectadas ? 'Revisar conexión' : '✓')}</td>
+            </tr>)}
+          </tbody></table></div>
+        </section>)}
+      </div>
+      <h2 className="text-lg font-bold text-slate-800 mb-3">Detalle de líneas</h2>
       <fieldset className="flex flex-wrap items-end gap-3 mb-3">
         <legend className="text-sm font-medium text-slate-600 mb-2">Fecha de creación de la línea</legend>
         <label className="flex flex-col gap-1 text-xs text-slate-500">
@@ -302,7 +314,7 @@ export default function WaLineasDashboard() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div className="grid grid-cols-2 gap-3 xl:gap-5 items-start">
           {dataFiltrada.map(emp => (
             <div key={emp.empresa} className="min-w-0 bg-white border border-slate-200 rounded-xl overflow-hidden">
               {/* Cabecera empresa */}
@@ -315,7 +327,14 @@ export default function WaLineasDashboard() {
               </div>
 
               <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[760px] table-fixed text-sm">
+                <colgroup>
+                  <col style={{ width: "24%" }} />
+                  <col style={{ width: "34%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "12%" }} />
+                </colgroup>
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase tracking-wide border-b border-slate-100">
                     <th className="px-4 py-2 font-medium">Asesor</th>
@@ -329,7 +348,7 @@ export default function WaLineasDashboard() {
                   {emp.asesores.map(a =>
                     a.lineas.map((l, i) => (
                       <tr key={l.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                        <td className="px-4 py-2.5 align-top">
+                        <td className="px-3 py-3 align-top break-words">
                           {i === 0 ? (
                             <div>
                               <div className="font-medium text-slate-700">{a.usuario}</div>
@@ -344,16 +363,16 @@ export default function WaLineasDashboard() {
                             <span className="text-xs text-slate-300">↳</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-slate-700">{l.name}</td>
-                        <td className="px-4 py-2.5 text-slate-500">
+                        <td className="px-3 py-3 text-slate-700 [overflow-wrap:anywhere]">{l.name}</td>
+                        <td className="px-3 py-3 text-slate-500 whitespace-nowrap text-xs tabular-nums">
                           {l.phone_number ? `+${l.phone_number}` : "—"}
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-2 py-3">
                           <span className={`inline-flex whitespace-nowrap text-xs font-medium px-2.5 py-1 rounded-full border ${estadoUI(l.estado).cls}`}>
                             {estadoUI(l.estado).label}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-slate-400 text-xs">
+                        <td className="px-3 py-3 text-slate-400 text-xs">
                           {fechaCorta(l.last_connected)}
                         </td>
                       </tr>

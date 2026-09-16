@@ -491,9 +491,16 @@ class BaileysManager {
       this._killing[lineId] = true
       try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
       delete this.instances[lineId]
-      this._updateLineStatus(lineId, 'disconnected')
-      this.io.emit('line:status', { lineId, status: 'disconnected' })
-      this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+      const status = state.creds.registered ? 'connecting' : 'error'
+      this._updateLineStatus(lineId, status)
+      this.io.emit('line:status', { lineId, status })
+      this.io.emit(`line:status:${lineId}`, { lineId, status })
+      if (state.creds.registered && !this.reconnectTimers[lineId]) {
+        this.reconnectTimers[lineId] = setTimeout(() => {
+          delete this.reconnectTimers[lineId]
+          this.connect(lineId).catch(e => console.warn(`[Line ${lineId}] watchdog retry:`, e.message))
+        }, 120000)
+      }
     }, 60000)
     if (this.instances[lineId]._watchdog.unref) this.instances[lineId]._watchdog.unref()
 
@@ -552,6 +559,20 @@ class BaileysManager {
         // QR: SOLO al dueño de la línea (evita que otros lo escaneen y secuestren el número)
         this._emitQrToOwner(lineId, qrImage)
         this.io.emit('line:status', { lineId, status: 'qr_ready' })
+        const instance = this.instances[lineId]
+        // Los QR sin escanear caducan; no conservar sockets esperando para siempre.
+        instance._qrStartedAt = instance._qrStartedAt || Date.now()
+        instance._watchdog = setTimeout(() => {
+          if (this.instances[lineId] !== instance || instance.status !== 'qr_ready') return
+          this._killing = this._killing || {}
+          this._killing[lineId] = true
+          try { instance.sock?.end?.(undefined); instance.sock?.ws?.close?.() } catch {}
+          delete this.instances[lineId]
+          this._updateLineStatus(lineId, 'logged_out')
+          this.io.emit('line:status', { lineId, status: 'logged_out' })
+          this.io.emit(`line:status:${lineId}`, { lineId, status: 'logged_out' })
+        }, Math.max(1, 180000 - (Date.now() - instance._qrStartedAt)))
+        instance._watchdog.unref?.()
         console.log(`[Line ${lineId}] QR generado (visible solo para el dueño)`)
       }
 
@@ -600,7 +621,7 @@ class BaileysManager {
         const fatal = statusCode === DisconnectReason.loggedOut || statusCode === 403
         const MAX_RETRIES = 5
         const attempts = this.reconnectAttempts[lineId] || 0
-        const shouldReconnect = !fatal && attempts < MAX_RETRIES
+        const shouldReconnect = !fatal
         console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect} (intento ${attempts}/${MAX_RETRIES})`)
         delete this.instances[lineId]
         if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
@@ -624,7 +645,7 @@ class BaileysManager {
           return
         }
 
-        if (fatal || attempts >= MAX_RETRIES) {
+        if (fatal) {
           // Detener el bucle. Requiere reconexión manual (escanear QR de nuevo).
           const st = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'error'
           this._updateLineStatus(lineId, st)
@@ -670,12 +691,12 @@ class BaileysManager {
           }
         }
 
-        this._updateLineStatus(lineId, 'disconnected')
-        this.io.emit('line:status', { lineId, status: 'disconnected' })
-        this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+        this._updateLineStatus(lineId, 'connecting')
+        this.io.emit('line:status', { lineId, status: 'connecting' })
+        this.io.emit(`line:status:${lineId}`, { lineId, status: 'connecting' })
 
         // Reconexión con backoff exponencial: 5s, 10s, 20s, 40s, 80s (tope 2 min)
-        this.reconnectAttempts[lineId] = attempts + 1
+        this.reconnectAttempts[lineId] = Math.min(attempts + 1, MAX_RETRIES)
         const delay = Math.min(5000 * Math.pow(2, attempts), 120000)
         this.reconnectTimers[lineId] = setTimeout(() => {
           delete this.reconnectTimers[lineId]

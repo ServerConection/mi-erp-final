@@ -1,7 +1,7 @@
 /**
  * WaInbox.jsx — Bandeja de conversaciones WhatsApp en el ERP
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 
@@ -74,6 +74,7 @@ export default function WaInbox({ dealId = null } = {}) {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);          // evita closure viejo en el socket
   const conversationsRef = useRef([]);
+  const listRequest = useRef(0);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
   useEffect(() => { setSelected(null); setMessages([]); setConversations([]); setLoading(true); }, [dealId]);
@@ -105,6 +106,7 @@ export default function WaInbox({ dealId = null } = {}) {
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
   const loadConvs = useCallback(async (lineId = "") => {
+    const request = ++listRequest.current;
     try {
       // Modo "negociación" (dealId presente): se filtra por bitrix_deal_id en
       // vez de por línea, y de lo que devuelva el backend nos quedamos solo
@@ -113,24 +115,30 @@ export default function WaInbox({ dealId = null } = {}) {
       // las demás no se muestran acá — siguen visibles desde el Inbox
       // completo, fuera de Bitrix. El backend igual sigue aplicando sus
       // reglas de visibilidad por perfil: esto solo agrega un filtro más.
-      const qs = dealId
-        ? `?bitrix_deal_id=${encodeURIComponent(dealId)}`
-        : (lineId ? `?line_id=${encodeURIComponent(lineId)}` : "");
+      const params = new URLSearchParams();
+      if (dealId) params.set("bitrix_deal_id", dealId);
+      else if (lineId) params.set("line_id", lineId);
+      if (search.trim()) params.set("search", search.trim());
+      if (filter !== "all") params.set("status", filter);
+      const qs = `?${params}`;
       const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
+      if (request !== listRequest.current) return;
       const data = asArray(d);
       const scoped = dealId ? data.filter(c => String(c.bitrix_deal_id) === String(dealId)).slice(0, 1) : data;
       setConversations(scoped);
-      setSelected(current => current && !scoped.some(c => c.id === current.id) ? null : current);
     } catch (e) {
       console.error("[WaInbox] Error cargando:", e);
     } finally {
       setLoading(false);
     }
-  }, [dealId]);
+  }, [dealId, search, filter]);
 
   // Recargar al cambiar el filtro de línea/usuario
-  useEffect(() => { loadConvs(lineFilter); }, [lineFilter, loadConvs]);
+  useEffect(() => {
+    const timer = setTimeout(() => loadConvs(lineFilter), 300);
+    return () => clearTimeout(timer);
+  }, [lineFilter, loadConvs]);
 
   const loadMessages = useCallback(async (convId, { scroll = true } = {}) => {
     try {
@@ -375,7 +383,6 @@ export default function WaInbox({ dealId = null } = {}) {
 
   const filtered = conversations.filter(c => {
     if (filter !== "all" && c.status !== filter) return false;
-    if (search && !(c.wa_number || "").includes(search) && !(c.contact_name || "").toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -562,7 +569,10 @@ export default function WaInbox({ dealId = null } = {}) {
               <div className="text-center py-12 text-slate-400 text-sm">Sin mensajes aún</div>
             )}
             {messages.map((msg, i) => (
-              <div key={msg.id || i} className={`flex ${msg.direction === "out" ? "justify-end" : "justify-start"}`}>
+              <Fragment key={msg.id || i}>
+              {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
+                <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
+              <div className={`flex ${msg.direction === "out" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
                   msg.direction === "out"
                     ? "bg-green-600 text-white rounded-br-sm"
@@ -592,6 +602,7 @@ export default function WaInbox({ dealId = null } = {}) {
                   </div>
                 </div>
               </div>
+              </Fragment>
             ))}
             <div ref={messagesEndRef} />
           </div>

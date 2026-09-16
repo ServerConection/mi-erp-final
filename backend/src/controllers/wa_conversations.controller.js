@@ -145,8 +145,16 @@ async function getAll(req, res) {
     if (bitrix_deal_id) { params.push(bitrix_deal_id); where.push(`c.bitrix_deal_id = $${params.length}`) }
     if (status)  { params.push(status);  where.push(`c.status = $${params.length}`) }
     if (search)  {
-      params.push(`%${search}%`)
-      where.push(`(c.wa_number ILIKE $${params.length} OR ct.name ILIKE $${params.length})`)
+      params.push(`%${String(search).trim()}%`)
+      const textParam = params.length
+      const digits = String(search).replace(/\D/g, '')
+      const numberConditions = []
+      if (digits) {
+        params.push(`%${digits}%`)
+        numberConditions.push(`regexp_replace(c.wa_number, '[^0-9]', '', 'g') LIKE $${params.length}`)
+        numberConditions.push(`regexp_replace(ct.metadata->>'real_phone', '[^0-9]', '', 'g') LIKE $${params.length}`)
+      }
+      where.push(`(c.wa_number ILIKE $${textParam} OR ct.name ILIKE $${textParam}${numberConditions.length ? ' OR ' + numberConditions.join(' OR ') : ''})`)
     }
     const vc = visibilityCondition(req, params)
     if (vc) where.push(vc)

@@ -72,6 +72,16 @@ const HAS_PLAN_VAN = `(
     (van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> '')
 )`;
 const VENTA_SERVICIO_VAN = `(UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO' AND ${HAS_PLAN_VAN})`;
+// Solo Novonet: un servicio adicional sin ningún plan no es una activación.
+// EXISTS evita multiplicar registros cuando JotForm tiene varias filas por ID.
+const ACTIVACION_CON_PLAN = `(
+    UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+    AND EXISTS (
+        SELECT 1 FROM public.vista_analisis_novonet plan_validacion
+        WHERE plan_validacion.id_bitrix::text = mb.j_id_bitrix::text
+        AND ${HAS_PLAN_VAN.replaceAll('van.', 'plan_validacion.')}
+    )
+)`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Caché de nivel módulo para consultas estáticas (etapas CRM / Jotform)
@@ -650,7 +660,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                 ) AS ingresos_reales,
                 COUNT(*) FILTER (
-                    WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
+                    WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS activas,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
@@ -670,16 +680,16 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE _jfact_date IS NOT NULL
                     AND _jfact_date BETWEEN $1::date AND $2::date
-                    AND j_netlife_estatus_real = 'ACTIVO'
+                    AND _venta_servicio
                 ) AS real_mes,
                 COUNT(*) FILTER (
                     WHERE _jfact_date IS NOT NULL
                     AND _jfact_date BETWEEN $1::date AND $2::date
-                    AND j_netlife_estatus_real = 'ACTIVO'
+                    AND _venta_servicio
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS activa_mes,
                 COUNT(*) FILTER (
-                    WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO'
+                    WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS total_activas_calculada,
                 0 AS crec_vs_ma,
                 COUNT(*) FILTER (
@@ -688,7 +698,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS tarjeta_credito,
                 COUNT(*) FILTER (
                     WHERE j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
-                    AND j_netlife_estatus_real = 'ACTIVO'
+                    AND _venta_servicio
                     AND _jf_date BETWEEN $1::date AND $2::date
                 ) AS tercera_edad,
                 COUNT(DISTINCT b_id) FILTER (
@@ -732,7 +742,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS efectividad_real,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio)::numeric
                     -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
@@ -740,7 +750,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     ), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND j_netlife_estatus_real = 'ACTIVO')::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio)::numeric
                     / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
@@ -880,7 +890,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*)::int AS backlog
             FROM public.mestra_bitrix mb
             ${joinEmpleadosDedup}
-            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+            WHERE ${ACTIVACION_CON_PLAN}
             AND mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
             AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) >= $1::date
@@ -1058,7 +1068,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     'ACTIVO' AS estado,
                     COUNT(*) AS total
                 FROM public.mestra_bitrix mb
-                WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                WHERE ${ACTIVACION_CON_PLAN}
                 AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
                 ${filtersNoJoin}
             ) sub
@@ -1108,7 +1118,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) AS fecha,
                 COUNT(*)::int AS total,
                 COUNT(*) FILTER (
-                    WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                    WHERE ${ACTIVACION_CON_PLAN}
                 )::int AS activos
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
@@ -1126,7 +1136,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) AS fecha,
                 COUNT(*)::int AS activaciones
             FROM public.mestra_bitrix mb
-            WHERE mb.j_fecha_activacion_netlife IS NOT NULL
+            WHERE ${ACTIVACION_CON_PLAN}
+              AND mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
             AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
@@ -1140,10 +1151,10 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
-                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                    AND ${ACTIVACION_CON_PLAN}
                 ) AS total_tercera_edad,
                 COUNT(*) FILTER (
-                    WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                    WHERE ${ACTIVACION_CON_PLAN}
                 ) AS total_activos,
                 COUNT(*) FILTER (
                     WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
@@ -1244,7 +1255,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
-            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+            WHERE ${ACTIVACION_CON_PLAN}
               AND mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
               AND ${enPeriodoSeleccionadoExpr("public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text)")}
@@ -1275,7 +1286,7 @@ const getIndicadoresDashboard = async (req, res) => {
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
-            WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+            WHERE ${ACTIVACION_CON_PLAN}
               AND mb.j_fecha_activacion_netlife IS NOT NULL
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
               AND ${backlogEnPeriodoSeleccionadoExpr(
@@ -1518,7 +1529,7 @@ LEFT JOIN LATERAL (
                     COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                         AND mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                        AND mb.j_netlife_estatus_real = 'ACTIVO'
+                        AND ${ACTIVACION_CON_PLAN}
                     )::numeric
                     / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1564,7 +1575,7 @@ LEFT JOIN LATERAL (
             SELECT
                 COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS v_subida_jot_hoy,
-                COUNT(*) FILTER (WHERE mb.j_netlife_estatus_real = 'ACTIVO')::int AS activos_jot_hoy,
+                COUNT(*) FILTER (WHERE ${ACTIVACION_CON_PLAN})::int AS activos_jot_hoy,
                 COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VAN})::int AS venta_servicio_jot_hoy,
                 ROUND(COALESCE(
                     COUNT(*) FILTER (WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.')::numeric
@@ -1707,7 +1718,7 @@ const getReporte180 = async (req, res) => {
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-                    AND mb.j_netlife_estatus_real = 'ACTIVO'
+                    AND ${ACTIVACION_CON_PLAN}
                 ) AS ventas_activas,
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1735,11 +1746,11 @@ const getReporte180 = async (req, res) => {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
-                        AND mb.j_netlife_estatus_real = 'ACTIVO'
+                        AND ${ACTIVACION_CON_PLAN}
                         AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     )::numeric
                     / NULLIF(COUNT(*) FILTER (
-                        WHERE mb.j_netlife_estatus_real = 'ACTIVO'
+                        WHERE ${ACTIVACION_CON_PLAN}
                         AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
@@ -2019,6 +2030,7 @@ const getActivacionesPorDia = async (req, res) => {
                 COUNT(*)::int AS activaciones
             FROM public.mestra_bitrix mb
             WHERE mb.j_fecha_activacion_netlife IS NOT NULL
+              AND ${ACTIVACION_CON_PLAN}
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
               AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
               ${filters}

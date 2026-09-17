@@ -388,12 +388,13 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
+  { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
+    accessCheck: (p) => ['ADMINISTRADOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'SUPERVISOR'].includes(p) },
+
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
-  { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
-    accessCheck: (p) => ['ADMINISTRADOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'SUPERVISOR'].includes(p), isChild: true, group: "administracion" },
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },

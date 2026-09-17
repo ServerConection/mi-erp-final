@@ -1,6 +1,6 @@
 # Gestionables por asesor
 
-Módulo `/gestionables-asesores`, disponible en Administración y en las tarjetas del dashboard para ADMINISTRADOR, ANALISTA, COORDINADOR, GERENCIA y SUPERVISOR.
+Módulo `/gestionables-asesores`, disponible como opción independiente del menú y en las tarjetas del dashboard para ADMINISTRADOR, ANALISTA, COORDINADOR, GERENCIA y SUPERVISOR.
 
 Utiliza la conexión `backend/src/config/dbErp.js` y la tabla existente `erp_database.gestionables_asesores`. No requiere una nueva tabla. Desplegar frontend y backend (monolito o CORE).
 

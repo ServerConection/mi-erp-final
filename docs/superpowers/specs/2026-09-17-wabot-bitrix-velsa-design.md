@@ -104,15 +104,24 @@ también se parametriza: cada portal valida contra su propio
 
 ### 4. Base de datos
 
-Migración nueva: columna `empresa VARCHAR(20) NOT NULL DEFAULT 'novonet'`
-en la tabla `lines`, con `CHECK (empresa IN ('novonet','velsa'))`. Así
-el sistema sabe, por línea, a qué portal/conector de Bitrix debe
-entregar y desde cuál escuchar eventos. Todas las líneas existentes
-quedan en `'novonet'` automáticamente (default), sin romper nada.
+**Sin migración nueva.** El ERP ya tiene el concepto de empresa por
+usuario: `usuarios.empresa` (`CHECK IN ('NOVONET','VELSA')`, usado en
+todo el sistema) y `lines.created_by → usuarios.id` (agregado en
+`whatsapp_ownership.sql`). `wa_lines.controller.js` ya hace exactamente
+este join para saber la empresa de una línea
+(`SELECT l.*, u.empresa AS owner_empresa FROM lines l LEFT JOIN usuarios
+u ON l.created_by = u.id`).
+
+Se agrega una función chica en `bitrixPortales.js` —
+`async function empresaDeLinea(lineId)` — que hace ese mismo join y
+devuelve `'NOVONET'` o `'VELSA'` (o `null` si la línea no tiene
+`created_by`, caso borde de línea huérfana — se trata igual que
+Novonet, que es el comportamiento actual). Con eso se elige la
+instancia correcta de `bitrixApp`/`conector` sin tocar el esquema.
 
 `enviarAOpenLine` y el resto de `bitrixConnector.service.js` reciben
-la instancia correcta según `lines.empresa` de la línea que originó el
-mensaje.
+la instancia correcta según la empresa resuelta para la línea que
+originó el mensaje.
 
 ### 5. Variables de entorno nuevas (Render)
 
@@ -142,7 +151,7 @@ conector.)
 
 ## Plan de despliegue
 
-1. Cambios de código (fábrica + rutas Velsa) + migración de `lines`,
+1. Cambios de código (fábrica + rutas Velsa; sin migración de BD),
    en una rama, sin tocar el comportamiento de Novonet.
 2. Bryan crea la app en Bitrix Velsa y comparte credenciales.
 3. Variables de entorno en Render.

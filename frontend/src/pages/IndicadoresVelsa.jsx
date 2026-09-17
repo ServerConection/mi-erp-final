@@ -1154,13 +1154,12 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     </ResponsiveContainer>
   );
 
-  const CustomEmbudoLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 6} fill="#1c1917" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
 
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
+          <ComposedChart
             data={dataEmbudoPorDia}
             margin={{ top: 24, right: 10, left: 0, bottom: 34 }}
             barCategoryGap="22%"
@@ -1178,12 +1177,16 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
                 fill={colorEtapaEmbudo(etapa)}
                 radius={index === etapasEmbudoOrdenadas.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
-                {index === etapasEmbudoOrdenadas.length - 1 && (
-                  <LabelList dataKey="_total" content={CustomEmbudoLabel} />
-                )}
+
               </Bar>
             ))}
-          </BarChart>
+            {/* Una sola serie de totales: etiqueta independiente de las etapas vac?as. */}
+            <Line dataKey="_total" stroke="none" dot={false} activeDot={false}
+              isAnimationActive={false} tooltipType="none" legendType="none">
+              <LabelList dataKey="_total" position="top" offset={8}
+                style={{ fill: '#475569', fontSize: 10, fontWeight: 900 }} />
+            </Line>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] shrink-0 flex flex-col gap-1.5 py-1 pr-1">

@@ -1514,7 +1514,7 @@ ${asesoresPDF.length>0?`
     <div className="flex gap-4 h-full">
       <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={dataEmbudoPorDia} margin={{top:24,right:8,left:0,bottom:34}} barCategoryGap="22%">
+          <ComposedChart data={dataEmbudoPorDia} margin={{top:24,right:8,left:0,bottom:34}} barCategoryGap="22%">
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
             <XAxis dataKey="fechaDia" axisLine={false} tickLine={false}
               tick={{fill:'#94a3b8',fontSize:9,fontWeight:700}}/>
@@ -1524,12 +1524,16 @@ ${asesoresPDF.length>0?`
               <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
                 fill={colorEtapaEmbudo(etapa)}
                 radius={index === etapasEmbudoOrdenadas.length - 1 ? [6,6,0,0] : [0,0,0,0]}>
-                {index === etapasEmbudoOrdenadas.length - 1 && (
-                  <LabelList dataKey="_total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
-                )}
+
               </Bar>
             ))}
-          </BarChart>
+            {/* Una sola serie de totales: etiqueta independiente de las etapas vac?as. */}
+            <Line dataKey="_total" stroke="none" dot={false} activeDot={false}
+              isAnimationActive={false} tooltipType="none" legendType="none">
+              <LabelList dataKey="_total" position="top" offset={8}
+                style={{ fill: '#475569', fontSize: 10, fontWeight: 900 }} />
+            </Line>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">

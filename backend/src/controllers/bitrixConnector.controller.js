@@ -238,6 +238,11 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
     catch (e) { return res.status(500).json({ success: false, message: e.message }) }
   }
 
+  async function registrarPlacement(req, res) {
+    try { return res.json({ success: true, data: await conector.registrarPlacement() }) }
+    catch (e) { return res.status(500).json({ success: false, message: e.message }) }
+  }
+
   async function listarCanales(req, res) {
     try { return res.json({ success: true, canales: await conector.listarCanales() }) }
     catch (e) { return res.status(500).json({ success: false, message: e.message }) }
@@ -267,7 +272,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
     } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
   }
 
-  return { install, settings, events, placementInbox, registrarConector, listarCanales, activarCanal, estado }
+  return { install, settings, events, placementInbox, registrarConector, registrarPlacement, listarCanales, activarCanal, estado }
 }
 
 // ── Instancia Novonet: mismo comportamiento que antes de este refactor ─────

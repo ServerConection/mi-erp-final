@@ -19,10 +19,10 @@ const bitrixApp = {
   }),
 }
 
-// La URL pública del handler incluye el prefijo de ruta propio de cada
-// portal — ver la nota al final de bitrixConnector.service.js (Task 2).
-const BASE_URL_NOVONET = (process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '') + '/api/bitrix-connector'
-const BASE_URL_VELSA   = (process.env.BITRIX_APP_BASE_URL_VELSA || process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '') + '/api/bitrix-connector-velsa'
+// La URL pública del handler incluye el prefijo de ruta propio del portal
+// — ver la nota al final de bitrixConnector.service.js (Task 2). Novonet no
+// necesita esto acá: sigue usando directamente su instancia de compatibilidad.
+const BASE_URL_VELSA = (process.env.BITRIX_APP_BASE_URL_VELSA || process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '') + '/api/bitrix-connector-velsa'
 
 const conector = {
   novonet: require('./bitrixConnector.service'),

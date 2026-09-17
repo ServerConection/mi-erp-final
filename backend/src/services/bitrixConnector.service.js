@@ -78,6 +78,22 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, 
     })
   }
 
+  /** Registra la pestaña "WABOT" en el detalle de la Negociación
+   *  (placement CRM_DEAL_DETAIL_TAB). Idempotente: volver a llamarla solo
+   *  actualiza el HANDLER/TITLE ya registrados, no crea pestañas duplicadas.
+   *  Distinto de `registrar()`: ese da de alta el conector de Canales
+   *  Abiertos (imconnector) y su propio PLACEMENT_HANDLER (-> /settings);
+   *  esto da de alta la pestaña del Deal (-> /placement-inbox), que Bitrix
+   *  NO registra solo — hay que pedirlo explícitamente una vez por portal. */
+  async function registrarPlacement() {
+    if (!BASE_URL) throw new Error('BITRIX_APP_BASE_URL no configurada (URL pública HTTPS del handler)')
+    return bitrixApp.llamar('placement.bind', {
+      PLACEMENT: 'CRM_DEAL_DETAIL_TAB',
+      HANDLER: `${BASE_URL}${ROUTE_PREFIX}/placement-inbox`,
+      TITLE: 'WABOT',
+    })
+  }
+
   /** Activa el conector en un canal abierto concreto. */
   async function activar(openLineId, activo = true) {
     return bitrixApp.llamar('imconnector.activate', {
@@ -164,7 +180,7 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, 
 
   return {
     CONNECTOR_ID,
-    registrar, activar, listarCanales, fijarDatos,
+    registrar, registrarPlacement, activar, listarCanales, fijarDatos,
     enviarAOpenLine, marcarEntregado, renombrarChat,
   }
 }

@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const {
   install, settings, events, placementInbox,
-  registrarConector, listarCanales, activarCanal, estado,
+  registrarConector, registrarPlacement, listarCanales, activarCanal, estado,
 } = require('../controllers/bitrixConnector.controller')
 const { verificarToken, noAsesor } = require('../middleware/auth')
 
@@ -20,6 +20,7 @@ router.post('/placement-inbox', placementInbox)
 router.get('/estado',    verificarToken, estado)
 router.get('/canales',   verificarToken, listarCanales)
 router.post('/registrar', verificarToken, noAsesor, registrarConector)
+router.post('/registrar-placement', verificarToken, noAsesor, registrarPlacement)
 router.post('/activar',   verificarToken, noAsesor, activarCanal)
 
 module.exports = router

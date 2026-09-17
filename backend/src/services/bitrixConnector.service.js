@@ -68,7 +68,7 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl }
 
   /** Alta del conector en el portal. Idempotente: re-registrar solo actualiza. */
   async function registrar() {
-    if (!BASE_URL) throw new Error('No hay URL pública HTTPS configurada para el handler de este conector')
+    if (!BASE_URL) throw new Error('BITRIX_APP_BASE_URL no configurada (URL pública HTTPS del handler)')
     return bitrixApp.llamar('imconnector.register', {
       ID: CONNECTOR_ID,
       NAME: CONNECTOR_NAME,

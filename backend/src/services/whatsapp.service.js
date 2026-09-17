@@ -58,7 +58,7 @@ const iniciarWhatsApp = async (appInstance) => {
     await ejecutarMigracionWabotBitrix();
     await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/wa_line_downtime.sql'), 'utf8'));
 
-    const authDir = process.env.WA_AUTH_DIR || path.join(__dirname, '../../auth_sessions');
+    const authDir = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions');
     fs.mkdirSync(authDir, { recursive: true });
 
     baileysManager = new BaileysManager(io);
@@ -103,7 +103,6 @@ const iniciarWhatsApp = async (appInstance) => {
       const { rows } = await pool.query(
         `SELECT id, name, status FROM lines
           WHERE deleted_at IS NULL
-            AND status <> 'logged_out'
           ORDER BY last_connected DESC NULLS LAST`
       );
 
@@ -114,17 +113,17 @@ const iniciarWhatsApp = async (appInstance) => {
         "SELECT line_id, data FROM wa_auth_state WHERE key_id='creds'"
       )).rows : [];
       const registradas = new Set(sesionesPg.filter(r => {
-        try { return JSON.parse(r.data)?.registered === true; } catch { return false; }
+        try { const creds = JSON.parse(r.data); return creds.registered === true || Boolean(creds.me?.id); } catch { return false; }
       }).map(r => String(r.line_id)));
       const conSesion = rows.filter(l => {
-        if (pgAuth) return registradas.has(String(l.id));
-        try { return JSON.parse(fs.readFileSync(path.join(authDir, String(l.id), 'creds.json'), 'utf8')).registered === true; }
+        if (pgAuth && registradas.has(String(l.id))) return true;
+        try { const creds = JSON.parse(fs.readFileSync(path.join(authDir, String(l.id), 'creds.json'), 'utf8')); return creds.registered === true || Boolean(creds.me?.id); }
         catch { return false; }
       });
       // Un QR o socket de un proceso anterior ya no existe. Conservar la línea,
       // pero quitar estados transitorios que no pueden completarse tras el deploy.
       for (const l of rows.filter(r => !conSesion.includes(r) && ['connecting', 'qr_ready', 'connected'].includes(r.status))) {
-        await pool.query("UPDATE lines SET status='logged_out' WHERE id=$1", [l.id]);
+        await pool.query("UPDATE lines SET status='error' WHERE id=$1", [l.id]);
       }
       for (const l of conSesion) await pool.query("UPDATE lines SET status='connecting' WHERE id=$1", [l.id]);
 
@@ -141,7 +140,19 @@ const iniciarWhatsApp = async (appInstance) => {
       if (aRestaurar.length) {
         console.log('[WA] Restaurando', aRestaurar.length, 'línea(s) con sesión guardada...');
         let ok = 0, fallidas = 0;
+        const retryRestore = line => {
+          if (baileysManager.stopping || baileysManager.reconnectTimers[line.id]) return;
+          const timer = setTimeout(async () => {
+            delete baileysManager.reconnectTimers[line.id];
+            if (baileysManager.stopping) return;
+            try { await baileysManager.connect(line.id); }
+            catch (e) { console.warn('[WA] Reintento de restauración:', line.id, e.message); retryRestore(line); }
+          }, 60000);
+          timer.unref?.();
+          baileysManager.reconnectTimers[line.id] = timer;
+        };
         for (const line of aRestaurar) {
+          if (baileysManager.stopping) break;
           try {
             await baileysManager.connect(line.id);
             ok++;
@@ -151,6 +162,7 @@ const iniciarWhatsApp = async (appInstance) => {
           catch (e) {
             fallidas++;
             console.warn('[WA] Error restaurando', line.name, ':', e.message);
+            retryRestore(line);
           }
         }
         console.log(`[WA] Restauración terminada: ${ok} iniciada(s), ${fallidas} con error`);

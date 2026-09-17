@@ -265,6 +265,7 @@ class BaileysManager {
   }
 
   async connect(lineId, requesterId = null, opciones = {}) {
+    if (this.stopping) throw new Error('WHATSAPP_SHUTTING_DOWN')
     // paraQr: la conexión la pidió una persona desde el módulo de líneas para
     // escanear un código, no es un reintento automático. Cambia una sola cosa:
     // el emparejamiento no sale por el proxy (ver más abajo).
@@ -547,6 +548,7 @@ class BaileysManager {
     })
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+      if (this.stopping) return
       // Cualquier evento de conexión significa que el socket respondió: el
       // watchdog de "colgado en connecting" ya no hace falta.
       if (this.instances[lineId]?._watchdog) { clearTimeout(this.instances[lineId]._watchdog); this.instances[lineId]._watchdog = null }
@@ -922,6 +924,9 @@ class BaileysManager {
   // sesión (no borra credenciales) para que la nueva instancia reconecte sin
   // conflicto de "sesión duplicada" (evita 401/428 en cada deploy).
   async shutdown() {
+    this.stopping = true
+    for (const timer of Object.values(this.reconnectTimers)) clearTimeout(timer)
+    this.reconnectTimers = {}
     const ids = Object.keys(this.instances)
     console.log(`[BaileysManager] Cerrando ${ids.length} línea(s) por apagado limpio...`)
     for (const id of ids) {
@@ -930,6 +935,8 @@ class BaileysManager {
       if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
       if (this.instances[id]?._watchdog) clearTimeout(this.instances[id]._watchdog)
       try {
+        this._killing = this._killing || {}
+        this._killing[id] = true
         // end() cierra el socket sin hacer logout (conserva la sesión en disco)
         this.instances[id].sock?.end?.(undefined)
         this.instances[id].sock?.ws?.close?.()

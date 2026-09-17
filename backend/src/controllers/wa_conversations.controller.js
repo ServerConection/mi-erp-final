@@ -200,10 +200,11 @@ async function getAll(req, res) {
       const numberConditions = []
       if (digits) {
         params.push(`%${digits}%`)
+        numberConditions.push(`c.bitrix_deal_id LIKE $${params.length}`)
         numberConditions.push(`regexp_replace(c.wa_number, '[^0-9]', '', 'g') LIKE $${params.length}`)
         numberConditions.push(`regexp_replace(ct.metadata->>'real_phone', '[^0-9]', '', 'g') LIKE $${params.length}`)
       }
-      where.push(`(c.wa_number ILIKE $${textParam} OR ct.name ILIKE $${textParam}${numberConditions.length ? ' OR ' + numberConditions.join(' OR ') : ''})`)
+      where.push(`(c.wa_number ILIKE $${textParam} OR ct.name ILIKE $${textParam} OR c.bitrix_deal_id ILIKE $${textParam}${numberConditions.length ? ' OR ' + numberConditions.join(' OR ') : ''})`)
     }
     const vc = visibilityCondition(req, params)
     if (vc) where.push(vc)
@@ -212,7 +213,7 @@ async function getAll(req, res) {
 
     // Parámetros extra: el usuario actual (para sus propios no leídos) y el límite
     params.push(req.user.id);        const pUser  = params.length
-    params.push(bitrix_deal_id ? 1 : Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100))); const pLimit = params.length
+    params.push(bitrix_deal_id && !isAdmin(req) ? 1 : Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100))); const pLimit = params.length
 
     // Los no leídos se calculan POR USUARIO: mensajes entrantes posteriores a
     // la última vez que ESTE usuario abrió la conversación.

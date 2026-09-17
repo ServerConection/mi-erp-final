@@ -66,6 +66,21 @@ function limpiar() {
   delete require.cache[dbPath]
 }
 
+test('shutdown cancela reconexiones y bloquea conexiones del proceso anterior', async () => {
+  const { manager } = preparar()
+  try {
+    let closed = 0
+    manager.instances.deploy = { status: 'connected', sock: { end: () => { closed++ } } }
+    manager.reconnectTimers.pending = setTimeout(() => assert.fail('no debe reconectar tras shutdown'), 1000)
+    await manager.shutdown()
+    assert.equal(manager.stopping, true)
+    assert.equal(closed, 1)
+    assert.equal(Object.keys(manager.instances).length, 0)
+    assert.equal(Object.keys(manager.reconnectTimers).length, 0)
+    await assert.rejects(manager.connect(LINEA), /WHATSAPP_SHUTTING_DOWN/)
+  } finally { limpiar() }
+})
+
 test('la vinculacion por QR NO sale por el proxy', async () => {
   const { manager, opcionesVistas } = preparar()
   try {

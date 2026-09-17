@@ -63,13 +63,13 @@ const recibirGestionable = async (req, res) => {
       return res.status(400).send('Falta nombre_asesor');
     }
 
-    // 1) Cupo más reciente <= hoy para este asesor (permite cargar el cupo
-    //    con anticipación y que se siga usando hasta la próxima carga).
+    // 1) Cupo cargado EXACTAMENTE hoy para este asesor (si no cargaron hoy,
+    //    no hay cupo).
     const r = await poolErp.query(
       `SELECT gestionables_permitidos
          FROM gestionables_asesores
         WHERE nombre_bitrix_asesor = $1
-          AND fecha_carga <= CURRENT_DATE
+          AND fecha_carga = CURRENT_DATE
         ORDER BY fecha_carga DESC
         LIMIT 1`,
       [nombreAsesor]

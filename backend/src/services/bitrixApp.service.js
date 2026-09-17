@@ -100,7 +100,7 @@ function crearBitrixApp({ portalUrl, clientId, clientSecret }) {
    */
   async function llamar(metodo, params = {}, { _reintento = false } = {}) {
     if (!configurado()) {
-      throw new Error('BITRIX_APP_NO_CONFIGURADA: faltan portalUrl, clientId o clientSecret')
+      throw new Error('BITRIX_APP_NO_CONFIGURADA: faltan BITRIX_PORTAL_URL, BITRIX_APP_CLIENT_ID o BITRIX_APP_CLIENT_SECRET')
     }
     const auth = await tokenVigente()
     const controlador = new AbortController()

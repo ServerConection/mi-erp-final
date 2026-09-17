@@ -207,7 +207,7 @@ class BaileysManager {
     const lidConvs = await query(`SELECT id, line_id FROM conversations WHERE wa_number = $1`, [lidNum])
     for (const lc of lidConvs.rows) {
       const realConv = await query(
-        `SELECT id FROM conversations WHERE wa_number = $1 AND line_id = $2 ORDER BY started_at ASC LIMIT 1`,
+        `SELECT id FROM conversations WHERE wa_number = $1 AND line_id = $2 ORDER BY (status != 'closed') DESC, (status = 'human_takeover') DESC, started_at DESC LIMIT 1`,
         [realNum, lc.line_id]
       )
       if (realConv.rows.length && realConv.rows[0].id !== lc.id) {
@@ -226,8 +226,18 @@ class BaileysManager {
     }
   }
 
-  async _resolveLid(lidRaw, sock, lineId) {
+  async _resolveLid(lidRaw, sock, lineId, msg = null) {
     const lidNum = this._cleanNumber(lidRaw)
+    // Baileys v7 includes the phone JID alongside the privacy JID.
+    const phoneJid = [msg?.key?.remoteJidAlt, msg?.key?.senderPn,
+      msg?.key?.participantPn, msg?.key?.participantAlt,
+      msg?.message?.deviceSentMessage?.destinationJid]
+      .find(jid => typeof jid === 'string' && jid.endsWith('@s.whatsapp.net'))
+    if (phoneJid) {
+      const realNum = this._cleanNumber(phoneJid)
+      await this._saveLidMapping(lidNum, realNum)
+      return realNum
+    }
 
     if (this.lidMap[lidNum]) {
       console.log(`[Line ${lineId}] ✅ LID resuelto (memoria): ${lidNum} → ${this.lidMap[lidNum]}`)
@@ -249,11 +259,10 @@ class BaileysManager {
     } catch (e) {}
 
     try {
-      const results = await sock.onWhatsApp(`+${lidNum}`)
-      if (results?.[0]?.jid) {
-        const resolved = results[0].jid.replace('@s.whatsapp.net', '')
+      const pn = await sock.signalRepository?.lidMapping?.getPNForLID(lidRaw)
+      if (pn?.endsWith('@s.whatsapp.net')) {
+        const resolved = this._cleanNumber(pn)
         await this._saveLidMapping(lidNum, resolved)
-        console.log(`[Line ${lineId}] ✅ LID resuelto (onWhatsApp): ${lidNum} → ${resolved}`)
         return resolved
       }
     } catch (e) {
@@ -530,9 +539,10 @@ class BaileysManager {
     })
 
     sock.ev.on('lid-mapping.update', async (mappings) => {
-      for (const [lid, pn] of Object.entries(mappings || {})) {
-        const lidNum = lid.replace('@lid', '').replace(/\D/g, '')
-        const realNum = pn.replace('@s.whatsapp.net', '').replace(/\D/g, '')
+      for (const [lid, pn] of (mappings?.lid && mappings?.pn
+        ? [[mappings.lid, mappings.pn]] : Object.entries(mappings || {}))) {
+        const lidNum = this._cleanNumber(lid)
+        const realNum = this._cleanNumber(pn)
         if (lidNum && realNum) {
           await this._saveLidMapping(lidNum, realNum)
           console.log(`[Line ${lineId}] 🔗 lid-mapping: ${lidNum} → +${realNum}`)
@@ -743,31 +753,7 @@ class BaileysManager {
         let waNumber = this._cleanNumber(remoteJid)
 
         if (remoteJid.endsWith('@lid')) {
-          // Baileys v7 a veces trae el número real en senderPn / participantPn
-          const directJid =
-            msg.key?.senderPn ||
-            msg.key?.participantPn ||
-            msg.message?.deviceSentMessage?.destinationJid ||
-            msg.key?.participant
-
-          if (directJid && !directJid.toString().endsWith('@lid')) {
-            const directNum = this._cleanNumber(directJid)
-            if (directNum && directNum.length <= 13) {
-              await this._saveLidMapping(waNumber, directNum)
-              // Guardar el número real en el contacto LID (para respuestas y respaldo)
-              try {
-                await query(
-                  `UPDATE contacts SET metadata = metadata || $1::jsonb
-                   WHERE wa_number=$2 AND line_id=$3`,
-                  [JSON.stringify({ real_phone: directNum }), waNumber, lineId]
-                )
-              } catch (e) {}
-              console.log(`[Line ${lineId}] ✅ LID resuelto (senderPn): ${waNumber} → ${directNum}`)
-              waNumber = directNum
-            }
-          } else {
-            waNumber = await this._resolveLid(remoteJid, sock, lineId)
-          }
+          waNumber = await this._resolveLid(remoteJid, sock, lineId, msg)
 
           // LID sin resolver → marcar el contacto para que las respuestas salgan al JID @lid
           if (waNumber === this._cleanNumber(remoteJid)) {
@@ -1060,8 +1046,10 @@ class BaileysManager {
       if (!jid) return null
 
       const md = { send_jid: jid }
-      if (jid.endsWith('@lid')) {
-        const lidNum = this._cleanNumber(jid)
+      const lidJid = jid.endsWith('@lid') ? jid
+        : r.lid || await inst.sock.signalRepository?.lidMapping?.getLIDForPN(jid)
+      if (lidJid?.endsWith('@lid')) {
+        const lidNum = this._cleanNumber(lidJid)
         md.lid = lidNum
         await this._saveLidMapping(lidNum, num)   // lid → número real (unifica chats)
       }
@@ -1294,7 +1282,7 @@ class BaileysManager {
 
     // Resolver número destinatario (maneja LID)
     let waNumber = this._cleanNumber(remoteJid)
-    if (remoteJid.endsWith('@lid')) waNumber = await this._resolveLid(remoteJid, sock, lineId)
+    if (remoteJid.endsWith('@lid')) waNumber = await this._resolveLid(remoteJid, sock, lineId, msg)
 
     // Descargar media si la hay (para verla en el Inbox)
     let mediaUrl = null
@@ -1519,6 +1507,7 @@ class BaileysManager {
       .replace('@s.whatsapp.net', '')
       .replace('@c.us', '')
       .replace('@lid', '')
+      .split(':')[0]
       .replace(/[^0-9]/g, '')
   }
 

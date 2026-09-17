@@ -61,10 +61,11 @@ async function _guardarMapeo({ waMsgId, bitrixMsgId, direction, chatId }) {
   }
 }
 
-function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl }) {
+function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, routePrefix }) {
   const CONNECTOR_ID   = connectorId || 'wabot_bitrix'
   const CONNECTOR_NAME = connectorName || 'WABOT-BITRIX (WhatsApp)'
   const BASE_URL       = (baseUrl || '').replace(/\/+$/, '')
+  const ROUTE_PREFIX   = routePrefix || '/api/bitrix-connector'
 
   /** Alta del conector en el portal. Idempotente: re-registrar solo actualiza. */
   async function registrar() {
@@ -73,7 +74,7 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl }
       ID: CONNECTOR_ID,
       NAME: CONNECTOR_NAME,
       ICON: ICONO,
-      PLACEMENT_HANDLER: `${BASE_URL}/settings`,
+      PLACEMENT_HANDLER: `${BASE_URL}${ROUTE_PREFIX}/settings`,
     })
   }
 

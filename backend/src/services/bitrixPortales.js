@@ -19,10 +19,11 @@ const bitrixApp = {
   }),
 }
 
-// La URL pública del handler incluye el prefijo de ruta propio del portal
-// — ver la nota al final de bitrixConnector.service.js (Task 2). Novonet no
-// necesita esto acá: sigue usando directamente su instancia de compatibilidad.
-const BASE_URL_VELSA = (process.env.BITRIX_APP_BASE_URL_VELSA || process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '') + '/api/bitrix-connector-velsa'
+// URL publica base (dominio, sin prefijo de ruta) — el prefijo de ruta propio
+// de cada portal se pasa aparte como routePrefix a crearBitrixConnector, que
+// lo usa solo para armar PLACEMENT_HANDLER. url_im sigue siendo el dominio
+// puro para ambos portales, igual que siempre fue para Novonet.
+const BASE_URL_VELSA = (process.env.BITRIX_APP_BASE_URL_VELSA || process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '')
 
 const conector = {
   novonet: require('./bitrixConnector.service'),
@@ -31,6 +32,7 @@ const conector = {
     connectorId: process.env.BITRIX_CONNECTOR_ID_VELSA || process.env.BITRIX_CONNECTOR_ID,
     connectorName: process.env.BITRIX_CONNECTOR_NAME_VELSA || 'WABOT-BITRIX Velsa (WhatsApp)',
     baseUrl: BASE_URL_VELSA,
+    routePrefix: '/api/bitrix-connector-velsa',
   }),
 }
 

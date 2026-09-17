@@ -55,7 +55,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
         member_id: auth.member_id,
         scope: auth.scope,
       })
-      console.log('[WABOT-BITRIX] App local instalada; tokens OAuth guardados. portal=%s', bitrixApp.PORTAL)
+      console.log('[WABOT-BITRIX] App local instalada; tokens OAuth guardados.')
       // Bitrix espera HTML: este iframe es lo que ve el admin al instalar.
       res.set('Content-Type', 'text/html; charset=utf-8')
       return res.send('<html><body style="font-family:system-ui;padding:24px">'
@@ -88,7 +88,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
       const b = (req.body && Object.keys(req.body).length) ? req.body : (req.query || {})
       const authId = b.AUTH_ID || b.auth_id
 
-      console.log('[WABOT-BITRIX] placementInbox llamado. portal=%s method=%s tieneAuthId=%s', bitrixApp.PORTAL, req.method, !!authId)
+      console.log('[WABOT-BITRIX] placementInbox llamado. method=%s tieneAuthId=%s', req.method, !!authId)
 
       if (!authId) {
         console.warn('[WABOT-BITRIX] placementInbox sin AUTH_ID, cae a login manual')
@@ -208,7 +208,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
           member_id: b.member_id,
           scope: b.APPLICATION_SCOPE,
         })
-        console.log('[WABOT-BITRIX] Tokens OAuth guardados/refrescados desde la apertura de la app. portal=%s', bitrixApp.PORTAL)
+        console.log('[WABOT-BITRIX] Tokens OAuth guardados/refrescados desde la apertura de la app.')
       } catch (e) {
         console.error('[WABOT-BITRIX] no se pudo guardar tokens al abrir la app:', e.message)
       }
@@ -225,7 +225,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
         await _procesarSaliente(b, req.app.get('baileysManager'))
       } else if (evento === 'ONAPPUNINSTALL') {
         await pool.query('DELETE FROM bitrix_oauth_tokens WHERE portal = $1', [bitrixApp.PORTAL])
-        console.warn('[WABOT-BITRIX] la app fue desinstalada del portal; tokens borrados. portal=%s', bitrixApp.PORTAL)
+        console.warn('[WABOT-BITRIX] la app fue desinstalada del portal; tokens borrados.')
       }
     } catch (e) {
       console.error(`[WABOT-BITRIX] error procesando ${evento}:`, e.message)
@@ -262,6 +262,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
         instalada: !!tokens,
         portal: bitrixApp.PORTAL || null,
         conector: conector.CONNECTOR_ID,
+        token_vence: tokens?.expires_at || null,
       })
     } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
   }

@@ -25,6 +25,7 @@ const bitrixRoutes                 = require('./routes/bitrix.routes');
 const bitrixSesionesRoutes         = require('./routes/bitrixSesiones.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
 const bitrixConnectorRoutes        = require('./routes/bitrixConnector.routes');
+const bitrixConnectorVelsaRoutes   = require('./routes/bitrixConnectorVelsa.routes');
 const gestionablesWebhookRoutes    = require('./routes/gestionablesWebhook.routes');
 const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
 const contactabilidadWebhookRoutes = require('./routes/contactabilidadWebhook.routes');
@@ -86,7 +87,11 @@ app.use((req, res, next) => {
   // WABOT-BITRIX: install/settings los abre Bitrix24 dentro de un iframe en
   // SU dominio (bitrix24.es). SAMEORIGIN se lo bloquearia ("rechazo la
   // conexion" en el navegador), por eso estas dos rutas quedan afuera.
-  if (!req.path.startsWith('/api/bitrix-connector/install') && !req.path.startsWith('/api/bitrix-connector/settings') && !req.path.startsWith('/api/bitrix-connector/placement-inbox')) {
+  const esEmbedBitrixSinFrameOptions = [
+    '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox',
+    '/api/bitrix-connector-velsa/install', '/api/bitrix-connector-velsa/settings', '/api/bitrix-connector-velsa/placement-inbox',
+  ].some((p) => req.path.startsWith(p));
+  if (!esEmbedBitrixSinFrameOptions) {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   }
   res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -165,6 +170,7 @@ app.use('/api/bitrix',            bitrixRoutes);
 app.use('/api/bitrix-sesiones',   bitrixSesionesRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
 app.use('/api/bitrix-connector', bitrixConnectorRoutes); // WABOT-BITRIX: install/events del conector imconnector
+app.use('/api/bitrix-connector-velsa', bitrixConnectorVelsaRoutes); // WABOT-BITRIX Velsa: mismo modulo, portal aclopecuador.bitrix24.es
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);

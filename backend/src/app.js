@@ -215,6 +215,7 @@ app.use('/api/kpi-comercial',      kpiComercialRoutes);
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);
+app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));
 app.use('/api/tareas',   tareasRoutes);
 app.use('/api/hojas',    hojasRoutes);
 app.use('/api/chat',     chatRoutes);

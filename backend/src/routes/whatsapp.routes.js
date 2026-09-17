@@ -19,6 +19,7 @@ const convsCtrl    = require('../controllers/wa_conversations.controller');
 const scheduledCtrl = require('../controllers/wa_scheduled.controller');
 const dashboardCtrl = require('../controllers/wa_dashboard.controller');
 const statsCtrl    = require('../controllers/wa_stats.controller');
+const presentationCtrl = require('../controllers/wa_presentations.controller');
 
 // Upload de archivos multimedia
 const uploadsDir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads');
@@ -111,6 +112,13 @@ router.get  ('/backup/:phone',                   convsCtrl.backupByNumber);
 router.post ('/bitrix/start',                    convsCtrl.startFromBitrix);
 router.put  ('/conversations/:id/bitrix',        convsCtrl.setBitrixId);
 router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
+
+// ── PRESENTACIÓN DEL ASESOR (Netlife: imagen + texto libre) ───
+// Cada asesor administra la suya; ADMINISTRADOR puede ver/editar cualquiera.
+router.get  ('/presentation',            presentationCtrl.getMine);
+router.put  ('/presentation',            presentationCtrl.saveMine);
+router.get  ('/presentations',           presentationCtrl.getAll);
+router.put  ('/presentations/:userId',   presentationCtrl.saveForUser);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────
 router.get   ('/scheduled',              scheduledCtrl.getAll);

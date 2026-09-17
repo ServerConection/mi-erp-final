@@ -88,6 +88,53 @@ function guessMime(filename) {
   return map[ext] || 'application/octet-stream'
 }
 
+// Presentación institucional del asesor (WABOT / Netlife): al crear una
+// conversación NUEVA vinculada a un ID de Bitrix, se envía automáticamente
+// la presentación configurada por el asesor dueño de la línea. Primero la
+// imagen, luego el texto libre. Si el asesor no tiene presentación
+// configurada, no se envía nada (no bloquea la creación de la conversación).
+async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
+  try {
+    if (!ownerId) return
+    const { rows } = await query(
+      `SELECT message_text, media_url, media_type, media_filename
+       FROM wa_presentations WHERE user_id=$1`,
+      [ownerId]
+    )
+    const pres = rows[0]
+    if (!pres || (!pres.media_url && !pres.message_text)) return
+
+    if (pres.media_url) {
+      let buffer = null
+      try {
+        if (/^https?:\/\//i.test(pres.media_url)) {
+          const resp = await fetch(pres.media_url)
+          if (resp.ok) buffer = Buffer.from(await resp.arrayBuffer())
+        } else {
+          const filePath = resolveMediaPath(pres.media_url)
+          if (fs.existsSync(filePath)) buffer = fs.readFileSync(filePath)
+        }
+      } catch (e) { console.warn('[Presentación] No se pudo leer el medio:', e.message) }
+      if (buffer) {
+        await bm.sendMedia(lineId, waNumber, {
+          type:     pres.media_type || 'image',
+          buffer,
+          mimetype: guessMime(pres.media_filename || pres.media_url),
+          filename: pres.media_filename || path.basename(pres.media_url),
+          caption:  '',
+          mediaUrl: pres.media_url,
+        })
+      }
+    }
+    if (pres.message_text) {
+      await bm.sendText(lineId, waNumber, pres.message_text)
+    }
+    await query(`UPDATE conversations SET presentation_sent_at=NOW() WHERE line_id=$1 AND wa_number=$2 AND presentation_sent_at IS NULL`, [lineId, waNumber])
+  } catch (err) {
+    console.warn('[Presentación] No se pudo enviar automáticamente:', err.message)
+  }
+}
+
 // Perfiles "gerenciales" ven todos los chats de SU empresa (no de otras).
 // Solo ADMINISTRADOR ve todo, sin restricción de empresa.
 const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
@@ -492,15 +539,15 @@ async function startFromBitrix(req, res) {
     const canPickLine = isAdmin(req) || isSupervisor(req)   // asesor NO elige línea
     let candidates
     if (isAdmin(req)) {
-      candidates = (await query(`SELECT id, name, bot_id FROM lines ORDER BY created_at ASC`)).rows
+      candidates = (await query(`SELECT id, name, bot_id, created_by FROM lines ORDER BY created_at ASC`)).rows
     } else if (isSupervisor(req)) {
       candidates = (await query(
-        `SELECT id, name, bot_id FROM lines WHERE created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa)=$1) ORDER BY created_at ASC`,
+        `SELECT id, name, bot_id, created_by FROM lines WHERE created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa)=$1) ORDER BY created_at ASC`,
         [empresa]
       )).rows
     } else {
       candidates = (await query(
-        `SELECT id, name, bot_id FROM lines WHERE created_by=$1 OR created_by IS NULL ORDER BY created_at ASC`,
+        `SELECT id, name, bot_id, created_by FROM lines WHERE created_by=$1 OR created_by IS NULL ORDER BY created_at ASC`,
         [req.user.id]
       )).rows
     }
@@ -567,6 +614,13 @@ async function startFromBitrix(req, res) {
         [lineId, contactRes.rows[0].id, waNumber, chosen.bot_id || null, bitrixId || null]
       )
       conv = ins.rows[0]
+
+      // Conversación NUEVA + ID de Bitrix: enviar la presentación del asesor
+      // dueño de la línea (imagen primero, luego texto). No bloquea la
+      // respuesta: corre en segundo plano y nunca puede fallar la creación.
+      if (bitrixId) {
+        maybeSendPresentation({ bm, lineId, waNumber, ownerId: chosen.created_by }).catch(() => {})
+      }
     }
 
     const full = await query(`

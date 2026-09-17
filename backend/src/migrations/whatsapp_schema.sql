@@ -320,3 +320,23 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(100);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_line_dedupe_key
   ON messages(line_id, dedupe_key)
   WHERE dedupe_key IS NOT NULL;
+
+-- Presentación institucional por asesor (WABOT / Netlife) — 2026-09
+-- Netlife exige que, al abrir una conversación NUEVA vinculada a una
+-- negociación de Bitrix, se envíe automáticamente la presentación/credencial
+-- del asesor dueño de la línea: primero la imagen, luego el texto libre.
+-- Cada asesor administra su propia presentación; ADMINISTRADOR puede ver y
+-- editar la de cualquiera.
+CREATE TABLE IF NOT EXISTS wa_presentations (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id        INTEGER NOT NULL UNIQUE REFERENCES usuarios(id) ON DELETE CASCADE,
+  message_text   TEXT,
+  media_url      VARCHAR(500),
+  media_type     VARCHAR(20),
+  media_filename VARCHAR(255),
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Evita reenvíos si en el futuro se reintenta la creación de la conversación.
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS presentation_sent_at TIMESTAMPTZ;

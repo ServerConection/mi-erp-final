@@ -123,7 +123,7 @@ export default function HomeModules() {
       rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
     { title: "Gestionables por asesor", path: "/gestionables-asesores", icon: ClipboardList, accent: "azul", cat: "equipo",
       desc: "Carga cuotas diarias por TXT y ajusta los permitidos de cada asesor por fecha.",
-      rolesPermitidos: ['ADMINISTRADOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'SUPERVISOR'] },
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },

@@ -26,7 +26,9 @@ export default function GestionablesAsesores() {
   const permitido = roles.includes(perfil);
   const cambios = rows.filter(r => r.original !== r.gestionables_permitidos);
   const buscados = rows.filter(r => normalizar(r.nombre_bitrix_asesor).includes(normalizar(busqueda)));
-  const visibles = buscados.filter(filtrosEstado.find(f => f.key === estado).coincide);
+  const visibles = buscados.filter(filtrosEstado.find(f => f.key === estado).coincide)
+    .sort((a, b) => (b.gestionables_actuales ?? -1) - (a.gestionables_actuales ?? -1)
+      || a.nombre_bitrix_asesor.localeCompare(b.nombre_bitrix_asesor, 'es'));
   const limpiarFiltros = () => { setBusqueda(''); setEstado('todos'); };
   const consultar = useCallback(async () => {
     setBusy(true); setError(''); setRows([]);

@@ -3,7 +3,16 @@ const erp = require('../config/dbErp');
 const db = require('../config/db');
 const { verificarToken } = require('../middleware/auth');
 const { fechaValida, validarFilas, parseTxt } = require('../shared/gestionablesCarga');
-const { esGestionableExpr } = require('../shared/etapas');
+
+// Etapas que NO cuentan como "gestionable" para el conteo diario. Son slugs
+// (minusculas, guion bajo) porque asi los guarda bitrixWebhook.controller.js
+// (funcion slugify) en bitrix_webhook_leads.etapa -- NO es el mismo formato
+// que usa mestra_bitrix.b_etapa_de_la_negociacion (texto en mayusculas), asi
+// que esta lista no se puede reemplazar por esGestionableExpr() de shared/etapas.
+const ETAPAS_NO_GESTIONABLES_LEADS = [
+  'duplicado', 'dupllicado', 'zona_peligrosa', 'zonas_peligrosas',
+  'regularizacion', 'remarketing', 'fuera_de_cobertura', 'innegociable', 'atc',
+];
 router.use(verificarToken, (req, res, next) => {
   if (!['ADMINISTRADOR', 'GERENCIA'].includes(req.user.perfil)) return res.status(403).json({ success: false, error: 'Acceso exclusivo para Administrador y Gerencia' });
   next();
@@ -15,7 +24,20 @@ router.get('/', async (req, res) => {
     const max = await erp.query('SELECT COALESCE(MAX(id), 0) AS ultimo_id FROM gestionables_asesores');
     let counts = new Map(), aviso = null;
     try {
-      const actual = await db.query(`SELECT UPPER(BTRIM(b_persona_responsable)) AS asesor, COUNT(*)::int AS total FROM public.mestra_bitrix WHERE b_creado_el_fecha::date = $1::date AND ${esGestionableExpr('b_etapa_de_la_negociacion', { tolerarNull: true })} GROUP BY 1`, [req.query.fecha]);
+      // Conteo en vivo desde bitrix_webhook_leads (bddgeneral): la llena en
+      // tiempo real bitrixWebhook.controller.js con cada automatizacion de
+      // etapa que dispara Bitrix. mestra_bitrix (usada antes aqui) depende de
+      // un proceso externo a este repo y puede tardar en reflejar leads del
+      // dia -- por eso el conteo salia en 0 con leads recien creados.
+      const actual = await db.query(
+        `SELECT UPPER(BTRIM(responsible)) AS asesor, COUNT(*)::int AS total
+           FROM public.bitrix_webhook_leads
+          WHERE empresa = 'novonet'
+            AND LEFT(created_at_ecuador, 10) = $1
+            AND LOWER(BTRIM(COALESCE(etapa, ''))) <> ALL($2::text[])
+          GROUP BY 1`,
+        [req.query.fecha, ETAPAS_NO_GESTIONABLES_LEADS]
+      );
       counts = new Map(actual.rows.map(r => [r.asesor, r.total]));
     } catch (e) {
       console.error('[gestionables] conteo:', e.message);

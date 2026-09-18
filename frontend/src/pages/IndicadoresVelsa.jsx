@@ -5,6 +5,7 @@ import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/Feedba
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { fetchConSesion } from "../utils/sesion";
+import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
@@ -1687,6 +1688,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             </ExpandableChart>
           </div>
 
+          <TablaOrigenesEtapas filas={data.origenesEtapasDia} periodo={data.periodoOrigenes} loading={loading} />
           {/* Tablas */}
           {/* Misma estructura que Novonet (Excel de gerencia). Velsa no tiene
               equipos: todo el personal responde a las dos supervisoras. */}

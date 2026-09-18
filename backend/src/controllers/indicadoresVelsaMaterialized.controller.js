@@ -623,6 +623,19 @@ async function getIndicadoresDashboardVelsa(req, res) {
       GROUP BY mv.fecha_creacion_crm::date, UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA')))
       ORDER BY fecha ASC
     `;
+    const qOrigenesEtapasDia = `
+      SELECT COALESCE(NULLIF(TRIM(origen_tabla.source), ''), NULLIF(TRIM(mv.origen), ''), 'SIN ORIGEN') AS origen,
+        UPPER(COALESCE(NULLIF(TRIM(mv.etapa_crm), ''), 'SIN ETAPA')) AS etapa,
+        mv.fecha_creacion_crm::date::text AS fecha,
+        COUNT(DISTINCT mv.id_crm)::int AS total
+      FROM ${MV}
+      LEFT JOIN public.bitrix_webhook_leads origen_tabla
+        ON origen_tabla.empresa = 'velsa'
+       AND BTRIM(origen_tabla.bitrix_id::text) = BTRIM(COALESCE(mv.id_crm, mv.id_jotform)::text)
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 3, 2
+    `;
     const qPorDia = `
       SELECT
         (mv.fecha_registro_jotform - INTERVAL '5 hours')::date::text AS fecha,
@@ -910,7 +923,7 @@ LIMIT 6000
       resEstados, resEmbudo, resEmbudoDia, resDia,
       resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
-      resOrigenes, resPorRegularizar, resBacklogDetalle,
+      resOrigenes, resPorRegularizar, resBacklogDetalle, resOrigenesEtapasDia,
     ] = await Promise.all([
       pool.query(queryKPI('mv.supervisor', filters), valuesMain),
       pool.query(queryKPI('mv.asesor',     filters), valuesMain),
@@ -931,6 +944,7 @@ LIMIT 6000
       pool.query(qOrigenes),
       pool.query(qPorRegularizar, valuesMain),
       pool.query(qBacklogDetalle, valuesMain),
+      pool.query(qOrigenesEtapasDia, valuesMain),
     ]);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
@@ -954,6 +968,8 @@ LIMIT 6000
       estadosNetlife:        resEstados.rows.map(r => ({ estado: r.estado, total: Number(r.total) })),
       graficoEmbudo:         resEmbudo.rows,
       graficoEmbudoPorDia:   resEmbudoDia.rows,
+      origenesEtapasDia: resOrigenesEtapasDia.rows,
+      periodoOrigenes: { desde, hasta },
       graficoBarrasDia:      resDia.rows,
       graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por fecha_activacion_date
       etapasCRM:             resEtapasCRM.rows.map(r => r.etapa),

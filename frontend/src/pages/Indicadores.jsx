@@ -6,6 +6,7 @@ import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
+import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
@@ -2012,6 +2013,7 @@ ${asesoresPDF.length>0?`
             </ExpandableChart>
           </div>
 
+          <TablaOrigenesEtapas filas={data.origenesEtapasDia} periodo={data.periodoOrigenes} loading={loading} />
           {/* Tablas */}
           {/* Tablas con la estructura pedida por gerencia (Excel dato.xlsx).
               Las viejas (HorizontalTable) siguen en el código y las usa Velsa. */}

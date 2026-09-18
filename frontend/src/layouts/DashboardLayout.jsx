@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
+import { puedeAccederGestionables } from '../utils/accesoGestionables';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -389,7 +390,7 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
-    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p) },
+    accessCheck: () => puedeAccederGestionables() },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },

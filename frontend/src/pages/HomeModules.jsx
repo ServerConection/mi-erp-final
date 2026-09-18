@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
+import { puedeAccederGestionables } from '../utils/accesoGestionables';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -168,7 +169,7 @@ export default function HomeModules() {
         const allowed = userRol === 'CONSULTOR'
           ? mod.rolesPermitidos?.includes('CONSULTOR')
           : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-        if (!allowed) return false;
+        if (mod.path === '/gestionables-asesores' ? !puedeAccederGestionables() : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);

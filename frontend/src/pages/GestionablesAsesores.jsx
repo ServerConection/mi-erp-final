@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { puedeAccederGestionables } from '../utils/accesoGestionables';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3050';
-const roles = ['ADMINISTRADOR', 'GERENCIA'];
 const normalizar = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const filtrosEstado = [
   { key: 'todos', label: 'Todos', coincide: () => true, color: 'bg-blue-50 text-blue-700 border-blue-300' },
@@ -22,8 +22,7 @@ export default function GestionablesAsesores() {
   const [busqueda, setBusqueda] = useState(''), [estado, setEstado] = useState('todos');
   const [contenido, setContenido] = useState(''), [archivo, setArchivo] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [mensaje, setMensaje] = useState(''), [aviso, setAviso] = useState('');
-  const perfil = (JSON.parse(localStorage.getItem('userProfile') || '{}').perfil || '').toUpperCase();
-  const permitido = roles.includes(perfil);
+  const permitido = puedeAccederGestionables();
   const cambios = rows.filter(r => r.original !== r.gestionables_permitidos);
   const buscados = rows.filter(r => normalizar(r.nombre_bitrix_asesor).includes(normalizar(busqueda)));
   const visibles = buscados.filter(filtrosEstado.find(f => f.key === estado).coincide)
@@ -60,7 +59,7 @@ export default function GestionablesAsesores() {
     const url = URL.createObjectURL(new Blob([`id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga\n${id};NOMBRE COMPLETO EN BITRIX;4;${fecha}\n`], { type: 'text/plain;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = 'plantilla-gestionables.txt'; a.click(); URL.revokeObjectURL(url);
   }
-  if (!permitido) return <p className="p-6">Acceso exclusivo para Administrador y Gerencia.</p>;
+  if (!permitido) return <p className="p-6">No tiene acceso a este módulo.</p>;
   return <div className="space-y-5">
     <div><h1 className="text-3xl font-bold text-slate-800">Gestionables por asesor</h1><p className="text-slate-500">Carga y ajuste de cuotas diarias de NOVONET.</p></div>
     <div className="flex gap-2">{[['cuotas', 'Cuotas por fecha'], ['carga', 'Cargar TXT']].map(([key, label]) => <button key={key} disabled={busy} onClick={() => setTab(key)} className={`px-4 py-2 rounded-xl font-bold ${tab === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{label}</button>)}</div>

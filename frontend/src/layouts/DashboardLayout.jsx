@@ -389,7 +389,7 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
-    accessCheck: (p) => ['ADMINISTRADOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'SUPERVISOR'].includes(p) },
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p) },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },

@@ -5,7 +5,7 @@ const { verificarToken } = require('../middleware/auth');
 const { fechaValida, validarFilas, parseTxt } = require('../shared/gestionablesCarga');
 const { esGestionableExpr } = require('../shared/etapas');
 router.use(verificarToken, (req, res, next) => {
-  if (!['ADMINISTRADOR', 'ANALISTA', 'COORDINADOR', 'GERENCIA', 'SUPERVISOR'].includes(req.user.perfil)) return res.status(403).json({ success: false, error: 'Acceso restringido a supervisión' });
+  if (!['ADMINISTRADOR', 'GERENCIA'].includes(req.user.perfil)) return res.status(403).json({ success: false, error: 'Acceso exclusivo para Administrador y Gerencia' });
   next();
 });
 router.get('/', async (req, res) => {

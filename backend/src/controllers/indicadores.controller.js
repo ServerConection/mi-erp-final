@@ -1113,6 +1113,20 @@ const getIndicadoresDashboard = async (req, res) => {
             ORDER BY fecha ASC
         `;
 
+        const queryOrigenesEtapasDia = `
+            SELECT COALESCE(NULLIF(TRIM(origen_tabla.source), ''), NULLIF(TRIM(mb.b_origen), ''), 'SIN ORIGEN') AS origen,
+                UPPER(COALESCE(NULLIF(TRIM(mb.b_etapa_de_la_negociacion), ''), 'SIN ETAPA')) AS etapa,
+                mb.b_creado_el_fecha::date::text AS fecha,
+                COUNT(DISTINCT mb.b_id)::int AS total
+            FROM public.vw_bitrix_novonet mb
+            LEFT JOIN public.bitrix_webhook_leads origen_tabla
+              ON origen_tabla.empresa = 'novonet'
+             AND BTRIM(origen_tabla.bitrix_id::text) = ${dealNovonet('mb')}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 3, 2
+        `;
+
         const queryPorDia = `
             SELECT
                 public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) AS fecha,
@@ -1168,7 +1182,7 @@ const getIndicadoresDashboard = async (req, res) => {
         // ── Lote 1: KPIs + agregaciones (6 queries) ─ Lote 2: tablas + backlogs ──
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).
         // queryMetasGlobales reemplaza a queryTerceraEdad + queryTarjeta (−1 query, −1 scan).
-        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resMetasGlobales]] = await Promise.all([
+        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resMetasGlobales, resOrigenesEtapasDia]] = await Promise.all([
             getEtapasCache(),
             Promise.all([
                 pool.query(queryKPI('e.supervisor'), values),
@@ -1178,6 +1192,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 pool.query(queryEmbudoPorDia, values),
                 pool.query(queryPorDia, values),
                 pool.query(queryMetasGlobales, values),
+                pool.query(queryOrigenesEtapasDia, values),
             ]),
         ]);
 
@@ -1391,6 +1406,8 @@ const getIndicadoresDashboard = async (req, res) => {
             estadosNetlife,
             graficoEmbudo,
             graficoEmbudoPorDia,
+            origenesEtapasDia: resOrigenesEtapasDia.rows,
+            periodoOrigenes: { desde, hasta },
             graficoBarrasDia: resDia.rows,
             graficoActivacionesDia: resActivacionesDia.rows, // NUEVO: activaciones por j_fecha_activacion_netlife
             etapasCRM: etapasCache.etapasCRM,

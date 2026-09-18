@@ -32,6 +32,7 @@ const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
 const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
+const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemillero'));
 const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
@@ -138,6 +139,7 @@ export default function App() {
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="gestionables-asesores" element={<GestionablesAsesores />} />
+            <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />

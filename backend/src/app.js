@@ -157,6 +157,7 @@ app.use('/api/auth',         forgotRoutes);
 app.use('/api',              testEmailRoutes);
 app.use('/api/indicadores',             indicadoresRoutes);
 app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
+app.use('/api/semillero', require('./routes/semillero.routes'));
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 app.use('/api/redes',             redesRoutes);
 app.use('/api/redes-velsa',       redesVelsaRoutes);

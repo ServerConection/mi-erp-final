@@ -53,6 +53,8 @@ export default function HomeModules() {
   const { tieneAcceso: accesoTareas } = useAccesoTareas();
 
   const modules = useMemo(() => [
+    { title: 'Indicadores Semillero', path: '/indicadores-semillero', icon: BarChart3, accent: 'verde', cat: 'analitica',
+      desc: 'Leads de Semillero: etapas, orígenes, responsables y evolución diaria.' },
     { title: "Indicadores", path: "/indicadores", icon: BarChart3, accent: "azul", cat: "analitica",
       desc: "Dashboard principal, KPIs y métricas clave en tiempo real." },
     { title: "Indicadores Velsa", path: "/indicadores-velsa", icon: BarChart3, accent: "naranja", cat: "analitica",

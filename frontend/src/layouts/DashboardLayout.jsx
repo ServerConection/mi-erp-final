@@ -337,6 +337,7 @@ const ALL_MENU_ITEMS = [
   { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet",  icon: "🔬", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Comparativa Sup.",           path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Indicadores VELSA",          path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
+  { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
   { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",    icon: "🔬", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
 
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)

@@ -1,6 +1,6 @@
 # Gestionables por asesor
 
-Módulo `/gestionables-asesores`, disponible como opción independiente del menú y en las tarjetas del dashboard exclusivamente para ADMINISTRADOR y GERENCIA. El backend también restringe la consulta, carga y actualización a estos perfiles.
+Módulo `/gestionables-asesores`, disponible como opción independiente del menú y en las tarjetas del dashboard para ADMINISTRADOR, GERENCIA y el usuario Andrés Rodríguez (`arodriguez`, ID 76). El backend también restringe la consulta, carga y actualización a estos perfiles y a ese ID específico; la excepción no habilita a otros supervisores.
 
 Utiliza la conexión `backend/src/config/dbErp.js` y la tabla existente `erp_database.gestionables_asesores`. No requiere una nueva tabla. Desplegar frontend y backend (monolito o CORE).
 

@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Send, UserPlus, Users } from 'lucide-react';
 import { chatApi, useSocketChat } from '../../hooks/useChat';
 import { Avatar, Cargando, ErrorBox, horaCorta } from './ui';
@@ -106,10 +106,22 @@ export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgre
           <div className="space-y-2">
             {mensajes.map((m, i) => {
               const anterior = mensajes[i - 1];
-              const mismoAutorSeguido = anterior && anterior.usuarioId === m.usuarioId
+              const fecha = new Date(m.createdAt);
+              const nuevoDia = !anterior || fecha.toLocaleDateString('es-EC')
+                !== new Date(anterior.createdAt).toLocaleDateString('es-EC');
+              const mismoAutorSeguido = !nuevoDia && anterior && anterior.usuarioId === m.usuarioId
                 && (new Date(m.createdAt) - new Date(anterior.createdAt)) < 5 * 60 * 1000;
               return (
-                <Burbuja key={m.id} m={m} mostrarAutor={conversacion.tipo === 'GRUPO' && !m.esMio && !mismoAutorSeguido} />
+                <Fragment key={m.id}>
+                  {nuevoDia && (
+                    <div className="flex justify-center py-3">
+                      <time dateTime={m.createdAt} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                        {fecha.toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </time>
+                    </div>
+                  )}
+                  <Burbuja m={m} mostrarAutor={conversacion.tipo === 'GRUPO' && !m.esMio && !mismoAutorSeguido} />
+                </Fragment>
               );
             })}
             <div ref={finRef} />

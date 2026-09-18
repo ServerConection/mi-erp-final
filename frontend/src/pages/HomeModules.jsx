@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
+import { puedeAccederGestionables } from '../utils/accesoGestionables';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -52,6 +53,8 @@ export default function HomeModules() {
   const { tieneAcceso: accesoTareas } = useAccesoTareas();
 
   const modules = useMemo(() => [
+    { title: 'Indicadores Semillero', path: '/indicadores-semillero', icon: BarChart3, accent: 'verde', cat: 'analitica',
+      desc: 'Leads de Semillero: etapas, orígenes, responsables y evolución diaria.' },
     { title: "Indicadores", path: "/indicadores", icon: BarChart3, accent: "azul", cat: "analitica",
       desc: "Dashboard principal, KPIs y métricas clave en tiempo real." },
     { title: "Indicadores Velsa", path: "/indicadores-velsa", icon: BarChart3, accent: "naranja", cat: "analitica",
@@ -168,7 +171,7 @@ export default function HomeModules() {
         const allowed = userRol === 'CONSULTOR'
           ? mod.rolesPermitidos?.includes('CONSULTOR')
           : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-        if (!allowed) return false;
+        if (mod.path === '/gestionables-asesores' ? !puedeAccederGestionables() : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);

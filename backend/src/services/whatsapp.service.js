@@ -10,6 +10,7 @@ const WaSchedulerService = require('./wa_scheduler.service');
 const pool = require('../config/db');
 const path = require('path');
 const fs   = require('fs');
+const { restoreLines } = require('./waBootRestore');
 
 let baileysManager = null;
 let campaignEngine = null;
@@ -139,7 +140,8 @@ const iniciarWhatsApp = async (appInstance) => {
 
       if (aRestaurar.length) {
         console.log('[WA] Restaurando', aRestaurar.length, 'línea(s) con sesión guardada...');
-        let ok = 0, fallidas = 0;
+        const requestedConcurrency = Number.parseInt(process.env.WA_BOOT_RESTORE_CONCURRENCY || '2', 10);
+        const concurrency = Math.min(3, Math.max(1, requestedConcurrency || 2));
         const retryRestore = line => {
           if (baileysManager.stopping || baileysManager.reconnectTimers[line.id]) return;
           const timer = setTimeout(async () => {
@@ -151,20 +153,18 @@ const iniciarWhatsApp = async (appInstance) => {
           timer.unref?.();
           baileysManager.reconnectTimers[line.id] = timer;
         };
-        for (const line of aRestaurar) {
-          if (baileysManager.stopping) break;
-          try {
-            await baileysManager.connect(line.id);
-            ok++;
-            // Pausa amplia entre líneas: no golpear DB/CPU ni la IP con todas a la vez
-            await new Promise(r => setTimeout(r, 4000));
-          }
-          catch (e) {
-            fallidas++;
+        const began = Date.now();
+        console.log('[WA] Paralelismo de restauraci?n:', concurrency);
+        const { started: ok, failed: fallidas } = await restoreLines(aRestaurar, {
+          concurrency,
+          shouldStop: () => baileysManager.stopping,
+          connect: line => baileysManager.connect(line.id),
+          onError: (line, e) => {
             console.warn('[WA] Error restaurando', line.name, ':', e.message);
             retryRestore(line);
-          }
-        }
+          },
+        });
+        console.log('[WA] Tiempo de preparaci?n de l?neas:', Date.now() - began, 'ms');
         console.log(`[WA] Restauración terminada: ${ok} iniciada(s), ${fallidas} con error`);
       }
     }

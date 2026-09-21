@@ -170,6 +170,17 @@ class BaileysManager {
     }
   }
 
+  _getBaileysVersion() {
+    // Share the in-flight request as well as its result across all lines.
+    if (!this._versionPromise) {
+      this._versionPromise = fetchLatestBaileysVersion().catch(error => {
+        this._versionPromise = null
+        throw error
+      })
+    }
+    return this._versionPromise
+  }
+
   async _loadLidMapFromDB() {
     try {
       const res = await query('SELECT lid_number, real_number FROM lid_mappings')
@@ -282,7 +293,8 @@ class BaileysManager {
     // Cargar el LidMap UNA sola vez (antes: query a la DB en cada reconexión
     // mientras estuviera vacío → carga innecesaria durante tormentas de reconexión)
     if (!this._lidMapLoaded) {
-      await this._loadLidMapFromDB()
+      this._lidMapPromise ||= this._loadLidMapFromDB()
+      await this._lidMapPromise
       this._lidMapLoaded = true
     }
 
@@ -352,7 +364,7 @@ class BaileysManager {
     } else {
       ;({ state, saveCreds } = await useMultiFileAuthState(authDir))
     }
-    const { version } = await fetchLatestBaileysVersion()
+    const { version } = await this._getBaileysVersion()
     // makeInMemoryStore fue eliminado en Baileys v7 → mini-store propio compatible
     const store = this._createMessageStore()
 

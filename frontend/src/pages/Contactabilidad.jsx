@@ -147,6 +147,7 @@ export default function Contactabilidad() {
   // --- Acciones -------------------------------------------------------------
   const forzarSync = async () => {
     setSincronizando(true);
+    setLoading(true);
     try {
       const params = filters.empresa ? `?empresa=${encodeURIComponent(filters.empresa)}` : '';
       const json = await pedir(`${BASE}/refrescar${params}`, { method: 'POST' });
@@ -160,8 +161,13 @@ export default function Contactabilidad() {
       avisar(e.message, 'error');
     } finally {
       setSincronizando(false);
+      setLoading(false);
     }
   };
+
+  // El boton principal hace una actualizacion completa para administradores:
+  // primero sincroniza Bitrix y despues vuelve a leer KPIs, filtros y tabla.
+  const actualizarTodo = () => (admin ? forzarSync() : cargar({ conSpinner: true }));
 
   const refrescarLead = async (fila) => {
     try {
@@ -281,7 +287,7 @@ export default function Contactabilidad() {
     <ContactabilidadToolbar
       ultimaCarga={ultimaCarga} cargando={loading} sincronizando={sincronizando}
       intervalo={intervalo} onIntervalo={setIntervalo}
-      onRefrescar={() => cargar({ conSpinner: true })} onForzar={forzarSync}
+      onRefrescar={actualizarTodo} onForzar={forzarSync}
       puedeForzar={admin} estado={estado} ahora={ahora} mensaje={mensaje} />
 
     <ContactabilidadFilters

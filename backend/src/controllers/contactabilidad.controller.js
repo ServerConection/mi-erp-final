@@ -241,7 +241,7 @@ async function refrescarLead(req, res) {
     const { rows } = await pool.query(`
       SELECT l.empresa, l.id_bitrix, l.ultimo_mensaje_cliente_at, l.ultimo_mensaje_asesor_at,
              l.mensajes_cliente_total, l.mensajes_asesor_total, l.pendiente_por, l.temperatura,
-             l.actualizado_at,
+             l.etapa_id, COALESCE(l.etapa_nombre, l.etapa_id) AS etapa_nombre, l.actualizado_at,
              (${expresionSeveridad('l', umbrales)}) AS severidad,
              (${expresionMinutosEspera('l')}) AS minutos_pendiente
       FROM contactabilidad_leads l WHERE l.empresa = $1 AND l.id_bitrix = $2

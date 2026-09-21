@@ -37,12 +37,30 @@ function crearRefrescador({
   if (!repository) throw new TypeError('repository es requerido');
 
   const porEmpresa = new Map(crms.map((crm) => [String(crm.empresa).toUpperCase(), crm]));
+  const cacheCatalogos = new Map();
+  const CACHE_CATALOGOS_MS = 5 * 60_000;
 
   const buscarCrm = (empresa) => {
     const crm = porEmpresa.get(String(empresa || '').toUpperCase());
     if (!crm) throw new Error(`Empresa ${empresa} no habilitada para Contactabilidad`);
     return crm;
   };
+
+  async function catalogos(crm) {
+    const previo = cacheCatalogos.get(crm.empresa);
+    if (previo && Date.now() - previo.at < CACHE_CATALOGOS_MS) return previo;
+    const [etapas, origenes] = await Promise.all([
+      typeof bitrix.listarEtapas === 'function' ? bitrix.listarEtapas(crm) : [],
+      typeof bitrix.listarOrigenes === 'function' ? bitrix.listarOrigenes(crm) : [],
+    ]);
+    const valor = {
+      at: Date.now(),
+      etapas: new Map(etapas.map((e) => [String(e.STATUS_ID), e.NAME || e.STATUS_ID])),
+      origenes: new Map(origenes.map((o) => [String(o.STATUS_ID), o.NAME || o.STATUS_ID])),
+    };
+    cacheCatalogos.set(crm.empresa, valor);
+    return valor;
+  }
 
   /**
    * Trae el chat del lead desde Bitrix, guarda los mensajes nuevos y recalcula
@@ -61,11 +79,38 @@ function crearRefrescador({
     if (!leadRows.length) {
       return { empresa: crm.empresa, id_bitrix: id, sin_lead: true, mensajes_nuevos: 0, ms: Date.now() - inicio };
     }
-    const etapaId = leadRows[0].etapa_id || null;
+    let etapaId = leadRows[0].etapa_id || null;
 
-    const chat = await bitrix.resolverChatLead(crm, { ID: id });
+    // El chat no contiene la etapa vigente. Consultar crm.deal.get evita que la
+    // tabla siga mostrando una etapa antigua hasta el siguiente ciclo largo.
+    let deal = { ID: id };
+    if (typeof bitrix.obtenerDeal === 'function') {
+      deal = await bitrix.obtenerDeal(crm, id) || deal;
+      etapaId = deal.STAGE_ID || etapaId;
+      if (typeof repository.actualizarDatosCrm === 'function') {
+        const nombres = await catalogos(crm);
+        let asesorNombre = null;
+        if (deal.ASSIGNED_BY_ID && typeof bitrix.obtenerUsuario === 'function') {
+          const usuario = await bitrix.obtenerUsuario(crm, deal.ASSIGNED_BY_ID);
+          asesorNombre = [usuario?.NAME, usuario?.LAST_NAME].filter(Boolean).join(' ').trim() || null;
+        }
+        await repository.actualizarDatosCrm(pool, {
+          empresa: crm.empresa,
+          id_bitrix: id,
+          asesor_id: deal.ASSIGNED_BY_ID ? String(deal.ASSIGNED_BY_ID) : null,
+          asesor_nombre: asesorNombre,
+          origen_id: deal.SOURCE_ID || null,
+          origen_nombre: deal.SOURCE_ID ? nombres.origenes.get(String(deal.SOURCE_ID)) || deal.SOURCE_ID : null,
+          etapa_id: etapaId,
+          etapa_nombre: etapaId ? nombres.etapas.get(String(etapaId)) || etapaId : null,
+        });
+      }
+    }
+
+    const chat = await bitrix.resolverChatLead(crm, deal);
     if (!chat?.chatId) {
-      return { empresa: crm.empresa, id_bitrix: id, mensajes_nuevos: 0, sin_chat: true, ms: Date.now() - inicio };
+      await recalcular(pool, crm.empresa, [id], origen);
+      return { empresa: crm.empresa, id_bitrix: id, etapa_id: etapaId, mensajes_nuevos: 0, sin_chat: true, ms: Date.now() - inicio };
     }
 
     const normalizados = (chat.messages || [])
@@ -91,6 +136,7 @@ function crearRefrescador({
     return {
       empresa: crm.empresa,
       id_bitrix: id,
+      etapa_id: etapaId,
       chat_id: chat.chatId,
       mensajes_leidos: normalizados.length,
       mensajes_nuevos: insertados,

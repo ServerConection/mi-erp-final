@@ -35,10 +35,9 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
       return url.protocol === 'https:' && url.hostname === 'novonet.bitrix24.es' && /^\/rest\/\d+\/[^/]+\/?$/.test(url.pathname);
     } catch { return false; }
   }
-  async function call(method, params) {
-    if (!configured()) throw new Error('BITRIX_NOTES_NOT_CONFIGURED');
+  async function callBase(base, method, params) {
     if (request) return request(method, params);
-    const base = env.BITRIX_NOVONET_URL.replace(/\/+$/, '');
+    if (!base) throw new Error('BITRIX_NOTES_NOT_CONFIGURED');
     const response = await fetch(`${base}/${method}.json`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(params), signal: AbortSignal.timeout(12000), redirect: 'error',
@@ -51,6 +50,10 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
     }
     return body;
   }
+  async function call(method, params) {
+    if (!configured()) throw new Error('BITRIX_NOTES_NOT_CONFIGURED');
+    return callBase((env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''), method, params);
+  }
   async function ensureSchema() {
     if (!schemaReady) {
       schemaReady = db.query(fs.readFileSync(path.join(__dirname, '../migrations/inbox_bitrix_notes.sql'), 'utf8'))
@@ -58,10 +61,13 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
     }
     return schemaReady;
   }
-  async function validateDeal(id) {
+  async function validateDeal(id, company) {
     if (!validId(id)) throw new Error('ID de negociación inválido');
-    const response = await call('crm.deal.get', {id: String(id).trim()});
-    if (String(response.result?.ID) !== String(id).trim()) throw new Error('Negociación no encontrada en NOVONET');
+    const comp = String(company || 'NOVONET').trim().toUpperCase();
+    const rawBase = comp === 'VELSA' ? (env.BITRIX_VELSA_URL || '') : (env.BITRIX_NOVONET_URL || '');
+    const base = rawBase.replace(/\/+$/, '');
+    const response = await callBase(base, 'crm.deal.get', {id: String(id).trim()});
+    if (String(response.result?.ID) !== String(id).trim()) throw new Error(`Negociación no encontrada en ${comp}`);
     return response.result;
   }
   async function persistIncoming({conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl,clientName,messageAt}) {

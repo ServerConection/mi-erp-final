@@ -64,4 +64,66 @@ const buscarPorBitrix = async (req, res) => {
   }
 };
 
-module.exports = { buscarPorBitrix };
+// ── GET /api/consultor/novonet-leads?fecha=YYYY-MM-DD ─────────────────────────
+// (o ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD para un rango)
+// Devuelve SOLO 5 campos, filtrando por fecha de creación del lead.
+const consultarNovonetPorFecha = async (req, res) => {
+  try {
+    const { fecha, desde, hasta } = req.query;
+
+    if (!fecha && !desde && !hasta) {
+      return res.status(400).json({
+        success: false,
+        error: 'Debes enviar el parámetro fecha=YYYY-MM-DD, o desde/hasta=YYYY-MM-DD'
+      });
+    }
+
+    const params = [];
+    let where;
+
+    if (fecha) {
+      params.push(String(fecha).trim());
+      where = `WHERE b_creado_el_fecha = $${params.length}`;
+    } else {
+      const condiciones = [];
+      if (desde) {
+        params.push(String(desde).trim());
+        condiciones.push(`b_creado_el_fecha >= $${params.length}`);
+      }
+      if (hasta) {
+        params.push(String(hasta).trim());
+        condiciones.push(`b_creado_el_fecha <= $${params.length}`);
+      }
+      where = `WHERE ${condiciones.join(' AND ')}`;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         b_creado_el_fecha        AS fecha_creacion,
+         b_id                     AS id_bitrix,
+         b_origen                 AS origen,
+         b_telefono               AS telefono,
+         b_etapa_de_la_negociacion AS etapa
+       FROM public.vw_bitrix_novonet
+       ${where}
+       ORDER BY b_creado_el_fecha DESC
+       LIMIT 5000`,
+      params
+    );
+
+    return res.json({
+      success: true,
+      total: result.rows.length,
+      data: result.rows
+    });
+
+  } catch (err) {
+    console.error('[consultor.controller] consultarNovonetPorFecha error:', err.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Fecha inválida o error de consulta. Formato esperado: YYYY-MM-DD'
+    });
+  }
+};
+
+module.exports = { buscarPorBitrix, consultarNovonetPorFecha };

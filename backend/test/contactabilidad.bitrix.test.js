@@ -46,6 +46,19 @@ test('consulta nombres de etapas del pipeline y datos del asesor', async () => {
   ]);
 });
 
+test('consulta una negociacion actual por id', async () => {
+  const llamadas = [];
+  const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {
+    llamadas.push({ method, params });
+    return { result: { ID: '585849', STAGE_ID: 'C19:UC_ABC' } };
+  } });
+
+  const deal = await bitrix.obtenerDeal({ empresa: 'NOVONET' }, '585849');
+
+  assert.equal(deal.STAGE_ID, 'C19:UC_ABC');
+  assert.deepEqual(llamadas, [{ method: 'crm.deal.get', params: { id: '585849' } }]);
+});
+
 test('consulta el catalogo de origenes con sus nombres visibles', async () => {
   const llamadas = [];
   const bitrix = crearClienteBitrix({ request: async (_crm, method, params) => {

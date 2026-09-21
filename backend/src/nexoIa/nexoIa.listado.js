@@ -17,13 +17,15 @@ function construirListado({ empresa, fechaCreacion = '', asesorNombre = '' }) {
     parametros.push(`%${asesorNombre}%`);
     condiciones.push(`l.asesor_nombre ILIKE $${parametros.length}`);
   }
-  const texto = `SELECT l.empresa,l.id_bitrix,l.nombre_cliente,l.asesor_nombre,l.etapa_nombre,l.etapa_id,l.fecha_creacion,l.pendiente_por,l.ultimo_mensaje_cliente_at,l.ultimo_mensaje_asesor_at,s.id sugerencia_id,s.respuesta_sugerida,s.creado_at sugerida_at,j.estado
+  const texto = `SELECT l.empresa,l.id_bitrix,l.nombre_cliente,l.asesor_nombre,l.etapa_nombre,l.etapa_id,l.fecha_creacion,l.pendiente_por,l.ultimo_mensaje_cliente_at,l.ultimo_mensaje_asesor_at,
+      GREATEST(l.ultimo_mensaje_cliente_at,l.ultimo_mensaje_asesor_at,l.fecha_creacion) ultima_actividad,
+      s.id sugerencia_id,s.respuesta_sugerida,s.creado_at sugerida_at,j.estado
     FROM contactabilidad_leads l
     LEFT JOIN LATERAL(SELECT * FROM nexo_ia_sugerencias s WHERE s.empresa=l.empresa AND s.id_bitrix=l.id_bitrix ORDER BY s.creado_at DESC LIMIT 1)s ON TRUE
     LEFT JOIN nexo_ia_jobs j ON j.id=s.job_id
     WHERE ${condiciones.join(' AND ')}
-    ORDER BY l.fecha_creacion DESC,l.id_bitrix DESC
-    LIMIT 200`;
+    ORDER BY GREATEST(l.ultimo_mensaje_cliente_at,l.ultimo_mensaje_asesor_at,l.fecha_creacion) DESC NULLS LAST,
+             l.fecha_creacion DESC,l.id_bitrix DESC`;
   return { texto, parametros };
 }
 

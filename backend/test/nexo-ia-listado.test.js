@@ -2,10 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { construirListado } = require('../src/nexoIa/nexoIa.listado');
 
-test('lista desde el 15 de agosto y ordena por creacion del lead descendente', () => {
+test('lista todos desde el 15 de agosto y ordena por actividad descendente', () => {
   const { texto, parametros } = construirListado({ empresa: 'NOVONET' });
   assert.match(texto, /l\.fecha_creacion>=DATE '2026-08-15'/);
-  assert.match(texto, /ORDER BY l\.fecha_creacion DESC,l\.id_bitrix DESC/);
+  assert.match(texto, /GREATEST\(l\.ultimo_mensaje_cliente_at,l\.ultimo_mensaje_asesor_at,l\.fecha_creacion\) ultima_actividad/);
+  assert.match(texto, /ORDER BY GREATEST\(l\.ultimo_mensaje_cliente_at,l\.ultimo_mensaje_asesor_at,l\.fecha_creacion\) DESC/);
+  assert.doesNotMatch(texto, /LIMIT 200/);
   assert.deepEqual(parametros, ['NOVONET']);
 });
 

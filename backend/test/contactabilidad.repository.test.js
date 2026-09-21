@@ -61,3 +61,17 @@ test('actualiza historicamente nombres de origen sin cambiar el id tecnico', asy
     ['FB Messenger - Novo', 'Base 593-987133635'],
   ]);
 });
+
+test('actualiza etapa y reinicia su fecha de ingreso solo cuando cambia', async () => {
+  const client = clienteRegistrador();
+  const repository = crearRepositorioContactabilidad();
+
+  await repository.actualizarDatosCrm(client, {
+    empresa: 'NOVONET', id_bitrix: '585849', asesor_id: '20', asesor_nombre: 'Ana',
+    origen_id: '8', origen_nombre: 'Base', etapa_id: 'C19:CALLBACK', etapa_nombre: 'Volver a llamar',
+  });
+
+  assert.match(client.llamadas[0].sql, /etapa_id IS DISTINCT FROM \$7/);
+  assert.match(client.llamadas[0].sql, /etapa_nombre = COALESCE\(\$8, etapa_nombre\)/);
+  assert.deepEqual(client.llamadas[0].params.slice(0, 2), ['NOVONET', '585849']);
+});

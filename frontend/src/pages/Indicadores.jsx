@@ -1847,6 +1847,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={8} label="Ingresos Jot día"     meta={METAS_COMERCIALES.ingresosJotDia}  real={stats.ventasDiaForm}                    color="border-l-orange-500" tooltip={TIP.ventasDiaForm} />
             <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" tooltip={TIP.ingresosReales} />
+            <KpiMini index={19} label="Ingresos Jot Efectivo" real={stats.ingresosJotEfectivo} color="border-l-lime-500" tooltip={TIP.ingresosJotEfectivo} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" tooltip={TIP.activaMes} />

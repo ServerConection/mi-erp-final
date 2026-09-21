@@ -324,8 +324,11 @@ const queryKPI = (columna, filters) => {
     -- más condición que el rango de fecha (mismo fix que Novonet).
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-      AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
     ) AS ingresos_reales,
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+    ) AS ingresos_jot_efectivo,
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${CRM_DATE} = ${JF_DATE}
@@ -393,7 +396,7 @@ const queryKPI = (columna, filters) => {
     -- calculaban en JS (mergeBacklog) con denominadores distintos, y por eso
     -- los % de Velsa nunca cuadraban con los de Novonet.
     ROUND( COALESCE(
-      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::numeric
+      COUNT(*) FILTER (WHERE ${JF_DATE} BETWEEN $1::date AND $2::date)::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
           AND ${esGestionableExpr('mv.etapa_crm')}
@@ -428,7 +431,6 @@ const queryKPI = (columna, filters) => {
     ROUND( COALESCE(
       COUNT(*) FILTER (
         WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
       )::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
@@ -441,7 +443,6 @@ const queryKPI = (columna, filters) => {
       -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
       / NULLIF(COUNT(*) FILTER (
           WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-          AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
         ), 0)
     , 0) * 100, 2) AS tasa_instalacion,
 
@@ -460,7 +461,6 @@ const queryKPI = (columna, filters) => {
     ROUND( COALESCE(
       COUNT(*) FILTER (
         WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
-        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
       )::numeric
       / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
           WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
@@ -951,10 +951,10 @@ LIMIT 6000
     const asesores     = mergeBacklog(resAses.rows, resBkAses.rows);
 
     const tRow = resTercera.rows[0] || {};
-    const porcentajeTerceraEdad = Number(tRow.total_activos) > 0
-      ? parseFloat(((Number(tRow.total_tercera) / Number(tRow.total_activos)) * 100).toFixed(2)) : 0;
-
     const taRow = resTarjeta.rows[0] || {};
+    // Todos los porcentajes comerciales usan Ingresos Tot. Jot como base.
+    const porcentajeTerceraEdad = Number(taRow.total_jotform) > 0
+      ? parseFloat(((Number(tRow.total_tercera) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
     const porcentajeTarjeta = Number(taRow.total_jotform) > 0
       ? parseFloat(((Number(taRow.total_tarjeta) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
 
@@ -1085,7 +1085,7 @@ async function getReporte180Velsa(req, res) {
 
     const qKPIs = `
       SELECT
-        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}) AS ingresos_jot,
+        COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date) AS ingresos_jot,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_activas,
         COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${VENTA_SERVICIO_VELSA_MV}) AS ventas_servicio,
         -- FIX (2026-08-19): denominador unificado a solo fecha de creación CRM
@@ -1096,7 +1096,7 @@ async function getReporte180Velsa(req, res) {
           / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_descarte,
         ROUND(COALESCE(
-          COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')})::numeric
+          COUNT(*) FILTER (WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date)::numeric
           / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date AND ${esGestionableExpr('mv.etapa_crm')}),0)
         ,0)*100,2) AS pct_efectividad,
         ROUND(COALESCE(

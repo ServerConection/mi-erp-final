@@ -3,6 +3,7 @@ export function calcularStatsIndicadores(data = {}) {
   const n = filas.length || 1;
   const suma = campo => filas.reduce((acc, fila) => acc + Number(fila[campo] || 0), 0);
   const totalJotform = suma('ingresos_reales');
+  const totalJotEfectivo = suma('ingresos_jot_efectivo');
   const totalActivos = suma('real_mes');
   const totalActivaMes = suma('activa_mes');
   const totalBacklog = Math.max(0, totalActivos - totalActivaMes);
@@ -14,6 +15,7 @@ export function calcularStatsIndicadores(data = {}) {
     gestionables: totalGestionables,
     regularizar: suma('por_regularizar'),
     ingresosJotform: totalJotform,
+    ingresosJotEfectivo: totalJotEfectivo,
     ventasDelDia: suma('ventas_del_dia'),
     ventasDiaForm: suma('ventas_dia_form'),
     ventaSeguimiento: Math.max(0, totalJotform - suma('ventas_del_dia')),

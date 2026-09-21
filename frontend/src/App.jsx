@@ -30,6 +30,7 @@ const ResumenNovonet       = lazy(() => import("./pages/ResumenNovonet"));
 const ResumenVelsa         = lazy(() => import("./pages/ResumenVelsa"));
 const JotFormulario        = lazy(() => import("./pages/JotFormulario"));
 const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
+const Llamadas = lazy(() => import("./pages/Llamadas"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
 const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemillero'));
@@ -137,6 +138,7 @@ export default function App() {
             <Route path="appsheet"                  element={<AppSheetModule />} />
             <Route path="guia-planes"               element={<Guiaplanesmarzo />} />
             <Route path="cobertura"                element={<CoverageChecker />} />
+            <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="gestionables-asesores" element={<GestionablesAsesores />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />

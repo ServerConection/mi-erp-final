@@ -329,6 +329,7 @@ const GROUP_IDS = [
 ];
 
 const ALL_MENU_ITEMS = [
+  { name: 'Llamadas', path: '/llamadas', icon: '☎', accessCheck: p => !!p && !['ASESOR', 'USUARIO'].includes(p.trim().toUpperCase()) },
   { name: "Inicio", path: "/", icon: "🏠", permiso: null },
 
   // ── Indicadores ──────────────────────────────────────────────────────────
@@ -496,13 +497,13 @@ export default function DashboardLayout() {
         const rutaTV = empresa === 'NOVONET'
           ? '/seguimiento-ventas'
           : empresa === 'VELSA' ? '/seguimiento-velsa' : '/';
-        if (location.pathname !== rutaTV) navigate(rutaTV, { replace: true });
+        if (location.pathname !== rutaTV && location.pathname !== '/llamadas') navigate(rutaTV, { replace: true });
       }
 
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
         setPermisos(parsedUser.permisos);
       } else {
-        if (!RUTAS_PUBLICAS.includes(location.pathname)) {
+        if (!RUTAS_PUBLICAS.includes(location.pathname) && !(location.pathname === '/llamadas' && perfil && !['ASESOR', 'USUARIO'].includes(perfil))) {
           console.warn("Sin permisos definidos → cerrando sesión");
           navigate("/login");
         }
@@ -559,7 +560,7 @@ export default function DashboardLayout() {
     if (perfilUpper === 'TV') {
       const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : null);
       const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : '/');
-      if (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName) {
+      if (itemActual.path !== '/llamadas' && (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName)) {
         navigate(rutaTV, { replace: true });
       }
       return;
@@ -590,6 +591,7 @@ export default function DashboardLayout() {
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
+      if (item.path === '/llamadas') return true;
       if (item.group !== 'seguimiento') return false;
       if (empresaUpper === 'NOVONET') return item.name === 'Seguimiento NOVONET';
       if (empresaUpper === 'VELSA') return item.name === 'Seguimiento VELSA';

@@ -10,6 +10,10 @@ const {
 } = require('../controllers/llamadas.controller');
 
 const { verificarToken, noAsesor } = require('../middleware/auth');
+// Analytics has a dedicated guard for both ASESOR and legacy USUARIO advisors.
+router.use('/analitica', require('./llamadasAnalitica.routes').createRouter({
+  pool: require('../config/db'), verify: verificarToken,
+}));
 
 // Todo el módulo es solo para supervisión (igual que Automarcador): los
 // asesores no cargan bases, solo reciben llamadas desde el Automarcador.

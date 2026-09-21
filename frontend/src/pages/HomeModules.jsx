@@ -52,6 +52,7 @@ export default function HomeModules() {
   const { tieneAcceso: accesoTareas } = useAccesoTareas();
 
   const modules = useMemo(() => [
+    { title: 'Llamadas', path: '/llamadas', icon: PhoneCall, accent: 'cian', cat: 'analitica', desc: 'Reporte 360 de Netlife y Ecuanet: respuesta, horarios, agentes y exportación Excel.', llamadas: true },
     { title: "Indicadores", path: "/indicadores", icon: BarChart3, accent: "azul", cat: "analitica",
       desc: "Dashboard principal, KPIs y métricas clave en tiempo real." },
     { title: "Indicadores Velsa", path: "/indicadores-velsa", icon: BarChart3, accent: "naranja", cat: "analitica",
@@ -148,15 +149,16 @@ export default function HomeModules() {
       const perfil = (up.perfil || '').toUpperCase();
       const empresa = (up.empresa || '').toUpperCase();
       if (perfil === 'TV') {
-        if (empresa === 'NOVONET') return modules.filter(m => m.path === '/vista-asesor');
-        if (empresa === 'VELSA') return modules.filter(m => m.path === '/vista-asesor-velsa');
-        return [];
+        if (empresa === 'NOVONET') return modules.filter(m => m.path === '/vista-asesor' || m.path === '/llamadas');
+        if (empresa === 'VELSA') return modules.filter(m => m.path === '/vista-asesor-velsa' || m.path === '/llamadas');
+        return modules.filter(m => m.path === '/llamadas');
       }
     } catch (e) {
       // ignore parse errors and fall back to normal filtering
     }
 
     return modules.filter(mod => {
+      if (mod.llamadas) return !!userRol && !['ASESOR', 'USUARIO'].includes(String(userRol).trim().toUpperCase()) && (!q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q));
       // Módulo de Tareas: el acceso lo decide el área/cargo en la BD, no el perfil.
       // Mientras se resuelve la consulta no se muestra, para evitar parpadeo.
       if (mod.requiereTareas) {

@@ -165,9 +165,10 @@ export default function Contactabilidad() {
     }
   };
 
-  // El boton principal hace una actualizacion completa para administradores:
-  // primero sincroniza Bitrix y despues vuelve a leer KPIs, filtros y tabla.
-  const actualizarTodo = () => (admin ? forzarSync() : cargar({ conSpinner: true }));
+  // El boton principal relee en segundos todo el tablero (incluida la tabla).
+  // El barrido profundo de Bitrix queda en su boton separado porque implica
+  // varias llamadas por lead y puede tardar minutos sin que la UI tenga culpa.
+  const actualizarTodo = () => cargar({ conSpinner: true });
 
   const refrescarLead = async (fila) => {
     try {

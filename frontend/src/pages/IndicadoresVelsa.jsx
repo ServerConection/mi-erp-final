@@ -1534,7 +1534,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={8}  variant="stone" label="Ingresos Jot día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}                   color="border-l-orange-500" tooltip={TIP.ventasDiaForm} />
             <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotSeg, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosTotJot, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" tooltip={TIP.ingresosReales} />
-            <KpiMini index={19} variant="stone" label="Ingresos Jot Efectivo" real={stats.ingresosJotEfectivo} color="border-l-lime-600" tooltip={TIP.ingresosJotEfectivo} />
+            <KpiMini index={19} variant="stone" label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-600" tooltip={TIP.ingresosJotEfectivo} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(METAS_COMERCIALES_VELSA.activasMes, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" tooltip={TIP.activaMes} />

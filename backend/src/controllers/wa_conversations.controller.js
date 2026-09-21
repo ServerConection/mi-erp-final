@@ -568,11 +568,12 @@ async function startFromBitrix(req, res) {
 
     if (bitrixId) {
       const lineOwner = await query('SELECT u.empresa AS line_empresa FROM lines l LEFT JOIN usuarios u ON u.id=l.created_by WHERE l.id=$1', [lineId])
-      if (companyOf(lineOwner.rows[0] || {}, req.user) !== 'NOVONET') {
-        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox está disponible para líneas NOVONET' })
+      const company = companyOf(lineOwner.rows[0] || {}, req.user)
+      if (!BITRIX_WEBHOOKS[company]) {
+        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getInboxBitrixNotes().validateDeal(bitrixId) }
-      catch (_) { return res.status(400).json({ success: false, error: 'No se pudo validar la negociación en NOVONET. Revisa el ID e intenta nuevamente.' }) }
+      try { await getInboxBitrixNotes().validateDeal(bitrixId, company) }
+      catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
     }
 
     // Registrar la identidad real del número en WhatsApp (maneja LID) para
@@ -647,11 +648,12 @@ async function setBitrixId(req, res) {
     if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
 
     if (bitrixId) {
-      if (companyOf(owned, req.user) !== 'NOVONET') {
-        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox está disponible para líneas NOVONET' })
+      const company = companyOf(owned, req.user)
+      if (!BITRIX_WEBHOOKS[company]) {
+        return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getInboxBitrixNotes().validateDeal(bitrixId) }
-      catch (_) { return res.status(400).json({ success: false, error: 'No se pudo validar la negociación en NOVONET. Revisa el ID e intenta nuevamente.' }) }
+      try { await getInboxBitrixNotes().validateDeal(bitrixId, company) }
+      catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
     }
 
     await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId || null, id])

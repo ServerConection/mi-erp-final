@@ -3,9 +3,10 @@ const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 
-// ── Bitrix: solo NOVONET; la credencial vive exclusivamente en el entorno ──
+// ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
   NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
+  VELSA:   (process.env.BITRIX_VELSA_URL || '').replace(/\/+$/, ''),
 }
 
 // Llama a un método REST de Bitrix según la empresa del usuario

@@ -12,24 +12,6 @@ const API = `${ORIGIN}/api/wa`;
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 const isImage = (msg) => msg.type === "image" || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
 
-// Empresa del usuario (para construir el enlace correcto a Bitrix)
-const USER_PROFILE = (() => {
-  try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
-  catch { return {}; }
-})();
-const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
-const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
-// Perfiles gerenciales (ven todos los chats/líneas de su empresa)
-const CAN_PICK_LINE = ["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "ANALISTA"].includes(USER_PERFIL);
-const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
-const BITRIX_DEAL_BASE = {
-  VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
-  NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
-};
-const bitrixDealUrl = (dealId) => {
-  const base = BITRIX_DEAL_BASE[USER_EMPRESA];
-  return base ? `${base}/${dealId}/` : null;
-};
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -63,6 +45,26 @@ const timeAgo = (ts) => {
 // bandeja completa. Sin dealId (uso normal en /whatsapp/inbox) el
 // comportamiento es exactamente el de siempre.
 export default function WaInbox({ dealId = null } = {}) {
+  // Empresa del usuario (para construir el enlace correcto a Bitrix)
+  const USER_PROFILE = (() => {
+    try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
+    catch { return {}; }
+  })();
+  const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
+  const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
+  // Perfiles gerenciales (ven todos los chats/líneas de su empresa)
+  const CAN_PICK_LINE = ["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "ANALISTA"].includes(USER_PERFIL);
+  const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
+  const BITRIX_DEAL_BASE = {
+    VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
+    NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
+  };
+  const bitrixDealUrl = (dealId) => {
+    const base = BITRIX_DEAL_BASE[USER_EMPRESA];
+    return base ? `${base}/${dealId}/` : null;
+  };
+  const singleDealConversation = Boolean(dealId) && !IS_ADMIN;
+
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading]             = useState(true);
   const [selected, setSelected]           = useState(null);
@@ -102,20 +104,14 @@ export default function WaInbox({ dealId = null } = {}) {
         setLines(Array.isArray(d?.data) ? d.data : []);
       } catch { /* ignore */ }
     })();
-  }, []);
+  }, [CAN_PICK_LINE]);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
   const loadConvs = useCallback(async (lineId = "") => {
     const request = ++listRequest.current;
     try {
-      // Modo "negociación" (dealId presente): se filtra por bitrix_deal_id en
-      // vez de por línea, y de lo que devuelva el backend nos quedamos solo
-      // con la más reciente. Si por algún motivo quedaron varias
-      // conversaciones vinculadas al mismo Deal (p. ej. una prueba vieja),
-      // las demás no se muestran acá — siguen visibles desde el Inbox
-      // completo, fuera de Bitrix. El backend igual sigue aplicando sus
-      // reglas de visibilidad por perfil: esto solo agrega un filtro más.
+      // Administradores ven todas las conversaciones del Deal; otros perfiles ven una.
       const params = new URLSearchParams();
       if (dealId) params.set("bitrix_deal_id", dealId);
       else if (lineId) params.set("line_id", lineId);
@@ -126,14 +122,14 @@ export default function WaInbox({ dealId = null } = {}) {
       const d = await r.json();
       if (request !== listRequest.current) return;
       const data = asArray(d);
-      const scoped = dealId ? data.filter(c => String(c.bitrix_deal_id) === String(dealId)).slice(0, 1) : data;
+      const scoped = dealId ? data.filter(c => String(c.bitrix_deal_id) === String(dealId)).slice(0, singleDealConversation ? 1 : undefined) : data;
       setConversations(scoped);
     } catch (e) {
       console.error("[WaInbox] Error cargando:", e);
     } finally {
       setLoading(false);
     }
-  }, [dealId, search, filter]);
+  }, [dealId, search, filter, singleDealConversation]);
 
   // Recargar al cambiar el filtro de línea/usuario
   useEffect(() => {
@@ -161,7 +157,7 @@ export default function WaInbox({ dealId = null } = {}) {
       setConversations(prev => {
         const existing = prev.find(c => c.id === conv.id);
         const next = [{ ...existing, ...conv }, ...prev.filter(c => c.id !== conv.id)];
-        return dealId ? next.slice(0, 1) : next;
+        return singleDealConversation ? next.slice(0, 1) : next;
       });
     };
     const onMessage = (msg) => {
@@ -200,7 +196,7 @@ export default function WaInbox({ dealId = null } = {}) {
     socket.on("conversation:merged", onMerged);
     socket.on("connect", onConnect);
     return () => { socket.off("conversation:new", onConversation); socket.off("message:new", onMessage); socket.off("message:status", onStatus); socket.off("conversation:merged", onMerged); socket.off("connect", onConnect); };
-  }, [dealId, loadConvs, lineFilter]);
+  }, [dealId, loadConvs, lineFilter, singleDealConversation]);
 
   useEffect(() => {
     if (selected) loadMessages(selected.id);
@@ -360,7 +356,7 @@ export default function WaInbox({ dealId = null } = {}) {
       });
       const d = await r.json();
       if (!d.success) { alert(d.error || "No se pudo iniciar la conversación"); return; }
-      if (!dealId || String(d.data.bitrix_deal_id) === String(dealId)) setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)].slice(0, dealId ? 1 : undefined));
+      if (!dealId || String(d.data.bitrix_deal_id) === String(dealId)) setConversations(prev => [d.data, ...prev.filter(c => c.id !== d.data.id)].slice(0, singleDealConversation ? 1 : undefined));
       if (!dealId || String(d.data.bitrix_deal_id) === String(dealId)) setSelected(d.data);
       setBitrixModal(null); setBitrixId(""); setNewPhone("");
     } catch (e) {
@@ -416,7 +412,7 @@ export default function WaInbox({ dealId = null } = {}) {
               negociación (acotado a un solo Deal), así que se ocultan. */}
           {!dealId && (
             <>
-              <input type="text" placeholder="Buscar…" value={search} onChange={e => setSearch(e.target.value)}
+              <input type="text" placeholder="Nombre, teléfono o ID Bitrix…" value={search} onChange={e => setSearch(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
 
               {/* Filtro por usuario/línea (admin y supervisor) */}

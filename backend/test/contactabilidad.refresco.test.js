@@ -60,6 +60,36 @@ test('recalcula aunque no lleguen mensajes nuevos: la espera depende del reloj',
   assert.equal(recalculos, 1);
 });
 
+test('consulta y persiste la etapa vigente antes de refrescar los mensajes', async () => {
+  const pool = poolFalso();
+  const actualizados = [];
+  const etapasMensaje = [];
+  const refrescador = crearRefrescador({
+    pool, crms: [CRM],
+    bitrix: {
+      obtenerDeal: async () => ({ ID: '77', STAGE_ID: 'C19:CALLBACK', SOURCE_ID: '8', ASSIGNED_BY_ID: '20' }),
+      listarEtapas: async () => [{ STATUS_ID: 'C19:CALLBACK', NAME: 'Volver a llamar' }],
+      listarOrigenes: async () => [{ STATUS_ID: '8', NAME: 'Base' }],
+      obtenerUsuario: async () => ({ NAME: 'Ana', LAST_NAME: 'Paz' }),
+      resolverChatLead: async () => ({ chatId: '900', users: [{ id: '5', connector: true }], messages: [
+        { id: '1', author_id: '5', text: 'hola', date: '2026-08-28T10:00:00Z' },
+      ] }),
+    },
+    repository: {
+      actualizarDatosCrm: async (_client, lead) => actualizados.push(lead),
+      insertarMensaje: async (_client, mensaje) => { etapasMensaje.push(mensaje.etapa_id); return { rowCount: 1 }; },
+    },
+    recalcular: async () => {},
+  });
+
+  const res = await refrescador.refrescarLead('NOVONET', '77');
+
+  assert.equal(actualizados[0].etapa_nombre, 'Volver a llamar');
+  assert.equal(actualizados[0].asesor_nombre, 'Ana Paz');
+  assert.deepEqual(etapasMensaje, ['C19:CALLBACK']);
+  assert.equal(res.etapa_id, 'C19:CALLBACK');
+});
+
 test('un chat sin lead ingerido no explota ni recalcula', async () => {
   const pool = poolFalso({ porChat: [] });
   let recalculos = 0;

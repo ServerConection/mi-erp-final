@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
+import { puedeAccederGestionables } from '../utils/accesoGestionables';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -122,6 +123,9 @@ export default function HomeModules() {
     { title: "Redes VELSA", path: "/redes-velsa", icon: Flag, accent: "naranja", cat: "equipo",
       desc: "Monitoreo y gestión de redes VELSA — orígenes, agencias e inversión.",
       rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
+    { title: "Gestionables por asesor", path: "/gestionables-asesores", icon: ClipboardList, accent: "azul", cat: "equipo",
+      desc: "Carga cuotas diarias por TXT y ajusta los permitidos de cada asesor por fecha.",
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
@@ -167,7 +171,7 @@ export default function HomeModules() {
         const allowed = userRol === 'CONSULTOR'
           ? mod.rolesPermitidos?.includes('CONSULTOR')
           : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-        if (!allowed) return false;
+        if (mod.path === '/gestionables-asesores' ? !puedeAccederGestionables() : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);

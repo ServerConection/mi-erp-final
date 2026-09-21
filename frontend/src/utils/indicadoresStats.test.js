@@ -43,3 +43,17 @@ test('descarte total es ponderado: descartes totales sobre gestionables totales'
   assert.equal(stats.gestionables, 2267);
   assert.equal(stats.descartePorc, '45.0');
 });
+
+test('separa ingresos Jot totales de los efectivos y calcula con el total', () => {
+  const stats = calcularStatsIndicadores({
+    asesores: [
+      { gestionables: 20, ingresos_reales: 12, ingresos_jot_efectivo: 8, real_mes: 6 },
+      { gestionables: 10, ingresos_reales: 3, ingresos_jot_efectivo: 2, real_mes: 0 },
+    ],
+  });
+
+  assert.equal(stats.ingresosJotform, 15);
+  assert.equal(stats.ingresosJotEfectivo, 10);
+  assert.equal(stats.efectividad, '50.0');
+  assert.equal(stats.tasaInstalacion, '40.0');
+});

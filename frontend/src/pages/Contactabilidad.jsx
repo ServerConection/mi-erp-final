@@ -147,6 +147,7 @@ export default function Contactabilidad() {
   // --- Acciones -------------------------------------------------------------
   const forzarSync = async () => {
     setSincronizando(true);
+    setLoading(true);
     try {
       const params = filters.empresa ? `?empresa=${encodeURIComponent(filters.empresa)}` : '';
       const json = await pedir(`${BASE}/refrescar${params}`, { method: 'POST' });
@@ -160,8 +161,14 @@ export default function Contactabilidad() {
       avisar(e.message, 'error');
     } finally {
       setSincronizando(false);
+      setLoading(false);
     }
   };
+
+  // El boton principal relee en segundos todo el tablero (incluida la tabla).
+  // El barrido profundo de Bitrix queda en su boton separado porque implica
+  // varias llamadas por lead y puede tardar minutos sin que la UI tenga culpa.
+  const actualizarTodo = () => cargar({ conSpinner: true });
 
   const refrescarLead = async (fila) => {
     try {
@@ -281,7 +288,7 @@ export default function Contactabilidad() {
     <ContactabilidadToolbar
       ultimaCarga={ultimaCarga} cargando={loading} sincronizando={sincronizando}
       intervalo={intervalo} onIntervalo={setIntervalo}
-      onRefrescar={() => cargar({ conSpinner: true })} onForzar={forzarSync}
+      onRefrescar={actualizarTodo} onForzar={forzarSync}
       puedeForzar={admin} estado={estado} ahora={ahora} mensaje={mensaje} />
 
     <ContactabilidadFilters

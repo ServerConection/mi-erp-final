@@ -40,6 +40,30 @@ function crearRepositorioContactabilidad() {
     ]);
   }
 
+  /** Actualiza los campos mutables del CRM sin tocar los contadores calculados. */
+  async function actualizarDatosCrm(client, lead) {
+    return client.query(`
+      UPDATE contactabilidad_leads
+      SET asesor_id = COALESCE($3, asesor_id),
+          asesor_nombre = COALESCE($4, asesor_nombre),
+          origen_id = COALESCE($5, origen_id),
+          origen_nombre = COALESCE($6, origen_nombre),
+          etapa_ingreso_at = CASE
+            WHEN etapa_id IS DISTINCT FROM $7 THEN NOW()
+            ELSE etapa_ingreso_at
+          END,
+          etapa_id = COALESCE($7, etapa_id),
+          etapa_nombre = COALESCE($8, etapa_nombre),
+          ultima_sincronizacion_at = NOW(),
+          actualizado_at = NOW()
+      WHERE empresa = $1 AND id_bitrix = $2
+      RETURNING empresa, id_bitrix, etapa_id, etapa_nombre
+    `, [
+      lead.empresa, lead.id_bitrix, lead.asesor_id, lead.asesor_nombre,
+      lead.origen_id, lead.origen_nombre, lead.etapa_id, lead.etapa_nombre,
+    ]);
+  }
+
   async function actualizarNombresOrigen(client, empresa, origenes) {
     if (!origenes?.length) return { rowCount: 0 };
     const ids = origenes.map((origen) => String(origen.id));
@@ -56,7 +80,7 @@ function crearRepositorioContactabilidad() {
     `, [empresa, ids, nombres]);
   }
 
-  return { upsertLead, insertarMensaje, actualizarNombresOrigen };
+  return { upsertLead, insertarMensaje, actualizarDatosCrm, actualizarNombresOrigen };
 }
 
 module.exports = { crearRepositorioContactabilidad };

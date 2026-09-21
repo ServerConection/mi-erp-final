@@ -5,6 +5,7 @@ import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/Feedba
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { fetchConSesion } from "../utils/sesion";
+import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
@@ -1154,13 +1155,12 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     </ResponsiveContainer>
   );
 
-  const CustomEmbudoLabel = ({ x, y, width, value }) => !value ? null : <text x={x + width / 2} y={y - 6} fill="#1c1917" textAnchor="middle" fontSize={9} fontWeight="900">{value}</text>;
 
   const GraficoEmbudo = () => (
     <div className="flex gap-4 h-full">
       <div className="flex-1">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
+          <ComposedChart
             data={dataEmbudoPorDia}
             margin={{ top: 24, right: 10, left: 0, bottom: 34 }}
             barCategoryGap="22%"
@@ -1178,12 +1178,16 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
                 fill={colorEtapaEmbudo(etapa)}
                 radius={index === etapasEmbudoOrdenadas.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
-                {index === etapasEmbudoOrdenadas.length - 1 && (
-                  <LabelList dataKey="_total" content={CustomEmbudoLabel} />
-                )}
+
               </Bar>
             ))}
-          </BarChart>
+            {/* Una sola serie de totales: etiqueta independiente de las etapas vac?as. */}
+            <Line dataKey="_total" stroke="none" dot={false} activeDot={false}
+              isAnimationActive={false} tooltipType="none" legendType="none">
+              <LabelList dataKey="_total" position="top" offset={8}
+                style={{ fill: '#475569', fontSize: 10, fontWeight: 900 }} />
+            </Line>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] shrink-0 flex flex-col gap-1.5 py-1 pr-1">
@@ -1530,6 +1534,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={8}  variant="stone" label="Ingresos Jot día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDiaForm}                   color="border-l-orange-500" tooltip={TIP.ventasDiaForm} />
             <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotSeg, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosTotJot, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" tooltip={TIP.ingresosReales} />
+            <KpiMini index={19} variant="stone" label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-600" tooltip={TIP.ingresosJotEfectivo} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(METAS_COMERCIALES_VELSA.activasMes, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" tooltip={TIP.activaMes} />
@@ -1684,6 +1689,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             </ExpandableChart>
           </div>
 
+          <TablaOrigenesEtapas filas={data.origenesEtapasDia} periodo={data.periodoOrigenes} loading={loading} />
           {/* Tablas */}
           {/* Misma estructura que Novonet (Excel de gerencia). Velsa no tiene
               equipos: todo el personal responde a las dos supervisoras. */}

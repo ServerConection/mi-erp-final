@@ -120,7 +120,7 @@ const hace = (iso, ahora) => {
   return `hace ${Math.round(s / 86400)} d`;
 };
 
-export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo = 5000 }) {
+export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo = 5000, trabajando = false }) {
   const [salud, setSalud] = useState(null);
   const [abierto, setAbierto] = useState(false);
   // Reloj propio: evita llamar Date.now() durante el render (regla de pureza
@@ -147,9 +147,9 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
     return () => { vivo = false; clearInterval(t); };
   }, [empresa, idBitrix, api, headers, intervalo]);
 
-  let estado = 'cargando';
-  if (salud?.error) estado = 'alerta';
-  else if (salud) {
+  let estado = trabajando ? 'trabajando' : 'cargando';
+  if (!trabajando && salud?.error) estado = 'alerta';
+  else if (!trabajando && salud) {
     const atascado = !!salud.pendiente_mas_antiguo && !!ahora &&
       (ahora - new Date(salud.pendiente_mas_antiguo)) > ATASCO_MS;
     if (!salud.worker || !salud.habilitado) estado = 'durmiendo';
@@ -182,7 +182,13 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
           padding: '4px 12px 4px 4px', borderRadius: 999,
           background: st.fondo, border: `1.5px solid ${st.borde}`, color: st.color,
         }}>
-        <Robot estado={estado} color={st.color} />
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <Robot estado={estado} color={st.color} />
+          {estado === 'trabajando' && <span aria-hidden="true" style={{
+            position: 'absolute', right: -2, top: -2, fontSize: 19, lineHeight: 1,
+            filter: 'drop-shadow(0 1px 1px white)', animation: 'nxr-pulso 1.1s ease-in-out infinite',
+          }}>🧠</span>}
+        </span>
         <span style={{ display: 'grid', textAlign: 'left', lineHeight: 1.15 }}>
           <b style={{ fontSize: 12.5 }}>{st.texto}</b>
           <span style={{ fontSize: 10.5, opacity: .8 }}>
@@ -208,6 +214,7 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
               <tbody>
                 {[
                   ['Worker (servidor)', salud.worker ? 'Encendido' : 'APAGADO'],
+                  ['Generación automática', salud.automatico ? 'Encendida' : 'Apagada'],
                   [`Habilitada en ${empresa}`, salud.habilitado ? 'Si' : 'NO'],
                   ['Modelo', salud.modelo || '—'],
                   ['En cola', salud.pendientes],

@@ -12,7 +12,7 @@ const INTERVALOS = [
 
 /**
  * Barra de actualizacion.
- *  - "Actualizar" relee la base con los filtros actuales (instantaneo).
+ *  - "Actualizar" relee en segundos KPIs, alertas y tabla desde la base.
  *  - "Traer de Bitrix" fuerza el ciclo contra el CRM (solo administradores,
  *    con cooldown en el servidor para no romper el limite de la API).
  *  - El auto-refresco se pausa solo cuando la pestaña no esta visible.
@@ -32,7 +32,8 @@ export default function ContactabilidadToolbar({
     display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
     padding: 12, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginTop: 14,
   }}>
-    <button type="button" onClick={onRefrescar} disabled={cargando} style={{ ...primario, opacity: cargando ? 0.6 : 1 }}>
+    <button type="button" onClick={onRefrescar} disabled={cargando} title="Recarga todo el tablero y la tabla"
+      style={{ ...primario, opacity: cargando ? 0.6 : 1 }}>
       {cargando ? 'Actualizando…' : '⟳ Actualizar'}
     </button>
 

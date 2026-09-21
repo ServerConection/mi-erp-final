@@ -6,6 +6,7 @@ import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
+import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
 import { ValorBarra } from "../utils/etiquetaBarra";
@@ -1514,7 +1515,7 @@ ${asesoresPDF.length>0?`
     <div className="flex gap-4 h-full">
       <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={dataEmbudoPorDia} margin={{top:24,right:8,left:0,bottom:34}} barCategoryGap="22%">
+          <ComposedChart data={dataEmbudoPorDia} margin={{top:24,right:8,left:0,bottom:34}} barCategoryGap="22%">
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
             <XAxis dataKey="fechaDia" axisLine={false} tickLine={false}
               tick={{fill:'#94a3b8',fontSize:9,fontWeight:700}}/>
@@ -1524,12 +1525,16 @@ ${asesoresPDF.length>0?`
               <Bar key={etapa} dataKey={(row) => row[etapa] || 0} name={etapa} stackId="embudoDia" isAnimationActive={false}
                 fill={colorEtapaEmbudo(etapa)}
                 radius={index === etapasEmbudoOrdenadas.length - 1 ? [6,6,0,0] : [0,0,0,0]}>
-                {index === etapasEmbudoOrdenadas.length - 1 && (
-                  <LabelList dataKey="_total" position="top" style={{fill:'#475569',fontSize:9,fontWeight:900}}/>
-                )}
+
               </Bar>
             ))}
-          </BarChart>
+            {/* Una sola serie de totales: etiqueta independiente de las etapas vac?as. */}
+            <Line dataKey="_total" stroke="none" dot={false} activeDot={false}
+              isAnimationActive={false} tooltipType="none" legendType="none">
+              <LabelList dataKey="_total" position="top" offset={8}
+                style={{ fill: '#475569', fontSize: 10, fontWeight: 900 }} />
+            </Line>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="w-[180px] overflow-y-auto flex flex-col gap-1.5 py-1 pr-1">
@@ -1842,6 +1847,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={8} label="Ingresos Jot día"     meta={METAS_COMERCIALES.ingresosJotDia}  real={stats.ventasDiaForm}                    color="border-l-orange-500" tooltip={TIP.ventasDiaForm} />
             <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" tooltip={TIP.ingresosReales} />
+            <KpiMini index={19} label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-500" tooltip={TIP.ingresosJotEfectivo} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" tooltip={TIP.activaMes} />
@@ -2008,6 +2014,7 @@ ${asesoresPDF.length>0?`
             </ExpandableChart>
           </div>
 
+          <TablaOrigenesEtapas filas={data.origenesEtapasDia} periodo={data.periodoOrigenes} loading={loading} />
           {/* Tablas */}
           {/* Tablas con la estructura pedida por gerencia (Excel dato.xlsx).
               Las viejas (HorizontalTable) siguen en el código y las usa Velsa. */}

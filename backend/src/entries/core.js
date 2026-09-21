@@ -11,6 +11,8 @@ const { buildBaseApp, finalize, express } = require('../shared/createApp');
 const startHttp = require('../shared/startHttp');
 
 const app = buildBaseApp({ serviceName: 'core' });
+app.use('/api/semillero', require('../routes/semillero.routes'));
+app.use('/api/gestionables-asesores', require('../routes/gestionables.routes'));
 
 // ── Auth / usuarios ──────────────────────────────────────────
 app.use('/api/auth',      require('../routes/auth.routes'));

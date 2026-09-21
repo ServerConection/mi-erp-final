@@ -45,7 +45,10 @@ export const TOOLTIPS_INDICADORES = {
     "Ventas que NO se cerraron el mismo día: necesitaron seguimiento. Es Ingresos Tot. Jot menos Ingresos CRM día.",
 
   ingresosReales:
-    "Ingresos JOT del rango, excluyendo Preservicio, Fin de gestión, Desiste de Servicio, Duplicado y Sin Asunto. Se acepta también la variante Desiste del Servicio. La etapa CRM no excluye ingresos JOT.",
+    "Todos los ingresos JOT registrados dentro del rango, sin excluir estados. Es la base usada para los cálculos del tablero.",
+
+  ingresosJotEfectivo:
+    "Indicador visual de ingresos JOT que excluye Preservicio, Fin de gestión, Desiste de Servicio y sus variantes, Duplicado y Sin Asunto.",
 
   activaMes:
     "De las activadas en el rango, las que ADEMÁS se registraron en Jotform dentro del mismo rango: vendido y activado en el mismo mes.",

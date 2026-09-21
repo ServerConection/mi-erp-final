@@ -627,7 +627,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 ) AS ventas_crm,
                 0 AS ventas_del_dia, -- calculado por self-join externo (ver queryVentasDia*)
                 ROUND( COALESCE(
-                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')})::numeric
+                    COUNT(*) FILTER (WHERE _jf_date BETWEEN $1::date AND $2::date)::numeric
                     / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         -- CAMBIO (2026-07-28): denominador de efectividad por FECHA DE CREACION
                         -- (_bc_date) en vez de fecha de cerrado. Antes: WHERE _bcerrado_date BETWEEN ...
@@ -653,12 +653,12 @@ const getIndicadoresDashboard = async (req, res) => {
     AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
 ) AS gestionables,
                 COUNT(*) FILTER (
-                    -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta
-                    -- DUPLICADO ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION.
-                    -- Antes era COUNT(*) sin más condición que el rango de fecha.
+                    WHERE _jf_date BETWEEN $1::date AND $2::date
+                ) AS ingresos_reales,
+                COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date
                     AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
-                ) AS ingresos_reales,
+                ) AS ingresos_jot_efectivo,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS activas,
@@ -733,7 +733,6 @@ const getIndicadoresDashboard = async (req, res) => {
                     -- Numerador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
                     COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
-                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     )::numeric
                     / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
@@ -746,7 +745,6 @@ const getIndicadoresDashboard = async (req, res) => {
                     -- Denominador = INGRESOS JOTFORM limpios (misma regla que ingresos_reales).
                     / NULLIF(COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
-                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     ), 0)
                 , 0) * 100, 2) AS tasa_instalacion,
                 ROUND(COALESCE(
@@ -764,7 +762,6 @@ const getIndicadoresDashboard = async (req, res) => {
                     -- GESTION — misma regla que "ingresos_reales".
                     COUNT(*) FILTER (
                         WHERE _jf_date BETWEEN $1::date AND $2::date
-                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                     )::numeric
                     / NULLIF(COUNT(DISTINCT b_id) FILTER (
                         WHERE _bc_date BETWEEN $1::date AND $2::date
@@ -1385,12 +1382,12 @@ const getIndicadoresDashboard = async (req, res) => {
         // ── Desempaquetar la query consolidada de metas globales ────────────────
         const rowMetas = resMetasGlobales.rows[0] || {};
         const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
-        const totalActivosTercera = Number(rowMetas.total_activos       || 0);
         const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
         const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
 
-        const porcentajeTerceraEdad = totalActivosTercera > 0
-            ? Number(((totalTerceraEdad / totalActivosTercera) * 100).toFixed(2)) : 0;
+        // Todos los porcentajes comerciales usan Ingresos Tot. Jot como base.
+        const porcentajeTerceraEdad = totalJotformTarjeta > 0
+            ? Number(((totalTerceraEdad / totalJotformTarjeta) * 100).toFixed(2)) : 0;
         const porcentajeTarjeta = totalJotformTarjeta > 0
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
@@ -1731,7 +1728,6 @@ const getReporte180 = async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-                    AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
                 ) AS ingresos_jot,
                 COUNT(*) FILTER (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1754,7 +1750,6 @@ const getReporte180 = async (req, res) => {
                 ROUND(COALESCE(
                     COUNT(*) FILTER (
                         WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-                        AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
                     )::numeric / NULLIF(COUNT(DISTINCT mb.b_id) FILTER (
                         WHERE ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
                         AND ${esGestionableExpr('mb.b_etapa_de_la_negociacion')}

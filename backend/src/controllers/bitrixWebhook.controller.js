@@ -126,6 +126,12 @@ const recibirLead = async (req, res) => {
             ELSE EXCLUDED.${c}
           END`;
         }
+        // FIX (2026-09-22, descuadre Redes vs Bitrix): hay automatizaciones que
+        // mandan {{Origen}} vacío. Antes eso BORRABA el origen guardado y el
+        // lead caía en "SIN ORIGEN". Un origen vacío nunca pisa uno existente.
+        if (c === 'source') {
+          return `source = COALESCE(NULLIF(BTRIM(EXCLUDED.source), ''), bitrix_webhook_leads.source)`;
+        }
         return `${c} = EXCLUDED.${c}`;
       })
       .concat(['updated_at = NOW()'])

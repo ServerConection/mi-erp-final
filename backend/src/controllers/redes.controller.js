@@ -11,12 +11,16 @@ const { normalizarFechaInversion, resolverCanalInversion, resolverCanalRespaldo,
 // DUPLICADO / REMARKETING / REGULARIZACION).
 // ─────────────────────────────────────────────────────────────────────────────
 const {
-    esLeadTotalExpr,
     esGestionableExpr,
     esDescarteExpr,
     ETAPAS_NO_GESTIONABLES,
     esPorRegularizarExpr
 } = require('../shared/etapas');
+
+// En Redes, "Leads totales" representa el total bruto de negociaciones de
+// Bitrix para los orígenes y fechas elegidos. No se excluyen etapas; las reglas
+// de descarte siguen aplicándose solamente a "Negociables" y sus porcentajes.
+const esLeadTotalExpr = () => 'TRUE';
 
   const getFiltroFechas = (query) => {
     const hoy = new Date().toISOString().split('T')[0];
@@ -167,9 +171,7 @@ const {
               WHEN 6 THEN 'Sábado'
             END AS dia_semana,
             (${canalExpr}) AS canal_inversion,
-            -- N LEADS: excluye DUPLICADO / REMARKETING / REGULARIZACION.
-            -- Antes usaba ILIKE '%DUPLICADO%' / '%REGULARIZA%' (patrón parcial,
-            -- sin REMARKETING). Ahora usa la lista oficial de shared/etapas.js.
+            -- N LEADS: total bruto, sin excluir ninguna etapa de Bitrix.
             COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${esLeadTotalExpr(etapaWebhookExpr)}) AS n_leads,
             COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%ATC%' OR ${etapaWebhookExpr} ILIKE '%SOPORTE%') AS atc_soporte,
             COUNT(DISTINCT w.bitrix_id) FILTER (WHERE ${etapaWebhookExpr} ILIKE '%FUERA DE COBERTURA%') AS fuera_cobertura,
@@ -491,7 +493,7 @@ const {
       // Leads y etapas desde Bitrix — solo filas de leads (j_id_bitrix IS NULL)
       const totalesRes = await pool.query(`
         SELECT b_origen,
-          -- Excluye DUPLICADO / REMARKETING / REGULARIZACION del total de leads.
+          -- Total bruto de leads: no excluye ninguna etapa de Bitrix.
           COUNT(*) FILTER (WHERE ${esLeadTotalExpr('b_etapa_de_la_negociacion')}) AS total_leads,
           COUNT(*) FILTER (WHERE b_etapa_de_la_negociacion ILIKE '%ATC%'
             OR b_etapa_de_la_negociacion ILIKE '%SOPORTE%'

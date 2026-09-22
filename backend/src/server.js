@@ -9,6 +9,7 @@ const { initConsultorVelsaRefresh } = require('./jobs/refreshConsultorVelsa.cron
 const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
+const { initReconciliacionBitrix } = require('./jobs/reconciliacionBitrix.cron');
 const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
 const { initContactabilidadTiempoReal } = require('./jobs/contactabilidadTiempoReal.cron');
 const { initNexoIa } = require('./jobs/nexoIa.cron');
@@ -54,6 +55,7 @@ server.listen(process.env.PORT, async () => {
   initContactabilidadTiempoReal();
   initNexoIa();
   initWinTrackerSync();
+  initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
   iniciarWhatsApp();
 });
 

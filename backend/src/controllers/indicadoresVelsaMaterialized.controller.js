@@ -115,7 +115,9 @@ const COL_SUPERVISOR = 'mv.supervisor';
 // Arranca con el valor viejo y solo cambia si la funcion existe de verdad en la
 // base. Asi el modulo sigue funcionando si el SQL del catalogo todavia no se
 // corrio (deploy antes que la migracion), en vez de tumbar todo Velsa.
-let EXPR_SUPERVISOR = COL_SUPERVISOR;
+// FIX 2026-09-22: David Briones ya no es supervisor. Si el catalogo aun no
+// esta instalado, el CRM no puede devolverlo como supervisor.
+let EXPR_SUPERVISOR = `(CASE WHEN mv.supervisor ILIKE '%briones%' THEN 'SIN ASIGNAR' ELSE mv.supervisor END)`;
 
 pool.query(`SELECT to_regprocedure('public.supervisor_velsa(text,date)') IS NOT NULL AS existe`)
   .then(({ rows }) => {
@@ -128,8 +130,8 @@ pool.query(`SELECT to_regprocedure('public.supervisor_velsa(text,date)') IS NOT 
         mv.codigo_asesor,
         COALESCE(mv.fecha_registro_jotform, mv.fecha_creacion_crm)::date
       ),
-      mv.supervisor
-    )`;
+      'SIN ASIGNAR'
+    )`;  // FIX 2026-09-22: sin fallback al CRM — si el asesor no esta en el catalogo, SIN ASIGNAR
     console.log('[VELSA] supervisor tomado del catalogo del mes');
   })
   .catch((e) => console.warn('[VELSA] no se pudo verificar el catalogo de asesores:', e.message));

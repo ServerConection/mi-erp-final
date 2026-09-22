@@ -26,6 +26,10 @@ async function handleDealResponsibleChanged(req, res) {
     return res.status(400).json({ ok: false, error: 'faltan entity_id o responsable_id' });
   }
 
+  // Bitrix manda el campo "Persona responsable" como "user_211307",
+  // hay que quitar el prefijo "user_" para quedarnos con el ID numérico
+  const responsableIdLimpio = responsableId.replace(/^user_/, '');
+
   try {
     const chatsResp = await axios.get(`${BITRIX_WEBHOOK_BASE}/imopenlines.crm.chat.get`, {
       params: {
@@ -49,7 +53,7 @@ async function handleDealResponsibleChanged(req, res) {
         const transferResp = await axios.get(`${BITRIX_WEBHOOK_BASE}/imopenlines.bot.session.transfer`, {
           params: {
             CHAT_ID: chatId,
-            USER_ID: responsableId,
+            USER_ID: responsableIdLimpio,
             LEAVE: 'N',
             CLIENT_ID: BITRIX_BOT_CLIENT_ID,
           },
@@ -62,7 +66,7 @@ async function handleDealResponsibleChanged(req, res) {
     }
 
     const okCount = resultados.filter((r) => r.ok).length;
-    console.log(`[chat-transfer] ${entityType} ${entityId} -> responsable ${responsableId}: ${okCount}/${resultados.length} chats transferidos`);
+    console.log(`[chat-transfer] ${entityType} ${entityId} -> responsable ${responsableIdLimpio}: ${okCount}/${resultados.length} chats transferidos`);
 
     return res.json({ ok: true, transferred: okCount, detalle: resultados });
   } catch (err) {

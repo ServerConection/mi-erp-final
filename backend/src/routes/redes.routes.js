@@ -16,7 +16,7 @@ const {
   getResumenPorAgencia,
 } = require('../controllers/redesWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
-const { forceSyncInversion } = require('../controllers/redesWintracker.controller');
+const { forceSyncInversionNovonet } = require('../controllers/redesWintracker.controller');
 
 // ─── AUTENTICACIÓN OBLIGATORIA PARA TODO EL MÓDULO ──────────────────────────
 // Hasta ahora las 7 rutas de monitoreo eran públicas: cualquiera con la URL
@@ -42,6 +42,6 @@ router.post('/agencias',         noAsesor, upsertAgenciaCanal);
 router.get('/inversion',         getInversionAgencias);
 router.post('/inversion',        noAsesor, upsertInversionAgencias);
 router.get('/resumen-agencias',  getResumenPorAgencia);
-router.post('/sync-inversion',   noAsesor, forceSyncInversion);
+router.post('/sync-inversion',   noAsesor, forceSyncInversionNovonet);
 
 module.exports = router;

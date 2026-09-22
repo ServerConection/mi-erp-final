@@ -37,6 +37,7 @@ test('responde 502 cuando ninguna agencia pudo sincronizarse', async () => {
   await handler({ body: {} }, res);
   assert.equal(res.statusCode, 502);
   assert.equal(res.body.success, false);
+  assert.match(res.body.message, /VIDIKA: Sin API key válida/);
 });
 
 test('responde 409 mientras otra sincronización está en curso', async () => {

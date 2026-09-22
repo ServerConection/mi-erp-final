@@ -1,10 +1,14 @@
 const legacy = require('./redes.controller');
 const pool = require('../config/db');
-const { esLeadTotalExpr, esGestionableExpr, esDescarteExpr, esPorRegularizarExpr } = require('../shared/etapas');
+const { esGestionableExpr, esDescarteExpr, esPorRegularizarExpr } = require('../shared/etapas');
 const { fechaWebhookExpr, etapaWebhookExpr, horaWebhookExpr } = require('../shared/webhookRedes');
 const { normalizarOrigenSql, agenciaSql } = require('../shared/origenesRedes');
 const { construirForecastAgencias, resolverCanalInversion, agregarFilasSoloInversion } = require('../shared/inversionRedes');
 const { asegurarInversionReciente } = require('../services/inversionFreshness.service');
+
+// En Redes, el total debe coincidir con el total bruto de Bitrix para el rango
+// y la agencia seleccionados. Las etapas solo afectan a "Negociables".
+const esLeadTotalExpr = () => 'TRUE';
 
 const FECHA = fechaWebhookExpr('w');
 const ETAPA = etapaWebhookExpr('w');
@@ -21,7 +25,37 @@ const seleccion = q => String(q.canales||'').split(',').map(x=>x.trim()).filter(
 const joinCatalogo = `LEFT JOIN LATERAL (SELECT lc.agencia FROM novonet_lineas_canal lc WHERE ${ORIGEN_CATALOGO}=${ORIGEN} ORDER BY (BTRIM(lc.origen)=BTRIM(w.source)) DESC,lc.actualizado_en DESC NULLS LAST LIMIT 1) m ON TRUE`;
 const filtroAgencia = (items, offset=2) => items.length ? {sql:`AND agencia IN (${items.map((_,i)=>`$${offset+i+1}`).join(',')})`,params:items}:{sql:'',params:[]};
 
-const baseCte = `WITH base AS (SELECT w.*,${FECHA} fecha_crm,${HORA} hora_crm,${ETAPA} etapa_crm,${AGENCIA} agencia FROM bitrix_webhook_leads w ${joinCatalogo} WHERE w.empresa='novonet')`;
+// El webhook es la fuente más fresca, pero puede no contener negocios antiguos
+// que nunca emitieron un evento. Contactabilidad mantiene el barrido completo
+// de la categoría 19; se usa solo para completar IDs ausentes, sin duplicarlos.
+const ORIGEN_LEAD = normalizarOrigenSql("COALESCE(l.origen_nombre,l.origen_id,'')");
+const joinCatalogoLead = `LEFT JOIN LATERAL (
+  SELECT lc.agencia FROM novonet_lineas_canal lc
+  WHERE ${ORIGEN_CATALOGO}=${ORIGEN_LEAD}
+  ORDER BY (BTRIM(lc.origen)=BTRIM(COALESCE(l.origen_nombre,l.origen_id,''))) DESC,
+           lc.actualizado_en DESC NULLS LAST LIMIT 1
+) ml ON TRUE`;
+const AGENCIA_LEAD = `COALESCE(NULLIF(${agenciaSql('ml.agencia')},''),NULLIF(BTRIM(COALESCE(l.origen_nombre,l.origen_id)),''),'SIN ORIGEN')`;
+const baseCte = `WITH base AS (
+  SELECT w.bitrix_id,w.source,w.city,w.motivo_atc,
+         ${FECHA} fecha_crm,${HORA} hora_crm,${ETAPA} etapa_crm,${AGENCIA} agencia
+  FROM bitrix_webhook_leads w ${joinCatalogo}
+  WHERE w.empresa='novonet'
+  UNION ALL
+  SELECT l.id_bitrix AS bitrix_id,
+         COALESCE(l.origen_nombre,l.origen_id) AS source,
+         NULL::text AS city,NULL::text AS motivo_atc,
+         l.fecha_creacion::date AS fecha_crm,
+         EXTRACT(HOUR FROM l.fecha_creacion)::int AS hora_crm,
+         UPPER(BTRIM(COALESCE(l.etapa_nombre,l.etapa_id,''))) AS etapa_crm,
+         ${AGENCIA_LEAD} AS agencia
+  FROM contactabilidad_leads l ${joinCatalogoLead}
+  WHERE l.empresa='NOVONET'
+    AND NOT EXISTS (
+      SELECT 1 FROM bitrix_webhook_leads w2
+      WHERE w2.empresa='novonet' AND BTRIM(w2.bitrix_id)=BTRIM(l.id_bitrix)
+    )
+)`;
 const metricas = `COUNT(*) FILTER(WHERE ${esLeadTotalExpr('etapa_crm')}) n_leads,
  COUNT(*) FILTER(WHERE ${esGestionableExpr('etapa_crm')}) negociables,
  COUNT(*) FILTER(WHERE etapa_crm~*'ATC|SOPORTE') atc_soporte,

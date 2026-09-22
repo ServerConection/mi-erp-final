@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
  * Indicador de vida de NEXO IA.
  *
  * Estados:
- *  - durmiendo : el worker esta apagado (NEXO_IA_ENABLED) o la empresa no esta
+ *  - durmiendo : el worker manual esta apagado o la empresa no esta
  *                habilitada. El robot duerme con zzz.
  *  - trabajando: hay jobs en cola o generandose. El robot baila.
  *  - activa    : todo encendido y sin cola. El robot esta despierto y respira.
@@ -161,7 +161,7 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
 
   const motivo = !salud ? 'Consultando el estado del servicio…'
     : salud.error ? salud.error
-    : !salud.worker ? 'El worker esta apagado (falta NEXO_IA_ENABLED=true en el servidor).'
+    : !salud.worker ? 'El worker manual esta apagado (NEXO_IA_WORKER=false en el servidor).'
     : !salud.habilitado ? `NEXO IA esta deshabilitada para ${empresa}. Actívala en ⚙ Configurar.`
     : estado === 'alerta' ? 'Hay borradores atascados o con error. Revisa el detalle.'
     : estado === 'trabajando' ? 'Generando borradores en este momento.'
@@ -193,9 +193,11 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
           <b style={{ fontSize: 12.5 }}>{st.texto}</b>
           <span style={{ fontSize: 10.5, opacity: .8 }}>
             {salud && !salud.error
-              ? (salud.pendientes || salud.generando)
-                ? `${salud.pendientes + salud.generando} en cola`
-                : `ultima ${hace(salud.ultima_sugerencia_at, ahora)}`
+              ? salud.generando
+                ? `${salud.generando} generando`
+                : salud.pendientes
+                  ? `${salud.pendientes} en cola`
+                  : `ultima ${hace(salud.ultima_sugerencia_at, ahora)}`
               : 'NEXO IA'}
           </span>
         </span>
@@ -214,7 +216,7 @@ export default function NexoIaRobot({ empresa, idBitrix, api, headers, intervalo
               <tbody>
                 {[
                   ['Worker (servidor)', salud.worker ? 'Encendido' : 'APAGADO'],
-                  ['Generación automática', salud.automatico ? 'Encendida' : 'Apagada'],
+                  ['Modo de generación', 'Solo manual'],
                   [`Habilitada en ${empresa}`, salud.habilitado ? 'Si' : 'NO'],
                   ['Modelo', salud.modelo || '—'],
                   ['En cola', salud.pendientes],

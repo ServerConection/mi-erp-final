@@ -1,10 +1,14 @@
 const legacy = require('./redes.controller');
 const pool = require('../config/db');
-const { esLeadTotalExpr, esGestionableExpr, esDescarteExpr, esPorRegularizarExpr } = require('../shared/etapas');
+const { esGestionableExpr, esDescarteExpr, esPorRegularizarExpr } = require('../shared/etapas');
 const { fechaWebhookExpr, etapaWebhookExpr, horaWebhookExpr } = require('../shared/webhookRedes');
 const { normalizarOrigenSql, agenciaSql } = require('../shared/origenesRedes');
 const { construirForecastAgencias, resolverCanalInversion, agregarFilasSoloInversion } = require('../shared/inversionRedes');
 const { asegurarInversionReciente } = require('../services/inversionFreshness.service');
+
+// En Redes, el total debe coincidir con el total bruto de Bitrix para el rango
+// y la agencia seleccionados. Las etapas solo afectan a "Negociables".
+const esLeadTotalExpr = () => 'TRUE';
 
 const FECHA = fechaWebhookExpr('w');
 const ETAPA = etapaWebhookExpr('w');

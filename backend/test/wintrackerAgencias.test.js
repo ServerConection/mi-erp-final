@@ -153,3 +153,20 @@ test('consulta las agencias en paralelo para que una API lenta no bloquee las de
   liberar();
   await promesa;
 });
+
+test('permite sincronizar solamente las agencias de NOVONET', async () => {
+  const urls = [];
+  const resultado = await syncTodasLasAgencias({
+    from: '2026-09-22', to: '2026-09-22', agencies: ['arts', 'vidika'],
+    env: { WINTRACKER_APIKEY_ARTS: 'a', WINTRACKER_APIKEY_VIDIKA: 'v' },
+    fetchImpl: async (url) => {
+      urls.push(String(url));
+      return { ok: true, json: async () => ({ ok: true, consolidado_diario: [{ fecha: '2026-09-22', inversion: 1 }] }) };
+    },
+    db: { query: async () => ({ rows: [] }) },
+  });
+
+  assert.equal(resultado.agencias, 2);
+  assert.deepEqual(resultado.resultados.map((item) => item.agency), ['arts', 'vidika']);
+  assert.equal(urls.length, 2);
+});

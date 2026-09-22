@@ -514,9 +514,9 @@ export default function ReporteComercialCore() {
   const [kpiComercial, setKpiComercial] = useState({ supervisores: [], asesores: [], total: null });
   // Monitoreo: SOLO lo creado hoy (Bitrix o Jotform), con meta diaria
   const [kpiDiario, setKpiDiario] = useState({ supervisores: [], asesores: [], total: null });
-  const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [...ORIGENES_INICIALES_NOVONET], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtros, setFiltros]           = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   // filtrosAplicados = los que realmente usa la consulta; solo se actualizan al presionar "APLICAR FILTROS"
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [...ORIGENES_INICIALES_NOVONET], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: [], supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", canal: [], idBitrix: "", gestionables: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
   const [filtros180, setFiltros180]     = useState({ fechaDesde: getPrimerDiaMesEcuador(), fechaHasta: getFechaHoyEcuador(), asesor: "", supervisor: "", estadoNetlife: "", estadoRegularizacion: "", etapaCRM: [], etapaJotform: "", fechaActivacionDesde: "", fechaActivacionHasta: "" });
 
   // ── Filtros INDEPENDIENTES para el gráfico de activaciones por fecha de activación ──

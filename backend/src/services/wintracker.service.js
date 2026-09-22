@@ -164,18 +164,22 @@ function fechaEcuador(now = new Date()) {
   return `${valor('year')}-${valor('month')}-${valor('day')}`;
 }
 
-async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = fetch, db = pool, now = new Date() } = {}) {
+async function syncTodasLasAgencias({ from, to, agencies, env = process.env, fetchImpl = fetch, db = pool, now = new Date() } = {}) {
   const hoy = fechaEcuador(now);
   const hastaFinal = to || hoy;
   const desdeFinal = from || restarDias(hastaFinal, DIAS_VENTANA);
   const rango = { from: desdeFinal, to: hastaFinal };
-  const configuradas = crearConfiguracionAgencias(env);
+  const alcance = Array.isArray(agencies) && agencies.length
+    ? AGENCIAS_SOPORTADAS.filter((cfg) => agencies.includes(cfg.agency))
+    : AGENCIAS_SOPORTADAS;
+  const permitidas = new Set(alcance.map((cfg) => cfg.agency));
+  const configuradas = crearConfiguracionAgencias(env).filter((cfg) => permitidas.has(cfg.agency));
   const configuracionPorAgencia = new Map(configuradas.map((cfg) => [cfg.agency, cfg]));
 
   // Se conserva una fila de resultado por cada agencia soportada. Antes las
   // agencias sin API key desaparecían silenciosamente y el botón podía decir
   // "actualizado" aunque VIDIKA nunca hubiera sido consultada.
-  const sincronizaciones = AGENCIAS_SOPORTADAS.map(async (soportada) => {
+  const sincronizaciones = alcance.map(async (soportada) => {
     const cfg = configuracionPorAgencia.get(soportada.agency);
     if (!cfg) {
       const error = `Falta configurar ${soportada.apikeyEnv} en este servicio.`;
@@ -202,7 +206,7 @@ async function syncTodasLasAgencias({ from, to, env = process.env, fetchImpl = f
   return {
     from: desdeFinal,
     to: hastaFinal,
-    agencias: AGENCIAS_SOPORTADAS.length,
+    agencias: alcance.length,
     configuradas: configuradas.length,
     resultados,
   };

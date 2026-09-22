@@ -1698,6 +1698,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               titulo="KPI POR SUPERVISOR"
               filas={kpiComercial.supervisores}
               total={kpiComercial.total}
+              contexto={kpiComercial}
             />
           </div>
           <div className="mb-8">
@@ -1705,6 +1706,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               titulo="KPI POR ASESOR"
               filas={kpiComercial.asesores}
               total={kpiComercial.total}
+              contexto={kpiComercial}
               agrupado={true}
             />
           </div>

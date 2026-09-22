@@ -2023,6 +2023,7 @@ ${asesoresPDF.length>0?`
               titulo="KPI POR SUPERVISOR"
               filas={kpiComercial.supervisores}
               total={kpiComercial.total}
+              contexto={kpiComercial}
             />
           </div>
           <div className="mb-8">
@@ -2030,6 +2031,7 @@ ${asesoresPDF.length>0?`
               titulo="KPI POR ASESOR"
               filas={kpiComercial.asesores}
               total={kpiComercial.total}
+              contexto={kpiComercial}
               agrupado={true}
             />
           </div>
@@ -2070,12 +2072,14 @@ ${asesoresPDF.length>0?`
             titulo="CONTROL OPERATIVO: SUPERVISORES"
             filas={kpiDiario.supervisores}
             total={kpiDiario.total}
+            contexto={kpiDiario}
             divisorMeta={diasOperativosDelMes(getFechaHoyEcuador())}
           />
           <TablaKpiComercial
             titulo="CONTROL OPERATIVO: ASESORES"
             filas={kpiDiario.asesores}
             total={kpiDiario.total}
+            contexto={kpiDiario}
             agrupado={true}
             divisorMeta={diasOperativosDelMes(getFechaHoyEcuador())}
           />

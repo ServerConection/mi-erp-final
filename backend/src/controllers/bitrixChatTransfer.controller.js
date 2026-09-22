@@ -1,9 +1,8 @@
-﻿const axios = require('axios');
+const bitrixChatTransferApp = require('../services/bitrixChatTransferApp.service');
 
 const {
-  BITRIX_WEBHOOK_BASE,
   BITRIX_BOT_CLIENT_ID,
-  BITRIX_TRANSFER_TOKEN,
+  BITRIX_WEBHOOK_TOKEN: BITRIX_TRANSFER_TOKEN,
 } = process.env;
 
 const ENTITY_TYPES_VALIDOS = new Set(['lead', 'deal', 'company', 'contact']);
@@ -25,21 +24,23 @@ async function handleDealResponsibleChanged(req, res) {
   if (!entityId || !responsableId) {
     return res.status(400).json({ ok: false, error: 'faltan entity_id o responsable_id' });
   }
+  if (!BITRIX_BOT_CLIENT_ID) {
+    return res.status(500).json({ ok: false, error: 'falta BITRIX_BOT_CLIENT_ID en el .env (BOT_ID de imbot.register)' });
+  }
 
   // Bitrix manda el campo "Persona responsable" como "user_211307",
   // hay que quitar el prefijo "user_" para quedarnos con el ID numérico
   const responsableIdLimpio = responsableId.replace(/^user_/, '');
 
   try {
-    const chatsResp = await axios.get(`${BITRIX_WEBHOOK_BASE}/imopenlines.crm.chat.get`, {
-      params: {
-        CRM_ENTITY_TYPE: entityType,
-        CRM_ENTITY: entityId,
-        ACTIVE_ONLY: 'Y',
-      },
-    });
-
-    const chats = chatsResp.data?.result || [];
+    // imopenlines.* exige contexto de aplicación (no webhook simple), por
+    // eso se llama vía la app local aislada "Chat Transfer Bot"
+    // (bitrixChatTransferApp), nunca con axios+webhook.
+    const chats = await bitrixChatTransferApp.llamar('imopenlines.crm.chat.get', {
+      CRM_ENTITY_TYPE: entityType,
+      CRM_ENTITY: entityId,
+      ACTIVE_ONLY: 'Y',
+    }) || [];
 
     if (chats.length === 0) {
       console.log(`[chat-transfer] ${entityType} ${entityId}: sin chats activos, nada que transferir`);
@@ -50,18 +51,16 @@ async function handleDealResponsibleChanged(req, res) {
     for (const chat of chats) {
       const chatId = chat.CHAT_ID;
       try {
-        const transferResp = await axios.get(`${BITRIX_WEBHOOK_BASE}/imopenlines.bot.session.transfer`, {
-          params: {
-            CHAT_ID: chatId,
-            USER_ID: responsableIdLimpio,
-            LEAVE: 'N',
-            CLIENT_ID: BITRIX_BOT_CLIENT_ID,
-          },
+        const r = await bitrixChatTransferApp.llamar('imopenlines.bot.session.transfer', {
+          CHAT_ID: chatId,
+          USER_ID: responsableIdLimpio,
+          LEAVE: 'N',
+          CLIENT_ID: BITRIX_BOT_CLIENT_ID,
         });
-        resultados.push({ chatId, ok: transferResp.data?.result === true });
+        resultados.push({ chatId, ok: r === true });
       } catch (err) {
-        console.error(`[chat-transfer] error transfiriendo chat ${chatId}:`, err.response?.data || err.message);
-        resultados.push({ chatId, ok: false, error: err.response?.data?.error_description || err.message });
+        console.error(`[chat-transfer] error transfiriendo chat ${chatId}:`, err.message);
+        resultados.push({ chatId, ok: false, error: err.message });
       }
     }
 
@@ -70,8 +69,8 @@ async function handleDealResponsibleChanged(req, res) {
 
     return res.json({ ok: true, transferred: okCount, detalle: resultados });
   } catch (err) {
-    console.error('[chat-transfer] error general:', err.response?.data || err.message);
-    return res.status(500).json({ ok: false, error: err.response?.data?.error_description || err.message });
+    console.error('[chat-transfer] error general:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
 

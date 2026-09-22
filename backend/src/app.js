@@ -26,6 +26,8 @@ const bitrixSesionesRoutes         = require('./routes/bitrixSesiones.routes');
 const bitrixWebhookRoutes          = require('./routes/bitrixWebhook.routes');
 const bitrixConnectorRoutes        = require('./routes/bitrixConnector.routes');
 const bitrixConnectorVelsaRoutes   = require('./routes/bitrixConnectorVelsa.routes');
+const bitrixChatTransferRoutes     = require('./routes/bitrixChatTransfer.routes');
+const bitrixChatTransferInstallRoutes = require('./routes/bitrixChatTransferInstall.routes');
 const gestionablesWebhookRoutes    = require('./routes/gestionablesWebhook.routes');
 const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
 const contactabilidadWebhookRoutes = require('./routes/contactabilidadWebhook.routes');
@@ -172,6 +174,8 @@ app.use('/api/bitrix-sesiones',   bitrixSesionesRoutes);
 app.use(bitrixWebhookRoutes); // rutas con paths completos: /bitrix_webhook.php y /api/bitrix-webhook/leads
 app.use('/api/bitrix-connector', bitrixConnectorRoutes); // WABOT-BITRIX: install/events del conector imconnector
 app.use('/api/bitrix-connector-velsa', bitrixConnectorVelsaRoutes); // WABOT-BITRIX Velsa: mismo modulo, portal aclopecuador.bitrix24.es
+app.use(bitrixChatTransferRoutes); // ruta completa: /bitrix_chat_transfer.php
+app.use(bitrixChatTransferInstallRoutes); // rutas completas: /bitrix_chat_transfer_install.php y /bitrix_chat_transfer_events.php
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);

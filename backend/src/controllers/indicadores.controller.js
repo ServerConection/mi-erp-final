@@ -367,11 +367,11 @@ const getIndicadoresDashboard = async (req, res) => {
                 .map(a => a.trim()).filter(Boolean);
             if (listaAsesores.length > 1) {
                 const asesoresUpper = _sqlListaUpper(listaAsesores);
-                fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) IN ${asesoresUpper}`;
+                fragmentoAsesorViejo    = ` AND UPPER(TRIM(${normalizarAsesorExpr('mb.b_persona_responsable')})) IN ${asesoresUpper}`;
                 fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO_NORMALIZADO})) IN ${asesoresUpper}`;
             } else if (listaAsesores.length === 1) {
                 values.push(listaAsesores[0]);
-                fragmentoAsesorViejo    = ` AND UPPER(TRIM(mb.b_persona_responsable)) = UPPER(TRIM($${values.length}))`;
+                fragmentoAsesorViejo    = ` AND UPPER(TRIM(${normalizarAsesorExpr('mb.b_persona_responsable')})) = UPPER(TRIM($${values.length}))`;
                 fragmentoAsesorResuelto = ` AND UPPER(TRIM(${ASESOR_RESUELTO_NORMALIZADO})) = UPPER(TRIM($${values.length}))`;
             }
             filtersJoin   += fragmentoAsesorViejo;
@@ -500,10 +500,10 @@ const getIndicadoresDashboard = async (req, res) => {
                 .map(a => a.trim()).filter(Boolean);
             if (listaAsesoresDia.length > 1) {
                 const asesoresUpperDia = _sqlListaUpper(listaAsesoresDia);
-                filtrosDia += ` AND UPPER(TRIM(mb_crm.b_persona_responsable)) IN ${asesoresUpperDia}`;
+                filtrosDia += ` AND UPPER(TRIM(${normalizarAsesorExpr('mb_crm.b_persona_responsable')})) IN ${asesoresUpperDia}`;
             } else if (listaAsesoresDia.length === 1) {
                 valuesDia.push(listaAsesoresDia[0]);
-                filtrosDia += ` AND UPPER(TRIM(mb_crm.b_persona_responsable)) = UPPER(TRIM($${valuesDia.length}))`;
+                filtrosDia += ` AND UPPER(TRIM(${normalizarAsesorExpr('mb_crm.b_persona_responsable')})) = UPPER(TRIM($${valuesDia.length}))`;
             }
         }
         if (supervisor) {

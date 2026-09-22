@@ -63,6 +63,16 @@ const cargarOrigenes = async () => {
 
 const normOrigen = (v) => String(v || '').trim().replace(/\s+/g, ' ').toUpperCase();
 
+// Columna con la categoría (embudo) real del deal en Bitrix. Si un deal se
+// mueve fuera de la 19 (ej. a la 15), Redes debe dejar de contarlo; no se
+// borra la fila porque otros módulos pueden necesitar su recorrido.
+let columnaCategoriaLista = false;
+const asegurarColumnaCategoria = async () => {
+  if (columnaCategoriaLista) return;
+  await pool.query('ALTER TABLE bitrix_webhook_leads ADD COLUMN IF NOT EXISTS categoria_id text');
+  columnaCategoriaLista = true;
+};
+
 const listarDeals = async (filter, onProgreso) => {
   const select = ['ID', 'TITLE', 'STAGE_ID', 'CATEGORY_ID', 'SOURCE_ID',
     'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'IS_REPEATED_APPROACH'];
@@ -104,7 +114,10 @@ const reconciliarLeads = async ({
   const filter = soloId
     ? { ID: soloId }
     : { '>=DATE_MODIFY': _desde, '<=DATE_MODIFY': _hasta };
-  if (!soloId && categoria !== '' && categoria != null) filter.CATEGORY_ID = categoria;
+  // OJO: se traen deals de TODAS las categorías para detectar los que salieron
+  // de la 19; solo se INSERTAN los faltantes que sí son de la 19.
+  const enCategoria = (d) => categoria === '' || categoria == null || String(d.CATEGORY_ID) === String(categoria);
+  await asegurarColumnaCategoria();
 
   const deals = await listarDeals(filter, (n) => {
     if (n % 200 === 0) log(`   📦 ${n} deals traídos de Bitrix...`);
@@ -116,7 +129,9 @@ const reconciliarLeads = async ({
 
   const ids = deals.map((d) => String(d.ID));
   const { rows } = await pool.query(
-    `SELECT bitrix_id, etapa, source FROM bitrix_webhook_leads
+    `SELECT bitrix_id, etapa, source, categoria_id,
+            (created_at AT TIME ZONE 'America/Guayaquil')::date::text AS fecha
+       FROM bitrix_webhook_leads
       WHERE empresa = $1 AND bitrix_id = ANY($2::text[])`,
     [empresa, ids]
   );
@@ -131,8 +146,17 @@ const reconciliarLeads = async ({
     const etapa = slugify(stageName[d.STAGE_ID] || d.STAGE_ID || '');
     const origen = sourceName[d.SOURCE_ID] || d.SOURCE_ID || '';
     const fila = enTabla.get(id);
-    if (!fila) faltantes.push({ d, etapa, origen });
-    else if (fila.etapa !== etapa || (origen && normOrigen(fila.source) !== normOrigen(origen))) {
+    // Fecha real de creación en Bitrix (día en Ecuador). El webhook guarda
+    // created_at = cuando LLEGÓ el primer evento: un deal de enero que se
+    // movió en septiembre quedaba contado en septiembre.
+    const fechaBx = d.DATE_CREATE
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date(d.DATE_CREATE))
+      : null;
+    if (!fila) { if (enCategoria(d)) faltantes.push({ d, etapa, origen }); }
+    else if (fila.etapa !== etapa
+      || (origen && normOrigen(fila.source) !== normOrigen(origen))
+      || String(fila.categoria_id || '') !== String(d.CATEGORY_ID)
+      || (fechaBx && fila.fecha !== fechaBx)) {
       desfasados.push({ d, etapa, origen, etapaTabla: fila.etapa, origenTabla: fila.source, cambioEtapa: fila.etapa !== etapa });
     }
   }
@@ -154,17 +178,19 @@ const reconciliarLeads = async ({
     try {
       await pool.query(
         `INSERT INTO bitrix_webhook_leads
-           (bitrix_id, empresa, etapa, event, etapa_bitrix, source, repeated, iniciado_el, raw_query, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($8::timestamptz, NOW()))
+           (bitrix_id, empresa, etapa, event, etapa_bitrix, source, repeated, iniciado_el, raw_query, created_at, categoria_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($8::timestamptz, NOW()), $10)
          ON CONFLICT (empresa, bitrix_id) DO UPDATE
            SET etapa = EXCLUDED.etapa,
                etapa_bitrix = EXCLUDED.etapa_bitrix,
                source = COALESCE(NULLIF(BTRIM(EXCLUDED.source), ''), bitrix_webhook_leads.source),
+               categoria_id = EXCLUDED.categoria_id,
+               created_at = COALESCE($8::timestamptz, bitrix_webhook_leads.created_at),
                raw_query = EXCLUDED.raw_query,
                updated_at = NOW()`,
         [id, empresa, etapa, 'reconciliacion', etapaBitrix,
          origen, d.IS_REPEATED_APPROACH === 'Y' ? 'Y' : 'N',
-         d.DATE_CREATE || null, raw]
+         d.DATE_CREATE || null, raw, String(d.CATEGORY_ID ?? '')]
       );
       // Historial solo si cambió la etapa: un cambio de origen no es un paso
       // del recorrido y ensuciaría el historial.
@@ -184,4 +210,4 @@ const reconciliarLeads = async ({
   return { deals: deals.length, faltantes, desfasados, escritos, errores, aplicar };
 };
 
-module.exports = { reconciliarLeads, slugify };
+module.exports = { reconciliarLeads, slugify, asegurarColumnaCategoria };

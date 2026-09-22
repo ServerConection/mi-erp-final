@@ -15,7 +15,7 @@
  */
 const cron = require('node-cron');
 const pool = require('../config/db');
-const { reconciliarLeads } = require('../services/reconciliacionBitrix.service');
+const { reconciliarLeads, asegurarColumnaCategoria } = require('../services/reconciliacionBitrix.service');
 
 const DIAS_VENTANA = Number(process.env.RECONCILIACION_BITRIX_DIAS || 3);
 
@@ -53,6 +53,9 @@ const correr = async ({ desde: desdeForzado } = {}) => {
 };
 
 function initReconciliacionBitrix() {
+  // La columna la lee Redes (filtro categoría 19): se crea SIEMPRE al arrancar,
+  // aunque la reconciliación esté apagada, para que esa consulta no falle.
+  asegurarColumnaCategoria().catch((e) => console.error('💥 [reconciliacion] categoria_id:', e.message));
   // APAGADO POR DEFECTO. Desde 2026-09-01 la actualizacion en tiempo real la
   // hace el evento ONCRMDEALUPDATE (ver services/bitrixEvento.service.js), que
   // avisa en CADA movimiento y no depende de las automatizaciones de etapa.

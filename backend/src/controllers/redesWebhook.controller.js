@@ -41,6 +41,8 @@ const baseCte = `WITH base AS (
          ${FECHA} fecha_crm,${HORA} hora_crm,${ETAPA} etapa_crm,${AGENCIA} agencia
   FROM bitrix_webhook_leads w ${joinCatalogo}
   WHERE w.empresa='novonet'
+    -- Deals movidos a otro embudo en Bitrix (la reconciliación llena categoria_id)
+    AND COALESCE(NULLIF(w.categoria_id,''),'19')='19'
   UNION ALL
   SELECT l.id_bitrix AS bitrix_id,
          COALESCE(l.origen_nombre,l.origen_id) AS source,

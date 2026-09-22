@@ -629,6 +629,17 @@ export default function WaInbox({ dealId = null } = {}) {
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+              onPaste={e => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (const item of items) {
+                  if (item.type && item.type.startsWith("image/")) {
+                    const file = item.getAsFile();
+                    if (file) { e.preventDefault(); sendFile(file); }
+                    break;
+                  }
+                }
+              }}
               className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-green-400"
             />
             <button onClick={send} disabled={sending || !newMsg.trim()}

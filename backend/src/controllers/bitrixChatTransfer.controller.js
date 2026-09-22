@@ -15,7 +15,10 @@ async function handleDealResponsibleChanged(req, res) {
     token,
   } = req.query;
 
+  console.log(`[chat-transfer] bitrix_chat_transfer.php hit: entity_type=${entityType} entity_id=${entityId} responsable_id=${responsableId}`);
+
   if (token !== BITRIX_TRANSFER_TOKEN) {
+    console.warn('[chat-transfer] bitrix_chat_transfer.php: token inválido recibido');
     return res.status(403).json({ ok: false, error: 'token inválido' });
   }
   if (!ENTITY_TYPES_VALIDOS.has(entityType)) {

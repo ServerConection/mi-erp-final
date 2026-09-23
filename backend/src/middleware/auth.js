@@ -40,6 +40,28 @@ function invalidarUsuarioCache(id) {
   if (id != null) userCache.delete(id);
 }
 
+// Trae el usuario (id, usuario, empresa, perfil, activo, nombres, apellidos)
+// desde el cache de 60s o, si no esta, desde la BD. Fuente unica de verdad
+// para "cual es el perfil/empresa VIGENTE de este usuario" — la usan tanto
+// verificarToken (HTTP) como el middleware de Socket.IO, para que un JWT
+// viejo (dura hasta varios dias) nunca arrastre un perfil/empresa que ya
+// cambio en la BD.
+async function usuarioFresco(id) {
+  let user = cacheGet(id);
+  if (!user) {
+    const result = await pool.query(
+      `SELECT id, usuario, empresa, perfil, activo, nombres, apellidos
+       FROM usuarios
+       WHERE id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) return null;
+    user = result.rows[0];
+    cacheSet(id, user);
+  }
+  return user;
+}
+
 const verificarToken = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
@@ -53,26 +75,14 @@ const verificarToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Intenta servir desde cache primero
-    let user = cacheGet(decoded.id);
+    // Intenta servir desde cache primero (o BD si no esta, ver usuarioFresco)
+    const user = await usuarioFresco(decoded.id);
 
     if (!user) {
-      const result = await pool.query(
-        `SELECT id, usuario, empresa, perfil, activo, nombres, apellidos
-         FROM usuarios
-         WHERE id = $1`,
-        [decoded.id]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(401).json({
-          success: false,
-          error: 'Usuario no encontrado'
-        });
-      }
-
-      user = result.rows[0];
-      cacheSet(decoded.id, user);
+      return res.status(401).json({
+        success: false,
+        error: 'Usuario no encontrado'
+      });
     }
 
     if (user.activo !== 'SI') {
@@ -166,4 +176,4 @@ const soloTTHH = (req, res, next) => {
   next();
 };
 
-module.exports = { verificarToken, soloAdmin, noAsesor, soloTTHH, invalidarUsuarioCache };
+module.exports = { verificarToken, soloAdmin, noAsesor, soloTTHH, invalidarUsuarioCache, usuarioFresco };

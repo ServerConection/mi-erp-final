@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { usuarioFresco } = require('../middleware/auth');
 
 let _io = null;
 
@@ -38,7 +39,7 @@ const initSocket = (httpServer) => {
   });
 
   // Middleware de autenticacion
-  _io.use((socket, next) => {
+  _io.use(async (socket, next) => {
     try {
       const token    = socket.handshake.auth.token;
       const isTvMode = socket.handshake.auth.tv === true
@@ -53,14 +54,27 @@ const initSocket = (httpServer) => {
 
       // Usuario autenticado con JWT
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // El JWT dura hasta varios dias (JWT_EXPIRES_IN). Si el perfil/empresa
+      // del usuario cambia despues de emitido, o el usuario se desactiva, un
+      // token viejo seguiria arrastrando el rol anterior y metiendo al socket
+      // en salas que ya no le corresponden (ej. wa:empresa:* con los chats de
+      // todos los asesores). Por eso el rol de la sala se resuelve SIEMPRE
+      // contra la BD (mismo cache de 60s que usa verificarToken), nunca
+      // contra lo que diga el token.
+      const usuario = await usuarioFresco(decoded.id);
+      if (!usuario || usuario.activo !== 'SI') {
+        socket.user = { id: null, rol: 'TV', perfil: 'TV', empresa: '' };
+        console.warn('[SOCKET] Usuario no encontrado/desactivado -> conexion como invitado:', decoded.id);
+        return next();
+      }
       socket.user = {
-        id:      decoded.id,
+        id:      usuario.id,
         rol:     decoded.rol,
-        perfil:  (decoded.perfil  || '').toUpperCase(),
-        empresa: (decoded.empresa || '').toUpperCase(),
+        perfil:  (usuario.perfil  || '').toUpperCase(),
+        empresa: (usuario.empresa || '').toUpperCase(),
       };
-      socket.userId = decoded.id;
-      console.log('[SOCKET] Usuario autenticado:', decoded.id, socket.user.perfil + '.' + socket.user.empresa);
+      socket.userId = usuario.id;
+      console.log('[SOCKET] Usuario autenticado:', usuario.id, socket.user.perfil + '.' + socket.user.empresa);
       next();
 
     } catch (error) {

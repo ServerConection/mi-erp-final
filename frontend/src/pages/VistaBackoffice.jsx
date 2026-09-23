@@ -54,7 +54,7 @@ const CAMPOS_FECHA = [
 // Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
 // mantienen sincronizados automáticamente con el archivo Excel.
 const COLUMNAS_TABLAS_BACKOFFICE = [
-  "id", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
+  "id", "id_bitrix", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
   "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
   "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
   "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",

@@ -70,13 +70,13 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
     if (String(response.result?.ID) !== String(id).trim()) throw new Error(`Negociación no encontrada en ${comp}`);
     return response.result;
   }
-  async function persistIncoming({conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl,clientName,messageAt}) {
+  async function persistIncoming({conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl,clientName,messageAt,metadata}) {
     const insert = `INSERT INTO messages
-      (conversation_id,line_id,wa_number,direction,type,content,wa_msg_id,dedupe_key,media_url,timestamp)
-      VALUES ($1,$2,$3,'in',$4,$5,$6,$6,$7,$8::timestamptz)
+      (conversation_id,line_id,wa_number,direction,type,content,wa_msg_id,dedupe_key,media_url,timestamp,metadata)
+      VALUES ($1,$2,$3,'in',$4,$5,$6,$6,$7,$8::timestamptz,$9::jsonb)
       ON CONFLICT (line_id,dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`;
     const timestamp = messageAt && Number.isFinite(new Date(messageAt).getTime()) ? new Date(messageAt) : new Date();
-    const values = [conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl || null,timestamp];
+    const values = [conversationId,lineId,waNumber,type,text,waMsgId,mediaUrl || null,timestamp,JSON.stringify(metadata || {})];
     if (!configured() || env.WA_INBOX_BITRIX_NOTES === 'false') {
       return db.query(`${insert} RETURNING id`,values);
     }
@@ -93,8 +93,8 @@ function createInboxBitrixNotes({ db, env = process.env, request, logger = conso
       INSERT INTO inbox_bitrix_notes (id,deal_id,payload,status,wa_msg_id,sent_at)
       SELECT s.id,TRIM(c.bitrix_deal_id),jsonb_build_object(
         'conversation_id',s.conversation_id,'line_id',s.line_id,'phone',s.wa_number,
-        'direction','in','actor',COALESCE(NULLIF($9::text,''),'Cliente'),
-        'text',COALESCE(s.content,''),'filename',$10::text),
+        'direction','in','actor',COALESCE(NULLIF($10::text,''),'Cliente'),
+        'text',COALESCE(s.content,''),'filename',$11::text),
         'pending',s.wa_msg_id,s.timestamp
       FROM saved s JOIN conversations c ON c.id=s.conversation_id AND c.line_id=s.line_id
       JOIN lines l ON l.id=s.line_id JOIN usuarios u ON u.id=l.created_by

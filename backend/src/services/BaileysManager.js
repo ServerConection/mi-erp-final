@@ -5,6 +5,7 @@ const {
   getAggregateVotesInPollMessage,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
+  normalizeMessageContent,
 } = require('@whiskeysockets/baileys')
 const { Boom } = require('@hapi/boom')
 const path = require('path')
@@ -18,6 +19,7 @@ const {
 } = require('./proxyPool.service')
 const { useDbAuthState, migrarDesdeDisco, borrarSesion } = require('./baileysAuthPg.service')
 const lineLock = require('./lineLock.service')
+const { isAdminOnlyNumber } = require('./waPrivacy')
 
 // WABOT-BITRIX / Opción B — dónde vive el estado de sesión de Baileys.
 //   'disco' (default) = useMultiFileAuthState, el comportamiento de siempre.
@@ -143,6 +145,10 @@ class BaileysManager {
 
   async _emitInbox(lineId, evento, payload) {
     try {
+      if (isAdminOnlyNumber(payload?.waNumber || payload?.wa_number)) {
+        this.io.to('broadcast:all').emit(evento, payload)
+        return
+      }
       const aud = await this._audienciaLinea(lineId)
       if (!aud || !aud.ownerId) { this.io.emit(evento, payload); return }
       const salas = ['broadcast:all', 'user:' + aud.ownerId]
@@ -186,6 +192,11 @@ class BaileysManager {
       const res = await query('SELECT lid_number, real_number FROM lid_mappings')
       for (const row of res.rows) {
         this.lidMap[row.lid_number] = row.real_number
+      }
+      // Reconcile duplicates left by earlier deployments even if WhatsApp does
+      // not emit the mapping again during this connection.
+      for (const row of res.rows) {
+        await this._mergeLidConversations(row.lid_number, row.real_number)
       }
       console.log(`[BaileysManager] LidMap cargado: ${res.rows.length} entradas`)
     } catch (e) {
@@ -734,8 +745,22 @@ class BaileysManager {
       // una microcaída y se sincronizan al reconectar (recupera lo perdido).
       if (type !== 'notify' && type !== 'append') return
 
+      // Recupera todo el intervalo desde el ?ltimo mensaje entrante persistido.
+      // El margen de dos minutos es seguro porque wa_msg_id evita duplicados.
+      let appendSince = null
+      if (type === 'append') {
+        const last = await query(
+          `SELECT COALESCE(MAX(timestamp) - INTERVAL '2 minutes', NOW() - INTERVAL '30 days') AS since
+           FROM messages WHERE line_id=$1 AND direction='in' AND wa_msg_id IS NOT NULL`,
+          [lineId]
+        )
+        appendSince = new Date(last.rows[0]?.since || Date.now() - 30 * 86400000).getTime()
+      }
+
       for (const msg of messages) {
-        if (!msg.message) continue
+        const normalized = normalizeMessageContent(msg.message)
+        if (!normalized) continue
+        msg.message = normalized
 
         const remoteJid = msg.key.remoteJid
         if (remoteJid.endsWith('@g.us')) continue           // grupos
@@ -746,7 +771,7 @@ class BaileysManager {
         // En 'append' solo procesar lo reciente (últimos 15 min) y sin duplicar
         if (type === 'append') {
           const ts = Number(msg.messageTimestamp || 0) * 1000
-          if (ts && Date.now() - ts > 15 * 60 * 1000) continue
+          if (ts && appendSince && ts < appendSince) continue
           if (msg.key.id) {
             const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [msg.key.id])
             if (dup.rows.length) continue
@@ -802,6 +827,7 @@ class BaileysManager {
           msg.message?.extendedTextMessage?.text ||
           msg.message?.imageMessage?.caption ||
           msg.message?.documentMessage?.caption ||
+          msg.message?.videoMessage?.caption ||
           listResponse?.title ||
           listResponse?.singleSelectReply?.selectedRowId ||
           quickReplyResponse ||
@@ -815,20 +841,35 @@ class BaileysManager {
           : msg.message?.imageMessage ? 'image'
           : msg.message?.documentMessage ? 'document'
           : msg.message?.audioMessage ? 'audio'
+          : msg.message?.videoMessage ? 'video'
+          : msg.message?.stickerMessage ? 'sticker'
+          : msg.message?.contactMessage ? 'contact'
+          : msg.message?.contactsArrayMessage ? 'contacts'
+          : (msg.message?.locationMessage || msg.message?.liveLocationMessage) ? 'location'
           : 'unknown'
 
         // Ignorar eventos sin contenido (reacciones, protocolo, etc.) → evita burbujas vacías
-        if (!text && !['image', 'document', 'audio'].includes(msgType)) continue
+        if (!text && !['image', 'document', 'audio', 'video', 'sticker', 'contact', 'contacts', 'location'].includes(msgType)) continue
+
+        const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
+        const contact = msg.message?.contactMessage
+        const contacts = msg.message?.contactsArrayMessage
+        const eventText = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
+          : msgType === 'contact' ? (contact?.displayName || 'Contacto compartido')
+          : msgType === 'contacts' ? (contacts?.displayName || `${contacts?.contacts?.length || 0} contactos compartidos`)
+          : text
 
         // ── Descargar media entrante (imagen/documento/audio del cliente) ──
         let inMediaUrl = null
-        if (['image', 'document', 'audio'].includes(msgType)) {
+        if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
           try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {})
             const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
             fs.mkdirSync(dir, { recursive: true })
             const ext = msgType === 'image' ? '.jpg'
               : msgType === 'audio' ? '.ogg'
+              : msgType === 'video' ? '.mp4'
+              : msgType === 'sticker' ? '.webp'
               : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
             const fname = `in-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
             fs.writeFileSync(path.join(dir, fname), buffer)
@@ -870,11 +911,19 @@ class BaileysManager {
         this._queuePendingRead(lineId, waNumber, msg.key)
 
         try {
-          await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName, inMediaUrl)
+          await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, eventText, msgType, pushName, inMediaUrl,
+            location ? { latitude: location.degreesLatitude, longitude: location.degreesLongitude, name: location.name, address: location.address } : null)
         } catch (err) {
           console.error(`[Line ${lineId}] Error procesando mensaje:`, err.message)
           console.error(err.stack)
         }
+      }
+    })
+
+    sock.ev.on('call', async (calls) => {
+      for (const call of calls || []) {
+        try { await this._handleCallEvent(lineId, sock, call) }
+        catch (e) { console.warn(`[Line ${lineId}] Error registrando llamada:`, e.message) }
       }
     })
 
@@ -1215,7 +1264,7 @@ class BaileysManager {
     return result
   }
 
-  async _handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName = '', mediaUrl = null) {
+  async _handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName = '', mediaUrl = null, eventMetadata = null) {
     const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
 
     if (pushName) {
@@ -1234,6 +1283,7 @@ class BaileysManager {
         conversationId: conv.id, lineId, waNumber, type: msgType, text,
         waMsgId: msg.key.id, mediaUrl, clientName: pushName,
         messageAt: Number(msg.messageTimestamp || 0) ? new Date(Number(msg.messageTimestamp)*1000) : null,
+        metadata: eventMetadata,
       })
       if (!saved.rows.length) {
         console.info(`[Line ${lineId}] Mensaje duplicado ignorado: ${msg.key.id}`)
@@ -1251,6 +1301,7 @@ class BaileysManager {
       conversation_id: conv.id,
       lineId, waNumber, text, content: text, direction: 'in',
       type: msgType, media_url: mediaUrl,
+      metadata: eventMetadata || {},
       wa_msg_id: msg.key.id,
       timestamp: new Date().toISOString(),
     })
@@ -1264,6 +1315,39 @@ class BaileysManager {
 
     const engine = new FlowEngine(this, this.io)
     await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  async _handleCallEvent(lineId, sock, call) {
+    if (!call?.id || call.isGroup) return
+    const ownNumber = this._cleanNumber(sock.user?.id)
+    const caller = this._cleanNumber(call.from)
+    const chatNumber = this._cleanNumber(call.chatId)
+    const direction = caller && caller === ownNumber ? 'out' : 'in'
+    let waNumber = direction === 'out' ? chatNumber : caller
+    if (!waNumber || waNumber === ownNumber) waNumber = chatNumber
+    if (!waNumber) return
+    const conv = await this._getOrCreateConversation(lineId, waNumber, call.chatId || call.from)
+    const statusLabels = { offer: 'Iniciada', ringing: 'Sonando', accept: 'Aceptada', reject: 'Rechazada', timeout: 'Sin respuesta', terminate: 'Finalizada' }
+    const metadata = { call_status: call.status, video: Boolean(call.isVideo), offline: Boolean(call.offline) }
+    const content = `${call.isVideo ? 'Videollamada' : 'Llamada'} · ${statusLabels[call.status] || call.status}`
+    const existing = await query('SELECT id FROM messages WHERE line_id=$1 AND wa_msg_id=$2 LIMIT 1', [lineId, call.id])
+    let row
+    if (existing.rows.length) {
+      row = (await query(
+        `UPDATE messages SET content=$1, metadata=$2::jsonb, timestamp=COALESCE($3,timestamp)
+         WHERE id=$4 RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+        [content, JSON.stringify(metadata), call.date || null, existing.rows[0].id]
+      )).rows[0]
+    } else {
+      row = (await query(
+        `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,wa_msg_id,status,metadata,timestamp)
+         VALUES ($1,$2,$3,$4,'call',$5,$6,'event',$7::jsonb,COALESCE($8,NOW()))
+         RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+        [conv.id, lineId, waNumber, direction, content, call.id, JSON.stringify(metadata), call.date || null]
+      )).rows[0]
+    }
+    await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+    await this._emitInbox(lineId, 'message:new', { ...row, conversation_id: conv.id, lineId, waNumber })
   }
 
   // ── Sincroniza un mensaje que la cuenta envió desde otro dispositivo ──
@@ -1280,6 +1364,7 @@ class BaileysManager {
       msg.message?.extendedTextMessage?.text ||
       msg.message?.imageMessage?.caption ||
       msg.message?.documentMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
       ''
     ).trim()
 
@@ -1288,9 +1373,14 @@ class BaileysManager {
       : msg.message?.imageMessage ? 'image'
       : msg.message?.documentMessage ? 'document'
       : msg.message?.audioMessage ? 'audio'
+      : msg.message?.videoMessage ? 'video'
+      : msg.message?.stickerMessage ? 'sticker'
+      : msg.message?.contactMessage ? 'contact'
+      : msg.message?.contactsArrayMessage ? 'contacts'
+      : (msg.message?.locationMessage || msg.message?.liveLocationMessage) ? 'location'
       : 'other'
 
-    if (!text && !['image', 'document', 'audio'].includes(msgType)) return
+    if (!text && !['image', 'document', 'audio', 'video', 'sticker', 'contact', 'contacts', 'location'].includes(msgType)) return
 
     // Resolver número destinatario (maneja LID)
     let waNumber = this._cleanNumber(remoteJid)
@@ -1298,12 +1388,12 @@ class BaileysManager {
 
     // Descargar media si la hay (para verla en el Inbox)
     let mediaUrl = null
-    if (['image', 'document', 'audio'].includes(msgType)) {
+    if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
       try {
         const buffer = await downloadMediaMessage(msg, 'buffer', {})
         const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
         fs.mkdirSync(dir, { recursive: true })
-        const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg'
+        const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg' : msgType === 'video' ? '.mp4' : msgType === 'sticker' ? '.webp'
           : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
         const fname = `out-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
         fs.writeFileSync(path.join(dir, fname), buffer)
@@ -1311,20 +1401,31 @@ class BaileysManager {
       } catch (e) { /* sin media */ }
     }
 
+    const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
+    const content = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
+      : msgType === 'contact' ? (msg.message?.contactMessage?.displayName || 'Contacto compartido')
+      : msgType === 'contacts' ? (msg.message?.contactsArrayMessage?.displayName || `${msg.message?.contactsArrayMessage?.contacts?.length || 0} contactos compartidos`)
+      : text
+    const metadata = location ? {
+      latitude: location.degreesLatitude, longitude: location.degreesLongitude,
+      name: location.name, address: location.address,
+    } : {}
+
     const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
     await query(
       `INSERT INTO messages
-        (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp)
-       VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW())`,
-      [conv.id, lineId, waNumber, msgType, text, mediaUrl, waMsgId]
+        (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp, metadata)
+       VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW(),$8::jsonb)`,
+      [conv.id, lineId, waNumber, msgType, content, mediaUrl, waMsgId, JSON.stringify(metadata)]
     )
     await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
     console.log(`[Line ${lineId}] 🔄 Sync saliente (otro dispositivo) → ${waNumber}`)
 
     await this._emitInbox(lineId, 'message:new', {
       conversation_id: conv.id,
-      lineId, waNumber, text, content: text, direction: 'out',
+      lineId, waNumber, text: content, content, direction: 'out',
       type: msgType, media_url: mediaUrl,
+      metadata,
       wa_msg_id: waMsgId,
       timestamp: new Date().toISOString(),
     })

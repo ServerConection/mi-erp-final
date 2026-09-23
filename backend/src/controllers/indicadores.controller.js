@@ -1959,9 +1959,15 @@ const getConsultaDescargaNovonet = async (req, res) => {
             )`;
         }
 
+        // FECHA (fix 2026-09-23): created_at viene de la API de JotForm, que da la
+        // hora en horario de Nueva York (EDT/EST), guardada como timestamp SIN zona.
+        // Se convierte a hora Ecuador y se devuelve como texto ISO con -05:00 para
+        // que el navegador no la vuelva a correr (antes: envíos de 00:00-04:59
+        // salían con fecha del día anterior).
         const result = await pool.query(`
             SELECT
-                created_at,
+                to_char(created_at AT TIME ZONE 'America/New_York' AT TIME ZONE 'America/Guayaquil',
+                        'YYYY-MM-DD"T"HH24:MI:SS') || '-05:00' AS created_at,
                 id_bitrix,
                 codigo_asesor,
                 plan_casa,
@@ -1993,7 +1999,7 @@ const getConsultaDescargaNovonet = async (req, res) => {
                     )
                 ) AS es_venta_servicio
             FROM vista_analisis_novonet
-            WHERE created_at::date BETWEEN $1 AND $2
+            WHERE (created_at AT TIME ZONE 'America/New_York' AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1 AND $2
             ${filters}
             ORDER BY created_at ASC
             LIMIT 100000

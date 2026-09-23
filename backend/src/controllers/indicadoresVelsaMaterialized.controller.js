@@ -1235,7 +1235,10 @@ async function getConsultaDescargaVelsa(req, res) {
     // se responde con `rows` + `registros` por compatibilidad.
     const result = await pool.query(`
       SELECT
-        jf.created_at,
+        -- FECHA (fix 2026-09-23): el sync guardó la hora de la API de JotForm
+        -- (horario Nueva York) como si fuera hora Ecuador => quedaba +1h y los
+        -- envíos de 23:00-23:59 salían al día siguiente. Se corrige aquí.
+        ((jf.created_at AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/New_York') AS created_at,
         jf.id_bitrix_ghl,
         jf.id_negociacion_bitrix,
         jf.codigo_asesor,
@@ -1261,7 +1264,8 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.estado_regularizacion_novo,
         jf.detalle_regularizacion
       FROM public.vw_jotform_velsa_netlife_completo jf
-      WHERE (jf.created_at - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+      WHERE (((jf.created_at AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/Guayaquil')::date
+            BETWEEN $1::date AND $2::date
       ORDER BY jf.created_at DESC
       LIMIT 10000
     `, [desde, hasta]);

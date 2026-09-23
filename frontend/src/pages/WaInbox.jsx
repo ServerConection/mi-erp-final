@@ -596,7 +596,7 @@ export default function WaInbox({ dealId = null } = {}) {
               <Fragment key={msg.id || i}>
               {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
                 <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
-              <div className={`flex ${msg.type === "internal_note" || msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
+              <div className={`flex ${msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
                   msg.type === "internal_note"
                     ? "bg-slate-700 text-white border border-slate-600 shadow-sm"

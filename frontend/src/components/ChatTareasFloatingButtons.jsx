@@ -154,7 +154,7 @@ export default function ChatTareasFloatingButtons() {
   // que no hace falta un efecto ni memoización para mantenerlo al día.
   const autenticado = tieneSesion();
 
-  if (!autenticado || location.pathname === "/login") return null;
+  if (!autenticado || location.pathname === "/login" || location.pathname.includes("/whatsapp/inbox") || location.pathname.includes("/embed/inbox")) return null;
 
   return (
     <>

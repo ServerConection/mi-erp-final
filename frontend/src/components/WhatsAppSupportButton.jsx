@@ -72,6 +72,8 @@ export default function WhatsAppSupportButton() {
     }, 500);
   };
 
+  if (inbox) return null;
+
   return (
     <>
       {/* ── Botón flotante ─────────────────────────────────────────────────

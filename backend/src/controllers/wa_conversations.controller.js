@@ -2,6 +2,7 @@ const { query } = require('../config/db')
 const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
+const { protectedNumbers, isAdminOnlyNumber } = require('../services/waPrivacy')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -161,16 +162,19 @@ function visibilityCondition(req, params) {
 // Verifica que la conversación exista y que el usuario pueda verla según su perfil.
 async function findOwnedConversation(req, id) {
   const result = await query(
-    `SELECT c.*, l.created_by AS line_created_by, u.empresa AS line_empresa
+    `SELECT c.*, l.created_by AS line_created_by, u.empresa AS line_empresa,
+            ct.metadata->>'real_phone' AS contact_real_phone
      FROM conversations c
      LEFT JOIN lines l ON c.line_id = l.id
      LEFT JOIN usuarios u ON l.created_by = u.id
+     LEFT JOIN contacts ct ON c.contact_id = ct.id
      WHERE c.id=$1`,
     [id]
   )
   if (!result.rows.length) return null
   const conv = result.rows[0]
   if (isAdmin(req)) return conv
+  if (isAdminOnlyNumber(conv.wa_number) || isAdminOnlyNumber(conv.contact_real_phone)) return null
   if (isSupervisor(req)) {
     return (conv.line_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? conv : null
   }
@@ -193,7 +197,10 @@ async function getAll(req, res) {
     // sigue sin poder ver conversaciones de otro asesor aunque sepa el
     // bitrix_deal_id.
     if (bitrix_deal_id) { params.push(bitrix_deal_id); where.push(`c.bitrix_deal_id = $${params.length}`) }
-    if (status)  { params.push(status);  where.push(`c.status = $${params.length}`) }
+    if (status)  {
+      if (status === 'human_takeover') where.push(`c.status IN ('human','human_takeover')`)
+      else { params.push(status); where.push(`c.status = $${params.length}`) }
+    }
     if (search)  {
       params.push(`%${String(search).trim()}%`)
       const textParam = params.length
@@ -209,12 +216,14 @@ async function getAll(req, res) {
     }
     const vc = visibilityCondition(req, params)
     if (vc) where.push(vc)
+    const pc = privacyCondition(req, params, 'c.wa_number', "ct.metadata->>'real_phone'")
+    if (pc) where.push(pc)
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
     // Parámetros extra: el usuario actual (para sus propios no leídos) y el límite
     params.push(req.user.id);        const pUser  = params.length
-    params.push(bitrix_deal_id && !isAdmin(req) ? 1 : Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100))); const pLimit = params.length
+    params.push(bitrix_deal_id && !isAdmin(req) ? 1 : Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 500))); const pLimit = params.length
 
     // Los no leídos se calculan POR USUARIO: mensajes entrantes posteriores a
     // la última vez que ESTE usuario abrió la conversación.
@@ -270,8 +279,8 @@ async function getMessages(req, res) {
       // wa_msg_id es imprescindible: el inbox actualiza el doble check
       // (entregado/leido) buscando la burbuja por ese id cuando llega el
       // evento 'message:status'. Sin la columna, ese listener nunca acertaba.
-      `SELECT id, direction, type, content, media_url, status, timestamp, node_type, wa_msg_id
-       FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC LIMIT 500`,
+      `SELECT id, direction, type, content, media_url, media_mime, status, timestamp, node_type, wa_msg_id, metadata
+       FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC`,
       [id]
     )
     // Marcar como leída SOLO para este usuario. Si un asesor abre el chat, el
@@ -300,6 +309,39 @@ async function getMessages(req, res) {
     res.json({ success: true, data: result.rows })
   } catch (err) {
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+function privacyCondition(req, params, numberExpr, realNumberExpr = "''") {
+  if (isAdmin(req)) return null
+  params.push(protectedNumbers())
+  return `(regexp_replace(COALESCE(${numberExpr},''), '[^0-9]', '', 'g') != ALL($${params.length}::text[])
+    AND regexp_replace(COALESCE(${realNumberExpr},''), '[^0-9]', '', 'g') != ALL($${params.length}::text[]))`
+}
+
+// Nota interna visible en el Inbox, pero que nunca se entrega a WhatsApp.
+async function createInternalNote(req, res) {
+  try {
+    const { id } = req.params
+    const content = String(req.body.text || req.body.body || '').trim()
+    if (!content) return res.status(400).json({ success: false, error: 'Texto requerido' })
+    if (content.length > 4000) return res.status(400).json({ success: false, error: 'Máximo 4000 caracteres' })
+    const c = await findOwnedConversation(req, id)
+    if (!c) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+    const metadata = { internal: true, author_id: req.user.id, author: req.user.nombre || req.user.username || 'Usuario' }
+    const saved = await query(
+      `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,status,metadata,timestamp)
+       VALUES ($1,$2,$3,'out','internal_note',$4,'internal',$5::jsonb,NOW())
+       RETURNING id,direction,type,content,media_url,status,timestamp,wa_msg_id,metadata`,
+      [id, c.line_id, c.wa_number, content, JSON.stringify(metadata)]
+    )
+    await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [id])
+    const message = { ...saved.rows[0], conversation_id: id, lineId: c.line_id, waNumber: c.wa_number }
+    const bm = req.app.get('baileysManager')
+    if (bm?._emitInbox) await bm._emitInbox(c.line_id, 'message:new', message)
+    res.json({ success: true, data: message })
+  } catch (err) {
+    res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'No se pudo guardar la nota' : err.message })
   }
 }
 
@@ -427,6 +469,8 @@ async function backupSearch(req, res) {
     }
     const vc = visibilityCondition(req, params)
     if (vc) conds.push(vc)
+    const pc = privacyCondition(req, params, 'm.wa_number', "ct.metadata->>'real_phone'")
+    if (pc) conds.push(pc)
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
 
@@ -467,7 +511,8 @@ async function backupByNumber(req, res) {
 
     const params = [digits]
     const vc = visibilityCondition(req, params)
-    const ownerFilter = vc ? `AND ${vc}` : ''
+    const pc = privacyCondition(req, params, 'm.wa_number', "ct.metadata->>'real_phone'")
+    const ownerFilter = [vc, pc].filter(Boolean).map(c => `AND ${c}`).join(' ')
 
     const info = await query(`
       SELECT m.wa_number,
@@ -490,6 +535,7 @@ async function backupByNumber(req, res) {
              l.name AS line_name, m.campaign_id
       FROM messages m
       LEFT JOIN lines l ON m.line_id = l.id
+      LEFT JOIN contacts ct ON ct.wa_number = m.wa_number AND ct.line_id = m.line_id
       WHERE m.wa_number = $1 ${ownerFilter}
       ORDER BY m.timestamp ASC
     `, params)
@@ -534,6 +580,9 @@ async function startFromBitrix(req, res) {
       if (!info.phone) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
       waNumber = info.phone
       contactName = info.contactName
+    }
+    if (!isAdmin(req) && isAdminOnlyNumber(waNumber)) {
+      return res.status(403).json({ success: false, error: 'Este número está reservado para administradores' })
     }
 
     // 2) Elegir línea de envío
@@ -735,4 +784,4 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }
+module.exports = { getAll, getMessages, sendMessage, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }

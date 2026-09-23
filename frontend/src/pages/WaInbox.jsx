@@ -10,7 +10,7 @@ const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
-const isImage = (msg) => msg.type === "image" || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
+const isImage = (msg) => ["image", "sticker"].includes(msg.type) || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
 
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
@@ -115,6 +115,7 @@ export default function WaInbox({ dealId = null } = {}) {
       const params = new URLSearchParams();
       if (dealId) params.set("bitrix_deal_id", dealId);
       else if (lineId) params.set("line_id", lineId);
+      if (!dealId) params.set("limit", "500");
       if (search.trim()) params.set("search", search.trim());
       if (filter !== "all") params.set("status", filter);
       const qs = `?${params}`;
@@ -176,7 +177,13 @@ export default function WaInbox({ dealId = null } = {}) {
         );
       });
       if (selectedRef.current?.id === msg.conversation_id) {
-        setMessages(prev => [...prev, { ...msg, content: msg.content || msg.text }]);
+        setMessages(prev => {
+          const normalized = { ...msg, content: msg.content || msg.text };
+          const index = prev.findIndex(m => (normalized.id && m.id === normalized.id)
+            || (normalized.wa_msg_id && m.wa_msg_id === normalized.wa_msg_id));
+          return index < 0 ? [...prev, normalized]
+            : prev.map((m, i) => i === index ? { ...m, ...normalized } : m);
+        });
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       }
     };
@@ -269,6 +276,22 @@ export default function WaInbox({ dealId = null } = {}) {
     } catch (e) {
       setNewMsg(text); alert(e.message || "No se pudo enviar el mensaje");
     } finally { setSending(false); }
+  };
+
+  const saveInternalNote = async () => {
+    if (!newMsg.trim() || !selected || sending) return;
+    setSending(true);
+    const text = newMsg.trim();
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}/internal-note`, {
+        method: "POST", headers: authH(), body: JSON.stringify({ text }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error || "No se pudo guardar el mensaje oculto"); return; }
+      setNewMsg("");
+      loadMessages(selected.id);
+    } catch (e) { alert(e.message || "No se pudo guardar el mensaje oculto"); }
+    finally { setSending(false); }
   };
 
   // Enviar imagen/PDF: sube el archivo y lo manda por WhatsApp
@@ -383,7 +406,7 @@ export default function WaInbox({ dealId = null } = {}) {
   };
 
   const filtered = conversations.filter(c => {
-    if (filter !== "all" && c.status !== filter) return false;
+    if (filter !== "all" && !(filter === "human_takeover" && ["human", "human_takeover"].includes(c.status)) && c.status !== filter) return false;
     return true;
   });
 
@@ -573,13 +596,22 @@ export default function WaInbox({ dealId = null } = {}) {
               <Fragment key={msg.id || i}>
               {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
                 <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
-              <div className={`flex ${msg.direction === "out" ? "justify-end" : "justify-start"}`}>
+              <div className={`flex ${msg.type === "internal_note" || msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
-                  msg.direction === "out"
+                  msg.type === "internal_note"
+                    ? "bg-slate-700 text-white border border-slate-600 shadow-sm"
+                    : msg.type === "call"
+                    ? "bg-slate-100 text-slate-700 border border-slate-300 shadow-sm"
+                    : msg.direction === "out"
                     ? "bg-green-600 text-white rounded-br-sm"
                     : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm"
                 }`}>
-                  {msg.media_url && isImage(msg) ? (
+                  {msg.type === "internal_note" && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-300">🔒 Mensaje oculto · {msg.metadata?.author || "Usuario"}</div>}
+                  {msg.type === "call" && <div className="mb-1 font-semibold">{msg.metadata?.video ? "🎥" : "📞"} {msg.direction === "out" ? "Llamada del asesor" : "Llamada del cliente"}</div>}
+                  {msg.type === "location" && msg.metadata?.latitude != null ? (
+                    <a href={`https://www.google.com/maps?q=${msg.metadata.latitude},${msg.metadata.longitude}`} target="_blank" rel="noopener noreferrer"
+                      className="mb-1 block rounded-lg bg-black/10 px-4 py-3 font-medium underline">📍 Ver ubicación</a>
+                  ) : msg.media_url && isImage(msg) ? (
                     <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer">
                       <img src={mediaSrc(msg.media_url)} alt="imagen"
                         className="rounded-lg max-h-48 mb-1 border border-black/10" />
@@ -595,9 +627,9 @@ export default function WaInbox({ dealId = null } = {}) {
                     </a>
                   ) : null}
                   {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
-                  <div className={`text-xs mt-0.5 ${msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
+                  <div className={`text-xs mt-0.5 ${msg.type === "internal_note" ? "text-slate-300" : msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
                     {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
-                    {msg.direction === "out" && (
+                    {msg.direction === "out" && !["internal_note", "call"].includes(msg.type) && (
                       <span className={`ml-1 ${msg.status === "read" ? "text-sky-300 font-semibold" : "text-green-100"}`}>
                         {msg.status === "read" ? "✓✓ Leído" : msg.status === "delivered" ? "✓✓ Entregado" : "✓ Enviado"}
                       </span>
@@ -645,6 +677,11 @@ export default function WaInbox({ dealId = null } = {}) {
             <button onClick={send} disabled={sending || !newMsg.trim()}
               className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
               {sending ? "…" : "Enviar"}
+            </button>
+            <button onClick={saveInternalNote} disabled={sending || !newMsg.trim()}
+              title="Guardar solo en el ERP; no se envía al cliente"
+              className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
+              🔒 Oculto
             </button>
           </div>
         </div>

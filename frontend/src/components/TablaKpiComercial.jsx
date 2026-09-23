@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { exportarKpiExcel } from '../utils/exportarKpiExcel';
 
 // ── Definición de columnas ───────────────────────────────────────────────────
 // tipo: 'num' entero | 'pct' porcentaje | 'calc' solo real (sin meta)
@@ -81,6 +81,9 @@ export default function TablaKpiComercial({
   // divisorMeta = días operativos del mes. Se usa en Monitoreo para mostrar
   // la meta DIARIA (mensual ÷ 26). En 1 muestra la meta mensual tal cual.
   divisorMeta = 1,
+  // Respuesta completa de /api/kpi-comercial ({ empresa, fechaDesde, fechaHasta,
+  // asesores }) — la usa solo el Excel para título, periodo y metas %.
+  contexto = null,
 }) {
   const [abiertos, setAbiertos] = useState({});
 
@@ -94,22 +97,26 @@ export default function TablaKpiComercial({
     return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filas, agrupado]);
 
-  const exportarExcel = () => {
-    const plano = (f) => {
-      const o = { NOMBRE: f.nombre || f.asesor_display || '' };
-      if (agrupado) o.SUPERVISOR = f.supervisor || '';
-      for (const c of COLUMNAS) {
-        const m = metaMostrada(c, f, divisorMeta);
-        if (m !== null) o[`${c.grupo} (Pto)`] = Number(m.toFixed(2));
-        o[`${c.grupo} (Real)`] = Number(n(f[c.campo]).toFixed(2));
-      }
-      return o;
-    };
-    const datos = [...(total ? [plano({ ...total, nombre: 'TOTAL NOVONET' })] : []), ...filas.map(plano)];
-    const ws = XLSX.utils.json_to_sheet(datos);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, titulo.slice(0, 30));
-    XLSX.writeFile(wb, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  // Descarga con el formato de gerencia (FORMATO CONTROL SEMANAL VENTAS …,
+  // hoja METAS NOVONET): mismas columnas, Pto/Real, subtotales por supervisor.
+  const [exportando, setExportando] = useState(false);
+  const exportarExcel = async () => {
+    if (exportando) return;
+    setExportando(true);
+    try {
+      await exportarKpiExcel({
+        titulo, filas, total, agrupado, divisorMeta,
+        empresa: contexto?.empresa,
+        fechaDesde: contexto?.fechaDesde,
+        fechaHasta: contexto?.fechaHasta,
+        filasMeta: contexto?.asesores,
+      });
+    } catch (e) {
+      console.error('[KPI-EXCEL]', e);
+      alert('No se pudo generar el Excel. Intenta de nuevo.');
+    } finally {
+      setExportando(false);
+    }
   };
 
   const celdas = (f, destacado = false) => COLUMNAS.flatMap((c) => {
@@ -135,7 +142,7 @@ export default function TablaKpiComercial({
   const filaTotal = total && (
     <tr className="bg-slate-800 text-white border-b-2 border-slate-900">
       <td className="px-3 py-2 sticky left-0 bg-slate-800 z-20 font-black text-[9px] whitespace-nowrap">
-        TOTAL NOVONET
+        {total.nombre || 'TOTAL'}
       </td>
       {COLUMNAS.flatMap((c) => {
         const real = n(total[c.campo]);
@@ -157,9 +164,10 @@ export default function TablaKpiComercial({
         </h3>
         <button
           onClick={exportarExcel}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase px-4 py-2 rounded-lg shadow transition-all active:scale-95"
+          disabled={exportando}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-wait text-white text-[9px] font-black uppercase px-4 py-2 rounded-lg shadow transition-all active:scale-95"
         >
-          ⬇ Excel
+          {exportando ? 'Generando…' : '⬇ Excel'}
         </button>
       </div>
 

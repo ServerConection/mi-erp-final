@@ -6,6 +6,7 @@ const {
   fetchLatestBaileysVersion,
   downloadMediaMessage,
   normalizeMessageContent,
+  WAMessageStubType,
 } = require('@whiskeysockets/baileys')
 const { Boom } = require('@hapi/boom')
 const path = require('path')
@@ -441,6 +442,8 @@ class BaileysManager {
       printQRInTerminal: false,
       logger: silentLogger,
       browser: ['WaBot Platform', 'Chrome', '120.0'],
+      syncFullHistory: true,
+      shouldSyncHistoryMessage: () => true,
       getMessage: async (key) => {
         // Devolver el mensaje real cacheado o undefined. NUNCA contenido falso:
         // un "hello" ficticio corrompe el ratchet y provoca cierres de sesión.
@@ -740,7 +743,7 @@ class BaileysManager {
       }
     })
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    const processInboxMessages = async ({ messages, type }) => {
       // 'notify' = mensajes en vivo. 'append' = mensajes que llegaron durante
       // una microcaída y se sincronizan al reconectar (recupera lo perdido).
       if (type !== 'notify' && type !== 'append') return
@@ -758,6 +761,26 @@ class BaileysManager {
       }
 
       for (const msg of messages) {
+        const callStub = [
+          WAMessageStubType.CALL_MISSED_VOICE,
+          WAMessageStubType.CALL_MISSED_VIDEO,
+          WAMessageStubType.SILENCED_UNKNOWN_CALLER_AUDIO,
+          WAMessageStubType.SILENCED_UNKNOWN_CALLER_VIDEO,
+        ].includes(msg.messageStubType)
+        if (callStub) {
+          try {
+            await this._handleCallEvent(lineId, sock, {
+              id: msg.key.id,
+              from: msg.key.fromMe ? sock.user?.id : msg.key.remoteJid,
+              chatId: msg.key.remoteJid,
+              status: 'timeout',
+              isVideo: [WAMessageStubType.CALL_MISSED_VIDEO, WAMessageStubType.SILENCED_UNKNOWN_CALLER_VIDEO].includes(msg.messageStubType),
+              date: new Date(Number(msg.messageTimestamp || 0) * 1000),
+              offline: type === 'append',
+            })
+          } catch (e) { console.warn(`[Line ${lineId}] Error registrando llamada sincronizada:`, e.message) }
+          continue
+        }
         const normalized = normalizeMessageContent(msg.message)
         if (!normalized) continue
         msg.message = normalized
@@ -918,6 +941,12 @@ class BaileysManager {
           console.error(err.stack)
         }
       }
+    }
+
+    sock.ev.on('messages.upsert', processInboxMessages)
+    sock.ev.on('messaging-history.set', ({ messages }) => {
+      processInboxMessages({ messages: messages || [], type: 'append' })
+        .catch(e => console.warn(`[Line ${lineId}] Error sincronizando historial:`, e.message))
     })
 
     sock.ev.on('call', async (calls) => {

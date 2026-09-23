@@ -1955,7 +1955,10 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 codigo_asesor ILIKE $${idx} OR
                 login_netlife ILIKE $${idx} OR
                 id_bitrix::text ILIKE $${idx} OR
-                estatus_netlife ILIKE $${idx}
+                (CASE UPPER(TRIM(estatus_netlife))
+                        WHEN 'PREPALNIFICADO' THEN 'PREPLANIFICADO'
+                        WHEN 'VENTA PERDIDA / OTRO PROVEEDOR' THEN 'VENTA PERDIDA / OTRO VENDEDOR'
+                        ELSE estatus_netlife END) ILIKE $${idx}
             )`;
         }
 
@@ -1979,7 +1982,12 @@ const getConsultaDescargaNovonet = async (req, res) => {
                 descuento_3era_edad,
                 servicio_empaquetado,
                 login_netlife,
-                estatus_netlife,
+                -- ESTADOS (fix 2026-09-23): el sync externo guarda 2 textos distintos
+                -- a JotForm. Se muestran igual que en JotForm; no toca otros módulos.
+                CASE UPPER(TRIM(estatus_netlife))
+                    WHEN 'PREPALNIFICADO' THEN 'PREPLANIFICADO'
+                    WHEN 'VENTA PERDIDA / OTRO PROVEEDOR' THEN 'VENTA PERDIDA / OTRO VENDEDOR'
+                    ELSE estatus_netlife END AS estatus_netlife,
                 forma_pago,
                 fecha_ingreso_telcos,
                 fecha_activacion,

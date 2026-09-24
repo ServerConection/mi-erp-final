@@ -566,13 +566,15 @@ export default function VistaAsesorVelsa() {
   }, [asesores]);
 
   // ── Exportar Excel ────────────────────────────────────────────────────────
-  const exportarExcel = () => {
-    if (!dataJotform.length) return;
-    const ws = XLSX.utils.json_to_sheet(dataJotform);
+  const exportarTablaExcel = (datos, hoja, nombreArchivo) => {
+    if (!datos.length) return;
+    const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Jotform_Velsa");
-    XLSX.writeFile(wb, `Velsa_Jotform_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, hoja);
+    XLSX.writeFile(wb, `${nombreArchivo}_${filtros.fechaDesde}_${filtros.fechaHasta}.xlsx`);
   };
+
+  const exportarExcel = () => exportarTablaExcel(dataJotform, "Jotform_Velsa", "Velsa_Jotform");
 
   // Fullscreen toggle for this view (fullscreen only the content container so sidebar/menu is hidden)
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -841,7 +843,7 @@ export default function VistaAsesorVelsa() {
       {/* ── VENTAS ACTIVAS (período seleccionado, por fecha de activación) ── */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-slate-100">
-          <div>
+           <div>
             <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
               Ventas activas — período seleccionado
@@ -851,9 +853,15 @@ export default function VistaAsesorVelsa() {
             </p>
             <p className="text-[8px] text-slate-400 mt-0.5 uppercase">
               {ventasActivas.length} venta{ventasActivas.length === 1 ? "" : "s"} activada{ventasActivas.length === 1 ? "" : "s"} en el período
-            </p>
-          </div>
-        </div>
+             </p>
+           </div>
+           <button
+             onClick={() => exportarTablaExcel(ventasActivas, "Ventas activas", "Velsa_Ventas_Activas")}
+             className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
+           >
+             ⬇ Excel
+           </button>
+         </div>
         {ventasActivas.length === 0 ? (
           <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
             Sin ventas activadas en el período seleccionado
@@ -888,7 +896,7 @@ export default function VistaAsesorVelsa() {
       {/* ── BACKLOG — activadas en el período pero registradas antes ── */}
       <div className="bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-blue-100 bg-blue-50">
-          <div>
+           <div>
             <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
               Backlog
@@ -898,9 +906,15 @@ export default function VistaAsesorVelsa() {
             </p>
             <p className="text-[8px] text-blue-400 mt-0.5 uppercase">
               {backlogDetalle.length} venta{backlogDetalle.length === 1 ? "" : "s"} en backlog
-            </p>
-          </div>
-        </div>
+             </p>
+           </div>
+           <button
+             onClick={() => exportarTablaExcel(backlogDetalle, "Backlog", "Velsa_Backlog")}
+             className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
+           >
+             ⬇ Excel
+           </button>
+         </div>
         {backlogDetalle.length === 0 ? (
           <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
             Sin backlog en el período seleccionado
@@ -935,7 +949,7 @@ export default function VistaAsesorVelsa() {
       {/* ── POR REGULARIZAR — período seleccionado ── */}
       <div className="bg-white border border-red-200 rounded-2xl overflow-hidden shadow-sm mb-8">
         <div className="px-5 py-3 flex justify-between items-center border-b border-red-100 bg-red-50">
-          <div>
+           <div>
             <p className="text-[10px] font-black text-red-700 uppercase tracking-widest flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
               Por regularizar — pendientes
@@ -945,9 +959,15 @@ export default function VistaAsesorVelsa() {
             </p>
             <p className="text-[8px] text-red-400 mt-0.5 uppercase">
               {regularizaciones.length} pendiente{regularizaciones.length === 1 ? "" : "s"} por regularizar
-            </p>
-          </div>
-        </div>
+             </p>
+           </div>
+           <button
+             onClick={() => exportarTablaExcel(regularizaciones, "Por regularizar", "Velsa_Por_Regularizar")}
+             className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
+           >
+             ⬇ Excel
+           </button>
+         </div>
         {regularizaciones.length === 0 ? (
           <div className="text-center py-10 text-slate-300 text-[11px] font-black uppercase tracking-widest">
             Sin pendientes por regularizar

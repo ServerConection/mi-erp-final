@@ -150,10 +150,13 @@ const repartirPorRondas = async (bitrixId, nombreOriginal) => {
     }
 
     // Se escribe primero en Bitrix; si falla, ROLLBACK y no queda contado.
-    await bitrixCallNovonet('crm.deal.update', {
+    const upd = await bitrixCallNovonet('crm.deal.update', {
       id: bitrixId,
       fields: { ASSIGNED_BY_ID: userId, [FIELD_NAME]: elegido.permitidos },
     });
+    // Bitrix puede responder sin "error" pero con result=false (deal inexistente):
+    // en ese caso NO se cuenta la asignación.
+    if (upd.result !== true) throw new Error(`Bitrix no actualizó el deal ${bitrixId}`);
 
     await client.query(
       `INSERT INTO gestionables_asignaciones
@@ -185,7 +188,7 @@ const recibirGestionable = async (req, res) => {
       return res.status(401).send('No autorizado');
     }
 
-    if (!bitrixId) {
+    if (!/^\d+$/.test(bitrixId)) {
       await registrarLog({ bitrixId: '(vacio)', nombreAsesor, error: 'Falta id de la negociación' });
       return res.status(400).send('Falta id');
     }

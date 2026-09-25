@@ -54,12 +54,39 @@ const CAMPOS_FECHA = [
 // Fuente única de columnas para todas las tablas y todas las exportaciones.
 // Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
 // mantienen sincronizados automáticamente con el archivo Excel.
-const COLUMNAS_TABLAS_BACKOFFICE = [
-  "id", "id_bitrix", "fecha_registro_sistema", "netlife_estatus_real", "nombre_cliente_completo", "numero_identificacion",
-  "netlife_login", "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife",
-  "observacion_venta_original", "errores_telcos", "codigo_asesor", "supervisor", "forma_pago",
-  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "aplica_descuento_3ra_edad",
+const COLUMNAS_TABLA_REGISTROS = [
+  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "nombre_cliente_completo", "aplica_descuento_3ra_edad", "numero_identificacion",
+  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "netlife_login",
+  "netlife_estatus_real", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
+
+const COLUMNAS_VALIDACION_ESTADO = [
+  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
+  "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
+];
+
+const COLUMNAS_VALIDACION_REGULARIZACION = [
+  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "netlife_estatus_real", "estatus_regularizacion", "nombre_cliente_completo",
+  "aplica_descuento_3ra_edad", "numero_identificacion", "plan_contratado_final",
+  "servicios_digitales", "tipo_contrato", "netlife_login", "novedades_atc",
+  "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife", "forma_pago", "supervisor",
+];
+
+const COLUMNAS_MESA_TRABAJO = [
+  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
+  "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
+];
+
+const COLUMNAS_TABLAS_BACKOFFICE = COLUMNAS_TABLA_REGISTROS;
 
 const COLUMNAS_EXPORTACION_BACKOFFICE = COLUMNAS_TABLAS_BACKOFFICE;
 
@@ -115,6 +142,16 @@ const OPCIONES_AUDITORIA_DOCUMENTOS = [
   "REGISTRO MERCANTIL",
   "PODER INCORRECTO",
   "DOCUMENTOS CORRECTOS",
+];
+
+const CAMPOS_EDITABLES_REGISTRO = [
+  "codigo_asesor", "id_bitrix", "turno", "nombre_atc", "clausulas",
+  "tipo_documento", "numero_identificacion", "email_cliente", "telf_celular_pin",
+  "telf_celular_2", "telf_fijo", "plan_contratado_final", "servicios_digitales",
+  "tipo_contrato", "novedades_atc", "turno_agendado", "fecha_agenda",
+  "mes_agenda", "dia_abc_agenda", "regimen_vivienda", "estatus_regularizacion",
+  "auditoria_documentos", "detalle_regularizacion", "auditado_por",
+  "fecha_regularizacion_atc", "gestion_atc", ...CAMPOS_DOCUMENTO,
 ];
 
 function resultadoBienvenida(json, mensajeBase) {
@@ -743,14 +780,16 @@ const FIELD_LABELS = {
   mes_registro_sistema: "MES REGISTRO",
   dia_abc_registro_sistema: "DÍA REGISTRO",
   codigo_asesor: "ASESOR",
+  id_asesor_comercial: "ID ASESOR COMERCIAL",
+  nombre_asesor_comercial: "NOMBRE ASESOR COMERCIAL",
   id_bitrix: "ID BITRIX",
   distribuidor_autorizado: "DISTRIBUIDOR",
   supervisor: "SUPERVISOR",
   origen_venta: "ORIGEN VENTA",
   venta_nueva_o_reingreso: "TIPO VENTA",
   turno: "TURNO",
-  nombre_atc: "NOMBRE ATC",
-  clausulas: "CLÁUSULAS",
+  nombre_atc: "QUIÉN INGRESA",
+  clausulas: "FIRMA BIOMÉTRICA",
   lider_comercial: "LÍDER COMERCIAL",
   tipo_cliente: "TIPO CLIENTE",
   genero_cliente: "GÉNERO",
@@ -1054,6 +1093,72 @@ function CampoSelect({ label, valor, onChange, opciones, placeholder = "Todos" }
   );
 }
 
+function SelectMultiple({ valores, opciones, onChange, disabled = false }) {
+  const seleccionados = valoresSeleccionMultiple(valores);
+  const etiqueta = seleccionados.length
+    ? seleccionados.join(", ")
+    : "Seleccionar documentos...";
+
+  const alternar = (valor) => {
+    const siguiente = seleccionados.includes(valor)
+      ? seleccionados.filter((item) => item !== valor)
+      : [...seleccionados, valor];
+    onChange(siguiente);
+  };
+
+  return (
+    <details
+      style={{ position: "relative", width: "100%" }}
+      onClick={(e) => {
+        if (disabled) e.preventDefault();
+      }}
+    >
+      <summary
+        title={seleccionados.join(", ")}
+        style={{
+          width: "100%", minHeight: 39, padding: "10px 34px 10px 12px",
+          borderRadius: 8, border: "1px solid #dbe4f0", background: disabled ? "#f8fafc" : "#fff",
+          color: seleccionados.length ? "#111827" : "#64748b", fontSize: 12,
+          cursor: disabled ? "not-allowed" : "pointer", boxSizing: "border-box",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          listStyle: "none", position: "relative",
+        }}
+      >
+        {etiqueta}
+        <span aria-hidden="true" style={{ position: "absolute", right: 12, top: 9, color: "#64748b" }}>⌄</span>
+      </summary>
+
+      {!disabled && (
+        <div style={{
+          position: "absolute", zIndex: 30, top: "calc(100% + 5px)", left: 0, right: 0,
+          maxHeight: 260, overflowY: "auto", padding: 8, background: "#fff",
+          border: "1px solid #dbe4f0", borderRadius: 10,
+          boxShadow: "0 14px 32px rgba(15,23,42,.16)",
+        }}>
+          {opciones.map((valor) => (
+            <label
+              key={valor}
+              style={{
+                display: "flex", alignItems: "center", gap: 9, padding: "8px 9px",
+                borderRadius: 7, cursor: "pointer", fontSize: 12, color: "#334155",
+                background: seleccionados.includes(valor) ? "#eff6ff" : "transparent",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={seleccionados.includes(valor)}
+                onChange={() => alternar(valor)}
+                style={{ width: 15, height: 15, accentColor: "#0ea5e9" }}
+              />
+              <span>{valor}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
+
 function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   return (
     <div style={estilosFiltro.campo}>
@@ -1067,7 +1172,7 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
   );
 }
 
-function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial = false, etiquetaContexto, soloDetalle = false, empresa, onCambiarEmpresa, puedeEditar = false, modoDetalle = "general" }) {
+function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial = false, etiquetaContexto, soloDetalle = false, empresa, onCambiarEmpresa, puedeEditar = false, camposEditablesPermitidos = null, modoDetalle = "general" }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1220,7 +1325,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
   const editableFields = useMemo(() => [
     // Venta
-    "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+    "estatus_envio", "codigo_asesor", "nombre_asesor_comercial", "id_bitrix", "distribuidor_autorizado",
     "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
     "nombre_atc", "clausulas", "lider_comercial",
     // Cliente
@@ -1260,29 +1365,30 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const seccionesDetalle = useMemo(() => {
     const gruposGenerales = [
       {
-        titulo: "Venta",
+        titulo: "Documentos",
+        campos: ["links_documentos", ...CAMPOS_DOCUMENTO],
+      },
+      {
+        titulo: "Pago y facturación",
         campos: [
-          "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
-          "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
-          "nombre_atc", "clausulas", "lider_comercial",
+          "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros", "valor_pago",
+          "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
+        ],
+      },
+      {
+        titulo: "Plan y servicios",
+        campos: [
+          "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+          "beneficios_de_ley", "observacion_venta_original",
         ],
       },
       {
         titulo: "Cliente",
         campos: [
-          "nombre_cliente_completo",
-          "representante_legal",
-          "tipo_documento",
-          "numero_identificacion",
-          "tipo_cliente",
-          "genero_cliente",
-          "estado_civil",
-          "fecha_nacimiento",
-          "email_cliente",
-          "telf_celular_pin",
-          "telf_celular_2",
-          "telf_fijo",
-          "aplica_descuento_3ra_edad",
+          "nombre_cliente_completo", "representante_legal", "tipo_documento",
+          "numero_identificacion", "tipo_cliente", "genero_cliente", "estado_civil",
+          "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2",
+          "telf_fijo", "aplica_descuento_3ra_edad",
         ],
       },
       {
@@ -1294,55 +1400,30 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         ],
       },
       {
-        titulo: "Plan y servicios",
-        campos: [
-          "plan_contratado_final", "servicios_digitales", "tipo_contrato",
-          "observacion_venta_original",
-        ],
-      },
-      {
-        titulo: "Pago y facturación",
-        campos: [
-          "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros", "valor_pago",
-          "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
-          "beneficios_adicionales", "beneficios_de_ley",
-        ],
-      },
-      {
         titulo: "Netlife",
         campos: [
-          "netlife_login",
-          "netlife_estatus_real",
-          "fecha_ingreso_telcos",
-          "fecha_activacion_netlife",
-          "novedades_atc",
-          "estado_welcome",
+          "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
+          "fecha_activacion_netlife", "novedades_atc", "estado_welcome",
         ],
       },
       {
         titulo: "Agendamiento",
+        campos: ["turno_agendado", "fecha_agenda", "mes_agenda", "dia_abc_agenda"],
+      },
+      {
+        titulo: "Venta",
         campos: [
-          "turno_agendado",
-          "fecha_agenda",
-          "mes_agenda",
-          "dia_abc_agenda",
+          "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+          "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
+          "nombre_atc", "clausulas", "lider_comercial",
         ],
       },
       {
         titulo: "Auditoría y regularización",
         campos: [
-          "estatus_regularizacion",
-          "detalle_regularizacion",
-          "gestion_atc",
-          "fecha_regularizacion_atc",
-          "auditoria_documentos",
-          "auditado_por",
-          "inconsistencia_documental",
+          "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
+          "auditado_por", "fecha_regularizacion_atc", "gestion_atc",
         ],
-      },
-      {
-        titulo: "Documentos",
-        campos: ["links_documentos", ...CAMPOS_DOCUMENTO],
       },
     ];
 
@@ -1352,29 +1433,31 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           titulo: "Documentos y datos de contraste",
           campos: [
             ...CAMPOS_DOCUMENTO, "links_documentos", "coordenadas_gps", "id_bitrix",
-            "codigo_asesor", "nombre_cliente_completo", "tipo_documento",
+            "codigo_asesor", "nombre_asesor_comercial", "lider_comercial",
+            "nombre_cliente_completo", "tipo_documento",
             "numero_identificacion", "netlife_login",
           ],
         },
         {
           titulo: "Plan y servicios contratados",
-          campos: ["plan_contratado_final", "servicios_digitales", "tipo_contrato", "observacion_venta_original"],
+          campos: [
+            "plan_contratado_final", "servicios_digitales", "tipo_contrato", "valor_pago",
+            "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
+            "beneficios_de_ley", "observacion_venta_original",
+          ],
         },
         {
           titulo: "Pago y facturación",
           campos: [
-            "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros", "valor_pago",
-            "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
-            "beneficios_adicionales", "beneficios_de_ley",
+            "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros",
+            "beneficios_adicionales",
           ],
         },
         {
           titulo: "Auditoría y regularización",
           campos: [
-            "estatus_regularizacion", "detalle_regularizacion", "gestion_atc",
-            "fecha_regularizacion_atc", "auditoria_documentos", "auditado_por",
-            "inconsistencia_documental", "observacion_auditoria", "netlife_estatus_real",
-            "clausulas", "lider_comercial",
+            "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
+            "auditado_por", "fecha_regularizacion_atc", "gestion_atc",
           ],
         },
       ],
@@ -1397,7 +1480,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         { titulo: "Resultado de Welcome", campos: ["estado_welcome", "novedades_atc", "observacion_venta_original"] },
       ],
       mesa: [
-        { titulo: "Observación de seguimiento", campos: ["errores_telcos", "observacion_venta_original"] },
+        { titulo: "Observación de seguimiento", campos: ["novedades_atc", "observacion_venta_original"] },
         {
           titulo: "Cliente y estado técnico",
           campos: [
@@ -1445,7 +1528,9 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     try {
       const payload = {};
 
-      for (const campo of editableFields) {
+      const camposGuardables = camposEditablesPermitidos || editableFields;
+      for (const campo of camposGuardables) {
+        if (campo === "nombre_asesor_comercial") continue;
         let nuevo = detail?.[campo] ?? "";
         const viejo = detailOriginal?.[campo] ?? "";
 
@@ -1761,10 +1846,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
               <div style={{ padding: 20, maxHeight: "calc(90vh - 170px)", overflow: "auto", background: "#f8fafc" }}>
                 {!puedeEditar && (
                   <div style={{ marginBottom: 14, padding: "10px 13px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af", fontSize: 12, fontWeight: 700 }}>
-                    Vista informativa. La edición del registro está disponible únicamente en Validación / Regularización.
+                    Vista informativa. Los cambios se realizan desde el flujo operativo correspondiente.
                   </div>
                 )}
-                <fieldset disabled={!puedeEditar} style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}>
+                <div>
                   {seccionesDetalle.map((sec) => (
                   <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
@@ -1780,10 +1865,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               ? "NOMBRE DE LA EMPRESA"
                               : modoDetalle === "welcome" && field === "novedades_atc"
                                 ? "OBSERVACIÓN DE WELCOME"
-                                : modoDetalle === "mesa" && field === "errores_telcos"
+                                : modoDetalle === "mesa" && field === "novedades_atc"
                                   ? "OBSERVACIÓN DE SEGUIMIENTO"
                                   : FIELD_LABELS[field] || field}
                           </label>
+
+                          <fieldset
+                            disabled={!puedeEditar || field === "nombre_asesor_comercial" || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
+                            style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}
+                          >
 
                            {esCampoDocumento(field) ? (
                              <CampoDocumento
@@ -1798,29 +1888,28 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                             const seleccionados = valoresSeleccionMultiple(detail?.[field]);
                             const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
                             return (
-                              <div>
-                                <select
-                                  multiple
-                                  size={6}
-                                  value={seleccionados}
-                                  onChange={(e) => {
-                                    const valores = Array.from(e.target.selectedOptions, (opcion) => opcion.value);
-                                    setDetail((prev) => ({ ...prev, [field]: valores.join(", ") }));
-                                  }}
-                                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
-                                >
-                                  {opciones.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
-                                </select>
-                                <div style={{ marginTop: 7, minHeight: 30, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                  {seleccionados.length ? seleccionados.map((valor) => (
-                                    <span key={valor} style={{ padding: "4px 8px", borderRadius: 999, background: "#e0f2fe", border: "1px solid #bae6fd", color: "#0369a1", fontSize: 10, fontWeight: 800 }}>
-                                      {valor}
-                                    </span>
-                                  )) : <span style={{ color: "#94a3b8", fontSize: 11 }}>Selecciona uno o varios documentos.</span>}
-                                </div>
-                              </div>
+                              <SelectMultiple
+                                valores={seleccionados}
+                                opciones={opciones}
+                                disabled={!puedeEditar || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
+                                onChange={(valores) => setDetail((prev) => ({ ...prev, [field]: valores.join(", ") }))}
+                              />
                             );
-                          })() : [
+                          })() : field === "banco" && modoDetalle === "auditoria" ? (
+                            <>
+                              <input
+                                type="search"
+                                list={`bancos-backoffice-${selectedId}`}
+                                value={detail?.banco || ""}
+                                onChange={(e) => setDetail((prev) => ({ ...prev, banco: e.target.value }))}
+                                placeholder="Buscar banco…"
+                                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
+                              />
+                              <datalist id={`bancos-backoffice-${selectedId}`}>
+                                {OPCIONES_BANCO.map((valor) => <option key={valor} value={valor} />)}
+                              </datalist>
+                            </>
+                          ) : [
                             "netlife_estatus_real", "forma_pago", "banco", "tipo_cuenta",
                             "ciclo_facturacion", "auditado_por", "clausulas", "lider_comercial",
                           ].includes(field) ? (() => {
@@ -1852,6 +1941,25 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               >
                                 <option value="">Seleccionar...</option>
                                 {lista.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+                              </select>
+                            );
+                          })() : field === "regimen_vivienda" ? (() => {
+                            const opcionesRegimen = [
+                              "ABIERTO", "CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO",
+                              "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA",
+                            ];
+                            const actual = String(detail?.[field] || "");
+                            const opciones = actual && !opcionesRegimen.includes(actual)
+                              ? [actual, ...opcionesRegimen]
+                              : opcionesRegimen;
+                            return (
+                              <select
+                                value={actual}
+                                onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
+                              >
+                                <option value="">Seleccionar...</option>
+                                {opciones.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
                               </select>
                             );
                           })() : ["tipo_documento", "tipo_cliente"].includes(field) ? (
@@ -1966,7 +2074,16 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               <option value="ANALFABETO">Analfabeto</option>
                               <option value="DESCUENTO CONADIS">Descuento conadis</option>
                               <option value="DESCUENTO 3RA EDAD">Descuento 3ra edad</option>
+                              <option value="NO APLICA">No aplica</option>
                             </select>
+                          ) : field === "tipo_contrato" ? (
+                            <textarea
+                              value={detail?.[field] ?? ""}
+                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                              rows={3}
+                              placeholder="Puedes registrar varios servicios y su cantidad. Ej.: 2 NETLIFE CAM, 1 DEFENSE"
+                              style={{ width: "100%", minHeight: 82, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
+                            />
                           ) : ["observacion_venta_original", "observacion_auditoria", "errores_telcos", "resumen_venta"].includes(field) ? (
                             <textarea
                               value={detail?.[field] ?? ""}
@@ -1982,12 +2099,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}
                             />
                           )}
+                          </fieldset>
                         </div>
                       ))}
                     </div>
                   </section>
                   ))}
-                </fieldset>
+                </div>
               </div>
 
               {/* Footer con alerta y botones — fijo abajo */}
@@ -4298,7 +4416,7 @@ function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
 
 /** Tabla de registros filtrados por estado, mismo estilo visual que la tabla
  *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
-const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_TABLAS_BACKOFFICE;
+const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_MESA_TRABAJO;
 
 function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
   const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
@@ -4458,7 +4576,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
     return rowsClasificadas.filter((r) => {
       if (q) {
         const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor,
+          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
           r.id_bitrix, r.netlife_login, String(r.id),
         ].some((c) => normalizarEstado(c).includes(q));
         if (!coincide) return false;
@@ -4508,7 +4626,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`)}
+                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`, COLUMNAS_MESA_TRABAJO)}
                 color="#0891b2" fondo="#ecfeff" borde="#a5f3fc"
               />
               <button
@@ -4595,6 +4713,8 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
       {detalleId && (
         <PanelRegistros
           soloDetalle
+          puedeEditar
+          camposEditablesPermitidos={["novedades_atc"]}
           idInicial={detalleId}
           etiquetaContexto="Detalle de Mesa de trabajo"
           modoDetalle="mesa"
@@ -4640,7 +4760,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
     return (todas || []).filter((r) => {
       if (q) {
         const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor,
+          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
           r.id_bitrix, r.netlife_login, r.supervisor, String(r.id),
         ].some((c) => normalizarEstado(c).includes(q));
         if (!coincide) return false;
@@ -4671,7 +4791,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       );
   }, [rowsConFiltros, estadoActivo]);
 
-  const columnas = COLUMNAS_TABLAS_BACKOFFICE;
+  const columnas = COLUMNAS_VALIDACION_ESTADO;
 
   return (
     <div
@@ -4963,7 +5083,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
             </div>
 
             <BotonDescargaExcel
-              onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Validacion_Estado_${estadoActivo}_${empresa || "Todos"}`)}
+              onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Validacion_Estado_${estadoActivo}_${empresa || "Todos"}`, COLUMNAS_VALIDACION_ESTADO)}
               color="#ea580c"
               fondo="#fff7ed"
               borde="#fed7aa"
@@ -5378,7 +5498,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   const ordenadas = (() => {
     const q = normalizarEstado(busqueda);
     const filtradas = !q ? rows : rows.filter((r) =>
-      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_bitrix, r.gestion_atc, String(r.id)]
+      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial, r.id_bitrix, r.gestion_atc, String(r.id)]
         .some((c) => normalizarEstado(c).includes(q))
     );
     return [...filtradas].sort((a, b) => {
@@ -5733,7 +5853,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
     return (todas || []).filter((row) => {
       if (q) {
         const coincide = [
-          row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor,
+          row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor, row.id_asesor_comercial, row.nombre_asesor_comercial,
           row.id_bitrix, row.gestion_atc, row.supervisor, row.estatus_regularizacion,
           String(row.id),
         ].some((campo) => normalizarEstado(campo).includes(q));
@@ -5761,7 +5881,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
     ? "TODOS"
     : BLOQUES_VALIDACION.find((bloque) => bloque.id === estadoActivo)?.titulo || estadoActivo;
 
-  const columnas = COLUMNAS_TABLAS_BACKOFFICE;
+  const columnas = COLUMNAS_VALIDACION_REGULARIZACION;
 
   return (
     <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -5886,6 +6006,8 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
 
   return (
     <PanelRegistros
+      puedeEditar
+      camposEditablesPermitidos={CAMPOS_EDITABLES_REGISTRO}
       onVolver={onVolver}
       idInicial={idInicial}
       fechaFija={nav.dia || undefined}

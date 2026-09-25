@@ -53,6 +53,30 @@ router.use(verificarToken, soloBackoffice);
 // 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
 const fechaCol = (col) => `LEFT(${col}::text, 10)`;
 
+// envios_ventas conserva el código con el que se registró la venta. El nombre
+// se resuelve contra usuarios.codigo_vendedor para no duplicarlo ni dejarlo
+// desactualizado cuando cambie la ficha del asesor.
+const columnasBackoffice = `
+  ev.*,
+  COALESCE(asesor.codigo_vendedor, ev.codigo_asesor, '') AS id_asesor_comercial,
+  COALESCE(asesor.nombre_completo, '') AS nombre_asesor_comercial
+`;
+const joinAsesorBackoffice = `
+  LEFT JOIN LATERAL (
+    SELECT
+      NULLIF(TRIM(u.codigo_vendedor), '') AS codigo_vendedor,
+      NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS nombre_completo
+    FROM public.usuarios u
+    WHERE NULLIF(TRIM(ev.codigo_asesor), '') IS NOT NULL
+      AND (
+        UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(ev.codigo_asesor))
+        OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(ev.codigo_asesor))
+      )
+    ORDER BY u.activo DESC, u.id DESC
+    LIMIT 1
+  ) asesor ON TRUE
+`;
+
 // ─── AISLAMIENTO POR EMPRESA ────────────────────────────────────────────────
 // `distribuidor_autorizado` guarda NOVONET o VELSA y se deriva de
 // usuarios.empresa al momento de registrar la venta (ver NuevaVenta.jsx).
@@ -117,7 +141,13 @@ router.get('/', async (req, res) => {
         nombre_cliente_completo  ILIKE ${p} OR
         numero_identificacion    ILIKE ${p} OR
         distribuidor_autorizado  ILIKE ${p} OR
-        supervisor               ILIKE ${p}
+        supervisor               ILIKE ${p} OR
+        EXISTS (
+          SELECT 1 FROM public.usuarios u
+          WHERE (UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, '')))
+              OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, ''))))
+            AND (u.codigo_vendedor ILIKE ${p} OR CONCAT_WS(' ', u.nombres, u.apellidos) ILIKE ${p})
+        )
       )`;
     }
 
@@ -172,10 +202,11 @@ router.get('/', async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT *
-      FROM public.envios_ventas
+      SELECT ${columnasBackoffice}
+      FROM public.envios_ventas ev
+      ${joinAsesorBackoffice}
       ${whereClause}
-      ORDER BY id DESC
+      ORDER BY ev.id DESC
       ${paginacionSql}
     `, params);
 
@@ -240,7 +271,10 @@ router.get('/opciones', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM public.envios_ventas WHERE id = $1',
+      `SELECT ${columnasBackoffice}
+       FROM public.envios_ventas ev
+       ${joinAsesorBackoffice}
+       WHERE ev.id = $1`,
       [req.params.id]
     );
     if (rows.length === 0)

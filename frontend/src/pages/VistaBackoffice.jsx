@@ -144,16 +144,6 @@ const OPCIONES_AUDITORIA_DOCUMENTOS = [
   "DOCUMENTOS CORRECTOS",
 ];
 
-const CAMPOS_EDITABLES_REGISTRO = [
-  "codigo_asesor", "id_bitrix", "turno", "nombre_atc", "clausulas",
-  "tipo_documento", "numero_identificacion", "email_cliente", "telf_celular_pin",
-  "telf_celular_2", "telf_fijo", "plan_contratado_final", "servicios_digitales",
-  "tipo_contrato", "novedades_atc", "turno_agendado", "fecha_agenda",
-  "mes_agenda", "dia_abc_agenda", "regimen_vivienda", "estatus_regularizacion",
-  "auditoria_documentos", "detalle_regularizacion", "auditado_por",
-  "fecha_regularizacion_atc", "gestion_atc", ...CAMPOS_DOCUMENTO,
-];
-
 function resultadoBienvenida(json, mensajeBase) {
   const correo = json?.correo_bienvenida;
   const whatsapp = json?.whatsapp_bienvenida;
@@ -3805,6 +3795,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         {detalleId && (
           <PanelRegistros
             soloDetalle
+            puedeEditar
             idInicial={detalleId}
             etiquetaContexto="Detalle de Welcome"
             modoDetalle="welcome"
@@ -4350,6 +4341,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
       {detalleId && (
         <PanelRegistros
           soloDetalle
+          puedeEditar
           idInicial={detalleId}
           etiquetaContexto="Detalle de Agendamiento"
           onVolver={() => setDetalleId(null)}
@@ -4714,7 +4706,6 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
         <PanelRegistros
           soloDetalle
           puedeEditar
-          camposEditablesPermitidos={["novedades_atc"]}
           idInicial={detalleId}
           etiquetaContexto="Detalle de Mesa de trabajo"
           modoDetalle="mesa"
@@ -5200,9 +5191,10 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       </div>
 
       {detalleId && (
-        <PanelRegistros
-          soloDetalle
-          idInicial={detalleId}
+          <PanelRegistros
+            soloDetalle
+            puedeEditar
+            idInicial={detalleId}
           etiquetaContexto="Detalle de Validación de Estado"
           onVolver={() => setDetalleId(null)}
         />
@@ -6007,7 +5999,6 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
   return (
     <PanelRegistros
       puedeEditar
-      camposEditablesPermitidos={CAMPOS_EDITABLES_REGISTRO}
       onVolver={onVolver}
       idInicial={idInicial}
       fechaFija={nav.dia || undefined}

@@ -112,3 +112,17 @@ Columnas clave: `encontrado` (si había cupo cargado para ese asesor),
 `actualizado_en_bitrix` (si se logró escribir en el deal), `error` (motivo
 si algo falló — asesor sin cupo cargado, token inválido, etapa ya cambiada,
 etc.).
+
+## 6. Reparto por rondas (sin favoritismo) — 2026-09-24
+
+El mismo webhook ahora **reparte** el lead: entre todos los asesores con cupo
+cargado hoy (asignados < permitidos) elige al que menos lleva, le reasigna el
+deal (`ASSIGNED_BY_ID`) y escribe su cupo. Nadie recibe su lead N+1 hasta que
+todos los que tienen cupo recibieron el N.
+
+- Tabla nueva: `backend/src/migrations/20260924_gestionables_reparto_rondas.sql`
+  (correr en pgAdmin sobre **erp_database** antes del deploy).
+- El nombre en `gestionables_asesores` debe coincidir con el nombre del
+  usuario en Bitrix (NOMBRE + APELLIDO; tildes/mayúsculas no importan).
+- En Bitrix: **quitar el ciclo CONTACTO NUEVO → ESTACIÓN**. Ya no hace falta.
+- Apagar y volver al comportamiento anterior: `GESTIONABLES_REPARTO=off`.

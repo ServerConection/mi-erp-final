@@ -523,6 +523,7 @@ export default function VistaAsesorVelsa() {
         base.reduce((a, r) => a + Number(r.real_mes || 0), 0) -
         base.reduce((a, r) => a + Number(r.backlog  || 0), 0)
       ),
+      backlog:         base.reduce((a, r) => a + Number(r.backlog || 0), 0),
       activas_tot:     base.reduce((a, r) => a + Number(r.real_mes || 0), 0),
       regularizacion:  base.reduce((a, r) => a + Number(r.regularizacion || 0), 0),
       // Igual que la efectividad: total del equipo desde los totales, no

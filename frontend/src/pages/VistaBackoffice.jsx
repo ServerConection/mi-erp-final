@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import "../styles/VistaBackoffice.css";
+import { colorDeValor } from "../utils/coloresBackoffice";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -923,6 +924,35 @@ function valueForField(row, key) {
   return String(v);
 }
 
+// Campo del detalle: si el valor tiene color (igual que en las tablas), el
+// input/select se pinta con ese color. Sigue siendo editable.
+function estiloCampoColor(campo, valor) {
+  const color = colorDeValor(campo, valor);
+  if (!color) return {};
+  return { background: color.fondo, color: color.texto, borderColor: color.fondo, fontWeight: 700 };
+}
+
+// Las fechas sin hora (p. ej. fecha_ingreso_telcos) llegan del API como
+// "2026-09-22T00:00:00.000Z". En la tabla se muestra solo "2026-09-22".
+// Se recorta el texto (no se convierte de zona horaria) para no mover el día.
+function soloFechaSiEsMedianoche(texto) {
+  return /^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z$/.test(texto) ? texto.slice(0, 10) : texto;
+}
+
+// Celda de tabla: los campos de opciones/estado se pintan como pastilla de
+// color (igual que en Jotform); el resto se muestra como texto normal.
+function CeldaValor({ campo, valor, textoVacio }) {
+  const vacio = valor === null || valor === undefined || valor === "";
+  const texto = vacio ? (textoVacio ?? "—") : soloFechaSiEsMedianoche(String(valor));
+  const color = colorDeValor(campo, texto);
+  if (!color) return texto;
+  return (
+    <span className="bo-chip" style={{ background: color.fondo, color: color.texto }}>
+      {texto}
+    </span>
+  );
+}
+
 function valoresSeleccionMultiple(valor) {
   if (Array.isArray(valor)) return valor.map(String).map((v) => v.trim()).filter(Boolean);
   return String(valor || "")
@@ -961,7 +991,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, se
                     padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
                     maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
                     background: selectedId === row.id ? "#eff6ff" : "#fff",
-                  }}>{valueForField(row, h.key)}</td>
+                  }}><CeldaValor campo={h.key} valor={row?.[h.key]} /></td>
                 ))}
               </tr>
             ))}
@@ -1829,7 +1859,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               onChange={e => setDetail(prev => ({ ...prev, [field]: e.target.value,
                                 ...(field === "tipo_documento" && e.target.value !== "RUC EMPRESA" ? { representante_legal: "" } : {}),
                               }))}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}>
+                              className="bo-campo-color"
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}>
                               <option value="">Seleccionar...</option>
                               {(field === "tipo_documento" ? ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"] : ["NATURAL", "JURÍDICO"]).map(value => <option key={value} value={value}>{value}</option>)}
                             </select>
@@ -1851,6 +1882,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                     : e.target.value.toUpperCase();
                                   setDetail((prev) => ({ ...prev, [field]: valor }));
                                 }}
+                                className="bo-campo-color"
                                 style={{
                                   width: "100%",
                                   padding: "10px 12px",
@@ -1861,6 +1893,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   color: "#111827",
                                   background: "#fff",
                                   cursor: "pointer",
+                                  ...estiloCampoColor(field, estadoActual || "SIN REVISAR"),
                                 }}
                               >
                                 {estadoActual && !esValorConocido && (
@@ -1925,7 +1958,9 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                 color: "#111827",
                                 background: "#fff",
                                 cursor: "pointer",
+                                ...estiloCampoColor(field, detail?.[field]),
                               }}
+                              className="bo-campo-color"
                             >
                               <option value="">Seleccionar gestión...</option>
                               <option value="ANALFABETO">Analfabeto</option>
@@ -1944,7 +1979,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
                               value={detail?.[field] ?? ""}
                               onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}
                             />
                           )}
                         </div>
@@ -4390,7 +4425,7 @@ function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
                           </span>
                         );
                       })()
-                      : valueForField(row, h.key)}
+                      : <CeldaValor campo={h.key} valor={row?.[h.key]} />}
                   </td>
                 ))}
               </tr>
@@ -5028,9 +5063,11 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                               color: "#334155",
                             }}
                           >
-                            {key === "netlife_estatus_real" && !row[key]
-                              ? "SIN ESTADO"
-                              : valueForField(row, key)}
+                            <CeldaValor
+                              campo={key}
+                              valor={row[key]}
+                              textoVacio={key === "netlife_estatus_real" ? "SIN ESTADO" : undefined}
+                            />
                           </td>
                         ))}
                       </tr>
@@ -5809,7 +5846,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
                         onClick={() => setDetalleId(row.id)}
                         style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
                       >
-                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}>{key === "estatus_regularizacion" && !row[key] ? "SIN REVISAR" : valueForField(row, key)}</td>)}
+                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}><CeldaValor campo={key} valor={row[key]} textoVacio={key === "estatus_regularizacion" ? "SIN REVISAR" : undefined} /></td>)}
                       </tr>
                     );
                   })}

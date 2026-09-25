@@ -670,8 +670,8 @@ export default function DashboardLayout() {
             md:translate-x-0
             ${isDesktopCollapsed ? "md:w-20" : "md:w-64"}`}
           style={{
-            background: "white",
-            borderRight: "1px solid #e2e8f0",
+            background: "#d9dee5",
+            borderRight: "1px solid #c3cad4",
             boxShadow: "2px 0 16px rgba(30,58,138,0.06)",
           }}
         >
@@ -736,7 +736,7 @@ export default function DashboardLayout() {
           >
             {/* Separador de sección */}
             {!isDesktopCollapsed && (
-              <p style={{ fontSize: "0.58rem", fontWeight: 800, color: "#c1c9d4", textTransform: "uppercase", letterSpacing: "0.14em", padding: "0 0.5rem", marginBottom: "0.5rem" }}>
+              <p style={{ fontSize: "0.58rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.14em", padding: "0 0.5rem", marginBottom: "0.5rem" }}>
                 Navegación
               </p>
             )}
@@ -776,7 +776,7 @@ export default function DashboardLayout() {
                         justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                         gap: isDesktopCollapsed ? 0 : 10,
                         borderLeft: groupActive ? "3px solid #2563eb" : "3px solid transparent",
-                        color: groupActive ? "#2563eb" : "#64748b",
+                        color: groupActive ? "#2563eb" : "#334155",
                         fontWeight: 700,
                         cursor: "pointer",
                         background: groupActive ? "linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.03))" : "transparent",
@@ -790,7 +790,7 @@ export default function DashboardLayout() {
                           <span className="dl-nav-label truncate" style={{ fontSize: "0.8rem", letterSpacing: ".01em" }}>
                             {item.name}
                           </span>
-                          <span style={{ marginLeft: "auto", fontSize: "0.6rem", color: "#94a3b8", flexShrink: 0 }}>
+                          <span style={{ marginLeft: "auto", fontSize: "0.6rem", color: "#64748b", flexShrink: 0 }}>
                             {groupOpen ? "▼" : "▶"}
                           </span>
                         </>
@@ -816,7 +816,7 @@ export default function DashboardLayout() {
                       gap: isDesktopCollapsed ? 0 : 10,
                       border: isActive ? "none" : "none",
                       borderLeft: isActive ? "3px solid #2563eb" : "3px solid transparent",
-                      color: isActive ? "#2563eb" : isChild ? "#7c8fa6" : "#64748b",
+                      color: isActive ? "#2563eb" : isChild ? "#475569" : "#334155",
                       fontWeight: isActive ? 700 : 500,
                       cursor: "pointer",
                       background: isActive ? "linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.03))" : "transparent",
@@ -824,7 +824,7 @@ export default function DashboardLayout() {
                     }}
                   >
                     {isChild && !isDesktopCollapsed && (
-                      <span style={{ color: "#94a3b8", fontSize: "0.65rem", flexShrink: 0, marginRight: -4 }}>└</span>
+                      <span style={{ color: "#64748b", fontSize: "0.65rem", flexShrink: 0, marginRight: -4 }}>└</span>
                     )}
                     <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : isChild ? "0.9rem" : "1.05rem", lineHeight: 1, flexShrink: 0, filter: isActive ? "none" : "saturate(.8)" }}>
                       {item.icon}
@@ -847,8 +847,8 @@ export default function DashboardLayout() {
           <div
             style={{
               padding: isDesktopCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
-              borderTop: "1px solid #f1f5f9",
-              background: "linear-gradient(180deg,#fafafa,#f8fafc)",
+              borderTop: "1px solid #c3cad4",
+              background: "#d9dee5",
             }}
           >
             <div
@@ -909,8 +909,8 @@ export default function DashboardLayout() {
             style={{
               height: 60,
               padding: "0 1.5rem",
-              background: "white",
-              borderBottom: "1px solid #e8edf5",
+              background: "#d9dee5",
+              borderBottom: "1px solid #c3cad4",
             }}
           >
             <div className="flex items-center gap-3">

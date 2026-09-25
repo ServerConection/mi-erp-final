@@ -64,10 +64,10 @@ function BotonChatInterno() {
       onClick={() => navigate("/chat")}
       aria-label={noLeidos > 0 ? `Chat interno, ${noLeidos} sin leer` : "Abrir chat interno"}
       title="Chat interno"
-      className={`fixed ${inbox ? "top-[180px]" : "bottom-[92px]"} right-6 z-[999] group`}
+      className={`fixed ${inbox ? "top-[180px]" : "bottom-[64px]"} right-2 z-[999] group`}
     >
       <span
-        className="relative flex items-center justify-center w-14 h-14 rounded-full text-white
+        className="relative flex items-center justify-center w-11 h-11 rounded-full text-white
                    shadow-[0_8px_24px_rgba(37,99,235,0.45)]
                    transition-transform duration-200 group-hover:scale-110 group-active:scale-95"
         style={{
@@ -76,7 +76,7 @@ function BotonChatInterno() {
             : "linear-gradient(135deg,#3b82f6,#2563eb)",
         }}
       >
-        <MessageCircle className="w-6 h-6" />
+        <MessageCircle className="w-5 h-5" />
       </span>
 
       {noLeidos > 0 && (
@@ -118,10 +118,10 @@ function BotonTareasAsignadas() {
       onClick={() => navigate("/tareas")}
       aria-label={`Tareas asignadas, ${total} pendientes`}
       title="Tareas asignadas"
-      className={`fixed ${inbox ? "top-[248px]" : "bottom-[160px]"} right-6 z-[999] group`}
+      className={`fixed ${inbox ? "top-[248px]" : "bottom-[112px]"} right-2 z-[999] group`}
     >
       <span
-        className="relative flex items-center justify-center w-14 h-14 rounded-full text-white
+        className="relative flex items-center justify-center w-11 h-11 rounded-full text-white
                    shadow-[0_8px_24px_rgba(217,119,6,0.45)]
                    transition-transform duration-200 group-hover:scale-110 group-active:scale-95"
         style={{
@@ -130,7 +130,7 @@ function BotonTareasAsignadas() {
             : "linear-gradient(135deg,#f59e0b,#d97706)",
         }}
       >
-        <ClipboardCheck className="w-6 h-6" />
+        <ClipboardCheck className="w-5 h-5" />
       </span>
 
       <span

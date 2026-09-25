@@ -84,16 +84,16 @@ export default function WhatsAppSupportButton() {
         type="button"
         onClick={() => setAbierto(true)}
         aria-label="Abrir chat de soporte por WhatsApp"
-        className={`fixed ${inbox ? "top-28" : "bottom-6"} right-6 z-[999] group`}
+        className={`fixed ${inbox ? "top-28" : "bottom-4"} right-2 z-[999] group`}
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 animate-ping" />
         <span
-          className="relative flex items-center justify-center w-14 h-14 rounded-full
+          className="relative flex items-center justify-center w-11 h-11 rounded-full
                      bg-gradient-to-br from-[#25D366] to-[#128C7E] text-white
                      shadow-[0_8px_24px_rgba(18,140,126,0.45)]
                      transition-transform duration-200 group-hover:scale-110 group-active:scale-95"
         >
-          <WhatsAppIcon className="w-7 h-7" />
+          <WhatsAppIcon className="w-6 h-6" />
         </span>
       </button>
 

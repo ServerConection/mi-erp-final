@@ -5,7 +5,7 @@ const {
   verifyCallActionToken,
   resolveDealPhone,
   consumeCallNonce,
-  startBitrixCallback,
+  queueAutomarcadorDirectCall,
 } = require('../services/bitrixCallPlacement.service')
 
 function escapeHtml(value) {
@@ -43,7 +43,9 @@ function createBitrixCallPlacementController({
   bitrixApp,
   pool,
   actionSecret,
-  outgoingLineId,
+  automarcadorUrl,
+  automarcadorApiKey,
+  fetchImpl = fetch,
   now = () => Date.now(),
 }) {
   function setPrivateEmbedHeaders(res) {
@@ -105,19 +107,22 @@ function createBitrixCallPlacementController({
       if (!firstUse) return res.status(409).send(renderResult({ success: false, title: 'Confirmación utilizada', message: 'Vuelve a abrir LLAMAR para solicitar una nueva llamada.' }))
 
       const contact = await resolveDealPhone(bitrixApp, payload.authId, payload.dealId)
-      await startBitrixCallback(bitrixApp, payload.authId, {
-        lineId: outgoingLineId,
+      await queueAutomarcadorDirectCall(fetchImpl, {
+        baseUrl: automarcadorUrl,
+        apiKey: automarcadorApiKey,
+        userId: payload.userId,
         phone: contact.phone,
         dealId: payload.dealId,
+        contactName: contact.contactName,
       })
-      return res.status(202).send(renderResult({ success: true, title: 'Llamada iniciada', message: 'Bitrix está conectando la llamada con tu usuario.' }))
+      return res.status(202).send(renderResult({ success: true, title: 'Llamada enviada', message: 'El automarcador está iniciando la llamada con tu usuario.' }))
     } catch (error) {
-      const clientError = /inválida|expiró|sin acceso|no tiene un teléfono/i.test(error.message)
+      const clientError = /inválida|expiró|sin acceso|no tiene un teléfono|asesor|automarcador|disponible|conectado|autorizado/i.test(error.message)
       console.error('[BITRIX-CALL] No se pudo iniciar la llamada. error=%s', error.message)
       return res.status(clientError ? 400 : 500).send(renderResult({
         success: false,
         title: 'No se pudo iniciar la llamada',
-        message: clientError ? error.message : 'La telefonía de Bitrix no está disponible. Vuelve a abrir LLAMAR e intenta nuevamente.',
+        message: clientError ? error.message : 'El automarcador no está disponible. Vuelve a abrir LLAMAR e intenta nuevamente.',
       }))
     }
   }

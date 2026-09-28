@@ -7,7 +7,7 @@ const {
   verifyCallActionToken,
   resolveDealPhone,
   consumeCallNonce,
-  startBitrixCallback,
+  queueAutomarcadorDirectCall,
 } = require('../src/services/bitrixCallPlacement.service')
 
 test('extractDealId accepts only positive numeric Bitrix deal IDs', () => {
@@ -69,28 +69,39 @@ test('consumeCallNonce atomically accepts the first confirmation only', async ()
   assert.equal(await consumeCallNonce(pool, 'fixed-nonce', '15'), false)
 })
 
-test('startBitrixCallback initiates a server-side callback without returning the phone', async () => {
+test('queues the call in the ERP automarcador for only the authenticated Bitrix advisor', async () => {
   const calls = []
-  const bitrixApp = { llamarConAuthId: async (method, params, authId) => {
-    calls.push({ method, params, authId })
-    return { RESULT: true, CALL_ID: 'callback.123' }
-  } }
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options })
+    return { ok: true, status: 202, json: async () => ({ success: true, status: 'calling', campaignId: 'direct-123' }) }
+  }
 
-  const result = await startBitrixCallback(bitrixApp, 'sensitive-auth', {
-    lineId: 'reg151083', phone: '593998571562', dealId: '662241',
+  const result = await queueAutomarcadorDirectCall(fetchImpl, {
+    baseUrl: 'https://automarcador.example/', apiKey: 'internal-secret',
+    userId: '91', phone: '593998571562', dealId: '662241', contactName: 'Ma Augusta Larrea',
   })
 
-  assert.deepEqual(result, { callId: 'callback.123' })
-  assert.deepEqual(calls, [{
-    method: 'voximplant.callback.start',
-    params: {
-      FROM_LINE: 'reg151083',
-      TO_NUMBER: '593998571562',
-      TEXT_TO_PRONOUNCE: 'Llamada solicitada desde la negociación 662241',
-    },
-    authId: 'sensitive-auth',
-  }])
+  assert.deepEqual(result, { campaignId: 'direct-123' })
+  assert.equal(calls[0].url, 'https://automarcador.example/api/direct-call')
+  assert.equal(calls[0].options.headers['x-automarcador-key'], 'internal-secret')
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    userId: '91', phone: '593998571562', dealId: '662241', contactName: 'Ma Augusta Larrea',
+  })
   assert.equal(JSON.stringify(result).includes('593998571562'), false)
+})
+
+test('reports an unavailable automarcador advisor without rerouting the call', async () => {
+  const fetchImpl = async () => ({
+    ok: false, status: 409,
+    json: async () => ({ success: false, code: 'AGENT_OFFLINE', error: 'El asesor no está conectado al automarcador' }),
+  })
+  await assert.rejects(
+    queueAutomarcadorDirectCall(fetchImpl, {
+      baseUrl: 'https://automarcador.example', apiKey: 'internal-secret',
+      userId: '91', phone: '593998571562', dealId: '662241', contactName: 'Ma Augusta Larrea',
+    }),
+    /no está conectado al automarcador/i,
+  )
 })
 
 test('confirmation HTML shows the deal and never receives or renders a phone', () => {

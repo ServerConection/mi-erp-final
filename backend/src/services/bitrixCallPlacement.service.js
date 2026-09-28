@@ -111,15 +111,33 @@ async function consumeCallNonce(pool, nonce, erpUserId) {
   return result.rows.length === 1
 }
 
-async function startBitrixCallback(bitrixApp, authId, { lineId, phone, dealId }) {
-  if (!lineId) throw new Error('BITRIX_OUTGOING_LINE_ID no configurada')
-  const response = await bitrixApp.llamarConAuthId('voximplant.callback.start', {
-    FROM_LINE: lineId,
-    TO_NUMBER: phone,
-    TEXT_TO_PRONOUNCE: `Llamada solicitada desde la negociación ${dealId}`,
-  }, authId)
-  if (!response?.RESULT || !response?.CALL_ID) throw new Error('Bitrix no confirmó el inicio de la llamada')
-  return { callId: response.CALL_ID }
+async function queueAutomarcadorDirectCall(fetchImpl, {
+  baseUrl, apiKey, userId, phone, dealId, contactName,
+}) {
+  const urlBase = String(baseUrl || '').replace(/\/+$/, '')
+  if (!urlBase || !apiKey) throw new Error('Automarcador no configurado')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const response = await fetchImpl(`${urlBase}/api/direct-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-automarcador-key': apiKey },
+      body: JSON.stringify({ userId, phone, dealId, contactName }),
+      signal: controller.signal,
+    })
+    let body = {}
+    try { body = await response.json() } catch (_) { /* respuesta inválida */ }
+    if (!response.ok || !body.success || !body.campaignId) {
+      const safeMessage = String(body.error || 'El automarcador no aceptó la llamada').slice(0, 240)
+      const error = new Error(safeMessage)
+      error.code = body.code || 'AUTOMARCADOR_REJECTED'
+      error.statusCode = response.status
+      throw error
+    }
+    return { campaignId: body.campaignId }
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 module.exports = {
@@ -129,6 +147,6 @@ module.exports = {
   normalizePhoneEC,
   resolveDealPhone,
   consumeCallNonce,
-  startBitrixCallback,
+  queueAutomarcadorDirectCall,
 }
 

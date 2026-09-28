@@ -14,7 +14,8 @@ const callPlacement = createBitrixCallPlacementController({
   bitrixApp,
   pool,
   actionSecret: process.env.BITRIX_CALL_ACTION_SECRET,
-  outgoingLineId: process.env.BITRIX_OUTGOING_LINE_ID,
+  automarcadorUrl: process.env.AUTOMARCADOR_URL,
+  automarcadorApiKey: process.env.AUTOMARCADOR_API_KEY,
 })
 
 // Públicas: las llama Bitrix24, no el frontend. Se autentican con
@@ -36,8 +37,8 @@ router.post('/registrar', verificarToken, noAsesor, registrarConector)
 router.post('/registrar-placement', verificarToken, noAsesor, registrarPlacement)
 router.post('/registrar-call-placement', verificarToken, noAsesor, async (req, res) => {
   try {
-    if (String(process.env.BITRIX_CALL_ACTION_SECRET || '').length < 32 || !process.env.BITRIX_OUTGOING_LINE_ID) {
-      return res.status(503).json({ success: false, message: 'Configura BITRIX_CALL_ACTION_SECRET y BITRIX_OUTGOING_LINE_ID antes de registrar LLAMAR' })
+    if (String(process.env.BITRIX_CALL_ACTION_SECRET || '').length < 32 || !process.env.AUTOMARCADOR_URL || !process.env.AUTOMARCADOR_API_KEY) {
+      return res.status(503).json({ success: false, message: 'Configura BITRIX_CALL_ACTION_SECRET, AUTOMARCADOR_URL y AUTOMARCADOR_API_KEY antes de registrar LLAMAR' })
     }
     const tokens = await bitrixApp.leerTokens()
     if (!tokens) {

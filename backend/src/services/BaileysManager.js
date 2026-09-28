@@ -1201,6 +1201,67 @@ class BaileysManager {
     } catch (e) { /* ignorar */ }
   }
 
+  async startCall(lineId, to, { video = false } = {}) {
+    const inst = this.instances[lineId]
+    if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
+    const jid = await this._resolveSendJid(lineId, to)
+    const ownJid = inst.sock?.user?.id || inst.sock?.user?.lid || inst.sock?.user?.jid
+    if (!ownJid) throw new Error(`No se pudo resolver la línea de origen para ${lineId}`)
+    const callId = `erp-${Date.now()}-${Math.round(Math.random() * 1e9)}`
+    const offer = {
+      tag: 'offer',
+      attrs: {
+        'call-id': callId,
+        'call-creator': ownJid,
+        count: '0',
+        media: video ? 'video' : 'audio',
+      },
+    }
+    const stanza = {
+      tag: 'call',
+      attrs: { from: ownJid, to: jid },
+      content: [offer],
+    }
+
+    try {
+      if (typeof inst.sock.query === 'function') {
+        await inst.sock.query(stanza)
+      } else if (typeof inst.sock.sendNode === 'function') {
+        await inst.sock.sendNode(stanza)
+      } else {
+        throw new Error('Baileys no expone la API de llamada saliente en esta versión')
+      }
+    } catch (e) {
+      console.warn(`[Line ${lineId}] falla al iniciar llamada via Baileys:`, e.message)
+      throw new Error(`No se pudo iniciar la llamada: ${e.message}`)
+    }
+
+    const waNumber = this._cleanNumber(to)
+    const conv = await this._getOrCreateConversation(lineId, waNumber, jid)
+    const content = `${video ? 'Videollamada' : 'Llamada'} · Iniciada`
+    const metadata = { call_status: 'offer', video: Boolean(video), offline: false, source: 'erp', call_id: callId }
+    const existingRow = await query('SELECT id FROM messages WHERE line_id=$1 AND wa_msg_id=$2 LIMIT 1', [lineId, callId])
+    const row = existingRow.rows[0]
+      ? (await query(
+          `UPDATE messages SET content=$1, metadata=$2::jsonb, timestamp=NOW()
+           WHERE id=$3 RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+          [content, JSON.stringify(metadata), existingRow.rows[0].id]
+        )).rows[0]
+      : (await query(
+          `INSERT INTO messages (conversation_id, line_id, wa_number, direction, type, content, wa_msg_id, status, metadata, timestamp)
+           VALUES ($1,$2,$3,'out','call',$4,$5,'event',$6::jsonb,NOW())
+           RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+          [conv.id, lineId, waNumber, content, callId, JSON.stringify(metadata)]
+        )).rows[0]
+
+    if (row) {
+      await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+      await this._emitInbox(lineId, 'message:new', { ...row, conversation_id: conv.id, lineId, waNumber })
+    }
+
+    return { callId, jid, row }
+  }
+
   async sendText(lineId, to, text, { inboxNoteId, messageId } = {}) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)

@@ -329,6 +329,25 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally { setUploading(false); }
   };
 
+  const callSelected = async ({ video = false } = {}) => {
+    if (!selected) return;
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}/call`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({ video }),
+      });
+      const d = await r.json();
+      if (!d.success) {
+        alert(d.error || "No se pudo iniciar la llamada");
+        return;
+      }
+      alert(video ? "Videollamada iniciada" : "Llamada iniciada");
+    } catch (e) {
+      alert(e.message || "No se pudo iniciar la llamada");
+    }
+  };
+
   const takeOver = async () => {
     await fetch(`${API}/conversations/${selected.id}/takeover`, { method: "POST", headers: authH(false) });
     setSelected(s => ({ ...s, status: "human_takeover" }));
@@ -542,6 +561,16 @@ export default function WaInbox({ dealId = null } = {}) {
             <div className="flex gap-2">
               {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
                   negociación en Bitrix -- el enlace/botón sería redundante. */}
+              <button onClick={() => callSelected({ video: false })}
+                title="Llamar por WhatsApp a esta conversación"
+                className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
+                📞 Llamar
+              </button>
+              <button onClick={() => callSelected({ video: true })}
+                title="Iniciar videollamada por WhatsApp"
+                className="text-xs bg-violet-50 border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg hover:bg-violet-100 transition-colors">
+                🎥 Video
+              </button>
               {!dealId && (selected.bitrix_deal_id ? (
                 <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
                   onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}

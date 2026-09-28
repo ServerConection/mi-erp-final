@@ -121,6 +121,7 @@ router.get('/', async (req, res) => {
       buscar = '', page = 1, limit = 100,
       fechaDesde = '', fechaHasta = '',                 // fecha_registro_sistema
       activacionDesde = '', activacionHasta = '',       // fecha_activacion_netlife
+      agendaDesde = '', agendaHasta = '',               // fecha_agenda
       login = '',                                        // netlife_login
       estatusNetlife = '',                               // netlife_estatus_real
       terceraEdad = '',                                  // aplica_descuento_3ra_edad
@@ -158,6 +159,10 @@ router.get('/', async (req, res) => {
     // ── FECHA DE ACTIVACIÓN ──────────────────────────────────────────────
     if (activacionDesde) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} >= ${P(activacionDesde)}`;
     if (activacionHasta) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} <= ${P(activacionHasta)}`;
+
+    // ─── FECHA DE AGENDAMIENTO ──────────────────────────────────────────────
+    if (agendaDesde) whereClause += ` AND ${fechaCol('fecha_agenda')} >= ${P(agendaDesde)}`;
+    if (agendaHasta) whereClause += ` AND ${fechaCol('fecha_agenda')} <= ${P(agendaHasta)}`;
 
     // ── LOGIN NETLIFE ────────────────────────────────────────────────────
     if (login.trim()) whereClause += ` AND netlife_login ILIKE ${P(`%${login.trim()}%`)}`;
@@ -312,7 +317,7 @@ const CAMPOS_EDITABLES = new Set([
   'calidad_venta_analista', 'novedades_atc', 'estado_welcome', 'venta_efectiva',
   'auditoria_documentos', 'auditado_por', 'inconsistencia_documental',
   'observacion_auditoria', 'errores_telcos', 'estatus_regularizacion',
-  'detalle_regularizacion', 'fecha_regularizacion_atc', 'mes_regularizacion',
+  'detalle_regularizacion', 'mes_regularizacion',
   'observacion_venta_original', 'observacion_gestion_cobranza',
   'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
   'archivo_resumen',
@@ -323,6 +328,7 @@ const CAMPOS_EDITABLES = new Set([
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',
+  'franja_horaria_agendamiento',
   'mes_agenda',
   'dia_abc_agenda',
 
@@ -444,6 +450,8 @@ router.post('/welcome/programaciones/:registroId/cancelar', async (req, res) => 
 });
 
 router.put('/:id', async (req, res) => {
+  let client;
+  let transaccionAbierta = false;
   try {
     const { id } = req.params;
 
@@ -455,8 +463,11 @@ router.put('/:id', async (req, res) => {
     // El registro debe existir Y pertenecer a la empresa del usuario.
     // Sin esto, cualquier perfil no-ASESOR podía editar ventas de la otra
     // empresa mandando el id directo al endpoint.
-    const { rows: actual } = await pool.query(
-      'SELECT distribuidor_autorizado, tipo_documento FROM public.envios_ventas WHERE id = $1',
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transaccionAbierta = true;
+    const { rows: actual } = await client.query(
+      'SELECT * FROM public.envios_ventas WHERE id = $1 FOR UPDATE',
       [id]
     );
     if (actual.length === 0)
@@ -488,12 +499,34 @@ router.put('/:id', async (req, res) => {
     // campos de un registro que ya estaba notificado no debe reenviarlo.
     let debeEnviarBienvenida = false;
     if (String(payload.estado_welcome || '').trim().toUpperCase() === 'NOTIFICADO') {
-      const anterior = await pool.query(
-        'SELECT estado_welcome FROM public.envios_ventas WHERE id = $1',
-        [id]
-      );
-      const estadoAnterior = String(anterior.rows[0]?.estado_welcome || '').trim().toUpperCase();
+      const estadoAnterior = String(actual[0]?.estado_welcome || '').trim().toUpperCase();
       debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento')) {
+      const franja = String(payload.franja_horaria_agendamiento || '').trim();
+      const matchFranja = franja.match(/^([01]\d|2[0-3]):00-([01]\d|2[0-3]):00$/);
+      const duraDosHoras = matchFranja && (Number(matchFranja[2]) - Number(matchFranja[1]) + 24) % 24 === 2;
+      if (franja && !duraDosHoras) {
+        return res.status(400).json({ success: false, error: 'Franja horaria inválida' });
+      }
+      payload.franja_horaria_agendamiento = franja || null;
+    }
+
+    // Seleccionar "Auditado por" es la acción que sella la regularización.
+    // Ambas fechas las genera el servidor; el cliente no decide sus valores.
+    if (Object.prototype.hasOwnProperty.call(payload, 'auditado_por')) {
+      const auditor = String(payload.auditado_por || '').trim();
+      if (!auditor) {
+        return res.status(400).json({ success: false, error: 'Debe seleccionar quién auditó el registro' });
+      }
+      payload.auditado_por = auditor;
+      if (!actual[0].fecha_hora_regularizacion) payload.fecha_hora_regularizacion = new Date();
+      if (!actual[0].fecha_regularizacion_atc) {
+        payload.fecha_regularizacion_atc = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(new Date());
+      }
     }
 
     // Manejo de la fecha y cálculo de campos derivados
@@ -552,6 +585,44 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // Identidad y momento de auditoría: los decide el servidor y nunca el
+    // navegador. La primera regularización queda inmutable.
+    const CAMPOS_AUDITORIA = new Set([
+      'estatus_regularizacion', 'auditoria_documentos', 'detalle_regularizacion',
+      'gestion_atc', 'inconsistencia_documental', 'observacion_auditoria',
+    ]);
+    const intervinoAuditor = Object.keys(payload).some(campo => CAMPOS_AUDITORIA.has(campo));
+    const estadoRegAnterior = String(actual[0].estatus_regularizacion || '').trim().toUpperCase();
+    const estadoRegNuevo = String(payload.estatus_regularizacion || '').trim().toUpperCase();
+    if (intervinoAuditor && estadoRegNuevo === 'REGULARIZADO' && estadoRegAnterior !== 'REGULARIZADO' && !actual[0].fecha_hora_regularizacion) {
+      payload.fecha_hora_regularizacion = new Date();
+    }
+
+    // hist_cambio_estatus existía, pero esta ruta no lo actualizaba. Se agrega
+    // un evento append-only por cada campo de estado que realmente cambió.
+    const CAMPOS_ESTADO = new Set([
+      'estatus_envio', 'netlife_estatus_real', 'estatus_regularizacion',
+      'estado_welcome', 'estado_recaudacion', 'auditoria_documentos',
+      'calidad_venta_analista', 'venta_efectiva',
+    ]);
+    const cambiosEstado = Object.entries(payload)
+      .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && String(actual[0][campo] ?? '') !== String(valor ?? ''))
+      .map(([campo, valor]) => ({ campo, anterior: actual[0][campo] ?? null, nuevo: valor ?? null }));
+    if (cambiosEstado.length) {
+      let historial = actual[0].hist_cambio_estatus;
+      if (typeof historial === 'string') {
+        try { historial = JSON.parse(historial); } catch { historial = []; }
+      }
+      if (!Array.isArray(historial)) historial = [];
+      historial.push({
+        usuario_id: req.user?.id || null,
+        usuario: req.user?.nombreCompleto || req.user?.usuario || null,
+        fecha_hora: new Date().toISOString(),
+        cambios: cambiosEstado,
+      });
+      payload.hist_cambio_estatus = JSON.stringify(historial);
+    }
+
     const fields = Object.keys(payload);
     if (fields.length === 0) {
       return res.status(400).json({ success: false, error: 'No hay datos válidos para actualizar' });
@@ -572,7 +643,7 @@ router.put('/:id', async (req, res) => {
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, values);
+    const { rows } = await client.query(query, values);
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
@@ -584,13 +655,16 @@ router.put('/:id', async (req, res) => {
       Object.prototype.hasOwnProperty.call(payload, 'estado_welcome') &&
       String(payload.estado_welcome || '').trim().toUpperCase() !== 'PENDIENTE'
     ) {
-      await pool.query(
+      await client.query(
         `UPDATE welcome_notifications
          SET status='cancelled', updated_at=NOW()
          WHERE registro_id=$1 AND status IN ('pending', 'failed')`,
         [id]
       );
     }
+
+    await client.query('COMMIT');
+    transaccionAbierta = false;
 
     let correoBienvenida = null;
     let whatsappBienvenida = null;
@@ -622,6 +696,10 @@ router.put('/:id', async (req, res) => {
       whatsapp_bienvenida: whatsappBienvenida,
     });
   } catch (e) {
+    if (client && transaccionAbierta) {
+      await client.query('ROLLBACK').catch(() => {});
+      transaccionAbierta = false;
+    }
     console.error(
       '[BACKOFFICE] Error en PUT update:',
       e
@@ -633,6 +711,9 @@ router.put('/:id', async (req, res) => {
       code: e.code || null,
       detail: e.detail || null,
     });
+  } finally {
+    if (client && transaccionAbierta) await client.query('ROLLBACK').catch(() => {});
+    client?.release();
   }
 });
 

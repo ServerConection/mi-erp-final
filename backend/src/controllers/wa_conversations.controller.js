@@ -345,6 +345,38 @@ async function createInternalNote(req, res) {
   }
 }
 
+async function callConversation(req, res) {
+  try {
+    const { id } = req.params
+    const { video = false } = req.body || {}
+    const owned = await findOwnedConversation(req, id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+
+    const bm = req.app.get('baileysManager')
+    if (!bm) return res.status(503).json({ success: false, error: 'WhatsApp no inicializado. Intenta en unos segundos.' })
+
+    if (bm.getStatus(owned.line_id) !== 'connected') {
+      const ok = await bm.ensureConnected(owned.line_id)
+      if (!ok) {
+       return res.status(409).json({
+         success: false,
+         error: 'La línea de WhatsApp de esta conversación está desconectada. Ve a Líneas y reconéctala.',
+       })
+      }
+    }
+
+    const result = await bm.startCall(owned.line_id, owned.wa_number, { video: Boolean(video) })
+    res.json({ success: true, data: result })
+  } catch (err) {
+    console.error('[wa_conversations.callConversation] ERROR:', err && (err.stack || err.message || err))
+    const msg = (err && err.message) || ''
+    if (msg.includes('no conectada')) {
+      return res.status(409).json({ success: false, error: 'La línea de WhatsApp está desconectada. Reconéctala en Líneas.' })
+    }
+    res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'No se pudo iniciar la llamada. Intenta de nuevo.' : err.message })
+  }
+}
+
 // ── Enviar mensaje manual desde el inbox ─────────────────────
 async function sendMessage(req, res) {
   let inboxNote = null
@@ -784,4 +816,4 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }
+module.exports = { getAll, getMessages, sendMessage, callConversation, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }

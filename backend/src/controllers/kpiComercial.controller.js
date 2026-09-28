@@ -33,7 +33,7 @@
 const pool = require('../config/db');
 const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
+const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr } = require('../shared/etapas');
 
 const errorResponse = (res, etiqueta, err) => {
   console.error(`[KpiComercial][${etiqueta}]`, err.message);
@@ -129,14 +129,12 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
-        -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO
-        -- ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes era
-        -- COUNT(*) sin más condición que el rango de fecha (mismo fix que
-        -- indicadores.controller.js / indicadoresVelsaMaterialized.controller.js).
+        -- INGRESOS TOTALES JOT: cuenta todos los registros creados en el rango,
+        -- sin excluir por etapa CRM ni por estado Jotform. Debe coincidir con
+        -- el indicador global del dashboard en NOVONET y VELSA.
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
-              AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
         )                                                  AS ingresos_jot,
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango

@@ -29,7 +29,7 @@ test('aísla Semillero, fuerza el asesor autenticado y pagina solo el detalle', 
   assert.equal(queries.length, 5);
   for (const q of queries) {
     assert.match(q.sql, /LOWER\(BTRIM\(w.empresa\)\) = 'semillero'/);
-    assert.match(q.sql, /UPPER\(BTRIM\(COALESCE\(w.pipeline, ''\)\)\) = 'SEMILLERO'/);
+    assert.doesNotMatch(q.sql, /w\.pipeline/);
     assert.ok(q.params.includes('ASESOR AUTENTICADO'));
     assert.ok(!q.params.includes('OTRO'));
   }

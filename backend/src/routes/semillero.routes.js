@@ -7,7 +7,7 @@ const { esGestionableExpr, esDescarteExactoExpr } = require('../shared/etapas');
 const etapa = `UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' '))`;
 const origen = `COALESCE(NULLIF(BTRIM(w.source), ''), 'SIN ORIGEN')`;
 const responsable = `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`;
-const esSemillero = `LOWER(BTRIM(w.empresa)) = 'semillero' AND UPPER(BTRIM(COALESCE(w.pipeline, ''))) = 'SEMILLERO'`;
+const esSemillero = `LOWER(BTRIM(w.empresa)) = 'semillero'`;
 router.use(verificarToken);
 router.get('/dashboard', async (req, res) => {
   const q = req.query;
@@ -31,7 +31,7 @@ router.get('/dashboard', async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)})::int AS gestionables, COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ventas, COUNT(*) FILTER (WHERE ${etapa} ~ '^ATC([ /-]?SOPORTE)?$')::int AS atc, COUNT(*) FILTER (WHERE ${esDescarteExactoExpr(etapa)})::int AS descarte ${base}`, values),
       pool.query(`SELECT ${origen} AS origen, ${etapa} AS etapa, ${fechaWebhookExpr('w')}::text AS fecha, COUNT(*)::int AS total ${base} GROUP BY 1,2,3 ORDER BY 3,1,2`, values),
       pool.query(`SELECT ${responsable} AS responsable, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)})::int AS gestionables, COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ventas ${base} GROUP BY 1 ORDER BY total DESC, responsable`, values),
-      pool.query(`SELECT w.bitrix_id, w.phone, ${responsable} AS responsable, ${origen} AS origen, ${etapa} AS etapa, ${fechaWebhookExpr('w')}::text AS fecha, w.city, w.pipeline, w.comentario, w.razon_descarte, w.motivo_atc ${base} ORDER BY w.created_at DESC, w.bitrix_id DESC LIMIT 50 OFFSET $${values.length + 1}`, [...values, (pagina - 1) * 50]),
+      pool.query(`SELECT w.bitrix_id, w.phone, ${responsable} AS responsable, ${origen} AS origen, ${etapa} AS etapa, ${fechaWebhookExpr('w')}::text AS fecha, w.city, w.comentario, w.razon_descarte, w.motivo_atc ${base} ORDER BY w.created_at DESC, w.bitrix_id DESC LIMIT 50 OFFSET $${values.length + 1}`, [...values, (pagina - 1) * 50]),
       pool.query(`SELECT ${responsable} AS responsable, ${origen} AS origen, ${etapa} AS etapa FROM public.bitrix_webhook_leads w WHERE ${esSemillero} ${req.user.perfil === 'ASESOR' ? 'AND UPPER(' + responsable + ') = UPPER($1)' : ''}`, req.user.perfil === 'ASESOR' ? [asesor] : []),
     ]);
     const opciones = key => [...new Set(catalogo.rows.map(r => r[key]))].sort((a, b) => a.localeCompare(b, 'es'));

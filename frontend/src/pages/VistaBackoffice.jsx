@@ -55,34 +55,34 @@ const CAMPOS_FECHA = [
 // Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
 // mantienen sincronizados automáticamente con el archivo Excel.
 const COLUMNAS_TABLA_REGISTROS = [
-  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
   "nombre_cliente_completo", "aplica_descuento_3ra_edad", "numero_identificacion",
   "plan_contratado_final", "servicios_digitales", "tipo_contrato", "netlife_login",
-  "netlife_estatus_real", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "netlife_estatus_real", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
 
 const COLUMNAS_VALIDACION_ESTADO = [
-  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
   "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
   "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
-  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
 
 const COLUMNAS_VALIDACION_REGULARIZACION = [
-  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
-  "netlife_estatus_real", "estatus_regularizacion", "nombre_cliente_completo",
+  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "netlife_estatus_real", "estatus_regularizacion", "auditado_por", "fecha_hora_regularizacion", "nombre_cliente_completo",
   "aplica_descuento_3ra_edad", "numero_identificacion", "plan_contratado_final",
   "servicios_digitales", "tipo_contrato", "netlife_login", "novedades_atc",
-  "fecha_ingreso_telcos", "fecha_agenda", "fecha_activacion_netlife", "forma_pago", "supervisor",
+  "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife", "forma_pago", "supervisor",
 ];
 
 const COLUMNAS_MESA_TRABAJO = [
-  "id", "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
+  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "nombre_asesor_comercial",
   "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
   "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
-  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda",
+  "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
 
@@ -109,6 +109,12 @@ const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
   { valor: "NO REQUIERE REGULARIZAR", etiqueta: "No requiere regularizar" },
 ];
+const FRANJAS_AGENDAMIENTO = Array.from({ length: 12 }, (_, i) => {
+  const desde = String(i * 2).padStart(2, "0");
+  const hasta = String((i * 2 + 2) % 24).padStart(2, "0");
+  return `${desde}:00-${hasta}:00`;
+});
+const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_hora_regularizacion", "fecha_regularizacion_atc"]);
 
 const OPCIONES_FORMA_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 const OPCIONES_BANCO = [
@@ -829,6 +835,7 @@ const FIELD_LABELS = {
   venta_efectiva: "VENTA EFECTIVA",
   auditoria_documentos: "AUDITORÍA DOC.",
   auditado_por: "AUDITADO POR",
+  fecha_hora_regularizacion: "FECHA Y HORA EXACTA DE REGULARIZACIÓN",
   inconsistencia_documental: "INCONSISTENCIA",
   observacion_auditoria: "OBS. AUDITORÍA",
   errores_telcos: "OBSERVACIÓN TELCOS",
@@ -842,6 +849,7 @@ const FIELD_LABELS = {
   observacion_gestion_cobranza: "OBS. COBRANZA",
   turno_agendado: "TURNO AGENDADO",
   fecha_agenda: "FECHA AGENDAMIENTO",
+  franja_horaria_agendamiento: "FRANJA HORARIA DE AGENDAMIENTO",
   mes_agenda: "MES AGENDA",
   dia_abc_agenda: "DÍA AGENDA",
   banco: "BANCO",
@@ -865,7 +873,7 @@ const FIELD_LABELS = {
 };
 
 const TABLE_COLUMNS = [
-  "id", "estatus_envio", "ip_origen", "fecha_registro_sistema", "mes_registro_sistema", "dia_abc_registro_sistema",
+  "ip_origen", "fecha_registro_sistema", "mes_registro_sistema", "dia_abc_registro_sistema",
   "codigo_asesor", "id_bitrix", "distribuidor_autorizado", "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
   "nombre_atc", "clausulas", "lider_comercial", "tipo_cliente", "genero_cliente", "tipo_documento", "numero_identificacion",
   "nombre_cliente_completo", "estado_civil", "fecha_nacimiento", "mes_nacimiento", "dia_abc_nacimiento", "email_cliente",
@@ -876,8 +884,8 @@ const TABLE_COLUMNS = [
   "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc", "estado_welcome", "fecha_notificacion_welcome",
   "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
   "estatus_regularizacion", "detalle_regularizacion", "gestion_atc", "fecha_regularizacion_atc", "mes_regularizacion_atc", "dia_abc_regularizacion_atc",
-  "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "turno_agendado", "fecha_agenda", "mes_agenda",
-  "dia_abc_agenda", "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
+  "mes_regularizacion", "observacion_venta_original", "observacion_gestion_cobranza", "fecha_agenda", "franja_horaria_agendamiento",
+  "banco", "ciclo_facturacion", "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
   "beneficios_de_ley", "plazo_contrato_meses", "resumen_venta", ...CAMPOS_DOCUMENTO
 ];
 
@@ -923,6 +931,7 @@ const initialDetail = {
   venta_efectiva: "",
   auditoria_documentos: "",
   auditado_por: "",
+  fecha_hora_regularizacion: "",
   inconsistencia_documental: "",
   observacion_auditoria: "",
   errores_telcos: "",
@@ -943,6 +952,7 @@ const initialDetail = {
   archivo_ruc: "",
   fecha_activacion_netlife: "",
   fecha_agenda: "",
+  franja_horaria_agendamiento: "",
   fecha_ingreso_telcos: "",
   gestion_atc: "",
 };
@@ -1040,6 +1050,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, se
 const FILTROS_VACIOS = {
   fechaDesde: "", fechaHasta: "",
   activacionDesde: "", activacionHasta: "",
+  agendaDesde: "", agendaHasta: "",
   login: "",
   estatusNetlife: "",
   terceraEdad: "",
@@ -1315,7 +1326,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
   const editableFields = useMemo(() => [
     // Venta
-    "estatus_envio", "codigo_asesor", "nombre_asesor_comercial", "id_bitrix", "distribuidor_autorizado",
+    "codigo_asesor", "nombre_asesor_comercial", "id_bitrix", "distribuidor_autorizado",
     "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
     "nombre_atc", "clausulas", "lider_comercial",
     // Cliente
@@ -1337,8 +1348,8 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
     "fecha_activacion_netlife", "novedades_atc", "errores_telcos", "estado_welcome",
     // Agendamiento
-    "turno_agendado", "fecha_agenda", "mes_agenda", "dia_abc_agenda",
-    "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria",
+    "fecha_agenda", "franja_horaria_agendamiento",
+    "auditoria_documentos", "auditado_por", "fecha_hora_regularizacion", "inconsistencia_documental", "observacion_auditoria",
     // Documentos
     "links_documentos",
     ...CAMPOS_DOCUMENTO,
@@ -1398,12 +1409,12 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       },
       {
         titulo: "Agendamiento",
-        campos: ["turno_agendado", "fecha_agenda", "mes_agenda", "dia_abc_agenda"],
+        campos: ["fecha_agenda", "franja_horaria_agendamiento"],
       },
       {
         titulo: "Venta",
         campos: [
-          "estatus_envio", "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+          "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
           "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
           "nombre_atc", "clausulas", "lider_comercial",
         ],
@@ -1412,7 +1423,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         titulo: "Auditoría y regularización",
         campos: [
           "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
-          "auditado_por", "fecha_regularizacion_atc", "gestion_atc",
+          "auditado_por", "fecha_hora_regularizacion", "fecha_regularizacion_atc", "gestion_atc",
         ],
       },
     ];
@@ -1447,7 +1458,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           titulo: "Auditoría y regularización",
           campos: [
             "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
-            "auditado_por", "fecha_regularizacion_atc", "gestion_atc",
+            "auditado_por", "fecha_hora_regularizacion", "fecha_regularizacion_atc", "gestion_atc",
           ],
         },
       ],
@@ -1726,6 +1737,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                       desde={filtros.activacionDesde} hasta={filtros.activacionHasta}
                       onDesde={(v) => setFiltro("activacionDesde", v)} onHasta={(v) => setFiltro("activacionHasta", v)}
                     />
+                    <CampoRangoFecha
+                      label="Fecha de agendamiento"
+                      desde={filtros.agendaDesde} hasta={filtros.agendaHasta}
+                      onDesde={(v) => setFiltro("agendaDesde", v)} onHasta={(v) => setFiltro("agendaHasta", v)}
+                    />
                     <div style={estilosFiltro.campo}>
                       <label style={estilosFiltro.label}>Login Netlife</label>
                       <input
@@ -1820,9 +1836,6 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ background: "#dcfce7", color: "#166534", padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 800, textTransform: "uppercase" }}>
-                    {detail?.estatus_envio || "ACTIVO"}
-                  </span>
                   <button
                     onClick={closeModal}
                     style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748b" }}
@@ -1861,7 +1874,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                           </label>
 
                           <fieldset
-                            disabled={!puedeEditar || field === "nombre_asesor_comercial" || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
+                            disabled={!puedeEditar || field === "nombre_asesor_comercial" || CAMPOS_AUDITORIA_SOLO_LECTURA.has(field) || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
                             style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}
                           >
 
@@ -1874,6 +1887,15 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                               onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                                onAlert={setAlert}
                              />
+                          ) : field === "franja_horaria_agendamiento" ? (
+                            <select
+                              value={detail?.[field] || ""}
+                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
+                            >
+                              <option value="">Seleccionar franja...</option>
+                              {FRANJAS_AGENDAMIENTO.map((franja) => <option key={franja} value={franja}>{franja}</option>)}
+                            </select>
                           ) : field === "auditoria_documentos" ? (() => {
                             const seleccionados = valoresSeleccionMultiple(detail?.[field]);
                             const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];

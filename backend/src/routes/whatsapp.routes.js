@@ -100,6 +100,7 @@ router.delete('/templates/:id',  templatesCtrl.remove);
 router.get  ('/conversations',                   convsCtrl.getAll);
 router.get  ('/conversations/:id/messages',      convsCtrl.getMessages);
 router.post ('/conversations/:id/send',          convsCtrl.sendMessage);
+router.post ('/conversations/:id/call',          convsCtrl.callConversation);
 router.post ('/conversations/:id/internal-note', convsCtrl.createInternalNote);
 router.post ('/conversations/:id/close',         convsCtrl.close);
 router.post ('/conversations/:id/takeover',      convsCtrl.takeover);

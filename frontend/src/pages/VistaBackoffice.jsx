@@ -955,6 +955,7 @@ const initialDetail = {
   franja_horaria_agendamiento: "",
   fecha_ingreso_telcos: "",
   gestion_atc: "",
+  tipo_documento: "",
 };
 
 function valueForField(row, key) {
@@ -1854,268 +1855,329 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                 )}
                 <div>
                   {seccionesDetalle.map((sec) => (
-                  <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
-                      <span style={{ width: 4, height: 16, borderRadius: 4, background: "#0ea5e9", flex: "none" }} />
-                      <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: ".01em" }}>{sec.titulo}</h4>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
-                      {sec.campos.map((field) => (
-                        <div key={field}>
-                          <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                            {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA"
-                              ? "NOMBRE DE LA EMPRESA"
-                              : modoDetalle === "welcome" && field === "novedades_atc"
-                                ? "OBSERVACIÓN DE WELCOME"
-                                : modoDetalle === "mesa" && field === "novedades_atc"
-                                  ? "OBSERVACIÓN DE SEGUIMIENTO"
-                                  : FIELD_LABELS[field] || field}
-                          </label>
+                    <section key={sec.titulo} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
+                        <span style={{ width: 4, height: 16, borderRadius: 4, background: "#0ea5e9", flex: "none" }} />
+                        <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: ".01em" }}>{sec.titulo}</h4>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
+                        {sec.campos.map((field) => (
+                          <div key={field}>
+                            <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                              {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA"
+                                ? "NOMBRE DE LA EMPRESA"
+                                : modoDetalle === "welcome" && field === "novedades_atc"
+                                  ? "OBSERVACIÓN DE WELCOME"
+                                  : modoDetalle === "mesa" && field === "novedades_atc"
+                                    ? "OBSERVACIÓN DE SEGUIMIENTO"
+                                    : FIELD_LABELS[field] || field}
+                            </label>
 
-                          <fieldset
-                            disabled={!puedeEditar || field === "nombre_asesor_comercial" || CAMPOS_AUDITORIA_SOLO_LECTURA.has(field) || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
-                            style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}
-                          >
+                            <fieldset
+                              disabled={!puedeEditar || field === "nombre_asesor_comercial" || CAMPOS_AUDITORIA_SOLO_LECTURA.has(field) || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
+                              style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}
+                            >
 
-                           {esCampoDocumento(field) ? (
-                             <CampoDocumento
-                              field={field}
-                              etiqueta={FIELD_LABELS[field] || field}
-                              valor={detail?.[field] || ""}
-                              numeroIdentificacion={detail?.numero_identificacion}
-                              onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
-                               onAlert={setAlert}
-                             />
-                          ) : field === "franja_horaria_agendamiento" ? (
-                            <select
-                              value={detail?.[field] || ""}
-                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
-                            >
-                              <option value="">Seleccionar franja...</option>
-                              {FRANJAS_AGENDAMIENTO.map((franja) => <option key={franja} value={franja}>{franja}</option>)}
-                            </select>
-                          ) : field === "auditoria_documentos" ? (() => {
-                            const seleccionados = valoresSeleccionMultiple(detail?.[field]);
-                            const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
-                            return (
-                              <SelectMultiple
-                                valores={seleccionados}
-                                opciones={opciones}
-                                disabled={!puedeEditar || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
-                                onChange={(valores) => setDetail((prev) => ({ ...prev, [field]: valores.join(", ") }))}
-                              />
-                            );
-                          })() : field === "banco" && modoDetalle === "auditoria" ? (
-                            <>
-                              <input
-                                type="search"
-                                list={`bancos-backoffice-${selectedId}`}
-                                value={detail?.banco || ""}
-                                onChange={(e) => setDetail((prev) => ({ ...prev, banco: e.target.value }))}
-                                placeholder="Buscar banco…"
-                                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
-                              />
-                              <datalist id={`bancos-backoffice-${selectedId}`}>
-                                {OPCIONES_BANCO.map((valor) => <option key={valor} value={valor} />)}
-                              </datalist>
-                            </>
-                          ) : [
-                            "netlife_estatus_real", "forma_pago", "banco", "tipo_cuenta",
-                            "ciclo_facturacion", "auditado_por", "clausulas", "lider_comercial",
-                          ].includes(field) ? (() => {
-                            const opcionesPorCampo = {
-                              netlife_estatus_real: ESTATUS_NETLIFE,
-                              forma_pago: OPCIONES_FORMA_PAGO,
-                              banco: OPCIONES_BANCO,
-                              tipo_cuenta: detail?.forma_pago === "TARJETA DE CRÉDITO"
-                                ? OPCIONES_TIPO_CUENTA.slice(0, 6)
-                                : detail?.forma_pago === "EFECTIVO"
-                                  ? []
-                                  : OPCIONES_TIPO_CUENTA.slice(6),
-                              ciclo_facturacion: OPCIONES_CICLO_FACTURACION,
-                              auditado_por: OPCIONES_AUDITOR,
-                              clausulas: OPCIONES_CLAUSULAS,
-                              lider_comercial: OPCIONES_LIDER_COMERCIAL,
-                            };
-                            const valorActual = String(detail?.[field] || "");
-                            const opciones = opcionesPorCampo[field];
-                            const lista = valorActual && !opciones.includes(valorActual)
-                              ? [valorActual, ...opciones]
-                              : opciones;
-                            return (
-                              <select
-                                value={valorActual}
-                                onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                                disabled={field === "tipo_cuenta" && detail?.forma_pago === "EFECTIVO"}
-                                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
-                              >
-                                <option value="">Seleccionar...</option>
-                                {lista.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
-                              </select>
-                            );
-                          })() : field === "regimen_vivienda" ? (() => {
-                            const opcionesRegimen = [
-                              "ABIERTO", "CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO",
-                              "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA",
-                            ];
-                            const actual = String(detail?.[field] || "");
-                            const opciones = actual && !opcionesRegimen.includes(actual)
-                              ? [actual, ...opcionesRegimen]
-                              : opcionesRegimen;
-                            return (
-                              <select
-                                value={actual}
-                                onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
-                              >
-                                <option value="">Seleccionar...</option>
-                                {opciones.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
-                              </select>
-                            );
-                          })() : ["tipo_documento", "tipo_cliente"].includes(field) ? (
-                            <select value={detail?.[field] || ""}
-                              onChange={e => setDetail(prev => ({ ...prev, [field]: e.target.value,
-                                ...(field === "tipo_documento" && e.target.value !== "RUC EMPRESA" ? { representante_legal: "" } : {}),
-                              }))}
-                              className="bo-campo-color"
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}>
-                              <option value="">Seleccionar...</option>
-                              {(field === "tipo_documento" ? ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"] : ["NATURAL", "JURÍDICO"]).map(value => <option key={value} value={value}>{value}</option>)}
-                            </select>
-                          ) : field === "estatus_regularizacion" ? (() => {
-                            const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
-                            const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"
-                              ? "__SIN_REVISAR__"
-                              : estadoActual;
-                            const esValorConocido = OPCIONES_ESTATUS_REGULARIZACION.some(
-                              (opcion) => opcion.valor === valorSeleccionado
-                            );
+                              {esCampoDocumento(field) ? (
+                                <CampoDocumento
+                                  field={field}
+                                  etiqueta={FIELD_LABELS[field] || field}
+                                  valor={detail?.[field] || ""}
+                                  numeroIdentificacion={detail?.numero_identificacion}
+                                  onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
+                                  onAlert={setAlert}
+                                />
+                              ) : field === "franja_horaria_agendamiento" ? (
+                                <select
+                                  value={detail?.[field] || ""}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
+                                >
+                                  <option value="">Seleccionar franja...</option>
+                                  {FRANJAS_AGENDAMIENTO.map((franja) => <option key={franja} value={franja}>{franja}</option>)}
+                                </select>
+                              ) : field === "auditoria_documentos" ? (() => {
+                                const seleccionados = valoresSeleccionMultiple(detail?.[field]);
+                                const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
+                                return (
+                                  <SelectMultiple
+                                    valores={seleccionados}
+                                    opciones={opciones}
+                                    disabled={!puedeEditar || (camposEditablesPermitidos && !camposEditablesPermitidos.includes(field))}
+                                    onChange={(valores) => setDetail((prev) => ({ ...prev, [field]: valores.join(", ") }))}
+                                  />
+                                );
+                              })() : field === "banco" && modoDetalle === "auditoria" ? (
+                                <>
+                                  <input
+                                    type="search"
+                                    list={`bancos-backoffice-${selectedId}`}
+                                    value={detail?.banco || ""}
+                                    onChange={(e) => setDetail((prev) => ({ ...prev, banco: e.target.value }))}
+                                    placeholder="Buscar banco…"
+                                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff" }}
+                                  />
+                                  <datalist id={`bancos-backoffice-${selectedId}`}>
+                                    {OPCIONES_BANCO.map((valor) => <option key={valor} value={valor} />)}
+                                  </datalist>
+                                </>
+                              ) : [
+                                "netlife_estatus_real", "forma_pago", "banco", "tipo_cuenta",
+                                "ciclo_facturacion", "auditado_por", "clausulas", "lider_comercial",
+                              ].includes(field) ? (() => {
+                                const opcionesPorCampo = {
+                                  netlife_estatus_real: ESTATUS_NETLIFE,
+                                  forma_pago: OPCIONES_FORMA_PAGO,
+                                  banco: OPCIONES_BANCO,
+                                  tipo_cuenta: detail?.forma_pago === "TARJETA DE CRÉDITO"
+                                    ? OPCIONES_TIPO_CUENTA.slice(0, 6)
+                                    : detail?.forma_pago === "EFECTIVO"
+                                      ? []
+                                      : OPCIONES_TIPO_CUENTA.slice(6),
+                                  ciclo_facturacion: OPCIONES_CICLO_FACTURACION,
+                                  auditado_por: OPCIONES_AUDITOR,
+                                  clausulas: OPCIONES_CLAUSULAS,
+                                  lider_comercial: OPCIONES_LIDER_COMERCIAL,
+                                };
+                                const valorActual = String(detail?.[field] || "");
+                                const opciones = opcionesPorCampo[field];
+                                const lista = valorActual && !opciones.includes(valorActual)
+                                  ? [valorActual, ...opciones]
+                                  : opciones;
+                                return (
+                                  <select
+                                    value={valorActual}
+                                    onChange={(e) => {
+                                      const nuevoAuditor = e.target.value;
+                                      setDetail((prev) => {
+                                        const actualizacion = { ...prev, [field]: nuevoAuditor };
+                                        if (field === "auditado_por" && nuevoAuditor) {
+                                          const ahora = new Date();
+                                          // Fecha calendario Ecuador YYYY-MM-DD
+                                          const hoyIso = new Intl.DateTimeFormat("en-CA", {
+                                            timeZone: "America/Guayaquil",
+                                            year: "numeric",
+                                            month: "2-digit",
+                                            day: "2-digit",
+                                          }).format(ahora);
 
-                            return (
-                              <select
-                                value={valorSeleccionado}
-                                onChange={(e) => {
-                                  const valor = e.target.value === "__SIN_REVISAR__"
-                                    ? ""
-                                    : e.target.value.toUpperCase();
-                                  setDetail((prev) => ({ ...prev, [field]: valor }));
-                                }}
-                                className="bo-campo-color"
-                                style={{
-                                  width: "100%",
-                                  padding: "10px 12px",
-                                  borderRadius: 8,
-                                  border: "1px solid #dbe4f0",
-                                  fontSize: 12,
-                                  outline: "none",
-                                  color: "#111827",
-                                  background: "#fff",
-                                  cursor: "pointer",
-                                  ...estiloCampoColor(field, estadoActual || "SIN REVISAR"),
-                                }}
-                              >
-                                {estadoActual && !esValorConocido && (
-                                  <option value={valorSeleccionado} disabled>
-                                    Estado actual: {estadoActual}
-                                  </option>
-                                )}
-                                {OPCIONES_ESTATUS_REGULARIZACION.map((opcion) => (
-                                  <option key={opcion.valor} value={opcion.valor}>
-                                    {opcion.etiqueta}
-                                  </option>
-                                ))}
-                              </select>
-                            );
-                          })() : field === "estado_welcome" ? (
-                            <select
-                              value={detail?.estado_welcome || "SIN_NOTIFICAR"}
-                              onChange={(e) => setDetail((prev) => ({ ...prev, estado_welcome: e.target.value }))}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
-                            >
-                              <option value="SIN_NOTIFICAR">Sin notificar</option>
-                              <option value="PENDIENTE">Pendiente</option>
-                              <option value="NOTIFICADO">Notificado</option>
-                            </select>
-                          ) : field === "novedades_atc" ? (
-                            <textarea
-                              value={detail?.[field] ?? ""}
-                              onChange={(e) =>
-                                setDetail((prev) => ({ ...prev, [field]: e.target.value }))
-                              }
-                              rows={4}
-                              placeholder="Escribe libremente las novedades ATC…"
-                              style={{
-                                width: "100%",
-                                minHeight: 100,
-                                padding: "10px 12px",
-                                borderRadius: 8,
-                                border: "1px solid #dbe4f0",
-                                fontSize: 12,
-                                lineHeight: 1.5,
-                                resize: "vertical",
-                                outline: "none",
-                                color: "#111827",
-                                background: "#fff",
-                                boxSizing: "border-box",
-                              }}
-                            />
-                          ) : field === "gestion_atc" ? (
-                            /* 📋 SELECT: GESTIÓN ATC */
-                            <select
-                              value={detail?.[field] ?? ""}
-                              onChange={(e) =>
-                                setDetail((prev) => ({ ...prev, [field]: e.target.value }))
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "10px 12px",
-                                borderRadius: 8,
-                                border: "1px solid #dbe4f0",
-                                fontSize: 12,
-                                outline: "none",
-                                color: "#111827",
-                                background: "#fff",
-                                cursor: "pointer",
-                                ...estiloCampoColor(field, detail?.[field]),
-                              }}
-                              className="bo-campo-color"
-                            >
-                              <option value="">Seleccionar gestión...</option>
-                              <option value="ANALFABETO">Analfabeto</option>
-                              <option value="DESCUENTO CONADIS">Descuento conadis</option>
-                              <option value="DESCUENTO 3RA EDAD">Descuento 3ra edad</option>
-                              <option value="NO APLICA">No aplica</option>
-                            </select>
-                          ) : field === "tipo_contrato" ? (
-                            <textarea
-                              value={detail?.[field] ?? ""}
-                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                              rows={3}
-                              placeholder="Puedes registrar varios servicios y su cantidad. Ej.: 2 NETLIFE CAM, 1 DEFENSE"
-                              style={{ width: "100%", minHeight: 82, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
-                            />
-                          ) : ["observacion_venta_original", "observacion_auditoria", "errores_telcos", "resumen_venta"].includes(field) ? (
-                            <textarea
-                              value={detail?.[field] ?? ""}
-                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                              rows={field === "resumen_venta" ? 9 : 5}
-                              style={{ width: "100%", minHeight: field === "resumen_venta" ? 190 : 115, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
-                            />
-                          ) : (
-                            <input
-                              type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
-                              value={detail?.[field] ?? ""}
-                              onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}
-                            />
-                          )}
-                          </fieldset>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                                          if (!prev.fecha_hora_regularizacion) {
+                                            actualizacion.fecha_hora_regularizacion = ahora.toLocaleString("es-EC", {
+                                              timeZone: "America/Guayaquil",
+                                            });
+                                          }
+                                          if (!prev.fecha_regularizacion_atc) {
+                                            actualizacion.fecha_regularizacion_atc = hoyIso;
+                                          }
+                                        }
+                                        return actualizacion;
+                                      });
+                                    }}
+                                    disabled={field === "tipo_cuenta" && detail?.forma_pago === "EFECTIVO"}
+                                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
+                                  >
+                                    <option value="">Seleccionar...</option>
+                                    {lista.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+                                  </select>
+                                );
+                              })() : field === "regimen_vivienda" ? (() => {
+                                const opcionesRegimen = [
+                                  "ABIERTO", "CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO",
+                                  "PARA LIBERAR EDIFICIO", "PARA LIBERAR CONJUNTO", "HAY QUE ATAR CAJA",
+                                ];
+                                const actual = String(detail?.[field] || "");
+                                const opciones = actual && !opcionesRegimen.includes(actual)
+                                  ? [actual, ...opcionesRegimen]
+                                  : opcionesRegimen;
+                                return (
+                                  <select
+                                    value={actual}
+                                    onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
+                                  >
+                                    <option value="">Seleccionar...</option>
+                                    {opciones.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+                                  </select>
+                                );
+                              })() : ["tipo_documento", "tipo_cliente"].includes(field) ? (() => {
+                                const valorActual = String(detail?.[field] || "").trim().toUpperCase();
+                                const opcionesBase = field === "tipo_documento"
+                                  ? [
+                                    "CÉDULA DE IDENTIDAD", "CEDULA DE IDENTIDAD",
+                                    "NÚMERO DE PASAPORTE", "PASAPORTE",
+                                    "RUC PERSONAL", "RUC EMPRESA", "RUC DE LA EMPRESA"
+                                  ]
+                                  : ["NATURAL", "JURÍDICO", "JURIDICO"];
+
+                                // Si el valor de la BD no está en la lista estándar, se agrega para que no quede en blanco
+                                const listaOpciones = valorActual && !opcionesBase.includes(valorActual)
+                                  ? [valorActual, ...opcionesBase]
+                                  : opcionesBase;
+
+                                return (
+                                  <select
+                                    value={valorActual}
+                                    onChange={(e) =>
+                                      setDetail((prev) => ({
+                                        ...prev,
+                                        [field]: e.target.value,
+                                        ...(field === "tipo_documento" && !e.target.value.includes("EMPRESA")
+                                          ? { representante_legal: "" }
+                                          : {}),
+                                      }))
+                                    }
+                                    className="bo-campo-color"
+                                    style={{
+                                      width: "100%",
+                                      padding: "10px 12px",
+                                      borderRadius: 8,
+                                      border: "1px solid #dbe4f0",
+                                      fontSize: 12,
+                                      background: "#fff",
+                                      ...estiloCampoColor(field, detail?.[field]),
+                                    }}
+                                  >
+                                    <option value="">Seleccionar...</option>
+                                    {listaOpciones.map((opcion) => (
+                                      <option key={opcion} value={opcion}>
+                                        {opcion}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              })() : field === "estatus_regularizacion" ? (() => {
+                                const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
+                                const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"
+                                  ? "__SIN_REVISAR__"
+                                  : estadoActual;
+                                const esValorConocido = OPCIONES_ESTATUS_REGULARIZACION.some(
+                                  (opcion) => opcion.valor === valorSeleccionado
+                                );
+
+                                return (
+                                  <select
+                                    value={valorSeleccionado}
+                                    onChange={(e) => {
+                                      const valor = e.target.value === "__SIN_REVISAR__"
+                                        ? ""
+                                        : e.target.value.toUpperCase();
+                                      setDetail((prev) => ({ ...prev, [field]: valor }));
+                                    }}
+                                    className="bo-campo-color"
+                                    style={{
+                                      width: "100%",
+                                      padding: "10px 12px",
+                                      borderRadius: 8,
+                                      border: "1px solid #dbe4f0",
+                                      fontSize: 12,
+                                      outline: "none",
+                                      color: "#111827",
+                                      background: "#fff",
+                                      cursor: "pointer",
+                                      ...estiloCampoColor(field, estadoActual || "SIN REVISAR"),
+                                    }}
+                                  >
+                                    {estadoActual && !esValorConocido && (
+                                      <option value={valorSeleccionado} disabled>
+                                        Estado actual: {estadoActual}
+                                      </option>
+                                    )}
+                                    {OPCIONES_ESTATUS_REGULARIZACION.map((opcion) => (
+                                      <option key={opcion.valor} value={opcion.valor}>
+                                        {opcion.etiqueta}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              })() : field === "estado_welcome" ? (
+                                <select
+                                  value={detail?.estado_welcome || "SIN_NOTIFICAR"}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, estado_welcome: e.target.value }))}
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
+                                >
+                                  <option value="SIN_NOTIFICAR">Sin notificar</option>
+                                  <option value="PENDIENTE">Pendiente</option>
+                                  <option value="NOTIFICADO">Notificado</option>
+                                </select>
+                              ) : field === "novedades_atc" ? (
+                                <textarea
+                                  value={detail?.[field] ?? ""}
+                                  onChange={(e) =>
+                                    setDetail((prev) => ({ ...prev, [field]: e.target.value }))
+                                  }
+                                  rows={4}
+                                  placeholder="Escribe libremente las novedades ATC…"
+                                  style={{
+                                    width: "100%",
+                                    minHeight: 100,
+                                    padding: "10px 12px",
+                                    borderRadius: 8,
+                                    border: "1px solid #dbe4f0",
+                                    fontSize: 12,
+                                    lineHeight: 1.5,
+                                    resize: "vertical",
+                                    outline: "none",
+                                    color: "#111827",
+                                    background: "#fff",
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                              ) : field === "gestion_atc" ? (
+                                /* 📋 SELECT: GESTIÓN ATC */
+                                <select
+                                  value={detail?.[field] ?? ""}
+                                  onChange={(e) =>
+                                    setDetail((prev) => ({ ...prev, [field]: e.target.value }))
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    padding: "10px 12px",
+                                    borderRadius: 8,
+                                    border: "1px solid #dbe4f0",
+                                    fontSize: 12,
+                                    outline: "none",
+                                    color: "#111827",
+                                    background: "#fff",
+                                    cursor: "pointer",
+                                    ...estiloCampoColor(field, detail?.[field]),
+                                  }}
+                                  className="bo-campo-color"
+                                >
+                                  <option value="">Seleccionar gestión...</option>
+                                  <option value="ANALFABETO">Analfabeto</option>
+                                  <option value="DESCUENTO CONADIS">Descuento conadis</option>
+                                  <option value="DESCUENTO 3RA EDAD">Descuento 3ra edad</option>
+                                  <option value="NO APLICA">No aplica</option>
+                                </select>
+                              ) : field === "tipo_contrato" ? (
+                                <textarea
+                                  value={detail?.[field] ?? ""}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                  rows={3}
+                                  placeholder="Puedes registrar varios servicios y su cantidad. Ej.: 2 NETLIFE CAM, 1 DEFENSE"
+                                  style={{ width: "100%", minHeight: 82, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
+                                />
+                              ) : ["observacion_venta_original", "observacion_auditoria", "errores_telcos", "resumen_venta"].includes(field) ? (
+                                <textarea
+                                  value={detail?.[field] ?? ""}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                  rows={field === "resumen_venta" ? 9 : 5}
+                                  style={{ width: "100%", minHeight: field === "resumen_venta" ? 190 : 115, padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, lineHeight: 1.5, resize: "vertical", outline: "none", color: "#111827", background: "#fff", boxSizing: "border-box" }}
+                                />
+                              ) : (
+                                <input
+                                  type={CAMPOS_FECHA.includes(field) ? "date" : "text"}
+                                  value={detail?.[field] ?? ""}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", ...estiloCampoColor(field, detail?.[field]) }}
+                                />
+                              )}
+                            </fieldset>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   ))}
                 </div>
               </div>
@@ -5213,10 +5275,10 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       </div>
 
       {detalleId && (
-          <PanelRegistros
-            soloDetalle
-            puedeEditar
-            idInicial={detalleId}
+        <PanelRegistros
+          soloDetalle
+          puedeEditar
+          idInicial={detalleId}
           etiquetaContexto="Detalle de Validación de Estado"
           onVolver={() => setDetalleId(null)}
         />

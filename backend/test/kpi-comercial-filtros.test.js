@@ -57,11 +57,12 @@ for (const empresa of ['NOVONET', 'VELSA']) {
     assert.doesNotMatch(sql, /O'Neil/);
     assert.ok(values.includes("%Equipo O'Neil%"));
     assert.equal(Math.max(...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1]))), values.length);
-    // El estado JOT solo restringe ingresos_jot, nunca el WHERE de datos:
-    // un lead gestionable con JOT excluido sigue formando parte del divisor.
+    // Ingresos Tot. Jot cuenta todo registro del rango, igual que la tarjeta
+    // global: no agrega exclusiones por etapa CRM ni por estado Jotform.
     const whereDatos = sql.slice(sql.indexOf('WHERE (mb.b_creado_el_fecha'), sql.indexOf('\nmetas AS'));
     assert.doesNotMatch(whereDatos, /NOT IN \('PRESERVICIO'/);
-    for (const etapa of ['PRESERVICIO', 'FIN DE GESTIÓN', 'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO', 'DUPLICADO', 'SIN ASUNTO']) assert.ok(sql.includes(`'${etapa}'`));
+    const bloqueIngresosJot = sql.slice(sql.indexOf('-- INGRESOS TOTALES JOT'), sql.indexOf('AS ingresos_jot') + 'AS ingresos_jot'.length);
+    assert.doesNotMatch(bloqueIngresosJot, /b_etapa_de_la_negociacion|j_netlife_estatus_real|NOT IN/);
     assert.ok(!etapas.ESTADOS_EXCLUIDOS_INGRESO_JOTFORM.includes('ELIMINADO'));
     if (empresa === 'VELSA') {
       assert.doesNotMatch(sql, /origen_bwl/);

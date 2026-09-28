@@ -13,6 +13,7 @@ const startHttp = require('../shared/startHttp');
 const app = buildBaseApp({ serviceName: 'core' });
 app.use('/api/semillero', require('../routes/semillero.routes'));
 app.use('/api/gestionables-asesores', require('../routes/gestionables.routes'));
+require('../routes/bitrixConnector.mount').mountBitrixConnector(app);
 
 // ── Auth / usuarios ──────────────────────────────────────────
 app.use('/api/auth',      require('../routes/auth.routes'));

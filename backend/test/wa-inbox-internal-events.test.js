@@ -57,3 +57,23 @@ test('call event is stored once and later statuses update it', async () => {
     assert.equal(statements.filter(q => q.sql.includes('UPDATE messages SET content')).length, 1)
   } finally { delete require.cache[managerPath]; delete require.cache[dbPath] }
 })
+
+test('outbound WhatsApp calls fail closed and never create fake call messages', async () => {
+  const dbPath = path.resolve(__dirname, '../src/config/db.js')
+  const managerPath = path.resolve(__dirname, '../src/services/BaileysManager.js')
+  let queryCount = 0
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
+    query: async () => { queryCount += 1; return { rows: [] } },
+    transaction: async fn => fn({ query: async () => ({ rows: [] }) }),
+  } }
+  delete require.cache[managerPath]
+  try {
+    const Manager = require(managerPath)
+    const bm = new Manager({ emit() {} })
+    await assert.rejects(
+      bm.startCall('l1', '593999999999', { video: false }),
+      error => error.code === 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED',
+    )
+    assert.equal(queryCount, 0)
+  } finally { delete require.cache[managerPath]; delete require.cache[dbPath] }
+})

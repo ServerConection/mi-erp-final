@@ -346,35 +346,16 @@ async function createInternalNote(req, res) {
 }
 
 async function callConversation(req, res) {
-  try {
-    const { id } = req.params
-    const { video = false } = req.body || {}
-    const owned = await findOwnedConversation(req, id)
-    if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
-
-    const bm = req.app.get('baileysManager')
-    if (!bm) return res.status(503).json({ success: false, error: 'WhatsApp no inicializado. Intenta en unos segundos.' })
-
-    if (bm.getStatus(owned.line_id) !== 'connected') {
-      const ok = await bm.ensureConnected(owned.line_id)
-      if (!ok) {
-       return res.status(409).json({
-         success: false,
-         error: 'La línea de WhatsApp de esta conversación está desconectada. Ve a Líneas y reconéctala.',
-       })
-      }
-    }
-
-    const result = await bm.startCall(owned.line_id, owned.wa_number, { video: Boolean(video) })
-    res.json({ success: true, data: result })
-  } catch (err) {
-    console.error('[wa_conversations.callConversation] ERROR:', err && (err.stack || err.message || err))
-    const msg = (err && err.message) || ''
-    if (msg.includes('no conectada')) {
-      return res.status(409).json({ success: false, error: 'La línea de WhatsApp está desconectada. Reconéctala en Líneas.' })
-    }
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'No se pudo iniciar la llamada. Intenta de nuevo.' : err.message })
-  }
+  // Baileys permite observar/rechazar eventos de llamada, pero no originar una
+  // llamada saliente soportada. Mantener este endpoint como no implementado
+  // evita registrar intentos como llamadas reales si un cliente antiguo lo usa.
+  const owned = await findOwnedConversation(req, req.params.id)
+  if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+  return res.status(501).json({
+    success: false,
+    code: 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED',
+    error: 'Abre el contacto en WhatsApp para iniciar la llamada de voz o video.',
+  })
 }
 
 // ── Enviar mensaje manual desde el inbox ─────────────────────

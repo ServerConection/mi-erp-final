@@ -11,6 +11,10 @@ const API = `${ORIGIN}/api/wa`;
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 const isImage = (msg) => ["image", "sticker"].includes(msg.type) || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
+// La implementación antigua guardaba un mensaje apenas enviaba una señal
+// incompleta, aunque el teléfono nunca hubiese sonado. No mostrar esos falsos
+// positivos; los eventos reales de WhatsApp no llevan source="erp".
+const isLegacySyntheticCall = (msg) => msg?.type === "call" && msg?.direction === "out" && msg?.metadata?.source === "erp";
 
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
@@ -142,7 +146,7 @@ export default function WaInbox({ dealId = null } = {}) {
     try {
       const r = await fetch(`${API}/conversations/${convId}/messages`, { headers: authH(false) });
       const d = await r.json();
-      if (selectedRef.current?.id === convId) setMessages(asArray(d));
+      if (selectedRef.current?.id === convId) setMessages(asArray(d).filter(msg => !isLegacySyntheticCall(msg)));
       if (scroll) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) {
       console.error("[WaInbox] Error cargando mensajes:", e);
@@ -162,6 +166,7 @@ export default function WaInbox({ dealId = null } = {}) {
       });
     };
     const onMessage = (msg) => {
+      if (isLegacySyntheticCall(msg)) return;
       if (dealId && !conversationsRef.current.some(c => c.id === msg.conversation_id)) return;
       // El recargado va FUERA del updater: React puede invocar el updater dos
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
@@ -329,23 +334,21 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally { setUploading(false); }
   };
 
-  const callSelected = async ({ video = false } = {}) => {
-    if (!selected) return;
-    try {
-      const r = await fetch(`${API}/conversations/${selected.id}/call`, {
-        method: "POST",
-        headers: authH(),
-        body: JSON.stringify({ video }),
-      });
-      const d = await r.json();
-      if (!d.success) {
-        alert(d.error || "No se pudo iniciar la llamada");
-        return;
-      }
-      alert(video ? "Videollamada iniciada" : "Llamada iniciada");
-    } catch (e) {
-      alert(e.message || "No se pudo iniciar la llamada");
+  // WhatsApp/Baileys no expone una API soportada para originar llamadas.
+  // Abrimos el chat oficial del contacto: desde allí el asesor puede iniciar
+  // voz o video y WhatsApp se encarga de todo el flujo multimedia.
+  const openWhatsAppForCall = () => {
+    const phone = String(selected?.wa_number || "").replace(/\D/g, "");
+    if (!phone) {
+      alert("La conversación no tiene un número de WhatsApp válido.");
+      return;
     }
+    const popup = window.open(`https://wa.me/${encodeURIComponent(phone)}`, "_blank");
+    if (!popup) {
+      alert("Permite las ventanas emergentes para abrir WhatsApp y realizar la llamada.");
+      return;
+    }
+    popup.opener = null;
   };
 
   const takeOver = async () => {
@@ -561,15 +564,10 @@ export default function WaInbox({ dealId = null } = {}) {
             <div className="flex gap-2">
               {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
                   negociación en Bitrix -- el enlace/botón sería redundante. */}
-              <button onClick={() => callSelected({ video: false })}
-                title="Llamar por WhatsApp a esta conversación"
+              <button onClick={openWhatsAppForCall}
+                title="Abrir este contacto en WhatsApp para iniciar una llamada de voz o video"
                 className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-                📞 Llamar
-              </button>
-              <button onClick={() => callSelected({ video: true })}
-                title="Iniciar videollamada por WhatsApp"
-                className="text-xs bg-violet-50 border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg hover:bg-violet-100 transition-colors">
-                🎥 Video
+                📞 Abrir para llamar
               </button>
               {!dealId && (selected.bitrix_deal_id ? (
                 <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"

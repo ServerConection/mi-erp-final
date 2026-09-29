@@ -2,6 +2,8 @@
 ALTER TABLE public.envios_ventas
   ADD COLUMN IF NOT EXISTS franja_horaria_agendamiento VARCHAR(20),
   ADD COLUMN IF NOT EXISTS fecha_hora_regularizacion TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS fecha_auditoria DATE,
+  ADD COLUMN IF NOT EXISTS hora_auditoria TIME,
   ADD COLUMN IF NOT EXISTS hist_cambio_estatus JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_envios_ventas_fecha_agenda

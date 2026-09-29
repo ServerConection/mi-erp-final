@@ -141,8 +141,13 @@ router.get('/', async (req, res) => {
         id_bitrix                ILIKE ${p} OR
         nombre_cliente_completo  ILIKE ${p} OR
         numero_identificacion    ILIKE ${p} OR
+        telf_celular_pin         ILIKE ${p} OR
+        telf_celular_2           ILIKE ${p} OR
+        telf_fijo                ILIKE ${p} OR
+        netlife_login            ILIKE ${p} OR
         distribuidor_autorizado  ILIKE ${p} OR
         supervisor               ILIKE ${p} OR
+        to_jsonb(ev)::text       ILIKE ${p} OR
         EXISTS (
           SELECT 1 FROM public.usuarios u
           WHERE (UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, '')))
@@ -521,7 +526,16 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Debe seleccionar quién auditó el registro' });
       }
       payload.auditado_por = auditor;
-      if (!actual[0].fecha_hora_regularizacion) payload.fecha_hora_regularizacion = new Date();
+      if (!actual[0].fecha_hora_regularizacion) {
+        const ahoraAuditoria = new Date();
+        payload.fecha_hora_regularizacion = ahoraAuditoria;
+        payload.fecha_auditoria = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(ahoraAuditoria);
+        payload.hora_auditoria = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        }).format(ahoraAuditoria);
+      }
       if (!actual[0].fecha_regularizacion_atc) {
         payload.fecha_regularizacion_atc = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -665,6 +679,15 @@ router.put('/:id', async (req, res) => {
 
     await client.query('COMMIT');
     transaccionAbierta = false;
+
+    // Invalida en tiempo real calendarios, contadores y tablas abiertas.
+    try {
+      require('../config/socket').getIO().emit('backoffice:registro-actualizado', {
+        id: rows[0].id,
+        empresa: rows[0].distribuidor_autorizado || null,
+        campos: fields,
+      });
+    } catch (_) { /* el proceso de pruebas puede no inicializar Socket.IO */ }
 
     let correoBienvenida = null;
     let whatsappBienvenida = null;

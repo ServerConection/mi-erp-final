@@ -254,7 +254,7 @@ function PreviewScreen({ form, imagen, audioPreviewSrc, tipoActual, label, accen
         {imagen && (
           <img src={URL.createObjectURL(imagen)} alt=""
             style={{ position:"absolute", inset:0, width:"100%", height:"100%",
-             objectFit:"cover",opacity:1,zIndex:0,animation:"prevImageFade 7s linear forwards",zIndex:0}} />
+              objectFit:"cover",opacity:1,zIndex:0,animation:"prevImageFade 7s linear forwards"}} />
         )}
 
         {/* Overlay efecto */}

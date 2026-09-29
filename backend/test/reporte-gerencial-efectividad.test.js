@@ -23,7 +23,7 @@ test('reporte gerencial calcula JOT / gestionables para las dos empresas', async
     const sql = context.module.exports.SERIES[empresa].sql;
     assert.match(sql, /COUNT\(DISTINCT/);
     assert.match(sql, /UNION ALL/);
-    assert.match(sql, /SIN ASUNTO/);
+    assert.match(sql, /SIN DATOS/);
     assert.doesNotMatch(sql, /'ELIMINADO'/);
   }
 });

@@ -1838,6 +1838,8 @@ ${asesoresPDF.length>0?`
             <KpiMini index={2} label="% Leads Gestionables"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
             <KpiMini index={3} label="JOT / Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
             <KpiMini index={4} label="Efectividad"   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
+            <KpiMini index={20} label="Efectividad efectiva" value={`${stats.efectividadEfectiva}%`} color="border-l-emerald-500" />
+            <KpiMini index={21} label="Efectividad ácida" value={`${stats.efectividadAcida}%`} color="border-l-rose-600" />
             <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" tooltip={TIP.descarte} />
             <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" tooltip={TIP.ventasCRM} />
             <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -1848,6 +1850,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" tooltip={TIP.ingresosReales} />
             <KpiMini index={19} label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-500" tooltip={TIP.ingresosJotEfectivo} />
+            <KpiMini index={22} label="Ingresos Jot Ácido" value={stats.ingresosJotAcido} color="border-l-red-600" />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" tooltip={TIP.activaMes} />

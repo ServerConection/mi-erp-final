@@ -22,6 +22,7 @@ const {
     ETAPAS_NO_GESTIONABLES,
     esEstadoIngresoJotformValidoExpr,
     esIngresoJotformExpr,
+    esIngresoJotformAcidoExpr,
 } = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -331,6 +332,26 @@ const queryKPI = (columna, filters) => {
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
     ) AS ingresos_jot_efectivo,
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${esIngresoJotformAcidoExpr('mv.estado_venta')}
+    ) AS ingresos_jot_acido,
+    ROUND(COALESCE(
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+      )::numeric / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
+        WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+        AND ${esGestionableExpr('mv.etapa_crm')}
+      ), 0), 0) * 100, 2) AS efectividad_efectiva,
+    ROUND(COALESCE(
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND ${esIngresoJotformAcidoExpr('mv.estado_venta')}
+      )::numeric / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
+        WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+        AND ${esGestionableExpr('mv.etapa_crm')}
+      ), 0), 0) * 100, 2) AS efectividad_acida,
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${CRM_DATE} = ${JF_DATE}

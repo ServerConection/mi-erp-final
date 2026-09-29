@@ -21,7 +21,8 @@ const {
     descarteIndicadoresExpr,
     esDescarteExactoExpr,
     esEstadoIngresoJotformValidoExpr,
-    esIngresoJotformExpr
+    esIngresoJotformExpr,
+    esIngresoJotformAcidoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
 const {
@@ -659,6 +660,28 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE _jf_date BETWEEN $1::date AND $2::date
                     AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                 ) AS ingresos_jot_efectivo,
+                COUNT(*) FILTER (
+                    WHERE _jf_date BETWEEN $1::date AND $2::date
+                    AND ${esIngresoJotformAcidoExpr('j_netlife_estatus_real')}
+                ) AS ingresos_jot_acido,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
+                    )::numeric / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                    ), 0), 0) * 100, 2) AS efectividad_efectiva,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformAcidoExpr('j_netlife_estatus_real')}
+                    )::numeric / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                    ), 0), 0) * 100, 2) AS efectividad_acida,
                 COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS activas,

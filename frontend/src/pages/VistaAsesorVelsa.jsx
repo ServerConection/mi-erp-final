@@ -514,6 +514,7 @@ export default function VistaAsesorVelsa() {
       gestionables:    base.reduce((a, r) => a + Number(r.gestionables || 0), 0),
       ingresos_crm:    base.reduce((a, r) => a + Number(r.ventas_crm || 0), 0),
       ingresos_jot:    base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0),
+      ingresos_jot_acido: base.reduce((a, r) => a + Number(r.ingresos_jot_acido || 0), 0),
       // FIX 2026-08-18: "real_mes" YA incluye el backlog (activadas este mes sin
       // importar cuándo se registraron). "Activas mes" ahora muestra SOLO lo
       // activado Y registrado este mes (real_mes − backlog = activa_mes);
@@ -543,6 +544,16 @@ export default function VistaAsesorVelsa() {
         const tJot  = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
         const tGest = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
         return tGest > 0 ? ((tJot / tGest) * 100).toFixed(1) : "0.0";
+      })(),
+      pct_efectividad_efectiva: (() => {
+        const num = base.reduce((a, r) => a + Number(r.ingresos_jot_efectivo || 0), 0);
+        const den = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+        return den > 0 ? ((num / den) * 100).toFixed(1) : "0.0";
+      })(),
+      pct_efectividad_acida: (() => {
+        const num = base.reduce((a, r) => a + Number(r.ingresos_jot_acido || 0), 0);
+        const den = base.reduce((a, r) => a + Number(r.gestionables || 0), 0);
+        return den > 0 ? ((num / den) * 100).toFixed(1) : "0.0";
       })(),
       pct_instalacion: (base.reduce((a, r) => a + Number(r.tasa_instalacion || 0), 0) / n).toFixed(1),
       pct_tarjeta:     (() => {
@@ -742,6 +753,7 @@ export default function VistaAsesorVelsa() {
         <StripCard index={0} variant="stone" label="Leads gestionables" value={totales.gestionables}  color="#a855f7" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={1} variant="stone" label="Ingresos CRM"       value={totales.ingresos_crm}  color="#6366f1" meta={METAS.ingresos_crm  * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={2} variant="stone" label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot  * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={7} variant="stone" label="Ingresos Jot Ácido" value={totales.ingresos_jot_acido} color="#dc2626" />
         <StripCard index={3} variant="stone" label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas        * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={4} variant="stone" label="Backlog"            value={totales.backlog}       color="#64748b" />
         <StripCard index={5} variant="stone" label="Activas totales"    value={totales.activas_tot}   color="#0f172a" />
@@ -752,6 +764,8 @@ export default function VistaAsesorVelsa() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <PctKpiCard index={0} variant="stone" label="% Descarte"         value={totales.pct_descarte}    hint="≤25% óptimo" okThreshold={25}  warnThreshold={35}  invert={true} />
         <PctKpiCard index={1} variant="stone" label="% Efectividad"      value={totales.pct_efectividad} hint="≥40% meta"   okThreshold={40}  warnThreshold={25} />
+        <PctKpiCard index={4} variant="stone" label="% Efectividad efectiva" value={totales.pct_efectividad_efectiva} hint="JOT efectivo / gestionables" okThreshold={40} warnThreshold={25} />
+        <PctKpiCard index={5} variant="stone" label="% Efectividad ácida" value={totales.pct_efectividad_acida} hint="Activo + Asignado + Preplanificado" okThreshold={40} warnThreshold={25} />
         <PctKpiCard index={2} variant="stone" label="% Tasa Instalación" value={totales.pct_instalacion} hint="≥80% meta"   okThreshold={80}  warnThreshold={50} />
         <PctKpiCard index={3} variant="stone" label="% Tarjeta Crédito"  value={totales.pct_tarjeta}     hint="≥50% meta"   okThreshold={50}  warnThreshold={30} />
       </div>

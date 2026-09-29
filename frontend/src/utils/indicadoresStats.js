@@ -4,6 +4,7 @@ export function calcularStatsIndicadores(data = {}) {
   const suma = campo => filas.reduce((acc, fila) => acc + Number(fila[campo] || 0), 0);
   const totalJotform = suma('ingresos_reales');
   const totalJotEfectivo = suma('ingresos_jot_efectivo');
+  const totalJotAcido = suma('ingresos_jot_acido');
   const totalActivos = suma('real_mes');
   const totalActivaMes = suma('activa_mes');
   const totalBacklog = Math.max(0, totalActivos - totalActivaMes);
@@ -16,6 +17,7 @@ export function calcularStatsIndicadores(data = {}) {
     regularizar: suma('por_regularizar'),
     ingresosJotform: totalJotform,
     ingresosJotEfectivo: totalJotEfectivo,
+    ingresosJotAcido: totalJotAcido,
     ventasDelDia: suma('ventas_del_dia'),
     ventasDiaForm: suma('ventas_dia_form'),
     ventaSeguimiento: Math.max(0, totalJotform - suma('ventas_del_dia')),
@@ -23,6 +25,8 @@ export function calcularStatsIndicadores(data = {}) {
       ? ((suma('descarte_count') / totalGestionables) * 100).toFixed(1) : '0.0',
     leadsGestionables: totalLeadsTotales,
     efectividad: totalGestionables > 0 ? ((totalJotform / totalGestionables) * 100).toFixed(1) : '0.0',
+    efectividadEfectiva: totalGestionables > 0 ? ((totalJotEfectivo / totalGestionables) * 100).toFixed(1) : '0.0',
+    efectividadAcida: totalGestionables > 0 ? ((totalJotAcido / totalGestionables) * 100).toFixed(1) : '0.0',
     tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : '0.0',
     tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
     terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),

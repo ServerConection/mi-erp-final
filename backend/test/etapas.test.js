@@ -11,9 +11,19 @@ test('correo ratificado: elegibilidad JOT depende solo del estado, con cinco exc
   assert.match(sql, /REGEXP_REPLACE/);
   assert.deepEqual(ESTADOS_EXCLUIDOS_INGRESO_JOTFORM, [
     'PRESERVICIO', 'FIN DE GESTION', 'FIN DE GESTIÓN',
-    'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO',
-    'DUPLICADO', 'DUPLLICADO', 'SIN ASUNTO',
+    'DESCARTE DE SERVICIO', 'DESCARTE DEL SERVICIO',
+    'DUPLICADO', 'DUPLLICADO', 'SIN DATOS',
   ]);
+});
+
+test('ingreso JOT ácido acepta únicamente los tres estados definidos', () => {
+  const { esIngresoJotformAcidoExpr, ESTADOS_INGRESO_JOTFORM_ACIDO } = require('../src/shared/etapas');
+  assert.deepEqual(ESTADOS_INGRESO_JOTFORM_ACIDO, ['ACTIVO', 'ASIGNADO', 'PREPLANIFICADO']);
+  const sql = esIngresoJotformAcidoExpr('estado_jot');
+  assert.match(sql, /estado_jot/);
+  assert.match(sql, /ACTIVO/);
+  assert.match(sql, /ASIGNADO/);
+  assert.match(sql, /PREPLANIFICADO/);
 });
 
 test('clasifica variantes conceptuales de etapas no gestionables', () => {

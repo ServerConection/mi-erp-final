@@ -1358,7 +1358,7 @@ export default function NuevaVenta() {
         // plan
         forma_pago: form.forma_pago || null,
         plan_contratado_final: [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
-        plan_contratado: form.plan_contratado_final || null,
+        plan_contratado: form.tipo_plan || null,
         velocidad_plan: (() => {
           const match = String(form.plan_contratado_final || "").match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
           if (match) return `${match[1]} ${match[2]}`;

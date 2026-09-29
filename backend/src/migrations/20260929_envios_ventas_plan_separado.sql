@@ -11,8 +11,13 @@ UPDATE public.envios_ventas
 SET plan_contratado = NULLIF(BTRIM(
   CASE
     WHEN POSITION(' — ' IN COALESCE(plan_contratado_final, '')) > 0
-      THEN SPLIT_PART(plan_contratado_final, ' — ', 2)
-    ELSE plan_contratado_final
+      THEN SPLIT_PART(plan_contratado_final, ' — ', 1)
+    ELSE REGEXP_REPLACE(
+      plan_contratado_final,
+      '\s*\d+(?:[.,]\d+)?\s*(Mbps?|Megas?|Gbps?).*$',
+      '',
+      'i'
+    )
   END
 ), '')
 WHERE plan_contratado IS NULL

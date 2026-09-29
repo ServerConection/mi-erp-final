@@ -1358,6 +1358,8 @@ export default function NuevaVenta() {
         // plan
         forma_pago: form.forma_pago || null,
         plan_contratado_final: [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
+        plan_contratado: form.plan_contratado_final || null,
+        velocidad_plan: opcionSel?.velocidad || null,
         servicios_digitales: form.servicios_digitales || null,
         tipo_contrato: form.servicio_adicional || null,
         // resumen de venta

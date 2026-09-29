@@ -313,7 +313,7 @@ const CAMPOS_EDITABLES = new Set([
   'provincia', 'ciudad', 'parroquia_barrio', 'direccion_calles',
   'direccion_manzana_villa', 'referencia_ubicacion', 'coordenadas_gps',
   'tipo_vivienda', 'regimen_vivienda',
-  'plan_contratado_final', 'servicios_digitales', 'forma_pago',
+  'plan_contratado_final', 'plan_contratado', 'velocidad_plan', 'servicios_digitales', 'forma_pago',
   'detalle_bancario_ahorros', 'valor_pago', 'tipo_contrato', 'banco', 'tipo_cuenta',
   'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',

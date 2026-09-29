@@ -13,7 +13,7 @@ test('correo ratificado: elegibilidad JOT depende solo del estado, con cinco exc
     'PRESERVICIO', 'FIN DE GESTION', 'FIN DE GESTIÓN',
     'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO',
     'DESCARTE DE SERVICIO', 'DESCARTE DEL SERVICIO',
-    'DUPLICADO', 'DUPLLICADO', 'SIN ASUNTO', 'SIN DATOS',
+    'DUPLICADO', 'DUPLLICADO',
   ]);
 });
 

@@ -29,4 +29,16 @@ test('la migración crea franja, estampa exacta e historial', () => {
   assert.match(migracion, /franja_horaria_agendamiento/);
   assert.match(migracion, /fecha_hora_regularizacion TIMESTAMPTZ/);
   assert.match(migracion, /hist_cambio_estatus JSONB/);
+  assert.match(migracion, /fecha_auditoria DATE/);
+  assert.match(migracion, /hora_auditoria TIME/);
+});
+
+test('el buscador global incluye teléfonos, login e identificadores presentes en la fila', () => {
+  assert.match(fuente, /telf_celular_pin\s+ILIKE/);
+  assert.match(fuente, /netlife_login\s+ILIKE/);
+  assert.match(fuente, /to_jsonb\(ev\)::text\s+ILIKE/);
+});
+
+test('las actualizaciones invalidan los tableros abiertos en tiempo real', () => {
+  assert.match(fuente, /backoffice:registro-actualizado/);
 });

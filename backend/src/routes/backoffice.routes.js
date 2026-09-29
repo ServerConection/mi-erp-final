@@ -526,15 +526,24 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Debe seleccionar quién auditó el registro' });
       }
       payload.auditado_por = auditor;
+      const selloAuditoria = actual[0].fecha_hora_regularizacion
+        ? new Date(actual[0].fecha_hora_regularizacion)
+        : new Date();
       if (!actual[0].fecha_hora_regularizacion) {
-        const ahoraAuditoria = new Date();
-        payload.fecha_hora_regularizacion = ahoraAuditoria;
+        payload.fecha_hora_regularizacion = selloAuditoria;
+      }
+      // Los registros auditados antes de crear las columnas separadas ya
+      // tienen fecha_hora_regularizacion. Se usa ese sello original para
+      // completar fecha/hora sin reemplazarlo por el momento actual.
+      if (!actual[0].fecha_auditoria) {
         payload.fecha_auditoria = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
-        }).format(ahoraAuditoria);
+        }).format(selloAuditoria);
+      }
+      if (!actual[0].hora_auditoria) {
         payload.hora_auditoria = new Intl.DateTimeFormat('en-GB', {
           timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-        }).format(ahoraAuditoria);
+        }).format(selloAuditoria);
       }
       if (!actual[0].fecha_regularizacion_atc) {
         payload.fecha_regularizacion_atc = new Intl.DateTimeFormat('en-CA', {

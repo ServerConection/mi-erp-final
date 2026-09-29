@@ -810,6 +810,23 @@ function normalizarRegistro(row) {
     if (v === null || v === undefined) { out[k] = ""; continue; }
     out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
   }
+  // Compatibilidad inmediata con auditorías anteriores a las columnas
+  // separadas: se muestran fecha y hora a partir del sello exacto existente.
+  if ((!out.fecha_auditoria || !out.hora_auditoria) && row?.fecha_hora_regularizacion) {
+    const sello = new Date(row.fecha_hora_regularizacion);
+    if (!Number.isNaN(sello.getTime())) {
+      if (!out.fecha_auditoria) {
+        out.fecha_auditoria = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(sello);
+      }
+      if (!out.hora_auditoria) {
+        out.hora_auditoria = new Intl.DateTimeFormat("en-GB", {
+          timeZone: "America/Guayaquil", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+        }).format(sello);
+      }
+    }
+  }
   return out;
 }
 
@@ -2124,6 +2141,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                             actualizacion.fecha_hora_regularizacion = ahora.toLocaleString("es-EC", {
                                               timeZone: "America/Guayaquil",
                                             });
+                                          }
+                                          if (!prev.fecha_auditoria) actualizacion.fecha_auditoria = hoyIso;
+                                          if (!prev.hora_auditoria) {
+                                            actualizacion.hora_auditoria = new Intl.DateTimeFormat("en-GB", {
+                                              timeZone: "America/Guayaquil",
+                                              hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+                                            }).format(ahora);
                                           }
                                           if (!prev.fecha_regularizacion_atc) {
                                             actualizacion.fecha_regularizacion_atc = hoyIso;

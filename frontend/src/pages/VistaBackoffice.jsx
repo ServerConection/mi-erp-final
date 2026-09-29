@@ -1316,11 +1316,30 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const segmentosPlanDetalle = useMemo(() => [...new Set(catalogoPlanes.map((item) => String(item?.tipo_plan || "").trim()).filter(Boolean))], [catalogoPlanes]);
 
   useEffect(() => {
-    const tipoGuardado = String(detail?.plan_contratado_final || "").split(" — ")[0].trim();
-    if (tipoGuardado && segmentosPlanDetalle.some((tipo) => tipo.toUpperCase() === tipoGuardado.toUpperCase())) {
-      setSegmentoPlanDetalle(tipoGuardado);
+    const valorGuardado = String(detail?.plan_contratado_final || "").trim();
+    const normalizar = (valor) => String(valor || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+
+    // Formato nuevo: "SEGMENTO — PLAN".
+    const tipoGuardado = valorGuardado.split(" — ")[0].trim();
+    const segmentoDirecto = segmentosPlanDetalle.find(
+      (tipo) => normalizar(tipo) === normalizar(tipoGuardado),
+    );
+    if (segmentoDirecto) {
+      setSegmentoPlanDetalle(segmentoDirecto);
+      return;
     }
-  }, [selectedId, detail?.plan_contratado_final, segmentosPlanDetalle]);
+
+    // Compatibilidad histórica: antes se guardaba únicamente plan_base.
+    const coincidenciaCatalogo = catalogoPlanes.find(
+      (item) => normalizar(item?.plan_base) === normalizar(valorGuardado),
+    );
+    setSegmentoPlanDetalle(String(coincidenciaCatalogo?.tipo_plan || "").trim());
+  }, [selectedId, detail?.plan_contratado_final, segmentosPlanDetalle, catalogoPlanes]);
 
   const opcionesEmpaquetadoDetalle = useMemo(() => {
     const planActual = String(detail?.plan_contratado_final || "").trim().toUpperCase();

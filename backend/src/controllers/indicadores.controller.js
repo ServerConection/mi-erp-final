@@ -991,7 +991,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 NULL::text AS "FECHA_CREADO_JOT",
                 to_jsonb(mb) ->> 'j_codigo_asesor' AS "COD_ASESOR_JOT",
                 mb.j_netlife_login AS "LOGIN",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 NULL::text AS "OBSERVACION_TELCOS",
                 NULL::text AS "INGRESO_TELCOS",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
@@ -1040,7 +1040,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_id_bitrix AS "ID_CRM",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_novedades_atc AS "NOVEDADES_ATC",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
@@ -1282,7 +1282,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
@@ -1313,7 +1313,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"

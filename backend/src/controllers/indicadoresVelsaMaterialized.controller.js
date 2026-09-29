@@ -756,7 +756,7 @@ SELECT
   mv.payload_created_at AS "FECHA_CREADO_JOT",
   mv.codigo_asesor AS "COD_ASESOR_JOT",
   mv.inicio_sesion_netlife AS "LOGIN",
-  mv.estado_venta AS "ESTADO_NETLIFE",
+  COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
   mv.observacion_telcos AS "OBSERVACION_TELCOS",
   mv.fecha_ingresa_telcos AS "INGRESO_TELCOS",
   mv.fecha_activacion AS "FECHA_ACTIVACION",
@@ -862,7 +862,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
@@ -893,7 +893,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
@@ -925,7 +925,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
         mv.detalle_regularizacion AS "MOTIVO_REGULARIZAR",
         mv.forma_pago AS "FORMA_PAGO",

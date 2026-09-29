@@ -163,11 +163,10 @@ const extraerVelocidadPlan = (plan, velocidadActual) => {
 };
 
 const normalizarPlanSeparado = (body) => {
-  if (!body.plan_contratado) {
-    const partes = String(body.plan_contratado_final || '').split(' — ');
-    body.plan_contratado = (partes.length > 1 ? partes.slice(1).join(' — ') : partes[0]).trim() || null;
-  }
-  body.velocidad_plan = extraerVelocidadPlan(body.plan_contratado, body.velocidad_plan);
+  const partes = String(body.plan_contratado_final || '').split(' — ');
+  if (partes.length > 1) body.plan_contratado = partes[0].trim() || null;
+  else if (!body.plan_contratado) body.plan_contratado = partes[0].trim() || null;
+  body.velocidad_plan = extraerVelocidadPlan(body.plan_contratado_final, body.velocidad_plan);
 };
 
 // ─── POST /api/envios-ventas/upload ──────────────────────────────────────────

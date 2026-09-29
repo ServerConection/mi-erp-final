@@ -1350,7 +1350,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     if (coincidenciaCatalogo) {
       setDetail((prev) => ({
         ...prev,
-        plan_contratado: prev.plan_contratado || String(coincidenciaCatalogo.plan_base || "").trim(),
+        plan_contratado: prev.plan_contratado || String(coincidenciaCatalogo.tipo_plan || "").trim(),
         velocidad_plan: prev.velocidad_plan || (() => {
           const plan = String(coincidenciaCatalogo.plan_base || "");
           const match = plan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
@@ -2084,7 +2084,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                       setDetail((prev) => ({
                                         ...prev,
                                         plan_contratado_final: e.target.value,
-                                        plan_contratado: seleccion?.plan || "",
+                                        plan_contratado: segmentoPlanDetalle || "",
                                         velocidad_plan: seleccion?.velocidad || "",
                                         servicios_digitales: "",
                                       }));

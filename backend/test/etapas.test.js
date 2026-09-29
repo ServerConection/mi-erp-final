@@ -11,8 +11,9 @@ test('correo ratificado: elegibilidad JOT depende solo del estado, con cinco exc
   assert.match(sql, /REGEXP_REPLACE/);
   assert.deepEqual(ESTADOS_EXCLUIDOS_INGRESO_JOTFORM, [
     'PRESERVICIO', 'FIN DE GESTION', 'FIN DE GESTIÓN',
+    'DESISTE DE SERVICIO', 'DESISTE DEL SERVICIO',
     'DESCARTE DE SERVICIO', 'DESCARTE DEL SERVICIO',
-    'DUPLICADO', 'DUPLLICADO', 'SIN DATOS',
+    'DUPLICADO', 'DUPLLICADO', 'SIN ASUNTO', 'SIN DATOS',
   ]);
 });
 

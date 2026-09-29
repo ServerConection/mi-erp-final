@@ -1996,12 +1996,23 @@ const getConsultaDescargaNovonet = async (req, res) => {
                         'YYYY-MM-DD"T"HH24:MI:SS') || '-05:00' AS created_at,
                 id_bitrix,
                 codigo_asesor,
+                COALESCE((
+                    SELECT NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
+                    FROM public.usuarios u
+                    WHERE UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) =
+                          UPPER(TRIM(COALESCE(vista_analisis_novonet.codigo_asesor, '')))
+                       OR UPPER(TRIM(COALESCE(u.usuario, ''))) =
+                          UPPER(TRIM(COALESCE(vista_analisis_novonet.codigo_asesor, '')))
+                    ORDER BY u.id DESC
+                    LIMIT 1
+                ), '') AS nombre_completo_asesor,
                 plan_casa,
                 plan_profesional,
                 plan_pyme,
                 plan_pyme_corp,
                 plan_hogar_adulto_mayor,
                 plan_centro_comercial,
+                plan_centro_comercial AS plan_gamer,
                 descuento_3era_edad,
                 servicio_empaquetado,
                 login_netlife,

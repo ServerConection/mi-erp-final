@@ -852,7 +852,7 @@ const FIELD_LABELS = {
   tipo_cliente: "TIPO CLIENTE",
   genero_cliente: "GÉNERO",
   tipo_documento: "TIPO DOCUMENTO",
-  numero_identificacion: "CÉDULA",
+  numero_identificacion: "CÉDULA / RUC / PASAPORTE",
   nombre_cliente_completo: "CLIENTE",
   representante_legal: "REPRESENTANTE LEGAL",
   estado_civil: "ESTADO CIVIL",
@@ -1309,7 +1309,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       if (!tipo || !plan) continue;
       if (segmentoPlanDetalle && tipo.toUpperCase() !== segmentoPlanDetalle.toUpperCase()) continue;
       const valor = `${tipo} — ${plan}`;
-      const velocidad = String(item?.velocidad || "").trim();
+      const matchVelocidad = plan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+      const velocidadCatalogo = String(item?.velocidad || "").trim();
+      const velocidad = matchVelocidad
+        ? `${matchVelocidad[1]} ${matchVelocidad[2]}`
+        : (/\d/.test(velocidadCatalogo) ? velocidadCatalogo : "");
       if (!unicos.has(valor.toUpperCase())) unicos.set(valor.toUpperCase(), { valor, plan, velocidad, etiqueta: velocidad ? `${plan} · ${velocidad}` : plan });
     }
     const actual = String(detail?.plan_contratado_final || "").trim();
@@ -1347,7 +1351,12 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       setDetail((prev) => ({
         ...prev,
         plan_contratado: prev.plan_contratado || String(coincidenciaCatalogo.plan_base || "").trim(),
-        velocidad_plan: prev.velocidad_plan || String(coincidenciaCatalogo.velocidad || "").trim(),
+        velocidad_plan: prev.velocidad_plan || (() => {
+          const plan = String(coincidenciaCatalogo.plan_base || "");
+          const match = plan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+          const catalogo = String(coincidenciaCatalogo.velocidad || "").trim();
+          return match ? `${match[1]} ${match[2]}` : (/\d/.test(catalogo) ? catalogo : "");
+        })(),
       }));
     }
   }, [selectedId, detail?.plan_contratado_final, segmentosPlanDetalle, catalogoPlanes]);

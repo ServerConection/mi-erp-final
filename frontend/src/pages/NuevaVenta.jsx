@@ -1359,7 +1359,11 @@ export default function NuevaVenta() {
         forma_pago: form.forma_pago || null,
         plan_contratado_final: [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
         plan_contratado: form.plan_contratado_final || null,
-        velocidad_plan: opcionSel?.velocidad || null,
+        velocidad_plan: (() => {
+          const match = String(form.plan_contratado_final || "").match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+          if (match) return `${match[1]} ${match[2]}`;
+          return /\d/.test(String(opcionSel?.velocidad || "")) ? opcionSel.velocidad : null;
+        })(),
         servicios_digitales: form.servicios_digitales || null,
         tipo_contrato: form.servicio_adicional || null,
         // resumen de venta

@@ -154,6 +154,22 @@ const COLUMNAS_VENTA = [
 
 const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
 
+const extraerVelocidadPlan = (plan, velocidadActual) => {
+  const textoPlan = String(plan || '');
+  const match = textoPlan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+  if (match) return `${match[1]} ${match[2]}`.replace(/\s+/g, ' ').trim();
+  const velocidad = t(velocidadActual);
+  return velocidad && /\d/.test(velocidad) ? velocidad : null;
+};
+
+const normalizarPlanSeparado = (body) => {
+  if (!body.plan_contratado) {
+    const partes = String(body.plan_contratado_final || '').split(' — ');
+    body.plan_contratado = (partes.length > 1 ? partes.slice(1).join(' — ') : partes[0]).trim() || null;
+  }
+  body.velocidad_plan = extraerVelocidadPlan(body.plan_contratado, body.velocidad_plan);
+};
+
 // ─── POST /api/envios-ventas/upload ──────────────────────────────────────────
 // Sube un documento (cédula frontal/trasera, carnet o resumen) al servidor de
 // almacenamiento local, dentro de una carpeta nombrada con la cédula del
@@ -452,6 +468,7 @@ router.post('/', async (req, res) => {
     }
 
     b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
+    normalizarPlanSeparado(b);
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
     const placeholdersVenta = COLUMNAS_VENTA.map((_, i) => `$${i + 5}`).join(', ');
 
@@ -513,6 +530,7 @@ router.put('/:id', async (req, res) => {
 
     const sets = COLUMNAS_VENTA.map((c, i) => `${c} = $${i + 2}`).join(', ');
     b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
+    normalizarPlanSeparado(b);
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
 
     const { rows } = await pool.query(`

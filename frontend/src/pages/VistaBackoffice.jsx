@@ -58,7 +58,7 @@ const CAMPOS_FECHA = [
 const COLUMNAS_TABLA_REGISTROS = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
   "nombre_cliente_completo", "aplica_descuento_3ra_edad", "numero_identificacion",
-  "plan_contratado_final", "servicios_digitales", "tipo_contrato", "netlife_login",
+  "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "netlife_login",
   "netlife_estatus_real", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
@@ -66,7 +66,7 @@ const COLUMNAS_TABLA_REGISTROS = [
 const COLUMNAS_VALIDACION_ESTADO = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
   "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
-  "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+  "numero_identificacion", "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato",
   "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
@@ -74,7 +74,7 @@ const COLUMNAS_VALIDACION_ESTADO = [
 const COLUMNAS_VALIDACION_REGULARIZACION = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
   "netlife_estatus_real", "estatus_regularizacion", "auditado_por", "fecha_hora_regularizacion", "nombre_cliente_completo",
-  "aplica_descuento_3ra_edad", "numero_identificacion", "plan_contratado_final",
+  "aplica_descuento_3ra_edad", "numero_identificacion", "plan_contratado_final", "plan_contratado", "velocidad_plan",
   "servicios_digitales", "tipo_contrato", "netlife_login", "novedades_atc",
   "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife", "forma_pago", "supervisor",
 ];
@@ -82,7 +82,7 @@ const COLUMNAS_VALIDACION_REGULARIZACION = [
 const COLUMNAS_MESA_TRABAJO = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
   "netlife_estatus_real", "nombre_cliente_completo", "aplica_descuento_3ra_edad",
-  "numero_identificacion", "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+  "numero_identificacion", "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato",
   "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
@@ -114,7 +114,7 @@ const FRANJAS_AGENDAMIENTO = Array.from({ length: 12 }, (_, i) => {
   const hasta = String((i * 2 + 2) % 24).padStart(2, "0");
   return `${desde}:00-${hasta}:00`;
 });
-const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria"]);
+const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria", "plan_contratado", "velocidad_plan"]);
 
 const OPCIONES_FORMA_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 const OPCIONES_BANCO = [
@@ -873,7 +873,9 @@ const FIELD_LABELS = {
   coordenadas_gps: "GPS",
   tipo_vivienda: "TIPO VIVIENDA",
   regimen_vivienda: "REGIMEN VIVIENDA",
-  plan_contratado_final: "PLAN CONTRATADO",
+  plan_contratado_final: "PLAN CONTRATADO FINAL",
+  plan_contratado: "PLAN CONTRATADO",
+  velocidad_plan: "VELOCIDAD DE PLAN",
   servicios_digitales: "EMPAQUETADO",
   forma_pago: "FORMA PAGO",
   tipo_cuenta: "TIPO DE CUENTA O TARJETA",
@@ -943,7 +945,7 @@ const TABLE_COLUMNS = [
   "nombre_cliente_completo", "estado_civil", "fecha_nacimiento", "mes_nacimiento", "dia_abc_nacimiento", "email_cliente",
   "aplica_descuento_3ra_edad", "telf_celular_pin", "telf_celular_2", "telf_fijo", "provincia", "ciudad", "parroquia_barrio",
   "direccion_calles", "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps", "tipo_vivienda", "regimen_vivienda",
-  "plan_contratado_final", "servicios_digitales", "forma_pago", "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
+  "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "forma_pago", "detalle_bancario_ahorros", "valor_pago", "tipo_contrato",
   "links_documentos", "estado_recaudacion", "fecha_recaudada", "mes_recaudada", "dia_abc_recaudada", "netlife_login", "netlife_estatus_real",
   "fecha_activacion_netlife", "fecha_ingreso_telcos", "mes_activacion_netlife", "dia_abc_activacion_netlife", "calidad_venta_analista", "novedades_atc", "estado_welcome", "fecha_notificacion_welcome",
   "venta_efectiva", "auditoria_documentos", "auditado_por", "inconsistencia_documental", "observacion_auditoria", "errores_telcos",
@@ -975,6 +977,8 @@ const initialDetail = {
   direccion_calles: "",
   referencia_ubicacion: "",
   plan_contratado_final: "",
+  plan_contratado: "",
+  velocidad_plan: "",
   servicios_digitales: "",
   forma_pago: "",
   banco: "",
@@ -1306,7 +1310,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       if (segmentoPlanDetalle && tipo.toUpperCase() !== segmentoPlanDetalle.toUpperCase()) continue;
       const valor = `${tipo} — ${plan}`;
       const velocidad = String(item?.velocidad || "").trim();
-      if (!unicos.has(valor.toUpperCase())) unicos.set(valor.toUpperCase(), { valor, etiqueta: velocidad ? `${plan} · ${velocidad}` : plan });
+      if (!unicos.has(valor.toUpperCase())) unicos.set(valor.toUpperCase(), { valor, plan, velocidad, etiqueta: velocidad ? `${plan} · ${velocidad}` : plan });
     }
     const actual = String(detail?.plan_contratado_final || "").trim();
     if (actual && !unicos.has(actual.toUpperCase())) unicos.set(actual.toUpperCase(), { valor: actual, etiqueta: actual.split(" — ").slice(1).join(" — ") || actual });
@@ -1339,6 +1343,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       (item) => normalizar(item?.plan_base) === normalizar(valorGuardado),
     );
     setSegmentoPlanDetalle(String(coincidenciaCatalogo?.tipo_plan || "").trim());
+    if (coincidenciaCatalogo) {
+      setDetail((prev) => ({
+        ...prev,
+        plan_contratado: prev.plan_contratado || String(coincidenciaCatalogo.plan_base || "").trim(),
+        velocidad_plan: prev.velocidad_plan || String(coincidenciaCatalogo.velocidad || "").trim(),
+      }));
+    }
   }, [selectedId, detail?.plan_contratado_final, segmentosPlanDetalle, catalogoPlanes]);
 
   const opcionesEmpaquetadoDetalle = useMemo(() => {
@@ -1494,7 +1505,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
     "tipo_vivienda", "regimen_vivienda",
     // Plan y servicios
-    "plan_contratado_final", "servicios_digitales", "tipo_contrato", "observacion_venta_original",
+    "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "observacion_venta_original",
     // Pago y facturación
     "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros", "valor_pago", "ciclo_facturacion",
     "costo_instalacion", "descuento_instalacion", "beneficios_adicionales", "beneficios_de_ley",
@@ -1535,7 +1546,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       {
         titulo: "Plan y servicios",
         campos: [
-          "plan_contratado_final", "servicios_digitales", "tipo_contrato",
+          "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato",
           "beneficios_de_ley", "observacion_venta_original",
         ],
       },
@@ -1598,7 +1609,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         {
           titulo: "Plan y servicios contratados",
           campos: [
-            "plan_contratado_final", "servicios_digitales", "tipo_contrato", "valor_pago",
+            "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "valor_pago",
             "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
             "beneficios_de_ley", "observacion_venta_original",
           ],
@@ -1630,7 +1641,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         {
           titulo: "Plan y pago",
           campos: [
-            "plan_contratado_final", "servicios_digitales", "tipo_contrato", "forma_pago",
+            "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "forma_pago",
             "banco", "tipo_cuenta", "valor_pago", "ciclo_facturacion",
           ],
         },
@@ -1649,7 +1660,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         {
           titulo: "Plan y ubicación",
           campos: [
-            "plan_contratado_final", "servicios_digitales", "tipo_contrato", "provincia",
+            "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "provincia",
             "ciudad", "direccion_calles", "referencia_ubicacion", "coordenadas_gps",
           ],
         },
@@ -2049,7 +2060,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                     value={segmentoPlanDetalle}
                                     onChange={(e) => {
                                       setSegmentoPlanDetalle(e.target.value);
-                                      setDetail((prev) => ({ ...prev, plan_contratado_final: "", servicios_digitales: "" }));
+                                      setDetail((prev) => ({ ...prev, plan_contratado_final: "", plan_contratado: "", velocidad_plan: "", servicios_digitales: "" }));
                                     }}
                                     style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
                                   >
@@ -2059,7 +2070,16 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   <select
                                     value={detail?.plan_contratado_final || ""}
                                     disabled={!segmentoPlanDetalle}
-                                    onChange={(e) => setDetail((prev) => ({ ...prev, plan_contratado_final: e.target.value, servicios_digitales: "" }))}
+                                    onChange={(e) => {
+                                      const seleccion = opcionesPlanDetalle.find((plan) => plan.valor === e.target.value);
+                                      setDetail((prev) => ({
+                                        ...prev,
+                                        plan_contratado_final: e.target.value,
+                                        plan_contratado: seleccion?.plan || "",
+                                        velocidad_plan: seleccion?.velocidad || "",
+                                        servicios_digitales: "",
+                                      }));
+                                    }}
                                     style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff", cursor: segmentoPlanDetalle ? "pointer" : "not-allowed" }}
                                   >
                                     <option value="">{segmentoPlanDetalle ? "Seleccionar plan y velocidad..." : "Primero selecciona el segmento"}</option>

@@ -1264,6 +1264,15 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.id_negociacion_bitrix,
         jf.codigo_asesor,
         jf.nombre_y_codigo_asesor,
+        COALESCE((
+          SELECT NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
+          FROM public.usuarios u
+          WHERE UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+             OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+             OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+          ORDER BY u.activo DESC, u.id DESC
+          LIMIT 1
+        ), NULLIF(TRIM(jf.nombre_y_codigo_asesor), ''), '') AS nombre_completo_asesor,
         jf.plan_casa,
         jf.plan_profesional,
         jf.plan_pyme,

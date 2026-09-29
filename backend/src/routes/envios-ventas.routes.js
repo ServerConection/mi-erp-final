@@ -142,7 +142,7 @@ const COLUMNAS_VENTA = [
   'direccion_calles', 'direccion_manzana_villa',
   'referencia_ubicacion', 'coordenadas_gps',
   'tipo_vivienda', 'regimen_vivienda',
-  'plan_contratado_final', 'servicios_digitales',
+  'plan_contratado_final', 'plan_contratado', 'velocidad_plan', 'servicios_digitales',
   'forma_pago', 'detalle_bancario_ahorros',
   'valor_pago', 'tipo_contrato', 'links_documentos',
   'banco', 'tipo_cuenta', 'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',

@@ -121,7 +121,7 @@ const INIT = {
 };
 
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
-function generarResumenVenta(form, user) {
+function generarResumenVenta(form, user, opcion = null) {
   const trato = form.genero_cliente === "MUJER" ? "Sra" : "Sr";
   const nombreCliente = (form.nombre_cliente_completo && form.tipo_documento === 'RUC EMPRESA')
     ? form.nombre_cliente_completo.trim()
@@ -141,6 +141,18 @@ function generarResumenVenta(form, user) {
   const leyNo = form.beneficios_de_ley === "SI" ? " " : "X";
   const plazo = form.plazo_contrato_meses || "36";
 
+  // Lo que muestra "Incluye" (catálogo) + lo que el asesor escriba a mano
+  const incluidos = [
+    opcion?.velocidad && `Velocidad: ${opcion.velocidad}`,
+    opcion?.equipo && `Equipo: ${opcion.equipo}`,
+    opcion?.plan_promocion && `Promo del plan: ${opcion.plan_promocion}`,
+  ].filter(Boolean);
+  const manuales = (form.beneficios_adicionales || "")
+    .split(/\n/).map(s => s.trim()).filter(Boolean);
+  const beneficios = [...incluidos, ...manuales];
+  const beneficiosTxt = (beneficios.length ? beneficios : ["—"])
+    .map(s => `•    ${s}`).join("\n");
+
   return [
     `👤 Cliente: ${trato} ${nombreCliente}`,
     `💻 Asesor: ${asesor}`,
@@ -156,7 +168,7 @@ function generarResumenVenta(form, user) {
     `⏳Costo de instalación: ${form.costo_instalacion ? `$${form.costo_instalacion} + IVA` : "—"}`,
     `⏳Descuento en instalación: ${form.descuento_instalacion || "—"}`,
     `✅Beneficios adicionales:`,
-    (form.beneficios_adicionales || "—").split(/\n/).map(s => `•    ${s}`).join("\n"),
+    beneficiosTxt,
     `•    ✍🏼Beneficios de Ley: SI (    ${leySi}    ) NO (    ${leyNo}    )`,
     `⚠️Importante: En caso de cancelación anticipada, se cobrará el proporcional de todas las promociones recibidas por el tiempo que faltase para los ${plazo} meses de su contrato`,
   ].join("\n");
@@ -641,6 +653,8 @@ export default function NuevaVenta() {
   const [modalCamposFaltantes, setModalCamposFaltantes] = useState([]);
   const [modalError, setModalError] = useState(null);
   const [alertaDescuento, setAlertaDescuento] = useState(null);
+  const [refrescando, setRefrescando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -717,15 +731,16 @@ export default function NuevaVenta() {
   }, [borradorId]);
 
   // ── Catálogo mensual de planes (viene del Excel que carga el admin) ────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${API}/api/planes-catalogo`, { headers: { Authorization: `Bearer ${token}` } });
-        const d = await r.json();
-        if (d.success) { setCatalogo(d.data || []); setVigenciaCat(d.vigencia || null); }
-      } catch { /* sin catálogo → los campos quedan de texto libre */ }
-    })();
-  }, []);
+  // ── Catálogo mensual de planes (viene del Excel que carga el admin) ────────
+  const cargarCatalogo = async () => {
+    try {
+      const r = await fetch(`${API}/api/planes-catalogo`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (d.success) { setCatalogo(d.data || []); setVigenciaCat(d.vigencia || null); }
+    } catch { /* sin catálogo */ }
+  };
+
+  useEffect(() => { cargarCatalogo(); }, []);
 
   useEffect(() => {
     (async () => {
@@ -948,7 +963,7 @@ export default function NuevaVenta() {
   }, [calificaPara3raEdad]);
 
   // El resumen se regenera automáticamente mientras el asesor no lo edite a mano
-  const resumenAutomatico = generarResumenVenta(form, user);
+  const resumenAutomatico = generarResumenVenta(form, user, opcionSel);
   useEffect(() => {
     if (resumenEditado) return;
     setForm(f => f.resumen_venta === resumenAutomatico
@@ -1064,13 +1079,13 @@ export default function NuevaVenta() {
       numero_identificacion: "Número de identificación",
       apellidos_cliente: "Apellidos del cliente",
       nombres_cliente: "Nombres del cliente",
-        nombre_cliente_completo: "Nombre de la empresa",
-        genero_cliente: "Género",
-        estado_civil: "Estado civil",
-        fecha_nacimiento: "Fecha de nacimiento",
-        tipo_inmueble: "Tipo de inmueble",
-        aplica_descuento_3ra_edad: "Descuento de tercera edad",
-        regimen_vivienda: "Régimen de vivienda",
+      nombre_cliente_completo: "Nombre de la empresa",
+      genero_cliente: "Género",
+      estado_civil: "Estado civil",
+      fecha_nacimiento: "Fecha de nacimiento",
+      tipo_inmueble: "Tipo de inmueble",
+      aplica_descuento_3ra_edad: "Descuento de tercera edad",
+      regimen_vivienda: "Régimen de vivienda",
 
       calle_principal: "Calle principal",
       provincia: "Provincia",
@@ -1318,11 +1333,11 @@ export default function NuevaVenta() {
     try {
       // Construir payload mapeado a columnas de envios_ventas
       // Determinar nombre_cliente_completo: si es empresa use el campo unificado, sino apellidos + nombres
-  const nombre_cliente_completo = form.tipo_documento === 'RUC EMPRESA'
-    ? (form.nombre_cliente_completo || '').trim()
-    : `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
+      const nombre_cliente_completo = form.tipo_documento === 'RUC EMPRESA'
+        ? (form.nombre_cliente_completo || '').trim()
+        : `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
       const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
-      const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user);
+      const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user, opcionSel);
 
       // Normalizar el valor de aplica_descuento_3ra_edad al formato que espera la BD
       // (la base histórica usa 'SI POR TERCERA EDAD' / 'NO'). Evita violar el CHECK constraint.
@@ -1440,6 +1455,32 @@ export default function NuevaVenta() {
   const err = k => errs[k]
     ? <span className="nv-err">⚠ {errs[k]}</span>
     : null;
+
+  const refrescarResumen = async () => {
+    setRefrescando(true);
+    await cargarCatalogo();
+    setResumenEditado(false); // el efecto regenera el resumen con los datos actuales
+    setRefrescando(false);
+  };
+
+  const copiarResumen = async () => {
+    const texto = form.resumen_venta || "";
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      // Respaldo para navegadores sin permiso de portapapeles
+      const ta = document.createElement("textarea");
+      ta.value = texto;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   // ── Success screen ────────────────────────────────────────────────────────
   if (success) return (
@@ -1672,14 +1713,14 @@ export default function NuevaVenta() {
             </Row>
             {form.tipo_documento === 'RUC EMPRESA' ? (
               <>
-              <Row label="Nombre de la empresa" required>
-                <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
-                {err("nombre_cliente_completo")}
-              </Row>
-              <Row label="Representante legal">
-                <FIn value={form.representante_legal} onChange={set("representante_legal")}
-                  placeholder="Nombres y apellidos completos del representante legal" />
-              </Row>
+                <Row label="Nombre de la empresa" required>
+                  <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
+                  {err("nombre_cliente_completo")}
+                </Row>
+                <Row label="Representante legal">
+                  <FIn value={form.representante_legal} onChange={set("representante_legal")}
+                    placeholder="Nombres y apellidos completos del representante legal" />
+                </Row>
               </>
             ) : (
               <>
@@ -1866,7 +1907,7 @@ export default function NuevaVenta() {
                     </div>
                   </Row>
                 )}
-                <Row label="Servicio adicional">
+                <Row label="Servicio adicional (Facturados)">
                   <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")}
                     placeholder="Ej: Netlife Defense, Assistance PRO…" />
                 </Row>
@@ -1993,7 +2034,7 @@ export default function NuevaVenta() {
               />
             </Row>
             <Row label="Beneficios de Ley" required>
-              <Chips value={aplicaDescuento3raEdad ? "SI" : "NO"} onChange={() => {}} options={BENEFICIOS_LEY} disabledOptions={BENEFICIOS_LEY} />
+              <Chips value={aplicaDescuento3raEdad ? "SI" : "NO"} onChange={() => { }} options={BENEFICIOS_LEY} disabledOptions={BENEFICIOS_LEY} />
               <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
                 Se define automáticamente según el descuento de tercera edad.
               </div>
@@ -2011,17 +2052,36 @@ export default function NuevaVenta() {
                 rows={10}
                 style={{ fontFamily: "monospace", fontSize: 12 }}
               />
-              <button
-                type="button"
-                className="nv-btn-reset"
-                style={{ marginTop: 8, width: "auto", padding: "8px 16px" }}
-                onClick={() => {
-                  setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) }));
-                  setResumenEditado(false);
-                }}
-              >
-                🔄 Regenerar automáticamente
-              </button>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={() => {
+                    setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user, opcionSel) }));
+                    setResumenEditado(false);
+                  }}
+                >
+                  🔄 Regenerar automáticamente
+                </button>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={refrescarResumen}
+                  disabled={refrescando}
+                >
+                  {refrescando ? "Refrescando…" : "♻️ Refrescar"}
+                </button>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={copiarResumen}
+                >
+                  {copiado ? "✅ Copiado" : "📋 Copiar"}
+                </button>
+              </div>
             </Row>
             <Row label="Foto cartel">
               <FotoCartel form={form} />
@@ -2095,7 +2155,7 @@ export default function NuevaVenta() {
                 : <><span>📤</span> Cargar venta</>
               }
             </button>
-            <button
+            {/* <button
               className="nv-btn-submit"
               style={{ marginTop: 10, background: "linear-gradient(135deg, #6B7280, #9CA3AF)", boxShadow: "0 6px 24px rgba(107,114,128,.35)" }}
               onClick={() => handleSubmit("BORRADOR")} disabled={!!loading}
@@ -2104,7 +2164,7 @@ export default function NuevaVenta() {
                 ? <><div className="nv-spin" /> Guardando borrador…</>
                 : <><span>💾</span> Registrar venta (guardar como borrador)</>
               }
-            </button>
+            </button>*/}
             <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); setResumenEditado(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
             </button>

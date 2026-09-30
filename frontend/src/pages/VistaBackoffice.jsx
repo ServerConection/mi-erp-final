@@ -8,6 +8,14 @@ import { getSocketCompartido } from "../utils/socketCompartido";
 
 const API = import.meta.env.VITE_API_URL;
 
+let campoDetalleSeleccionado = null;
+const recordarCampoDetalle = (campo) => { campoDetalleSeleccionado = campo || null; };
+const tomarCampoDetalle = () => {
+  const campo = campoDetalleSeleccionado;
+  campoDetalleSeleccionado = null;
+  return campo;
+};
+
 // ── Documentos de respaldo de la venta ───────────────────────────────────────
 // Son los CUATRO que carga el asesor en Nueva Venta (sección 8). Antes esta
 // pantalla detectaba los documentos con `field.startsWith("foto_")`, y por eso
@@ -47,7 +55,7 @@ const ESTATUS_NETLIFE = [
 
 
 const CAMPOS_FECHA = [
-  "fecha_nacimiento", "fecha_regularizacion_atc", "fecha_agenda",
+  "fecha_nacimiento", "fecha_regularizacion_atc",
   "fecha_recaudada", "fecha_activacion_netlife", "fecha_registro_sistema",
   "fecha_ingreso_telcos", "fecha_auditoria",
 ];
@@ -91,16 +99,19 @@ const COLUMNAS_TABLAS_BACKOFFICE = COLUMNAS_TABLA_REGISTROS;
 
 const COLUMNAS_EXPORTACION_BACKOFFICE = COLUMNAS_TABLAS_BACKOFFICE;
 
-const COLUMNAS_EXPORTACION_REGULARIZACION = [
-  "codigo_asesor", "netlife_login", "auditoria_documentos", "detalle_regularizacion",
-];
-const ETIQUETAS_EXPORTACION_REGULARIZACION = {
-  codigo_asesor: "CÓDIGO ASESOR",
-  netlife_login: "LOGIN",
-  auditoria_documentos: "MOTIVO DE REGULARIZACIÓN",
-  detalle_regularizacion: "DETALLE DE REGULARIZACIÓN",
-  fecha_regularizacion_atc: "FECHA DE SOLICITUD",
-};
+// Datos personales y documentos que nunca deben salir en archivos descargables.
+// Este filtro se aplica dentro del exportador y protege todos los submódulos,
+// incluso si una pantalla intenta enviar una lista de columnas distinta.
+const CAMPOS_CLIENTE_NO_EXPORTABLES = new Set([
+  "nombre_cliente_completo", "representante_legal", "tipo_documento",
+  "numero_identificacion", "tipo_cliente", "genero_cliente", "estado_civil",
+  "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2",
+  "telf_fijo", "provincia", "ciudad", "parroquia_barrio", "direccion_calles",
+  "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
+  "tipo_vivienda", "regimen_vivienda", "forma_pago", "banco", "tipo_cuenta",
+  "detalle_bancario_ahorros", "valor_pago", "links_documentos", "resumen_venta",
+  ...CAMPOS_DOCUMENTO,
+]);
 
 const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "__SIN_REVISAR__", etiqueta: "Sin Revisar" },
@@ -114,7 +125,7 @@ const FRANJAS_AGENDAMIENTO = Array.from({ length: 12 }, (_, i) => {
   const hasta = String((i * 2 + 2) % 24).padStart(2, "0");
   return `${desde}:00-${hasta}:00`;
 });
-const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria", "plan_contratado", "velocidad_plan"]);
+const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_registro_sistema", "id_asesor_comercial", "fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria", "plan_contratado", "velocidad_plan"]);
 
 const OPCIONES_FORMA_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 const OPCIONES_BANCO = [
@@ -272,25 +283,12 @@ async function exportarAExcel(data, nombreArchivo = "Reporte", columnas = COLUMN
     return texto;
   };
 
-  const columnasDisponibles = columnas.filter((col) => data.some((row) => Object.prototype.hasOwnProperty.call(row || {}, col)));
-  const menuCampos = columnasDisponibles
-    .map((col, index) => `${index + 1}. ${etiquetas[col] || FIELD_LABELS[col] || col.replace(/_/g, " ").toUpperCase()}`)
-    .join("\n");
-  const seleccion = window.prompt(
-    `Escoge los campos del reporte.\n\n${menuCampos}\n\nEscribe números separados por coma (ej. 1,3,5) o TODOS:`,
-    "TODOS"
+  const columnasOrdenadas = columnas.filter((col) =>
+    !CAMPOS_CLIENTE_NO_EXPORTABLES.has(col) &&
+    data.some((row) => Object.prototype.hasOwnProperty.call(row || {}, col))
   );
-  if (seleccion === null) return;
-  const entrada = seleccion.trim().toUpperCase();
-  let columnasOrdenadas;
-  if (!entrada || entrada === "TODOS" || entrada === "*") {
-    columnasOrdenadas = columnasDisponibles;
-  } else {
-    const indices = [...new Set(entrada.split(/[;,\s]+/).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= columnasDisponibles.length))];
-    columnasOrdenadas = indices.map((n) => columnasDisponibles[n - 1]);
-  }
   if (!columnasOrdenadas.length) {
-    alert("No seleccionaste campos válidos para exportar.");
+    alert("No hay campos exportables después de aplicar la protección de datos personales.");
     return;
   }
 
@@ -808,7 +806,14 @@ function normalizarRegistro(row) {
   const out = {};
   for (const [k, v] of Object.entries(row || {})) {
     if (v === null || v === undefined) { out[k] = ""; continue; }
-    out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
+    if (k === "fecha_agenda") {
+      const texto = String(v);
+      const coincidencia = texto.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}))?/);
+      const horaAgenda = String(row?.hora_agenda || "").slice(0, 5);
+      out[k] = coincidencia ? `${coincidencia[1]}T${coincidencia[2] || horaAgenda || "00:00"}` : texto;
+    } else {
+      out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
+    }
   }
   // Compatibilidad inmediata con auditorías anteriores a las columnas
   // separadas: se muestran fecha y hora a partir del sello exacto existente.
@@ -1097,7 +1102,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, se
               <tr key={row.id} onClick={() => onSelect(row.id)}
                 style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}>
                 {headers.map((h) => (
-                  <td key={`${row.id}-${h.key}`} title={valueForField(row, h.key)} style={{
+                  <td key={`${row.id}-${h.key}`} title={valueForField(row, h.key)} onClick={(e) => { e.stopPropagation(); onSelect(row.id, h.key); }} style={{
                     padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
                     maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
                     background: selectedId === row.id ? "#eff6ff" : "#fff",
@@ -1257,6 +1262,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
   const solicitudDetalleRef = useRef(0);
+  const campoDetallePendienteRef = useRef(null);
 
   // ── FILTROS ────────────────────────────────────────────────────────────
   // El buscador de texto se mantiene igual; estos se suman.
@@ -1436,8 +1442,9 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     })();
   }, []);
 
-  const fetchDetail = async (id) => {
+  const fetchDetail = async (id, campo = null) => {
     const solicitudActual = ++solicitudDetalleRef.current;
+    campoDetallePendienteRef.current = campo;
     setSelectedId(Number(id));
     try {
       const res = await fetch(`${API}/api/backoffice/${id}`, {
@@ -1459,6 +1466,20 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       setAlert({ type: "error", msg: "Error al cargar el registro" });
     }
   };
+
+  useEffect(() => {
+    if (!showModal || !detail || !campoDetallePendienteRef.current) return;
+    const campo = campoDetallePendienteRef.current;
+    campoDetallePendienteRef.current = null;
+    const timer = setTimeout(() => {
+      const contenedor = document.querySelector(`[data-detail-field="${CSS.escape(campo)}"]`);
+      if (!contenedor) return;
+      contenedor.scrollIntoView({ behavior: "smooth", block: "center" });
+      const control = contenedor.querySelector("input, select, textarea, button");
+      control?.focus({ preventScroll: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [showModal, detail]);
 
   const closeModal = () => {
     solicitudDetalleRef.current += 1;
@@ -1486,7 +1507,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     if (idAbiertoRef.current === idInicial) return;
     idAbiertoRef.current = idInicial;
     setSelectedId(Number(idInicial));
-    fetchDetail(idInicial);
+    fetchDetail(idInicial, tomarCampoDetalle());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idInicial]);
 
@@ -1502,7 +1523,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
   const editableFields = useMemo(() => [
     // Venta
-    "codigo_asesor", "nombre_asesor_comercial", "id_bitrix", "distribuidor_autorizado",
+    "codigo_asesor", "id_asesor_comercial", "nombre_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
     "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
     "nombre_atc", "clausulas", "lider_comercial",
     // Cliente
@@ -1517,7 +1538,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "observacion_venta_original",
     // Pago y facturación
     "forma_pago", "banco", "tipo_cuenta", "detalle_bancario_ahorros", "valor_pago", "ciclo_facturacion",
-    "costo_instalacion", "descuento_instalacion", "beneficios_adicionales", "beneficios_de_ley",
+    "costo_instalacion", "descuento_instalacion", "beneficios_adicionales",
     // Auditoría / regularización
     "estatus_regularizacion", "detalle_regularizacion", "gestion_atc", "fecha_regularizacion_atc",
     // Netlife
@@ -1556,7 +1577,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         titulo: "Plan y servicios",
         campos: [
           "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato",
-          "beneficios_de_ley", "observacion_venta_original",
+          "aplica_descuento_3ra_edad", "observacion_venta_original",
         ],
       },
       {
@@ -1590,7 +1611,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       {
         titulo: "Venta",
         campos: [
-          "codigo_asesor", "id_bitrix", "distribuidor_autorizado",
+          "codigo_asesor", "id_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
           "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
           "nombre_atc", "clausulas", "lider_comercial",
         ],
@@ -1620,7 +1641,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           campos: [
             "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "valor_pago",
             "ciclo_facturacion", "costo_instalacion", "descuento_instalacion",
-            "beneficios_de_ley", "observacion_venta_original",
+            "aplica_descuento_3ra_edad", "observacion_venta_original",
           ],
         },
         {
@@ -2038,7 +2059,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
                         {sec.campos.map((field) => (
-                          <div key={field}>
+                          <div key={field} data-detail-field={field}>
                             <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                               {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA"
                                 ? "NOMBRE DE LA EMPRESA"
@@ -2111,6 +2132,14 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                     <option key={empaquetado} value={empaquetado}>{empaquetado}</option>
                                   ))}
                                 </select>
+                              ) : field === "fecha_agenda" ? (
+                                <input
+                                  type="datetime-local"
+                                  value={detail?.fecha_agenda || ""}
+                                  onChange={(e) => setDetail((prev) => ({ ...prev, fecha_agenda: e.target.value }))}
+                                  step="60"
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
+                                />
                               ) : field === "franja_horaria_agendamiento" ? (
                                 <select
                                   value={detail?.[field] || ""}
@@ -2504,7 +2533,7 @@ const SUBMODULOS = [
     id: "validacion",
     nombre: "Validación / Regularización",
     icono: "✅",
-    descripcion: "Tablero de ventas por estado de regularización, de la más antigua a la más reciente.",
+    descripcion: "Tablero de ventas por estado de regularización, de la más reciente a la más antigua.",
     color: "#7c3aed",
     fondo: "#ede9fe",
     listo: true,
@@ -4860,6 +4889,7 @@ function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
                   <td
                     key={`${row.id}-${h.key}`}
                     title={valueForField(row, h.key)}
+                    onClick={() => recordarCampoDetalle(h.key)}
                     style={{
                       padding: "10px 12px",
                       borderBottom: "1px solid #f1f5f9",
@@ -5528,6 +5558,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                           <td
                             key={`${row.id}-${key}`}
                             title={valueForField(row, key)}
+                            onClick={() => recordarCampoDetalle(key)}
                             style={{
                               padding: "10px 12px",
                               borderBottom: "1px solid #f1f5f9",
@@ -5860,8 +5891,8 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
     return [...filtradas].sort((a, b) => {
       const fa = String(a.fecha_registro_sistema || "");
       const fb = String(b.fecha_registro_sistema || "");
-      if (fa && fb && fa !== fb) return fa < fb ? -1 : 1;
-      return (a.id ?? 0) - (b.id ?? 0);
+      if (fa && fb && fa !== fb) return fa > fb ? -1 : 1;
+      return (b.id ?? 0) - (a.id ?? 0);
     });
   })();
 
@@ -5944,7 +5975,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
               />
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(ordenadas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)}
+                onClick={() => exportarAExcel(ordenadas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_VALIDACION_REGULARIZACION)}
                 color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe"
               />
               <button
@@ -5956,7 +5987,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
             </div>
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#64748b" }}>
-            Ordenadas de la más antigua a la más reciente. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
+            Ordenadas de la más reciente a la más antigua. Arrastra una tarjeta a otro bloque para cambiar su estado, o haz clic para abrir el detalle.
             <br />
             Cada bloque tiene <b>su propio filtro de fecha</b>: puedes ver «Sin revisar» de todo el año mientras «Por regularizar» muestra un solo día.
             Los <b>contadores se actualizan automáticamente</b> con la búsqueda y los filtros seleccionados.
@@ -6230,7 +6261,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
 
   const rowsFiltradas = useMemo(() => rowsConFiltros
     .filter((row) => estadoActivo === "TODOS" || bloqueDeRegistro(row) === estadoActivo)
-    .sort((a, b) => String(a.fecha_registro_sistema || "").localeCompare(String(b.fecha_registro_sistema || ""))),
+    .sort((a, b) => String(b.fecha_registro_sistema || "").localeCompare(String(a.fecha_registro_sistema || ""))),
     [rowsConFiltros, estadoActivo]);
 
   const estadoSeleccionado = estadoActivo === "TODOS"
@@ -6299,7 +6330,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
               <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em" }}>Estado seleccionado</div>
               <h3 style={{ margin: "4px 0 0", fontSize: 18, color: "#4338ca", textTransform: "uppercase" }}>{estadoSeleccionado} · {rowsFiltradas.length}</h3>
             </div>
-            <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
+            <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_VALIDACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
           </div>
 
           <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
@@ -6322,7 +6353,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
                         onClick={() => setDetalleId(row.id)}
                         style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
                       >
-                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}><CeldaRegistro row={row} campo={key} textoVacio={key === "estatus_regularizacion" ? "SIN REVISAR" : undefined} /></td>)}
+                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} onClick={() => recordarCampoDetalle(key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}><CeldaRegistro row={row} campo={key} textoVacio={key === "estatus_regularizacion" ? "SIN REVISAR" : undefined} /></td>)}
                       </tr>
                     );
                   })}

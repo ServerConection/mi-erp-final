@@ -333,6 +333,7 @@ const CAMPOS_EDITABLES = new Set([
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',
+  'hora_agenda',
   'franja_horaria_agendamiento',
   'mes_agenda',
   'dia_abc_agenda',
@@ -588,21 +589,25 @@ router.put('/:id', async (req, res) => {
       // Si el usuario borra la fecha
       if (!raw) {
         payload.fecha_agenda = null;
+        payload.hora_agenda = null;
         payload.mes_agenda = null;
         payload.dia_abc_agenda = null;
       } else {
-        // El frontend envía YYYY-MM-DD
-        const soloFecha = String(raw).slice(0, 10);
-        const d = new Date(`${soloFecha}T00:00:00`);
+        // El frontend envía fecha y hora local de Ecuador: YYYY-MM-DDTHH:mm.
+        const fechaHora = String(raw).trim();
+        const formatoValido = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(fechaHora);
+        const d = new Date(fechaHora);
 
-        if (Number.isNaN(d.getTime())) {
+        if (!formatoValido || Number.isNaN(d.getTime())) {
           return res.status(400).json({
             success: false,
-            error: 'fecha_agenda debe tener formato YYYY-MM-DD',
+            error: 'fecha_agenda debe tener formato YYYY-MM-DDTHH:mm',
           });
         }
 
-        payload.fecha_agenda = soloFecha;
+        payload.fecha_agenda = fechaHora.slice(0, 10);
+        const horaAgenda = fechaHora.slice(11, 19);
+        payload.hora_agenda = horaAgenda.length === 5 ? `${horaAgenda}:00` : horaAgenda;
         payload.mes_agenda = MESES[d.getMonth()];
         payload.dia_abc_agenda = DIAS[d.getDay()];
       }

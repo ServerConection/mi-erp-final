@@ -57,12 +57,14 @@ export default function FotoCartel({ form }) {
     return () => { active = false; };
   }, [nombre, identificacion, plazo, tipo, razonSocial, empresa, fecha]);
 
-  const download = () => {
+  const nombreArchivo = `cartel-netlife-${identificacion.replace(/[^a-zA-Z0-9_-]/g, "") || "cliente"}`;
+
+  const downloadPdf = () => {
     try {
       const url = URL.createObjectURL(cartelPdf(canvasRef.current));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `cartel-netlife-${identificacion.replace(/[^a-zA-Z0-9_-]/g, "")}.pdf`;
+      link.download = `${nombreArchivo}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -72,16 +74,45 @@ export default function FotoCartel({ form }) {
     }
   };
 
+  const downloadPng = () => {
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error("Canvas no disponible");
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setError("No se pudo generar la imagen. Intenta nuevamente.");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${nombreArchivo}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }, "image/png");
+    } catch {
+      setError("No se pudo generar la imagen. Intenta nuevamente.");
+    }
+  };
+
   return (
     <div>
       <canvas ref={canvasRef} width={1684} height={1191} role="img" aria-label={`Vista previa del cartel Netlife de ${nombre || "cliente"}`}
         style={{ width: "100%", height: "auto", background: "white", border: "1px solid #ddd", borderRadius: 8 }} />
       {!completo && <p style={{ fontSize: 12, marginTop: 8 }}>Completa {empresa ? "el representante legal, la empresa y el RUC" : "el nombre y la identificación del cliente"} para descargar el cartel.</p>}
       {error && <p role="alert" style={{ color: "#b91c1c", fontSize: 12 }}>{error}</p>}
-      <button type="button" className="nv-btn-reset" disabled={!ready || !completo} onClick={download}
-        style={{ marginTop: 8, width: "auto", padding: "8px 16px", opacity: ready && completo ? 1 : 0.5 }}>
-        Descargar PDF
-      </button>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        <button type="button" className="nv-btn-reset" disabled={!ready || !completo} onClick={downloadPdf}
+          style={{ width: "auto", padding: "8px 16px", opacity: ready && completo ? 1 : 0.5 }}>
+          Descargar PDF
+        </button>
+        <button type="button" className="nv-btn-reset" disabled={!ready || !completo} onClick={downloadPng}
+          style={{ width: "auto", padding: "8px 16px", opacity: ready && completo ? 1 : 0.5 }}>
+          Descargar PNG
+        </button>
+      </div>
     </div>
   );
 }

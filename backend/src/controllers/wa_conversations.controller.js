@@ -324,16 +324,32 @@ async function createInternalNote(req, res) {
   try {
     const { id } = req.params
     const content = String(req.body.text || req.body.body || '').trim()
-    if (!content) return res.status(400).json({ success: false, error: 'Texto requerido' })
+    const mediaUrl = String(req.body.media_url || '').trim()
+    const mediaType = String(req.body.media_type || '').trim()
+    const mediaFilename = String(req.body.media_filename || '').trim()
+    if (!content && !mediaUrl) return res.status(400).json({ success: false, error: 'Texto o imagen requerido' })
     if (content.length > 4000) return res.status(400).json({ success: false, error: 'Máximo 4000 caracteres' })
+    if (mediaUrl) {
+      if (!mediaType.startsWith('image/')) {
+        return res.status(400).json({ success: false, error: 'El adjunto oculto debe ser una imagen' })
+      }
+      const filePath = resolveMediaPath(mediaUrl)
+      if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'La imagen subida no existe' })
+    }
     const c = await findOwnedConversation(req, id)
     if (!c) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
-    const metadata = { internal: true, author_id: req.user.id, author: req.user.nombre || req.user.username || 'Usuario' }
+    const metadata = {
+      internal: true,
+      author_id: req.user.id,
+      author: req.user.nombre || req.user.username || 'Usuario',
+      ...(mediaType ? { media_type: mediaType } : {}),
+      ...(mediaFilename ? { media_filename: mediaFilename } : {}),
+    }
     const saved = await query(
-      `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,status,metadata,timestamp)
-       VALUES ($1,$2,$3,'out','internal_note',$4,'internal',$5::jsonb,NOW())
+      `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,media_url,status,metadata,timestamp)
+       VALUES ($1,$2,$3,'out','internal_note',$4,$5,'internal',$6::jsonb,NOW())
        RETURNING id,direction,type,content,media_url,status,timestamp,wa_msg_id,metadata`,
-      [id, c.line_id, c.wa_number, content, JSON.stringify(metadata)]
+      [id, c.line_id, c.wa_number, content, mediaUrl || null, JSON.stringify(metadata)]
     )
     await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [id])
     const message = { ...saved.rows[0], conversation_id: id, lineId: c.line_id, waNumber: c.wa_number }

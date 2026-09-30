@@ -1286,6 +1286,56 @@ async function getConsultaDescargaVelsa(req, res) {
     const desde = req.query.fechaDesde || hoy;
     const hasta = req.query.fechaHasta || hoy;
 
+    const asesor = String(req.query.asesor || '').trim();
+    const loginNetlife = String(req.query.loginNetlife || '').trim();
+    const idBitrix = String(req.query.idBitrix || '').trim();
+    const busquedaGeneral = String(req.query.busquedaGeneral || '').trim();
+    const values = [desde, hasta];
+    const filtros = [];
+
+    const addFiltro = (valor, sql) => {
+      if (!valor) return;
+      values.push(`%${valor}%`);
+      filtros.push(sql.replaceAll('__PARAM__', `$${values.length}`));
+    };
+
+    addFiltro(asesor, `(
+      COALESCE(jf.codigo_asesor::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.nombre_y_codigo_asesor, '') ILIKE __PARAM__
+      OR EXISTS (
+        SELECT 1 FROM public.usuarios u_filtro
+        WHERE (
+          UPPER(TRIM(COALESCE(u_filtro.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+        )
+        AND TRIM(CONCAT_WS(' ', u_filtro.nombres, u_filtro.apellidos)) ILIKE __PARAM__
+      )
+    )`);
+    addFiltro(loginNetlife, `COALESCE(jf.inicio_sesion_netlife, '') ILIKE __PARAM__`);
+    addFiltro(idBitrix, `(
+      COALESCE(jf.id_bitrix_ghl::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_negociacion_bitrix::text, '') ILIKE __PARAM__
+    )`);
+    addFiltro(busquedaGeneral, `(
+      COALESCE(jf.codigo_asesor::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.nombre_y_codigo_asesor, '') ILIKE __PARAM__
+      OR COALESCE(jf.inicio_sesion_netlife, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_bitrix_ghl::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_negociacion_bitrix::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.estado_venta_netlife, '') ILIKE __PARAM__
+      OR EXISTS (
+        SELECT 1 FROM public.usuarios u_filtro
+        WHERE (
+          UPPER(TRIM(COALESCE(u_filtro.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+        )
+        AND TRIM(CONCAT_WS(' ', u_filtro.nombres, u_filtro.apellidos)) ILIKE __PARAM__
+      )
+    )`);
+    const filtrosSql = filtros.length ? `AND ${filtros.join('\n        AND ')}` : '';
+
     // FIX: esta pantalla ("CONSULTA Y DESCARGA — VELSA") muestra la data CRUDA de
     // Jotform, no la MV de indicadores. Antes consultaba la MV y devolvía la data
     // en `registros`, mientras el frontend leía `rows`: quedaba rows=undefined y
@@ -1336,9 +1386,10 @@ async function getConsultaDescargaVelsa(req, res) {
       FROM public.vw_jotform_velsa_netlife_completo jf
       WHERE (((jf.created_at AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/Guayaquil')::date
             BETWEEN $1::date AND $2::date
+        ${filtrosSql}
       ORDER BY jf.created_at DESC
       LIMIT 10000
-    `, [desde, hasta]);
+    `, values);
 
     const rows = result.rows.map(row => {
       const estado = nombreEstadoRegularizacionVelsa(row.estado_regularizacion_novo, row._pregunta_regularizacion);

@@ -4,7 +4,7 @@
 // GET  /api/backoffice        → listar registros
 // GET  /api/backoffice/:id    → detalle completo de un registro
 // PUT  /api/backoffice/:id    → editar solo campos de auditoría
-// Todos los perfiles excepto ASESOR
+// Acceso exclusivo: ADMINISTRADOR, GERENCIA y ATC
 // ============================================================
 
 const express = require('express');
@@ -21,14 +21,13 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 // cualquier vendedor podía leer y editar ventas ajenas —incluido valor_pago,
 // plan contratado y los datos personales del cliente.
 //
-// Se cambia a lista blanca en vez de lista negra: si mañana aparece un perfil
+// Se usa una lista blanca: si mañana aparece un perfil
 // nuevo en la base, queda FUERA por defecto en vez de entrar por descuido.
 // `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
   'GERENCIA',
-  'SUPERVISOR',
-  'ANALISTA',
+  'ATC',
 ]);
 
 const soloBackoffice = (req, res, next) => {

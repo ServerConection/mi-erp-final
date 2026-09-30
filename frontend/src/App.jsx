@@ -91,6 +91,10 @@ const ProtectedRoute = ({ children }) => {
 const FloatingWidgets = () => {
   const location = useLocation();
   if (location.pathname.startsWith("/embed/")) return null;
+  try {
+    const perfil = (JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").trim().toUpperCase();
+    if (["ATC", "ANALISTA"].includes(perfil)) return null;
+  } catch (_) { /* una sesión inválida será atendida por ProtectedRoute */ }
   return (
     <>
       {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas excepto embeds */}

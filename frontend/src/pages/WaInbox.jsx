@@ -76,6 +76,11 @@ export default function WaInbox({ dealId = null } = {}) {
   const [newMsg, setNewMsg]               = useState("");
   const [sending, setSending]             = useState(false);
   const [uploading, setUploading]         = useState(false);
+  const [internalImage, setInternalImage] = useState(null);
+  const [internalImagePreview, setInternalImagePreview] = useState("");
+  const [notificationPermission, setNotificationPermission] = useState(
+    () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission)
+  );
   const [filter, setFilter]               = useState("all"); // all|active|human_takeover|closed
   const [search, setSearch]               = useState("");
   const messagesEndRef = useRef(null);
@@ -168,6 +173,20 @@ export default function WaInbox({ dealId = null } = {}) {
     const onMessage = (msg) => {
       if (isLegacySyntheticCall(msg)) return;
       if (dealId && !conversationsRef.current.some(c => c.id === msg.conversation_id)) return;
+      if (msg.direction === "in" && typeof Notification !== "undefined" && Notification.permission === "granted"
+        && (document.hidden || selectedRef.current?.id !== msg.conversation_id)) {
+        try {
+          const conv = conversationsRef.current.find(c => c.id === msg.conversation_id);
+          const notification = new Notification(conv?.contact_name || `WhatsApp +${conv?.wa_number || ""}`, {
+            body: msg.content || msg.text || (msg.media_url ? "Imagen recibida" : "Nuevo mensaje de WhatsApp"),
+            icon: "/favicon.ico",
+            tag: `wa-conversation-${msg.conversation_id}`,
+          });
+          notification.onclick = () => { window.focus(); notification.close(); };
+        } catch (error) {
+          console.warn("[WaInbox] No se pudo mostrar la notificación:", error);
+        }
+      }
       // El recargado va FUERA del updater: React puede invocar el updater dos
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
@@ -235,6 +254,7 @@ export default function WaInbox({ dealId = null } = {}) {
   }, [lineFilter, loadConvs, loadMessages]);
 
   const selectConv = (conv) => {
+    if (selectedRef.current?.id !== conv.id) clearInternalImage();
     setSelected(conv);
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
@@ -283,20 +303,69 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally { setSending(false); }
   };
 
+  const selectInternalImage = (file) => {
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      alert("Solo se permiten imágenes en mensajes ocultos");
+      return;
+    }
+    if (internalImagePreview) URL.revokeObjectURL(internalImagePreview);
+    setInternalImage(file);
+    setInternalImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearInternalImage = () => {
+    if (internalImagePreview) URL.revokeObjectURL(internalImagePreview);
+    setInternalImage(null);
+    setInternalImagePreview("");
+  };
+
   const saveInternalNote = async () => {
-    if (!newMsg.trim() || !selected || sending) return;
+    const file = internalImage;
+    if ((!newMsg.trim() && !file) || !selected || sending || uploading) return;
     setSending(true);
+    if (file) setUploading(true);
     const text = newMsg.trim();
     try {
+      let media = {};
+      if (file) {
+        if (!file.type?.startsWith("image/")) throw new Error("Solo se permiten imágenes en mensajes ocultos");
+        const fd = new FormData();
+        fd.append("file", file);
+        const rUp = await fetch(`${API}/upload`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          body: fd,
+        });
+        const dUp = await rUp.json();
+        if (!rUp.ok || !dUp.success || !dUp.data) throw new Error(dUp.error || "No se pudo subir la imagen");
+        media = { media_url: dUp.data.url, media_type: file.type, media_filename: file.name };
+      }
       const r = await fetch(`${API}/conversations/${selected.id}/internal-note`, {
-        method: "POST", headers: authH(), body: JSON.stringify({ text }),
+        method: "POST", headers: authH(), body: JSON.stringify({ text, ...media }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error || "No se pudo guardar el mensaje oculto"); return; }
+      if (file && !d.data?.media_url) {
+        throw new Error("El servidor guardó el texto, pero no guardó la imagen. Reinicia o despliega el backend actualizado e intenta nuevamente.");
+      }
+      if (d.data) {
+        setMessages(prev => prev.some(m => m.id === d.data.id) ? prev : [...prev, d.data]);
+      }
       setNewMsg("");
+      clearInternalImage();
       loadMessages(selected.id);
     } catch (e) { alert(e.message || "No se pudo guardar el mensaje oculto"); }
-    finally { setSending(false); }
+    finally { setSending(false); if (file) setUploading(false); }
+  };
+
+  const enableNotifications = async () => {
+    if (typeof Notification === "undefined") return;
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === "granted") {
+      new Notification("Notificaciones activadas", { body: "Recibirás avisos de nuevos mensajes de WhatsApp." });
+    }
   };
 
   // Enviar imagen/PDF: sube el archivo y lo manda por WhatsApp
@@ -453,6 +522,13 @@ export default function WaInbox({ dealId = null } = {}) {
               </button>
             )}
           </div>
+          {!dealId && notificationPermission !== "granted" && notificationPermission !== "unsupported" && (
+            <button type="button" onClick={enableNotifications}
+              title={notificationPermission === "denied" ? "Habilita las notificaciones en los permisos del navegador" : "Permitir avisos de nuevos mensajes"}
+              className="w-full mb-2 text-xs border border-amber-300 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-lg font-medium">
+              🔔 {notificationPermission === "denied" ? "Notificaciones bloqueadas por el navegador" : "Activar notificaciones"}
+            </button>
+          )}
           {/* Buscador, filtro por línea y filtro de estado: no aplican en modo
               negociación (acotado a un solo Deal), así que se ocultan. */}
           {!dealId && (
@@ -671,6 +747,20 @@ export default function WaInbox({ dealId = null } = {}) {
 
           {/* Input */}
           <div className="bg-white border-t border-slate-200 p-3 pr-24 flex flex-wrap gap-2 items-center">
+            {internalImagePreview && (
+              <div className="basis-full flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 p-2">
+                <img src={internalImagePreview} alt="Vista previa del mensaje oculto"
+                  className="h-16 w-16 rounded-lg object-cover border border-slate-200" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-slate-700">🔒 Imagen para mensaje oculto</div>
+                  <div className="truncate text-xs text-slate-500">{internalImage?.name}</div>
+                </div>
+                <button type="button" onClick={clearInternalImage} disabled={sending || uploading}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
+                  Quitar
+                </button>
+              </div>
+            )}
             <InboxAudioRecorder key={selected.id} onSend={sendFile} disabled={uploading || sending} />
             <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-xl hover:bg-slate-100 transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
               title="Enviar imagen o PDF">
@@ -705,11 +795,17 @@ export default function WaInbox({ dealId = null } = {}) {
               className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
               {sending ? "…" : "Enviar"}
             </button>
-            <button onClick={saveInternalNote} disabled={sending || !newMsg.trim()}
+            <button onClick={saveInternalNote} disabled={sending || uploading || (!newMsg.trim() && !internalImage)}
               title="Guardar solo en el ERP; no se envía al cliente"
               className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
               🔒 Oculto
             </button>
+            <label className={`cursor-pointer bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm font-medium ${uploading || sending ? "opacity-40 pointer-events-none" : ""}`}
+              title="Guardar una imagen solo en el ERP; no se envía al cliente">
+              🔒🖼️
+              <input type="file" accept="image/*" className="hidden" disabled={uploading || sending}
+                onChange={e => { selectInternalImage(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
           </div>
         </div>
       ) : (

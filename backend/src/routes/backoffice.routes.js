@@ -4,7 +4,7 @@
 // GET  /api/backoffice        → listar registros
 // GET  /api/backoffice/:id    → detalle completo de un registro
 // PUT  /api/backoffice/:id    → editar solo campos de auditoría
-// Todos los perfiles excepto ASESOR
+// Acceso exclusivo: ADMINISTRADOR, GERENCIA y ATC
 // ============================================================
 
 const express = require('express');
@@ -21,14 +21,13 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 // cualquier vendedor podía leer y editar ventas ajenas —incluido valor_pago,
 // plan contratado y los datos personales del cliente.
 //
-// Se cambia a lista blanca en vez de lista negra: si mañana aparece un perfil
+// Se usa una lista blanca: si mañana aparece un perfil
 // nuevo en la base, queda FUERA por defecto en vez de entrar por descuido.
 // `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
   'GERENCIA',
-  'SUPERVISOR',
-  'ANALISTA',
+  'ATC',
 ]);
 
 const soloBackoffice = (req, res, next) => {
@@ -333,6 +332,7 @@ const CAMPOS_EDITABLES = new Set([
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',
+  'hora_agenda',
   'franja_horaria_agendamiento',
   'mes_agenda',
   'dia_abc_agenda',
@@ -588,21 +588,25 @@ router.put('/:id', async (req, res) => {
       // Si el usuario borra la fecha
       if (!raw) {
         payload.fecha_agenda = null;
+        payload.hora_agenda = null;
         payload.mes_agenda = null;
         payload.dia_abc_agenda = null;
       } else {
-        // El frontend envía YYYY-MM-DD
-        const soloFecha = String(raw).slice(0, 10);
-        const d = new Date(`${soloFecha}T00:00:00`);
+        // El frontend envía fecha y hora local de Ecuador: YYYY-MM-DDTHH:mm.
+        const fechaHora = String(raw).trim();
+        const formatoValido = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(fechaHora);
+        const d = new Date(fechaHora);
 
-        if (Number.isNaN(d.getTime())) {
+        if (!formatoValido || Number.isNaN(d.getTime())) {
           return res.status(400).json({
             success: false,
-            error: 'fecha_agenda debe tener formato YYYY-MM-DD',
+            error: 'fecha_agenda debe tener formato YYYY-MM-DDTHH:mm',
           });
         }
 
-        payload.fecha_agenda = soloFecha;
+        payload.fecha_agenda = fechaHora.slice(0, 10);
+        const horaAgenda = fechaHora.slice(11, 19);
+        payload.hora_agenda = horaAgenda.length === 5 ? `${horaAgenda}:00` : horaAgenda;
         payload.mes_agenda = MESES[d.getMonth()];
         payload.dia_abc_agenda = DIAS[d.getDay()];
       }

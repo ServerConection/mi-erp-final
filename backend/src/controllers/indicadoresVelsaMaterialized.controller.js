@@ -35,6 +35,45 @@ const getPrimerDiaMesEcuador = () => {
 const MV = `public.mv_indicadores_velsa_completo mv`;
 const ESTADO_ACTIVO = `'ACTIVO'`;
 
+// Jotform guarda las respuestas de checkbox como IDs internos, por ejemplo
+// `["{yzom82705kp}"]`. La pregunta 186 incluye en `options_array` el catálogo
+// ID -> nombre visible; esta función lo resuelve sin amarrar la consulta a los
+// IDs actuales. El mapa de respaldo cubre registros históricos sin catálogo.
+const ESTADOS_REGULARIZACION_JOTFORM = {
+  yzom82705kp: 'REGULARIZADO',
+  ls1l93qc1: 'NO REQUIERE REGULARIZAR',
+  gwbf28v33iv: 'REGULARIZA ATC',
+  dc98ezkovf: 'ASESOR EN GESTION',
+  ox2b11nexb: 'EN GESTIÓN ATC',
+  '61f5wr5ds0b': 'RECHAZADA',
+  kzzvj20ufy: 'POR REGULARIZAR',
+  mhpuj0xxl1: 'ASESOR NO REGULARIZA',
+  '6hblozwrw6o': 'ATC RESPONSABLE',
+};
+
+function nombreEstadoRegularizacionVelsa(valorCrudo, answers) {
+  if (valorCrudo == null || String(valorCrudo).trim() === '') return valorCrudo;
+  const pregunta = answers?.['186'] || answers || {};
+  let opciones = pregunta.options_array || {};
+  try {
+    if (typeof opciones === 'string') opciones = JSON.parse(opciones);
+  } catch (_) { opciones = {}; }
+
+  let seleccion = pregunta.answer;
+  if (!seleccion) {
+    try { seleccion = JSON.parse(String(valorCrudo)); }
+    catch (_) { seleccion = [valorCrudo]; }
+  }
+  if (!Array.isArray(seleccion)) seleccion = [seleccion];
+
+  const nombres = seleccion.map(item => {
+    const codigo = String(item ?? '').trim().replace(/^\{+|\}+$/g, '');
+    return opciones?.[codigo]?.value || ESTADOS_REGULARIZACION_JOTFORM[codigo] || '';
+  }).filter(Boolean);
+
+  return nombres.length ? nombres.join(', ') : valorCrudo;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CACHÉ EN MEMORIA ALINEADO AL CICLO DE 10 MINUTOS
 // La data llega por lotes (sync Bitrix/GHL/JotForm) y solo cambia en cada
@@ -1292,7 +1331,8 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.ciudad,
         jf.observacion_venta,
         jf.estado_regularizacion_novo,
-        jf.detalle_regularizacion
+        jf.detalle_regularizacion,
+        jf.answers->'186' AS _pregunta_regularizacion
       FROM public.vw_jotform_velsa_netlife_completo jf
       WHERE (((jf.created_at AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/Guayaquil')::date
             BETWEEN $1::date AND $2::date
@@ -1300,11 +1340,17 @@ async function getConsultaDescargaVelsa(req, res) {
       LIMIT 10000
     `, [desde, hasta]);
 
+    const rows = result.rows.map(row => {
+      const estado = nombreEstadoRegularizacionVelsa(row.estado_regularizacion_novo, row._pregunta_regularizacion);
+      const { _pregunta_regularizacion, ...registro } = row;
+      return { ...registro, estado_regularizacion_novo: estado };
+    });
+
     res.json({
       success: true,
-      rows: result.rows,
-      registros: result.rows,
-      total: result.rowCount,
+      rows,
+      registros: rows,
+      total: rows.length,
     });
   } catch (error) {
     console.error('[CONSULTA-VELSA] Error:', error);

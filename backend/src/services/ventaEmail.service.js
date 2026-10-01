@@ -3,7 +3,7 @@ const { obtenerArchivo } = require('../utils/storageClient');
 
 const DESTINATARIOS_PREDETERMINADOS = [
   'novonetatc1@gmail.com',
-  'info.novonet1@gmail.com',
+  'uio.novonet1@gmail.com',
 ];
 
 const escaparHtml = (valor) => String(valor ?? '')

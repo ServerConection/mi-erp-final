@@ -1833,7 +1833,13 @@ export default function NuevaVenta() {
               />
             </Row>
             <Row label="Coordenadas GPS">
-              <FIn value={form.coordenadas_gps} onChange={set("coordenadas_gps")} placeholder="-0.1807, -78.4678" />
+              <textarea
+                className="nv-textarea"
+                value={form.coordenadas_gps}
+                onChange={set("coordenadas_gps", { preserveCase: true })}
+                placeholder="Escribe coordenadas, un enlace de Google Maps o cualquier referencia GPS"
+                rows={2}
+              />
             </Row>
           </Seccion>
 

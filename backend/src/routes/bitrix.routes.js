@@ -10,6 +10,7 @@ const {
 
 const { verificarToken } = require('../middleware/auth');
 const pool = require('../config/db');
+const { esEtapaVentaSubida } = require('../shared/bitrixEtapas');
 
 // Sync manual — sí requiere auth (acción que modifica datos)
 router.post('/sync',        verificarToken, triggerSync);
@@ -62,12 +63,14 @@ router.get('/validar-venta/:idBitrix', verificarToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT bitrix_id, empresa, etapa, source, created_at_ecuador, created_at
+      `SELECT bitrix_id, empresa, etapa, etapa_bitrix, source,
+              created_at_ecuador, created_at
        FROM bitrix_webhook_leads
        WHERE bitrix_id::text = $1
+         AND UPPER(BTRIM(COALESCE(NULLIF(empresa, ''), 'NOVONET'))) = $2
        ORDER BY created_at DESC NULLS LAST
        LIMIT 1`,
-      [idBitrix]
+      [idBitrix, empresaUsuario || 'NOVONET']
     );
 
     if (result.rows.length === 0) {
@@ -80,9 +83,12 @@ router.get('/validar-venta/:idBitrix', verificarToken, async (req, res) => {
 
     const lead = result.rows[0];
     const empresa = String(lead.empresa || '').trim().toUpperCase();
-    const etapa = String(lead.etapa || '').trim().toUpperCase();
+    const etapa = lead.etapa_bitrix || lead.etapa;
     const esVelsa = empresa.includes('VELSA');
-    const esVentaSubida = etapa === 'VENTA SUBIDA';
+    // `etapa` se persiste como slug (venta_subida) y `etapa_bitrix` como
+    // nombre visible (VENTA SUBIDA). La validacion anterior comparaba el slug
+    // literalmente con el nombre visible y rechazaba negocios validos.
+    const esVentaSubida = esEtapaVentaSubida(lead);
 
     if (!esVelsa && !esVentaSubida) {
       return res.json({
@@ -98,7 +104,7 @@ router.get('/validar-venta/:idBitrix', verificarToken, async (req, res) => {
       data: {
        idBitrix: lead.bitrix_id,
        empresa: lead.empresa,
-       etapa: lead.etapa,
+       etapa,
        source: lead.source,
        creadoEl: lead.created_at_ecuador || lead.created_at,
        permiteSinVentaSubida: esVelsa,

@@ -1280,12 +1280,13 @@ export default function NuevaVenta() {
 
   // ── Validar ID Bitrix ──────────────────────────────────────────────────────
   const validarIdBitrix = async (idBitrix) => {
+    const idBitrixNormalizado = String(idBitrix || "").trim();
     const esDistribuidorVelsa = String(form.distribuidor_autorizado || "")
       .trim()
       .toUpperCase()
       .includes("VELSA");
 
-    if (!idBitrix || idBitrix.trim() === "") {
+    if (!idBitrixNormalizado) {
       setOrigenVentaLocked(false);
       return true; // No validar si está vacío
     }
@@ -1301,7 +1302,7 @@ export default function NuevaVenta() {
 
     setValidandoBitrix(true);
     try {
-      const res = await fetch(`${API}/api/bitrix/validar-venta/${idBitrix}`, {
+      const res = await fetch(`${API}/api/bitrix/validar-venta/${encodeURIComponent(idBitrixNormalizado)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -2212,7 +2213,7 @@ export default function NuevaVenta() {
                 : <><span>📤</span> Cargar venta</>
               }
             </button>
-            {/* <button
+            <button
               className="nv-btn-submit"
               style={{ marginTop: 10, background: "linear-gradient(135deg, #6B7280, #9CA3AF)", boxShadow: "0 6px 24px rgba(107,114,128,.35)" }}
               onClick={() => handleSubmit("BORRADOR")} disabled={!!loading}
@@ -2221,7 +2222,7 @@ export default function NuevaVenta() {
                 ? <><div className="nv-spin" /> Guardando borrador…</>
                 : <><span>💾</span> Registrar venta (guardar como borrador)</>
               }
-            </button>*/}
+            </button>
             <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); setResumenEditado(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
             </button>

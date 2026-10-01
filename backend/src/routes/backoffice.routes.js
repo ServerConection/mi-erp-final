@@ -91,29 +91,6 @@ const joinAsesorBackoffice = `
 // esconderle trabajo a nadie de un día para otro. Cuando esas filas estén
 // normalizadas, quitar el `OR ... IS NULL` de abajo cierra el aislamiento
 // del todo.
-const empresaDelUsuario = (req) => {
-  if (!req.user) return null;
-  if (req.user.perfil === 'ADMINISTRADOR') return null;   // sin restricción
-  const e = (req.user.empresa || '').trim().toUpperCase();
-  return e || null;
-};
-
-/** Condición SQL de visibilidad. Devuelve '' cuando el usuario ve todo. */
-const filtroEmpresa = (req, P) => {
-  const empresa = empresaDelUsuario(req);
-  if (!empresa) return '';
-  return ` AND (UPPER(TRIM(COALESCE(distribuidor_autorizado,''))) = ${P(empresa)}
-                OR COALESCE(TRIM(distribuidor_autorizado),'') = '')`;
-};
-
-/** ¿Este usuario puede tocar esta fila? */
-const puedeVerRegistro = (req, row) => {
-  const empresa = empresaDelUsuario(req);
-  if (!empresa) return true;
-  const dist = (row?.distribuidor_autorizado || '').trim().toUpperCase();
-  return dist === '' || dist === empresa;
-};
-
 router.get('/', async (req, res) => {
   try {
     const {
@@ -180,17 +157,8 @@ router.get('/', async (req, res) => {
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
 
     // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
-    whereClause += filtroEmpresa(req, P);
-
     const empresaPedida = empresa.trim().toUpperCase();
-    const alcance = empresaDelUsuario(req);
     if (empresaPedida && empresaPedida !== 'TODOS') {
-      if (alcance && empresaPedida !== alcance) {
-        return res.status(403).json({
-          success: false,
-          error: 'No tienes acceso a los registros de esa empresa.',
-        });
-      }
       whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
     }
 
@@ -245,20 +213,14 @@ router.get('/', async (req, res) => {
 // match de '/opciones' contra '/:id' (id = "opciones") y la consulta falla.
 router.get('/opciones', async (req, res) => {
   try {
-    // Los combos solo ofrecen valores que el usuario realmente puede ver.
-    const params = [];
-    const P = (v) => { params.push(v); return `$${params.length}`; };
-    const alcanceSql = filtroEmpresa(req, P);
-
     const distintos = async (col) => {
       const { rows } = await pool.query(`
         SELECT DISTINCT TRIM(${col}) AS v
         FROM public.envios_ventas
         WHERE ${col} IS NOT NULL AND TRIM(${col}) <> ''
           AND estatus_envio != 'BORRADOR'
-          ${alcanceSql}
         ORDER BY 1
-      `, params);
+      `);
       return rows.map(r => r.v);
     };
 
@@ -291,9 +253,6 @@ router.get('/:id', async (req, res) => {
 
     // 404 (y no 403) a propósito: un usuario de otra empresa no debe poder
     // deducir que el registro existe probando IDs.
-    if (!puedeVerRegistro(req, rows[0]))
-      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     console.error('[BACKOFFICE] GET detail:', e.message);
@@ -477,9 +436,6 @@ router.put('/:id', async (req, res) => {
     );
     if (actual.length === 0)
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-    if (!puedeVerRegistro(req, actual[0]))
-      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
     // Construcción del payload filtrando solo lo permitido
     const payload = {};
     for (const [clave, valor] of Object.entries(req.body || {})) {

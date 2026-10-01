@@ -2699,42 +2699,11 @@ const EMPRESAS_FILTRO = [
   { id: "VELSA", label: "Velsa" },
 ];
 
-// Perfil y empresa del usuario logueado. El layout guarda esto en
-// "userProfile" (no en "user"), igual que hace Backoffice.jsx.
-function perfilUsuario() {
-  try {
-    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
-    return {
-      perfil: (u.perfil || "").toUpperCase(),
-      empresa: (u.empresa || "").toUpperCase(),
-    };
-  } catch (_) {
-    return { perfil: "", empresa: "" };
-  }
-}
-
 function FiltroEmpresa({ valor, onCambiar }) {
   // El backend ya limita los registros a la empresa del token: un usuario que
   // no sea ADMINISTRADOR no puede ver la otra empresa aunque pulse el botón
   // (recibiría un 403). Mostrarle el selector solo genera un error confuso,
   // así que se le enseña su empresa como etiqueta fija.
-  const { perfil, empresa: empresaUsuario } = perfilUsuario();
-
-  if (perfil !== "ADMINISTRADOR") {
-    const etiqueta =
-      EMPRESAS_FILTRO.find((e) => e.id === empresaUsuario)?.label || empresaUsuario || "—";
-    return (
-      <div style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999,
-        padding: "7px 16px", fontWeight: 800, fontSize: 12.5, color: "#475569",
-        whiteSpace: "nowrap",
-      }} title="Solo ves los registros de tu empresa">
-        <span style={{ opacity: .6 }}>Empresa:</span> {etiqueta}
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: "inline-flex", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: 4, gap: 4 }}>
       {EMPRESAS_FILTRO.map((e) => {
@@ -6414,10 +6383,7 @@ export default function VistaBackoffice() {
   // que arrastrarlo en cada setParams de la navegación por fechas. Se
   // mantiene mientras la persona navega entre submódulos porque
   // VistaBackoffice nunca se desmonta; se resetea a "Todos" al recargar la página.
-  const [empresa, setEmpresa] = useState(() => {
-    const usuario = perfilUsuario();
-    return usuario.perfil === "ADMINISTRADOR" ? "TODOS" : (usuario.empresa || "TODOS");
-  });
+  const [empresa, setEmpresa] = useState("TODOS");
 
   const nav = {
     anio: params.get("a"),

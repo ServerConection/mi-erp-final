@@ -10,7 +10,9 @@ const API = "https://erp-backend-v1-qhk2.onrender.com";
 export default function Login() {
   const navigate = useNavigate();
   const navegarSegunPerfil = (user) => {
-    if ((user?.perfil || '').toUpperCase() !== 'TV') return '/';
+    const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (perfil === 'ATC' || perfil === 'ANALISTA') return '/indicadores';
+    if (perfil !== 'TV') return '/';
     return (user?.empresa || '').toUpperCase() === 'VELSA'
       ? '/seguimiento-velsa'
       : '/seguimiento-ventas';

@@ -571,6 +571,12 @@ export default function DashboardLayout() {
       return;
     }
 
+    // ATC y ANALISTA usan una lista cerrada de rutas definida arriba. Una vez
+    // validada la ruta no se deben volver a evaluar sus permisos individuales:
+    // algunas cuentas conservan permisos antiguos/incompletos y eso provocaba
+    // un ciclo /indicadores -> / -> /indicadores (parpadeo y salto vertical).
+    if (PERFILES_MENU_RESTRINGIDO.has(p)) return;
+
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
 
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);

@@ -91,7 +91,7 @@ function calcularEdad(fechaISO) {
 
 // ─── Estado inicial ──────────────────────────────────────────────────────────
 const INIT = {
-  codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
+  usuario: "", codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
   supervisor: "",
   tipo_cliente: "", tipo_documento: "", numero_identificacion: "",
   apellidos_cliente: "", nombres_cliente: "",
@@ -126,7 +126,7 @@ function generarResumenVenta(form, user, opcion = null) {
   const nombreCliente = (form.nombre_cliente_completo && form.tipo_documento === 'RUC EMPRESA')
     ? form.nombre_cliente_completo.trim()
     : `${form.apellidos_cliente} ${form.nombres_cliente}`.trim() || "—";
-  const asesor = user.nombre || user.usuario || form.codigo_asesor || "—";
+  const asesor = user.nombre || user.usuario || form.usuario || "—";
   const plan = [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" ") || "—";
   const servicios = (form.servicios_digitales || "")
     .split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
@@ -829,7 +829,7 @@ export default function NuevaVenta() {
   useEffect(() => {
     setForm(f => ({
       ...f,
-      codigo_asesor: f.codigo_asesor || user.usuario || user.codigo || "",
+      usuario: user.usuario || f.usuario || "",
       nombre_atc: f.nombre_atc || user.nombre || user.usuario || "",
       distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : f.distribuidor_autorizado,
     }));
@@ -1352,7 +1352,7 @@ export default function NuevaVenta() {
       const payload = {
         accion,
         // asesor
-        codigo_asesor: form.codigo_asesor || null,
+        usuario: form.usuario || user.usuario || null,
         id_bitrix: form.id_bitrix || null,
         distribuidor_autorizado: form.distribuidor_autorizado || null,
         supervisor: form.supervisor || null,
@@ -1673,8 +1673,8 @@ export default function NuevaVenta() {
 
           {/* ── 1. Datos del asesor ── */}
           <Seccion num={1} icon="🧑‍💼" label="Datos del asesor">
-            <Row label="Código de asesor">
-              <FIn value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
+            <Row label="Usuario">
+              <FIn value={form.usuario} disabled placeholder="Usuario ERP" />
             </Row>
             <Row label="ID Bitrix">
               <FIn

@@ -131,7 +131,7 @@ const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso'];
 
 // Columnas editables que acepta el INSERT/UPDATE (todo excepto sistema/auto)
 const COLUMNAS_VENTA = [
-  'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado', 'supervisor',
+  'usuario', 'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado', 'supervisor',
   'origen_venta', 'venta_nueva_o_reingreso', 'turno',
   'nombre_atc', 'clausulas', 'lider_comercial',
   'tipo_cliente', 'genero_cliente', 'tipo_documento',
@@ -427,7 +427,7 @@ router.get('/', noAsesor, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id, estatus_envio, ip_origen, fecha_registro_sistema,
-             codigo_asesor, id_bitrix, distribuidor_autorizado, supervisor,
+             usuario, codigo_asesor, id_bitrix, distribuidor_autorizado, supervisor,
              origen_venta, venta_nueva_o_reingreso, turno
       FROM public.envios_ventas
       WHERE estatus_envio != 'BORRADOR'
@@ -450,10 +450,13 @@ router.post('/', async (req, res) => {
     const esAsesor   = (req.user?.perfil || '').toUpperCase() === 'ASESOR';
     const esBorrador = String(b.accion || '').toUpperCase() === 'BORRADOR';
 
+    // La identidad siempre sale de la sesión autenticada, no del navegador.
+    b.usuario = req.user.usuario || null;
+    b.codigo_asesor = req.user.codigo_vendedor || null;
+
     if (esAsesor) {
       // Asesores: BORRADOR si lo piden explícitamente, si no PENDIENTE (venta final)
       b.estatus_envio = esBorrador ? 'BORRADOR' : 'PENDIENTE';
-      if (!b.codigo_asesor) b.codigo_asesor = req.user.usuario || req.user.nombre || '';
       if (!b.nombre_atc)    b.nombre_atc    = req.user.nombre  || req.user.usuario || '';
     } else if (!b.estatus_envio) {
       b.estatus_envio = esBorrador ? 'BORRADOR' : 'PENDIENTE';
@@ -503,7 +506,7 @@ router.post('/', async (req, res) => {
         CASE WHEN $1 = 'BORRADOR' THEN NULL
           ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date END
       )
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix,
+      RETURNING id, estatus_envio, fecha_registro_sistema, usuario, codigo_asesor, id_bitrix,
                 nombre_cliente_completo, plan_contratado_final, origen_venta,
                 distribuidor_autorizado, supervisor
     `, [t(b.estatus_envio), ip_origen, fecha_registro_sistema, req.user.id, ...valores]);
@@ -539,6 +542,10 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const b = req.body;
     const esBorrador = String(b.accion || '').toUpperCase() === 'BORRADOR';
+
+    // También al finalizar un borrador se impone la identidad de su sesión.
+    b.usuario = req.user.usuario || null;
+    b.codigo_asesor = req.user.codigo_vendedor || null;
 
     const { rows: existentes } = await pool.query(
       `SELECT id, usuario_id, estatus_envio FROM public.envios_ventas WHERE id = $1`,
@@ -581,7 +588,7 @@ router.put('/:id', async (req, res) => {
             ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date
           END
       WHERE id = $1
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix,
+      RETURNING id, estatus_envio, fecha_registro_sistema, usuario, codigo_asesor, id_bitrix,
                 nombre_cliente_completo, plan_contratado_final, origen_venta,
                 distribuidor_autorizado, supervisor
     `, [id, ...valores, nuevoEstatus]);

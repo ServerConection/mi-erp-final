@@ -2,72 +2,13 @@ const { query } = require('../config/db')
 const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
+const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
 const { protectedNumbers, isAdminOnlyNumber } = require('../services/waPrivacy')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
   NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
   VELSA:   (process.env.BITRIX_VELSA_URL || '').replace(/\/+$/, ''),
-}
-
-// Llama a un método REST de Bitrix según la empresa del usuario
-async function bitrixGet(empresa, method, params = {}) {
-  const base = BITRIX_WEBHOOKS[(empresa || '').toUpperCase()]
-  if (!base) throw new Error('Empresa sin webhook de Bitrix: ' + empresa)
-  const qs = new URLSearchParams(params).toString()
-  const url = `${base}/${method}.json?${qs}`
-  const controller = new AbortController()
-  const t = setTimeout(() => controller.abort(), 20000)
-  try {
-    const res = await fetch(url, { signal: controller.signal })
-    const json = await res.json()
-    if (json.error) throw new Error(`Bitrix [${method}]: ${json.error_description || json.error}`)
-    return json.result
-  } finally { clearTimeout(t) }
-}
-
-// Normaliza teléfono de Bitrix al formato de WhatsApp (dígitos, Ecuador +593)
-function normalizePhoneEC(raw) {
-  let d = (raw || '').replace(/\D/g, '')
-  if (!d) return ''
-  if (d.startsWith('00')) d = d.slice(2)          // 00593... → 593...
-  if (d.startsWith('0'))  d = '593' + d.slice(1)  // 09xxxxxxxx → 5939xxxxxxxx
-  else if (!d.startsWith('593') && d.length <= 10) d = '593' + d  // 9xxxxxxxx → 593...
-  return d
-}
-
-// Obtiene el teléfono a partir de un deal (negociación) de Bitrix
-async function phoneFromDeal(empresa, dealId) {
-  const deal = await bitrixGet(empresa, 'crm.deal.get', { ID: dealId })
-  if (!deal || !deal.ID) throw new Error('Negociación no encontrada en Bitrix')
-
-  let phoneRaw = null
-  let contactName = deal.TITLE || null
-
-  // 1) Contacto vinculado (caso estándar)
-  if (deal.CONTACT_ID && deal.CONTACT_ID !== '0') {
-    const contact = await bitrixGet(empresa, 'crm.contact.get', { ID: deal.CONTACT_ID })
-    if (contact) {
-      phoneRaw = contact.PHONE?.[0]?.VALUE || null
-      const nm = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim()
-      if (nm && phoneRaw) contactName = nm
-    }
-  }
-  // 2) Fallback: empresa vinculada
-  if (!phoneRaw && deal.COMPANY_ID && deal.COMPANY_ID !== '0') {
-    const company = await bitrixGet(empresa, 'crm.company.get', { ID: deal.COMPANY_ID })
-    if (company) {
-      phoneRaw = company.PHONE?.[0]?.VALUE || null
-      if (company.TITLE && phoneRaw) contactName = company.TITLE
-    }
-  }
-
-  return {
-    phone: normalizePhoneEC(phoneRaw),
-    phoneRaw,
-    contactName,
-    dealTitle: deal.TITLE || null,
-  }
 }
 
 // Traduce /wa-uploads/... a la ruta real en disco
@@ -575,7 +516,7 @@ async function startFromBitrix(req, res) {
         return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
       }
       let info
-      try { info = await phoneFromDeal(empresa, bitrixId) }
+      try { info = await getWabotBitrixLookup().phoneFromDeal(empresa, bitrixId) }
       catch (e) { return res.status(502).json({ success: false, error: 'Bitrix: ' + e.message }) }
       if (!info.phone) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
       waNumber = info.phone
@@ -622,7 +563,7 @@ async function startFromBitrix(req, res) {
       if (!BITRIX_WEBHOOKS[company]) {
         return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getInboxBitrixNotes().validateDeal(bitrixId, company) }
+      try { await getWabotBitrixLookup().getDeal(company, bitrixId) }
       catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
     }
 
@@ -702,7 +643,7 @@ async function setBitrixId(req, res) {
       if (!BITRIX_WEBHOOKS[company]) {
         return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getInboxBitrixNotes().validateDeal(bitrixId, company) }
+      try { await getWabotBitrixLookup().getDeal(company, bitrixId) }
       catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
     }
 

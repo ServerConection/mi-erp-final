@@ -919,6 +919,15 @@ export default function NuevaVenta() {
       ? ` + BENEFICIO ADICIONAL POR SECTOR${form.detalle_beneficio_sector ? `: ${form.detalle_beneficio_sector}` : ""}`
       : "";
 
+    if (form.sector_beneficiado === "SI") {
+      setForm((actual) => ({
+        ...actual,
+        costo_instalacion: "0.00",
+        descuento_instalacion: `100%`,
+      }));
+      return;
+    }
+
     if (form.forma_pago === "EFECTIVO") {
       setForm((actual) => ({
         ...actual,

@@ -825,6 +825,26 @@ export default function NuevaVenta() {
   const distribuidorDelUsuario = (user.empresa || "").toUpperCase();
   const distribuidorLocked = DISTRIBUIDORES.includes(distribuidorDelUsuario);
 
+  // Un reinicio dentro de la misma vista no vuelve a ejecutar el efecto de
+  // montaje. Por eso el estado inicial debe incluir también la identidad y la
+  // empresa del usuario; de ella depende la lista visible de supervisores.
+  const crearFormularioVacioParaUsuario = () => ({
+    ...INIT,
+    usuario: user.usuario || "",
+    nombre_atc: user.nombre || user.usuario || "",
+    distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : "",
+  });
+
+  const reiniciarFormulario = () => {
+    setForm(crearFormularioVacioParaUsuario());
+    setErrs({});
+    setAlert(null);
+    setResumenEditado(false);
+    setOrigenVentaLocked(false);
+    setUploadErr({});
+    uploadFilesRef.current = {};
+  };
+
   // Pre-llenar código asesor + distribuidor desde el usuario logueado
   useEffect(() => {
     setForm(f => ({
@@ -1475,8 +1495,7 @@ export default function NuevaVenta() {
             plan: payload.plan_contratado_final,
             notificacionCorreo: d.notificacion_correo || null,
           });
-          setForm(INIT);
-          setResumenEditado(false);
+          reiniciarFormulario();
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } else {
@@ -2223,7 +2242,7 @@ export default function NuevaVenta() {
                 : <><span>💾</span> Registrar venta (guardar como borrador)</>
               }
             </button>
-            <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); setResumenEditado(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <button className="nv-btn-reset" type="button" onClick={() => { reiniciarFormulario(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
             </button>
           </div>

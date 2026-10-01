@@ -155,20 +155,6 @@ const COLUMNAS_VENTA = [
 
 const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
 
-const buscarVentaDuplicada = async (idBitrix, excluirId = null) => {
-  const idNormalizado = t(idBitrix);
-  if (!idNormalizado) return null;
-  const { rows } = await pool.query(`
-    SELECT id
-    FROM public.envios_ventas
-    WHERE TRIM(id_bitrix::text) = $1
-      AND COALESCE(estatus_envio, '') <> 'BORRADOR'
-      AND ($2::bigint IS NULL OR id <> $2::bigint)
-    LIMIT 1
-  `, [idNormalizado, excluirId]);
-  return rows[0] || null;
-};
-
 const extraerVelocidadPlan = (plan, velocidadActual) => {
   const textoPlan = String(plan || '');
   const match = textoPlan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
@@ -468,13 +454,6 @@ router.post('/', async (req, res) => {
       for (const campo of CAMPOS_OBLIGATORIOS_CARGAR) {
         if (!b[campo]) return res.status(400).json({ success: false, error: `${campo} es requerido` });
       }
-      const duplicada = await buscarVentaDuplicada(b.id_bitrix);
-      if (duplicada) {
-        return res.status(409).json({
-          success: false,
-          error: `El ID Bitrix #${b.id_bitrix} ya fue registrado en la venta #${duplicada.id}.`,
-        });
-      }
     }
 
     const ip_origen =
@@ -563,13 +542,6 @@ router.put('/:id', async (req, res) => {
     if (nuevoEstatus !== 'BORRADOR') {
       for (const campo of CAMPOS_OBLIGATORIOS_CARGAR) {
         if (!b[campo]) return res.status(400).json({ success: false, error: `${campo} es requerido` });
-      }
-      const duplicada = await buscarVentaDuplicada(b.id_bitrix, id);
-      if (duplicada) {
-        return res.status(409).json({
-          success: false,
-          error: `El ID Bitrix #${b.id_bitrix} ya fue registrado en la venta #${duplicada.id}.`,
-        });
       }
     }
 

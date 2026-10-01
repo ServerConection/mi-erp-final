@@ -27,6 +27,7 @@ const crypto  = require('crypto');
 const { subirArchivo, obtenerArchivo, rutaInterna, configurado, estado } = require('../utils/storageClient');
 const { validarArchivo, mimeSeguroPorExtension } = require('../utils/fileSignature');
 const { crearRateLimit } = require('../utils/rateLimit');
+const { notificarNuevaVenta } = require('../services/ventaEmail.service');
 
 // Todas las rutas requieren token válido
 router.use(verificarToken);
@@ -502,14 +503,26 @@ router.post('/', async (req, res) => {
         CASE WHEN $1 = 'BORRADOR' THEN NULL
           ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date END
       )
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
+      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix,
+                nombre_cliente_completo, plan_contratado_final, origen_venta,
+                distribuidor_autorizado, supervisor
     `, [t(b.estatus_envio), ip_origen, fecha_registro_sistema, req.user.id, ...valores]);
 
     console.log(`[ENVIOS-VENTAS] ${b.estatus_envio === 'BORRADOR' ? 'Borrador guardado' : 'Nueva venta'} id=${rows[0].id} por ${req.user.usuario} (${esAsesor ? 'ASESOR' : 'ADMIN'})`);
+    let notificacionCorreo = null;
+    if (b.estatus_envio !== 'BORRADOR') {
+      try {
+        notificacionCorreo = await notificarNuevaVenta(rows[0], req.user);
+      } catch (errorCorreo) {
+        console.error(`[ENVIOS-VENTAS] Venta #${rows[0].id} guardada, pero falló el correo:`, errorCorreo.message);
+        notificacionCorreo = { enviado: false, error: 'La venta se guardó, pero no se pudo enviar la notificación por correo.' };
+      }
+    }
     res.status(201).json({
       success: true,
       data: rows[0],
       mensaje: b.estatus_envio === 'BORRADOR' ? 'Borrador guardado correctamente' : 'Venta registrada correctamente',
+      notificacion_correo: notificacionCorreo,
     });
 
   } catch (e) {
@@ -568,14 +581,26 @@ router.put('/:id', async (req, res) => {
             ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date
           END
       WHERE id = $1
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
+      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix,
+                nombre_cliente_completo, plan_contratado_final, origen_venta,
+                distribuidor_autorizado, supervisor
     `, [id, ...valores, nuevoEstatus]);
 
     console.log(`[ENVIOS-VENTAS] ${nuevoEstatus === 'BORRADOR' ? 'Borrador actualizado' : 'Borrador finalizado (CARGADO)'} id=${id} por ${req.user.usuario}`);
+    let notificacionCorreo = null;
+    if (nuevoEstatus !== 'BORRADOR') {
+      try {
+        notificacionCorreo = await notificarNuevaVenta(rows[0], req.user);
+      } catch (errorCorreo) {
+        console.error(`[ENVIOS-VENTAS] Venta #${rows[0].id} finalizada, pero falló el correo:`, errorCorreo.message);
+        notificacionCorreo = { enviado: false, error: 'La venta se guardó, pero no se pudo enviar la notificación por correo.' };
+      }
+    }
     res.json({
       success: true,
       data: rows[0],
       mensaje: nuevoEstatus === 'BORRADOR' ? 'Borrador actualizado' : 'Venta cargada correctamente',
+      notificacion_correo: notificacionCorreo,
     });
   } catch (e) {
     console.error('[ENVIOS-VENTAS] update:', e.message);

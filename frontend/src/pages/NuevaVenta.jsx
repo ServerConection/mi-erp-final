@@ -1507,9 +1507,13 @@ export default function NuevaVenta() {
             <p style={{ fontSize: 13, color: "#8B5E3C", marginBottom: 28, maxWidth: 340, margin: "0 auto 28px" }}>
               La venta quedará en revisión del equipo de backoffice. ¡Bien hecho! 🎉
             </p>
-            {success.notificacionCorreo?.enviado ? (
+            {success.notificacionCorreo?.enviado && success.notificacionCorreo?.errores_adjuntos?.length ? (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>
+                El correo fue enviado, pero uno o más archivos no pudieron adjuntarse. Informa a soporte para revisar el almacenamiento.
+              </p>
+            ) : success.notificacionCorreo?.enviado ? (
               <p style={{ fontSize: 12, color: "#166534", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>
-                ✓ Notificación enviada al equipo de ATC.
+                ✓ Notificación enviada al equipo de ATC con {success.notificacionCorreo.adjuntos || 0} archivo(s) adjunto(s).
               </p>
             ) : success.notificacionCorreo?.error ? (
               <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>

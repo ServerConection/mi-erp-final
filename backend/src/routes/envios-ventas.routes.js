@@ -148,7 +148,7 @@ const COLUMNAS_VENTA = [
   'valor_pago', 'tipo_contrato', 'links_documentos',
   'banco', 'tipo_cuenta', 'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
-  'resumen_venta', 'foto_cedula_frontal', 'foto_cedula_trasera',
+  'resumen_venta', 'novedades_atc', 'foto_cedula_frontal', 'foto_cedula_trasera',
   'foto_carnet', 'archivo_resumen', 'archivo_planilla',
   'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
 ];
@@ -506,9 +506,7 @@ router.post('/', async (req, res) => {
         CASE WHEN $1 = 'BORRADOR' THEN NULL
           ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date END
       )
-      RETURNING id, estatus_envio, fecha_registro_sistema, usuario, codigo_asesor, id_bitrix,
-                nombre_cliente_completo, plan_contratado_final, origen_venta,
-                distribuidor_autorizado, supervisor
+      RETURNING *
     `, [t(b.estatus_envio), ip_origen, fecha_registro_sistema, req.user.id, ...valores]);
 
     console.log(`[ENVIOS-VENTAS] ${b.estatus_envio === 'BORRADOR' ? 'Borrador guardado' : 'Nueva venta'} id=${rows[0].id} por ${req.user.usuario} (${esAsesor ? 'ASESOR' : 'ADMIN'})`);
@@ -588,9 +586,7 @@ router.put('/:id', async (req, res) => {
             ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date
           END
       WHERE id = $1
-      RETURNING id, estatus_envio, fecha_registro_sistema, usuario, codigo_asesor, id_bitrix,
-                nombre_cliente_completo, plan_contratado_final, origen_venta,
-                distribuidor_autorizado, supervisor
+      RETURNING *
     `, [id, ...valores, nuevoEstatus]);
 
     console.log(`[ENVIOS-VENTAS] ${nuevoEstatus === 'BORRADOR' ? 'Borrador actualizado' : 'Borrador finalizado (CARGADO)'} id=${id} por ${req.user.usuario}`);

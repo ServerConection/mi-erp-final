@@ -22,16 +22,93 @@ const authH = (json = true) => {
   return h;
 };
 
+// Plantillas de mensaje: el asesor escribe la clave y pulsa "Plantilla".
+// Para agregar otra, añade una línea más: CLAVE: "texto del mensaje".
+const PLANTILLAS = {
+  ATC: [
+    `¡Hola! Esperamos que estés teniendo un excelente día.
+
+Le saludamos del canal de ventas digitales de NETLIFE 🧡.
+
+Le compartimos los números de Servicio al Cliente para que pueda consultar y dar seguimiento a su solicitud:
+
+✅ Llame al celular 098 597 0000, línea directa de Servicio al Cliente para atender su requerimiento.
+
+✅ Llame al 02 392 0000, línea de Servicio al Cliente para atender su requerimiento.
+
+Si se trata de una venta nueva, por favor confírmenos para poder atenderle por este canal.
+
+⚠️ Este es un mensaje automático. Por favor, no responda a este mensaje.`,
+
+    `¡Hola! Esperamos que estés muy bien.
+
+Le saludamos del canal de ventas digitales de NETLIFE 🧡.
+
+Para poder ayudarle con su solicitud, puede comunicarse directamente con nuestro Servicio al Cliente a través de los siguientes números:
+
+✅ Celular: 098 597 0000, línea directa de Servicio al Cliente.
+
+✅ Teléfono: 02 392 0000, línea de Servicio al Cliente.
+
+Si su requerimiento corresponde a una venta nueva, por favor indíquenos para poder atenderle por este medio.
+
+⚠️ Este es un mensaje automático. Por favor, no responda a este mensaje.`,
+
+    `¡Hola! Esperamos que se encuentre muy bien.
+
+Le contactamos desde el canal de ventas digitales de NETLIFE 🧡.
+
+Para revisar su solicitud o recibir asistencia, puede comunicarse con nuestro equipo de Servicio al Cliente:
+
+✅ 098 597 0000 — línea celular directa de Servicio al Cliente.
+
+✅ 02 392 0000 — línea de Servicio al Cliente.
+
+Si desea realizar una venta nueva, por favor confírmenos para poder continuar con la atención por este canal.
+
+⚠️ Este mensaje ha sido generado automáticamente. Por favor, no responda a este mensaje.`,
+
+    `¡Hola! Que tenga un excelente día.
+
+Le saludamos del canal de ventas digitales de NETLIFE 🧡.
+
+Si necesita consultar o dar seguimiento a su solicitud, puede comunicarse con Servicio al Cliente mediante cualquiera de los siguientes números:
+
+✅ 098 597 0000 — celular directo de Servicio al Cliente.
+
+✅ 02 392 0000 — línea de Servicio al Cliente.
+
+Si se trata de una venta nueva, por favor háganoslo saber para poder atenderle directamente por este canal.
+
+⚠️ Este es un mensaje automático. Por favor, no responda a este mensaje.`,
+
+    `¡Hola! Esperamos que estés teniendo un excelente día.
+
+Le saludamos de parte del canal de ventas digitales de NETLIFE 🧡.
+
+Para cualquier consulta relacionada con su solicitud, puede comunicarse con nuestro Servicio al Cliente:
+
+✅ Puede llamar al 098 597 0000, línea celular directa de Servicio al Cliente.
+
+✅ También puede comunicarse al 02 392 0000, línea de Servicio al Cliente.
+
+Si lo que necesita es gestionar una venta nueva, por favor confírmenos para poder ayudarle por este canal.
+
+⚠️ Este es un mensaje automático. Por favor, no responda a este mensaje.`
+  ]
+};
+
+
 // Delegado al socket unico de la app (ver utils/socketCompartido.js):
 // antes cada modulo abria el suyo y el backend veia 7 conexiones por usuario.
 const getSocket = () => getSocketCompartido();
 
 const STATUS_BADGE = {
-  active:         "bg-green-100 text-green-700",
-  human:          "bg-blue-100 text-blue-700",
+  active: "bg-green-100 text-green-700",
+  human: "bg-blue-100 text-blue-700",
   human_takeover: "bg-blue-100 text-blue-700",
-  closed:         "bg-slate-100 text-slate-400",
-  bot:            "bg-purple-100 text-purple-600",
+  closed: "bg-slate-100 text-slate-400",
+  bot: "bg-purple-100 text-purple-600",
 };
 const STATUS_LABEL = { active: "Activa", human: "Humano", human_takeover: "Humano", closed: "Cerrada", bot: "Bot" };
 
@@ -55,12 +132,12 @@ export default function WaInbox({ dealId = null } = {}) {
     catch { return {}; }
   })();
   const USER_EMPRESA = (USER_PROFILE.empresa || "").toUpperCase();
-  const USER_PERFIL  = (USER_PROFILE.perfil || "").toUpperCase();
+  const USER_PERFIL = (USER_PROFILE.perfil || "").toUpperCase();
   // Perfiles gerenciales (ven todos los chats/líneas de su empresa)
   const CAN_PICK_LINE = ["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "ANALISTA"].includes(USER_PERFIL);
   const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
   const BITRIX_DEAL_BASE = {
-    VELSA:   "https://aclopecuador.bitrix24.es/crm/deal/details",
+    VELSA: "https://aclopecuador.bitrix24.es/crm/deal/details",
     NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
   };
   const bitrixDealUrl = (dealId) => {
@@ -70,19 +147,19 @@ export default function WaInbox({ dealId = null } = {}) {
   const singleDealConversation = Boolean(dealId) && !IS_ADMIN;
 
   const [conversations, setConversations] = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [selected, setSelected]           = useState(null);
-  const [messages, setMessages]           = useState([]);
-  const [newMsg, setNewMsg]               = useState("");
-  const [sending, setSending]             = useState(false);
-  const [uploading, setUploading]         = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMsg, setNewMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [internalImage, setInternalImage] = useState(null);
   const [internalImagePreview, setInternalImagePreview] = useState("");
   const [notificationPermission, setNotificationPermission] = useState(
     () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission)
   );
-  const [filter, setFilter]               = useState("all"); // all|active|human_takeover|closed
-  const [search, setSearch]               = useState("");
+  const [filter, setFilter] = useState("all"); // all|active|human_takeover|closed
+  const [search, setSearch] = useState("");
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);          // evita closure viejo en el socket
   const conversationsRef = useRef([]);
@@ -93,13 +170,13 @@ export default function WaInbox({ dealId = null } = {}) {
 
   // Bitrix: modal nueva conversación e ingreso de ID
   const [bitrixModal, setBitrixModal] = useState(null); // "new" | "add"
-  const [bitrixId, setBitrixId]       = useState("");
-  const [bitrixBusy, setBitrixBusy]   = useState(false);
-  const [newMode, setNewMode]         = useState("phone"); // "phone" | "bitrix" (en modal nueva)
-  const [newPhone, setNewPhone]       = useState("");
-  const [newLineId, setNewLineId]     = useState("");
-  const [lines, setLines]             = useState([]);      // TODAS las líneas visibles (admin/supervisor)
-  const [lineFilter, setLineFilter]   = useState("");      // filtro por línea/usuario en la lista
+  const [bitrixId, setBitrixId] = useState("");
+  const [bitrixBusy, setBitrixBusy] = useState(false);
+  const [newMode, setNewMode] = useState("phone"); // "phone" | "bitrix" (en modal nueva)
+  const [newPhone, setNewPhone] = useState("");
+  const [newLineId, setNewLineId] = useState("");
+  const [lines, setLines] = useState([]);      // TODAS las líneas visibles (admin/supervisor)
+  const [lineFilter, setLineFilter] = useState("");      // filtro por línea/usuario en la lista
 
   const connectedLines = lines.filter(l => (l.rt_status || l.status) === "connected");
 
@@ -195,8 +272,10 @@ export default function WaInbox({ dealId = null } = {}) {
         }
         return prev.map(c =>
           c.id === msg.conversation_id
-            ? { ...c, last_msg_at: msg.timestamp, last_message: msg.content || msg.text,
-                unread_count: (c.unread_count || 0) + (msg.direction === "in" && selectedRef.current?.id !== c.id ? 1 : 0) }
+            ? {
+              ...c, last_msg_at: msg.timestamp, last_message: msg.content || msg.text,
+              unread_count: (c.unread_count || 0) + (msg.direction === "in" && selectedRef.current?.id !== c.id ? 1 : 0)
+            }
             : c
         );
       });
@@ -359,6 +438,57 @@ export default function WaInbox({ dealId = null } = {}) {
     finally { setSending(false); if (file) setUploading(false); }
   };
 
+  const sendPlantilla = async () => {
+    if (!selected || sending || uploading) return;
+
+    const clave = newMsg.trim().toUpperCase();
+    const plantillas = PLANTILLAS[clave];
+
+    if (!plantillas || !Array.isArray(plantillas) || plantillas.length === 0) {
+      alert(
+        `Escribe el nombre de la plantilla y pulsa "Plantilla".\nDisponibles: ${Object.keys(PLANTILLAS).join(", ")}`
+      );
+      return;
+    }
+
+    // Seleccionar aleatoriamente una de las 5 variantes
+    const indiceAleatorio = Math.floor(Math.random() * plantillas.length);
+    const texto = plantillas[indiceAleatorio];
+
+    setSending(true);
+
+    try {
+      const r = await fetch(
+        `${API}/conversations/${selected.id}/send`,
+        {
+          method: "POST",
+          headers: authH(),
+          body: JSON.stringify({
+            text: texto
+          }),
+        }
+      );
+
+      const d = await r.json();
+
+      if (!d.success) {
+        alert(d.error || "No se pudo enviar la plantilla");
+        return;
+      }
+
+      // Limpiar el campo después del envío
+      setNewMsg("");
+
+      // Recargar mensajes
+      loadMessages(selected.id);
+
+    } catch (e) {
+      alert(e.message || "No se pudo enviar la plantilla");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const enableNotifications = async () => {
     if (typeof Notification === "undefined") return;
     const permission = await Notification.requestPermission();
@@ -452,14 +582,14 @@ export default function WaInbox({ dealId = null } = {}) {
     if (dealId) {
       body.bitrix_id = String(dealId);
     } else
-    if (newMode === "phone") {
-      if (!newPhone.trim()) return;
-      body.phone = newPhone.trim();
-      if (bitrixId.trim()) body.bitrix_id = bitrixId.trim(); // opcional
-    } else {
-      if (!bitrixId.trim()) return;
-      body.bitrix_id = bitrixId.trim();
-    }
+      if (newMode === "phone") {
+        if (!newPhone.trim()) return;
+        body.phone = newPhone.trim();
+        if (bitrixId.trim()) body.bitrix_id = bitrixId.trim(); // opcional
+      } else {
+        if (!bitrixId.trim()) return;
+        body.bitrix_id = bitrixId.trim();
+      }
     if (CAN_PICK_LINE && newLineId) body.line_id = newLineId;
 
     setBitrixBusy(true);
@@ -550,15 +680,14 @@ export default function WaInbox({ dealId = null } = {}) {
               )}
               <div className="flex gap-1">
                 {[
-                  { key: "all",            label: "Todos" },
-                  { key: "active",         label: "Activos" },
+                  { key: "all", label: "Todos" },
+                  { key: "active", label: "Activos" },
                   { key: "human_takeover", label: "Humano" },
-                  { key: "closed",         label: "Cerrados" },
+                  { key: "closed", label: "Cerrados" },
                 ].map(f => (
                   <button key={f.key} onClick={() => setFilter(f.key)}
-                    className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
-                      filter === f.key ? "bg-green-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                    }`}>
+                    className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${filter === f.key ? "bg-green-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}>
                     {f.label}
                   </button>
                 ))}
@@ -584,9 +713,8 @@ export default function WaInbox({ dealId = null } = {}) {
             </div>
           ) : filtered.map(conv => (
             <button key={conv.id} onClick={() => selectConv(conv)}
-              className={`w-full text-left p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors flex gap-3 items-start ${
-                selected?.id === conv.id ? "bg-green-50 border-l-2 border-l-green-500" : ""
-              }`}
+              className={`w-full text-left p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors flex gap-3 items-start ${selected?.id === conv.id ? "bg-green-50 border-l-2 border-l-green-500" : ""
+                }`}
             >
               <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
                 {(conv.contact_name || conv.wa_number || "?").charAt(0).toUpperCase()}
@@ -660,11 +788,11 @@ export default function WaInbox({ dealId = null } = {}) {
                 </button>
               ))}
               <button onClick={() => exportChatPDF({
-                  wa_number: selected.wa_number,
-                  contact_name: selected.contact_name,
-                  line_name: selected.line_name,
-                  messages,
-                })}
+                wa_number: selected.wa_number,
+                contact_name: selected.contact_name,
+                line_name: selected.line_name,
+                messages,
+              })}
                 title="Exportar conversación a PDF"
                 className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
                 📄 PDF
@@ -697,49 +825,48 @@ export default function WaInbox({ dealId = null } = {}) {
             )}
             {messages.map((msg, i) => (
               <Fragment key={msg.id || i}>
-              {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
-                <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
-              <div className={`flex ${msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
-                  msg.type === "internal_note"
+                {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
+                  <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
+                <div className={`flex ${msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${msg.type === "internal_note"
                     ? "bg-slate-700 text-white border border-slate-600 shadow-sm"
                     : msg.type === "call"
-                    ? "bg-slate-100 text-slate-700 border border-slate-300 shadow-sm"
-                    : msg.direction === "out"
-                    ? "bg-green-600 text-white rounded-br-sm"
-                    : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm"
-                }`}>
-                  {msg.type === "internal_note" && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-300">🔒 Mensaje oculto · {msg.metadata?.author || "Usuario"}</div>}
-                  {msg.type === "call" && <div className="mb-1 font-semibold">{msg.metadata?.video ? "🎥" : "📞"} {msg.direction === "out" ? "Llamada del asesor" : "Llamada del cliente"}</div>}
-                  {msg.type === "location" && msg.metadata?.latitude != null ? (
-                    <a href={`https://www.google.com/maps?q=${msg.metadata.latitude},${msg.metadata.longitude}`} target="_blank" rel="noopener noreferrer"
-                      className="mb-1 block rounded-lg bg-black/10 px-4 py-3 font-medium underline">📍 Ver ubicación</a>
-                  ) : msg.media_url && isImage(msg) ? (
-                    <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer">
-                      <img src={mediaSrc(msg.media_url)} alt="imagen"
-                        className="rounded-lg max-h-48 mb-1 border border-black/10" />
-                    </a>
-                  ) : msg.media_url && msg.type === "audio" ? (
-                    <audio controls src={mediaSrc(msg.media_url)} className="max-w-full mb-1" />
-                  ) : msg.media_url && msg.type === "video" ? (
-                    <video controls src={mediaSrc(msg.media_url)} className="max-w-full max-h-72 rounded-lg mb-1" />
-                  ) : msg.media_url ? (
-                    <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
-                      className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>
-                      📎 Ver archivo
-                    </a>
-                  ) : null}
-                  {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
-                  <div className={`text-xs mt-0.5 ${msg.type === "internal_note" ? "text-slate-300" : msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
-                    {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
-                    {msg.direction === "out" && !["internal_note", "call"].includes(msg.type) && (
-                      <span className={`ml-1 ${msg.status === "read" ? "text-sky-300 font-semibold" : "text-green-100"}`}>
-                        {msg.status === "read" ? "✓✓ Leído" : msg.status === "delivered" ? "✓✓ Entregado" : "✓ Enviado"}
-                      </span>
-                    )}
+                      ? "bg-slate-100 text-slate-700 border border-slate-300 shadow-sm"
+                      : msg.direction === "out"
+                        ? "bg-green-600 text-white rounded-br-sm"
+                        : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm"
+                    }`}>
+                    {msg.type === "internal_note" && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-300">🔒 Mensaje oculto · {msg.metadata?.author || "Usuario"}</div>}
+                    {msg.type === "call" && <div className="mb-1 font-semibold">{msg.metadata?.video ? "🎥" : "📞"} {msg.direction === "out" ? "Llamada del asesor" : "Llamada del cliente"}</div>}
+                    {msg.type === "location" && msg.metadata?.latitude != null ? (
+                      <a href={`https://www.google.com/maps?q=${msg.metadata.latitude},${msg.metadata.longitude}`} target="_blank" rel="noopener noreferrer"
+                        className="mb-1 block rounded-lg bg-black/10 px-4 py-3 font-medium underline">📍 Ver ubicación</a>
+                    ) : msg.media_url && isImage(msg) ? (
+                      <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer">
+                        <img src={mediaSrc(msg.media_url)} alt="imagen"
+                          className="rounded-lg max-h-48 mb-1 border border-black/10" />
+                      </a>
+                    ) : msg.media_url && msg.type === "audio" ? (
+                      <audio controls src={mediaSrc(msg.media_url)} className="max-w-full mb-1" />
+                    ) : msg.media_url && msg.type === "video" ? (
+                      <video controls src={mediaSrc(msg.media_url)} className="max-w-full max-h-72 rounded-lg mb-1" />
+                    ) : msg.media_url ? (
+                      <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
+                        className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>
+                        📎 Ver archivo
+                      </a>
+                    ) : null}
+                    {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                    <div className={`text-xs mt-0.5 ${msg.type === "internal_note" ? "text-slate-300" : msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
+                      {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
+                      {msg.direction === "out" && !["internal_note", "call"].includes(msg.type) && (
+                        <span className={`ml-1 ${msg.status === "read" ? "text-sky-300 font-semibold" : "text-green-100"}`}>
+                          {msg.status === "read" ? "✓✓ Leído" : msg.status === "delivered" ? "✓✓ Entregado" : "✓ Enviado"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
               </Fragment>
             ))}
             <div ref={messagesEndRef} />
@@ -799,6 +926,11 @@ export default function WaInbox({ dealId = null } = {}) {
               title="Guardar solo en el ERP; no se envía al cliente"
               className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
               🔒 Oculto
+            </button>
+            <button onClick={sendPlantilla} disabled={sending || uploading || !newMsg.trim()}
+              title="Escribe el nombre de la plantilla (ej. ATC) y pulsa para enviarla al cliente"
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
+              📋 Plantilla
             </button>
             <label className={`cursor-pointer bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm font-medium ${uploading || sending ? "opacity-40 pointer-events-none" : ""}`}
               title="Guardar una imagen solo en el ERP; no se envía al cliente">
@@ -862,8 +994,7 @@ export default function WaInbox({ dealId = null } = {}) {
               <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
                 {[{ k: "phone", l: "📱 Por número" }, { k: "bitrix", l: "🔗 Por ID Bitrix" }].map(t => (
                   <button key={t.k} onClick={() => setNewMode(t.k)}
-                    className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-colors ${
-                      newMode === t.k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>
+                    className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-colors ${newMode === t.k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>
                     {t.l}
                   </button>
                 ))}

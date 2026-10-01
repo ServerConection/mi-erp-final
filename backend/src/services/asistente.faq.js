@@ -327,7 +327,7 @@ const FAQ = [
       'En el resto de cantones, parroquias y zonas aplica el descuento según la forma de pago:\n\n' +
       '• *Tarjeta de crédito:* 100% de descuento\n' +
       '• *Cuenta bancaria* (ahorro o corriente): 97% → paga $5\n' +
-      '• *Efectivo:* 94% → paga $10.01',
+      '• *Efectivo:* 97% → paga $5',
   },
 ];
 

@@ -901,8 +901,8 @@ export default function NuevaVenta() {
       setForm((actual) => ({
         ...actual,
         banco: "", tipo_cuenta: "",
-        costo_instalacion: "10.01",
-        descuento_instalacion: `94% - EFECTIVO; FACTURA DE INSTALACIÓN $10.01${extraSector}`,
+        costo_instalacion: "5.00",
+        descuento_instalacion: `97% - EFECTIVO; FACTURA DE INSTALACIÓN $5.00${extraSector}`,
       }));
       setErrs((actual) => {
         const siguiente = { ...actual };

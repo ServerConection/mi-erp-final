@@ -1271,9 +1271,23 @@ export default function NuevaVenta() {
 
   // ── Validar ID Bitrix ──────────────────────────────────────────────────────
   const validarIdBitrix = async (idBitrix) => {
+    const esDistribuidorVelsa = String(form.distribuidor_autorizado || "")
+      .trim()
+      .toUpperCase()
+      .includes("VELSA");
+
     if (!idBitrix || idBitrix.trim() === "") {
       setOrigenVentaLocked(false);
       return true; // No validar si está vacío
+    }
+
+    if (esDistribuidorVelsa) {
+      setOrigenVentaLocked(false);
+      setAlert({
+        tipo: "ok",
+        msg: "✓ Velsa: se permite continuar aunque el ID Bitrix no exista en la tabla."
+      });
+      return true;
     }
 
     setValidandoBitrix(true);
@@ -1283,22 +1297,36 @@ export default function NuevaVenta() {
       });
       const data = await res.json();
 
+      const esDistribuidorVelsa = String(form.distribuidor_autorizado || "")
+        .trim()
+        .toUpperCase()
+        .includes("VELSA");
+
       if (!data.existe) {
         setOrigenVentaLocked(false);
-        const mensaje = `${data.error || `El ID Bitrix #${idBitrix} no es válido`}. Verifica que el ID sea correcto y esté en etapa "VENTA SUBIDA".`;
+        const mensaje = esDistribuidorVelsa
+          ? `${data.error || `El ID Bitrix #${idBitrix} no es válido`}. Para Velsa se permite continuar aunque no esté en etapa "VENTA SUBIDA".`
+          : `${data.error || `El ID Bitrix #${idBitrix} no es válido`}. Verifica que el ID sea correcto y esté en etapa "VENTA SUBIDA".`;
         setAlert({
-          tipo: "err",
+          tipo: esDistribuidorVelsa ? "ok" : "err",
           msg: mensaje
         });
-        setModalError({ titulo: "No se puede cargar la venta", mensaje });
-        return false;
+        if (!esDistribuidorVelsa) {
+          setModalError({ titulo: "No se puede cargar la venta", mensaje });
+          return false;
+        }
+        return true;
       } else {
         const origen = (data.data.source || "").toUpperCase();
         setForm(f => ({ ...f, origen_venta: origen || f.origen_venta }));
         setOrigenVentaLocked(!!origen);
+        const empresa = String(data.data.empresa || "").toUpperCase();
+        const mensajeOk = esDistribuidorVelsa || empresa.includes("VELSA")
+          ? `✓ Lead verificado (Empresa: ${empresa}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""} · Excepción Velsa activa.`
+          : `✓ Lead verificado (Empresa: ${empresa}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""}`;
         setAlert({
           tipo: "ok",
-          msg: `✓ Lead verificado (Empresa: ${data.data.empresa.toUpperCase()}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""}`
+          msg: mensajeOk
         });
         return true;
       }

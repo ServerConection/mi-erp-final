@@ -339,7 +339,7 @@ const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
 // Lista de IDs de grupos colapsables — se usa para inicializar openGroups
 const GROUP_IDS = [
   "indicadores", "vista-asesor", "seguimiento", "redes", "ventas",
-  "backoffice", "reportes", "resumenes", "administracion", "formularios",
+  "backoffice", "reportes", "resumenes", "administracion",
   "broadcast", "wabot", "diversion",
 ];
 
@@ -423,10 +423,8 @@ const ALL_MENU_ITEMS = [
   { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
 
-  // ── Formularios y guías ──────────────────────────────────────────────────
-  { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },
-  { name: "Guía Comercial", path: "/guia-planes", icon: "📖", permiso: null, isChild: true, group: "formularios" },
-  { name: "JOT Formulario", path: "/jot-formulario",    icon: "📋", permiso: null, isChild: true, group: "formularios" },
+  // Formularios fue retirado únicamente del menú lateral. Las rutas y sus
+  // interfaces se mantienen intactas para no eliminar su implementación.
 
   // ── Broadcast por canal — acceso según empresa + perfil ─────────────────
   { name: "Broadcast", path: null, icon: "📡", isGroup: true, groupId: "broadcast" },

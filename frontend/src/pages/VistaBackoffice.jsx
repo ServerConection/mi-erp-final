@@ -2374,7 +2374,7 @@ function sumarEtapa(contadores, row) {
 
     // 2. Coincidencias flexibles / parciales específicas por etapa
     if (target === "PREPLANIFICADO") {
-      return valor.includes("PLANIF") || valor.includes("PALNIF");
+      return (valor.includes("PLANIF") || valor.includes("PALNIF")) && !(valor.includes("REPLANIFIC") && !valor.includes("PREPLANIFIC"));
     }
     if (target === "PRESERVICIO") {
       return valor.includes("PRESERV") || valor.includes("PRESE");
@@ -2393,7 +2393,7 @@ function sumarEtapa(contadores, row) {
       return valor.includes("REGULARIZ");
     }
     if (target === "REPLANIFICADO") {
-      return valor.includes("REPLANIFIC");
+      return valor.includes("REPLANIFIC") && !valor.includes("PREPLANIFIC");
     }
     if (target === "DETENIDO") {
       return valor.includes("DETENID");
@@ -4247,7 +4247,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
 const ESTADOS_PRESERVICIOS = [
   { id: "PRESERVICIO", titulo: "Preservicios", color: "#0891b2", fondo: "#ecfeff", borde: "#a5f3fc", match: (v) => v.includes("PRESERV") || v.includes("PRESE") },
   { id: "FACTIBLE", titulo: "Factible", color: "#7c3aed", fondo: "#ede9fe", borde: "#ddd6fe", match: (v) => v.includes("FACTIB") },
-  { id: "REPLANIFICADO", titulo: "Replanificados", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", match: (v) => v.includes("REPLANIFIC") },
+  { id: "REPLANIFICADO", titulo: "Replanificados", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", match: (v) => v.includes("REPLANIFIC") && !v.includes("PREPLANIFIC") },
   { id: "PREPLANIFICADO", titulo: "Preplanificados", color: "#2563eb", fondo: "#eff6ff", borde: "#bfdbfe", match: (v) => v.includes("PREPLANIFIC") },
   { id: "ASIGNADO", titulo: "Asignados", color: "#059669", fondo: "#ecfdf5", borde: "#a7f3d0", match: (v) => v.includes("ASIGNAD") },
   { id: "DETENIDO", titulo: "Detenidos", color: "#dc2626", fondo: "#fef2f2", borde: "#fecaca", match: (v) => v.includes("DETENID") },

@@ -406,7 +406,7 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
-  { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
+  { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables() },
 
   // ── Administración ───────────────────────────────────────────────────────

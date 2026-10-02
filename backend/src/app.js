@@ -37,12 +37,14 @@ const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const planesCatalogoRoutes         = require('./routes/planes-catalogo.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
+const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const consultorVelsaRoutes         = require('./routes/consultorVelsa.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
+const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const nexoIaRoutes                 = require('./routes/nexoIa.routes');
 const kpiComercialRoutes           = require('./routes/kpiComercial.routes');
@@ -53,6 +55,7 @@ const tareasRoutes                  = require('./routes/tareas.routes');
 const hojasRoutes                   = require('./routes/hojas.routes');
 const chatRoutes                    = require('./routes/chat.routes');
 const evaluacionesRoutes            = require('./routes/evaluaciones.routes');
+const controlAsistenciaRoutes       = require('./routes/controlAsistencia.routes');
 
 const app = express();
 
@@ -129,6 +132,9 @@ app.set('trust proxy', 1);
 // los eventos desde una sola IP y el limite por IP lo cortaria en horas pico.
 // Se autentica con token propio por empresa y trae su propio parser de cuerpo.
 app.use(contactabilidadWebhookRoutes);
+// Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
+app.use('/api/control-asistencia', controlAsistenciaRoutes);
+
 
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
 const rateLimit = require('./middleware/rateLimit');

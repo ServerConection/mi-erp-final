@@ -424,6 +424,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
   { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
+  { name: "Control Asistencia", path: "/control-asistencia", icon: "🕘",
+    accessCheck: (p) => ['ADMINISTRADOR','GERENCIA','SUPERVISOR','ATC'].includes((p || '').toUpperCase()), isChild: true, group: "administracion" },
 
   // Formularios fue retirado únicamente del menú lateral. Las rutas y sus
   // interfaces se mantienen intactas para no eliminar su implementación.

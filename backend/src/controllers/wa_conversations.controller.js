@@ -653,8 +653,13 @@ async function setBitrixId(req, res) {
       if (!BITRIX_WEBHOOKS[company]) {
         return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getWabotBitrixLookup().getDeal(company, bitrixId) }
-      catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
+      // Busca el deal en la empresa de la línea y, si no está, en la otra.
+      let found = false
+      for (const emp of [company, ...Object.keys(BITRIX_WEBHOOKS).filter(k => k !== company)]) {
+        try { await getWabotBitrixLookup().getDeal(emp, bitrixId); found = true; break }
+        catch (e) { console.warn(`[wa/setBitrixId] deal ${bitrixId} no encontrado en ${emp}: ${e.message}`) }
+      }
+      if (!found) return res.status(400).json({ success: false, error: `No se encontró la negociación ${bitrixId} en Bitrix. Revisa el ID e intenta nuevamente.` })
     }
 
     await query(`UPDATE conversations SET bitrix_deal_id=$1 WHERE id=$2`, [bitrixId || null, id])

@@ -85,6 +85,23 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const AdminOnlyRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  let userProfile = null;
+
+  try {
+    userProfile = JSON.parse(localStorage.getItem("userProfile") || "null");
+  } catch (_) {
+    userProfile = null;
+  }
+
+  if (!token) return <Navigate to="/login" replace />;
+  if (!userProfile || (userProfile.perfil || "").toUpperCase() !== "ADMINISTRADOR") {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
+
 // Botones flotantes (soporte WhatsApp, chat interno, tareas): se ocultan en
 // las rutas /embed/* -- son el iframe "WABOT Inbox" dentro de Bitrix, y ahí
 // no pintan botones internos del ERP encima del chat del cliente.
@@ -140,7 +157,8 @@ export default function App() {
             <Route path="notificaciones"            element={<Notificaciones />} />
             <Route path="broadcast"                 element={<BroadcastPanel />} />
             <Route path="appsheet"                  element={<AppSheetModule />} />
-            <Route path="guia-planes"               element={<Guiaplanesmarzo />} />
+            <Route path="guia-comercial"            element={<AdminOnlyRoute><Guiaplanesmarzo /></AdminOnlyRoute>} />
+            <Route path="guia-planes"               element={<AdminOnlyRoute><Guiaplanesmarzo /></AdminOnlyRoute>} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />

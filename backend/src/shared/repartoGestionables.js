@@ -36,4 +36,33 @@ const elegirAsesor = (candidatos, azar = Math.random) => {
   return conAzar[0].c;
 };
 
-module.exports = { elegirAsesor, normalizarNombre };
+
+// ── Horario laboral y cola de la estación ───────────────────────────────────
+// Hora actual de Ecuador como "HH:MM:SS" (el servidor de Render está en UTC).
+const horaEcuador = (fecha = new Date()) =>
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(fecha).replace(/^24/, '00');
+
+// ¿Se puede entregar leads ahora? inicio/fin inclusive, formato "HH:MM:SS".
+const dentroDeHorario = (fecha = new Date(), inicio = '08:00:00', fin = '22:15:59') => {
+  const h = horaEcuador(fecha);
+  return h >= inicio && h <= fin;
+};
+
+/**
+ * Ritmo de la cola de la estación:
+ *  - 0 asesores disponibles  → no se entrega.
+ *  - 1 o 2 disponibles       → 1 lead y esperar `esperaMin` minutos antes del siguiente
+ *                              (para no cargar todo a los primeros que se conectan).
+ *  - 3 o más                 → entrega normal por rondas.
+ * Devuelve cuántos leads de la cola se pueden entregar en esta pasada.
+ */
+const cupoDeEntregaCola = ({ disponibles, ultimaEntregaCola, ahora = new Date(), esperaMin = 5, maxPorPasada = 30 }) => {
+  if (!disponibles || disponibles < 1) return 0;
+  if (disponibles >= 3) return maxPorPasada;
+  if (ultimaEntregaCola && (ahora - new Date(ultimaEntregaCola)) < esperaMin * 60 * 1000) return 0;
+  return 1;
+};
+
+module.exports = { elegirAsesor, normalizarNombre, horaEcuador, dentroDeHorario, cupoDeEntregaCola };

@@ -81,14 +81,14 @@ router.put('/', (req, res) => guardar(req, res, false));
 // ── PANEL "REPARTO DE GESTIONABLES" ──────────────────────────────────────────
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
-const { normalizarNombre } = require('../shared/repartoGestionables');
+const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
 // Estado en vivo: interruptores + cada asesor con su cupo, ronda y si está en línea.
 router.get('/reparto/estado', async (req, res) => {
   try {
-    const [cfg, enLinea, asesores, resumen] = await Promise.all([
+    const [cfg, enLinea, asesores, resumen, cola] = await Promise.all([
       leerConfig({ sinCache: true }),
       leerEnLinea(),
       erp.query(
@@ -108,15 +108,22 @@ router.get('/reparto/estado', async (req, res) => {
                   WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = ${HOY_EC_SQL}
                     AND encontrado = false AND error LIKE 'Ningún asesor%')::int AS sin_repartir`
       ),
+      // Leads esperando en la estación (si la migración de la cola aún no se corrió, lista vacía)
+      erp.query(
+        `SELECT bitrix_deal_id, motivo, creado_en FROM gestionables_cola
+          WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 200`
+      ).catch(() => ({ rows: [], sinTabla: true })),
     ]);
     const data = asesores.rows.map((r) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
+      const esEstacion = normalizarNombre(r.nombre) === normalizarNombre(cfg.estacion_nombre);
       return {
         ...r,
         disponibles: Math.max(0, r.permitidos - r.asignados),
         en_linea: enLinea ? !!l?.enLinea : null,
         jornada: l?.jornada || null,
         encontrado_en_bitrix: enLinea ? !!l : null,
+        es_estacion: esEstacion,
       };
     });
     res.json({
@@ -124,6 +131,8 @@ router.get('/reparto/estado', async (req, res) => {
       config: cfg,
       en_linea: enLinea ? { criterio: enLinea.criterio, generado: enLinea.generado } : null,
       resumen: resumen.rows[0],
+      horario: { inicio: cfg.hora_inicio, fin: cfg.hora_fin, dentro: dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin) },
+      estacion: { nombre: cfg.estacion_nombre, pendientes: cola.rows.length, lista: cola.rows, sin_tabla: !!cola.sinTabla },
       data,
     });
   } catch (e) {
@@ -154,7 +163,7 @@ router.get('/reparto/reporte', async (req, res) => {
   try {
     const [detalle, sinRepartir, eventos] = await Promise.all([
       erp.query(
-        `SELECT bitrix_deal_id, asesor_asignado, asesor_original, ronda,
+        `SELECT bitrix_deal_id, asesor_asignado, asesor_original, ronda, origen,
                 EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
                 TO_CHAR(creado_en AT TIME ZONE 'America/Guayaquil', 'HH24:MI') AS hora_texto
            FROM gestionables_asignaciones
@@ -162,15 +171,15 @@ router.get('/reparto/reporte', async (req, res) => {
           ORDER BY creado_en`,
         [fecha]
       ),
+      // Leads que llegaron y se fueron a la estación (cola), por hora de llegada
       erp.query(
         `SELECT EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
-                COUNT(DISTINCT bitrix_id)::int AS total
-           FROM gestionables_webhook_log
+                COUNT(DISTINCT bitrix_deal_id)::int AS total
+           FROM gestionables_cola
           WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = $1
-            AND encontrado = false AND error LIKE 'Ningún asesor%'
           GROUP BY 1`,
         [fecha]
-      ),
+      ).catch(() => ({ rows: [] })),
       erp.query(
         `SELECT campo, valor, usuario, TO_CHAR(creado_en AT TIME ZONE 'America/Guayaquil', 'HH24:MI') AS hora_texto
            FROM gestionables_reparto_eventos

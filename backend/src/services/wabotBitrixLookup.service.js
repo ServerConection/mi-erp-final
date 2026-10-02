@@ -31,36 +31,63 @@ function createWabotBitrixLookup({ novonetApp, env = process.env, fetchImpl = fe
     return callWebhook(normalizedCompany, method, params)
   }
 
-  async function getDeal(company, dealId) {
-    const id = String(dealId || '').trim()
-    if (!/^[1-9]\d{0,14}$/.test(id)) throw new Error('ID de negociación inválido')
-    const deal = await call(company, 'crm.deal.get', { id })
-    if (!deal || String(deal.ID) !== id) throw new Error('Negociación no encontrada en Bitrix')
+  // Para NOVONET se prueba primero la app OAuth y, si no devuelve el deal,
+  // el webhook técnico (BITRIX_NOVONET_URL). Así se cubren todos los pipelines
+  // a los que tenga acceso cualquiera de los dos usuarios.
+  function transports(company) {
+    const c = String(company || '').trim().toUpperCase()
+    const viaWebhook = (m, p) => callWebhook(c, m, p)
+    if (c === 'NOVONET') return [(m, p) => novonetApp.llamar(m, p), viaWebhook]
+    return [viaWebhook]
+  }
+
+  async function fetchDeal(callFn, id) {
+    const deal = await callFn('crm.deal.get', { id })
+    if (!deal || String(deal.ID) !== id) {
+      throw new Error(`Negociación no encontrada en Bitrix (respuesta: ${JSON.stringify(deal ?? null).slice(0, 120)})`)
+    }
     return deal
   }
 
+  async function withFallback(company, dealId, fn) {
+    const id = String(dealId || '').trim()
+    if (!/^[1-9]\d{0,14}$/.test(id)) throw new Error('ID de negociación inválido')
+    let lastErr
+    for (const callFn of transports(company)) {
+      try { return await fn(callFn, id) }
+      catch (e) { lastErr = e }
+    }
+    throw lastErr
+  }
+
+  async function getDeal(company, dealId) {
+    return withFallback(company, dealId, (callFn, id) => fetchDeal(callFn, id))
+  }
+
   async function phoneFromDeal(company, dealId) {
-    const deal = await getDeal(company, dealId)
-    let phoneRaw = null
-    let contactName = deal.TITLE || null
+    return withFallback(company, dealId, async (callFn, id) => {
+      const deal = await fetchDeal(callFn, id)
+      let phoneRaw = null
+      let contactName = deal.TITLE || null
 
-    if (deal.CONTACT_ID && String(deal.CONTACT_ID) !== '0') {
-      const contact = await call(company, 'crm.contact.get', { id: String(deal.CONTACT_ID) })
-      if (contact) {
-        phoneRaw = contact.PHONE?.[0]?.VALUE || null
-        const name = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim()
-        if (name && phoneRaw) contactName = name
+      if (deal.CONTACT_ID && String(deal.CONTACT_ID) !== '0') {
+        const contact = await callFn('crm.contact.get', { id: String(deal.CONTACT_ID) })
+        if (contact) {
+          phoneRaw = contact.PHONE?.[0]?.VALUE || null
+          const name = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim()
+          if (name && phoneRaw) contactName = name
+        }
       }
-    }
-    if (!phoneRaw && deal.COMPANY_ID && String(deal.COMPANY_ID) !== '0') {
-      const companyData = await call(company, 'crm.company.get', { id: String(deal.COMPANY_ID) })
-      if (companyData) {
-        phoneRaw = companyData.PHONE?.[0]?.VALUE || null
-        if (companyData.TITLE && phoneRaw) contactName = companyData.TITLE
+      if (!phoneRaw && deal.COMPANY_ID && String(deal.COMPANY_ID) !== '0') {
+        const companyData = await callFn('crm.company.get', { id: String(deal.COMPANY_ID) })
+        if (companyData) {
+          phoneRaw = companyData.PHONE?.[0]?.VALUE || null
+          if (companyData.TITLE && phoneRaw) contactName = companyData.TITLE
+        }
       }
-    }
 
-    return { phone: normalizePhoneEC(phoneRaw), phoneRaw, contactName, dealTitle: deal.TITLE || null }
+      return { phone: normalizePhoneEC(phoneRaw), phoneRaw, contactName, dealTitle: deal.TITLE || null }
+    })
   }
 
   return { getDeal, phoneFromDeal }

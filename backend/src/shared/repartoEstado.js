@@ -17,7 +17,11 @@
 const poolErp = require('../config/dbErp');
 const { normalizarNombre } = require('./repartoGestionables');
 
-const DEFAULT = { activo: true, solo_en_linea: true, actualizado_por: null, actualizado_en: null };
+const DEFAULT = {
+  activo: true, solo_en_linea: true, actualizado_por: null, actualizado_en: null,
+  // Horario laboral (hora Ecuador) y usuario "estación" donde esperan los leads
+  hora_inicio: '08:00:00', hora_fin: '22:15:59', estacion_nombre: 'BRYAN PINEDA',
+};
 let cacheCfg = { data: null, ts: 0 };
 
 const apagadoPorEntorno = () =>
@@ -28,9 +32,11 @@ const leerConfig = async ({ sinCache = false } = {}) => {
   let cfg = { ...DEFAULT };
   try {
     const r = await poolErp.query(
-      'SELECT activo, solo_en_linea, actualizado_por, actualizado_en FROM gestionables_reparto_config WHERE id = 1'
+      'SELECT * FROM gestionables_reparto_config WHERE id = 1'
     );
-    if (r.rows[0]) cfg = r.rows[0];
+    // SELECT * + merge: si la migración del horario aún no se corrió, se usan los valores por defecto
+    if (r.rows[0]) cfg = { ...DEFAULT, ...Object.fromEntries(Object.entries(r.rows[0]).filter(([, v]) => v !== null && v !== undefined)) };
+    if (r.rows[0]) { cfg.actualizado_por = r.rows[0].actualizado_por; cfg.actualizado_en = r.rows[0].actualizado_en; }
   } catch (e) {
     console.warn('[reparto] Sin tabla de configuración, uso valores por defecto:', e.message);
   }

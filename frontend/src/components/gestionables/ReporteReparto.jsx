@@ -29,7 +29,7 @@ export default function ReporteReparto() {
     const desde = Math.min(7, ...horas), hasta = Math.max(19, ...horas);
     return Array.from({ length: hasta - desde + 1 }, (_, i) => {
       const h = desde + i;
-      return { hora: h, label: etiquetaHora(h), Repartidos: detalle.filter((d) => d.hora === h).length, 'Sin repartir': sin.get(h) || 0 };
+      return { hora: h, label: etiquetaHora(h), Repartidos: detalle.filter((d) => d.hora === h).length, 'A la estación': sin.get(h) || 0 };
     });
   }, [detalle, datos]);
 
@@ -59,7 +59,7 @@ export default function ReporteReparto() {
           ['Leads repartidos', detalle.length],
           ['Asesores que recibieron', porAsesor.length],
           ['Diferencia máx. entre asesores', porAsesor.length ? max - min : '—'],
-          ['Sin repartir', totalSin],
+          ['Pasaron por la estación', totalSin],
         ].map(([t, v]) => (
           <div key={t} className="rounded-2xl border bg-white p-4"><p className="text-sm text-slate-500">{t}</p><p className="text-3xl font-bold tabular-nums text-slate-800">{v}</p></div>
         ))}
@@ -68,7 +68,7 @@ export default function ReporteReparto() {
 
       <div className="rounded-2xl border bg-white p-5">
         <h2 className="text-lg font-bold text-slate-800">Leads por hora</h2>
-        <p className="mb-3 text-sm text-slate-500">Haz clic en una barra para ver los leads de esa hora.</p>
+        <p className="mb-3 text-sm text-slate-500">Azul: entregados a asesores. Naranja: llegaron y esperaron en la estación. Haz clic en una barra para ver los leads entregados en esa hora.</p>
         {!porHora.length ? <p className="text-slate-500">{busy ? 'Cargando…' : 'No hubo reparto en esta fecha.'}</p> : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -79,7 +79,7 @@ export default function ReporteReparto() {
                 <Tooltip cursor={{ fill: 'rgba(59,130,246,0.08)' }} />
                 <Legend />
                 <Bar dataKey="Repartidos" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} cursor="pointer" />
-                <Bar dataKey="Sin repartir" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} cursor="pointer" />
+                <Bar dataKey="A la estación" stackId="b" fill="#f59e0b" radius={[4, 4, 0, 0]} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -112,13 +112,14 @@ export default function ReporteReparto() {
           </p>
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Hora</th><th className="p-2">Lead</th><th className="p-2">Asignado a</th><th className="p-2 text-center">Su lead n.º</th></tr></thead>
+              <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Hora</th><th className="p-2">Lead</th><th className="p-2">Asignado a</th><th className="p-2 text-center">Su lead n.º</th><th className="p-2">Vía</th></tr></thead>
               <tbody>{filtrados.map((d) => (
                 <tr key={d.bitrix_deal_id} className="border-b">
                   <td className="p-2 tabular-nums">{d.hora_texto}</td>
                   <td className="p-2 tabular-nums">{d.bitrix_deal_id}</td>
                   <td className="p-2">{d.asesor_asignado}</td>
                   <td className="p-2 text-center tabular-nums">{d.ronda}</td>
+                  <td className="p-2">{d.origen === 'cola' ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">Desde estación</span> : 'Directo'}</td>
                 </tr>
               ))}</tbody>
             </table>

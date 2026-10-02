@@ -508,6 +508,7 @@ async function startFromBitrix(req, res) {
     // 1) Determinar el número: directo o desde Bitrix
     let waNumber = ''
     let contactName = null
+    let bitrixCompany = null
     if (phoneIn && !bitrixId) {
       waNumber = normalizePhoneEC(phoneIn)
       if (!waNumber) return res.status(400).json({ success: false, error: 'Número de teléfono inválido' })
@@ -515,9 +516,15 @@ async function startFromBitrix(req, res) {
       if (!BITRIX_WEBHOOKS[empresa]) {
         return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
       }
-      let info
-      try { info = await getWabotBitrixLookup().phoneFromDeal(empresa, bitrixId) }
-      catch (e) { return res.status(502).json({ success: false, error: 'Bitrix: ' + e.message }) }
+      // La negociación puede vivir en el portal de la otra empresa (p.ej. un
+      // asesor VELSA abriendo un deal del portal NOVONET). Se prueba primero
+      // la empresa del usuario y luego la otra antes de fallar.
+      let info, lastErr
+      for (const emp of [empresa, ...Object.keys(BITRIX_WEBHOOKS).filter(k => k !== empresa)]) {
+        try { info = await getWabotBitrixLookup().phoneFromDeal(emp, bitrixId); bitrixCompany = emp; break }
+        catch (e) { lastErr = e; console.warn(`[wa/bitrix/start] deal ${bitrixId} no encontrado en ${emp}: ${e.message}`) }
+      }
+      if (!info) return res.status(502).json({ success: false, error: 'Bitrix: ' + lastErr.message })
       if (!info.phone) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
       waNumber = info.phone
       contactName = info.contactName
@@ -559,12 +566,15 @@ async function startFromBitrix(req, res) {
 
     if (bitrixId) {
       const lineOwner = await query('SELECT u.empresa AS line_empresa FROM lines l LEFT JOIN usuarios u ON u.id=l.created_by WHERE l.id=$1', [lineId])
-      const company = companyOf(lineOwner.rows[0] || {}, req.user)
+      // Si el deal ya se encontró arriba, esa es la empresa válida.
+      const company = bitrixCompany || companyOf(lineOwner.rows[0] || {}, req.user)
       if (!BITRIX_WEBHOOKS[company]) {
         return res.status(400).json({ success: false, error: 'El vínculo Bitrix de Inbox no está disponible para tu empresa' })
       }
-      try { await getWabotBitrixLookup().getDeal(company, bitrixId) }
-      catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
+      if (!bitrixCompany) {
+        try { await getWabotBitrixLookup().getDeal(company, bitrixId) }
+        catch (_) { return res.status(400).json({ success: false, error: `No se pudo validar la negociación en ${company}. Revisa el ID e intenta nuevamente.` }) }
+      }
     }
 
     // Registrar la identidad real del número en WhatsApp (maneja LID) para

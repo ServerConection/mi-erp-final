@@ -50,6 +50,7 @@ const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
+const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
@@ -99,6 +100,19 @@ const AdminOnlyRoute = ({ children }) => {
   if (!userProfile || (userProfile.perfil || "").toUpperCase() !== "ADMINISTRADOR") {
     return <Navigate to="/" replace />;
   }
+  return children;
+};
+
+// RolesAllowedRoute: allow access to a list of uppercase perfil values (e.g. ["ADMINISTRADOR","GERENCIA"]).
+const RolesAllowedRoute = ({ children, allowed = [] }) => {
+  const token = localStorage.getItem("token");
+  if (!token) return <Navigate to="/login" replace />;
+  let userProfile = null;
+  try {
+    userProfile = JSON.parse(localStorage.getItem("userProfile") || "null");
+  } catch (_) { userProfile = null; }
+  const perfil = (userProfile?.perfil || "").toUpperCase();
+  if (!allowed.includes(perfil)) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -182,6 +196,7 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<VistaBackoffice />} />
+            <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
             <Route path="nexo-ia"                    element={<NexoIa />} />

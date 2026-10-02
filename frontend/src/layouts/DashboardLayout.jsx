@@ -8,7 +8,7 @@ const API = import.meta.env.VITE_API_URL;
 // ─────────────────────────────────────────────────────────────────────────────
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
-const RUTAS_PUBLICAS = ['/guia-planes', '/broadcast']; // ✅ FIX: era '/guia-comercial'
+const RUTAS_PUBLICAS = ['/broadcast'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET SINGLETON
@@ -422,6 +422,8 @@ const ALL_MENU_ITEMS = [
   // Reporte Gerencial: inversion, costo por venta y margen. Direccion y admin.
   { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
+  { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
+    accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
 
   // Formularios fue retirado únicamente del menú lateral. Las rutas y sus
   // interfaces se mantienen intactas para no eliminar su implementación.

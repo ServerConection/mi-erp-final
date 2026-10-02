@@ -1468,7 +1468,11 @@ export default function NuevaVenta() {
         archivo_planilla: aplicaDescuento3raEdad ? (form.archivo_planilla || null) : null,
         archivo_nombramiento: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_nombramiento || null) : null,
         archivo_registro_mercantil: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_registro_mercantil || null) : null,
-        archivo_ruc: form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) ? (form.archivo_ruc || null) : null,
+        archivo_ruc:
+          form.tipo_cliente === "NATURAL" &&
+            ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento)
+            ? (form.archivo_ruc || null)
+            : null,
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
@@ -2208,13 +2212,19 @@ export default function NuevaVenta() {
                 </Row>
               </>
             )}
-            {form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) && (
-              <Row label="RUC · opcional">
-                <FileUpload label="RUC" value={form.archivo_ruc} uploading={uploading.archivo_ruc}
-                  error={uploadErr.archivo_ruc} onRetry={() => reintentarSubida("archivo_ruc")}
-                  onPick={(file) => subirArchivo("archivo_ruc", file)} />
-              </Row>
-            )}
+            {form.tipo_cliente === "NATURAL" &&
+              ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) && (
+                <Row label="RUC · opcional">
+                  <FileUpload
+                    label="RUC"
+                    value={form.archivo_ruc}
+                    uploading={uploading.archivo_ruc}
+                    error={uploadErr.archivo_ruc}
+                    onRetry={() => reintentarSubida("archivo_ruc")}
+                    onPick={(file) => subirArchivo("archivo_ruc", file)}
+                  />
+                </Row>
+              )}
           </Seccion>
 
           {/* ── Botones de envío ── */}

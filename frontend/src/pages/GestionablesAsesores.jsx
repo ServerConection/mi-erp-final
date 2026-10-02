@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
+import RepartoEnVivo from '../components/gestionables/RepartoEnVivo';
+import ReporteReparto from '../components/gestionables/ReporteReparto';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3050';
 const normalizar = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const filtrosEstado = [
@@ -17,7 +19,7 @@ async function request(path = '', options = {}) {
   return result;
 }
 export default function GestionablesAsesores() {
-  const [tab, setTab] = useState('cuotas'), [fecha, setFecha] = useState(hoy);
+  const [tab, setTab] = useState('vivo'), [fecha, setFecha] = useState(hoy);
   const [rows, setRows] = useState([]), [ultimo, setUltimo] = useState(null);
   const [busqueda, setBusqueda] = useState(''), [estado, setEstado] = useState('todos');
   const [contenido, setContenido] = useState(''), [archivo, setArchivo] = useState('');
@@ -61,8 +63,11 @@ export default function GestionablesAsesores() {
   }
   if (!permitido) return <p className="p-6">No tiene acceso a este módulo.</p>;
   return <div className="space-y-5">
-    <div><h1 className="text-3xl font-bold text-slate-800">Gestionables por asesor</h1><p className="text-slate-500">Carga y ajuste de cuotas diarias de NOVONET.</p></div>
-    <div className="flex gap-2">{[['cuotas', 'Cuotas por fecha'], ['carga', 'Cargar TXT']].map(([key, label]) => <button key={key} disabled={busy} onClick={() => setTab(key)} className={`px-4 py-2 rounded-xl font-bold ${tab === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{label}</button>)}</div>
+    <div><h1 className="text-3xl font-bold text-slate-800">Reparto de Gestionables</h1><p className="text-slate-500">Reparto automático de leads por turnos, reporte por hora y cuotas diarias de NOVONET.</p></div>
+    <div className="flex gap-2">{[['vivo', 'Reparto en vivo'], ['reporte', 'Reporte por hora'], ['cuotas', 'Cuotas por fecha'], ['carga', 'Cargar TXT']].map(([key, label]) => <button key={key} disabled={busy} onClick={() => setTab(key)} aria-pressed={tab === key} className={`px-4 py-2 rounded-xl font-bold ${tab === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{label}</button>)}</div>
+    {tab === 'vivo' && <RepartoEnVivo />}
+    {tab === 'reporte' && <ReporteReparto />}
+    {(tab === 'cuotas' || tab === 'carga') && <>
     {error && <p role="alert" className="p-3 bg-red-50 text-red-700 rounded-xl">{error}</p>}
     {mensaje && <p role="status" className="p-3 bg-green-50 text-green-700 rounded-xl">{mensaje}</p>}
     <div className="bg-white border rounded-2xl p-5 space-y-4">
@@ -105,5 +110,6 @@ export default function GestionablesAsesores() {
         </div>
       </>}
     </div>
+    </>}
   </div>;
 }

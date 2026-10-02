@@ -77,4 +77,113 @@ async function guardar(req, res, importar) {
 }
 router.post('/importar', (req, res) => guardar(req, res, true));
 router.put('/', (req, res) => guardar(req, res, false));
+
+// ── PANEL "REPARTO DE GESTIONABLES" ──────────────────────────────────────────
+// Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
+const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
+const { normalizarNombre } = require('../shared/repartoGestionables');
+const fechaEc = (f) => (fechaValida(f) ? f : null);
+const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
+
+// Estado en vivo: interruptores + cada asesor con su cupo, ronda y si está en línea.
+router.get('/reparto/estado', async (req, res) => {
+  try {
+    const [cfg, enLinea, asesores, resumen] = await Promise.all([
+      leerConfig({ sinCache: true }),
+      leerEnLinea(),
+      erp.query(
+        `SELECT g.nombre_bitrix_asesor AS nombre, g.gestionables_permitidos AS permitidos,
+                COUNT(a.id)::int AS asignados, MAX(a.creado_en) AS ultima_asignacion
+           FROM gestionables_asesores g
+           LEFT JOIN gestionables_asignaciones a
+             ON a.fecha = g.fecha_carga
+            AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
+          WHERE g.fecha_carga = ${HOY_EC_SQL}
+          GROUP BY 1, 2`
+      ),
+      erp.query(
+        `SELECT (SELECT COUNT(*) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL})::int AS repartidos,
+                (SELECT MAX(creado_en) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL}) AS ultimo_reparto,
+                (SELECT COUNT(DISTINCT bitrix_id) FROM gestionables_webhook_log
+                  WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = ${HOY_EC_SQL}
+                    AND encontrado = false AND error LIKE 'Ningún asesor%')::int AS sin_repartir`
+      ),
+    ]);
+    const data = asesores.rows.map((r) => {
+      const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
+      return {
+        ...r,
+        disponibles: Math.max(0, r.permitidos - r.asignados),
+        en_linea: enLinea ? !!l?.enLinea : null,
+        jornada: l?.jornada || null,
+        encontrado_en_bitrix: enLinea ? !!l : null,
+      };
+    });
+    res.json({
+      success: true,
+      config: cfg,
+      en_linea: enLinea ? { criterio: enLinea.criterio, generado: enLinea.generado } : null,
+      resumen: resumen.rows[0],
+      data,
+    });
+  } catch (e) {
+    console.error('[gestionables] reparto/estado:', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo consultar el estado del reparto' });
+  }
+});
+
+// Encender / apagar el reparto o el filtro "solo en línea". Queda registrado quién lo hizo.
+router.put('/reparto/config', async (req, res) => {
+  try {
+    const usuario = req.user.nombreCompleto || req.user.usuario || `ID ${req.user.id}`;
+    const cfg = await guardarConfig(
+      { activo: req.body?.activo, solo_en_linea: req.body?.solo_en_linea },
+      usuario
+    );
+    res.json({ success: true, config: cfg });
+  } catch (e) {
+    console.error('[gestionables] reparto/config:', e.message);
+    res.status(e.status || 500).json({ success: false, error: e.status ? e.message : 'No se pudo guardar. ¿Se corrió la migración 20261002_gestionables_reparto_config.sql?' });
+  }
+});
+
+// Reporte por hora de un día: repartidos por hora y asesor, leads sin repartir y detalle.
+router.get('/reparto/reporte', async (req, res) => {
+  const fecha = fechaEc(req.query.fecha);
+  if (!fecha) return res.status(400).json({ success: false, error: 'Fecha inválida' });
+  try {
+    const [detalle, sinRepartir, eventos] = await Promise.all([
+      erp.query(
+        `SELECT bitrix_deal_id, asesor_asignado, asesor_original, ronda,
+                EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
+                TO_CHAR(creado_en AT TIME ZONE 'America/Guayaquil', 'HH24:MI') AS hora_texto
+           FROM gestionables_asignaciones
+          WHERE fecha = $1
+          ORDER BY creado_en`,
+        [fecha]
+      ),
+      erp.query(
+        `SELECT EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
+                COUNT(DISTINCT bitrix_id)::int AS total
+           FROM gestionables_webhook_log
+          WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = $1
+            AND encontrado = false AND error LIKE 'Ningún asesor%'
+          GROUP BY 1`,
+        [fecha]
+      ),
+      erp.query(
+        `SELECT campo, valor, usuario, TO_CHAR(creado_en AT TIME ZONE 'America/Guayaquil', 'HH24:MI') AS hora_texto
+           FROM gestionables_reparto_eventos
+          WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = $1
+          ORDER BY creado_en`,
+        [fecha]
+      ).catch(() => ({ rows: [] })),
+    ]);
+    res.json({ success: true, fecha, detalle: detalle.rows, sin_repartir: sinRepartir.rows, eventos: eventos.rows });
+  } catch (e) {
+    console.error('[gestionables] reparto/reporte:', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo consultar el reporte del reparto' });
+  }
+});
+
 module.exports = router;

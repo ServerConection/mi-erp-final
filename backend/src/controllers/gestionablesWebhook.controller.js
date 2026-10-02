@@ -29,6 +29,7 @@
 const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { elegirAsesor, normalizarNombre } = require('../shared/repartoGestionables');
+const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
 
 const FIELD_NAME = process.env.GESTIONABLES_FIELD_NAME || 'UF_CRM_GESTIONABLES';
 // Opcional: si se define, antes de escribir se verifica que el deal siga
@@ -53,7 +54,9 @@ const registrarLog = async ({ bitrixId, nombreAsesor, gestionables, encontrado, 
 // Día de trabajo en hora de Ecuador (Render corre Postgres en UTC: después de
 // las 19:00 CURRENT_DATE ya sería "mañana").
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
-const REPARTO_ACTIVO = (process.env.GESTIONABLES_REPARTO || 'on').toLowerCase() !== 'off';
+// Encendido/apagado y "solo en línea" se leen del panel del ERP en cada lead
+// (shared/repartoEstado.js). GESTIONABLES_REPARTO=off sigue siendo el apagado
+// de emergencia desde Render.
 // Clave fija del candado: serializa el reparto para que 2 leads que llegan al
 // mismo tiempo no caigan en el mismo asesor.
 const LOCK_KEY = 874201;
@@ -100,7 +103,9 @@ const escribirCupoResponsableActual = async (bitrixId, nombreAsesor) => {
 };
 
 // ── Reparto por rondas ───────────────────────────────────────────────────
-const repartirPorRondas = async (bitrixId, nombreOriginal) => {
+// enLinea: resultado de leerEnLinea() (null = no filtrar). Se consulta ANTES
+// de tomar el candado para no bloquear a otros leads mientras responde Bitrix.
+const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea) => {
   const client = await poolErp.connect();
   try {
     await client.query('BEGIN');
@@ -132,14 +137,24 @@ const repartirPorRondas = async (bitrixId, nombreOriginal) => {
         GROUP BY 1, 2`
     );
 
-    const elegido = elegirAsesor(rows.map((r) => ({
+    // Solo asesores en línea (jornada abierta en Bitrix). Si Bitrix Live no
+    // respondió (enLinea = null) no se filtra.
+    const candidatos = enLinea
+      ? rows.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea)
+      : rows;
+    const habiaConCupo = rows.some((r) => r.asignados < r.permitidos);
+
+    const elegido = elegirAsesor(candidatos.map((r) => ({
       nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
     })));
 
     if (!elegido) {
       await client.query('ROLLBACK');
-      await registrarLog({ bitrixId, nombreAsesor: nombreOriginal, encontrado: false, error: 'Ningún asesor con cupo disponible hoy; se deja el responsable actual' });
-      return 'OK (nadie con cupo disponible)';
+      const motivo = enLinea && habiaConCupo
+        ? 'Ningún asesor con cupo está en línea (jornada abierta); se deja el responsable actual'
+        : 'Ningún asesor con cupo disponible hoy; se deja el responsable actual';
+      await registrarLog({ bitrixId, nombreAsesor: nombreOriginal, encontrado: false, error: motivo });
+      return `OK (${motivo})`;
     }
 
     const userId = await idUsuarioBitrix(elegido.nombre);
@@ -192,7 +207,8 @@ const recibirGestionable = async (req, res) => {
       await registrarLog({ bitrixId: '(vacio)', nombreAsesor, error: 'Falta id de la negociación' });
       return res.status(400).send('Falta id');
     }
-    if (!REPARTO_ACTIVO && !nombreAsesor) {
+    const cfg = await leerConfig();
+    if (!cfg.activo_efectivo && !nombreAsesor) {
       await registrarLog({ bitrixId, nombreAsesor, error: 'Falta nombre_asesor' });
       return res.status(400).send('Falta nombre_asesor');
     }
@@ -206,8 +222,10 @@ const recibirGestionable = async (req, res) => {
       }
     }
 
-    const msg = REPARTO_ACTIVO
-      ? await repartirPorRondas(bitrixId, nombreAsesor)
+    // Reparto apagado desde el panel: el lead se queda con su responsable y
+    // solo se le escribe el cupo, igual que antes del reparto por rondas.
+    const msg = cfg.activo_efectivo
+      ? await repartirPorRondas(bitrixId, nombreAsesor, cfg.solo_en_linea ? await leerEnLinea() : null)
       : await escribirCupoResponsableActual(bitrixId, nombreAsesor);
     return res.status(200).send(msg);
 

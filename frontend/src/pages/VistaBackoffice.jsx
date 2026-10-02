@@ -32,6 +32,16 @@ const CAMPOS_DOCUMENTO = [
   "archivo_registro_mercantil",
   "archivo_ruc",
 ];
+const GRUPOS_DOCUMENTOS = [
+  {
+    titulo: "Identidad",
+    campos: ["foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet"],
+  },
+  {
+    titulo: "Venta y legal",
+    campos: ["archivo_resumen", "archivo_planilla", "archivo_nombramiento", "archivo_registro_mercantil", "archivo_ruc"],
+  },
+];
 const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 
 const ESTATUS_NETLIFE = [
@@ -64,11 +74,87 @@ const CAMPOS_FECHA = [
 // Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
 // mantienen sincronizados automáticamente con el archivo Excel.
 const COLUMNAS_TABLA_REGISTROS = [
-  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
-  "nombre_cliente_completo", "aplica_descuento_3ra_edad", "numero_identificacion",
-  "plan_contratado_final", "plan_contratado", "velocidad_plan", "servicios_digitales", "tipo_contrato", "netlife_login",
-  "netlife_estatus_real", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
-  "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
+  // Prioridad: IDs, responsable y estado comercial del registro
+  "id_bitrix",
+  "fecha_registro_sistema",
+  "distribuidor_autorizado",
+  "codigo_asesor",
+  "nombre_atc",
+  "netlife_estatus_real",
+
+  "supervisor",
+  "origen_venta",
+  "venta_nueva_o_reingreso",
+  "turno",
+
+  "plan_contratado_final",
+  "plan_contratado",
+  "velocidad_plan",
+  "servicios_digitales",
+  "tipo_contrato",
+
+  "forma_pago",
+  "banco",
+  "tipo_cuenta",
+  "detalle_bancario_ahorros",
+  "valor_pago",
+
+  "ciclo_facturacion",
+  "costo_instalacion",
+  "descuento_instalacion",
+  "beneficios_adicionales",
+
+  // Cliente y ubicación
+  "nombre_cliente_completo",
+  "representante_legal",
+  "numero_identificacion",
+  "tipo_documento",
+  "tipo_cliente",
+  "genero_cliente",
+  "estado_civil",
+  "fecha_nacimiento",
+  "email_cliente",
+  "telf_celular_pin",
+  "telf_celular_2",
+  "telf_fijo",
+  "aplica_descuento_3ra_edad",
+  "provincia",
+  "ciudad",
+  "parroquia_barrio",
+  "direccion_calles",
+  "direccion_manzana_villa",
+  "referencia_ubicacion",
+  "coordenadas_gps",
+  "tipo_vivienda",
+  "regimen_vivienda",
+
+  // Operación / auditoría
+  "clausulas",
+  "lider_comercial",
+  "netlife_login",
+  "fecha_ingreso_telcos",
+  "fecha_activacion_netlife",
+  "novedades_atc",
+  "errores_telcos",
+  "estado_welcome",
+  "fecha_agenda",
+  "franja_horaria_agendamiento",
+  "estatus_regularizacion",
+  "detalle_regularizacion",
+  "gestion_atc",
+  "auditoria_documentos",
+  "auditado_por",
+  "fecha_hora_regularizacion",
+  "fecha_auditoria",
+  "hora_auditoria",
+  "fecha_regularizacion_atc",
+  "inconsistencia_documental",
+  "observacion_auditoria",
+  "observacion_venta_original",
+
+  // Documentos
+  "links_documentos",
+  ...CAMPOS_DOCUMENTO,
 ];
 
 const COLUMNAS_VALIDACION_ESTADO = [
@@ -235,6 +321,9 @@ async function exportarAExcel(data, nombreArchivo = "Reporte", columnas = COLUMN
     if (valor === null || valor === undefined) return "";
 
     // Fechas
+    if (columna === "fecha_registro_sistema") {
+      return formatearFechaHoraEC(valor);
+    }
     if (CAMPOS_FECHA.includes(columna)) {
       return String(valor).slice(0, 10);
     }
@@ -669,7 +758,7 @@ function VisorDocumento({ url, titulo, esPdf, onCerrar }) {
 }
 
 // ── Campo de documento dentro del detalle ────────────────────────────────────
-function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert }) {
+function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert, editable = true, mensajeExito }) {
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
   const [abierto, setAbierto] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -678,7 +767,7 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
   const MAX_MB = 15;
 
   const subir = async (file) => {
-    if (!file) return;
+    if (!editable || !file) return;
     if (file.size > MAX_MB * 1024 * 1024) {
       onAlert({ type: "error", msg: `El archivo pesa ${(file.size / 1048576).toFixed(1)} MB y el máximo es ${MAX_MB} MB.` });
       return;
@@ -705,8 +794,12 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
       const d = await r.json().catch(() => ({}));
 
       if (r.ok && d.success) {
-        onCambio(d.url);
-        onAlert({ type: "success", msg: "Documento reemplazado. Recuerda pulsar GUARDAR." });
+        const guardado = await onCambio(d.url);
+        if (guardado === false) {
+          onAlert({ type: "error", msg: "El archivo se subió, pero no se pudo guardar en el registro. Intenta de nuevo." });
+        } else {
+          onAlert({ type: "success", msg: mensajeExito || "Documento reemplazado. Recuerda pulsar GUARDAR." });
+        }
       } else {
         onAlert({ type: "error", msg: d.error || `No se pudo subir el documento (HTTP ${r.status}).` });
       }
@@ -722,6 +815,12 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
     borderRadius: 8, border: "1px solid #dbe4f0", background: "#f8fafc",
     height: 150, display: "flex", alignItems: "center", justifyContent: "center",
     overflow: "hidden", position: "relative",
+  };
+
+  const botonAccionBase = {
+    fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "5px 10px", cursor: editable ? "pointer" : "default",
+    color: editable ? "#475569" : "#94a3b8", background: editable ? "#fff" : "#f8fafc", border: `1px solid ${editable ? "#dbe4f0" : "#e2e8f0"}`,
+    opacity: editable ? 1 : 0.8,
   };
 
   return (
@@ -753,8 +852,6 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
               title="Clic para ver completa"
               style={{
                 width: "100%", height: "100%",
-                // "contain" en vez de "cover": la miniatura ya no recorta los
-                // bordes de la cédula.
                 objectFit: "contain",
                 cursor: "zoom-in", background: "#fff",
               }}
@@ -772,32 +869,380 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
           <button
             type="button"
             onClick={() => setAbierto(true)}
-            style={{ fontSize: 11, fontWeight: 800, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}
+            style={{ ...botonAccionBase, fontWeight: 800, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd" }}
           >
             🔍 Ver completo
           </button>
         )}
-        <button
-          type="button"
-          disabled={subiendo}
-          onClick={() => inputRef.current?.click()}
-          style={{ fontSize: 11, fontWeight: 700, color: "#475569", background: "#fff", border: "1px solid #dbe4f0", borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}
-        >
-          {subiendo ? "Subiendo…" : valor ? "Reemplazar" : "Subir documento"}
-        </button>
+        {editable && (
+          <button
+            type="button"
+            disabled={subiendo}
+            onClick={() => inputRef.current?.click()}
+            style={{ ...botonAccionBase, background: "#fff" }}
+          >
+            {subiendo ? "Subiendo…" : valor ? "Reemplazar" : "Subir documento"}
+          </button>
+        )}
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        style={{ display: "none" }}
-        onChange={(e) => subir(e.target.files?.[0])}
-      />
+      {editable && (
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          style={{ display: "none" }}
+          onChange={(e) => subir(e.target.files?.[0])}
+        />
+      )}
 
       {abierto && url && (
         <VisorDocumento url={url} titulo={etiqueta} esPdf={esPdf} onCerrar={() => setAbierto(false)} />
       )}
+    </div>
+  );
+}
+
+function MiniaturaDocumento({ valor, etiqueta }) {
+  const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
+
+  if (!valor) {
+    return (
+      <div style={{ width: "100%", height: 84, borderRadius: 10, border: "1px dashed #cbd5e1", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 10, fontWeight: 700, textAlign: "center", padding: 8 }}>
+        Sin doc
+      </div>
+    );
+  }
+
+  if (cargando) {
+    return <div style={{ width: "100%", height: 84, borderRadius: 10, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 10, fontWeight: 700 }}>Cargando…</div>;
+  }
+
+  if (error || !url) {
+    return <div style={{ width: "100%", height: 84, borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", color: "#b91c1c", fontSize: 10, fontWeight: 700, padding: 6, textAlign: "center" }}>Sin vista</div>;
+  }
+
+  if (esPdf) {
+    return (
+      <div style={{ width: "100%", height: 84, borderRadius: 10, background: "#f0f9ff", border: "1px solid #bae6fd", display: "flex", alignItems: "center", justifyContent: "center", color: "#0369a1", fontWeight: 900, fontSize: 28 }}>
+        📄
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt={etiqueta}
+      style={{ width: "100%", height: 84, objectFit: "cover", borderRadius: 10, display: "block", background: "#fff" }}
+    />
+  );
+}
+
+function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAlert, puedeEditar = false }) {
+  const [abierto, setAbierto] = useState(false);
+
+  const documentos = useMemo(
+    () => GRUPOS_DOCUMENTOS.flatMap((grupo) =>
+      grupo.campos.map((field) => ({
+        field,
+        grupo: grupo.titulo,
+        etiqueta: FIELD_LABELS[field] || field,
+        valor: detail?.[field] || "",
+      }))
+    ).filter((doc) => doc.valor),
+    [detail]
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#f8fafc", padding: 10 }}>
+        {documentos.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(76px, 1fr))", gap: 8 }}>
+            {documentos.map((doc) => (
+              <button
+                key={`${doc.grupo}-${doc.field}`}
+                type="button"
+                onClick={() => setAbierto(true)}
+                title={`${doc.etiqueta} — ${doc.grupo}`}
+                style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+              >
+                <MiniaturaDocumento valor={doc.valor} etiqueta={doc.etiqueta} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ border: "1px dashed #cbd5e1", borderRadius: 8, background: "#fff", color: "#94a3b8", fontSize: 11, fontWeight: 700, padding: "18px 12px", textAlign: "center" }}>
+            Sin documentos cargados
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        style={{ alignSelf: "flex-start", background: "#e0f2fe", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}
+      >
+        {documentos.length ? `Ver galería (${documentos.length})` : "Abrir galería"}
+      </button>
+
+      {abierto && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }} onClick={() => setAbierto(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, maxWidth: 1100, width: "94%", maxHeight: "88vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", padding: 20 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em" }}>Galería de documentos</div>
+                <h3 style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: "#0f172a" }}>Imágenes y archivos del registro</h3>
+              </div>
+              <button type="button" onClick={() => setAbierto(false)} style={{ background: "transparent", border: "none", fontSize: 22, color: "#64748b", cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ display: "grid", gap: 18 }}>
+              {GRUPOS_DOCUMENTOS.map((grupo) => {
+                const items = grupo.campos.map((field) => ({
+                  field,
+                  etiqueta: FIELD_LABELS[field] || field,
+                  valor: detail?.[field] || "",
+                })).filter((item) => item.valor);
+
+                if (!items.length) return null;
+
+                return (
+                  <section key={grupo.titulo} style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 12, textTransform: "uppercase", letterSpacing: ".06em" }}>{grupo.titulo}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                      {items.map((item) => (
+                        <div key={`${grupo.titulo}-${item.field}`} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" }}>{item.etiqueta}</div>
+                          <CampoDocumento
+                            field={item.field}
+                            etiqueta={item.etiqueta}
+                            valor={item.valor}
+                            numeroIdentificacion={numeroIdentificacion}
+                            onCambio={(nuevaRuta) => {
+                              onCambio(item.field, nuevaRuta);
+                              setAbierto(false);
+                            }}
+                            onAlert={onAlert}
+                            editable={puedeEditar}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Documentos en la tabla de Registros ──────────────────────────────────────
+// Detecta cuándo un elemento entra en pantalla para cargar su miniatura recién
+// entonces. La tabla puede tener miles de filas y cada miniatura es una
+// petición autenticada; sin esto se dispararían todas al abrir el módulo.
+function useEnVista(ref, margen = "250px") {
+  const [visto, setVisto] = useState(false);
+  useEffect(() => {
+    if (visto) return undefined;
+    const el = ref.current;
+    if (!el) return undefined;
+    if (typeof IntersectionObserver === "undefined") { setVisto(true); return undefined; }
+    const obs = new IntersectionObserver((entradas) => {
+      if (entradas.some((e) => e.isIntersecting)) { setVisto(true); obs.disconnect(); }
+    }, { rootMargin: margen });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [visto, ref, margen]);
+  return visto;
+}
+
+function MiniaturaCelda({ valor, etiqueta }) {
+  const ref = useRef(null);
+  const visto = useEnVista(ref);
+  const { cargando, url, error, esPdf } = useDocumentoProtegido(visto ? valor : null);
+  const caja = {
+    width: 36, height: 36, borderRadius: 6, border: "1px solid #dbe4f0", background: "#f8fafc",
+    overflow: "hidden", flex: "none", display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 15, color: "#94a3b8",
+  };
+  return (
+    <span ref={ref} title={etiqueta} style={caja}>
+      {!visto || cargando ? "…" : error || !url ? "⚠" : esPdf ? "📄" : (
+        <img src={url} alt={etiqueta} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      )}
+    </span>
+  );
+}
+
+// Celda única "DOCUMENTOS": miniaturas pequeñas; el clic abre la galería.
+function CeldaDocumentos({ row, onAbrir }) {
+  const MAX = 3;
+  // Si el listado no trae las columnas de documentos, no se puede saber si hay
+  // o no: se ofrece abrir la galería, que consulta el registro completo.
+  const claveConocida = CAMPOS_DOCUMENTO.some((c) => Object.prototype.hasOwnProperty.call(row || {}, c));
+  const docs = CAMPOS_DOCUMENTO
+    .filter((c) => row?.[c])
+    .map((c) => ({ field: c, etiqueta: FIELD_LABELS[c] || c, valor: row[c] }));
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onAbrir(row.id); }}
+      title="Clic para ver y gestionar los documentos"
+      style={{ display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+    >
+      {!claveConocida ? (
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#0369a1" }}>📎 Ver documentos</span>
+      ) : docs.length === 0 ? (
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>📎 Sin documentos</span>
+      ) : (
+        <>
+          {docs.slice(0, MAX).map((d, index) => <MiniaturaCelda key={`${d.field}-${index}`} valor={d.valor} etiqueta={d.etiqueta} />)}
+          {docs.length > MAX && (
+            <span style={{ fontSize: 11, fontWeight: 900, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: 999, padding: "3px 7px" }}>
+              +{docs.length - MAX}
+            </span>
+          )}
+        </>
+      )}
+    </button>
+  );
+}
+
+// Qué documentos corresponden a este cliente (mismas reglas del detalle).
+// Si ya existe un archivo, siempre se muestra aunque la regla no lo pida.
+function camposDocumentoAplicables(d) {
+  const empresa = d?.tipo_documento === "RUC EMPRESA";
+  const juridico = d?.tipo_cliente === "JURÍDICO";
+  return CAMPOS_DOCUMENTO.filter((f) => {
+    if (d?.[f]) return true;
+    if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
+    if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(d?.tipo_documento);
+    if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(d?.aplica_descuento_3ra_edad || "");
+    return true;
+  });
+}
+
+// Modal con los documentos del registro, por secciones. Consulta el registro
+// completo al abrirse, así que siempre muestra el valor real y actual.
+function GaleriaDocumentosRegistro({ registroId, puedeEditar, onGuardarDocumento, onCerrar }) {
+  const [detalle, setDetalle] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const token = localStorage.getItem("token");
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        setCargando(true);
+        setError(null);
+        const res = await fetch(`${API}/api/backoffice/${registroId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "No se pudo cargar el registro");
+        if (!cancelado) setDetalle(normalizarRegistro(json.data));
+      } catch (e) {
+        if (!cancelado) setError(e.message || "Error de conexión");
+      } finally {
+        if (!cancelado) setCargando(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [registroId, token]);
+
+  useEffect(() => {
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previo; };
+  }, []);
+
+  const aplicables = detalle ? camposDocumentoAplicables(detalle) : [];
+  const secciones = GRUPOS_DOCUMENTOS
+    .map((g) => ({ titulo: g.titulo, campos: g.campos.filter((c) => aplicables.includes(c)) }))
+    .filter((s) => s.campos.length);
+  const cargados = detalle ? CAMPOS_DOCUMENTO.filter((c) => detalle[c]).length : 0;
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
+      onClick={onCerrar}
+    >
+      <div
+        style={{ background: "#fff", borderRadius: 16, maxWidth: 1100, width: "94%", maxHeight: "88vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", padding: 20 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Documentos del registro #{registroId}
+            </div>
+            <h3 style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+              {detalle?.nombre_cliente_completo || "Cargando…"}
+            </h3>
+            {detalle && (
+              <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+                CI/RUC {detalle.numero_identificacion || "—"} · {cargados} documento{cargados === 1 ? "" : "s"} cargado{cargados === 1 ? "" : "s"}
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={onCerrar} style={{ background: "transparent", border: "none", fontSize: 22, color: "#64748b", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700, background: puedeEditar ? "#ecfdf5" : "#eff6ff", color: puedeEditar ? "#047857" : "#1e40af", border: `1px solid ${puedeEditar ? "#a7f3d0" : "#bfdbfe"}` }}>
+          {puedeEditar
+            ? "✏️ Puedes reemplazar o subir documentos. Cada cambio se guarda al instante."
+            : "👁 Solo lectura: puedes ver los documentos, pero no modificarlos."}
+        </div>
+
+        {aviso && (
+          <div style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700, background: aviso.type === "success" ? "#ecfdf5" : "#fef2f2", color: aviso.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${aviso.type === "success" ? "#bbf7d0" : "#fecaca"}` }}>
+            {aviso.msg}
+          </div>
+        )}
+
+        {cargando && <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Cargando documentos…</p>}
+        {error && <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{error}</div>}
+
+        {detalle && (
+          <div style={{ display: "grid", gap: 18 }}>
+            {secciones.map((sec) => (
+              <section key={sec.titulo} style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 12, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                  {sec.titulo}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                  {sec.campos.map((field, idx) => (
+                    <div key={`${sec.titulo}-${field}-${idx}`} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                        {FIELD_LABELS[field] || field}
+                      </div>
+                      <CampoDocumento
+                        field={field}
+                        etiqueta={FIELD_LABELS[field] || field}
+                        valor={detalle[field] || ""}
+                        numeroIdentificacion={detalle.numero_identificacion}
+                        editable={puedeEditar}
+                        mensajeExito="Documento guardado correctamente."
+                        onAlert={setAviso}
+                        onCambio={async (nuevaRuta) => {
+                          const ok = await onGuardarDocumento(registroId, field, nuevaRuta);
+                          if (ok) setDetalle((prev) => ({ ...prev, [field]: nuevaRuta }));
+                          return ok;
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -811,6 +1256,8 @@ function normalizarRegistro(row) {
       const coincidencia = texto.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}))?/);
       const horaAgenda = String(row?.hora_agenda || "").slice(0, 5);
       out[k] = coincidencia ? `${coincidencia[1]}T${coincidencia[2] || horaAgenda || "00:00"}` : texto;
+    } else if (k === "fecha_registro_sistema") {
+      out[k] = formatearFechaHoraInputEC(v);
     } else {
       out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
     }
@@ -842,16 +1289,16 @@ const FIELD_LABELS = {
   fecha_registro_sistema: "FECHA REGISTRO",
   mes_registro_sistema: "MES REGISTRO",
   dia_abc_registro_sistema: "DÍA REGISTRO",
-  codigo_asesor: "ASESOR",
-  id_asesor_comercial: "CÓDIGO Y NOMBRE DEL ASESOR",
-  nombre_asesor_comercial: "NOMBRE ASESOR COMERCIAL",
+  codigo_asesor: "CÓDIGO ASESOR",
+  id_asesor_comercial: "CÓDIGO ASESOR",
+  nombre_asesor_comercial: "NOMBRE ASESOR",
   id_bitrix: "ID BITRIX",
   distribuidor_autorizado: "DISTRIBUIDOR",
   supervisor: "SUPERVISOR",
   origen_venta: "ORIGEN VENTA",
   venta_nueva_o_reingreso: "TIPO VENTA",
   turno: "TURNO",
-  nombre_atc: "QUIÉN INGRESA",
+  nombre_atc: "NOMBRE ASESOR",
   clausulas: "FIRMA BIOMÉTRICA",
   lider_comercial: "LÍDER COMERCIAL",
   tipo_cliente: "TIPO CLIENTE",
@@ -1054,11 +1501,75 @@ function soloFechaSiEsMedianoche(texto) {
   return /^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z$/.test(texto) ? texto.slice(0, 10) : texto;
 }
 
+function formatearFechaHoraEC(valor) {
+  const texto = String(valor ?? "").trim();
+  if (!texto) return "";
+
+  const fecha = new Date(texto);
+  if (Number.isNaN(fecha.getTime())) {
+    return texto;
+  }
+
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(fecha);
+
+  const mapa = Object.fromEntries(partes.map((part) => [part.type, part.value]));
+  return `${mapa.year}-${mapa.month}-${mapa.day} ${mapa.hour}:${mapa.minute}:${mapa.second}`;
+}
+
+function formatearFechaHoraInputEC(valor) {
+  const texto = String(valor ?? "").trim();
+  if (!texto) return "";
+
+  const fecha = new Date(texto);
+  if (Number.isNaN(fecha.getTime())) {
+    const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (match) {
+      return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`;
+    }
+    return texto.slice(0, 16);
+  }
+
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(fecha);
+
+  const mapa = Object.fromEntries(partes.map((part) => [part.type, part.value]));
+  return `${mapa.year}-${mapa.month}-${mapa.day}T${mapa.hour}:${mapa.minute}`;
+}
+
+function normalizarValorFechaHoraGuardar(campo, valor) {
+  if (campo !== "fecha_registro_sistema" || !valor) return valor;
+  const texto = String(valor).trim();
+  const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return valor;
+  const [, anio, mes, dia, hora, minuto, segundo] = match;
+  return `${anio}-${mes}-${dia}T${hora}:${minuto}:${segundo || "00"}-05:00`;
+}
+
 // Celda de tabla: los campos de opciones/estado se pintan como pastilla de
 // color (igual que en Jotform); el resto se muestra como texto normal.
 function CeldaValor({ campo, valor, textoVacio }) {
   const vacio = valor === null || valor === undefined || valor === "";
-  const texto = vacio ? (textoVacio ?? "—") : soloFechaSiEsMedianoche(String(valor));
+  const texto = vacio
+    ? (textoVacio ?? "—")
+    : campo === "fecha_registro_sistema"
+      ? formatearFechaHoraEC(valor)
+      : soloFechaSiEsMedianoche(String(valor));
   const color = colorDeValor(campo, texto);
   if (!color) return texto;
   return (
@@ -1079,39 +1590,342 @@ function valoresSeleccionMultiple(valor) {
 // La tabla puede contener miles de filas y decenas de columnas. Mantenerla
 // memoizada evita reconstruir todas esas celdas mientras el usuario solamente
 // escribe en el buscador o cambia un filtro todavía no aplicado.
-const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, selectedId, onSelect }) {
+const CAMPOS_TABLA_SOLO_LECTURA = new Set([
+  "documentos",
+  "id_asesor_comercial", "nombre_asesor_comercial", "fecha_registro_sistema",
+  "fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria",
+  "plan_contratado", "velocidad_plan",
+]);
+
+function tipoEditorCelda(campo) {
+  if (campo === "fecha_agenda" || campo === "fecha_registro_sistema") return "datetime-local";
+  if (CAMPOS_FECHA.includes(campo)) return "date";
+  if (["email_cliente"].includes(campo)) return "email";
+  return "text";
+}
+
+function opcionesEditorCelda(campo, row) {
+  const opciones = {
+    distribuidor_autorizado: ["NOVONET", "VELSA"],
+    netlife_estatus_real: ESTATUS_NETLIFE,
+    estatus_regularizacion: OPCIONES_ESTATUS_REGULARIZACION.map((item) => item.valor === "__SIN_REVISAR__" ? "SIN REVISAR" : item.valor),
+    forma_pago: OPCIONES_FORMA_PAGO,
+    banco: OPCIONES_BANCO,
+    tipo_cuenta: OPCIONES_TIPO_CUENTA,
+    ciclo_facturacion: OPCIONES_CICLO_FACTURACION,
+    auditado_por: OPCIONES_AUDITOR,
+    clausulas: OPCIONES_CLAUSULAS,
+    lider_comercial: OPCIONES_LIDER_COMERCIAL,
+    franja_horaria_agendamiento: FRANJAS_AGENDAMIENTO,
+    estado_welcome: ["SIN_NOTIFICAR", "PENDIENTE", "NOTIFICADO"],
+    aplica_descuento_3ra_edad: ["NO", "SI POR TERCERA EDAD"],
+    tipo_cliente: ["NATURAL", "JURÍDICO"],
+    tipo_documento: ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"],
+    genero_cliente: ["HOMBRE", "MUJER"],
+    estado_civil: ["SOLTERO/A", "CASADO/A", "DIVORCIADO/A", "VIUDO/A", "UNIÓN LIBRE"],
+  };
+  if (campo === "supervisor") {
+    return SUPERVISORES_POR_EMPRESA[String(row?.distribuidor_autorizado || "").trim().toUpperCase()] || [];
+  }
+  return opciones[campo] || null;
+}
+
+const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, onGuardarCelda, onVerDetalle, puedeEditar = false }) {
+  const [edicion, setEdicion] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [galeriaId, setGaleriaId] = useState(null);
+  const [seleccionadas, setSeleccionadas] = useState(() => new Set());
+  const cancelandoRef = useRef(false);
+  const guardadoEnCursoRef = useRef(false);
+
+  const scrollSuperiorRef = useRef(null);
+  const scrollTablaRef = useRef(null);
+
+  const moverDesdeArriba = (e) => {
+    if (!scrollTablaRef.current) return;
+
+    scrollTablaRef.current.scrollLeft = e.currentTarget.scrollLeft;
+  };
+
+  const guardarEdicionActual = useCallback(async () => {
+    if (!edicion || guardadoEnCursoRef.current) return false;
+    if (cancelandoRef.current) {
+      cancelandoRef.current = false;
+      return false;
+    }
+    if (edicion.valor === edicion.original) {
+      setEdicion(null);
+      return true;
+    }
+
+    guardadoEnCursoRef.current = true;
+    setGuardando(true);
+    const guardado = await onGuardarCelda(edicion.id, edicion.campo, edicion.valor);
+    guardadoEnCursoRef.current = false;
+    setGuardando(false);
+    if (guardado) setEdicion(null);
+    return guardado;
+  }, [edicion, onGuardarCelda]);
+
+  const iniciarEdicion = useCallback(async (row, campo) => {
+    if (CAMPOS_TABLA_SOLO_LECTURA.has(campo) || guardadoEnCursoRef.current || campo === "__seleccion__" || campo === "__ver__") return;
+
+    if (edicion && (edicion.id !== row.id || edicion.campo !== campo)) {
+      const guardado = await guardarEdicionActual();
+      if (!guardado) return;
+    }
+    if (edicion && edicion.id === row.id && edicion.campo === campo) return;
+
+    const valor = row?.[campo] == null ? "" : campo === "fecha_registro_sistema" ? formatearFechaHoraInputEC(row[campo]) : String(row[campo]);
+    cancelandoRef.current = false;
+    setEdicion({ id: row.id, campo, valor, original: valor, row });
+  }, [edicion, guardarEdicionActual]);
+
+  const cancelarEdicion = () => {
+    cancelandoRef.current = true;
+    setEdicion(null);
+  };
+
+  const guardarEdicion = async () => {
+    await guardarEdicionActual();
+  };
+
+  const abrirDetalleFila = useCallback(async (id) => {
+    if (edicion && edicion.valor !== edicion.original) {
+      const guardado = await guardarEdicionActual();
+      if (!guardado) return;
+    }
+    onVerDetalle?.(id);
+  }, [edicion, guardarEdicionActual, onVerDetalle]);
+
+  const toggleFila = (id) => {
+    setSeleccionadas((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
-    <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 700 }}>
-      {loading ? (
-        <div style={{ padding: 16 }}><CargandoBackoffice filas={7} /></div>
-      ) : (
-        <table style={{ width: "100%", minWidth: Math.max(1800, headers.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-          <thead style={{ position: "sticky", top: 0, zIndex: 3 }}>
-            <tr style={{ background: "#f8fafc" }}>
-              {headers.map((h, i) => (
-                <th key={h.key} title={h.key} style={{
-                  textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
-                  fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
-                  ...(i === 0 ? { width: 60 } : {}),
-                }}>{h.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} onClick={() => onSelect(row.id)}
-                style={{ cursor: "pointer", background: selectedId === row.id ? "#eff6ff" : "#fff" }}>
-                {headers.map((h) => (
-                  <td key={`${row.id}-${h.key}`} title={valueForField(row, h.key)} onClick={(e) => { e.stopPropagation(); onSelect(row.id, h.key); }} style={{
-                    padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
-                    maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
-                    background: selectedId === row.id ? "#eff6ff" : "#fff",
-                  }}><CeldaRegistro row={row} campo={h.key} /></td>
-                ))}
+    <div>
+      <div style={{ minHeight: 42, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "7px 12px", background: edicion ? "#fff7ed" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+        <span style={{ fontSize: 11.5, color: edicion ? "#9a3412" : "#64748b", fontWeight: 700 }}>
+          {edicion
+            ? `Editando ${FIELD_LABELS[edicion.campo] || edicion.campo}. Tab o clic fuera para guardar.`
+            : "Haz doble clic sobre una celda editable para modificarla."}
+        </span>
+        {edicion && (
+          <button
+            type="button"
+            disabled={guardando}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={cancelarEdicion}
+            style={{ border: "1px solid #fca5a5", background: "#fff", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 800, cursor: guardando ? "wait" : "pointer" }}
+          >
+            Cancelar edición
+          </button>
+        )}
+      </div>
+      {/* SCROLL HORIZONTAL SUPERIOR */}
+      <div
+        ref={scrollSuperiorRef}
+        onScroll={moverDesdeArriba}
+        className="bo-table-scroll"
+        style={{
+          width: "100%",
+          overflowX: "auto",
+          overflowY: "hidden",
+          height: 18,
+          background: "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            width: Math.max(1800, headers.length * 145),
+            height: 1,
+          }}
+        />
+      </div>
+      <div
+        ref={scrollTablaRef}
+        className="bo-scroll-vertical"
+        style={{
+          overflowX: "hidden",
+          overflowY: "auto",
+          maxHeight: 700,
+        }}
+      >
+        {loading ? (
+          <div style={{ padding: 16 }}><CargandoBackoffice filas={7} /></div>
+        ) : (
+          <table style={{ width: "100%", minWidth: Math.max(1800, headers.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+              <tr style={{ background: "#f8fafc" }}>
+                {headers.map((h, i) => {
+                  const stickyLeft = h.key === "__ver__" ? 0 : h.key === "__seleccion__" ? 88 : undefined;
+                  const width = h.key === "__ver__" ? 88 : h.key === "__seleccion__" ? 52 : undefined;
+                  return (
+                    <th key={h.key} title={h.key} style={{
+                      textAlign: h.key === "__seleccion__" ? "center" : "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb",
+                      fontWeight: 800, color: "#475569", whiteSpace: "nowrap", background: "#f8fafc",
+                      position: stickyLeft !== undefined ? "sticky" : "static",
+                      left: stickyLeft,
+                      zIndex: h.key === "__ver__" ? 12 : 11,
+                      ...(width ? { width, minWidth: width } : {}),
+                      ...(i === 0 ? { width: 60 } : {}),
+                    }}>
+                      {h.key === "__ver__"
+                        ? ""
+                        : h.key === "__seleccion__"
+                          ? ""
+                          : h.label}
+                    </th>
+                  );
+                })}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const filaSeleccionada = seleccionadas.has(String(row.id));
+                return (
+                  <tr key={row.id} style={{ background: filaSeleccionada ? "#ecfdf5" : "#fff", boxShadow: filaSeleccionada ? "inset 0 0 0 1px #bbf7d0" : "none" }}>
+                    {headers.map((h) => {
+                      if (h.key === "__ver__") {
+                        return (
+                          <td
+                            key={`${row.id}-${h.key}`}
+                            style={{
+                              position: "sticky",
+                              left: 0,
+                              zIndex: 2,
+                              padding: "10px 8px",
+                              borderBottom: "1px solid #f1f5f9",
+                              background: filaSeleccionada ? "#ecfdf5" : "#fff",
+                              whiteSpace: "nowrap",
+                              boxShadow: "1px 0 0 #f1f5f9",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void abrirDetalleFila(row.id);
+                              }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                background: "#eff6ff",
+                                color: "#1d4ed8",
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 8,
+                                padding: "6px 8px",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <span aria-hidden="true">👁</span>
+                              Ver
+                            </button>
+                          </td>
+                        );
+                      }
+
+                      if (h.key === "__seleccion__") {
+                        return (
+                          <td
+                            key={`${row.id}-${h.key}`}
+                            style={{
+                              position: "sticky",
+                              left: 88,
+                              zIndex: 2,
+                              textAlign: "center",
+                              padding: "10px 8px",
+                              borderBottom: "1px solid #f1f5f9",
+                              background: filaSeleccionada ? "#ecfdf5" : "#fff",
+                              boxShadow: "1px 0 0 #f1f5f9",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={filaSeleccionada}
+                              onChange={() => toggleFila(row.id)}
+                              aria-label={`Seleccionar fila ${row.id}`}
+                              style={{ width: 15, height: 15, accentColor: "#22c55e", cursor: "pointer" }}
+                            />
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td
+                          key={`${row.id}-${h.key}`}
+                          title={h.key === "documentos"
+                            ? "Clic para ver y gestionar los documentos"
+                            : CAMPOS_TABLA_SOLO_LECTURA.has(h.key)
+                              ? `${valueForField(row, h.key)} · Solo lectura`
+                              : `${valueForField(row, h.key)} · Doble clic para editar`}
+                          onDoubleClick={() => void iniciarEdicion(row, h.key)}
+                          style={{
+                            padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
+                            maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                            background: filaSeleccionada ? "#ecfdf5" : (edicion?.id === row.id && edicion?.campo === h.key ? "#fff7ed" : "#fff"),
+                            cursor: CAMPOS_TABLA_SOLO_LECTURA.has(h.key) ? "default" : "cell",
+                          }}>
+                          {edicion?.id === row.id && edicion?.campo === h.key ? (() => {
+                            const opcionesCelda = opcionesEditorCelda(h.key, edicion.row);
+                            const propsComunes = {
+                              autoFocus: true,
+                              value: edicion.valor,
+                              disabled: guardando,
+                              onFocus: (e) => e.currentTarget.select?.(),
+                              onChange: (e) => setEdicion((actual) => ({ ...actual, valor: e.target.value })),
+                              onBlur: guardarEdicion,
+                              onKeyDown: (e) => {
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelarEdicion();
+                                } else if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.currentTarget.blur();
+                                }
+                              },
+                              style: { width: "100%", minWidth: 150, boxSizing: "border-box", border: "1px solid #f97316", borderRadius: 6, padding: "6px 7px", fontSize: 11, outline: "none", background: "#fff" },
+                            };
+                            return opcionesCelda ? (
+                              <select {...propsComunes}>
+                                <option value="">Sin valor</option>
+                                {opcionesCelda.map((opcion) => <option key={opcion} value={opcion}>{opcion}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                {...propsComunes}
+                                type={tipoEditorCelda(h.key)}
+                              />
+                            );
+                          })() : h.key === "documentos"
+                            ? <CeldaDocumentos row={row} onAbrir={setGaleriaId} />
+                            : <CeldaRegistro row={row} campo={h.key} />}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {galeriaId && (
+        <GaleriaDocumentosRegistro
+          registroId={galeriaId}
+          puedeEditar={puedeEditar}
+          onGuardarDocumento={onGuardarCelda}
+          onCerrar={() => setGaleriaId(null)}
+        />
       )}
     </div>
   );
@@ -1119,7 +1933,9 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, se
   anterior.loading === siguiente.loading &&
   anterior.rows === siguiente.rows &&
   anterior.headers === siguiente.headers &&
-  anterior.selectedId === siguiente.selectedId
+  anterior.puedeEditar === siguiente.puedeEditar &&
+  anterior.onGuardarCelda === siguiente.onGuardarCelda &&
+  anterior.onVerDetalle === siguiente.onVerDetalle
 );
 
 // ── Estado inicial de los filtros (las claves son los query params del API) ──
@@ -1410,7 +2226,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Error al cargar registros");
-      setRows(json.data || []);
+      setRows((json.data || []).map(normalizarRegistro));
       if ((json.data || []).length) {
         // Conserva el registro que el usuario ya seleccionó aunque esta
         // petición de listado haya comenzado antes de hacer clic en él.
@@ -1428,6 +2244,37 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     // Los filtros editables no son dependencias: cambiar un campo no consulta.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchAplicada, filtrosAplicados, empresa]);
+
+  const guardarCelda = useCallback(async (id, campo, valor) => {
+    try {
+      setAlert(null);
+      const valorEnviar = campo === "estatus_regularizacion" && valor === "SIN REVISAR"
+        ? ""
+        : normalizarValorFechaHoraGuardar(campo, valor);
+      const res = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ [campo]: valorEnviar }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `No se pudo guardar ${FIELD_LABELS[campo] || campo}`);
+      }
+
+      const actualizado = normalizarRegistro(json.data);
+      setRows((actuales) => actuales.map((row) => (
+        String(row.id) === String(id) ? { ...row, ...actualizado } : row
+      )));
+      setAlert(resultadoBienvenida(json, `${FIELD_LABELS[campo] || campo} actualizado correctamente`));
+      return true;
+    } catch (error) {
+      setAlert({ type: "error", msg: error.message || "No se pudo guardar el cambio" });
+      return false;
+    }
+  }, [token]);
 
   // Opciones reales de los combos (una sola vez al montar)
   useEffect(() => {
@@ -1515,10 +2362,21 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   // Se arma sobre las claves que REALMENTE vienen del backend, para que si
   // mañana se agrega una columna a la tabla aparezca sola, sin tocar código.
   const tableHeaders = useMemo(() => {
-    return COLUMNAS_TABLAS_BACKOFFICE.map((key) => ({
-      key,
-      label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
-    }));
+    const columnas = [];
+    let documentosAgregado = false;
+    COLUMNAS_TABLAS_BACKOFFICE.forEach((key) => {
+      if (esCampoDocumento(key)) {
+        // Las 8 columnas de documentos se juntan en una sola.
+        if (!documentosAgregado) {
+          columnas.push({ key: "documentos", label: "DOCUMENTOS" });
+          documentosAgregado = true;
+        }
+        return;
+      }
+      columnas.push({ key, label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase() });
+    });
+    columnas.unshift({ key: "__ver__", label: "" }, { key: "__seleccion__", label: "SELECCIÓN" });
+    return columnas;
   }, []);
 
   const editableFields = useMemo(() => [
@@ -2000,12 +2858,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                   </span>
                 </div>
 
+                {alert && (
+                  <div style={{ margin: "10px 14px 0", padding: "10px 12px", borderRadius: 8, background: alert.type === "success" ? "#ecfdf5" : "#fef2f2", color: alert.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${alert.type === "success" ? "#bbf7d0" : "#fecaca"}`, fontSize: 12, fontWeight: 700 }}>
+                    {alert.msg}
+                  </div>
+                )}
+
                 <TablaRegistros
                   loading={loading}
                   rows={rows}
                   headers={tableHeaders}
-                  selectedId={selectedId}
-                  onSelect={fetchDetail}
+                  onGuardarCelda={guardarCelda}
+                  onVerDetalle={fetchDetail}
+                  puedeEditar={puedeEditar}
                 />
               </div>
             </div>
@@ -2058,8 +2923,28 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", borderRadius: 999, padding: "2px 8px" }}>{sec.campos.length}</span>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
-                        {sec.campos.map((field) => (
-                          <div key={field} data-detail-field={field}>
+                        {sec.campos.some((field) => CAMPOS_DOCUMENTO.includes(field)) && (
+                          <div key="documentos_compactos" style={{ gridColumn: "1 / -1" }} data-detail-field="documentos_compactos">
+                            <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                              IMÁGENES Y DOCUMENTOS
+                            </label>
+                            <fieldset
+                              disabled={!puedeEditar}
+                              style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}
+                            >
+                              <CampoDocumentosCompacto
+                                detail={detail}
+                                numeroIdentificacion={detail?.numero_identificacion}
+                                onCambio={(campo, nuevaRuta) => setDetail((prev) => ({ ...prev, [campo]: nuevaRuta }))}
+                                onAlert={setAlert}
+                                puedeEditar={puedeEditar}
+                              />
+                            </fieldset>
+                          </div>
+                        )}
+
+                        {sec.campos.filter((field) => !CAMPOS_DOCUMENTO.includes(field)).map((field) => (
+                          <div key={`${sec.titulo}-${field}`} data-detail-field={field}>
                             <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                               {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA"
                                 ? "NOMBRE DE LA EMPRESA"
@@ -4245,10 +5130,10 @@ function CalendarioMes({ anio, mes, mapaDias, mapaRezagos = new Map(), color, fo
                 border: rezagados
                   ? "2px solid #dc2626"
                   : esHoy
-                  ? `2px solid ${color}`
-                  : tieneAgendamientos
-                    ? `1px solid ${borde}`
-                    : "1px solid #edf2f7",
+                    ? `2px solid ${color}`
+                    : tieneAgendamientos
+                      ? `1px solid ${borde}`
+                      : "1px solid #edf2f7",
                 background: tieneAgendamientos ? "#ffffff" : "#fbfcfe",
                 display: "flex",
                 flexDirection: "column",
@@ -6306,7 +7191,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
             <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 590 }}>
               <table style={{ width: "100%", minWidth: Math.max(1800, columnas.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
                 <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
-                  <tr>{columnas.map((key) => <th key={key} style={{ padding: "11px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900, color: "#334155" }}>{FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase()}</th>)}</tr>
+                  <tr>{columnas.map((key, index) => <th key={`${key}-${index}`} style={{ padding: "11px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900, color: "#334155" }}>{FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase()}</th>)}</tr>
                 </thead>
                 <tbody>
                   {cargando && <tr><td colSpan={columnas.length} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>Cargando…</td></tr>}

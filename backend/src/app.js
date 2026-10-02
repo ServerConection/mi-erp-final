@@ -44,7 +44,6 @@ const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
-const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const nexoIaRoutes                 = require('./routes/nexoIa.routes');
 const kpiComercialRoutes           = require('./routes/kpiComercial.routes');
@@ -55,7 +54,6 @@ const tareasRoutes                  = require('./routes/tareas.routes');
 const hojasRoutes                   = require('./routes/hojas.routes');
 const chatRoutes                    = require('./routes/chat.routes');
 const evaluacionesRoutes            = require('./routes/evaluaciones.routes');
-const controlAsistenciaRoutes       = require('./routes/controlAsistencia.routes');
 
 const app = express();
 

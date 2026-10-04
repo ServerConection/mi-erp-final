@@ -107,32 +107,36 @@ async function useDbAuthState(lineId) {
 
     // set(data) -> data = { [type]: { [id]: valor | null } }; null = borrar
     set: async (data) => {
-      const inserts = []
-      const deletes = []
+      // Un Map por key_id: si Baileys manda la misma clave dos veces en el
+      // mismo lote, gana la última (y el INSERT masivo no choca consigo mismo).
+      const inserts = new Map()
+      const deletes = new Set()
       for (const type of Object.keys(data)) {
         for (const id of Object.keys(data[type])) {
           const valor = data[type][id]
           const keyId = fixKeyId(`${type}-${id}`)
-          if (valor) inserts.push([keyId, ser(valor)])
-          else deletes.push(keyId)
+          if (valor) { inserts.set(keyId, ser(valor)); deletes.delete(keyId) }
+          else { deletes.add(keyId); inserts.delete(keyId) }
         }
       }
-      // Una sola transacción: si el proceso muere a mitad, la sesión no queda
-      // en un estado intermedio que obligue a reescanear el QR.
+      if (!inserts.size && !deletes.size) return
+      // Antes: un INSERT por clave dentro de la transacción (cientos de idas y
+      // vueltas a la base por lote, reteniendo una conexión del pool todo ese
+      // tiempo). Ahora: como máximo 2 consultas por lote, en una transacción.
       await pool.transaction(async (client) => {
-        if (deletes.length) {
+        if (deletes.size) {
           await client.query(
             'DELETE FROM wa_auth_state WHERE line_id = $1 AND key_id = ANY($2::text[])',
-            [lineId, deletes]
+            [lineId, [...deletes]]
           )
         }
-        for (const [keyId, texto] of inserts) {
+        if (inserts.size) {
           await client.query(
             `INSERT INTO wa_auth_state (line_id, key_id, data, updated_at)
-             VALUES ($1, $2, $3, NOW())
+             SELECT $1, t.k, t.d, NOW() FROM unnest($2::text[], $3::text[]) AS t(k, d)
              ON CONFLICT (line_id, key_id)
              DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-            [lineId, keyId, texto]
+            [lineId, [...inserts.keys()], [...inserts.values()]]
           )
         }
       })

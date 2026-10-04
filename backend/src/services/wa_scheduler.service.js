@@ -6,6 +6,7 @@
  * Se ejecuta cada 30s.
  */
 const { query } = require('../config/db')
+const { asegurarLocal } = require('./waMediaFallback')
 const CampaignEngine = require('./CampaignEngine')
 const { enviarBienvenidaWelcome } = require('./email.service')
 const { prepararWhatsappBienvenida } = require('./welcomeWhatsapp.service')
@@ -97,6 +98,7 @@ class SchedulerService {
             const filePath = msg.media_url.startsWith('/uploads/')
               ? path.join(__dirname, '../../', msg.media_url)
               : msg.media_url
+            await asegurarLocal(filePath)
             if (!fs.existsSync(filePath)) throw new Error('Archivo no encontrado')
             const buffer = fs.readFileSync(filePath)
             await this.baileysManager.sendMedia(msg.line_id, msg.wa_number, {

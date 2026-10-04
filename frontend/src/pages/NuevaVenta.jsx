@@ -1337,8 +1337,6 @@ export default function NuevaVenta() {
         // Restricción desactivada: se permite registrar el ID Bitrix aunque no esté en VENTA SUBIDA
         return true;
       } else {
-        return true;
-      } else {
         const origen = (data.data.source || "").toUpperCase();
         setForm(f => ({ ...f, origen_venta: origen || f.origen_venta }));
         setOrigenVentaLocked(!!origen);

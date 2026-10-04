@@ -1,4 +1,5 @@
 const { query } = require('../config/db')
+const { asegurarLocal } = require('./waMediaFallback')
 const emailService = require('../services/email.service')
 const webhookService = require('../services/webhook.service')
 
@@ -318,6 +319,7 @@ class FlowEngine {
       case 'mediaNode': {
         const fs = require('fs')
         const filePath = node.data?.filePath
+        if (filePath) await asegurarLocal(filePath)
         if (filePath && fs.existsSync(filePath)) {
           const buffer = fs.readFileSync(filePath)
           try {

@@ -11,7 +11,7 @@ const iniciales = () => {
 const numero = n => Number(n || 0).toLocaleString('es-EC');
 const coloresEtapas = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b', '#84cc16', '#f97316'];
 const porcentaje = (n, total) => total ? `${(n / total * 100).toFixed(1)}%` : '—';
-const etiquetas = { responsable: 'Responsable', origen: 'Origen', etapa: 'Etapa', buscar: 'Búsqueda', bitrix_id: 'ID Bitrix', phone: 'Teléfono', fecha: 'Fecha de creación', city: 'Ciudad', pipeline: 'Pipeline', comentario: 'Comentario', razon_descarte: 'Razón de descarte', motivo_atc: 'Motivo ATC' };
+const etiquetas = { responsable: 'Responsable', origen: 'Origen', etapa: 'Etapa', buscar: 'Búsqueda', bitrix_id: 'ID Bitrix', phone: 'Teléfono', fecha: 'Fecha de creación', city: 'Ciudad', comentario: 'Comentario', razon_descarte: 'Razón de descarte', motivo_atc: 'Motivo ATC' };
 const campo = 'mt-1 block w-full border border-slate-200 bg-slate-50 rounded-xl px-3 py-2.5 text-sm font-normal focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500';
 function exportar(nombre, filas) {
   if (!filas.length) return;

@@ -10,6 +10,7 @@ const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMater
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
 const { initReconciliacionBitrix } = require('./jobs/reconciliacionBitrix.cron');
+const { initColaGestionables } = require('./jobs/colaGestionables.cron');
 const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
 const { initContactabilidadTiempoReal } = require('./jobs/contactabilidadTiempoReal.cron');
 const { initNexoIa } = require('./jobs/nexoIa.cron');
@@ -56,6 +57,7 @@ server.listen(process.env.PORT, async () => {
   initNexoIa();
   initWinTrackerSync();
   initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
+  initColaGestionables();        // entrega cada minuto los leads que esperan en la estación (reparto de gestionables)
   iniciarWhatsApp();
 });
 

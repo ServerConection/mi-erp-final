@@ -37,6 +37,7 @@ const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const planesCatalogoRoutes         = require('./routes/planes-catalogo.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
+const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const consultorVelsaRoutes         = require('./routes/consultorVelsa.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
@@ -90,7 +91,7 @@ app.use((req, res, next) => {
   // SU dominio (bitrix24.es). SAMEORIGIN se lo bloquearia ("rechazo la
   // conexion" en el navegador), por eso estas dos rutas quedan afuera.
   const esEmbedBitrixSinFrameOptions = [
-    '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox',
+    '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox', '/api/bitrix-connector/placement-call',
     '/api/bitrix-connector-velsa/install', '/api/bitrix-connector-velsa/settings', '/api/bitrix-connector-velsa/placement-inbox',
   ].some((p) => req.path.startsWith(p));
   if (!esEmbedBitrixSinFrameOptions) {
@@ -129,6 +130,9 @@ app.set('trust proxy', 1);
 // los eventos desde una sola IP y el limite por IP lo cortaria en horas pico.
 // Se autentica con token propio por empresa y trae su propio parser de cuerpo.
 app.use(contactabilidadWebhookRoutes);
+// Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
+app.use('/api/control-asistencia', controlAsistenciaRoutes);
+
 
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
 const rateLimit = require('./middleware/rateLimit');
@@ -142,6 +146,7 @@ app.use(rateLimit);
 // El limite general de 10mb se deja igual porque hay modulos que suben
 // imagenes y hojas grandes.
 app.use(['/api/auth', '/api/otp'], express.json({ limit: '64kb' }));
+app.use('/api/bitrix-connector/placement-call', express.urlencoded({ limit: '32kb', extended: false, parameterLimit: 20 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));

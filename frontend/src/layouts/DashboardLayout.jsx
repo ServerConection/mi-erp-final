@@ -8,7 +8,7 @@ const API = import.meta.env.VITE_API_URL;
 // ─────────────────────────────────────────────────────────────────────────────
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
-const RUTAS_PUBLICAS = ['/guia-planes', '/broadcast']; // ✅ FIX: era '/guia-comercial'
+const RUTAS_PUBLICAS = ['/broadcast'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET SINGLETON
@@ -320,11 +320,26 @@ function BroadcastOverlay({ mensaje, onClose }) {
 const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
+const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
+const RUTAS_INDICADORES = new Set([
+  '/indicadores',
+  '/reporte-detalle-novonet',
+  '/comparativa-supervisores',
+  '/indicadores-velsa',
+  '/indicadores-semillero',
+  '/reporte-detalle-velsa',
+]);
+
+const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
+  if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
+  if (RUTAS_INDICADORES.has(ruta)) return true;
+  return perfil === 'ATC' && ruta === '/vista-backoffice';
+};
 
 // Lista de IDs de grupos colapsables — se usa para inicializar openGroups
 const GROUP_IDS = [
   "indicadores", "vista-asesor", "seguimiento", "redes", "ventas",
-  "backoffice", "reportes", "resumenes", "administracion", "formularios",
+  "backoffice", "reportes", "resumenes", "administracion",
   "broadcast", "wabot", "diversion",
 ];
 
@@ -379,7 +394,7 @@ const ALL_MENU_ITEMS = [
   // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
   { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
-    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR', 'ANALISTA'].includes(p),
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ATC'].includes(p),
     isChild: true, group: "backoffice" },
 
   // ── Resumenes ────────────────────────────────────────────────────────────
@@ -391,7 +406,7 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
-  { name: "Gestionables por asesor", path: "/gestionables-asesores", icon: "📋",
+  { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables() },
 
   // ── Administración ───────────────────────────────────────────────────────
@@ -407,11 +422,13 @@ const ALL_MENU_ITEMS = [
   // Reporte Gerencial: inversion, costo por venta y margen. Direccion y admin.
   { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
+  { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
+    accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
+  { name: "Control Asistencia", path: "/control-asistencia", icon: "🕘",
+    accessCheck: (p) => ['ADMINISTRADOR','GERENCIA','SUPERVISOR','ATC'].includes((p || '').toUpperCase()), isChild: true, group: "administracion" },
 
-  // ── Formularios y guías ──────────────────────────────────────────────────
-  { name: "Formularios", path: null, icon: "📋", isGroup: true, groupId: "formularios" },
-  { name: "Guía Comercial", path: "/guia-planes", icon: "📖", permiso: null, isChild: true, group: "formularios" },
-  { name: "JOT Formulario", path: "/jot-formulario",    icon: "📋", permiso: null, isChild: true, group: "formularios" },
+  // Formularios fue retirado únicamente del menú lateral. Las rutas y sus
+  // interfaces se mantienen intactas para no eliminar su implementación.
 
   // ── Broadcast por canal — acceso según empresa + perfil ─────────────────
   { name: "Broadcast", path: null, icon: "📡", isGroup: true, groupId: "broadcast" },
@@ -503,7 +520,7 @@ export default function DashboardLayout() {
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
         setPermisos(parsedUser.permisos);
       } else {
-        if (!RUTAS_PUBLICAS.includes(location.pathname) && !(location.pathname === '/llamadas' && perfil && !['ASESOR', 'USUARIO'].includes(perfil))) {
+        if (!PERFILES_MENU_RESTRINGIDO.has(perfil) && !RUTAS_PUBLICAS.includes(location.pathname) && !(location.pathname === '/llamadas' && perfil && !['ASESOR', 'USUARIO'].includes(perfil))) {
           console.warn("Sin permisos definidos → cerrando sesión");
           navigate("/login");
         }
@@ -546,13 +563,26 @@ export default function DashboardLayout() {
   // ── Proteger rutas ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
+    const p = (user.perfil  || '').trim().toUpperCase();
+    const e = (user.empresa || '').toUpperCase();
+
+    // ATC trabaja exclusivamente en Indicadores y Backoffice; ANALISTA,
+    // exclusivamente en Indicadores. Esto también bloquea URLs escritas a mano.
+    if (!rutaPermitidaPerfilRestringido(p, location.pathname)) {
+      navigate('/indicadores', { replace: true });
+      return;
+    }
+
+    // ATC y ANALISTA usan una lista cerrada de rutas definida arriba. Una vez
+    // validada la ruta no se deben volver a evaluar sus permisos individuales:
+    // algunas cuentas conservan permisos antiguos/incompletos y eso provocaba
+    // un ciclo /indicadores -> / -> /indicadores (parpadeo y salto vertical).
+    if (PERFILES_MENU_RESTRINGIDO.has(p)) return;
+
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
 
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
-
-    const p = (user.perfil  || '').toUpperCase();
-    const e = (user.empresa || '').toUpperCase();
 
     // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
@@ -587,6 +617,14 @@ export default function DashboardLayout() {
   if (!user) return null;
 
   const passaAcceso = (item) => {
+    const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
+      // Para estos perfiles la lista es cerrada y no depende de permisos
+      // individuales: deben ver todas las opciones del grupo Indicadores.
+      if (item.isChild && item.group === 'indicadores') return true;
+      return perfil === 'ATC' && item.path === '/vista-backoffice';
+    }
+
     // El perfil TV solo ve el grupo Seguimiento y la vista de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();

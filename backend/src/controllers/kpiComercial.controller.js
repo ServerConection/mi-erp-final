@@ -33,7 +33,10 @@
 const pool = require('../config/db');
 const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 // Fuente única de verdad de etapas (leads totales / gestionables / descarte):
-const { sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr, esIngresoJotformExpr } = require('../shared/etapas');
+const {
+  sumaReporteExpr, esLeadTotalExpr, esGestionableExpr, esPorRegularizarExpr,
+  esIngresoJotformExpr, esIngresoJotformAcidoExpr,
+} = require('../shared/etapas');
 
 const errorResponse = (res, etiqueta, err) => {
   console.error(`[KpiComercial][${etiqueta}]`, err.message);
@@ -129,15 +132,25 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
-        -- INGRESOS JOTFORM (regla de gerencia 2026-09-10): no cuenta DUPLICADO
-        -- ni PRESERVICIO/DESISTE DEL SERVICIO/FIN DE GESTION. Antes era
-        -- COUNT(*) sin más condición que el rango de fecha (mismo fix que
-        -- indicadores.controller.js / indicadoresVelsaMaterialized.controller.js).
+        -- INGRESOS TOTALES JOT: cuenta todos los registros creados en el rango,
+        -- sin excluir por etapa CRM ni por estado Jotform. Debe coincidir con
+        -- el indicador global del dashboard en NOVONET y VELSA.
+        COUNT(*) FILTER (
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
+        )                                                  AS ingresos_jot,
+
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
               AND ${esIngresoJotformExpr('mb.b_etapa_de_la_negociacion', 'mb.j_netlife_estatus_real')}
-        )                                                  AS ingresos_jot,
+        )                                                  AS ingresos_jot_efectivo,
+
+        COUNT(*) FILTER (
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
+              AND ${esIngresoJotformAcidoExpr('mb.j_netlife_estatus_real')}
+        )                                                  AS ingresos_jot_acido,
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango
         COUNT(*) FILTER (
@@ -249,6 +262,8 @@ const derivar = (f) => {
     pct_gestion_vs_total: pct(f.leads_gestion, f.leads_total),
     pct_efect_vs_leads:   pct(f.ingresos_jot,  f.leads_total),
     pct_efect_vs_gestion: pct(f.ingresos_jot,  f.leads_gestion),
+    pct_efectividad_efectiva: pct(f.ingresos_jot_efectivo, f.leads_gestion),
+    pct_efectividad_acida:    pct(f.ingresos_jot_acido,    f.leads_gestion),
     pct_descarte:         pct(f.descarte_n,    f.leads_gestion),
     pct_tasa_activacion:  pct(f.activas_totales, f.ingresos_jot),
     // Los tres van sobre INGRESOS JOTFORM del rango, según definió gerencia
@@ -260,6 +275,7 @@ const derivar = (f) => {
 
 const CAMPOS_SUMA = [
   'leads_total', 'leads_gestion', 'ingresos_crm', 'descarte_n', 'ingresos_jot',
+  'ingresos_jot_efectivo', 'ingresos_jot_acido',
   'activas_totales', 'activa_mes', 'activas_backlog', 'tercera_edad_n',
   'tarjeta_n', 'planes_150_200_n', 'por_regularizar',
   'meta_leads_total', 'meta_leads_gestion', 'meta_ingresos_jot', 'meta_activas_totales',

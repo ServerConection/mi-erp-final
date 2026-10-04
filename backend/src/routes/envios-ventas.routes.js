@@ -27,6 +27,7 @@ const crypto  = require('crypto');
 const { subirArchivo, obtenerArchivo, rutaInterna, configurado, estado } = require('../utils/storageClient');
 const { validarArchivo, mimeSeguroPorExtension } = require('../utils/fileSignature');
 const { crearRateLimit } = require('../utils/rateLimit');
+const { notificarNuevaVenta } = require('../services/ventaEmail.service');
 
 // Todas las rutas requieren token válido
 router.use(verificarToken);
@@ -130,7 +131,7 @@ const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso'];
 
 // Columnas editables que acepta el INSERT/UPDATE (todo excepto sistema/auto)
 const COLUMNAS_VENTA = [
-  'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado', 'supervisor',
+  'usuario', 'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado', 'supervisor',
   'origen_venta', 'venta_nueva_o_reingreso', 'turno',
   'nombre_atc', 'clausulas', 'lider_comercial',
   'tipo_cliente', 'genero_cliente', 'tipo_documento',
@@ -142,17 +143,32 @@ const COLUMNAS_VENTA = [
   'direccion_calles', 'direccion_manzana_villa',
   'referencia_ubicacion', 'coordenadas_gps',
   'tipo_vivienda', 'regimen_vivienda',
-  'plan_contratado_final', 'servicios_digitales',
+  'plan_contratado_final', 'plan_contratado', 'velocidad_plan', 'servicios_digitales',
   'forma_pago', 'detalle_bancario_ahorros',
   'valor_pago', 'tipo_contrato', 'links_documentos',
   'banco', 'tipo_cuenta', 'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
-  'resumen_venta', 'foto_cedula_frontal', 'foto_cedula_trasera',
+  'resumen_venta', 'novedades_atc', 'foto_cedula_frontal', 'foto_cedula_trasera',
   'foto_carnet', 'archivo_resumen', 'archivo_planilla',
   'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
 ];
 
 const t = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();
+
+const extraerVelocidadPlan = (plan, velocidadActual) => {
+  const textoPlan = String(plan || '');
+  const match = textoPlan.match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+  if (match) return `${match[1]} ${match[2]}`.replace(/\s+/g, ' ').trim();
+  const velocidad = t(velocidadActual);
+  return velocidad && /\d/.test(velocidad) ? velocidad : null;
+};
+
+const normalizarPlanSeparado = (body) => {
+  const partes = String(body.plan_contratado_final || '').split(' — ');
+  if (partes.length > 1) body.plan_contratado = partes[0].trim() || null;
+  else if (!body.plan_contratado) body.plan_contratado = partes[0].trim() || null;
+  body.velocidad_plan = extraerVelocidadPlan(body.plan_contratado_final, body.velocidad_plan);
+};
 
 // ─── POST /api/envios-ventas/upload ──────────────────────────────────────────
 // Sube un documento (cédula frontal/trasera, carnet o resumen) al servidor de
@@ -397,7 +413,7 @@ router.get('/', noAsesor, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id, estatus_envio, ip_origen, fecha_registro_sistema,
-             codigo_asesor, id_bitrix, distribuidor_autorizado, supervisor,
+             usuario, codigo_asesor, id_bitrix, distribuidor_autorizado, supervisor,
              origen_venta, venta_nueva_o_reingreso, turno
       FROM public.envios_ventas
       WHERE estatus_envio != 'BORRADOR'
@@ -420,10 +436,13 @@ router.post('/', async (req, res) => {
     const esAsesor   = (req.user?.perfil || '').toUpperCase() === 'ASESOR';
     const esBorrador = String(b.accion || '').toUpperCase() === 'BORRADOR';
 
+    // La identidad siempre sale de la sesión autenticada, no del navegador.
+    b.usuario = req.user.usuario || null;
+    b.codigo_asesor = req.user.codigo_vendedor || null;
+
     if (esAsesor) {
       // Asesores: BORRADOR si lo piden explícitamente, si no PENDIENTE (venta final)
       b.estatus_envio = esBorrador ? 'BORRADOR' : 'PENDIENTE';
-      if (!b.codigo_asesor) b.codigo_asesor = req.user.usuario || req.user.nombre || '';
       if (!b.nombre_atc)    b.nombre_atc    = req.user.nombre  || req.user.usuario || '';
     } else if (!b.estatus_envio) {
       b.estatus_envio = esBorrador ? 'BORRADOR' : 'PENDIENTE';
@@ -452,6 +471,7 @@ router.post('/', async (req, res) => {
     }
 
     b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
+    normalizarPlanSeparado(b);
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
     const placeholdersVenta = COLUMNAS_VENTA.map((_, i) => `$${i + 5}`).join(', ');
 
@@ -465,14 +485,24 @@ router.post('/', async (req, res) => {
         CASE WHEN $1 = 'BORRADOR' THEN NULL
           ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date END
       )
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
+      RETURNING *
     `, [t(b.estatus_envio), ip_origen, fecha_registro_sistema, req.user.id, ...valores]);
 
     console.log(`[ENVIOS-VENTAS] ${b.estatus_envio === 'BORRADOR' ? 'Borrador guardado' : 'Nueva venta'} id=${rows[0].id} por ${req.user.usuario} (${esAsesor ? 'ASESOR' : 'ADMIN'})`);
+    let notificacionCorreo = null;
+    if (b.estatus_envio !== 'BORRADOR') {
+      try {
+        notificacionCorreo = await notificarNuevaVenta(rows[0], req.user);
+      } catch (errorCorreo) {
+        console.error(`[ENVIOS-VENTAS] Venta #${rows[0].id} guardada, pero falló el correo:`, errorCorreo.message);
+        notificacionCorreo = { enviado: false, error: 'La venta se guardó, pero no se pudo enviar la notificación por correo.' };
+      }
+    }
     res.status(201).json({
       success: true,
       data: rows[0],
       mensaje: b.estatus_envio === 'BORRADOR' ? 'Borrador guardado correctamente' : 'Venta registrada correctamente',
+      notificacion_correo: notificacionCorreo,
     });
 
   } catch (e) {
@@ -489,6 +519,10 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const b = req.body;
     const esBorrador = String(b.accion || '').toUpperCase() === 'BORRADOR';
+
+    // También al finalizar un borrador se impone la identidad de su sesión.
+    b.usuario = req.user.usuario || null;
+    b.codigo_asesor = req.user.codigo_vendedor || null;
 
     const { rows: existentes } = await pool.query(
       `SELECT id, usuario_id, estatus_envio FROM public.envios_ventas WHERE id = $1`,
@@ -513,6 +547,7 @@ router.put('/:id', async (req, res) => {
 
     const sets = COLUMNAS_VENTA.map((c, i) => `${c} = $${i + 2}`).join(', ');
     b.representante_legal = b.tipo_documento === 'RUC EMPRESA' ? t(b.representante_legal) : null;
+    normalizarPlanSeparado(b);
     const valores = COLUMNAS_VENTA.map(c => t(b[c]));
 
     const { rows } = await pool.query(`
@@ -523,14 +558,24 @@ router.put('/:id', async (req, res) => {
             ELSE (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date
           END
       WHERE id = $1
-      RETURNING id, estatus_envio, fecha_registro_sistema, codigo_asesor, id_bitrix
+      RETURNING *
     `, [id, ...valores, nuevoEstatus]);
 
     console.log(`[ENVIOS-VENTAS] ${nuevoEstatus === 'BORRADOR' ? 'Borrador actualizado' : 'Borrador finalizado (CARGADO)'} id=${id} por ${req.user.usuario}`);
+    let notificacionCorreo = null;
+    if (nuevoEstatus !== 'BORRADOR') {
+      try {
+        notificacionCorreo = await notificarNuevaVenta(rows[0], req.user);
+      } catch (errorCorreo) {
+        console.error(`[ENVIOS-VENTAS] Venta #${rows[0].id} finalizada, pero falló el correo:`, errorCorreo.message);
+        notificacionCorreo = { enviado: false, error: 'La venta se guardó, pero no se pudo enviar la notificación por correo.' };
+      }
+    }
     res.json({
       success: true,
       data: rows[0],
       mensaje: nuevoEstatus === 'BORRADOR' ? 'Borrador actualizado' : 'Venta cargada correctamente',
+      notificacion_correo: notificacionCorreo,
     });
   } catch (e) {
     console.error('[ENVIOS-VENTAS] update:', e.message);

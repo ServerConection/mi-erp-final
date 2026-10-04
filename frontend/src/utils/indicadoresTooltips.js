@@ -48,7 +48,16 @@ export const TOOLTIPS_INDICADORES = {
     "Todos los ingresos JOT registrados dentro del rango, sin excluir estados. Es la base usada para los cálculos del tablero.",
 
   ingresosJotEfectivo:
-    "Indicador visual de ingresos JOT que excluye Preservicio, Fin de gestión, Desiste de Servicio y sus variantes, Duplicado y Sin Asunto.",
+    "Ingresos JOT del rango menos Preservicio, Fin de gestión, Desiste/Descarte de servicio y Duplicado (incluye variantes de escritura).",
+
+  ingresosJotAcido:
+    "Ingresos JOT del rango cuyo estado es únicamente ACTIVO, ASIGNADO o PREPLANIFICADO.",
+
+  efectividadEfectiva:
+    "Ingresos JOT efectivos ÷ leads gestionables × 100, dentro del período y filtros aplicados.",
+
+  efectividadAcida:
+    "Ingresos JOT ácidos (ACTIVO + ASIGNADO + PREPLANIFICADO) ÷ leads gestionables × 100.",
 
   activaMes:
     "De las activadas en el rango, las que ADEMÁS se registraron en Jotform dentro del mismo rango: vendido y activado en el mismo mes.",

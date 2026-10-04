@@ -1201,6 +1201,12 @@ class BaileysManager {
     } catch (e) { /* ignorar */ }
   }
 
+  async startCall(lineId, to, { video = false } = {}) {
+    const error = new Error('Baileys no soporta llamadas salientes; abre el contacto en WhatsApp')
+    error.code = 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED'
+    throw error
+  }
+
   async sendText(lineId, to, text, { inboxNoteId, messageId } = {}) {
     const inst = this.instances[lineId]
     if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)

@@ -19,6 +19,7 @@ const TIPO_INMUEBLE = ["CASA NO REQUIERE LIBERAR", "EDIFICIO", "CONJUNTO", "PARA
 const DESCUENTO_3ERA = ["NO", "SÍ — POR 3RA EDAD"];
 const TIPO_VIV = ["ARRENDADA", "PROPIA", "DE UN FAMILIAR"];
 const FORMAS_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
+const FIRMA_BIOMETRICA = ["FIRMO BIOMETRICO", "FALTA BIOMETRICO"];
 // Tipos de plan = pestañas del Excel de precios + venta de solo servicio adicional
 const SOLO_ADICIONAL = "SOLO SERVICIO ADICIONAL";
 const TIPOS_PLAN = ["HOME", "TERCERA EDAD", "GAMER", "PRO", "PYME", SOLO_ADICIONAL];
@@ -90,7 +91,7 @@ function calcularEdad(fechaISO) {
 
 // ─── Estado inicial ──────────────────────────────────────────────────────────
 const INIT = {
-  codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
+  usuario: "", codigo_asesor: "", id_bitrix: "", distribuidor_autorizado: "",
   supervisor: "",
   tipo_cliente: "", tipo_documento: "", numero_identificacion: "",
   apellidos_cliente: "", nombres_cliente: "",
@@ -106,6 +107,7 @@ const INIT = {
   tipo_plan: "", plan_contratado_final: "",
   servicios_digitales: "", servicio_adicional: "",
   origen_venta: "",
+  clausulas: "",
   observacion_venta: "",
   // ── Datos para el resumen de venta auto-generado ──
   precio_regular_sin_imp: "", precio_regular: "", precio_promocion: "", meses_promocion: "", porcentaje_descuento: "",
@@ -119,21 +121,37 @@ const INIT = {
 };
 
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
-function generarResumenVenta(form, user) {
+function generarResumenVenta(form, user, opcion = null) {
   const trato = form.genero_cliente === "MUJER" ? "Sra" : "Sr";
   const nombreCliente = (form.nombre_cliente_completo && form.tipo_documento === 'RUC EMPRESA')
     ? form.nombre_cliente_completo.trim()
     : `${form.apellidos_cliente} ${form.nombres_cliente}`.trim() || "—";
-  const asesor = user.nombre || user.usuario || form.codigo_asesor || "—";
+  const asesor = user.nombre || user.usuario || form.usuario || "—";
   const plan = [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" ") || "—";
   const servicios = (form.servicios_digitales || "")
     .split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
-  const serviciosTxt = servicios.length
-    ? servicios.map(s => `-    ${s}`).join("\n")
+  const adicionales = (form.servicio_adicional || "")
+    .split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  const serviciosResumen = [...servicios, ...adicionales]
+    .filter((servicio, index, lista) => lista.indexOf(servicio) === index);
+  const serviciosTxt = serviciosResumen.length
+    ? serviciosResumen.map(s => `-    ${s}`).join("\n")
     : "-    —";
   const leySi = form.beneficios_de_ley === "SI" ? "X" : " ";
   const leyNo = form.beneficios_de_ley === "SI" ? " " : "X";
   const plazo = form.plazo_contrato_meses || "36";
+
+  // Lo que muestra "Incluye" (catálogo) + lo que el asesor escriba a mano
+  const incluidos = [
+    opcion?.velocidad && `Velocidad: ${opcion.velocidad}`,
+    opcion?.equipo && `Equipo: ${opcion.equipo}`,
+    opcion?.plan_promocion && `Promo del plan: ${opcion.plan_promocion}`,
+  ].filter(Boolean);
+  const manuales = (form.beneficios_adicionales || "")
+    .split(/\n/).map(s => s.trim()).filter(Boolean);
+  const beneficios = [...incluidos, ...manuales];
+  const beneficiosTxt = (beneficios.length ? beneficios : ["—"])
+    .map(s => `•    ${s}`).join("\n");
 
   return [
     `👤 Cliente: ${trato} ${nombreCliente}`,
@@ -150,7 +168,7 @@ function generarResumenVenta(form, user) {
     `⏳Costo de instalación: ${form.costo_instalacion ? `$${form.costo_instalacion} + IVA` : "—"}`,
     `⏳Descuento en instalación: ${form.descuento_instalacion || "—"}`,
     `✅Beneficios adicionales:`,
-    (form.beneficios_adicionales || "—").split(/\n/).map(s => `•    ${s}`).join("\n"),
+    beneficiosTxt,
     `•    ✍🏼Beneficios de Ley: SI (    ${leySi}    ) NO (    ${leyNo}    )`,
     `⚠️Importante: En caso de cancelación anticipada, se cobrará el proporcional de todas las promociones recibidas por el tiempo que faltase para los ${plazo} meses de su contrato`,
   ].join("\n");
@@ -633,7 +651,10 @@ export default function NuevaVenta() {
   const [validandoBitrix, setValidandoBitrix] = useState(false);
   const [bitrixOrigenes, setBitrixOrigenes] = useState([]);
   const [modalCamposFaltantes, setModalCamposFaltantes] = useState([]);
+  const [modalError, setModalError] = useState(null);
   const [alertaDescuento, setAlertaDescuento] = useState(null);
+  const [refrescando, setRefrescando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
   const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
@@ -710,15 +731,16 @@ export default function NuevaVenta() {
   }, [borradorId]);
 
   // ── Catálogo mensual de planes (viene del Excel que carga el admin) ────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${API}/api/planes-catalogo`, { headers: { Authorization: `Bearer ${token}` } });
-        const d = await r.json();
-        if (d.success) { setCatalogo(d.data || []); setVigenciaCat(d.vigencia || null); }
-      } catch { /* sin catálogo → los campos quedan de texto libre */ }
-    })();
-  }, []);
+  // ── Catálogo mensual de planes (viene del Excel que carga el admin) ────────
+  const cargarCatalogo = async () => {
+    try {
+      const r = await fetch(`${API}/api/planes-catalogo`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (d.success) { setCatalogo(d.data || []); setVigenciaCat(d.vigencia || null); }
+    } catch { /* sin catálogo */ }
+  };
+
+  useEffect(() => { cargarCatalogo(); }, []);
 
   useEffect(() => {
     (async () => {
@@ -803,11 +825,31 @@ export default function NuevaVenta() {
   const distribuidorDelUsuario = (user.empresa || "").toUpperCase();
   const distribuidorLocked = DISTRIBUIDORES.includes(distribuidorDelUsuario);
 
+  // Un reinicio dentro de la misma vista no vuelve a ejecutar el efecto de
+  // montaje. Por eso el estado inicial debe incluir también la identidad y la
+  // empresa del usuario; de ella depende la lista visible de supervisores.
+  const crearFormularioVacioParaUsuario = () => ({
+    ...INIT,
+    usuario: user.usuario || "",
+    nombre_atc: user.nombre || user.usuario || "",
+    distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : "",
+  });
+
+  const reiniciarFormulario = () => {
+    setForm(crearFormularioVacioParaUsuario());
+    setErrs({});
+    setAlert(null);
+    setResumenEditado(false);
+    setOrigenVentaLocked(false);
+    setUploadErr({});
+    uploadFilesRef.current = {};
+  };
+
   // Pre-llenar código asesor + distribuidor desde el usuario logueado
   useEffect(() => {
     setForm(f => ({
       ...f,
-      codigo_asesor: f.codigo_asesor || user.usuario || user.codigo || "",
+      usuario: user.usuario || f.usuario || "",
       nombre_atc: f.nombre_atc || user.nombre || user.usuario || "",
       distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : f.distribuidor_autorizado,
     }));
@@ -897,6 +939,15 @@ export default function NuevaVenta() {
       ? ` + BENEFICIO ADICIONAL POR SECTOR${form.detalle_beneficio_sector ? `: ${form.detalle_beneficio_sector}` : ""}`
       : "";
 
+    if (form.sector_beneficiado === "SI") {
+      setForm((actual) => ({
+        ...actual,
+        costo_instalacion: "0.00",
+        descuento_instalacion: `100%`,
+      }));
+      return;
+    }
+
     if (form.forma_pago === "EFECTIVO") {
       setForm((actual) => ({
         ...actual,
@@ -941,17 +992,13 @@ export default function NuevaVenta() {
   }, [calificaPara3raEdad]);
 
   // El resumen se regenera automáticamente mientras el asesor no lo edite a mano
+  const resumenAutomatico = generarResumenVenta(form, user, opcionSel);
   useEffect(() => {
     if (resumenEditado) return;
-    setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) }));
-  }, [
-    form.apellidos_cliente, form.nombres_cliente, form.nombre_cliente_completo, form.genero_cliente,
-    form.plan_contratado_final, form.tipo_plan, form.servicios_digitales,
-    form.precio_regular_sin_imp, form.precio_regular, form.precio_promocion, form.meses_promocion, form.porcentaje_descuento,
-    form.forma_pago, form.banco, form.ciclo_facturacion, form.costo_instalacion,
-    form.descuento_instalacion, form.beneficios_adicionales, form.beneficios_de_ley,
-    form.plazo_contrato_meses, resumenEditado,
-  ]);
+    setForm(f => f.resumen_venta === resumenAutomatico
+      ? f
+      : ({ ...f, resumen_venta: resumenAutomatico }));
+  }, [resumenAutomatico, resumenEditado]);
 
   // ── Subida de documentos (cédula frontal/trasera, carnet, resumen firmado) ──
   // El archivo elegido se conserva en memoria (uploadFilesRef) hasta que la
@@ -1061,13 +1108,13 @@ export default function NuevaVenta() {
       numero_identificacion: "Número de identificación",
       apellidos_cliente: "Apellidos del cliente",
       nombres_cliente: "Nombres del cliente",
-        nombre_cliente_completo: "Nombre de la empresa",
-        genero_cliente: "Género",
-        estado_civil: "Estado civil",
-        fecha_nacimiento: "Fecha de nacimiento",
-        tipo_inmueble: "Tipo de inmueble",
-        aplica_descuento_3ra_edad: "Descuento de tercera edad",
-        regimen_vivienda: "Régimen de vivienda",
+      nombre_cliente_completo: "Nombre de la empresa",
+      genero_cliente: "Género",
+      estado_civil: "Estado civil",
+      fecha_nacimiento: "Fecha de nacimiento",
+      tipo_inmueble: "Tipo de inmueble",
+      aplica_descuento_3ra_edad: "Descuento de tercera edad",
+      regimen_vivienda: "Régimen de vivienda",
 
       calle_principal: "Calle principal",
       provincia: "Provincia",
@@ -1088,6 +1135,7 @@ export default function NuevaVenta() {
       plazo_contrato_meses: "Plazo del contrato",
 
       origen_venta: "Origen de venta",
+      clausulas: "Firma biométrica",
     };
 
     // ── Campos obligatorios ─────────────────────────────────────────────────
@@ -1224,6 +1272,9 @@ export default function NuevaVenta() {
     if (!form.origen_venta)
       e.origen_venta = "Requerido";
 
+    if (!form.clausulas)
+      e.clausulas = "Requerido";
+
 
     // ── Guardar errores ──────────────────────────────────────────────────────
 
@@ -1249,34 +1300,62 @@ export default function NuevaVenta() {
 
   // ── Validar ID Bitrix ──────────────────────────────────────────────────────
   const validarIdBitrix = async (idBitrix) => {
-    if (!idBitrix || idBitrix.trim() === "") {
+    const idBitrixNormalizado = String(idBitrix || "").trim();
+    const esDistribuidorVelsa = String(form.distribuidor_autorizado || "")
+      .trim()
+      .toUpperCase()
+      .includes("VELSA");
+
+    if (!idBitrixNormalizado) {
       setOrigenVentaLocked(false);
       return true; // No validar si está vacío
     }
 
+    if (esDistribuidorVelsa) {
+      setOrigenVentaLocked(false);
+      setAlert({
+        tipo: "ok",
+        msg: "✓ Velsa: se permite continuar aunque el ID Bitrix no exista en la tabla."
+      });
+      return true;
+    }
+
     setValidandoBitrix(true);
     try {
-      const res = await fetch(`${API}/api/bitrix/validar-venta/${idBitrix}`, {
+      const res = await fetch(`${API}/api/bitrix/validar-venta/${encodeURIComponent(idBitrixNormalizado)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
 
-      if (!data.existe) {
+      const esDistribuidorVelsa = String(form.distribuidor_autorizado || "")
+        .trim()
+        .toUpperCase()
+        .includes("VELSA");
+
+       if (!data.existe) {
         setOrigenVentaLocked(false);
         // Restricción desactivada: se permite registrar el ID Bitrix aunque no esté en VENTA SUBIDA
+        return true;
+      } else {
         return true;
       } else {
         const origen = (data.data.source || "").toUpperCase();
         setForm(f => ({ ...f, origen_venta: origen || f.origen_venta }));
         setOrigenVentaLocked(!!origen);
+        const empresa = String(data.data.empresa || "").toUpperCase();
+        const mensajeOk = esDistribuidorVelsa || empresa.includes("VELSA")
+          ? `✓ Lead verificado (Empresa: ${empresa}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""} · Excepción Velsa activa.`
+          : `✓ Lead verificado (Empresa: ${empresa}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""}`;
         setAlert({
           tipo: "ok",
-          msg: `✓ Lead verificado (Empresa: ${data.data.empresa.toUpperCase()}, Creado: ${new Date(data.data.creadoEl).toLocaleDateString()})${origen ? ` · Origen: ${origen}` : ""}`
+          msg: mensajeOk
         });
         return true;
       }
     } catch (error) {
-      setAlert({ tipo: "err", msg: `Error al validar ID Bitrix: ${error.message}` });
+      const mensaje = `Error al validar ID Bitrix: ${error.message}`;
+      setAlert({ tipo: "err", msg: mensaje });
+      setModalError({ titulo: "No se pudo validar el ID Bitrix", mensaje });
       return false;
     } finally {
       setValidandoBitrix(false);
@@ -1293,7 +1372,7 @@ export default function NuevaVenta() {
     }
 
     // Validar que el idBitrix exista si está informado
-    if (form.id_bitrix && form.id_bitrix.trim() !== "") {
+    if (accion === "CARGAR" && form.id_bitrix && form.id_bitrix.trim() !== "") {
       const esValido = await validarIdBitrix(form.id_bitrix);
       if (!esValido) {
         return;
@@ -1304,11 +1383,11 @@ export default function NuevaVenta() {
     try {
       // Construir payload mapeado a columnas de envios_ventas
       // Determinar nombre_cliente_completo: si es empresa use el campo unificado, sino apellidos + nombres
-  const nombre_cliente_completo = form.tipo_documento === 'RUC EMPRESA'
-    ? (form.nombre_cliente_completo || '').trim()
-    : `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
+      const nombre_cliente_completo = form.tipo_documento === 'RUC EMPRESA'
+        ? (form.nombre_cliente_completo || '').trim()
+        : `${form.apellidos_cliente.trim()} ${form.nombres_cliente.trim()}`.trim();
       const direccion_calles = [form.calle_principal, form.calle_secundaria].filter(Boolean).join(" y ");
-      const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user);
+      const resumenFinal = resumenEditado ? form.resumen_venta : generarResumenVenta(form, user, opcionSel);
 
       // Normalizar el valor de aplica_descuento_3ra_edad al formato que espera la BD
       // (la base histórica usa 'SI POR TERCERA EDAD' / 'NO'). Evita violar el CHECK constraint.
@@ -1323,11 +1402,12 @@ export default function NuevaVenta() {
       const payload = {
         accion,
         // asesor
-        codigo_asesor: form.codigo_asesor || null,
+        usuario: form.usuario || user.usuario || null,
         id_bitrix: form.id_bitrix || null,
         distribuidor_autorizado: form.distribuidor_autorizado || null,
         supervisor: form.supervisor || null,
         nombre_atc: user.nombre || user.usuario || null,
+        clausulas: form.clausulas || null,
         // cliente
         tipo_cliente: form.tipo_cliente || null,
         tipo_documento: form.tipo_documento || null,
@@ -1355,6 +1435,12 @@ export default function NuevaVenta() {
         // plan
         forma_pago: form.forma_pago || null,
         plan_contratado_final: [form.tipo_plan, form.plan_contratado_final].filter(Boolean).join(" — ") || null,
+        plan_contratado: form.tipo_plan || null,
+        velocidad_plan: (() => {
+          const match = String(form.plan_contratado_final || "").match(/(\d+(?:[.,]\d+)?)\s*(MBPS?|MEGAS?|GBPS?)/i);
+          if (match) return `${match[1]} ${match[2]}`;
+          return /\d/.test(String(opcionSel?.velocidad || "")) ? opcionSel.velocidad : null;
+        })(),
         servicios_digitales: form.servicios_digitales || null,
         tipo_contrato: form.servicio_adicional || null,
         // resumen de venta
@@ -1374,7 +1460,11 @@ export default function NuevaVenta() {
         archivo_planilla: aplicaDescuento3raEdad ? (form.archivo_planilla || null) : null,
         archivo_nombramiento: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_nombramiento || null) : null,
         archivo_registro_mercantil: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_registro_mercantil || null) : null,
-        archivo_ruc: form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) ? (form.archivo_ruc || null) : null,
+        archivo_ruc:
+          form.tipo_cliente === "NATURAL" &&
+            ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento)
+            ? (form.archivo_ruc || null)
+            : null,
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
@@ -1399,22 +1489,52 @@ export default function NuevaVenta() {
             id: d.data.id,
             nombre: nombre_cliente_completo,
             plan: payload.plan_contratado_final,
+            notificacionCorreo: d.notificacion_correo || null,
           });
-          setForm(INIT);
-          setResumenEditado(false);
+          reiniciarFormulario();
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } else {
-        setAlert({ tipo: "err", msg: d.error || "Error al registrar la venta." });
+        const mensaje = d.error || d.mensaje || "Error al registrar la venta.";
+        setAlert({ tipo: "err", msg: mensaje });
+        setModalError({ titulo: "No se pudo guardar la venta", mensaje });
       }
     } catch {
-      setAlert({ tipo: "err", msg: "Error de conexión con el servidor." });
+      const mensaje = "Error de conexión con el servidor.";
+      setAlert({ tipo: "err", msg: mensaje });
+      setModalError({ titulo: "No se pudo guardar la venta", mensaje });
     } finally { setLoad(null); }
   };
 
   const err = k => errs[k]
     ? <span className="nv-err">⚠ {errs[k]}</span>
     : null;
+
+  const refrescarResumen = async () => {
+    setRefrescando(true);
+    await cargarCatalogo();
+    setResumenEditado(false); // el efecto regenera el resumen con los datos actuales
+    setRefrescando(false);
+  };
+
+  const copiarResumen = async () => {
+    const texto = form.resumen_venta || "";
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      // Respaldo para navegadores sin permiso de portapapeles
+      const ta = document.createElement("textarea");
+      ta.value = texto;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   // ── Success screen ────────────────────────────────────────────────────────
   if (success) return (
@@ -1440,6 +1560,19 @@ export default function NuevaVenta() {
             <p style={{ fontSize: 13, color: "#8B5E3C", marginBottom: 28, maxWidth: 340, margin: "0 auto 28px" }}>
               La venta quedará en revisión del equipo de backoffice. ¡Bien hecho! 🎉
             </p>
+            {success.notificacionCorreo?.enviado && success.notificacionCorreo?.errores_adjuntos?.length ? (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>
+                El correo fue enviado, pero uno o más archivos no pudieron adjuntarse. Informa a soporte para revisar el almacenamiento.
+              </p>
+            ) : success.notificacionCorreo?.enviado ? (
+              <p style={{ fontSize: 12, color: "#166534", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>
+                ✓ Notificación enviada al equipo de ATC con {success.notificacionCorreo.adjuntos || 0} archivo(s) adjunto(s).
+              </p>
+            ) : success.notificacionCorreo?.error ? (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", maxWidth: 420, margin: "0 auto 22px" }}>
+                La venta quedó guardada, pero el correo de aviso no pudo enviarse. Informa a soporte para revisar el servicio de correo.
+              </p>
+            ) : null}
             <button className="nv-btn-submit" style={{ maxWidth: 280, margin: "0 auto" }} onClick={() => setSucc(null)}>
               ➕ Ingresar otra venta
             </button>
@@ -1519,6 +1652,35 @@ export default function NuevaVenta() {
           </div>
         )}
 
+        {modalError && (
+          <div
+            className="nv-modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-error-venta"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalError(null);
+            }}
+          >
+            <div className="nv-modal" style={{ position: "relative", maxWidth: 520 }}>
+              <button
+                type="button"
+                onClick={() => setModalError(null)}
+                aria-label="Cerrar alerta"
+                style={{ position: "absolute", top: 14, right: 16, width: 32, height: 32, border: 0, borderRadius: "50%", background: "#fef2f2", color: "#b91c1c", fontSize: 21, fontWeight: 900, lineHeight: 1, cursor: "pointer" }}
+              >
+                ×
+              </button>
+              <div className="nv-modal-icon">⚠️</div>
+              <h2 id="titulo-error-venta" className="nv-modal-title">{modalError.titulo}</h2>
+              <p className="nv-modal-text" style={{ whiteSpace: "pre-line" }}>{modalError.mensaje}</p>
+              <button type="button" className="nv-modal-btn" onClick={() => setModalError(null)}>
+                Entendido
+              </button>
+            </div>
+          </div>
+        )}
+
         {alertaDescuento && (
           <div
             className="nv-modal-overlay"
@@ -1568,8 +1730,8 @@ export default function NuevaVenta() {
 
           {/* ── 1. Datos del asesor ── */}
           <Seccion num={1} icon="🧑‍💼" label="Datos del asesor">
-            <Row label="Código de asesor">
-              <FIn value={form.codigo_asesor} onChange={set("codigo_asesor")} placeholder="Ej: ATN-0042" />
+            <Row label="Usuario">
+              <FIn value={form.usuario} disabled placeholder="Usuario ERP" />
             </Row>
             <Row label="ID Bitrix">
               <FIn
@@ -1618,14 +1780,14 @@ export default function NuevaVenta() {
             </Row>
             {form.tipo_documento === 'RUC EMPRESA' ? (
               <>
-              <Row label="Nombre de la empresa" required>
-                <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
-                {err("nombre_cliente_completo")}
-              </Row>
-              <Row label="Representante legal">
-                <FIn value={form.representante_legal} onChange={set("representante_legal")}
-                  placeholder="Nombres y apellidos completos del representante legal" />
-              </Row>
+                <Row label="Nombre de la empresa" required>
+                  <FIn value={form.nombre_cliente_completo} onChange={set("nombre_cliente_completo", { preserveCase: true })} placeholder="Escribe el nombre de la empresa" />
+                  {err("nombre_cliente_completo")}
+                </Row>
+                <Row label="Representante legal">
+                  <FIn value={form.representante_legal} onChange={set("representante_legal")}
+                    placeholder="Nombres y apellidos completos del representante legal" />
+                </Row>
               </>
             ) : (
               <>
@@ -1724,7 +1886,13 @@ export default function NuevaVenta() {
               />
             </Row>
             <Row label="Coordenadas GPS">
-              <FIn value={form.coordenadas_gps} onChange={set("coordenadas_gps")} placeholder="-0.1807, -78.4678" />
+              <textarea
+                className="nv-textarea"
+                value={form.coordenadas_gps}
+                onChange={set("coordenadas_gps", { preserveCase: true })}
+                placeholder="Escribe coordenadas, un enlace de Google Maps o cualquier referencia GPS"
+                rows={2}
+              />
             </Row>
           </Seccion>
 
@@ -1812,7 +1980,7 @@ export default function NuevaVenta() {
                     </div>
                   </Row>
                 )}
-                <Row label="Servicio adicional">
+                <Row label="Servicio adicional (Facturados)">
                   <FIn value={form.servicio_adicional} onChange={set("servicio_adicional")}
                     placeholder="Ej: Netlife Defense, Assistance PRO…" />
                 </Row>
@@ -1843,6 +2011,14 @@ export default function NuevaVenta() {
 
           {/* ── 6. Cierre y origen ── */}
           <Seccion num={6} icon="✅" label="Cierre y origen de la venta">
+            <Row label="Firma biométrica" required>
+              <Chips
+                value={form.clausulas}
+                onChange={set("clausulas")}
+                options={FIRMA_BIOMETRICA}
+              />
+              {err("clausulas")}
+            </Row>
             <Row label="Origen de la venta" required>
               {origenVentaLocked ? (
                 <div className="nv-auto">
@@ -1931,7 +2107,7 @@ export default function NuevaVenta() {
               />
             </Row>
             <Row label="Beneficios de Ley" required>
-              <Chips value={aplicaDescuento3raEdad ? "SI" : "NO"} onChange={() => {}} options={BENEFICIOS_LEY} disabledOptions={BENEFICIOS_LEY} />
+              <Chips value={aplicaDescuento3raEdad ? "SI" : "NO"} onChange={() => { }} options={BENEFICIOS_LEY} disabledOptions={BENEFICIOS_LEY} />
               <div style={{ fontSize: 11, color: "#7C3A00", marginTop: 4 }}>
                 Se define automáticamente según el descuento de tercera edad.
               </div>
@@ -1949,14 +2125,36 @@ export default function NuevaVenta() {
                 rows={10}
                 style={{ fontFamily: "monospace", fontSize: 12 }}
               />
-              <button
-                type="button"
-                className="nv-btn-reset"
-                style={{ marginTop: 8, width: "auto", padding: "8px 16px" }}
-                onClick={() => { setResumenEditado(false); setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user) })); }}
-              >
-                🔄 Regenerar automáticamente
-              </button>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={() => {
+                    setForm(f => ({ ...f, resumen_venta: generarResumenVenta(f, user, opcionSel) }));
+                    setResumenEditado(false);
+                  }}
+                >
+                  🔄 Regenerar automáticamente
+                </button>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={refrescarResumen}
+                  disabled={refrescando}
+                >
+                  {refrescando ? "Refrescando…" : "♻️ Refrescar"}
+                </button>
+                <button
+                  type="button"
+                  className="nv-btn-reset"
+                  style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
+                  onClick={copiarResumen}
+                >
+                  {copiado ? "✅ Copiado" : "📋 Copiar"}
+                </button>
+              </div>
             </Row>
             <Row label="Foto cartel">
               <FotoCartel form={form} />
@@ -1965,28 +2163,28 @@ export default function NuevaVenta() {
 
           {/* ── 8. Documentos ── */}
           <Seccion num={8} icon="📎" label="Documentos de respaldo">
-            <Row label="Cédula (frontal)">
+            <Row label="Cédula (frontal) · opcional">
               <FileUpload label="cédula frontal" value={form.foto_cedula_frontal} uploading={uploading.foto_cedula_frontal}
                 error={uploadErr.foto_cedula_frontal} onRetry={() => reintentarSubida("foto_cedula_frontal")}
                 onPick={(file) => subirArchivo("foto_cedula_frontal", file)} />
             </Row>
-            <Row label="Cédula (trasera)">
+            <Row label="Cédula (trasera) · opcional">
               <FileUpload label="cédula trasera" value={form.foto_cedula_trasera} uploading={uploading.foto_cedula_trasera}
                 error={uploadErr.foto_cedula_trasera} onRetry={() => reintentarSubida("foto_cedula_trasera")}
                 onPick={(file) => subirArchivo("foto_cedula_trasera", file)} />
             </Row>
-            <Row label="Foto carnet">
+            <Row label="Foto carnet · opcional">
               <FileUpload label="foto carnet" value={form.foto_carnet} uploading={uploading.foto_carnet}
                 error={uploadErr.foto_carnet} onRetry={() => reintentarSubida("foto_carnet")}
                 onPick={(file) => subirArchivo("foto_carnet", file)} />
             </Row>
-            <Row label="Resumen firmado / foto resumen">
+            <Row label="Resumen firmado / foto resumen · opcional">
               <FileUpload label="resumen" value={form.archivo_resumen} uploading={uploading.archivo_resumen}
                 error={uploadErr.archivo_resumen} onRetry={() => reintentarSubida("archivo_resumen")}
                 onPick={(file) => subirArchivo("archivo_resumen", file)} />
             </Row>
             {aplicaDescuento3raEdad && (
-              <Row label="Planilla">
+              <Row label="Planilla · opcional">
                 <FileUpload label="planilla" value={form.archivo_planilla} uploading={uploading.archivo_planilla}
                   error={uploadErr.archivo_planilla} onRetry={() => reintentarSubida("archivo_planilla")}
                   onPick={(file) => subirArchivo("archivo_planilla", file)} />
@@ -1994,25 +2192,31 @@ export default function NuevaVenta() {
             )}
             {form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" && (
               <>
-                <Row label="Nombramiento">
+                <Row label="Nombramiento · opcional">
                   <FileUpload label="nombramiento" value={form.archivo_nombramiento} uploading={uploading.archivo_nombramiento}
                     error={uploadErr.archivo_nombramiento} onRetry={() => reintentarSubida("archivo_nombramiento")}
                     onPick={(file) => subirArchivo("archivo_nombramiento", file)} />
                 </Row>
-                <Row label="Registro mercantil">
+                <Row label="Registro mercantil · opcional">
                   <FileUpload label="registro mercantil" value={form.archivo_registro_mercantil} uploading={uploading.archivo_registro_mercantil}
                     error={uploadErr.archivo_registro_mercantil} onRetry={() => reintentarSubida("archivo_registro_mercantil")}
                     onPick={(file) => subirArchivo("archivo_registro_mercantil", file)} />
                 </Row>
               </>
             )}
-            {form.tipo_cliente === "JURÍDICO" && ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) && (
-              <Row label="RUC">
-                <FileUpload label="RUC" value={form.archivo_ruc} uploading={uploading.archivo_ruc}
-                  error={uploadErr.archivo_ruc} onRetry={() => reintentarSubida("archivo_ruc")}
-                  onPick={(file) => subirArchivo("archivo_ruc", file)} />
-              </Row>
-            )}
+            {form.tipo_cliente === "NATURAL" &&
+              ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento) && (
+                <Row label="RUC · opcional">
+                  <FileUpload
+                    label="RUC"
+                    value={form.archivo_ruc}
+                    uploading={uploading.archivo_ruc}
+                    error={uploadErr.archivo_ruc}
+                    onRetry={() => reintentarSubida("archivo_ruc")}
+                    onPick={(file) => subirArchivo("archivo_ruc", file)}
+                  />
+                </Row>
+              )}
           </Seccion>
 
           {/* ── Botones de envío ── */}
@@ -2040,7 +2244,7 @@ export default function NuevaVenta() {
                 : <><span>💾</span> Registrar venta (guardar como borrador)</>
               }
             </button>
-            <button className="nv-btn-reset" type="button" onClick={() => { setForm(INIT); setErrs({}); setAlert(null); setResumenEditado(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <button className="nv-btn-reset" type="button" onClick={() => { reiniciarFormulario(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
             </button>
           </div>

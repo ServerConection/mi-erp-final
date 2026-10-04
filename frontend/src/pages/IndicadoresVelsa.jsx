@@ -1528,6 +1528,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={2}  variant="stone" label="% Leads Gestionables"   meta={METAS_COMERCIALES_VELSA.pctGestionables}                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" tooltip={TIP.pctGestionablesVsTotales} />
             <KpiMini index={3}  variant="stone" label="JOT / Leads Tot." meta={METAS_COMERCIALES_VELSA.efectVsLeads}                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" tooltip={TIP.efectividadVsLeadsTotales} />
             <KpiMini index={4}  variant="stone" label="Efectividad"   meta={METAS_COMERCIALES_VELSA.efectVsGestion}                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" tooltip={TIP.efectividad} />
+            <KpiMini index={20} variant="stone" label="Efectividad efectiva" value={`${stats.efectividadEfectiva}%`} color="border-l-emerald-600" tooltip={TIP.efectividadEfectiva} />
+            <KpiMini index={21} variant="stone" label="Efectividad ácida" value={`${stats.efectividadAcida}%`} color="border-l-red-600" tooltip={TIP.efectividadAcida} />
             <KpiMini index={5}  variant="stone" label="Descarte %"           meta={METAS_COMERCIALES_VELSA.descarte}                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" tooltip={TIP.descarte} />
             <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRM, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" tooltip={TIP.ventasCRM} />
             <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRMDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -1535,6 +1537,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotSeg, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosTotJot, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" tooltip={TIP.ingresosReales} />
             <KpiMini index={19} variant="stone" label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-600" tooltip={TIP.ingresosJotEfectivo} />
+            <KpiMini index={22} variant="stone" label="Ingresos Jot Ácido" value={stats.ingresosJotAcido} color="border-l-red-700" tooltip={TIP.ingresosJotAcido} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(METAS_COMERCIALES_VELSA.activasMes, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" tooltip={TIP.activaMes} />
@@ -1792,10 +1795,12 @@ const COLUMNAS_VELSA = [
   { header: 'FECHA DE CARGA A JOT',                    field: 'created_at' },
   { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix_ghl' },
   { header: 'CODIGO EJECUTIVO',                         field: 'codigo_asesor' },
+  { header: 'NOMBRE COMPLETO ASESOR',                    field: 'nombre_completo_asesor' },
   { header: 'PLAN. CASA',                               field: 'plan_casa' },
   { header: 'PLAN. PROFESIONAL.',                       field: 'plan_profesional' },
   { header: 'PLAN PYME',                                field: 'plan_pyme' },
   { header: 'PLAN HOGAR ADULTO MAYOR',                  field: 'plan_hogar_adulto_mayor' },
+  { header: 'PLAN GAMER',                               field: 'plan_gamer' },
   { header: 'APLICA DESCUENTO (3ERA EDAD O CONADIS)',   field: 'aplica_descuento' },
   { header: 'ADICIONAL',                                field: 'servicio_normales' },
   { header: 'LOGIN',                                    field: 'inicio_sesion_netlife' },
@@ -1816,6 +1821,11 @@ function ConsultaDescargaVelsa() {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [asesor, setAsesor] = useState('');
+  const [loginNetlife, setLoginNetlife] = useState('');
+  const [idBitrix, setIdBitrix] = useState('');
+  const [busquedaGeneral, setBusquedaGeneral] = useState('');
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [loading,    setLoading]    = useState(false);
   const [rows,       setRows]       = useState(null);
   const [error,      setError]      = useState(null);
@@ -1823,9 +1833,17 @@ function ConsultaDescargaVelsa() {
   const consultar = async () => {
     setLoading(true); setError(null); setRows(null);
     try {
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`);
+      const params = new URLSearchParams({ fechaDesde, fechaHasta });
+      if (asesor.trim()) params.set('asesor', asesor.trim());
+      if (loginNetlife.trim()) params.set('loginNetlife', loginNetlife.trim());
+      if (idBitrix.trim()) params.set('idBitrix', idBitrix.trim());
+      if (busquedaGeneral.trim()) params.set('busquedaGeneral', busquedaGeneral.trim());
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?${params.toString()}`);
       const result = await res.json();
-      if (result.success) setRows(result.rows || result.registros || []);
+      if (result.success) {
+        setRows(result.rows || result.registros || []);
+        setBusquedaAplicada(busquedaGeneral.trim());
+      }
       else setError(result.error || 'Error al consultar');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -1878,10 +1896,38 @@ function ConsultaDescargaVelsa() {
             <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
               className="border border-stone-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </div>
+          <div className="flex flex-col gap-1 min-w-[175px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Asesor</label>
+            <input value={asesor} onChange={e => setAsesor(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Código/nombre asesor"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Login Netlife</label>
+            <input value={loginNetlife} onChange={e => setLoginNetlife(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Login Netlife"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[145px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">ID Bitrix</label>
+            <input value={idBitrix} onChange={e => setIdBitrix(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="ID Bitrix"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
           <button onClick={consultar} disabled={loading}
             className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
             {loading ? '⏳ Consultando...' : '🔍 Consultar'}
           </button>
+          <div className="flex flex-col gap-1 min-w-[225px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Búsqueda general</label>
+            <input value={busquedaGeneral} onChange={e => setBusquedaGeneral(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Asesor, login, ID negociación o estado"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
           {rows !== null && rows.length > 0 && (
             <button onClick={descargarExcel}
               className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-emerald-600 hover:bg-emerald-700 shadow transition-all active:scale-95 flex items-center gap-2">
@@ -1889,6 +1935,9 @@ function ConsultaDescargaVelsa() {
             </button>
           )}
         </div>
+        {busquedaAplicada && rows !== null && (
+          <p className="mt-3 text-[10px] font-bold text-stone-500">Búsqueda aplicada: <span className="text-[#1A3A6E]">{busquedaAplicada}</span></p>
+        )}
         {error && <p className="mt-3 text-[10px] font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg">⚠️ {error}</p>}
       </div>
 

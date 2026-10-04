@@ -94,6 +94,16 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, 
     })
   }
 
+  /** Registra la pestaña LLAMAR, separada de WABOT, en la negociación. */
+  async function registrarLlamadaPlacement() {
+    if (!BASE_URL) throw new Error('BITRIX_APP_BASE_URL no configurada (URL pública HTTPS del handler)')
+    return bitrixApp.llamar('placement.bind', {
+      PLACEMENT: 'CRM_DEAL_DETAIL_TAB',
+      HANDLER: `${BASE_URL}${ROUTE_PREFIX}/placement-call`,
+      TITLE: 'LLAMAR',
+    })
+  }
+
   /** Activa el conector en un canal abierto concreto. */
   async function activar(openLineId, activo = true) {
     return bitrixApp.llamar('imconnector.activate', {
@@ -180,7 +190,7 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, 
 
   return {
     CONNECTOR_ID,
-    registrar, registrarPlacement, activar, listarCanales, fijarDatos,
+    registrar, registrarPlacement, registrarLlamadaPlacement, activar, listarCanales, fijarDatos,
     enviarAOpenLine, marcarEntregado, renombrarChat,
   }
 }

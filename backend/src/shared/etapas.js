@@ -258,9 +258,18 @@ const ESTADOS_EXCLUIDOS_INGRESO_JOTFORM = [
     'FIN DE GESTIÓN',
     'DESISTE DE SERVICIO',
     'DESISTE DEL SERVICIO',
+    'DESCARTE DE SERVICIO',
+    'DESCARTE DEL SERVICIO',
     'DUPLICADO',
     'DUPLLICADO',
     'SIN ASUNTO',
+    'SIN DATOS',
+];
+
+const ESTADOS_INGRESO_JOTFORM_ACIDO = [
+    'ACTIVO',
+    'ASIGNADO',
+    'PREPLANIFICADO',
 ];
 
 const esEstadoIngresoJotformValidoExpr = (col) =>
@@ -268,6 +277,8 @@ const esEstadoIngresoJotformValidoExpr = (col) =>
 
 // Firma compatible con consumidores existentes: etapaCol ya no restringe JOT.
 const esIngresoJotformExpr = (_etapaCol, estadoCol) => esEstadoIngresoJotformValidoExpr(estadoCol);
+const esIngresoJotformAcidoExpr = (estadoCol) =>
+    `UPPER(REGEXP_REPLACE(TRIM(COALESCE(${estadoCol}, '')), '\\s+', ' ', 'g')) IN ${sqlListaUpper(ESTADOS_INGRESO_JOTFORM_ACIDO)}`;
 
 module.exports = {
     esEstadoIngresoJotformValidoExpr,
@@ -292,5 +303,7 @@ module.exports = {
     esRegularizacionNetaExpr,
     ETAPAS_EXCLUIDAS_INGRESO_JOTFORM,
     ESTADOS_EXCLUIDOS_INGRESO_JOTFORM,
+    ESTADOS_INGRESO_JOTFORM_ACIDO,
     esIngresoJotformExpr,
+    esIngresoJotformAcidoExpr,
 };

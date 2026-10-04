@@ -28,7 +28,8 @@
 
 const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
-const { elegirAsesor, normalizarNombre } = require('../shared/repartoGestionables');
+const { elegirAsesor, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
+const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
 
 const FIELD_NAME = process.env.GESTIONABLES_FIELD_NAME || 'UF_CRM_GESTIONABLES';
 // Opcional: si se define, antes de escribir se verifica que el deal siga
@@ -53,10 +54,14 @@ const registrarLog = async ({ bitrixId, nombreAsesor, gestionables, encontrado, 
 // Día de trabajo en hora de Ecuador (Render corre Postgres en UTC: después de
 // las 19:00 CURRENT_DATE ya sería "mañana").
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
-const REPARTO_ACTIVO = (process.env.GESTIONABLES_REPARTO || 'on').toLowerCase() !== 'off';
-// Clave fija del candado: serializa el reparto para que 2 leads que llegan al
-// mismo tiempo no caigan en el mismo asesor.
+// Encendido/apagado, "solo en línea", horario y estación se leen del panel del
+// ERP (shared/repartoEstado.js). GESTIONABLES_REPARTO=off sigue siendo el
+// apagado de emergencia desde Render.
+// Claves de candado en Postgres:
+//  - LOCK_KEY: serializa cada asignación (2 leads simultáneos no caen al mismo asesor).
+//  - COLA_LOCK_KEY: una sola pasada de la cola a la vez (aunque haya 2 instancias).
 const LOCK_KEY = 874201;
+const COLA_LOCK_KEY = 874202;
 
 // ── Nombre del asesor → ID de usuario Bitrix (NOVONET), con caché 10 min ────
 let cacheUsuarios = { map: new Map(), ts: 0 };
@@ -81,7 +86,7 @@ const idUsuarioBitrix = async (nombre) => {
   return cacheUsuarios.map.get(key) || null;
 };
 
-// ── Comportamiento anterior: solo escribe el cupo del responsable actual ───
+// ── Comportamiento anterior (reparto APAGADO): solo escribe el cupo ────────
 const escribirCupoResponsableActual = async (bitrixId, nombreAsesor) => {
   const r = await poolErp.query(
     `SELECT gestionables_permitidos FROM gestionables_asesores
@@ -99,8 +104,37 @@ const escribirCupoResponsableActual = async (bitrixId, nombreAsesor) => {
   return 'OK';
 };
 
-// ── Reparto por rondas ───────────────────────────────────────────────────
-const repartirPorRondas = async (bitrixId, nombreOriginal) => {
+// ── Quién puede recibir HOY ─────────────────────────────────────────────────
+// Asesores con cupo cargado hoy, cuántos llevan, y si están en línea. La
+// estación (Bryan Pineda) nunca entra al reparto aunque tenga cupo cargado.
+const asesoresDeHoy = async (db, enLinea, estacion) => {
+  const { rows } = await db.query(
+    `SELECT g.nombre_bitrix_asesor AS nombre,
+            g.gestionables_permitidos AS permitidos,
+            COUNT(a.id)::int          AS asignados,
+            MAX(a.creado_en)          AS ultima_asignacion
+       FROM gestionables_asesores g
+       LEFT JOIN gestionables_asignaciones a
+         ON a.fecha = g.fecha_carga
+        AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
+      WHERE g.fecha_carga = ${HOY_EC}
+      GROUP BY 1, 2`
+  );
+  const estNorm = normalizarNombre(estacion);
+  const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);
+  // Si Bitrix Live no respondió (enLinea = null) no se filtra por en línea.
+  const enLineaRows = enLinea
+    ? sinEstacion.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea)
+    : sinEstacion;
+  return {
+    disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos),
+    hayConCupo: sinEstacion.some((r) => r.asignados < r.permitidos),
+  };
+};
+
+// ── Asignar UN lead por rondas ───────────────────────────────────────────────
+// Devuelve { estado: 'asignado' | 'ya_repartido' | 'sin_disponible' | 'sin_usuario', elegido?, motivo? }
+const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea, cfg, origen = 'directo') => {
   const client = await poolErp.connect();
   try {
     await client.query('BEGIN');
@@ -114,39 +148,24 @@ const repartirPorRondas = async (bitrixId, nombreOriginal) => {
     );
     if (ya.rows.length) {
       await client.query('COMMIT');
-      await registrarLog({ bitrixId, nombreAsesor: ya.rows[0].asesor_asignado, encontrado: true, actualizado: false, error: 'Ya repartido hoy; se respeta la asignación' });
-      return 'OK (ya repartido hoy)';
+      return { estado: 'ya_repartido', elegido: { nombre: ya.rows[0].asesor_asignado } };
     }
 
-    // Cupo de hoy + cuántos lleva cada asesor hoy (su ronda actual)
-    const { rows } = await client.query(
-      `SELECT g.nombre_bitrix_asesor AS nombre,
-              g.gestionables_permitidos AS permitidos,
-              COUNT(a.id)::int          AS asignados,
-              MAX(a.creado_en)          AS ultima_asignacion
-         FROM gestionables_asesores g
-         LEFT JOIN gestionables_asignaciones a
-           ON a.fecha = g.fecha_carga
-          AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
-        WHERE g.fecha_carga = ${HOY_EC}
-        GROUP BY 1, 2`
-    );
-
-    const elegido = elegirAsesor(rows.map((r) => ({
+    const { disponibles, hayConCupo } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
+    const elegido = elegirAsesor(disponibles.map((r) => ({
       nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
     })));
 
     if (!elegido) {
       await client.query('ROLLBACK');
-      await registrarLog({ bitrixId, nombreAsesor: nombreOriginal, encontrado: false, error: 'Ningún asesor con cupo disponible hoy; se deja el responsable actual' });
-      return 'OK (nadie con cupo disponible)';
+      return { estado: 'sin_disponible', motivo: enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite' };
     }
 
     const userId = await idUsuarioBitrix(elegido.nombre);
     if (!userId) {
       await client.query('ROLLBACK');
       await registrarLog({ bitrixId, nombreAsesor: elegido.nombre, encontrado: true, actualizado: false, error: 'Nombre del asesor no coincide con ningún usuario activo de Bitrix' });
-      return 'OK (asesor elegido sin usuario en Bitrix)';
+      return { estado: 'sin_usuario', motivo: 'nadie_en_linea' };
     }
 
     // Se escribe primero en Bitrix; si falla, ROLLBACK y no queda contado.
@@ -160,20 +179,124 @@ const repartirPorRondas = async (bitrixId, nombreOriginal) => {
 
     await client.query(
       `INSERT INTO gestionables_asignaciones
-         (fecha, bitrix_deal_id, asesor_asignado, bitrix_user_id, asesor_original, ronda)
-       VALUES (${HOY_EC}, $1, $2, $3, $4, $5)`,
-      [bitrixId, elegido.nombre, userId, nombreOriginal || null, elegido.asignados + 1]
+         (fecha, bitrix_deal_id, asesor_asignado, bitrix_user_id, asesor_original, ronda, origen)
+       VALUES (${HOY_EC}, $1, $2, $3, $4, $5, $6)`,
+      [bitrixId, elegido.nombre, userId, nombreOriginal || null, elegido.asignados + 1, origen]
     );
     await client.query('COMMIT');
 
     await registrarLog({ bitrixId, nombreAsesor: elegido.nombre, gestionables: elegido.permitidos, encontrado: true, actualizado: true });
-    console.log(`[gestionablesWebhook] Deal ${bitrixId} → ${elegido.nombre} (ronda ${elegido.asignados + 1}/${elegido.permitidos})`);
-    return 'OK';
+    console.log(`[gestionables] Deal ${bitrixId} → ${elegido.nombre} (ronda ${elegido.asignados + 1}/${elegido.permitidos}, ${origen})`);
+    return { estado: 'asignado', elegido };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();
+  }
+};
+
+// ── Estación: el lead espera a nombre de Bryan Pineda ───────────────────────
+const MOTIVOS = {
+  fuera_de_horario: 'Fuera de horario laboral',
+  nadie_en_linea:   'Ningún asesor con cupo está en línea',
+  todos_al_limite:  'Todos los asesores llegaron a su límite',
+  cola_en_espera:   'Hay leads esperando antes que este',
+};
+const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
+  const userId = await idUsuarioBitrix(cfg.estacion_nombre);
+  if (!userId) throw new Error(`La estación "${cfg.estacion_nombre}" no coincide con ningún usuario activo de Bitrix`);
+  const upd = await bitrixCallNovonet('crm.deal.update', { id: bitrixId, fields: { ASSIGNED_BY_ID: userId } });
+  if (upd.result !== true) throw new Error(`Bitrix no actualizó el deal ${bitrixId}`);
+  await poolErp.query(
+    `INSERT INTO gestionables_cola (bitrix_deal_id, motivo, responsable_original)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (bitrix_deal_id) WHERE estado = 'pendiente' DO NOTHING`,
+    [bitrixId, motivo, nombreOriginal || null]
+  );
+  await registrarLog({ bitrixId, nombreAsesor: cfg.estacion_nombre, encontrado: false, actualizado: true, error: `En estación: ${MOTIVOS[motivo] || motivo}` });
+  return `OK (en estación ${cfg.estacion_nombre}: ${MOTIVOS[motivo] || motivo})`;
+};
+
+// ── Pasada de la cola: entrega lo que espera en la estación ────────────────
+// La llama el cron cada minuto (jobs/colaGestionables.cron.js) y el webhook
+// cuando encola. Reglas: solo en horario y con el reparto encendido; el más
+// antiguo primero; con 1-2 asesores disponibles entrega 1 cada 5 minutos;
+// con 3 o más entrega normal por rondas.
+let pasadaEnCurso = false;
+const procesarCola = async () => {
+  if (pasadaEnCurso) return { entregados: 0, motivo: 'pasada en curso' };
+  pasadaEnCurso = true;
+  let lockClient = null;
+  let entregados = 0;
+  try {
+    const cfg = await leerConfig({ sinCache: true });
+    if (!cfg.activo_efectivo) return { entregados, motivo: 'reparto apagado' };
+    if (!dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin)) return { entregados, motivo: 'fuera de horario' };
+
+    lockClient = await poolErp.connect();
+    const lk = await lockClient.query('SELECT pg_try_advisory_lock($1) AS ok', [COLA_LOCK_KEY]);
+    if (!lk.rows[0].ok) return { entregados, motivo: 'otra instancia procesando' };
+
+    const pend = await poolErp.query(
+      `SELECT id, bitrix_deal_id FROM gestionables_cola
+        WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 30`
+    );
+    if (!pend.rows.length) return { entregados, motivo: 'cola vacía' };
+
+    const enLinea = cfg.solo_en_linea ? await leerEnLinea() : null;
+    const estacionId = await idUsuarioBitrix(cfg.estacion_nombre);
+    let limite = null;
+
+    for (const item of pend.rows) {
+      const { disponibles } = await asesoresDeHoy(poolErp, enLinea, cfg.estacion_nombre);
+      if (limite === null) {
+        const ult = await poolErp.query(
+          `SELECT MAX(resuelto_en) AS ultima FROM gestionables_cola WHERE estado = 'entregado'`
+        );
+        limite = cupoDeEntregaCola({ disponibles: disponibles.length, ultimaEntregaCola: ult.rows[0].ultima });
+      }
+      if (entregados >= limite || !disponibles.length) break;
+      // Si en medio de la pasada quedan menos de 3 disponibles, vuelve el ritmo de 1 cada 5 min.
+      if (disponibles.length < 3 && entregados >= 1) break;
+
+      // ¿Sigue esperando en la estación? Si alguien ya lo movió o trabajó, se descarta.
+      let deal = null;
+      try { deal = (await bitrixCallNovonet('crm.deal.get', { id: item.bitrix_deal_id })).result; } catch { deal = null; }
+      const descartar = !deal ? 'El lead ya no existe en Bitrix'
+        : (estacionId && Number(deal.ASSIGNED_BY_ID) !== Number(estacionId)) ? 'Ya no está a nombre de la estación (alguien lo reasignó)'
+        : (EXPECTED_STAGE_ID && deal.STAGE_ID !== EXPECTED_STAGE_ID) ? `Ya no está en Contacto nuevo (${deal.STAGE_ID})`
+        : null;
+      if (descartar) {
+        await poolErp.query(
+          `UPDATE gestionables_cola SET estado = 'descartado', nota = $2, resuelto_en = NOW() WHERE id = $1`,
+          [item.id, descartar]
+        );
+        continue;
+      }
+
+      const r = await repartirPorRondas(item.bitrix_deal_id, cfg.estacion_nombre, enLinea, cfg, 'cola');
+      if (r.estado === 'asignado' || r.estado === 'ya_repartido') {
+        await poolErp.query(
+          `UPDATE gestionables_cola SET estado = 'entregado', asesor_asignado = $2, resuelto_en = NOW() WHERE id = $1`,
+          [item.id, r.elegido.nombre]
+        );
+        entregados++;
+      } else {
+        break; // nadie disponible ahora; se reintenta en el próximo minuto
+      }
+    }
+    return { entregados };
+  } catch (err) {
+    console.error('[gestionables] procesarCola error:', err.message);
+    return { entregados, error: err.message };
+  } finally {
+    if (lockClient) {
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [COLA_LOCK_KEY]).catch(() => {});
+      lockClient.release();
+    }
+    pasadaEnCurso = false;
+    if (entregados) console.log(`[gestionables] Cola: ${entregados} lead(s) entregados desde la estación`);
   }
 };
 
@@ -192,7 +315,8 @@ const recibirGestionable = async (req, res) => {
       await registrarLog({ bitrixId: '(vacio)', nombreAsesor, error: 'Falta id de la negociación' });
       return res.status(400).send('Falta id');
     }
-    if (!REPARTO_ACTIVO && !nombreAsesor) {
+    const cfg = await leerConfig();
+    if (!cfg.activo_efectivo && !nombreAsesor) {
       await registrarLog({ bitrixId, nombreAsesor, error: 'Falta nombre_asesor' });
       return res.status(400).send('Falta nombre_asesor');
     }
@@ -206,10 +330,37 @@ const recibirGestionable = async (req, res) => {
       }
     }
 
-    const msg = REPARTO_ACTIVO
-      ? await repartirPorRondas(bitrixId, nombreAsesor)
-      : await escribirCupoResponsableActual(bitrixId, nombreAsesor);
-    return res.status(200).send(msg);
+    // Reparto APAGADO desde el panel: todo se detiene. El lead se queda con su
+    // responsable y solo se le escribe el cupo, igual que antes del reparto.
+    if (!cfg.activo_efectivo) {
+      return res.status(200).send(await escribirCupoResponsableActual(bitrixId, nombreAsesor));
+    }
+
+    // ¿Ya está esperando en la estación? (Bitrix puede disparar 2 veces)
+    const enCola = await poolErp.query(
+      `SELECT 1 FROM gestionables_cola WHERE bitrix_deal_id = $1 AND estado = 'pendiente'`, [bitrixId]
+    );
+    if (enCola.rows.length) return res.status(200).send('OK (ya está en la estación)');
+
+    // 1) Fuera de horario (22:16:00 – 07:59:59) → estación
+    if (!dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin)) {
+      return res.status(200).send(await enviarAEstacion(bitrixId, nombreAsesor, 'fuera_de_horario', cfg));
+    }
+
+    // 2) Hay leads esperando antes que este → a la fila, para respetar el orden
+    const hayCola = await poolErp.query(`SELECT 1 FROM gestionables_cola WHERE estado = 'pendiente' LIMIT 1`);
+    if (hayCola.rows.length) {
+      const msg = await enviarAEstacion(bitrixId, nombreAsesor, 'cola_en_espera', cfg);
+      setImmediate(() => procesarCola());
+      return res.status(200).send(msg);
+    }
+
+    // 3) Reparto directo por rondas; si nadie puede recibir → estación
+    const enLinea = cfg.solo_en_linea ? await leerEnLinea() : null;
+    const r = await repartirPorRondas(bitrixId, nombreAsesor, enLinea, cfg, 'directo');
+    if (r.estado === 'asignado') return res.status(200).send('OK');
+    if (r.estado === 'ya_repartido') return res.status(200).send('OK (ya repartido hoy)');
+    return res.status(200).send(await enviarAEstacion(bitrixId, nombreAsesor, r.motivo, cfg));
 
   } catch (err) {
     console.error('[gestionablesWebhook] recibirGestionable error:', err.message);
@@ -218,4 +369,4 @@ const recibirGestionable = async (req, res) => {
   }
 };
 
-module.exports = { recibirGestionable };
+module.exports = { recibirGestionable, procesarCola };

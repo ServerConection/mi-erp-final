@@ -1490,6 +1490,8 @@ export default function NuevaVenta() {
             notificacionCorreo: d.notificacion_correo || null,
           });
           reiniciarFormulario();
+          // Si venía de un borrador (?id=...), quitarlo para que la siguiente venta se cree como NUEVA
+          if (borradorId) navigate(window.location.pathname, { replace: true });
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } else {

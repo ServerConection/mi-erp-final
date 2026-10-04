@@ -58,7 +58,13 @@ server.listen(process.env.PORT, async () => {
   initWinTrackerSync();
   initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
   initColaGestionables();        // entrega cada minuto los leads que esperan en la estación (reparto de gestionables)
-  iniciarWhatsApp();
+  // WABOT EXTERNO: con WABOT_REMOTE_URL, WhatsApp corre en su propio servicio
+  // de Render y este proceso NO abre sesiones (evita dos dueños por línea).
+  if (process.env.WABOT_REMOTE_URL) {
+    console.log('[WA] WhatsApp corre en servicio externo; no se inicia aquí:', process.env.WABOT_REMOTE_URL);
+  } else {
+    iniciarWhatsApp();
+  }
 });
 
 // Apagado limpio (Render envia SIGTERM antes de reiniciar)

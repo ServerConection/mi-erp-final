@@ -33,6 +33,10 @@ if (cleanup.unref) cleanup.unref();
 function rateLimit(req, res, next) {
   // No limitar preflight ni health checks
   if (req.method === 'OPTIONS' || req.path === '/health') return next();
+  // WABOT externo: lo que reenvía el monolito ya pasó su rate limit por IP real.
+  // Aquí llegaría todo desde la IP del monolito, así que no se vuelve a limitar.
+  const llaveInterna = process.env.WABOT_INTERNAL_KEY;
+  if (llaveInterna && req.headers['x-wabot-proxy-key'] === llaveInterna) return next();
 
   const ip = req.ip || req.connection?.remoteAddress || 'desconocido';
   const now = Date.now();

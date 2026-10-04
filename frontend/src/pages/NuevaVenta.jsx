@@ -1263,11 +1263,8 @@ export default function NuevaVenta() {
 
       if (!data.existe) {
         setOrigenVentaLocked(false);
-        setAlert({
-          tipo: "err",
-          msg: `⚠️ ${data.error}. Verifica que el ID Bitrix sea correcto y esté en etapa "VENTA SUBIDA"`
-        });
-        return false;
+        // Restricción desactivada: se permite registrar el ID Bitrix aunque no esté en VENTA SUBIDA
+        return true;
       } else {
         const origen = (data.data.source || "").toUpperCase();
         setForm(f => ({ ...f, origen_venta: origen || f.origen_venta }));

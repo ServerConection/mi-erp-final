@@ -149,7 +149,7 @@ const COLUMNAS_VENTA = [
   'banco', 'tipo_cuenta', 'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
   'resumen_venta', 'observacion_venta_original', 'novedades_atc', 'foto_cedula_frontal', 'foto_cedula_trasera',
-  'foto_carnet', 'archivo_resumen', 'archivo_planilla',
+  'foto_carnet', 'foto_cartel', 'archivo_resumen', 'archivo_planilla',
   'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
 ];
 
@@ -306,7 +306,7 @@ async function puedeVerArchivo(user, ruta) {
   const { rows } = await pool.query(
     `SELECT 1 FROM public.envios_ventas
       WHERE usuario_id = $1
-        AND $2 IN (foto_cedula_frontal, foto_cedula_trasera, foto_carnet, archivo_resumen, archivo_planilla,
+        AND $2 IN (foto_cedula_frontal, foto_cedula_trasera, foto_carnet, foto_cartel, archivo_resumen, archivo_planilla,
                    archivo_nombramiento, archivo_registro_mercantil, archivo_ruc)
       LIMIT 1`,
     [user.id, url]

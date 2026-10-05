@@ -26,6 +26,7 @@ const CAMPOS_DOCUMENTO = [
   "foto_cedula_frontal",
   "foto_cedula_trasera",
   "foto_carnet",
+  "foto_cartel",
   "archivo_resumen",
   "archivo_planilla",
   "archivo_nombramiento",
@@ -35,7 +36,7 @@ const CAMPOS_DOCUMENTO = [
 const GRUPOS_DOCUMENTOS = [
   {
     titulo: "Identidad",
-    campos: ["foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet"],
+    campos: ["foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet", "foto_cartel"],
   },
   {
     titulo: "Venta y legal",
@@ -1228,10 +1229,13 @@ function CeldaDocumentos({ row, onAbrir }) {
 function camposDocumentoAplicables(d) {
   const empresa = d?.tipo_documento === "RUC EMPRESA";
   const juridico = d?.tipo_cliente === "JURÍDICO";
+  const pyme = normalizarEstado(d?.plan_contratado) === "PYME"
+    || normalizarEstado(d?.plan_contratado_final).startsWith("PYME");
   return CAMPOS_DOCUMENTO.filter((f) => {
     if (d?.[f]) return true;
-    if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
-    if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(d?.tipo_documento);
+    if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return pyme || (juridico && empresa);
+    if (f === "archivo_ruc") return pyme || (juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(d?.tipo_documento));
+    if (f === "foto_cartel") return pyme;
     if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(d?.aplica_descuento_3ra_edad || "");
     return true;
   });
@@ -1492,6 +1496,7 @@ const FIELD_LABELS = {
   foto_cedula_frontal: "FOTO CÉDULA FRONTAL",
   foto_cedula_trasera: "FOTO CÉDULA TRASERA",
   foto_carnet: "FOTO CARNET",
+  foto_cartel: "FOTO CARTEL",
   archivo_resumen: "ARCHIVO RESUMEN",
   archivo_planilla: "PLANILLA",
   archivo_nombramiento: "NOMBRAMIENTO",
@@ -1578,6 +1583,7 @@ const initialDetail = {
   foto_cedula_frontal: "",
   foto_cedula_trasera: "",
   foto_carnet: "",
+  foto_cartel: "",
   archivo_resumen: "",
   archivo_planilla: "",
   archivo_nombramiento: "",
@@ -2250,8 +2256,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [alert, setAlert] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
+  const [paginaTabla, setPaginaTabla] = useState(1);
   const solicitudDetalleRef = useRef(0);
   const campoDetallePendienteRef = useRef(null);
+  const FILAS_POR_PAGINA = 200;
 
   // ── FILTROS ────────────────────────────────────────────────────────────
   // El buscador de texto se mantiene igual; estos se suman.
@@ -2389,6 +2397,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       const p = new URLSearchParams();
       if (q) p.set("buscar", q);
       p.set("limit", "sin_limite");
+      p.set("vista", "lista");
       // Este panel muestra rows.length y no consume el total de otra consulta.
       p.set("includeTotal", "false");
       Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
@@ -2739,16 +2748,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           if (!editableFields.includes(f)) return false;
           const empresa = detail?.tipo_documento === "RUC EMPRESA";
           const juridico = detail?.tipo_cliente === "JURÍDICO";
+          const pyme = normalizarEstado(detail?.plan_contratado) === "PYME"
+            || normalizarEstado(detail?.plan_contratado_final).startsWith("PYME");
           if (f === "representante_legal") return empresa;
           if (["genero_cliente", "estado_civil"].includes(f)) return !empresa;
-          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
-          if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento);
+          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return pyme || (juridico && empresa);
+          if (f === "archivo_ruc") return pyme || (juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento));
+          if (f === "foto_cartel") return pyme;
           if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(detail?.aplica_descuento_3ra_edad || "");
           return true;
         }),
       }))
       .filter((g) => g.campos.length);
-  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad, modoDetalle]);
+  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad, detail?.plan_contratado, detail?.plan_contratado_final, modoDetalle]);
 
   const handleSave = async () => {
     if (!selectedId || !puedeEditar) return;
@@ -2911,6 +2923,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     }
   };
 
+  // Todos los registros permanecen disponibles para exportar y actualizar,
+  // pero React solo construye 200 filas a la vez. Esto evita montar decenas
+  // de miles de nodos DOM y mantiene fluido el scroll y la ediciÃ³n.
+  const totalPaginasTabla = Math.max(1, Math.ceil(rows.length / FILAS_POR_PAGINA));
+  const rowsPagina = useMemo(() => {
+    const inicio = (paginaTabla - 1) * FILAS_POR_PAGINA;
+    return rows.slice(inicio, inicio + FILAS_POR_PAGINA);
+  }, [rows, paginaTabla]);
+
+  useEffect(() => {
+    setPaginaTabla((pagina) => Math.min(pagina, totalPaginasTabla));
+  }, [totalPaginasTabla]);
+
   return (
     <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
       <div className="bo-shell" style={{ background: "#fff", borderRadius: 16, boxShadow: "0 12px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
@@ -3045,12 +3070,25 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
                 <TablaRegistros
                   loading={loading}
-                  rows={rows}
+                  rows={rowsPagina}
                   headers={tableHeaders}
                   onGuardarCelda={guardarCelda}
                   onVerDetalle={fetchDetail}
                   puedeEditar={puedeEditar}
                 />
+                {!loading && rows.length > FILAS_POR_PAGINA && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: 12, borderTop: "1px solid #e5e7eb", background: "#f8fafc" }}>
+                    <button type="button" disabled={paginaTabla <= 1} onClick={() => setPaginaTabla((p) => Math.max(1, p - 1))} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: paginaTabla <= 1 ? "not-allowed" : "pointer" }}>
+                      Anterior
+                    </button>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                      PÃ¡gina {paginaTabla} de {totalPaginasTabla} Â· {rows.length} registros
+                    </span>
+                    <button type="button" disabled={paginaTabla >= totalPaginasTabla} onClick={() => setPaginaTabla((p) => Math.min(totalPaginasTabla, p + 1))} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: paginaTabla >= totalPaginasTabla ? "not-allowed" : "pointer" }}>
+                      Siguiente
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4320,6 +4358,12 @@ function ExploradorFechas({
   );
 }
 
+// CachÃ© breve compartida: al cambiar de submÃ³dulo no se vuelven a descargar
+// decenas de miles de filas que ya estÃ¡n en memoria. El refresco manual omite
+// esta cachÃ© y las ediciones en tiempo real actualizan tambiÃ©n su contenido.
+const cacheRegistrosBackoffice = new Map();
+const CACHE_REGISTROS_MS = 60_000;
+
 /** Carga compartida de registros para el explorador y el tablero. */
 function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
   const [rows, setRows] = useState([]);
@@ -4327,12 +4371,23 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const token = localStorage.getItem("token");
+  const cacheKey = `${empresa || "TODOS"}:${limite}`;
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
+    const cache = cacheRegistrosBackoffice.get(cacheKey);
+    if (!forzar && cache && Date.now() - cache.guardadoEn < CACHE_REGISTROS_MS) {
+      setRows(cache.rows);
+      setTotal(cache.total);
+      setCargando(false);
+      setError(null);
+      return;
+    }
     setCargando(true);
     setError(null);
     try {
       const qs = new URLSearchParams({ limit: String(limite) });
+      qs.set("vista", "lista");
+      if (String(limite) === "sin_limite") qs.set("includeTotal", "false");
       if (empresa && empresa !== "TODOS") qs.set("empresa", empresa);
       const r = await fetch(`${API}/api/backoffice?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -4341,14 +4396,19 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
       if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
       setRows(j.data || []);
       setTotal(j.total ?? (j.data || []).length);
+      cacheRegistrosBackoffice.set(cacheKey, {
+        rows: j.data || [],
+        total: j.total ?? (j.data || []).length,
+        guardadoEn: Date.now(),
+      });
     } catch (e) {
       setError(e.message || "Error de conexión");
     } finally {
       setCargando(false);
     }
-  }, [token, limite, empresa]);
+  }, [token, limite, empresa, cacheKey]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { cargar(false); }, [cargar]);
 
   useEffect(() => {
     const socket = getSocketCompartido();
@@ -4357,12 +4417,21 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
       setRows((actuales) => actuales.map((row) => (
         String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
       )));
+      const cache = cacheRegistrosBackoffice.get(cacheKey);
+      if (cache) {
+        cacheRegistrosBackoffice.set(cacheKey, {
+          ...cache,
+          rows: cache.rows.map((row) => (
+            String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
+          )),
+        });
+      }
     };
     socket.on("backoffice:registro-actualizado", actualizar);
     return () => socket.off("backoffice:registro-actualizado", actualizar);
-  }, []);
+  }, [cacheKey]);
 
-  return { rows, total, cargando, error, recargar: cargar };
+  return { rows, total, cargando, error, recargar: () => cargar(true) };
 }
 
 function CeldaRegistro({ row, campo, textoVacio }) {

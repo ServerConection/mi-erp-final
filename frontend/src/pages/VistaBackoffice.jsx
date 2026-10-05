@@ -1779,6 +1779,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
   const [seleccionadas, setSeleccionadas] = useState(() => new Set());
   const cancelandoRef = useRef(false);
   const guardadoEnCursoRef = useRef(false);
+  const ultimoIntentoFallidoRef = useRef(null);
 
   const scrollSuperiorRef = useRef(null);
   const scrollTablaRef = useRef(null);
@@ -1843,6 +1844,10 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
       setEdicion(null);
       return true;
     }
+    const firmaIntento = `${edicion.id}:${edicion.campo}:${String(edicion.valor)}`;
+    // onBlur puede volver a dispararse si React repinta el input para mostrar
+    // un error. No repetir indefinidamente el mismo PUT fallido.
+    if (ultimoIntentoFallidoRef.current === firmaIntento) return false;
 
     recordarPosicion();
     guardadoEnCursoRef.current = true;
@@ -1850,7 +1855,12 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
     const guardado = await onGuardarCelda(edicion.id, edicion.campo, edicion.valor);
     guardadoEnCursoRef.current = false;
     setGuardando(false);
-    if (guardado) setEdicion(null);
+    if (guardado) {
+      ultimoIntentoFallidoRef.current = null;
+      setEdicion(null);
+    } else {
+      ultimoIntentoFallidoRef.current = firmaIntento;
+    }
     return guardado;
   }, [edicion, onGuardarCelda, recordarPosicion]);
 
@@ -1865,6 +1875,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
 
     const valor = row?.[campo] == null ? "" : campo === "fecha_registro_sistema" ? formatearFechaHoraInputEC(row[campo]) : String(row[campo]);
     cancelandoRef.current = false;
+    ultimoIntentoFallidoRef.current = null;
     setEdicion({ id: row.id, campo, valor, original: valor, row });
   }, [edicion, guardarEdicionActual]);
 
@@ -2070,7 +2081,10 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                               value: edicion.valor,
                               disabled: guardando,
                               onFocus: (e) => e.currentTarget.select?.(),
-                              onChange: (e) => setEdicion((actual) => ({ ...actual, valor: e.target.value })),
+                              onChange: (e) => {
+                                ultimoIntentoFallidoRef.current = null;
+                                setEdicion((actual) => ({ ...actual, valor: e.target.value }));
+                              },
                               onBlur: guardarEdicion,
                               onKeyDown: (e) => {
                                 if (e.key === "Escape") {
@@ -4508,6 +4522,14 @@ function ExploradorFechas({
 const cacheRegistrosBackoffice = new Map();
 const peticionesRegistrosBackoffice = new Map();
 const CACHE_REGISTROS_MS = 60_000;
+const FECHA_MINIMA_BACKOFFICE = "2026-06-01";
+
+// Segunda barrera en el navegador: durante un despliegue gradual o si existe
+// una respuesta antigua en caché, jamás se muestran filas previas al corte.
+const limitarPeriodoBackoffice = (filas = []) => filas.filter((row) => {
+  const fecha = fechaCalendarioEC(row?.fecha_registro_sistema);
+  return fecha && fecha >= FECHA_MINIMA_BACKOFFICE;
+});
 
 /** Carga compartida de registros para el explorador y el tablero. */
 function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS", filtrosServidor = null) {
@@ -4519,13 +4541,14 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS", filtro
   const buscarServidor = filtrosServidor?.buscar || "";
   const fechaDesdeServidor = filtrosServidor?.fechaDesde || "";
   const fechaHastaServidor = filtrosServidor?.fechaHasta || "";
-  const cacheKey = `${empresa || "TODOS"}:${limite}:${buscarServidor}:${fechaDesdeServidor}:${fechaHastaServidor}`;
+  const cacheKey = `desde-${FECHA_MINIMA_BACKOFFICE}:${empresa || "TODOS"}:${limite}:${buscarServidor}:${fechaDesdeServidor}:${fechaHastaServidor}`;
 
   const cargar = useCallback(async (forzar = false) => {
     const cache = cacheRegistrosBackoffice.get(cacheKey);
     if (!forzar && cache && Date.now() - cache.guardadoEn < CACHE_REGISTROS_MS) {
-      setRows(cache.rows);
-      setTotal(cache.total);
+      const filasPermitidas = limitarPeriodoBackoffice(cache.rows);
+      setRows(filasPermitidas);
+      setTotal(filasPermitidas.length);
       setCargando(false);
       setError(null);
       return;
@@ -4556,11 +4579,12 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS", filtro
       }
       const j = await peticion;
       if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
-      setRows(j.data || []);
-      setTotal(j.total ?? (j.data || []).length);
+      const filasPermitidas = limitarPeriodoBackoffice(j.data || []);
+      setRows(filasPermitidas);
+      setTotal(filasPermitidas.length);
       cacheRegistrosBackoffice.set(cacheKey, {
-        rows: j.data || [],
-        total: j.total ?? (j.data || []).length,
+        rows: filasPermitidas,
+        total: filasPermitidas.length,
         guardadoEn: Date.now(),
       });
     } catch (e) {

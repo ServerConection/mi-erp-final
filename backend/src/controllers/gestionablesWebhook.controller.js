@@ -116,6 +116,7 @@ const asesoresDeHoy = async (db, enLinea, estacion) => {
        FROM gestionables_asesores g
        LEFT JOIN gestionables_asignaciones a
          ON a.fecha = g.fecha_carga
+        AND a.vigente                      -- bot + humano; lo reasignado a otro ya no cuenta
         AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
       WHERE g.fecha_carga = ${HOY_EC}
       GROUP BY 1, 2`
@@ -143,7 +144,7 @@ const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea, cfg, origen 
     // Si este lead ya se repartió hoy (volvió a entrar a la etapa), no se re-reparte.
     const ya = await client.query(
       `SELECT asesor_asignado FROM gestionables_asignaciones
-        WHERE fecha = ${HOY_EC} AND bitrix_deal_id = $1`,
+        WHERE fecha = ${HOY_EC} AND bitrix_deal_id = $1 AND vigente`,
       [bitrixId]
     );
     if (ya.rows.length) {
@@ -300,6 +301,139 @@ const procesarCola = async () => {
   }
 };
 
+// ── Entregas hechas por un HUMANO en Bitrix ────────────────────────────────
+// Cada 5 min (jobs/colaGestionables.cron.js) se revisan los leads de Netlife
+// Nuevo de la jornada (desde el cierre de ayer, 22:16, hasta ahora). Si un lead
+// está a nombre de un asesor con cupo y el bot no se lo dio, se registra como
+// entrega HUMANA: cuenta en su cupo y en sus rondas. Si un humano mueve un
+// lead de Ana a Luis, el de Ana deja de contar (vigente = false) y cuenta para Luis.
+let categoriaCache = null;
+const resolverCategoria = async () => {
+  if (categoriaCache !== null) return categoriaCache;
+  if (process.env.GESTIONABLES_CATEGORY_ID) return (categoriaCache = String(process.env.GESTIONABLES_CATEGORY_ID));
+  const m = /^C(\d+):/.exec(EXPECTED_STAGE_ID || '');
+  if (m) return (categoriaCache = m[1]);
+  const res = await bitrixCallNovonet('crm.category.list', { entityTypeId: 2 });
+  const cats = res.result?.categories || res.result || [];
+  const cat = cats.find((c) => normalizarNombre(c.name) === normalizarNombre(process.env.GESTIONABLES_PIPELINE || 'NETLIFE NUEVO'));
+  if (!cat) throw new Error('No se encontró el pipeline NETLIFE NUEVO en Bitrix (defina GESTIONABLES_CATEGORY_ID)');
+  return (categoriaCache = String(cat.id));
+};
+
+// Inicio de la jornada actual en hora Ecuador: ayer a hora_fin + 1 s
+// (con el horario por defecto: ayer 22:16:00). Formato ISO con -05:00.
+const inicioJornadaIso = (cfg, ahora = new Date()) => {
+  const fmt = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const ayer = fmt(new Date(ahora.getTime() - 24 * 3600 * 1000));
+  const [h, mi, s] = String(cfg.hora_fin || '22:15:59').split(':').map(Number);
+  const t = new Date(`${ayer}T${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}:${String(s || 0).padStart(2, '0')}-05:00`);
+  return new Date(t.getTime() + 1000).toISOString().replace(/\.\d{3}Z$/, '+00:00');
+};
+
+let syncEnCurso = false;
+const sincronizarManuales = async () => {
+  if (syncEnCurso) return { registrados: 0, motivo: 'en curso' };
+  syncEnCurso = true;
+  let registrados = 0, reasignados = 0;
+  try {
+    const cfg = await leerConfig({ sinCache: true });
+    if (!cfg.activo_efectivo) return { registrados, motivo: 'reparto apagado' };
+
+    const categoria = await resolverCategoria();
+    const deals = [];
+    let start = 0;
+    for (let pagina = 0; pagina < 40; pagina++) {
+      const json = await bitrixCallNovonet('crm.deal.list', {
+        // Se ignoran los creados hace menos de 3 min: el webhook del bot aún puede estar repartiéndolos
+        filter: {
+          CATEGORY_ID: categoria,
+          '>=DATE_CREATE': inicioJornadaIso(cfg),
+          '<=DATE_CREATE': new Date(Date.now() - 3 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, '+00:00'),
+        },
+        select: ['ID', 'ASSIGNED_BY_ID'],
+        order: { ID: 'ASC' },
+        start,
+      });
+      deals.push(...(json.result || []));
+      if (!json.next) break;
+      start = json.next;
+    }
+    if (!deals.length) return { registrados };
+
+    // ID de usuario Bitrix → nombre normalizado
+    if (Date.now() - cacheUsuarios.ts > 10 * 60 * 1000 || !cacheUsuarios.map.size) await cargarUsuariosBitrix();
+    const idANombre = new Map([...cacheUsuarios.map.entries()].map(([n, id]) => [id, n]));
+    const estNorm = normalizarNombre(cfg.estacion_nombre);
+
+    const client = await poolErp.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [LOCK_KEY]); // mismo candado que el bot
+
+      const cupos = await client.query(
+        `SELECT nombre_bitrix_asesor AS nombre FROM gestionables_asesores WHERE fecha_carga = ${HOY_EC}`
+      );
+      const asesorPorNorm = new Map(cupos.rows.map((r) => [normalizarNombre(r.nombre), r.nombre]));
+      const vig = await client.query(
+        `SELECT id, bitrix_deal_id, asesor_asignado FROM gestionables_asignaciones
+          WHERE fecha = ${HOY_EC} AND vigente AND bitrix_deal_id = ANY($1::text[])`,
+        [deals.map((d) => String(d.ID))]
+      );
+      const filaPorDeal = new Map(vig.rows.map((r) => [r.bitrix_deal_id, r]));
+
+      for (const d of deals) {
+        const dealId = String(d.ID);
+        const userId = Number(d.ASSIGNED_BY_ID);
+        const actualNorm = idANombre.get(userId) || null;
+        const fila = filaPorDeal.get(dealId);
+
+        // Sigue con quien ya está registrado → nada que hacer
+        if (fila && actualNorm && normalizarNombre(fila.asesor_asignado) === actualNorm) continue;
+        // En la estación y sin registro → lo maneja la cola
+        if (!fila && (actualNorm === estNorm || !actualNorm)) continue;
+
+        // Un humano lo movió: el registro anterior deja de contar
+        if (fila) {
+          await client.query(
+            `UPDATE gestionables_asignaciones SET vigente = false, reasignado_a = $2, reasignado_en = NOW() WHERE id = $1`,
+            [fila.id, (actualNorm && asesorPorNorm.get(actualNorm)) || actualNorm || `ID ${userId}`]
+          );
+          reasignados++;
+        }
+
+        // Cuenta para el nuevo responsable solo si es un asesor con cupo hoy
+        const asesor = actualNorm && actualNorm !== estNorm ? asesorPorNorm.get(actualNorm) : null;
+        if (!asesor) continue;
+        const n = await client.query(
+          `SELECT COUNT(*)::int AS c FROM gestionables_asignaciones
+            WHERE fecha = ${HOY_EC} AND vigente AND UPPER(BTRIM(asesor_asignado)) = UPPER(BTRIM($1))`,
+          [asesor]
+        );
+        await client.query(
+          `INSERT INTO gestionables_asignaciones
+             (fecha, bitrix_deal_id, asesor_asignado, bitrix_user_id, asesor_original, ronda, origen)
+           VALUES (${HOY_EC}, $1, $2, $3, $4, $5, 'humano')`,
+          [dealId, asesor, userId, fila ? fila.asesor_asignado : null, n.rows[0].c + 1]
+        );
+        registrados++;
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+    if (registrados || reasignados) console.log(`[gestionables] Manuales: ${registrados} entrega(s) humana(s), ${reasignados} reasignación(es)`);
+    return { registrados, reasignados };
+  } catch (err) {
+    console.error('[gestionables] sincronizarManuales error:', err.message);
+    return { registrados, error: err.message };
+  } finally {
+    syncEnCurso = false;
+  }
+};
+
 const recibirGestionable = async (req, res) => {
   const bitrixId     = req.query.id || '';
   const nombreAsesor = (req.query.nombre_asesor || '').trim();
@@ -369,4 +503,4 @@ const recibirGestionable = async (req, res) => {
   }
 };
 
-module.exports = { recibirGestionable, procesarCola };
+module.exports = { recibirGestionable, procesarCola, sincronizarManuales, inicioJornadaIso };

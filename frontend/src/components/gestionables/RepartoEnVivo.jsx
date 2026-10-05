@@ -156,7 +156,7 @@ export default function RepartoEnVivo() {
       {/* Resumen */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ['Repartidos hoy', datos?.resumen?.repartidos ?? '—', datos?.resumen?.ultimo_reparto ? `Último a las ${horaEc(datos.resumen.ultimo_reparto)}` : 'Aún ninguno'],
+          ['Entregados hoy', datos?.resumen ? (datos.resumen.repartidos || 0) + (datos.resumen.humanos || 0) : '—', datos?.resumen ? `${datos.resumen.repartidos || 0} por el bot · ${datos.resumen.humanos || 0} por un humano` : ''],
           ['Pueden recibir ahora', pueden.length, filtroLinea ? 'En línea y con cupo' : 'Con cupo'],
           ['Ronda actual', rondaActual ?? '—', rondaActual ? `Todos reciben su lead n.º ${rondaActual}` : 'Nadie disponible'],
           ['En la estación', estacion?.pendientes ?? '—', estacion ? `Esperan a nombre de ${estacion.nombre}` : ''],
@@ -215,6 +215,8 @@ export default function RepartoEnVivo() {
             <li>Si alguien entra más tarde, recibe primero hasta igualar a los demás.</li>
             <li>Fuera de horario{horario ? ` (después de las ${horario.fin.slice(0, 5)} y antes de las ${horario.inicio.slice(0, 5)})` : ''}, o si nadie puede recibir, el lead espera a nombre de <strong>{estacion?.nombre || 'la estación'}</strong>.</li>
             <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan como gestionables del día en que se entregan.</li>
+            <li>Si una persona asigna un lead a mano en Bitrix, el ERP lo detecta (cada 5 min) y lo cuenta como <strong>Humano</strong>. Bot + Humano = lo que lleva el asesor contra su permitido: si llega al límite, el bot ya no le entrega.</li>
+            <li>Si una persona mueve un lead de un asesor a otro, cuenta solo para el que lo tiene ahora.</li>
             <li>Si apagas el reparto, todo se detiene: no se reparte ni se entrega la cola.</li>
           </ol>
         )}
@@ -232,7 +234,7 @@ export default function RepartoEnVivo() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
                 {[...pueden.map((r, i) => ({ r, turno: i + 1 })), ...otros.map((r) => ({ r, turno: null }))].map(({ r, turno }) => {
@@ -250,6 +252,8 @@ export default function RepartoEnVivo() {
                           <span className="tabular-nums">{r.asignados} / {r.permitidos}</span>
                         </div>
                       </td>
+                      <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
+                      <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
                     </tr>
@@ -257,7 +261,7 @@ export default function RepartoEnVivo() {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">"Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
+            <p className="mt-2 text-xs text-slate-500">"Recibidos hoy" = Bot + Humano. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
           </div>
         )}
       </div>

@@ -39,6 +39,13 @@ export default function CargaMetasComerciales() {
   const [archivo, setArchivo] = useState(null);
   const [hojas, setHojas] = useState([]);
   const [hoja, setHoja] = useState("");
+
+  // Hoja sugerida: la de la empresa elegida que menciona el MES elegido
+  // ("METAS NOVONET OCTUBRE"). Si no hay, ninguna: que el usuario elija a conciencia.
+  const sugerirHoja = (lista, emp, m) => {
+    const delaEmpresa = lista.filter((n) => n.toUpperCase().includes(emp));
+    return delaEmpresa.find((n) => n.toUpperCase().includes(MESES[m - 1].toUpperCase())) || "";
+  };
   const [cargando, setCargando] = useState(false);
   const [alerta, setAlerta] = useState(null);
   const [prev, setPrev] = useState(null);          // respuesta del preview
@@ -67,8 +74,7 @@ export default function CargaMetasComerciales() {
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array", bookSheets: true });
       const metas = wb.SheetNames.filter((n) => n.toUpperCase().startsWith("METAS"));
       setHojas(metas);
-      const sug = metas.filter((n) => n.toUpperCase().includes(empresa));
-      setHoja(sug.find((n) => n.toUpperCase().includes(MESES[mes - 1].toUpperCase())) || sug[sug.length - 1] || "");
+      setHoja(sugerirHoja(metas, empresa, mes));
     } catch {
       setAlerta({ tipo: "err", msg: "No se pudo leer el archivo. ¿Es un Excel (.xlsx)?" });
     }
@@ -144,11 +150,11 @@ export default function CargaMetasComerciales() {
         <div style={card}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
             <div><span style={lbl}>Empresa</span>
-              <select style={inp} value={empresa} onChange={(e) => { setEmpresa(e.target.value); setPrev(null); }}>
+              <select style={inp} value={empresa} onChange={(e) => { setEmpresa(e.target.value); setHoja(sugerirHoja(hojas, e.target.value, mes)); setPrev(null); }}>
                 <option>NOVONET</option><option>VELSA</option>
               </select></div>
             <div><span style={lbl}>Mes</span>
-              <select style={inp} value={mes} onChange={(e) => { setMes(Number(e.target.value)); setPrev(null); }}>
+              <select style={inp} value={mes} onChange={(e) => { setMes(Number(e.target.value)); setHoja(sugerirHoja(hojas, empresa, Number(e.target.value))); setPrev(null); }}>
                 {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
               </select></div>
             <div><span style={lbl}>Año</span>
@@ -159,11 +165,12 @@ export default function CargaMetasComerciales() {
               <input type="file" accept=".xlsx,.xlsm" onChange={(e) => elegirArchivo(e.target.files?.[0] || null)} style={{ fontSize: 12 }} /></div>
             {hojas.length > 0 && (
               <div><span style={lbl}>Hoja</span>
-                <select style={inp} value={hoja} onChange={(e) => { setHoja(e.target.value); setPrev(null); }}>
+                <select style={{ ...inp, fontWeight: 800, borderColor: hoja ? OB : "#F87171" }} value={hoja} onChange={(e) => { setHoja(e.target.value); setPrev(null); }}>
+                  <option value="">— Elegir hoja —</option>
                   {hojas.map((h) => <option key={h}>{h}</option>)}
                 </select></div>
             )}
-            <button style={btn(!!archivo && !cargando)} disabled={!archivo || cargando} onClick={analizar}>
+            <button style={btn(!!archivo && !!hoja && !cargando)} disabled={!archivo || !hoja || cargando} onClick={analizar}>
               {cargando && !prev ? "Analizando…" : "🔍 Analizar"}
             </button>
           </div>

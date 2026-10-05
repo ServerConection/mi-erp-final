@@ -48,6 +48,7 @@ const Evaluaciones         = lazy(() => import("./pages/Evaluaciones"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
+const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
@@ -194,6 +195,7 @@ export default function App() {
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
+            <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<VistaBackoffice />} />
             <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />

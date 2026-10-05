@@ -394,7 +394,7 @@ const ALL_MENU_ITEMS = [
   // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
   { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
-    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ATC'].includes(p),
+    accessCheck: (p) => ['ADMINISTRADOR', 'ATC'].includes(p),
     isChild: true, group: "backoffice" },
 
   // ── Resumenes ────────────────────────────────────────────────────────────

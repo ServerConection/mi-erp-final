@@ -15,4 +15,4 @@ COMMENT ON COLUMN public.envios_ventas.franja_horaria_agendamiento IS
 COMMENT ON COLUMN public.envios_ventas.fecha_hora_regularizacion IS
   'Instante inmutable en que el registro pasa por primera vez a REGULARIZADO.';
 COMMENT ON COLUMN public.envios_ventas.hist_cambio_estatus IS
-  'Log append-only de cambios de estado con usuario y fecha/hora.';
+  'Log append-only de cambios de estado con id, login, nombre, perfil, empresa y fecha/hora del usuario autenticado.';

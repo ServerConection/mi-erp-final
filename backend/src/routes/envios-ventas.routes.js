@@ -148,7 +148,7 @@ const COLUMNAS_VENTA = [
   'valor_pago', 'tipo_contrato', 'links_documentos',
   'banco', 'tipo_cuenta', 'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
-  'resumen_venta', 'novedades_atc', 'foto_cedula_frontal', 'foto_cedula_trasera',
+  'resumen_venta', 'observacion_venta_original', 'novedades_atc', 'foto_cedula_frontal', 'foto_cedula_trasera',
   'foto_carnet', 'archivo_resumen', 'archivo_planilla',
   'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
 ];

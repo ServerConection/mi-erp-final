@@ -464,10 +464,11 @@ router.put('/:id', async (req, res) => {
       debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
     }
 
-    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento')) {
+    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento') && !Object.prototype.hasOwnProperty.call(payload, 'fecha_agenda')) {
       const franja = String(payload.franja_horaria_agendamiento || '').trim();
-      const matchFranja = franja.match(/^([01]\d|2[0-3]):00-([01]\d|2[0-3]):00$/);
-      const duraDosHoras = matchFranja && (Number(matchFranja[2]) - Number(matchFranja[1]) + 24) % 24 === 2;
+      const matchFranja = franja.match(/^([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)$/);
+      const duraDosHoras = matchFranja && matchFranja[2] === matchFranja[4]
+        && (Number(matchFranja[3]) - Number(matchFranja[1]) + 24) % 24 === 2;
       if (franja && !duraDosHoras) {
         return res.status(400).json({ success: false, error: 'Franja horaria inválida' });
       }
@@ -545,6 +546,7 @@ router.put('/:id', async (req, res) => {
       if (!raw) {
         payload.fecha_agenda = null;
         payload.hora_agenda = null;
+        payload.franja_horaria_agendamiento = null;
         payload.mes_agenda = null;
         payload.dia_abc_agenda = null;
       } else {
@@ -563,6 +565,10 @@ router.put('/:id', async (req, res) => {
         payload.fecha_agenda = fechaHora.slice(0, 10);
         const horaAgenda = fechaHora.slice(11, 19);
         payload.hora_agenda = horaAgenda.length === 5 ? `${horaAgenda}:00` : horaAgenda;
+        const horaInicio = Number(fechaHora.slice(11, 13));
+        const minutos = fechaHora.slice(14, 16);
+        const horaFin = String((horaInicio + 2) % 24).padStart(2, '0');
+        payload.franja_horaria_agendamiento = `${String(horaInicio).padStart(2, '0')}:${minutos} - ${horaFin}:${minutos}`;
         payload.mes_agenda = MESES[d.getMonth()];
         payload.dia_abc_agenda = DIAS[d.getDay()];
       }
@@ -655,6 +661,7 @@ router.put('/:id', async (req, res) => {
         id: rows[0].id,
         empresa: rows[0].distribuidor_autorizado || null,
         campos: fields,
+        registro: rows[0],
       });
     } catch (_) { /* el proceso de pruebas puede no inicializar Socket.IO */ }
 

@@ -688,7 +688,7 @@ export default function NuevaVenta() {
               direccion_manzana_villa: 'manzana_villa',
               telf_celular_2: 'telf_instalacion',
               tipo_contrato: 'servicio_adicional',
-              novedades_atc: 'observacion_venta',
+              observacion_venta_original: 'observacion_venta',
             };
             Object.entries(RENOMBRADOS_DB_A_FORM).forEach(([dbCol, formKey]) => {
               if (data[dbCol] !== undefined && data[dbCol] !== null) next[formKey] = String(data[dbCol]);
@@ -1466,7 +1466,9 @@ export default function NuevaVenta() {
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
-        novedades_atc: form.observacion_venta || null,
+        observacion_venta_original: form.observacion_venta || null,
+        // Novedades ATC se llena exclusivamente durante la gestiÃ³n de ATC.
+        novedades_atc: null,
       };
 
       const url = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;

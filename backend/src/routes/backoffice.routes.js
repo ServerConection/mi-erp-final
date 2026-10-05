@@ -76,6 +76,23 @@ const joinAsesorBackoffice = `
   ) asesor ON TRUE
 `;
 
+// Los listados masivos no necesitan campos extensos que solo se muestran al
+// abrir el detalle. Excluirlos reduce considerablemente el JSON transferido y
+// el trabajo de serializaciÃ³n cuando existen decenas de miles de ventas.
+const columnasBackofficeLista = `
+  (
+    to_jsonb(ev)
+    - ARRAY[
+        'hist_cambio_estatus', 'resumen_venta', 'observacion_auditoria',
+        'observacion_gestion_cobranza', 'links_documentos'
+      ]::text[]
+    || jsonb_build_object(
+      'id_asesor_comercial', COALESCE(asesor.codigo_vendedor, ev.codigo_asesor, ''),
+      'nombre_asesor_comercial', COALESCE(asesor.nombre_completo, '')
+    )
+  ) AS registro
+`;
+
 // ─── AISLAMIENTO POR EMPRESA ────────────────────────────────────────────────
 // `distribuidor_autorizado` guarda NOVONET o VELSA y se deriva de
 // usuarios.empresa al momento de registrar la venta (ver NuevaVenta.jsx).
@@ -104,6 +121,7 @@ router.get('/', async (req, res) => {
       estatusRegularizacion = '',                        // estatus_regularizacion
       empresa = '',
       includeTotal = 'true',
+      vista = 'completa',
     } = req.query;
 
     let whereClause = "WHERE estatus_envio != 'BORRADOR'";
@@ -178,8 +196,9 @@ router.get('/', async (req, res) => {
       paginacionSql = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
     }
 
+    const listadoLigero = String(vista).toLowerCase() === 'lista';
     const { rows } = await pool.query(`
-      SELECT ${columnasBackoffice}
+      SELECT ${listadoLigero ? columnasBackofficeLista : columnasBackoffice}
       FROM public.envios_ventas ev
       ${joinAsesorBackoffice}
       ${whereClause}
@@ -189,7 +208,8 @@ router.get('/', async (req, res) => {
 
     // PanelRegistros carga sin límite y ya conoce rows.length. Permitirle omitir
     // el COUNT evita un segundo recorrido completo de la tabla en cada consulta.
-    let total = rows.length;
+    const data = listadoLigero ? rows.map((row) => row.registro) : rows;
+    let total = data.length;
     if (String(includeTotal).toLowerCase() !== 'false') {
       const { rows: countRows } = await pool.query(
         `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
@@ -198,7 +218,7 @@ router.get('/', async (req, res) => {
       total = countRows[0].total;
     }
 
-    res.json({ success: true, data: rows, total });
+    res.json({ success: true, data, total });
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
     res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
@@ -282,7 +302,7 @@ const CAMPOS_EDITABLES = new Set([
   'observacion_auditoria', 'errores_telcos', 'estatus_regularizacion',
   'detalle_regularizacion', 'mes_regularizacion',
   'observacion_venta_original', 'observacion_gestion_cobranza',
-  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
+  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet', 'foto_cartel',
   'archivo_resumen',
   'archivo_planilla', 'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
   'links_documentos',
@@ -464,10 +484,11 @@ router.put('/:id', async (req, res) => {
       debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
     }
 
-    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento')) {
+    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento') && !Object.prototype.hasOwnProperty.call(payload, 'fecha_agenda')) {
       const franja = String(payload.franja_horaria_agendamiento || '').trim();
-      const matchFranja = franja.match(/^([01]\d|2[0-3]):00-([01]\d|2[0-3]):00$/);
-      const duraDosHoras = matchFranja && (Number(matchFranja[2]) - Number(matchFranja[1]) + 24) % 24 === 2;
+      const matchFranja = franja.match(/^([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)$/);
+      const duraDosHoras = matchFranja && matchFranja[2] === matchFranja[4]
+        && (Number(matchFranja[3]) - Number(matchFranja[1]) + 24) % 24 === 2;
       if (franja && !duraDosHoras) {
         return res.status(400).json({ success: false, error: 'Franja horaria inválida' });
       }
@@ -545,6 +566,7 @@ router.put('/:id', async (req, res) => {
       if (!raw) {
         payload.fecha_agenda = null;
         payload.hora_agenda = null;
+        payload.franja_horaria_agendamiento = null;
         payload.mes_agenda = null;
         payload.dia_abc_agenda = null;
       } else {
@@ -563,6 +585,10 @@ router.put('/:id', async (req, res) => {
         payload.fecha_agenda = fechaHora.slice(0, 10);
         const horaAgenda = fechaHora.slice(11, 19);
         payload.hora_agenda = horaAgenda.length === 5 ? `${horaAgenda}:00` : horaAgenda;
+        const horaInicio = Number(fechaHora.slice(11, 13));
+        const minutos = fechaHora.slice(14, 16);
+        const horaFin = String((horaInicio + 2) % 24).padStart(2, '0');
+        payload.franja_horaria_agendamiento = `${String(horaInicio).padStart(2, '0')}:${minutos} - ${horaFin}:${minutos}`;
         payload.mes_agenda = MESES[d.getMonth()];
         payload.dia_abc_agenda = DIAS[d.getDay()];
       }
@@ -655,6 +681,7 @@ router.put('/:id', async (req, res) => {
         id: rows[0].id,
         empresa: rows[0].distribuidor_autorizado || null,
         campos: fields,
+        registro: rows[0],
       });
     } catch (_) { /* el proceso de pruebas puede no inicializar Socket.IO */ }
 

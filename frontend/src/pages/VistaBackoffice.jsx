@@ -26,6 +26,7 @@ const CAMPOS_DOCUMENTO = [
   "foto_cedula_frontal",
   "foto_cedula_trasera",
   "foto_carnet",
+  "foto_cartel",
   "archivo_resumen",
   "archivo_planilla",
   "archivo_nombramiento",
@@ -35,7 +36,7 @@ const CAMPOS_DOCUMENTO = [
 const GRUPOS_DOCUMENTOS = [
   {
     titulo: "Identidad",
-    campos: ["foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet"],
+    campos: ["foto_cedula_frontal", "foto_cedula_trasera", "foto_carnet", "foto_cartel"],
   },
   {
     titulo: "Venta y legal",
@@ -47,6 +48,8 @@ const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
 const ESTATUS_NETLIFE = [
   "ACTIVO",
   "ASIGNADO",
+  "PREFACTIBILIDAD",
+  "VENTA PERDIDA/OTRO ASESOR",
   "FIN DE GESTIÓN",
   "RECHAZADO",
   "PRESERVICIO",
@@ -73,7 +76,7 @@ const CAMPOS_FECHA = [
 // Fuente única de columnas para todas las tablas y todas las exportaciones.
 // Al agregar o quitar un campo aquí, Preservicios y los demás submódulos se
 // mantienen sincronizados automáticamente con el archivo Excel.
-const COLUMNAS_TABLA_REGISTROS = [
+const COLUMNAS_TABLA_REGISTROS_ANTERIOR = [
   // Prioridad: IDs, responsable y estado comercial del registro
   "id_bitrix",
   "fecha_registro_sistema",
@@ -156,6 +159,75 @@ const COLUMNAS_TABLA_REGISTROS = [
   "links_documentos",
   ...CAMPOS_DOCUMENTO,
 ];
+
+const COLUMNAS_TABLA_REGISTROS = [
+  "id_bitrix",
+  "fecha_registro_sistema",
+  "distribuidor_autorizado",
+  "numero_identificacion",
+  "nombre_cliente_completo",
+  "aplica_descuento_3ra_edad",
+  "netlife_estatus_real",
+  "netlife_login",
+  "novedades_atc",
+  "fecha_ingreso_telcos",
+  "fecha_agenda",
+  "franja_horaria_agendamiento",
+  "fecha_activacion_netlife",
+  "plan_contratado",
+  "plan_contratado_final",
+  "velocidad_plan",
+  "servicios_digitales",
+  "tipo_contrato",
+  "forma_pago",
+  "telefonos",
+  "email_cliente",
+  "coordenadas_gps",
+  "referencia_ubicacion",
+  "direccion_calles",
+  "direccion_manzana_villa",
+  "observacion_venta_original",
+  "codigo_asesor",
+  "nombre_asesor_comercial",
+  "supervisor",
+  "documentos",
+];
+
+const ETIQUETAS_TABLA_REGISTROS = {
+  id_bitrix: "ID BITRIX",
+  fecha_registro_sistema: "FECHA REGISTRO",
+  distribuidor_autorizado: "DISTRIBUIDOR",
+  numero_identificacion: "CEDULA / RUC / PASAPORTE",
+  nombre_cliente_completo: "NOMBRE CLIENTE",
+  aplica_descuento_3ra_edad: "3ERA EDAD",
+  netlife_estatus_real: "ESTATUS NETLIFE",
+  netlife_login: "LOGIN NETLIFE",
+  novedades_atc: "NOVEDADES",
+  fecha_ingreso_telcos: "FECHA DE INGRESO TELCOS",
+  fecha_agenda: "FECHA DE AGENDAMIENTO",
+  franja_horaria_agendamiento: "FRANJA HORARIA DE AGENDAMIENTO",
+  fecha_activacion_netlife: "FECHA DE ACTIVACION",
+  plan_contratado: "SEGMENTO",
+  plan_contratado_final: "PLAN",
+  velocidad_plan: "MEGAS",
+  servicios_digitales: "EMPAQUETADO",
+  tipo_contrato: "SERVICIO ADICIONAL",
+  forma_pago: "FORMA DE PAGO",
+  telefonos: "TELEFONOS",
+  email_cliente: "CORREO",
+  coordenadas_gps: "COORDENADAS GPS",
+  referencia_ubicacion: "REFERENCIA",
+  direccion_calles: "CALLES",
+  direccion_manzana_villa: "MANZANA",
+  observacion_venta_original: "OBSERVACION DE LA VENTA",
+  codigo_asesor: "CODIGO ASESOR",
+  nombre_asesor_comercial: "NOMBRE ASESOR",
+  supervisor: "SUPERVISOR",
+  documentos: "DOCUMENTOS",
+};
+
+// Se conserva temporalmente como referencia del formato amplio anterior.
+void COLUMNAS_TABLA_REGISTROS_ANTERIOR;
 
 const COLUMNAS_VALIDACION_ESTADO = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
@@ -244,12 +316,13 @@ const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
   { valor: "NO REQUIERE REGULARIZAR", etiqueta: "No requiere regularizar" },
 ];
-const FRANJAS_AGENDAMIENTO = Array.from({ length: 12 }, (_, i) => {
-  const desde = String(i * 2).padStart(2, "0");
-  const hasta = String((i * 2 + 2) % 24).padStart(2, "0");
-  return `${desde}:00-${hasta}:00`;
-});
-const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_registro_sistema", "id_asesor_comercial", "fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria", "plan_contratado", "velocidad_plan"]);
+function calcularFranjaAgendamiento(fechaHora) {
+  const match = String(fechaHora || "").match(/T(\d{2}):(\d{2})/);
+  if (!match) return "";
+  const horaFin = String((Number(match[1]) + 2) % 24).padStart(2, "0");
+  return `${match[1]}:${match[2]} - ${horaFin}:${match[2]}`;
+}
+const CAMPOS_AUDITORIA_SOLO_LECTURA = new Set(["fecha_registro_sistema", "id_asesor_comercial", "fecha_hora_regularizacion", "fecha_auditoria", "hora_auditoria", "plan_contratado", "velocidad_plan"]);
 
 const OPCIONES_FORMA_PAGO = ["EFECTIVO", "TARJETA DE CRÉDITO", "CUENTA CORRIENTE", "CUENTA AHORROS"];
 const OPCIONES_BANCO = [
@@ -1156,10 +1229,13 @@ function CeldaDocumentos({ row, onAbrir }) {
 function camposDocumentoAplicables(d) {
   const empresa = d?.tipo_documento === "RUC EMPRESA";
   const juridico = d?.tipo_cliente === "JURÍDICO";
+  const pyme = normalizarEstado(d?.plan_contratado) === "PYME"
+    || normalizarEstado(d?.plan_contratado_final).startsWith("PYME");
   return CAMPOS_DOCUMENTO.filter((f) => {
     if (d?.[f]) return true;
-    if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
-    if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(d?.tipo_documento);
+    if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return pyme || (juridico && empresa);
+    if (f === "archivo_ruc") return pyme || (juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(d?.tipo_documento));
+    if (f === "foto_cartel") return pyme;
     if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(d?.aplica_descuento_3ra_edad || "");
     return true;
   });
@@ -1354,6 +1430,7 @@ const FIELD_LABELS = {
   telf_celular_pin: "TELÉFONO",
   telf_celular_2: "TEL. INSTALACIÓN",
   telf_fijo: "TEL. FIJO",
+  telefonos: "TELÃ‰FONOS",
   provincia: "PROVINCIA",
   ciudad: "CIUDAD",
   parroquia_barrio: "PARROQUIA",
@@ -1363,9 +1440,9 @@ const FIELD_LABELS = {
   coordenadas_gps: "GPS",
   tipo_vivienda: "TIPO VIVIENDA",
   regimen_vivienda: "REGIMEN VIVIENDA",
-  plan_contratado_final: "PLAN CONTRATADO FINAL",
-  plan_contratado: "PLAN CONTRATADO",
-  velocidad_plan: "VELOCIDAD DE PLAN",
+  plan_contratado_final: "PLAN",
+  plan_contratado: "SEGMENTO",
+  velocidad_plan: "MEGAS",
   servicios_digitales: "EMPAQUETADO",
   forma_pago: "FORMA PAGO",
   tipo_cuenta: "TIPO DE CUENTA O TARJETA",
@@ -1419,6 +1496,7 @@ const FIELD_LABELS = {
   foto_cedula_frontal: "FOTO CÉDULA FRONTAL",
   foto_cedula_trasera: "FOTO CÉDULA TRASERA",
   foto_carnet: "FOTO CARNET",
+  foto_cartel: "FOTO CARTEL",
   archivo_resumen: "ARCHIVO RESUMEN",
   archivo_planilla: "PLANILLA",
   archivo_nombramiento: "NOMBRAMIENTO",
@@ -1505,6 +1583,7 @@ const initialDetail = {
   foto_cedula_frontal: "",
   foto_cedula_trasera: "",
   foto_carnet: "",
+  foto_cartel: "",
   archivo_resumen: "",
   archivo_planilla: "",
   archivo_nombramiento: "",
@@ -1519,7 +1598,9 @@ const initialDetail = {
 };
 
 function valueForField(row, key) {
-  const v = row?.[key];
+  const v = key === "telefonos"
+    ? [row?.telf_celular_pin, row?.telf_celular_2, row?.telf_fijo].filter(Boolean).join(" / ")
+    : row?.[key];
   if (v === null || v === undefined || v === "") return "—";
   return String(v);
 }
@@ -1630,9 +1711,11 @@ function valoresSeleccionMultiple(valor) {
 // escribe en el buscador o cambia un filtro todavía no aplicado.
 const CAMPOS_TABLA_SOLO_LECTURA = new Set([
   "documentos",
+  "telefonos",
   "id_asesor_comercial", "nombre_asesor_comercial", "fecha_registro_sistema",
-  "fecha_hora_regularizacion", "fecha_regularizacion_atc", "fecha_auditoria", "hora_auditoria",
+  "fecha_hora_regularizacion", "fecha_auditoria", "hora_auditoria",
   "plan_contratado", "velocidad_plan",
+  "franja_horaria_agendamiento",
 ]);
 
 function tipoEditorCelda(campo) {
@@ -1654,7 +1737,6 @@ function opcionesEditorCelda(campo, row) {
     auditado_por: OPCIONES_AUDITOR,
     clausulas: OPCIONES_CLAUSULAS,
     lider_comercial: OPCIONES_LIDER_COMERCIAL,
-    franja_horaria_agendamiento: FRANJAS_AGENDAMIENTO,
     estado_welcome: ["SIN_NOTIFICAR", "PENDIENTE", "NOTIFICADO"],
     aplica_descuento_3ra_edad: ["NO", "SI POR TERCERA EDAD"],
     tipo_cliente: ["NATURAL", "JURÍDICO"],
@@ -2174,8 +2256,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [alert, setAlert] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
+  const [paginaTabla, setPaginaTabla] = useState(1);
   const solicitudDetalleRef = useRef(0);
   const campoDetallePendienteRef = useRef(null);
+  const FILAS_POR_PAGINA = 200;
 
   // ── FILTROS ────────────────────────────────────────────────────────────
   // El buscador de texto se mantiene igual; estos se suman.
@@ -2313,6 +2397,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       const p = new URLSearchParams();
       if (q) p.set("buscar", q);
       p.set("limit", "sin_limite");
+      p.set("vista", "lista");
       // Este panel muestra rows.length y no consume el total de otra consulta.
       p.set("includeTotal", "false");
       Object.entries(f || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
@@ -2470,7 +2555,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         }
         return;
       }
-      columnas.push({ key, label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase() });
+      columnas.push({ key, label: ETIQUETAS_TABLA_REGISTROS[key] || FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase() });
     });
     columnas.unshift({ key: "__ver__", label: "" }, { key: "__seleccion__", label: "SELECCIÓN" });
     return columnas;
@@ -2613,6 +2698,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
             "auditado_por", "fecha_hora_regularizacion", "fecha_auditoria", "hora_auditoria", "fecha_regularizacion_atc", "gestion_atc",
           ],
         },
+        { titulo: "Agendamiento", campos: ["fecha_agenda", "franja_horaria_agendamiento"] },
       ],
       welcome: [
         {
@@ -2631,6 +2717,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           ],
         },
         { titulo: "Resultado de Welcome", campos: ["estado_welcome", "novedades_atc", "observacion_venta_original"] },
+        { titulo: "Agendamiento", campos: ["fecha_agenda", "franja_horaria_agendamiento"] },
       ],
       mesa: [
         { titulo: "Observación de seguimiento", campos: ["novedades_atc", "observacion_venta_original"] },
@@ -2639,7 +2726,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           campos: [
             "id_bitrix", "codigo_asesor", "nombre_cliente_completo", "numero_identificacion",
             "telf_celular_pin", "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
-            "fecha_agenda", "fecha_activacion_netlife",
+            "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife",
           ],
         },
         {
@@ -2661,16 +2748,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           if (!editableFields.includes(f)) return false;
           const empresa = detail?.tipo_documento === "RUC EMPRESA";
           const juridico = detail?.tipo_cliente === "JURÍDICO";
+          const pyme = normalizarEstado(detail?.plan_contratado) === "PYME"
+            || normalizarEstado(detail?.plan_contratado_final).startsWith("PYME");
           if (f === "representante_legal") return empresa;
           if (["genero_cliente", "estado_civil"].includes(f)) return !empresa;
-          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return juridico && empresa;
-          if (f === "archivo_ruc") return juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento);
+          if (["archivo_nombramiento", "archivo_registro_mercantil"].includes(f)) return pyme || (juridico && empresa);
+          if (f === "archivo_ruc") return pyme || (juridico && ["RUC PERSONAL", "RUC EMPRESA"].includes(detail?.tipo_documento));
+          if (f === "foto_cartel") return pyme;
           if (f === "archivo_planilla") return /^(SÍ|SI)(\s|$)/.test(detail?.aplica_descuento_3ra_edad || "");
           return true;
         }),
       }))
       .filter((g) => g.campos.length);
-  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad, modoDetalle]);
+  }, [editableFields, detail?.tipo_documento, detail?.tipo_cliente, detail?.aplica_descuento_3ra_edad, detail?.plan_contratado, detail?.plan_contratado_final, modoDetalle]);
 
   const handleSave = async () => {
     if (!selectedId || !puedeEditar) return;
@@ -2810,7 +2900,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       const registroActualizado = normalizarRegistro(json.data);
       setDetail(registroActualizado);
       setDetailOriginal(registroActualizado);
-      await fetchRows(searchAplicada, filtrosAplicados);
+      // No recargar la lista completa: conserva la posiciÃ³n vertical y
+      // horizontal aunque el registro editado estÃ© al final de la tabla.
+      setRows((actuales) => actuales.map((row) => (
+        String(row.id) === String(selectedId) ? { ...row, ...registroActualizado } : row
+      )));
 
     } catch (e) {
 
@@ -2828,6 +2922,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       setSaving(false);
     }
   };
+
+  // Todos los registros permanecen disponibles para exportar y actualizar,
+  // pero React solo construye 200 filas a la vez. Esto evita montar decenas
+  // de miles de nodos DOM y mantiene fluido el scroll y la ediciÃ³n.
+  const totalPaginasTabla = Math.max(1, Math.ceil(rows.length / FILAS_POR_PAGINA));
+  const rowsPagina = useMemo(() => {
+    const inicio = (paginaTabla - 1) * FILAS_POR_PAGINA;
+    return rows.slice(inicio, inicio + FILAS_POR_PAGINA);
+  }, [rows, paginaTabla]);
+
+  useEffect(() => {
+    setPaginaTabla((pagina) => Math.min(pagina, totalPaginasTabla));
+  }, [totalPaginasTabla]);
 
   return (
     <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -2963,12 +3070,25 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
                 <TablaRegistros
                   loading={loading}
-                  rows={rows}
+                  rows={rowsPagina}
                   headers={tableHeaders}
                   onGuardarCelda={guardarCelda}
                   onVerDetalle={fetchDetail}
                   puedeEditar={puedeEditar}
                 />
+                {!loading && rows.length > FILAS_POR_PAGINA && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: 12, borderTop: "1px solid #e5e7eb", background: "#f8fafc" }}>
+                    <button type="button" disabled={paginaTabla <= 1} onClick={() => setPaginaTabla((p) => Math.max(1, p - 1))} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: paginaTabla <= 1 ? "not-allowed" : "pointer" }}>
+                      Anterior
+                    </button>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                      PÃ¡gina {paginaTabla} de {totalPaginasTabla} Â· {rows.length} registros
+                    </span>
+                    <button type="button" disabled={paginaTabla >= totalPaginasTabla} onClick={() => setPaginaTabla((p) => Math.min(totalPaginasTabla, p + 1))} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: paginaTabla >= totalPaginasTabla ? "not-allowed" : "pointer" }}>
+                      Siguiente
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3118,19 +3238,25 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                 <input
                                   type="datetime-local"
                                   value={detail?.fecha_agenda || ""}
-                                  onChange={(e) => setDetail((prev) => ({ ...prev, fecha_agenda: e.target.value }))}
+                                  onChange={(e) => {
+                                    const fechaAgenda = e.target.value;
+                                    setDetail((prev) => ({
+                                      ...prev,
+                                      fecha_agenda: fechaAgenda,
+                                      franja_horaria_agendamiento: calcularFranjaAgendamiento(fechaAgenda),
+                                    }));
+                                  }}
                                   step="60"
                                   style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
                                 />
                               ) : field === "franja_horaria_agendamiento" ? (
-                                <select
+                                <input
+                                  type="text"
                                   value={detail?.[field] || ""}
-                                  onChange={(e) => setDetail((prev) => ({ ...prev, [field]: e.target.value }))}
-                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff" }}
-                                >
-                                  <option value="">Seleccionar franja...</option>
-                                  {FRANJAS_AGENDAMIENTO.map((franja) => <option key={franja} value={franja}>{franja}</option>)}
-                                </select>
+                                  readOnly
+                                  placeholder="Se calcula con la fecha y hora"
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#f8fafc", color: "#334155" }}
+                                />
                               ) : field === "auditoria_documentos" ? (() => {
                                 const seleccionados = valoresSeleccionMultiple(detail?.[field]);
                                 const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
@@ -4232,6 +4358,12 @@ function ExploradorFechas({
   );
 }
 
+// CachÃ© breve compartida: al cambiar de submÃ³dulo no se vuelven a descargar
+// decenas de miles de filas que ya estÃ¡n en memoria. El refresco manual omite
+// esta cachÃ© y las ediciones en tiempo real actualizan tambiÃ©n su contenido.
+const cacheRegistrosBackoffice = new Map();
+const CACHE_REGISTROS_MS = 60_000;
+
 /** Carga compartida de registros para el explorador y el tablero. */
 function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
   const [rows, setRows] = useState([]);
@@ -4239,12 +4371,23 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const token = localStorage.getItem("token");
+  const cacheKey = `${empresa || "TODOS"}:${limite}`;
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
+    const cache = cacheRegistrosBackoffice.get(cacheKey);
+    if (!forzar && cache && Date.now() - cache.guardadoEn < CACHE_REGISTROS_MS) {
+      setRows(cache.rows);
+      setTotal(cache.total);
+      setCargando(false);
+      setError(null);
+      return;
+    }
     setCargando(true);
     setError(null);
     try {
       const qs = new URLSearchParams({ limit: String(limite) });
+      qs.set("vista", "lista");
+      if (String(limite) === "sin_limite") qs.set("includeTotal", "false");
       if (empresa && empresa !== "TODOS") qs.set("empresa", empresa);
       const r = await fetch(`${API}/api/backoffice?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -4253,29 +4396,50 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
       if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
       setRows(j.data || []);
       setTotal(j.total ?? (j.data || []).length);
+      cacheRegistrosBackoffice.set(cacheKey, {
+        rows: j.data || [],
+        total: j.total ?? (j.data || []).length,
+        guardadoEn: Date.now(),
+      });
     } catch (e) {
       setError(e.message || "Error de conexión");
     } finally {
       setCargando(false);
     }
-  }, [token, limite, empresa]);
+  }, [token, limite, empresa, cacheKey]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { cargar(false); }, [cargar]);
 
   useEffect(() => {
     const socket = getSocketCompartido();
-    const actualizar = () => cargar();
+    const actualizar = (evento = {}) => {
+      if (!evento.registro) return;
+      setRows((actuales) => actuales.map((row) => (
+        String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
+      )));
+      const cache = cacheRegistrosBackoffice.get(cacheKey);
+      if (cache) {
+        cacheRegistrosBackoffice.set(cacheKey, {
+          ...cache,
+          rows: cache.rows.map((row) => (
+            String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
+          )),
+        });
+      }
+    };
     socket.on("backoffice:registro-actualizado", actualizar);
     return () => socket.off("backoffice:registro-actualizado", actualizar);
-  }, [cargar]);
+  }, [cacheKey]);
 
-  return { rows, total, cargando, error, recargar: cargar };
+  return { rows, total, cargando, error, recargar: () => cargar(true) };
 }
 
 function CeldaRegistro({ row, campo, textoVacio }) {
   const valor = campo === "id_asesor_comercial"
     ? [row?.id_asesor_comercial, row?.nombre_asesor_comercial].filter(Boolean).join(" · ")
-    : row?.[campo];
+    : campo === "telefonos"
+      ? [row?.telf_celular_pin, row?.telf_celular_2, row?.telf_fijo].filter(Boolean).join(" / ")
+      : row?.[campo];
   return <CeldaValor campo={campo} valor={valor} textoVacio={textoVacio} />;
 }
 
@@ -6108,14 +6272,26 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
     });
   }, [todas, filtrosAplicados]);
 
+  // CatÃ¡logo oficial completo mÃ¡s estados histÃ³ricos que existan en los datos.
+  const estadosDisponibles = useMemo(() => {
+    const estados = new Map(ESTATUS_NETLIFE.map((estado) => [normalizarEstado(estado), estado]));
+    for (const row of todas || []) {
+      const estado = estadoNetlifeDe(row);
+      if (estado && !estados.has(normalizarEstado(estado))) {
+        estados.set(normalizarEstado(estado), estado);
+      }
+    }
+    return [...estados.values()];
+  }, [todas]);
+
   const conteos = useMemo(() => {
-    const acc = Object.fromEntries(ESTATUS_NETLIFE.map((e) => [e, 0]));
+    const acc = Object.fromEntries(estadosDisponibles.map((e) => [e, 0]));
     for (const row of rowsConFiltros) {
       const estado = estadoNetlifeDe(row);
       if (Object.prototype.hasOwnProperty.call(acc, estado)) acc[estado] += 1;
     }
     return acc;
-  }, [rowsConFiltros]);
+  }, [rowsConFiltros, estadosDisponibles]);
 
   const rowsFiltradas = useMemo(() => {
     return rowsConFiltros
@@ -6329,7 +6505,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
             gap: 12,
           }}
         >
-          {["TODOS", ...ESTATUS_NETLIFE].map((estado) => {
+          {["TODOS", ...estadosDisponibles].map((estado) => {
             const activo = estadoActivo === estado;
 
             return (
@@ -6377,7 +6553,13 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                     textAlign: "center",
                   }}
                 >
-                  {estado === "TODOS" ? rowsConFiltros.length : (conteos[estado] || 0)}
+                  {cargando ? (
+                    <span
+                      className="bo-skeleton"
+                      aria-label="Cargando cantidad"
+                      style={{ display: "inline-block", width: 24, height: 16, borderRadius: 6, verticalAlign: "middle" }}
+                    />
+                  ) : estado === "TODOS" ? rowsConFiltros.length : (conteos[estado] || 0)}
                 </span>
               </button>
             );

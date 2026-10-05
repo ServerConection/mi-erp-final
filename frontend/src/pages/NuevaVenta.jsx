@@ -116,7 +116,7 @@ const INIT = {
   beneficios_adicionales: "", beneficios_de_ley: "NO", plazo_contrato_meses: "36",
   resumen_venta: "",
   // ── Documentos ──
-  foto_cedula_frontal: "", foto_cedula_trasera: "", foto_carnet: "", archivo_resumen: "", archivo_planilla: "",
+  foto_cedula_frontal: "", foto_cedula_trasera: "", foto_carnet: "", foto_cartel: "", archivo_resumen: "", archivo_planilla: "",
   archivo_nombramiento: "", archivo_registro_mercantil: "", archivo_ruc: "",
 };
 
@@ -688,7 +688,7 @@ export default function NuevaVenta() {
               direccion_manzana_villa: 'manzana_villa',
               telf_celular_2: 'telf_instalacion',
               tipo_contrato: 'servicio_adicional',
-              novedades_atc: 'observacion_venta',
+              observacion_venta_original: 'observacion_venta',
             };
             Object.entries(RENOMBRADOS_DB_A_FORM).forEach(([dbCol, formKey]) => {
               if (data[dbCol] !== undefined && data[dbCol] !== null) next[formKey] = String(data[dbCol]);
@@ -763,6 +763,7 @@ export default function NuevaVenta() {
   // Siempre se usa selección por lista (nunca texto libre) para los tipos con catálogo;
   // si el admin aún no carga el Excel del mes, las listas salen vacías con un aviso.
   const usaCatalogo = form.tipo_plan && form.tipo_plan !== SOLO_ADICIONAL;
+  const esPlanPyme = String(form.tipo_plan || "").trim().toUpperCase() === "PYME";
 
   // Planes únicos del tipo seleccionado (ej. HOME → Plan 200 Mbps, Plan 400 Mbps…)
   const planesDelTipo = useMemo(() => {
@@ -1454,6 +1455,7 @@ export default function NuevaVenta() {
         foto_cedula_frontal: form.foto_cedula_frontal || null,
         foto_cedula_trasera: form.foto_cedula_trasera || null,
         foto_carnet: form.foto_carnet || null,
+        foto_cartel: esPlanPyme ? (form.foto_cartel || null) : null,
         archivo_resumen: form.archivo_resumen || null,
         archivo_planilla: aplicaDescuento3raEdad ? (form.archivo_planilla || null) : null,
         archivo_nombramiento: form.tipo_cliente === "JURÍDICO" && form.tipo_documento === "RUC EMPRESA" ? (form.archivo_nombramiento || null) : null,
@@ -1463,10 +1465,17 @@ export default function NuevaVenta() {
             ["RUC PERSONAL", "RUC EMPRESA"].includes(form.tipo_documento)
             ? (form.archivo_ruc || null)
             : null,
+        ...(esPlanPyme ? {
+          archivo_nombramiento: form.archivo_nombramiento || null,
+          archivo_registro_mercantil: form.archivo_registro_mercantil || null,
+          archivo_ruc: form.archivo_ruc || null,
+        } : {}),
         // cierre
         origen_venta: form.origen_venta || null,
         venta_nueva_o_reingreso: "NUEVA",
-        novedades_atc: form.observacion_venta || null,
+        observacion_venta_original: form.observacion_venta || null,
+        // Novedades ATC se llena exclusivamente durante la gestiÃ³n de ATC.
+        novedades_atc: null,
       };
 
       const url = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;
@@ -2217,6 +2226,33 @@ export default function NuevaVenta() {
                   />
                 </Row>
               )}
+            {esPlanPyme && (
+              <>
+                <div style={{ padding: "10px 18px", background: "#eff6ff", color: "#1e40af", fontSize: 12, fontWeight: 700 }}>
+                  Documentos PYME: la cedula frontal corresponde al representante legal.
+                </div>
+                <Row label="RUC - opcional">
+                  <FileUpload label="RUC" value={form.archivo_ruc} uploading={uploading.archivo_ruc}
+                    error={uploadErr.archivo_ruc} onRetry={() => reintentarSubida("archivo_ruc")}
+                    onPick={(file) => subirArchivo("archivo_ruc", file)} />
+                </Row>
+                <Row label="Nombramiento - opcional">
+                  <FileUpload label="nombramiento" value={form.archivo_nombramiento} uploading={uploading.archivo_nombramiento}
+                    error={uploadErr.archivo_nombramiento} onRetry={() => reintentarSubida("archivo_nombramiento")}
+                    onPick={(file) => subirArchivo("archivo_nombramiento", file)} />
+                </Row>
+                <Row label="Registro mercantil - opcional">
+                  <FileUpload label="registro mercantil" value={form.archivo_registro_mercantil} uploading={uploading.archivo_registro_mercantil}
+                    error={uploadErr.archivo_registro_mercantil} onRetry={() => reintentarSubida("archivo_registro_mercantil")}
+                    onPick={(file) => subirArchivo("archivo_registro_mercantil", file)} />
+                </Row>
+                <Row label="Foto cartel - opcional">
+                  <FileUpload label="foto cartel" value={form.foto_cartel} uploading={uploading.foto_cartel}
+                    error={uploadErr.foto_cartel} onRetry={() => reintentarSubida("foto_cartel")}
+                    onPick={(file) => subirArchivo("foto_cartel", file)} />
+                </Row>
+              </>
+            )}
           </Seccion>
 
           {/* ── Botones de envío ── */}

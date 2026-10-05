@@ -2236,7 +2236,7 @@ export default function NuevaVenta() {
                 : <><span>📤</span> Cargar venta</>
               }
             </button>
-            {/*<button
+            <button
               className="nv-btn-submit"
               style={{ marginTop: 10, background: "linear-gradient(135deg, #6B7280, #9CA3AF)", boxShadow: "0 6px 24px rgba(107,114,128,.35)" }}
               onClick={() => handleSubmit("BORRADOR")} disabled={!!loading}
@@ -2248,7 +2248,7 @@ export default function NuevaVenta() {
             </button>
             <button className="nv-btn-reset" type="button" onClick={() => { reiniciarFormulario(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               🗑️ Limpiar formulario
-            </button>*/}
+            </button>
           </div>
 
         </div>

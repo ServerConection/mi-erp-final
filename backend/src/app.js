@@ -130,8 +130,6 @@ app.set('trust proxy', 1);
 // los eventos desde una sola IP y el limite por IP lo cortaria en horas pico.
 // Se autentica con token propio por empresa y trae su propio parser de cuerpo.
 app.use(contactabilidadWebhookRoutes);
-// Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
-app.use('/api/control-asistencia', controlAsistenciaRoutes);
 
 
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
@@ -160,6 +158,10 @@ app.use('/api/bitrix-connector/placement-call', express.urlencoded({ limit: '32k
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
+// Va DESPUES de express.json: si se monta antes, req.body llega vacio y responde "Actividad inválida".
+app.use('/api/control-asistencia', controlAsistenciaRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, ts: Date.now(), uptime: process.uptime() });

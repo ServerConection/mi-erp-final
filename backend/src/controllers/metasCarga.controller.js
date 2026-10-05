@@ -125,6 +125,16 @@ const preview = async (req, res) => {
     }
     if (!hoja || !wb.Sheets[hoja]) return fail(res, 422, 'No encontre una hoja de METAS para esa empresa', { hojas });
 
+    // Proteccion: el Excel trae hojas de varios meses ("METAS NOVONET" = septiembre,
+    // "METAS NOVONET OCTUBRE"). Si se eligio una hoja que NO menciona el mes y
+    // existe otra de la misma empresa que SI lo menciona, se detiene.
+    const nombreMes = MESES[mes - 1];
+    const hojaDelMes = hojas.find((h) => h.esMetas && h.empresa === empresa
+      && h.nombre.toUpperCase().includes(nombreMes));
+    if (hojaDelMes && hojaDelMes.nombre !== hoja && !String(hoja).toUpperCase().includes(nombreMes)) {
+      return fail(res, 422, `Elegiste la hoja "${hoja}", pero para ${nombreMes} ${anio} existe "${hojaDelMes.nombre}". Elige esa hoja.`, { hojas });
+    }
+
     const leido = parseHojaMetas(wb, hoja);
     if (!leido.asesores.length) return fail(res, 422, `La hoja "${hoja}" no tiene filas de asesores`, { hojas });
 

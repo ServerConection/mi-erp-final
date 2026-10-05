@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
@@ -1365,7 +1365,11 @@ function normalizarRegistro(row) {
   const out = {};
   for (const [k, v] of Object.entries(row || {})) {
     if (v === null || v === undefined) { out[k] = ""; continue; }
-    if (k === "fecha_agenda") {
+    if (k === "hist_cambio_estatus") {
+      // PostgreSQL entrega JSONB como arreglo/objeto real. Debe conservarse:
+      // String(v) lo convertirÃ­a en "[object Object]" y perderÃ­a el historial.
+      out[k] = v;
+    } else if (k === "fecha_agenda") {
       const texto = String(v);
       const coincidencia = texto.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}))?/);
       const horaAgenda = String(row?.hora_agenda || "").slice(0, 5);
@@ -1760,11 +1764,15 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
   const totalPaginas = Math.max(1, Math.ceil(rows.length / tamanoPagina));
   const paginaActual = Math.min(pagina, totalPaginas);
   const filasPagina = useMemo(
-    () => rows.slice((paginaActual - 1) * tamanoPagina, paginaActual * tamanoPagina),
+    // Normalizar solamente la página visible. Normalizar las 50.000+ filas
+    // ante cada evento en tiempo real congelaba esta vista.
+    () => rows
+      .slice((paginaActual - 1) * tamanoPagina, paginaActual * tamanoPagina)
+      .map(normalizarRegistro),
     [rows, paginaActual, tamanoPagina]
   );
-  // Al cambiar los filtros (cambia la cantidad de filas) se vuelve a la página 1.
-  useEffect(() => { setPagina(1); }, [rows.length]);
+  // Un cambio remoto o una edición no debe devolver al usuario a la página 1.
+  useEffect(() => { setPagina((actual) => Math.min(actual, totalPaginas)); }, [totalPaginas]);
   const [edicion, setEdicion] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [galeriaId, setGaleriaId] = useState(null);
@@ -1774,6 +1782,33 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
 
   const scrollSuperiorRef = useRef(null);
   const scrollTablaRef = useRef(null);
+  const posicionScrollRef = useRef({ top: 0, left: 0, windowY: 0 });
+  const restaurarScrollPendienteRef = useRef(false);
+
+  const recordarPosicion = useCallback(() => {
+    restaurarScrollPendienteRef.current = true;
+    posicionScrollRef.current = {
+      top: scrollTablaRef.current?.scrollTop || 0,
+      left: scrollTablaRef.current?.scrollLeft || 0,
+      windowY: window.scrollY || 0,
+    };
+  }, []);
+
+  // Restaura la posición antes del repintado. Así una respuesta del servidor
+  // o un evento Socket.IO no mueve la tabla ni la página hacia arriba.
+  useLayoutEffect(() => {
+    if (!restaurarScrollPendienteRef.current) return;
+    restaurarScrollPendienteRef.current = false;
+    const posicion = posicionScrollRef.current;
+    if (scrollTablaRef.current) {
+      scrollTablaRef.current.scrollTop = posicion.top;
+      scrollTablaRef.current.scrollLeft = posicion.left;
+    }
+    if (scrollSuperiorRef.current) scrollSuperiorRef.current.scrollLeft = posicion.left;
+    if (Math.abs((window.scrollY || 0) - posicion.windowY) > 1) {
+      window.scrollTo({ top: posicion.windowY, behavior: "auto" });
+    }
+  }, [rows, paginaActual]);
   // Ancho REAL de la tabla: la barra superior debe medir lo mismo que la
   // tabla para poder llegar hasta la última columna (Documentos).
   const [anchoScroll, setAnchoScroll] = useState(Math.max(1800, headers.length * 145));
@@ -1802,11 +1837,14 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
       cancelandoRef.current = false;
       return false;
     }
-    if (edicion.valor === edicion.original) {
+    // Estatus Netlife admite reafirmaciones (p. ej. ASIGNADO -> ASIGNADO)
+    // porque cada gestiÃ³n debe quedar registrada con usuario y fecha/hora.
+    if (edicion.valor === edicion.original && edicion.campo !== "netlife_estatus_real") {
       setEdicion(null);
       return true;
     }
 
+    recordarPosicion();
     guardadoEnCursoRef.current = true;
     setGuardando(true);
     const guardado = await onGuardarCelda(edicion.id, edicion.campo, edicion.valor);
@@ -1814,7 +1852,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
     setGuardando(false);
     if (guardado) setEdicion(null);
     return guardado;
-  }, [edicion, onGuardarCelda]);
+  }, [edicion, onGuardarCelda, recordarPosicion]);
 
   const iniciarEdicion = useCallback(async (row, campo) => {
     if (CAMPOS_TABLA_SOLO_LECTURA.has(campo) || guardadoEnCursoRef.current || campo === "__seleccion__" || campo === "__ver__") return;
@@ -2241,6 +2279,101 @@ function CampoRangoFecha({ label, desde, hasta, onDesde, onHasta }) {
         <input type="date" aria-label={`${label} hasta`} style={{ ...estilosFiltro.ctl, minWidth: 0 }} value={hasta} onChange={(e) => onHasta(e.target.value)} />
       </div>
     </div>
+  );
+}
+
+function HistorialCambiosEstado({ valor }) {
+  const eventos = useMemo(() => {
+    let lista = [];
+    if (Array.isArray(valor)) lista = valor;
+    else if (valor) {
+      try {
+        const parsed = JSON.parse(valor);
+        lista = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        lista = [];
+      }
+    }
+
+    // Compatibilidad con el historial anterior, que guardaba un cambio simple
+    // como { fecha, estatus_anterior, estatus_nuevo }.
+    return lista.map((evento) => {
+      if (Array.isArray(evento?.cambios)) return evento;
+      if (Object.prototype.hasOwnProperty.call(evento || {}, "estatus_nuevo")) {
+        return {
+          ...evento,
+          fecha_hora: evento.fecha_hora || evento.fecha,
+          cambios: [{
+            campo: evento.campo || "netlife_estatus_real",
+            anterior: evento.estatus_anterior ?? null,
+            nuevo: evento.estatus_nuevo ?? null,
+          }],
+        };
+      }
+      return { ...evento, cambios: [] };
+    });
+  }, [valor]);
+
+  const formatearMomento = (fecha) => {
+    if (!fecha) return "Fecha no disponible";
+    const d = new Date(fecha);
+    if (Number.isNaN(d.getTime())) return String(fecha);
+    return new Intl.DateTimeFormat("es-EC", {
+      timeZone: "America/Guayaquil",
+      dateStyle: "medium",
+      timeStyle: "medium",
+    }).format(d);
+  };
+
+  return (
+    <section style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 14, padding: 18, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid #eff6ff" }}>
+        <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#eff6ff", color: "#2563eb" }}>↺</span>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "#0f172a" }}>Historial de cambios de estado</h4>
+          <div style={{ marginTop: 2, fontSize: 11, color: "#64748b" }}>Solo lectura - generado automaticamente por el sistema</div>
+        </div>
+        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: "#1d4ed8", background: "#eff6ff", borderRadius: 999, padding: "3px 9px" }}>{eventos.length}</span>
+      </div>
+
+      {eventos.length === 0 ? (
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "#f8fafc", color: "#64748b", fontSize: 12 }}>
+          Este registro todavia no tiene cambios de estado auditados.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {[...eventos].reverse().map((evento, indice) => {
+            const cambios = Array.isArray(evento?.cambios) ? evento.cambios : [];
+            const nombre = evento?.nombre_usuario || evento?.usuario || "Usuario no identificado";
+            const login = evento?.usuario && evento.usuario !== nombre ? `@${evento.usuario}` : "";
+            const meta = [login, evento?.perfil_usuario, evento?.empresa_usuario].filter(Boolean).join(" · ");
+            return (
+              <article key={`${evento?.fecha_hora || "sin-fecha"}-${indice}`} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 13, background: "#fcfdff" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>{nombre}</div>
+                    {meta && <div style={{ marginTop: 2, fontSize: 10.5, color: "#64748b" }}>{meta}</div>}
+                  </div>
+                  <time style={{ fontSize: 11, fontWeight: 700, color: "#475569", background: "#f1f5f9", borderRadius: 8, padding: "4px 8px" }}>
+                    {formatearMomento(evento?.fecha_hora)}
+                  </time>
+                </div>
+                <div style={{ display: "grid", gap: 7, marginTop: 11 }}>
+                  {cambios.map((cambio, cambioIndice) => (
+                    <div key={`${cambio?.campo || "estado"}-${cambioIndice}`} style={{ display: "grid", gridTemplateColumns: "minmax(130px, .8fr) minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+                      <strong style={{ color: "#334155" }}>{FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}</strong>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.anterior || "Sin estado"}</span>
+                      <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.nuevo || "Sin estado"}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2821,6 +2954,16 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
       if (turnoNuevo !== turnoViejo) {
         payload.turno_agendado = turnoNuevo;
+      }
+
+      // Al pulsar Guardar se permite reafirmar el mismo Estatus Netlife. El
+      // backend lo registra como una nueva gestiÃ³n aunque anterior y nuevo
+      // sean iguales.
+      if (
+        camposGuardables.includes("netlife_estatus_real") &&
+        detail?.netlife_estatus_real
+      ) {
+        payload.netlife_estatus_real = detail.netlife_estatus_real;
       }
 
       /*
@@ -3564,6 +3707,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                       </div>
                     </section>
                   ))}
+                  <HistorialCambiosEstado valor={detail?.hist_cambio_estatus} />
                 </div>
               </div>
 
@@ -4362,16 +4506,20 @@ function ExploradorFechas({
 // decenas de miles de filas que ya estÃ¡n en memoria. El refresco manual omite
 // esta cachÃ© y las ediciones en tiempo real actualizan tambiÃ©n su contenido.
 const cacheRegistrosBackoffice = new Map();
+const peticionesRegistrosBackoffice = new Map();
 const CACHE_REGISTROS_MS = 60_000;
 
 /** Carga compartida de registros para el explorador y el tablero. */
-function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
+function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS", filtrosServidor = null) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const token = localStorage.getItem("token");
-  const cacheKey = `${empresa || "TODOS"}:${limite}`;
+  const buscarServidor = filtrosServidor?.buscar || "";
+  const fechaDesdeServidor = filtrosServidor?.fechaDesde || "";
+  const fechaHastaServidor = filtrosServidor?.fechaHasta || "";
+  const cacheKey = `${empresa || "TODOS"}:${limite}:${buscarServidor}:${fechaDesdeServidor}:${fechaHastaServidor}`;
 
   const cargar = useCallback(async (forzar = false) => {
     const cache = cacheRegistrosBackoffice.get(cacheKey);
@@ -4385,14 +4533,28 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
     setCargando(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ limit: String(limite) });
-      qs.set("vista", "lista");
-      if (String(limite) === "sin_limite") qs.set("includeTotal", "false");
-      if (empresa && empresa !== "TODOS") qs.set("empresa", empresa);
-      const r = await fetch(`${API}/api/backoffice?${qs.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const j = await r.json();
+      let peticion = !forzar ? peticionesRegistrosBackoffice.get(cacheKey) : null;
+      if (!peticion) {
+        const qs = new URLSearchParams({ limit: String(limite) });
+        qs.set("vista", "lista");
+        if (String(limite) === "sin_limite") qs.set("includeTotal", "false");
+        if (empresa && empresa !== "TODOS") qs.set("empresa", empresa);
+        if (buscarServidor) qs.set("buscar", buscarServidor);
+        if (fechaDesdeServidor) qs.set("fechaDesde", fechaDesdeServidor);
+        if (fechaHastaServidor) qs.set("fechaHasta", fechaHastaServidor);
+        peticion = fetch(`${API}/api/backoffice?${qs.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(async (respuesta) => {
+          const json = await respuesta.json().catch(() => ({}));
+          if (!respuesta.ok || !json.success) throw new Error(json.error || `No se pudieron cargar los registros (HTTP ${respuesta.status})`);
+          return json;
+        });
+        peticionesRegistrosBackoffice.set(cacheKey, peticion);
+        peticion.finally(() => {
+          if (peticionesRegistrosBackoffice.get(cacheKey) === peticion) peticionesRegistrosBackoffice.delete(cacheKey);
+        }).catch(() => {});
+      }
+      const j = await peticion;
       if (!j.success) throw new Error(j.error || "No se pudieron cargar los registros");
       setRows(j.data || []);
       setTotal(j.total ?? (j.data || []).length);
@@ -4406,7 +4568,7 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
     } finally {
       setCargando(false);
     }
-  }, [token, limite, empresa, cacheKey]);
+  }, [token, limite, empresa, cacheKey, buscarServidor, fechaDesdeServidor, fechaHastaServidor]);
 
   useEffect(() => { cargar(false); }, [cargar]);
 
@@ -4414,16 +4576,34 @@ function useRegistrosBackoffice(limite = "sin_limite", empresa = "TODOS") {
     const socket = getSocketCompartido();
     const actualizar = (evento = {}) => {
       if (!evento.registro) return;
-      setRows((actuales) => actuales.map((row) => (
-        String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
-      )));
+      // El servidor emite el registro completo, pero este listado fue pedido
+      // como vista liviana. Mezclar historial y documentos en cada evento
+      // hacía crecer la memoria y volvía cada vez más lenta la pantalla.
+      const actualizarLista = (actuales) => {
+        let huboCambio = false;
+        const siguientes = actuales.map((row) => {
+          if (String(row.id) !== String(evento.registro.id)) return row;
+          const parche = {};
+          Object.keys(row).forEach((campo) => {
+            if (Object.prototype.hasOwnProperty.call(evento.registro, campo)) {
+              parche[campo] = evento.registro[campo];
+            }
+          });
+          const cambioReal = Object.keys(parche).some((campo) => parche[campo] !== row[campo]);
+          if (!cambioReal) return row;
+          huboCambio = true;
+          return { ...row, ...parche };
+        });
+        return huboCambio ? siguientes : actuales;
+      };
+      setRows(actualizarLista);
       const cache = cacheRegistrosBackoffice.get(cacheKey);
       if (cache) {
+        const rowsActualizadas = actualizarLista(cache.rows);
+        if (rowsActualizadas === cache.rows) return;
         cacheRegistrosBackoffice.set(cacheKey, {
           ...cache,
-          rows: cache.rows.map((row) => (
-            String(row.id) === String(evento.registro.id) ? { ...row, ...evento.registro } : row
-          )),
+          rows: rowsActualizadas,
         });
       }
     };
@@ -7352,13 +7532,21 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
 }
 
 function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) {
-  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa);
   const [estadoActivo, setEstadoActivo] = useState("TODOS");
   const [detalleId, setDetalleId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
   const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
   const [filtrosAplicados, setFiltrosAplicados] = useState(() => ({ busqueda: "", ...rangoMesActualEC() }));
+  // Filtrar en PostgreSQL antes de transferir datos. Antes esta vista pedía
+  // los 50.000+ registros y recién después aplicaba el rango en el navegador,
+  // lo que podía agotar el timeout/memoria del servicio y devolver HTTP 500.
+  const filtrosServidor = useMemo(() => ({
+    buscar: filtrosAplicados.busqueda,
+    fechaDesde: filtrosAplicados.fechaDesde,
+    fechaHasta: filtrosAplicados.fechaHasta,
+  }), [filtrosAplicados.busqueda, filtrosAplicados.fechaDesde, filtrosAplicados.fechaHasta]);
+  const { rows: todas, total, cargando, error, recargar } = useRegistrosBackoffice("sin_limite", empresa, filtrosServidor);
   // Cambios guardados desde la tabla (edición en línea). Se aplican encima de
   // lo que trae el servidor hasta la próxima recarga.
   const [cambios, setCambios] = useState({});
@@ -7447,8 +7635,9 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
     })),
   ], []);
 
-  // La tabla edita sobre el formato normalizado (fechas listas para inputs).
-  const rowsTabla = useMemo(() => rowsFiltradas.map(normalizarRegistro), [rowsFiltradas]);
+  // TablaRegistros normaliza únicamente la página visible; evita procesar
+  // decenas de miles de filas por cada edición de otro usuario.
+  const rowsTabla = rowsFiltradas;
 
   // Resaltado amarillo de gestiones especiales en «Por regularizar».
   const fondoFila = useCallback((row) => (

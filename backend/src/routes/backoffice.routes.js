@@ -4,7 +4,7 @@
 // GET  /api/backoffice        → listar registros
 // GET  /api/backoffice/:id    → detalle completo de un registro
 // PUT  /api/backoffice/:id    → editar solo campos de auditoría
-// Acceso exclusivo: ADMINISTRADOR, GERENCIA y ATC
+// Acceso exclusivo: ADMINISTRADOR y ATC
 // ============================================================
 
 const express = require('express');
@@ -26,7 +26,6 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 // `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
-  'GERENCIA',
   'ATC',
 ]);
 
@@ -51,6 +50,12 @@ router.use(verificarToken, soloBackoffice);
 // malformado y tumba toda la consulta. LEFT(col::text, 10) devuelve siempre
 // 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
 const fechaCol = (col) => `LEFT(${col}::text, 10)`;
+// Alcance histórico autorizado para TODO Backoffice. Este límite vive en el
+// backend para que tampoco pueda evadirse manipulando filtros o URLs.
+const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
+const condicionFechaBackoffice = (alias = '') => (
+  `${fechaCol(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
+);
 
 // envios_ventas conserva el código con el que se registró la venta. El nombre
 // se resuelve contra usuarios.codigo_vendedor para no duplicarlo ni dejarlo
@@ -124,7 +129,7 @@ router.get('/', async (req, res) => {
       vista = 'completa',
     } = req.query;
 
-    let whereClause = "WHERE estatus_envio != 'BORRADOR'";
+    let whereClause = `WHERE estatus_envio != 'BORRADOR' AND ${condicionFechaBackoffice()}`;
     const params = [];
     const P = (v) => { params.push(v); return `$${params.length}`; };
 
@@ -239,6 +244,7 @@ router.get('/opciones', async (req, res) => {
         FROM public.envios_ventas
         WHERE ${col} IS NOT NULL AND TRIM(${col}) <> ''
           AND estatus_envio != 'BORRADOR'
+          AND ${condicionFechaBackoffice()}
         ORDER BY 1
       `);
       return rows.map(r => r.v);
@@ -265,7 +271,8 @@ router.get('/:id', async (req, res) => {
       `SELECT ${columnasBackoffice}
        FROM public.envios_ventas ev
        ${joinAsesorBackoffice}
-       WHERE ev.id = $1`,
+       WHERE ev.id = $1
+         AND ${condicionFechaBackoffice('ev.')}`,
       [req.params.id]
     );
     if (rows.length === 0)
@@ -330,10 +337,12 @@ const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "
 router.get('/welcome/programaciones', async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT registro_id, scheduled_at, status, attempts, last_error
-       FROM welcome_notifications
-       WHERE status IN ('pending', 'processing', 'failed')
-       ORDER BY scheduled_at ASC`
+      `SELECT wn.registro_id, wn.scheduled_at, wn.status, wn.attempts, wn.last_error
+       FROM welcome_notifications wn
+       INNER JOIN public.envios_ventas ev ON ev.id = wn.registro_id
+       WHERE wn.status IN ('pending', 'processing', 'failed')
+         AND ${condicionFechaBackoffice('ev.')}
+       ORDER BY wn.scheduled_at ASC`
     );
     res.json({ success: true, data: rows });
   } catch (error) {
@@ -363,6 +372,7 @@ router.post('/welcome/programar', async (req, res) => {
       `SELECT id
        FROM public.envios_ventas
        WHERE id = ANY($1::bigint[])
+         AND ${condicionFechaBackoffice()}
          AND COALESCE(UPPER(TRIM(estado_welcome)), 'SIN_NOTIFICAR') = 'SIN_NOTIFICAR'
        ORDER BY array_position($1::bigint[], id::bigint)`,
       [ids]
@@ -451,7 +461,9 @@ router.put('/:id', async (req, res) => {
     await client.query('BEGIN');
     transaccionAbierta = true;
     const { rows: actual } = await client.query(
-      'SELECT * FROM public.envios_ventas WHERE id = $1 FOR UPDATE',
+      `SELECT * FROM public.envios_ventas
+       WHERE id = $1 AND ${condicionFechaBackoffice()}
+       FOR UPDATE`,
       [id]
     );
     if (actual.length === 0)
@@ -615,8 +627,17 @@ router.put('/:id', async (req, res) => {
       'calidad_venta_analista', 'venta_efectiva',
     ]);
     const cambiosEstado = Object.entries(payload)
-      .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && String(actual[0][campo] ?? '') !== String(valor ?? ''))
-      .map(([campo, valor]) => ({ campo, anterior: actual[0][campo] ?? null, nuevo: valor ?? null }));
+      .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && (
+        campo === 'netlife_estatus_real'
+        || String(actual[0][campo] ?? '') !== String(valor ?? '')
+      ))
+      .map(([campo, valor]) => ({
+        campo,
+        anterior: actual[0][campo] ?? null,
+        nuevo: valor ?? null,
+        reafirmacion: campo === 'netlife_estatus_real'
+          && String(actual[0][campo] ?? '') === String(valor ?? ''),
+      }));
     if (cambiosEstado.length) {
       let historial = actual[0].hist_cambio_estatus;
       if (typeof historial === 'string') {
@@ -625,7 +646,10 @@ router.put('/:id', async (req, res) => {
       if (!Array.isArray(historial)) historial = [];
       historial.push({
         usuario_id: req.user?.id || null,
-        usuario: req.user?.nombreCompleto || req.user?.usuario || null,
+        usuario: req.user?.usuario || null,
+        nombre_usuario: req.user?.nombreCompleto || req.user?.usuario || null,
+        perfil_usuario: req.user?.perfil || null,
+        empresa_usuario: req.user?.empresa || null,
         fecha_hora: new Date().toISOString(),
         cambios: cambiosEstado,
       });

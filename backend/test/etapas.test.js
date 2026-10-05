@@ -34,7 +34,6 @@ test('clasifica variantes conceptuales de etapas no gestionables', () => {
     ' atc/soporte ',
     'Zonas Peligrosas',
     'fuera de cobertura',
-    'INNEGOCIABLE',
     'Remarketing',
     'Regularización',
     'REGULARIZADO',
@@ -53,6 +52,8 @@ test('mantiene como gestionables las etapas amplias de operación', () => {
     'VENTA SUBIDA',
     'DESCARTE',
     'POSTVENTA NOVONET',
+    'INNEGOCIABLE',   // SÍ es gestionable desde 2026-10-05
+    'inegociable',
   ];
 
   for (const etapa of gestionables) {

@@ -11,7 +11,7 @@ const { fechaValida, validarFilas, parseTxt } = require('../shared/gestionablesC
 // que esta lista no se puede reemplazar por esGestionableExpr() de shared/etapas.
 const ETAPAS_NO_GESTIONABLES_LEADS = [
   'duplicado', 'dupllicado', 'zona_peligrosa', 'zonas_peligrosas',
-  'regularizacion', 'remarketing', 'fuera_de_cobertura', 'innegociable', 'atc',
+  'regularizacion', 'remarketing', 'fuera_de_cobertura', 'atc', // innegociable SÍ es gestionable (2026-10-05)
 ];
 router.use(verificarToken, (req, res, next) => {
   if (!['ADMINISTRADOR', 'GERENCIA'].includes(req.user.perfil) && Number(req.user.id) !== 76) return res.status(403).json({ success: false, error: 'No tiene acceso a este módulo' });

@@ -20,7 +20,9 @@ export default function ReporteReparto() {
   }, [fecha]);
   useEffect(() => { consultar(); }, [consultar]);
 
-  const detalle = datos?.detalle || [];
+  const todos = datos?.detalle || [];
+  const detalle = todos.filter((d) => d.vigente !== false);          // lo que cuenta en el cupo
+  const esHumano = (d) => d.origen === 'humano';
 
   const porHora = useMemo(() => {
     const sin = new Map((datos?.sin_repartir || []).map((r) => [r.hora, r.total]));
@@ -29,20 +31,20 @@ export default function ReporteReparto() {
     const desde = Math.min(7, ...horas), hasta = Math.max(19, ...horas);
     return Array.from({ length: hasta - desde + 1 }, (_, i) => {
       const h = desde + i;
-      return { hora: h, label: etiquetaHora(h), Repartidos: detalle.filter((d) => d.hora === h).length, 'A la estación': sin.get(h) || 0 };
+      return { hora: h, label: etiquetaHora(h), Bot: detalle.filter((d) => d.hora === h && !esHumano(d)).length, Humano: detalle.filter((d) => d.hora === h && esHumano(d)).length, 'A la estación': sin.get(h) || 0 };
     });
   }, [detalle, datos]);
 
   const porAsesor = useMemo(() => {
     const m = new Map();
     detalle.forEach((d) => {
-      const x = m.get(d.asesor_asignado) || { nombre: d.asesor_asignado, total: 0, primero: d.hora_texto, ultimo: d.hora_texto };
-      x.total += 1; x.ultimo = d.hora_texto; m.set(d.asesor_asignado, x);
+      const x = m.get(d.asesor_asignado) || { nombre: d.asesor_asignado, total: 0, bot: 0, humano: 0, primero: d.hora_texto, ultimo: d.hora_texto };
+      x.total += 1; if (esHumano(d)) x.humano += 1; else x.bot += 1; x.ultimo = d.hora_texto; m.set(d.asesor_asignado, x);
     });
     return [...m.values()].sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
   }, [detalle]);
 
-  const filtrados = detalle.filter((d) => (hora === null || d.hora === hora) && (!asesor || d.asesor_asignado === asesor));
+  const filtrados = todos.filter((d) => (hora === null || d.hora === hora) && (!asesor || d.asesor_asignado === asesor));
   const totalSin = (datos?.sin_repartir || []).reduce((a, r) => a + r.total, 0);
   const max = porAsesor[0]?.total || 0, min = porAsesor.length ? porAsesor[porAsesor.length - 1].total : 0;
 
@@ -56,8 +58,8 @@ export default function ReporteReparto() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ['Leads repartidos', detalle.length],
-          ['Asesores que recibieron', porAsesor.length],
+          ['Entregados por el bot', detalle.filter((d) => !esHumano(d)).length],
+          ['Entregados por un humano', detalle.filter(esHumano).length],
           ['Diferencia máx. entre asesores', porAsesor.length ? max - min : '—'],
           ['Pasaron por la estación', totalSin],
         ].map(([t, v]) => (
@@ -68,7 +70,7 @@ export default function ReporteReparto() {
 
       <div className="rounded-2xl border bg-white p-5">
         <h2 className="text-lg font-bold text-slate-800">Leads por hora</h2>
-        <p className="mb-3 text-sm text-slate-500">Azul: entregados a asesores. Naranja: llegaron y esperaron en la estación. Haz clic en una barra para ver los leads entregados en esa hora.</p>
+        <p className="mb-3 text-sm text-slate-500">Azul: entregados por el bot. Morado: asignados a mano por un humano. Naranja: llegaron y esperaron en la estación. Haz clic en una barra para ver los leads entregados en esa hora.</p>
         {!porHora.length ? <p className="text-slate-500">{busy ? 'Cargando…' : 'No hubo reparto en esta fecha.'}</p> : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -78,7 +80,8 @@ export default function ReporteReparto() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                 <Tooltip cursor={{ fill: 'rgba(59,130,246,0.08)' }} />
                 <Legend />
-                <Bar dataKey="Repartidos" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} cursor="pointer" />
+                <Bar dataKey="Bot" stackId="a" fill="#3b82f6" cursor="pointer" />
+                <Bar dataKey="Humano" stackId="a" fill="#8b5cf6" radius={[4, 4, 0, 0]} cursor="pointer" />
                 <Bar dataKey="A la estación" stackId="b" fill="#f59e0b" radius={[4, 4, 0, 0]} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
@@ -92,10 +95,10 @@ export default function ReporteReparto() {
           <p className="mb-3 text-sm text-slate-500">Haz clic en un asesor para ver sus leads.</p>
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Asesor</th><th className="p-2 text-center">Leads</th><th className="p-2">Primero</th><th className="p-2">Último</th></tr></thead>
+              <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Asesor</th><th className="p-2 text-center">Total</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2">Primero</th><th className="p-2">Último</th></tr></thead>
               <tbody>{porAsesor.map((a) => (
                 <tr key={a.nombre} onClick={() => setAsesor(asesor === a.nombre ? '' : a.nombre)} className={`cursor-pointer border-b hover:bg-blue-50 ${asesor === a.nombre ? 'bg-blue-50 font-semibold' : ''}`}>
-                  <td className="p-2">{a.nombre}</td><td className="p-2 text-center tabular-nums">{a.total}</td><td className="p-2 tabular-nums">{a.primero}</td><td className="p-2 tabular-nums">{a.ultimo}</td>
+                  <td className="p-2">{a.nombre}</td><td className="p-2 text-center tabular-nums font-semibold">{a.total}</td><td className="p-2 text-center tabular-nums">{a.bot}</td><td className={`p-2 text-center tabular-nums ${a.humano ? 'text-violet-700 font-semibold' : ''}`}>{a.humano}</td><td className="p-2 tabular-nums">{a.primero}</td><td className="p-2 tabular-nums">{a.ultimo}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -114,12 +117,17 @@ export default function ReporteReparto() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Hora</th><th className="p-2">Lead</th><th className="p-2">Asignado a</th><th className="p-2 text-center">Su lead n.º</th><th className="p-2">Vía</th></tr></thead>
               <tbody>{filtrados.map((d) => (
-                <tr key={d.bitrix_deal_id} className="border-b">
+                <tr key={`${d.bitrix_deal_id}-${d.origen}-${d.asesor_asignado}`} className={`border-b ${d.vigente === false ? 'text-slate-400 line-through decoration-slate-300' : ''}`}>
                   <td className="p-2 tabular-nums">{d.hora_texto}</td>
                   <td className="p-2 tabular-nums">{d.bitrix_deal_id}</td>
                   <td className="p-2">{d.asesor_asignado}</td>
                   <td className="p-2 text-center tabular-nums">{d.ronda}</td>
-                  <td className="p-2">{d.origen === 'cola' ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">Desde estación</span> : 'Directo'}</td>
+                  <td className="p-2">
+                    {d.origen === 'humano' ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">Humano</span>
+                      : d.origen === 'cola' ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">Bot · desde estación</span>
+                      : 'Bot'}
+                    {d.vigente === false && <span className="ml-1 text-xs no-underline">→ reasignado a {d.reasignado_a || 'otro'}</span>}
+                  </td>
                 </tr>
               ))}</tbody>
             </table>

@@ -93,17 +93,22 @@ router.get('/reparto/estado', async (req, res) => {
       leerEnLinea(),
       erp.query(
         `SELECT g.nombre_bitrix_asesor AS nombre, g.gestionables_permitidos AS permitidos,
-                COUNT(a.id)::int AS asignados, MAX(a.creado_en) AS ultima_asignacion
+                COUNT(a.id)::int AS asignados,
+                COUNT(a.id) FILTER (WHERE a.origen <> 'humano')::int AS asignados_bot,
+                COUNT(a.id) FILTER (WHERE a.origen = 'humano')::int  AS asignados_humano,
+                MAX(a.creado_en) AS ultima_asignacion
            FROM gestionables_asesores g
            LEFT JOIN gestionables_asignaciones a
              ON a.fecha = g.fecha_carga
+            AND a.vigente
             AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
           WHERE g.fecha_carga = ${HOY_EC_SQL}
           GROUP BY 1, 2`
       ),
       erp.query(
-        `SELECT (SELECT COUNT(*) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL})::int AS repartidos,
-                (SELECT MAX(creado_en) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL}) AS ultimo_reparto,
+        `SELECT (SELECT COUNT(*) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL} AND vigente AND origen <> 'humano')::int AS repartidos,
+                (SELECT COUNT(*) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL} AND vigente AND origen = 'humano')::int AS humanos,
+                (SELECT MAX(creado_en) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL} AND origen <> 'humano') AS ultimo_reparto,
                 (SELECT COUNT(DISTINCT bitrix_id) FROM gestionables_webhook_log
                   WHERE (creado_en AT TIME ZONE 'America/Guayaquil')::date = ${HOY_EC_SQL}
                     AND encontrado = false AND error LIKE 'Ningún asesor%')::int AS sin_repartir`
@@ -163,7 +168,7 @@ router.get('/reparto/reporte', async (req, res) => {
   try {
     const [detalle, sinRepartir, eventos] = await Promise.all([
       erp.query(
-        `SELECT bitrix_deal_id, asesor_asignado, asesor_original, ronda, origen,
+        `SELECT bitrix_deal_id, asesor_asignado, asesor_original, ronda, origen, vigente, reasignado_a,
                 EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
                 TO_CHAR(creado_en AT TIME ZONE 'America/Guayaquil', 'HH24:MI') AS hora_texto
            FROM gestionables_asignaciones

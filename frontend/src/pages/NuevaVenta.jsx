@@ -1332,19 +1332,9 @@ export default function NuevaVenta() {
         .toUpperCase()
         .includes("VELSA");
 
-      if (!data.existe) {
+       if (!data.existe) {
         setOrigenVentaLocked(false);
-        const mensaje = esDistribuidorVelsa
-          ? `${data.error || `El ID Bitrix #${idBitrix} no es válido`}. Para Velsa se permite continuar aunque no esté en etapa "VENTA SUBIDA".`
-          : `${data.error || `El ID Bitrix #${idBitrix} no es válido`}. Verifica que el ID sea correcto y esté en etapa "VENTA SUBIDA".`;
-        setAlert({
-          tipo: esDistribuidorVelsa ? "ok" : "err",
-          msg: mensaje
-        });
-        if (!esDistribuidorVelsa) {
-          setModalError({ titulo: "No se puede cargar la venta", mensaje });
-          return false;
-        }
+        // Restricción desactivada: se permite registrar el ID Bitrix aunque no esté en VENTA SUBIDA
         return true;
       } else {
         const origen = (data.data.source || "").toUpperCase();
@@ -1500,6 +1490,8 @@ export default function NuevaVenta() {
             notificacionCorreo: d.notificacion_correo || null,
           });
           reiniciarFormulario();
+          // Si venía de un borrador (?id=...), quitarlo para que la siguiente venta se cree como NUEVA
+          if (borradorId) navigate(window.location.pathname, { replace: true });
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } else {

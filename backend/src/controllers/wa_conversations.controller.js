@@ -1,4 +1,5 @@
 const { query } = require('../config/db')
+const { asegurarLocal } = require('../services/waMediaFallback')
 const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
@@ -55,6 +56,7 @@ async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
           if (resp.ok) buffer = Buffer.from(await resp.arrayBuffer())
         } else {
           const filePath = resolveMediaPath(pres.media_url)
+          await asegurarLocal(filePath)
           if (fs.existsSync(filePath)) buffer = fs.readFileSync(filePath)
         }
       } catch (e) { console.warn('[Presentación] No se pudo leer el medio:', e.message) }
@@ -275,6 +277,7 @@ async function createInternalNote(req, res) {
         return res.status(400).json({ success: false, error: 'El adjunto oculto debe ser una imagen' })
       }
       const filePath = resolveMediaPath(mediaUrl)
+      await asegurarLocal(filePath)
       if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'La imagen subida no existe' })
     }
     const c = await findOwnedConversation(req, id)
@@ -359,6 +362,7 @@ async function sendMessage(req, res) {
         buffer = Buffer.from(await resp.arrayBuffer())
       } else {
         const filePath = resolveMediaPath(media_url)
+        await asegurarLocal(filePath)
         if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'Archivo no existe' })
         buffer = fs.readFileSync(filePath)
       }

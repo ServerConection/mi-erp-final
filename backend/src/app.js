@@ -44,7 +44,6 @@ const whatsappRoutes               = require('./routes/whatsapp.routes');
 const asistenteRoutes              = require('./routes/asistente.routes');
 const reporteDetalleRoutes         = require('./routes/reporteDetalle.routes');
 const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes');
-const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const nexoIaRoutes                 = require('./routes/nexoIa.routes');
 const kpiComercialRoutes           = require('./routes/kpiComercial.routes');
@@ -55,7 +54,6 @@ const tareasRoutes                  = require('./routes/tareas.routes');
 const hojasRoutes                   = require('./routes/hojas.routes');
 const chatRoutes                    = require('./routes/chat.routes');
 const evaluacionesRoutes            = require('./routes/evaluaciones.routes');
-const controlAsistenciaRoutes       = require('./routes/controlAsistencia.routes');
 
 const app = express();
 
@@ -140,6 +138,16 @@ app.use('/api/control-asistencia', controlAsistenciaRoutes);
 const rateLimit = require('./middleware/rateLimit');
 app.use(rateLimit);
 
+// WABOT EXTERNO: si WABOT_REMOTE_URL existe, WhatsApp vive en otro servicio de
+// Render y estas rutas se reenvían allá. Va ANTES de express.json() para
+// reenviar el cuerpo intacto. Sin la variable no se monta nada (igual que antes).
+const { wabotApiProxy, wabotUploadsProxy } = require('./middleware/wabotProxy');
+const _wabotApi = wabotApiProxy();
+if (_wabotApi) {
+  app.use(_wabotApi);
+  console.log('[WABOT] Modo externo: /api/wa y /api/bitrix-connector* ->', process.env.WABOT_REMOTE_URL);
+}
+
 // SEGURIDAD (2026-09): las rutas de sesion son las unicas que responden sin
 // token, asi que son la puerta natural para saturar el servidor con cuerpos
 // enormes. Un login son tres campos: 64kb sobra y devuelve 413 si se pasa.
@@ -217,6 +225,9 @@ app.use('/api/broadcast',         broadcastRoutes);
 // WA_UPLOADS_DIR: en Render apunta al disco persistente (/var/data/wa_uploads)
 const waUploadsPath = process.env.WA_UPLOADS_DIR || path.resolve(__dirname, '..', 'wa_uploads');
 app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
+// Medios nuevos: si el archivo no está en el disco de este servicio, se busca en el wabot.
+const _wabotUploads = wabotUploadsProxy();
+if (_wabotUploads) app.use(_wabotUploads);
 app.use('/api/wa', whatsappRoutes);
 app.use('/api/asistente', asistenteRoutes);
 app.use('/api/reporte-detalle', reporteDetalleRoutes);
@@ -224,6 +235,8 @@ app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
+// Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
+app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);

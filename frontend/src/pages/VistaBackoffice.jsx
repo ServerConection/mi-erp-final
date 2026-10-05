@@ -166,12 +166,50 @@ const COLUMNAS_VALIDACION_ESTADO = [
 ];
 
 const COLUMNAS_VALIDACION_REGULARIZACION = [
-  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
-  "netlife_estatus_real", "estatus_regularizacion", "auditado_por", "fecha_hora_regularizacion", "nombre_cliente_completo",
-  "aplica_descuento_3ra_edad", "numero_identificacion", "plan_contratado_final", "plan_contratado", "velocidad_plan",
-  "servicios_digitales", "tipo_contrato", "netlife_login", "novedades_atc",
-  "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife", "forma_pago", "supervisor",
+  "id_bitrix", "id_asesor_comercial", "fecha_registro_sistema", "numero_identificacion",
+  "aplica_descuento_3ra_edad", "nombre_cliente_completo", "plan_contratado_final",
+  "servicios_digitales", "tipo_contrato", "forma_pago", "estatus_regularizacion",
+  // La antigua columna NOVEDADES se reemplazó por DETALLE REG.
+  "detalle_regularizacion", "fecha_regularizacion_atc", "netlife_estatus_real",
+  "netlife_login", "supervisor", "documentos",
 ];
+
+// Cabeceras propias de la tabla de Validación / Regularización.
+const ETIQUETAS_TABLA_REGULARIZACION = {
+  id_bitrix: "ID BITRIX",
+  id_asesor_comercial: "CÓDIGO / NOMBRE ASESOR",
+  fecha_registro_sistema: "FECHA INGRESO",
+  numero_identificacion: "CI / RUC / PASAPORTE",
+  aplica_descuento_3ra_edad: "3RA EDAD SI / NO",
+  nombre_cliente_completo: "NOMBRES APELLIDOS",
+  plan_contratado_final: "PLAN CONTRATAR FINAL",
+  servicios_digitales: "EMPAQUETADOS",
+  tipo_contrato: "SERVICIOS ADICIONALES",
+  forma_pago: "FORMA DE PAGO",
+  estatus_regularizacion: "ESTATUS DE VENTA",
+  detalle_regularizacion: "NOVEDAD ATC / OBSERVACIÓN DE REGULARIZACIÓN",
+  fecha_regularizacion_atc: "FECHA QUE PIDE REGULARIZAR",
+  netlife_estatus_real: "ESTATUS NETLIFE",
+  netlife_login: "LOGIN",
+  supervisor: "SUPERVISOR",
+  documentos: "ADJUNTOS VISIBLES",
+};
+
+// Excel de Validación / Regularización (mismo orden que el formato de reporte).
+const COLUMNAS_EXPORTACION_REGULARIZACION = [
+  "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "supervisor",
+  "netlife_login", "netlife_estatus_real", "estatus_regularizacion", "detalle_regularizacion",
+];
+const ETIQUETAS_EXPORTACION_REGULARIZACION = {
+  id_bitrix: "ID BITRIX",
+  fecha_registro_sistema: "FECHA REGISTRO",
+  id_asesor_comercial: "CÓDIGO Y NOMBRE DEL ASESOR",
+  supervisor: "SUPERVISOR",
+  netlife_login: "LOGIN NETLIFE",
+  netlife_estatus_real: "ESTATUS NETLIFE",
+  estatus_regularizacion: "ESTATUS REG.",
+  detalle_regularizacion: "DETALLE REG",
+};
 
 const COLUMNAS_MESA_TRABAJO = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial",
@@ -1630,7 +1668,21 @@ function opcionesEditorCelda(campo, row) {
   return opciones[campo] || null;
 }
 
-const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, onGuardarCelda, onVerDetalle, puedeEditar = false }) {
+const OPCIONES_TAMANO_PAGINA = [50, 100, 200, 500];
+
+const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, onGuardarCelda, onVerDetalle, puedeEditar = false, fondoFila = null }) {
+  // Paginación en el navegador: solo se pintan las filas de la página actual.
+  // Con más de 10.000 registros, pintar todo bloqueaba la pantalla.
+  const [pagina, setPagina] = useState(1);
+  const [tamanoPagina, setTamanoPagina] = useState(100);
+  const totalPaginas = Math.max(1, Math.ceil(rows.length / tamanoPagina));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const filasPagina = useMemo(
+    () => rows.slice((paginaActual - 1) * tamanoPagina, paginaActual * tamanoPagina),
+    [rows, paginaActual, tamanoPagina]
+  );
+  // Al cambiar los filtros (cambia la cantidad de filas) se vuelve a la página 1.
+  useEffect(() => { setPagina(1); }, [rows.length]);
   const [edicion, setEdicion] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [galeriaId, setGaleriaId] = useState(null);
@@ -1640,6 +1692,21 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
 
   const scrollSuperiorRef = useRef(null);
   const scrollTablaRef = useRef(null);
+  // Ancho REAL de la tabla: la barra superior debe medir lo mismo que la
+  // tabla para poder llegar hasta la última columna (Documentos).
+  const [anchoScroll, setAnchoScroll] = useState(Math.max(1800, headers.length * 145));
+  useEffect(() => {
+    const cont = scrollTablaRef.current;
+    if (!cont) return undefined;
+    const medir = () => setAnchoScroll(cont.scrollWidth);
+    medir();
+    const tabla = cont.querySelector("table");
+    if (typeof ResizeObserver === "undefined" || !tabla) return undefined;
+    const obs = new ResizeObserver(medir);
+    obs.observe(tabla);
+    obs.observe(cont);
+    return () => obs.disconnect();
+  });
 
   const moverDesdeArriba = (e) => {
     if (!scrollTablaRef.current) return;
@@ -1743,7 +1810,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
       >
         <div
           style={{
-            width: Math.max(1800, headers.length * 145),
+            width: anchoScroll,
             height: 1,
           }}
         />
@@ -1773,8 +1840,8 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                       position: stickyLeft !== undefined ? "sticky" : "static",
                       left: stickyLeft,
                       zIndex: h.key === "__ver__" ? 12 : 11,
+                      ...(i === 0 && !width ? { width: 60 } : {}),
                       ...(width ? { width, minWidth: width } : {}),
-                      ...(i === 0 ? { width: 60 } : {}),
                     }}>
                       {h.key === "__ver__"
                         ? ""
@@ -1787,10 +1854,11 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {filasPagina.map((row) => {
                 const filaSeleccionada = seleccionadas.has(String(row.id));
+                const fondoBase = fondoFila?.(row) || "#fff";
                 return (
-                  <tr key={row.id} style={{ background: filaSeleccionada ? "#ecfdf5" : "#fff", boxShadow: filaSeleccionada ? "inset 0 0 0 1px #bbf7d0" : "none" }}>
+                  <tr key={row.id} style={{ background: filaSeleccionada ? "#ecfdf5" : fondoBase, boxShadow: filaSeleccionada ? "inset 0 0 0 1px #bbf7d0" : "none" }}>
                     {headers.map((h) => {
                       if (h.key === "__ver__") {
                         return (
@@ -1802,9 +1870,9 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                               zIndex: 2,
                               padding: "10px 8px",
                               borderBottom: "1px solid #f1f5f9",
-                              background: filaSeleccionada ? "#ecfdf5" : "#fff",
+                              background: filaSeleccionada ? "#ecfdf5" : fondoBase,
                               whiteSpace: "nowrap",
-                              boxShadow: "1px 0 0 #f1f5f9",
+                              boxShadow: filaSeleccionada ? "inset 4px 0 0 #22c55e, 1px 0 0 #f1f5f9" : "1px 0 0 #f1f5f9",
                             }}
                           >
                             <button
@@ -1845,7 +1913,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                               textAlign: "center",
                               padding: "10px 8px",
                               borderBottom: "1px solid #f1f5f9",
-                              background: filaSeleccionada ? "#ecfdf5" : "#fff",
+                              background: filaSeleccionada ? "#ecfdf5" : fondoBase,
                               boxShadow: "1px 0 0 #f1f5f9",
                             }}
                           >
@@ -1872,7 +1940,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                           style={{
                             padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
                             maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
-                            background: filaSeleccionada ? "#ecfdf5" : (edicion?.id === row.id && edicion?.campo === h.key ? "#fff7ed" : "#fff"),
+                            background: filaSeleccionada ? "#ecfdf5" : (edicion?.id === row.id && edicion?.campo === h.key ? "#fff7ed" : fondoBase),
                             cursor: CAMPOS_TABLA_SOLO_LECTURA.has(h.key) ? "default" : "cell",
                           }}>
                           {edicion?.id === row.id && edicion?.campo === h.key ? (() => {
@@ -1908,7 +1976,7 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                             );
                           })() : h.key === "documentos"
                             ? <CeldaDocumentos row={row} onAbrir={setGaleriaId} />
-                            : <CeldaRegistro row={row} campo={h.key} />}
+                            : <CeldaRegistro row={row} campo={h.key} textoVacio={h.key === "estatus_regularizacion" ? "SIN REVISAR" : undefined} />}
                         </td>
                       );
                     })}
@@ -1919,6 +1987,34 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
           </table>
         )}
       </div>
+      {!loading && rows.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 12px", background: "#f8fafc", borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#475569" }}>
+          <span style={{ fontWeight: 700 }}>
+            Mostrando {(paginaActual - 1) * tamanoPagina + 1}–{Math.min(paginaActual * tamanoPagina, rows.length)} de {rows.length} registros
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label style={{ fontWeight: 700 }}>
+              Filas:{" "}
+              <select value={tamanoPagina} onChange={(e) => { setTamanoPagina(Number(e.target.value)); setPagina(1); }} style={{ padding: "5px 6px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12 }}>
+                {OPCIONES_TAMANO_PAGINA.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            {[
+              { txt: "«", ir: 1, off: paginaActual === 1 },
+              { txt: "‹ Anterior", ir: paginaActual - 1, off: paginaActual === 1 },
+            ].map((b) => (
+              <button key={b.txt} type="button" disabled={b.off} onClick={() => setPagina(b.ir)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #dbe4f0", background: b.off ? "#f1f5f9" : "#fff", color: b.off ? "#94a3b8" : "#1d4ed8", fontWeight: 800, cursor: b.off ? "default" : "pointer" }}>{b.txt}</button>
+            ))}
+            <span style={{ fontWeight: 800, padding: "0 6px" }}>Página {paginaActual} de {totalPaginas}</span>
+            {[
+              { txt: "Siguiente ›", ir: paginaActual + 1, off: paginaActual === totalPaginas },
+              { txt: "»", ir: totalPaginas, off: paginaActual === totalPaginas },
+            ].map((b) => (
+              <button key={b.txt} type="button" disabled={b.off} onClick={() => setPagina(b.ir)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #dbe4f0", background: b.off ? "#f1f5f9" : "#fff", color: b.off ? "#94a3b8" : "#1d4ed8", fontWeight: 800, cursor: b.off ? "default" : "pointer" }}>{b.txt}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {galeriaId && (
         <GaleriaDocumentosRegistro
           registroId={galeriaId}
@@ -1935,7 +2031,8 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
   anterior.headers === siguiente.headers &&
   anterior.puedeEditar === siguiente.puedeEditar &&
   anterior.onGuardarCelda === siguiente.onGuardarCelda &&
-  anterior.onVerDetalle === siguiente.onVerDetalle
+  anterior.onVerDetalle === siguiente.onVerDetalle &&
+  anterior.fondoFila === siguiente.fondoFila
 );
 
 // ── Estado inicial de los filtros (las claves son los query params del API) ──
@@ -6829,7 +6926,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
                 style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #dbe4f0", fontSize: 13, outline: "none", minWidth: 240 }}
               />
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(ordenadas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_VALIDACION_REGULARIZACION)}
+                onClick={() => exportarAExcel(ordenadas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)}
                 color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe"
               />
               <button
@@ -7080,6 +7177,41 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
   const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
   const [filtrosAplicados, setFiltrosAplicados] = useState(() => ({ busqueda: "", ...rangoMesActualEC() }));
+  // Cambios guardados desde la tabla (edición en línea). Se aplican encima de
+  // lo que trae el servidor hasta la próxima recarga.
+  const [cambios, setCambios] = useState({});
+  const [alerta, setAlerta] = useState(null);
+  const token = localStorage.getItem("token");
+  useEffect(() => { setCambios({}); }, [todas]);
+
+  const todasConCambios = useMemo(
+    () => (todas || []).map((row) => (cambios[row.id] ? { ...row, ...cambios[row.id] } : row)),
+    [todas, cambios]
+  );
+
+  const guardarCelda = useCallback(async (id, campo, valor) => {
+    try {
+      setAlerta(null);
+      const valorEnviar = campo === "estatus_regularizacion" && valor === "SIN REVISAR"
+        ? ""
+        : normalizarValorFechaHoraGuardar(campo, valor);
+      const res = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ [campo]: valorEnviar }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `No se pudo guardar ${FIELD_LABELS[campo] || campo}`);
+      }
+      setCambios((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...(json.data || { [campo]: valorEnviar }) } }));
+      setAlerta(resultadoBienvenida(json, `${ETIQUETAS_TABLA_REGULARIZACION[campo] || FIELD_LABELS[campo] || campo} actualizado correctamente`));
+      return true;
+    } catch (error) {
+      setAlerta({ type: "error", msg: error.message || "No se pudo guardar el cambio" });
+      return false;
+    }
+  }, [token]);
 
   const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
   const limpiarFiltros = () => {
@@ -7091,7 +7223,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
 
   const rowsConFiltros = useMemo(() => {
     const q = normalizarEstado(filtrosAplicados.busqueda);
-    return (todas || []).filter((row) => {
+    return todasConCambios.filter((row) => {
       if (q) {
         const coincide = [
           row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor, row.id_asesor_comercial, row.nombre_asesor_comercial,
@@ -7105,7 +7237,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
       if (filtrosAplicados.fechaHasta && (!fecha || fecha > filtrosAplicados.fechaHasta)) return false;
       return true;
     });
-  }, [todas, filtrosAplicados]);
+  }, [todasConCambios, filtrosAplicados]);
 
   const conteos = useMemo(() => {
     const resultado = Object.fromEntries(BLOQUES_VALIDACION.map((bloque) => [bloque.id, 0]));
@@ -7122,7 +7254,29 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
     ? "TODOS"
     : BLOQUES_VALIDACION.find((bloque) => bloque.id === estadoActivo)?.titulo || estadoActivo;
 
-  const columnas = COLUMNAS_VALIDACION_REGULARIZACION;
+  // Encabezados para la tabla compartida con Registros: botón Ver + check
+  // de selección a la izquierda, luego las columnas del submódulo.
+  const headersTabla = useMemo(() => [
+    { key: "__ver__", label: "" },
+    { key: "__seleccion__", label: "SELECCIÓN" },
+    ...COLUMNAS_VALIDACION_REGULARIZACION.map((key) => ({
+      key,
+      label: ETIQUETAS_TABLA_REGULARIZACION[key] || FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
+    })),
+  ], []);
+
+  // La tabla edita sobre el formato normalizado (fechas listas para inputs).
+  const rowsTabla = useMemo(() => rowsFiltradas.map(normalizarRegistro), [rowsFiltradas]);
+
+  // Resaltado amarillo de gestiones especiales en «Por regularizar».
+  const fondoFila = useCallback((row) => (
+    estadoActivo === "POR_REGULARIZAR" &&
+    ["ANALFABETO", "DESCUENTO CONADIS", "DESCUENTO 3RA EDAD"].includes(normalizarEstado(row.gestion_atc))
+      ? "#fef9c3"
+      : null
+  ), [estadoActivo]);
+
+  const verDetalle = useCallback((id) => setDetalleId(id), []);
 
   return (
     <div className="bo-page" style={{ padding: 18, background: "#f3f4f6", minHeight: "100vh", color: "#0f172a" }}>
@@ -7184,36 +7338,29 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
               <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".08em" }}>Estado seleccionado</div>
               <h3 style={{ margin: "4px 0 0", fontSize: 18, color: "#4338ca", textTransform: "uppercase" }}>{estadoSeleccionado} · {rowsFiltradas.length}</h3>
             </div>
-            <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_VALIDACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
+            <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
           </div>
 
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
-            <div className="bo-table-scroll" style={{ overflow: "auto", maxHeight: 590 }}>
-              <table style={{ width: "100%", minWidth: Math.max(1800, columnas.length * 145), borderCollapse: "separate", borderSpacing: 0, fontSize: 11 }}>
-                <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
-                  <tr>{columnas.map((key, index) => <th key={`${key}-${index}`} style={{ padding: "11px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900, color: "#334155" }}>{FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase()}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {cargando && <tr><td colSpan={columnas.length} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>Cargando…</td></tr>}
-                  {!cargando && rowsFiltradas.length === 0 && <tr><td colSpan={columnas.length} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>Sin registros para {estadoSeleccionado}.</td></tr>}
-                  {!cargando && rowsFiltradas.map((row) => {
-                    const gestionDestacada = estadoActivo === "POR_REGULARIZAR" && [
-                      "ANALFABETO", "DESCUENTO CONADIS", "DESCUENTO 3RA EDAD",
-                    ].includes(normalizarEstado(row.gestion_atc));
-
-                    return (
-                      <tr
-                        key={row.id}
-                        onClick={() => setDetalleId(row.id)}
-                        style={{ cursor: "pointer", background: gestionDestacada ? "#fef9c3" : "#fff" }}
-                      >
-                        {columnas.map((key) => <td key={`${row.id}-${key}`} title={valueForField(row, key)} onClick={() => recordarCampoDetalle(key)} style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}><CeldaRegistro row={row} campo={key} textoVacio={key === "estatus_regularizacion" ? "SIN REVISAR" : undefined} /></td>)}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {alerta && (
+            <div style={{ marginBottom: 10, padding: "10px 12px", borderRadius: 8, background: alerta.type === "success" ? "#ecfdf5" : "#fef2f2", color: alerta.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${alerta.type === "success" ? "#bbf7d0" : "#fecaca"}`, fontSize: 12, fontWeight: 700 }}>
+              {alerta.msg}
             </div>
+          )}
+
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+            {!cargando && rowsTabla.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Sin registros para {estadoSeleccionado}.</div>
+            ) : (
+              <TablaRegistros
+                loading={cargando}
+                rows={rowsTabla}
+                headers={headersTabla}
+                onGuardarCelda={guardarCelda}
+                onVerDetalle={verDetalle}
+                puedeEditar
+                fondoFila={fondoFila}
+              />
+            )}
           </div>
         </div>
       </div>

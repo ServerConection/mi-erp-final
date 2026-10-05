@@ -20,6 +20,13 @@ function Interruptor({ encendido, onClick, disabled, etiqueta }) {
   );
 }
 
+const MOTIVOS_COLA = {
+  fuera_de_horario: 'Llegó fuera de horario',
+  nadie_en_linea: 'No había asesores en línea',
+  todos_al_limite: 'Todos estaban en su límite',
+  cola_en_espera: 'Había otros esperando antes',
+};
+
 const ESTADOS = {
   linea:      { label: 'En línea',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   pausa:      { label: 'En pausa',       cls: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -64,7 +71,9 @@ export default function RepartoEnVivo() {
 
   const cfg = datos?.config;
   const filtroLinea = cfg?.solo_en_linea && datos?.en_linea;
-  const filas = datos?.data || [];
+  const filas = (datos?.data || []).filter((r) => !r.es_estacion);
+  const horario = datos?.horario;
+  const estacion = datos?.estacion;
 
   const { pueden, siguiente, rondaActual, otros } = useMemo(() => {
     const conCupo = filas.filter((r) => r.asignados < r.permitidos);
@@ -80,6 +89,13 @@ export default function RepartoEnVivo() {
   return (
     <div className="space-y-5">
       {error && <p role="alert" className="p-3 bg-red-50 text-red-700 rounded-xl">{error}</p>}
+
+      {activo && horario && !horario.dentro && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-900">
+          <p className="font-bold">Fuera de horario de entrega ({horario.inicio.slice(0, 5)} a {horario.fin.slice(0, 5)})</p>
+          <p className="text-sm">Los leads que entran ahora esperan a nombre de <strong>{estacion?.nombre}</strong> y se entregan desde las {horario.inicio.slice(0, 5)}, a medida que los asesores se conectan.</p>
+        </div>
+      )}
 
       {/* Interruptores */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -143,7 +159,7 @@ export default function RepartoEnVivo() {
           ['Repartidos hoy', datos?.resumen?.repartidos ?? '—', datos?.resumen?.ultimo_reparto ? `Último a las ${horaEc(datos.resumen.ultimo_reparto)}` : 'Aún ninguno'],
           ['Pueden recibir ahora', pueden.length, filtroLinea ? 'En línea y con cupo' : 'Con cupo'],
           ['Ronda actual', rondaActual ?? '—', rondaActual ? `Todos reciben su lead n.º ${rondaActual}` : 'Nadie disponible'],
-          ['Sin repartir hoy', datos?.resumen?.sin_repartir ?? '—', 'Llegaron sin nadie disponible'],
+          ['En la estación', estacion?.pendientes ?? '—', estacion ? `Esperan a nombre de ${estacion.nombre}` : ''],
         ].map(([t, v, s]) => (
           <div key={t} className="rounded-2xl border bg-white p-4">
             <p className="text-sm text-slate-500">{t}</p>
@@ -161,6 +177,30 @@ export default function RepartoEnVivo() {
         </div>
       )}
 
+      {/* Leads esperando en la estación */}
+      {estacion?.pendientes > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-white p-5">
+          <h2 className="text-lg font-bold text-slate-800">Esperando en la estación ({estacion.pendientes})</h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Están a nombre de {estacion.nombre}. Se entregan del más antiguo al más nuevo, solo en horario y a asesores en línea con cupo.
+            Con 1 o 2 asesores disponibles se entrega 1 cada 5 minutos; con 3 o más, normal por rondas.
+          </p>
+          <div className="max-h-72 overflow-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b text-left text-slate-500"><th className="p-2">#</th><th className="p-2">Lead</th><th className="p-2">Llegó</th><th className="p-2">Por qué espera</th></tr></thead>
+              <tbody>{estacion.lista.map((c, i) => (
+                <tr key={c.bitrix_deal_id} className="border-b">
+                  <td className="p-2 tabular-nums">{i + 1}</td>
+                  <td className="p-2 tabular-nums">{c.bitrix_deal_id}</td>
+                  <td className="p-2 tabular-nums">{new Date(c.creado_en).toLocaleString('es-EC', { timeZone: 'America/Guayaquil', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="p-2">{MOTIVOS_COLA[c.motivo] || c.motivo}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Cómo funciona */}
       <div className="rounded-2xl border bg-white">
         <button onClick={() => setAyuda(!ayuda)} aria-expanded={ayuda} className="flex w-full items-center justify-between p-4 text-left font-medium text-slate-700">
@@ -173,6 +213,9 @@ export default function RepartoEnVivo() {
             <li>Recibe el que <strong>menos leads lleva</strong>. Si empatan, el que lleva más tiempo sin recibir.</li>
             <li>Así todos reciben su 1.º antes de que alguien reciba el 2.º, y nadie pasa su cupo.</li>
             <li>Si alguien entra más tarde, recibe primero hasta igualar a los demás.</li>
+            <li>Fuera de horario{horario ? ` (después de las ${horario.fin.slice(0, 5)} y antes de las ${horario.inicio.slice(0, 5)})` : ''}, o si nadie puede recibir, el lead espera a nombre de <strong>{estacion?.nombre || 'la estación'}</strong>.</li>
+            <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan como gestionables del día en que se entregan.</li>
+            <li>Si apagas el reparto, todo se detiene: no se reparte ni se entrega la cola.</li>
           </ol>
         )}
       </div>

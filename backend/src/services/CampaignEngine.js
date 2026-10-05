@@ -12,6 +12,7 @@
  *  - Registra wa_msg_id (acks de entrega) y eventos en campaign_events (2026-07)
  */
 const fs = require('fs')
+const { asegurarLocal } = require('./waMediaFallback')
 const path = require('path')
 const { query } = require('../config/db')
 
@@ -420,6 +421,7 @@ class CampaignEngine {
           buffer = Buffer.from(await resp.arrayBuffer())
         } else {
           const filePath = this._resolveMediaPath(mediaUrl)
+          await asegurarLocal(filePath)
           if (!fs.existsSync(filePath)) throw new Error('Archivo de medio no existe: ' + filePath)
           buffer = fs.readFileSync(filePath)
         }

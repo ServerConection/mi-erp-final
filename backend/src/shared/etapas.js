@@ -44,11 +44,9 @@ const ETAPAS_NO_SUMAN_LEAD = [
 ];
 
 // ── (2) No gestionables ─────────────────────────────────────────────────────
-// BASE = lista sin INNEGOCIABLE. El dashboard NOVONET (indicadores.controller)
-// cuenta INNEGOCIABLE COMO GESTIONABLE por decisión de negocio previa, mientras
-// que el resto de módulos lo trata como NO gestionable. Se respeta esa
-// diferencia con el flag `innegociableEsGestionable` en vez de cambiarla en
-// silencio; el día que gerencia unifique el criterio, se cambia el default acá.
+// CAMBIO (2026-10-05, pedido de Bryan Pineda / Desarrollo): INNEGOCIABLE SÍ es
+// gestionable en TODO el ERP (Novonet y Velsa). Revierte la regla del
+// 2026-08-19 que lo excluía. Ya no está en esta lista ni en los patrones.
 const ETAPAS_NO_GESTIONABLES_BASE = [
     'ATC',
     'ATC/SOPORTE',
@@ -59,7 +57,6 @@ const ETAPAS_NO_GESTIONABLES_BASE = [
     'CONTRATO PARAMOUNT',
     'PARAMOUNT SEGUMIENTO POR CERRAR',
     'PARAMOUNT SEGUIMIENTO POR CERRAR',
-    'INNEGOCIABLE',
     'DUPLICADO',
     'DUPLLICADO',
     'REMARKETING',
@@ -72,7 +69,6 @@ const ETAPAS_NO_GESTIONABLES_BASE = [
 
 const ETAPAS_NO_GESTIONABLES = [
     ...ETAPAS_NO_GESTIONABLES_BASE,
-    'INNEGOCIABLE',
 ];
 
 // ── (3) Descarte ────────────────────────────────────────────────────────────
@@ -81,7 +77,6 @@ const PATRONES_NO_GESTIONABLES = [
     /^ATC(?:[ /-]?SOPORTE)?$/,
     /^FUERA DE COBERTURA$/,
     /^ZONAS? PELIGROSAS?$/,
-    /^IN+EGOCIABLE$/,
     /^REMARKETING(?:\b.*)?$/,
     /^REGULARIZA/,
 ];
@@ -159,7 +154,6 @@ const esGestionableExpr = (col, opts = {}) => {
         `${etapa} !~ '^ATC([ /-]?SOPORTE)?$'`,
         `${etapa} <> 'FUERA DE COBERTURA'`,
         `${etapa} !~ '^ZONAS? PELIGROSAS?$'`,
-        `${etapa} !~ '^IN+EGOCIABLE$'`,
         `${etapa} !~ '^REMARKETING( .*)?$'`,
         `${etapa} !~ '^REGULARIZA'`,
         `${etapa} NOT IN ${sqlListaUpper(exactas)}`,

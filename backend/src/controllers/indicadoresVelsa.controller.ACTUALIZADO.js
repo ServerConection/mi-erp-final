@@ -98,7 +98,7 @@ const ETAPAS_NO_GESTIONABLES = [
     'DUPLICADO',
     'DUPLLICADO', // typo real encontrado en datos
     'FUERA DE COBERTURA',
-    'INNEGOCIABLE',
+    // INNEGOCIABLE SÍ es gestionable (2026-10-05)
     'ZONA PELIGROSA',
     'ZONAS PELIGROSAS',
     'POSTVENTA', // exacto: NO incluye "POSTVENTA NOVONET", esa SI es gestionable

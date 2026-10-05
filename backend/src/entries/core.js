@@ -32,6 +32,7 @@ app.use('/api/bitrix-sesiones',   require('../routes/bitrixSesiones.routes'));
 app.use('/api/inventario',        require('../routes/inventario.routes'));
 app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
+app.use('/api/metas-carga',       require('../routes/metasCarga.routes'));
 app.use('/api/backoffice',        require('../routes/backoffice.routes'));
 app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'));
 app.use('/api/salud',require('../routes/salud.routes'));

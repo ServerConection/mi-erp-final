@@ -422,6 +422,9 @@ const ALL_MENU_ITEMS = [
   // Reporte Gerencial: inversion, costo por venta y margen. Direccion y admin.
   { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
+  // Carga mensual del Excel de metas (asesor / supervisor / equipos) -> Reporte D-1
+  { name: "Carga de Metas", path: "/carga-metas", icon: "🎯",
+    accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
   { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Control Asistencia", path: "/control-asistencia", icon: "🕘",

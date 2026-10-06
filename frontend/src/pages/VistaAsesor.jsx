@@ -45,7 +45,7 @@ const formatCellValue = (key, value) => {
     const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   }
-  if ((key === "ASESOR" || key === "SUPERVISOR_ASIGNADO") && typeof value === "string") {
+  if ((key === "ASESOR" || key === "ASESOR_RESPONSABLE_BITRIX" || key === "SUPERVISOR_ASIGNADO") && typeof value === "string") {
     return value
       .toLowerCase()
       .split(" ")
@@ -182,12 +182,12 @@ function ClienteModal({ cliente, onClose }) {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 14, fontWeight: 800, color: "#0284c7", flexShrink: 0,
             }}>
-              {initials(cliente.ASESOR || "?")}
+              {initials(cliente.ASESOR || cliente.ASESOR_RESPONSABLE_BITRIX || "?")}
             </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a",
                 textTransform: "uppercase", letterSpacing: ".02em" }}>
-                {cliente.ASESOR || "—"}
+                {cliente.ASESOR || cliente.ASESOR_RESPONSABLE_BITRIX || "—"}
               </div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
                 {cliente.SUPERVISOR_ASIGNADO || "Sin supervisor"}
@@ -603,7 +603,7 @@ export default function VistaAsesor() {
       .sort((a, b) => Number(b.ingresos_reales || 0) - Number(a.ingresos_reales || 0))
       .map((a) => {
         const registros = dataJotform.filter(
-          (r) => (r.ASESOR || "").toUpperCase() === (a.nombre_grupo || "").toUpperCase()
+          (r) => (r.ASESOR_RESPONSABLE_BITRIX || r.ASESOR || "").toUpperCase() === (a.nombre_grupo || "").toUpperCase()
         );
         const conteo = {};
         registros.forEach((r) => {

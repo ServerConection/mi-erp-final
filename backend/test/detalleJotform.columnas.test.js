@@ -22,27 +22,43 @@ function columnasDelSelect(archivo, inicio, fin) {
   return [...sql.slice(desde, hasta).matchAll(/AS "([^"]+)"/g)].map((m) => m[1]);
 }
 
-const novonet = columnasDelSelect(
-  'indicadores.controller.js', 'const queryJotform = `', 'FROM mestra_bitrix mb'
-);
-const velsa = columnasDelSelect(
-  'indicadoresVelsaMaterialized.controller.js', 'const qNetlife = `',
-  'FROM public.mv_indicadores_velsa_completo mv'
-);
+// 2026-10-06: las dos tablas leen de envios_ventas y arman sus columnas con
+// el MISMO helper (shared/detalleJotformEnviosVentas.js), así que por
+// construcción salen iguales. Se valida que ambos controladores lo usen.
+const { columnasDetalleJotform, fuenteDetalleJotform } =
+  require('../src/shared/detalleJotformEnviosVentas');
 
-assert.deepStrictEqual(
-  novonet, velsa,
-  `Las columnas del detalle Jotform ya no coinciden.\n  Novonet: ${novonet.join(', ')}\n  Velsa:   ${velsa.join(', ')}`
-);
-console.log(`✓ Novonet y Velsa muestran las mismas ${novonet.length} columnas, en el mismo orden`);
-
-// Lo que pidió operación explícitamente.
-for (const obligatoria of ['COD_ASESOR_JOT', 'ASESOR', 'SUPERVISOR_ASIGNADO', 'PLAN_CASA',
-                           'PLAN_PYME', 'PLAN_PROFESIONAL', 'PLAN_HOGAR_ADULTO_MAYOR',
-                           'PLAN_PYME_CORP', 'PLAN_CENTRO_RED_COMERCIAL']) {
-  assert.ok(novonet.includes(obligatoria), `falta la columna ${obligatoria}`);
+for (const [archivo, empresa, alias] of [
+  ['indicadores.controller.js', 'novonet', 'mb'],
+  ['indicadoresVelsaMaterialized.controller.js', 'velsa', 'mv'],
+]) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'controllers', archivo), 'utf8');
+  assert.ok(src.includes(`fuenteDetalleJotform('${empresa}', '${alias}')`),
+    `${archivo} no lee el detalle desde envios_ventas`);
+  assert.ok(src.includes(`columnasDetalleJotform('${alias}'`),
+    `${archivo} no usa las columnas compartidas`);
 }
-console.log('✓ Están el código de asesor y las seis columnas de planes');
+console.log('✓ Novonet y Velsa leen el detalle directo de envios_ventas');
+
+const sqlCols = columnasDetalleJotform('mb', { asesorExpr: 'x', supervisorExpr: 'y' });
+const novonet = [...sqlCols.matchAll(/AS "([^"]+)"/g)].map((m) => m[1]);
+
+const ESPERADAS = [
+  'ID_CRM', 'ID_JOT', 'ETAPA', 'FECHA_CREACION', 'ASESOR', 'SUPERVISOR_ASIGNADO', 'ORIGEN',
+  'FECHA_CREACION_JOT', 'COD_ASESOR_JOT', 'ASESOR_USUARIO', 'LOGIN', 'ESTADO_NETLIFE',
+  'INGRESO_TELCOS', 'FECHA_ACTIVACION', 'ESTADO_REGULARIZACION', 'OBSERV_REGULARIZACION',
+  'NOVEDADES_ATC', 'TIPO_PLAN', 'VELOCIDAD', 'EMPAQUETADO', 'SERVICIO_ADICIONAL_FACTURADO',
+  'FORMA_PAGO', 'APLICA_DESCUENTO', 'FECHA_AGENDA', 'OBSERVACION',
+];
+assert.deepStrictEqual(novonet, ESPERADAS, `Columnas distintas a las pedidas:\n  ${novonet.join(', ')}`);
+console.log(`✓ Las ${novonet.length} columnas pedidas, en el orden pedido`);
+
+for (const emp of ['novonet', 'velsa']) {
+  const f = fuenteDetalleJotform(emp, 'mb');
+  assert.ok(f.includes('FROM public.envios_ventas e'), 'la fuente debe ser envios_ventas');
+  assert.ok(!/mestra_bitrix|mv_indicadores|vista_analisis|vw_/i.test(f), 'la fuente no debe usar vistas');
+}
+console.log('✓ La fuente no usa vistas');
 
 // Un nombre con espacio rompe cualquier cruce posterior en Excel.
 for (const col of novonet) {

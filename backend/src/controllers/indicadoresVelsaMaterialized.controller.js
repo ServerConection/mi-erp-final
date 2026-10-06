@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
   enPeriodoSeleccionadoExpr,
   backlogEnPeriodoSeleccionadoExpr,
@@ -604,8 +605,8 @@ async function getIndicadoresDashboardVelsa(req, res) {
   if (esPerfilAsesor) qEffective.asesor = req.user.nombreCompleto || '__SIN_NOMBRE__';
 
   const cacheKey = 'dashboard:' + JSON.stringify({ q: qEffective, uid: esPerfilAsesor ? req.user.id : null });
+  // El retorno desde cache se hace mas abajo: el detalle Jotform va siempre en vivo.
   const cached = getCacheVelsa(cacheKey);
-  if (cached) return res.json(cached);
   try {
     const hoy   = getFechaEcuador();
     const desde = qEffective.fechaDesde || hoy;
@@ -765,104 +766,20 @@ async function getIndicadoresDashboardVelsa(req, res) {
       FROM ${MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
+    // 2026-10-06: lee DIRECTO de envios_ventas (sin la MV). Ver
+    // shared/detalleJotformEnviosVentas.js. La subconsulta expone los mismos
+    // nombres mv.* que usa buildFilters(), asi los filtros no cambian.
     const qNetlife = `
 SELECT
-  -- FIX (2026-09-14, a pedido): ID_CRM e ID_JOT deben mostrar siempre el mismo
-  -- Deal ID. Antes ID_JOT usaba mv.id_registro (quedaba NULL en filas que solo
-  -- tienen lado Jotform, ver id_registro en refreshVelsa.materialized.sql).
-  COALESCE(mv.id_crm, mv.id_jotform) AS "ID_CRM",
-  COALESCE(mv.id_crm, mv.id_jotform) AS "ID_JOT",
-  -- FIX (2026-09-14, a pedido): ETAPA debe reflejar la etapa VIVA de Bitrix
-  -- (bwl_v.etapa_bitrix, joineada abajo por Deal ID), cayendo a la etapa de
-  -- negociaciones_reporteria (sync por lotes) solo si el webhook no la tiene.
-  COALESCE(NULLIF(TRIM(bwl_v.etapa_bitrix), ''), NULLIF(TRIM(mv.etapa_crm), '')) AS "ETAPA",
-  COALESCE(NULLIF(TRIM(bwl_v.created_at_ecuador), ''), bwl_v.created_at::text, mv.fecha_creacion_crm::text) AS "FECHA_CREACION",
-  COALESCE(NULLIF(TRIM(bwl_v.responsible), ''), NULLIF(TRIM(mv.asesor), '')) AS "ASESOR",
-  -- FIX 2026-08-18: antes "SUPERVISOR" — el modal ClienteModal (frontend)
-  -- busca la clave "SUPERVISOR_ASIGNADO" (mismo nombre que usa qVentasActivasMes
-  -- más abajo); con el alias viejo el modal SIEMPRE mostraba "Sin supervisor"
-  -- para clientes abiertos desde la tabla "Detalle base Jotform Velsa", aunque
-  -- el dato sí venía en la fila bajo la clave equivocada.
-  COALESCE(esup_bitrix.supervisor, ejot.supervisor, ${EXPR_SUPERVISOR}) AS "SUPERVISOR_ASIGNADO",
-  -- FIX (2026-09-14, a pedido): ORIGEN debe resolverse por Deal ID contra la
-  -- fuente viva (bwl_v.source), cayendo a mv.origen solo si el webhook no
-  -- tiene ese deal todavía.
-  COALESCE(NULLIF(TRIM(bwl_v.source), ''), NULLIF(TRIM(mv.origen), '')) AS "ORIGEN",
-  -- FIX 2026-08-18: faltaba esta columna (el modal la busca como
-  -- "FECHA_CREACION_JOT", igual que qVentasActivasMes) — sin ella, el modal
-  -- no mostraba la fecha de registro Jotform para clientes de esta tabla.
-  mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
-  mv.codigo_asesor AS "COD_ASESOR_JOT",
-  ujot.asesor_usuario AS "ASESOR_USUARIO",
-  mv.inicio_sesion_netlife AS "LOGIN",
-  COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
-  mv.fecha_ingresa_telcos AS "INGRESO_TELCOS",
-  mv.fecha_activacion AS "FECHA_ACTIVACION",
-  mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
-  mv.detalle_regularizacion AS "OBSERV_REGULARIZACION",
-  mv.observacion_telcos AS "NOVEDADES_ATC",
-  CASE
-    WHEN NULLIF(TRIM(mv.plan_casa), '') IS NOT NULL THEN 'HOME'
-    WHEN NULLIF(TRIM(mv.plan_pyme), '') IS NOT NULL THEN 'PYME'
-    WHEN NULLIF(TRIM(mv.plan_profesional), '') IS NOT NULL THEN 'PRO'
-    WHEN NULLIF(TRIM(mv.plan_hogar_adulto_mayor), '') IS NOT NULL THEN 'ADULTO MAYOR'
-    WHEN NULLIF(TRIM(mv.plan_pyme_corp), '') IS NOT NULL THEN 'PYME CORP'
-    WHEN NULLIF(TRIM(jfg.plan_gamer), '') IS NOT NULL THEN 'GAMER'
-  END AS "TIPO_PLAN",
-  NULLIF(SUBSTRING(COALESCE(mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
-    mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, jfg.plan_gamer)
-    FROM '(?i)([0-9]+(?:[.,][0-9]+)?\\s*(?:MBPS?|MEGAS?|GBPS?))'), '') AS "VELOCIDAD",
-  jfg.servicio_empaquetado AS "EMPAQUETADO",
-  jfg.servicio_adicional AS "SERVICIO_ADICIONAL_FACTURADO",
-  mv.forma_pago AS "FORMA_PAGO",
-  mv.aplica_descuento AS "APLICA_DESCUENTO",
-  mv.fecha_agenda AS "FECHA_AGENDA",
-  mv.observacion AS "OBSERVACION"
-FROM public.mv_indicadores_velsa_completo mv
--- FIX (2026-09-14): resuelve ORIGEN/ETAPA por Deal ID contra la fuente viva.
--- Solo a nivel de consulta (no toca la MV: tiene vistas dependientes, ver
--- enable_mv_velsa_concurrent_refresh.sql).
-LEFT JOIN public.bitrix_webhook_leads bwl_v
-       ON bwl_v.empresa = 'velsa'
-      AND BTRIM(bwl_v.bitrix_id::text) = BTRIM(COALESCE(mv.id_crm, mv.id_jotform)::text)
-LEFT JOIN LATERAL (
-    SELECT e3.supervisor
-    FROM public.empleados e3
-    WHERE UPPER(BTRIM(e3.nombre_completo)) = UPPER(BTRIM(COALESCE(NULLIF(bwl_v.responsible, ''), mv.asesor)))
-    ORDER BY e3.codigo::int DESC
-    LIMIT 1
-) esup_bitrix ON true
-LEFT JOIN LATERAL (
-    SELECT COALESCE(
-        NULLIF(BTRIM(u.usuario), ''),
-        NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
-    ) AS asesor_usuario,
-    NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS nombre_completo
-    FROM public.usuarios u
-    WHERE (UPPER(BTRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(BTRIM(COALESCE(mv.codigo_asesor, '')))
-       OR UPPER(BTRIM(COALESCE(u.usuario, ''))) = UPPER(BTRIM(COALESCE(mv.codigo_asesor, ''))))
-      AND UPPER(BTRIM(COALESCE(u.empresa, ''))) LIKE '%VELSA%'
-    ORDER BY u.activo DESC, u.id DESC
-    LIMIT 1
-) ujot ON true
-LEFT JOIN LATERAL (
-    SELECT e4.supervisor
-    FROM public.empleados e4
-    WHERE UPPER(BTRIM(e4.nombre_completo)) = UPPER(BTRIM(ujot.nombre_completo))
-    ORDER BY e4.codigo::int DESC
-    LIMIT 1
-) ejot ON true
-LEFT JOIN (
-    SELECT id_bitrix_ghl,
-           MAX(NULLIF(TRIM(answers->'241'->>'answer'), '')) AS plan_gamer,
-           MAX(NULLIF(TRIM(servicio_empaquetado), '')) AS servicio_empaquetado,
-           MAX(NULLIF(TRIM(servicio_normales), '')) AS servicio_adicional
-      FROM public.vw_jotform_velsa_netlife_completo
-     GROUP BY id_bitrix_ghl
-) jfg ON jfg.id_bitrix_ghl::text = COALESCE(mv.id_crm, mv.id_jotform)::text
-WHERE mv.fecha_registro_jotform IS NOT NULL
-AND (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+  ${columnasDetalleJotform('mv', {
+    asesorExpr: 'mv.asesor',
+    supervisorExpr: `COALESCE(eresp.supervisor, ejot.supervisor, ${EXPR_SUPERVISOR})`,
+  })}
+FROM ${fuenteDetalleJotform('velsa', 'mv')}
+${joinsDetalleJotform('mv', 'velsa')}
+WHERE mv.ts_local::date BETWEEN $1::date AND $2::date
 ${filters}
+ORDER BY mv.ts_local DESC
 LIMIT 6000
     `;
 
@@ -1006,6 +923,14 @@ LIMIT 6000
       ORDER BY mv.fecha_registro_jotform DESC
       LIMIT 3000
     `;
+
+    // 2026-10-06 (a pedido): "DETALLE BASE JOTFORM" debe reflejar al instante
+    // lo que se guarda/edita en envios_ventas. Si el resto del dashboard esta
+    // en cache se reutiliza, pero el detalle se vuelve a consultar en vivo.
+    if (cached) {
+      const resNetVivo = await pool.query(qNetlife, valuesMain);
+      return res.json({ ...cached, dataNetlife: resNetVivo.rows });
+    }
 
     const [
       resSup, resAses, resBkSup, resBkAses,

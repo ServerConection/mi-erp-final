@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600 } = require('../shared/detalleJotformEnviosVentas');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600, calcularTerceraEdadProyectada, consultarDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
   enPeriodoSeleccionadoExpr,
   backlogEnPeriodoSeleccionadoExpr,
@@ -972,6 +972,11 @@ LIMIT 6000
     const porcentajeTarjeta = Number(taRow.total_jotform) > 0
       ? parseFloat(((Number(taRow.total_tarjeta) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
     const { totalPlanesHasta600, porcentajePlanesHasta600 } = calcularPlanesHasta600(resNetlife.rows);
+    const {
+      totalBaseTerceraEdadProyectada,
+      totalTerceraEdadProyectada,
+      porcentajeTerceraEdadProyectada,
+    } = calcularTerceraEdadProyectada(resNetlife.rows);
 
     console.log(`[DASHBOARD-VELSA] ${desde}~${hasta} | Sup:${supervisores.length} Ases:${asesores.length}`);
 
@@ -991,6 +996,9 @@ LIMIT 6000
       etapasJotform:         resEtapasJot.rows.map(r => r.estado_venta),
       origenes:              resOrigenes.rows.map(r => r.origen),
       porcentajeTerceraEdad,
+      porcentajeTerceraEdadProyectada,
+      totalTerceraEdadProyectada,
+      totalBaseTerceraEdadProyectada,
       porcentajeTarjeta,
       porcentajePlanesHasta600,
       totalPlanesHasta600,
@@ -1240,6 +1248,9 @@ async function getConsultaDescargaVelsa(req, res) {
     const hoy   = getFechaEcuador();
     const desde = req.query.fechaDesde || hoy;
     const hasta = req.query.fechaHasta || hoy;
+
+    const filasDetalle = await consultarDetalleJotform(pool, 'velsa', { ...req.query, fechaDesde: desde, fechaHasta: hasta });
+    return res.json({ success: true, rows: filasDetalle, registros: filasDetalle, total: filasDetalle.length });
 
     const asesor = String(req.query.asesor || '').trim();
     const loginNetlife = String(req.query.loginNetlife || '').trim();

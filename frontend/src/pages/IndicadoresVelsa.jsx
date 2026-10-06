@@ -302,6 +302,7 @@ function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtr
     FECHA_CREACION: "FECHA DE CREACIÓN BITRIX",
     ASESOR: "ASESOR RESPONSABLE BITRIX",
     FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM",
+    FECHA_ASIGNACION: "FECHA DE ASIGNACIÓN",
     COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM",
     ASESOR_USUARIO: "ASESOR USUARIO",
     SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)",
@@ -1032,7 +1033,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? dataCRMDetalle : data.dataNetlife;
     if (!list || !list.length) return;
-    const nombresJotform = { ETAPA: "ETAPA BITRIX", FECHA_CREACION: "FECHA DE CREACIÓN BITRIX", ASESOR: "ASESOR RESPONSABLE BITRIX", FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM", COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM", ASESOR_USUARIO: "ASESOR USUARIO", SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)", OBSERVACION: "OBSERVACIÓN DE LA VENTA" };
+    const nombresJotform = { ETAPA: "ETAPA BITRIX", FECHA_CREACION: "FECHA DE CREACIÓN BITRIX", ASESOR: "ASESOR RESPONSABLE BITRIX", FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM", FECHA_ASIGNACION: "FECHA DE ASIGNACIÓN", COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM", ASESOR_USUARIO: "ASESOR USUARIO", SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)", OBSERVACION: "OBSERVACIÓN DE LA VENTA" };
     const filasExcel = tipo === "JOTFORM"
       ? list.map(normalizarFilaDetalleJotform).map((fila) => Object.fromEntries(Object.entries(fila).map(([clave, valor]) => [nombresJotform[clave] || clave, valor])))
       : list;
@@ -1622,6 +1623,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={14} variant="stone" label="Tasa Inst."      meta={METAS_COMERCIALES_VELSA.tasaInstalacion} real={`${stats.tasaInstalacion}%`}         color="border-l-yellow-500" tooltip={TIP.tasaInstalacion} />
             <KpiMini index={15} variant="stone" label="Tarjeta %"       meta={METAS_COMERCIALES_VELSA.tarjeta} real={`${stats.tarjetaCredito}%`}          color="border-l-amber-400" tooltip={TIP.tarjeta} />
             <KpiMini index={16} variant="stone" label="3ra Edad %"      meta={METAS_COMERCIALES_VELSA.terceraEdad} real={`${stats.terceraEdad}%`}             color="border-l-rose-500" tooltip={TIP.terceraEdad} />
+            <KpiMini index={17} variant="stone" label="3ra Edad Proyectada" meta={METAS_COMERCIALES_VELSA.terceraEdad} real={`${stats.terceraEdadProyectada}%`} color="border-l-fuchsia-500" tooltip={TIP.terceraEdadProyectada} />
             {/* ALINEACIÓN CON NOVONET (2026-08-17)
                 Velsa tenía DOS tarjetas que Novonet no tiene:
                   · "Efic. Pauta" (efectividad_activas_vs_pauta) — Novonet la
@@ -1632,7 +1634,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   · "Venta Servicio" — no existe en Novonet.
                 Se reemplazan por la tarjeta 17 de Novonet para que ambas
                 empresas tengan EXACTAMENTE las mismas 19 tarjetas (0-18). */}
-            <KpiMini index={17} variant="stone" label="% Planes ≤600 Mbps" meta={METAS_COMERCIALES_VELSA.planesHasta600} real={`${stats.planesHasta600}%`} color="border-l-lime-600" tooltip={TIP.planesHasta600} />
+            <KpiMini index={18} variant="stone" label="% Planes ≤600 Mbps" meta={METAS_COMERCIALES_VELSA.planesHasta600} real={`${stats.planesHasta600}%`} color="border-l-lime-600" tooltip={TIP.planesHasta600} />
             <KpiMini index={18} variant="stone" label="Por Regularizar"  value={stats.regularizar}       color="border-l-rose-500" tooltip={TIP.porRegularizar} />
           </div>
 
@@ -1893,6 +1895,22 @@ const COLUMNAS_VELSA = [
   { header: 'COBRO TC CLIENTE',                         field: null },
 ];
 
+const COLUMNAS_CONSULTA_VELSA = [
+  { header: 'ID CRM', field: 'ID_CRM' }, { header: 'ID JOT', field: 'ID_JOT' },
+  { header: 'ETAPA BITRIX', field: 'ETAPA' }, { header: 'FECHA DE CREACIÓN BITRIX', field: 'FECHA_CREACION' },
+  { header: 'ASESOR RESPONSABLE BITRIX', field: 'ASESOR' }, { header: 'SUPERVISOR ASIGNADO', field: 'SUPERVISOR_ASIGNADO' },
+  { header: 'ORIGEN', field: 'ORIGEN' }, { header: 'FECHA DE CREACIÓN JOTFORM', field: 'FECHA_CREACION_JOT' },
+  { header: 'FECHA DE ASIGNACIÓN', field: 'FECHA_ASIGNACION' }, { header: 'FECHA DE ACTIVACIÓN', field: 'FECHA_ACTIVACION' },
+  { header: 'CÓDIGO ASESOR JOTFORM', field: 'COD_ASESOR_JOT' }, { header: 'ASESOR USUARIO', field: 'ASESOR_USUARIO' },
+  { header: 'LOGIN', field: 'LOGIN' }, { header: 'ESTADO NETLIFE', field: 'ESTADO_NETLIFE' },
+  { header: 'INGRESO TELCOS', field: 'INGRESO_TELCOS' }, { header: 'ESTADO REGULARIZACIÓN', field: 'ESTADO_REGULARIZACION' },
+  { header: 'OBSERVACIÓN REGULARIZACIÓN', field: 'OBSERV_REGULARIZACION' }, { header: 'NOVEDADES ATC', field: 'NOVEDADES_ATC' },
+  { header: 'TIPO PLAN', field: 'TIPO_PLAN' }, { header: 'VELOCIDAD', field: 'VELOCIDAD' },
+  { header: 'EMPAQUETADO', field: 'EMPAQUETADO' }, { header: 'SERVICIO ADICIONAL (FACTURADO)', field: 'SERVICIO_ADICIONAL_FACTURADO' },
+  { header: 'FORMA DE PAGO', field: 'FORMA_PAGO' }, { header: 'APLICA DESCUENTO', field: 'APLICA_DESCUENTO' },
+  { header: 'OBSERVACIÓN DE LA VENTA', field: 'OBSERVACION' },
+];
+
 function ConsultaDescargaVelsa() {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
@@ -1927,9 +1945,9 @@ function ConsultaDescargaVelsa() {
 
   const descargarExcel = () => {
     if (!rows || rows.length === 0) return;
-    const header = COLUMNAS_VELSA.map(c => c.header);
+    const header = COLUMNAS_CONSULTA_VELSA.map(c => c.header);
     const data_  = rows.map(row =>
-      COLUMNAS_VELSA.map(c => {
+      COLUMNAS_CONSULTA_VELSA.map(c => {
         if (!c.field) return '';
         const v = row[c.field];
         if (v === null || v === undefined) return '';
@@ -1940,7 +1958,7 @@ function ConsultaDescargaVelsa() {
       })
     );
     const ws = XLSX.utils.aoa_to_sheet([header, ...data_]);
-    ws['!cols'] = COLUMNAS_VELSA.map(() => ({ wch: 22 }));
+    ws['!cols'] = COLUMNAS_CONSULTA_VELSA.map(() => ({ wch: 22 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Velsa');
     XLSX.writeFile(wb, `Consulta_Velsa_${fechaDesde}_${fechaHasta}.xlsx`);
@@ -2033,7 +2051,7 @@ function ConsultaDescargaVelsa() {
               <table className="text-[8px] font-mono border-collapse w-full whitespace-nowrap">
                 <thead className="sticky top-0 z-10">
                   <tr>
-                    {COLUMNAS_VELSA.map((c, i) => (
+                    {COLUMNAS_CONSULTA_VELSA.map((c, i) => (
                       <th key={i} className="px-3 py-2 text-left font-black uppercase tracking-widest border-b border-r border-stone-200 last:border-r-0"
                         style={{ background: '#1A3A6E', color: '#fff', minWidth: '120px', fontSize: '7px' }}>
                         {c.header}
@@ -2044,7 +2062,7 @@ function ConsultaDescargaVelsa() {
                 <tbody>
                   {rows.slice(0, 200).map((row, ri) => (
                     <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}>
-                      {COLUMNAS_VELSA.map((c, ci) => {
+                      {COLUMNAS_CONSULTA_VELSA.map((c, ci) => {
                         let val = c.field ? row[c.field] : '';
                         if (val !== null && val !== undefined && (c.field?.startsWith('fecha') || c.field === 'created_at' || c.field === 'ingreso_telcos_vendedores')) {
                           try { val = new Date(val).toLocaleDateString('es-EC'); } catch {}

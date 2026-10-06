@@ -2358,8 +2358,9 @@ function HistorialCambiosEstado({ valor }) {
         <div style={{ display: "grid", gap: 10 }}>
           {[...eventos].reverse().map((evento, indice) => {
             const cambios = Array.isArray(evento?.cambios) ? evento.cambios : [];
-            const nombre = evento?.nombre_usuario || evento?.usuario || "Usuario no identificado";
-            const login = evento?.usuario && evento.usuario !== nombre ? `@${evento.usuario}` : "";
+            const usuarioEvento = evento?.usuario || evento?.username || evento?.login_usuario || evento?.modificado_por || "";
+            const nombre = evento?.nombre_usuario || evento?.usuario_nombre || evento?.nombreUsuario || usuarioEvento || (evento?.usuario_id ? `Usuario #${evento.usuario_id}` : "Historial anterior — usuario no registrado");
+            const login = usuarioEvento && usuarioEvento !== nombre ? `@${usuarioEvento}` : "";
             const meta = [login, evento?.perfil_usuario, evento?.empresa_usuario].filter(Boolean).join(" · ");
             return (
               <article key={`${evento?.fecha_hora || "sin-fecha"}-${indice}`} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 13, background: "#fcfdff" }}>

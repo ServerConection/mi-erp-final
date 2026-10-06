@@ -388,11 +388,12 @@ async function getKpiComercial(req, res) {
     const q = req.query;
 
     // FIX 2026-10-06: si hay metas cargadas para el mes (modulo Carga de metas),
-    // el EXCEL manda la asignacion de equipos en NOVONET: supervisor = el del
+    // el EXCEL manda la asignacion de equipos (NOVONET y VELSA): supervisor = el del
     // Excel; quien no esta en el Excel va a "SIN ASIGNAR". Sin metas del mes,
     // se mantiene el comportamiento anterior (tabla empleados).
+    // (2026-10-06) Aplica igual para VELSA.
     let usarMetas = false;
-    if (empresa === 'NOVONET') {
+    {
       const { rows: [c] } = await pool.query(
         `SELECT COUNT(*)::int AS n FROM public.metas_asesor
           WHERE empresa = $1 AND activo

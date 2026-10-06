@@ -25,7 +25,7 @@ const {
     esIngresoJotformAcidoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
-const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600 } = require('../shared/detalleJotformEnviosVentas');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600, calcularTerceraEdadProyectada, consultarDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
     enPeriodoSeleccionadoExpr,
     backlogEnPeriodoSeleccionadoExpr,
@@ -1391,6 +1391,11 @@ const getIndicadoresDashboard = async (req, res) => {
         const porcentajeTarjeta = totalJotformTarjeta > 0
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
         const { totalPlanesHasta600, porcentajePlanesHasta600 } = calcularPlanesHasta600(resNet.rows);
+        const {
+            totalBaseTerceraEdadProyectada,
+            totalTerceraEdadProyectada,
+            porcentajeTerceraEdadProyectada,
+        } = calcularTerceraEdadProyectada(resNet.rows);
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Asesores: ${asesoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
@@ -1411,6 +1416,9 @@ const getIndicadoresDashboard = async (req, res) => {
             etapasCRM: etapasCache.etapasCRM,
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
+            porcentajeTerceraEdadProyectada,
+            totalTerceraEdadProyectada,
+            totalBaseTerceraEdadProyectada,
             porcentajeTarjeta,
             porcentajePlanesHasta600,
             totalPlanesHasta600,
@@ -1924,6 +1932,9 @@ const getConsultaDescargaNovonet = async (req, res) => {
         if (!fechaDesde || !fechaHasta) {
             return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
         }
+
+        const filasDetalle = await consultarDetalleJotform(pool, 'novonet', req.query);
+        return res.json({ success: true, total: filasDetalle.length, rows: filasDetalle, registros: filasDetalle });
 
         const values = [fechaDesde, fechaHasta];
         let filters = '';

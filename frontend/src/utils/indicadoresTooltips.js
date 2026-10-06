@@ -77,6 +77,9 @@ export const TOOLTIPS_INDICADORES = {
   terceraEdad:
     "Qué porcentaje de las ventas ACTIVAS aplicó descuento de tercera edad.",
 
+  terceraEdadProyectada:
+    "Ventas de tercera edad en ACTIVO, ASIGNADO o PREPLANIFICADO, divididas para todas las ventas que están en esos tres estados.",
+
   porRegularizar:
     "Ventas marcadas con estatus de regularización = POR REGULARIZAR, en el rango de fecha Jotform seleccionado.",
 

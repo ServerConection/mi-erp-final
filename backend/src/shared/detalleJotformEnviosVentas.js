@@ -191,4 +191,25 @@ function joinsDetalleJotform(alias, empresa) {
     ) eresp ON true`;
 }
 
-module.exports = { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform };
+// El KPI y el Excel deben usar exactamente las mismas filas. Calcularlo sobre
+// otro snapshot (mestra_bitrix/MV) provoca diferencias cuando una venta ya
+// existe en envios_ventas pero todavía no llegó al proceso histórico.
+function calcularPlanesHasta600(filas = []) {
+  const totalIngresos = filas.length;
+  const totalPlanesHasta600 = filas.filter((fila) => {
+    if (String(fila?.ESTADO_NETLIFE || '').trim().toUpperCase() !== 'ACTIVO') return false;
+    const texto = String(fila?.VELOCIDAD || '').trim();
+    const numero = Number(texto.match(/[0-9]+(?:[.,][0-9]+)?/)?.[0]?.replace(',', '.'));
+    if (!Number.isFinite(numero) || numero <= 0) return false;
+    const velocidadMbps = /GBPS?/i.test(texto) ? numero * 1000 : numero;
+    return velocidadMbps <= 600;
+  }).length;
+  return {
+    totalPlanesHasta600,
+    porcentajePlanesHasta600: totalIngresos > 0
+      ? Number(((totalPlanesHasta600 / totalIngresos) * 100).toFixed(2))
+      : 0,
+  };
+}
+
+module.exports = { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600 };

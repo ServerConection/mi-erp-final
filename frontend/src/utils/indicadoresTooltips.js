@@ -80,6 +80,6 @@ export const TOOLTIPS_INDICADORES = {
   porRegularizar:
     "Ventas marcadas con estatus de regularización = POR REGULARIZAR, en el rango de fecha Jotform seleccionado.",
 
-  planes150200:
-    "Porcentaje de ventas que corresponden a los planes de 150/200. Pendiente de cálculo automático (ver docs/DICCIONARIO_INDICADORES.xlsx).",
+  planesHasta600:
+    "Ventas activas con velocidad de hasta 600 Mbps (incluye 600), divididas para los ingresos totales Jotform del período y filtros seleccionados.",
 };

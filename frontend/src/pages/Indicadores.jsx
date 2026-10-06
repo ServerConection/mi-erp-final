@@ -129,7 +129,7 @@ const METAS_COMERCIALES = {
   tasaInstalacion:  '85%',
   tarjeta:          '35%',
   terceraEdad:      '15%',
-  planes150200:     '15%',
+  planesHasta600:   '15%',
 };
 
 // ======================================================
@@ -1932,9 +1932,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={14} label="Tasa Inst."      meta={METAS_COMERCIALES.tasaInstalacion} real={`${stats.tasaInstalacion}%`}   color="border-l-cyan-500" tooltip={TIP.tasaInstalacion} />
             <KpiMini index={15} label="Tarjeta %"       meta={METAS_COMERCIALES.tarjeta}         real={`${stats.tarjetaCredito}%`}    color="border-l-amber-500" tooltip={TIP.tarjeta} />
             <KpiMini index={16} label="3ra Edad %"      meta={METAS_COMERCIALES.terceraEdad}     real={`${stats.terceraEdad}%`}       color="border-l-pink-500" tooltip={TIP.terceraEdad} />
-            {/* NUEVA — pedida por gerencia. PENDIENTE BACKEND: no existe el dato
-                real de planes 150/200 Mbps, por ahora muestra 0%. */}
-            <KpiMini index={17} label="% Planes 150/200" meta={METAS_COMERCIALES.planes150200}   real="0.0%"                          color="border-l-lime-500" tooltip={TIP.planes150200} />
+            <KpiMini index={17} label="% Planes ≤600 Mbps" meta={METAS_COMERCIALES.planesHasta600} real={`${stats.planesHasta600}%`} color="border-l-lime-500" tooltip={TIP.planesHasta600} />
             <KpiMini index={18} label="Por Regularizar" value={stats.regularizar}                                                     color="border-l-pink-500" tooltip={TIP.porRegularizar} />
           </div>
 

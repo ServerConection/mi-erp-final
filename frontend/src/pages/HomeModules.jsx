@@ -125,7 +125,7 @@ export default function HomeModules() {
       rolesPermitidos: ['CONSULTOR', 'ANALISTA', 'GERENCIA', 'ADMINISTRADOR'] },
     { title: "Reparto de Gestionables", path: "/gestionables-asesores", icon: ClipboardList, accent: "azul", cat: "equipo",
       desc: "Reparto automático de leads por turnos: encender/apagar, quién está en línea, reporte por hora y cuotas diarias.",
-      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },

@@ -30,6 +30,7 @@ export function calcularStatsIndicadores(data = {}) {
     tasaInstalacion: totalJotform > 0 ? ((totalActivos / totalJotform) * 100).toFixed(1) : '0.0',
     tarjetaCredito: Number(data.porcentajeTarjeta || 0).toFixed(1),
     terceraEdad: Number(data.porcentajeTerceraEdad || 0).toFixed(1),
+    planesHasta600: Number(data.porcentajePlanesHasta600 || 0).toFixed(1),
     efectividadActivasPauta: (suma('efectividad_activas_vs_pauta') / n).toFixed(1),
     activas: totalActivos,
     activaMes: totalActivaMes,

@@ -36,13 +36,16 @@ const correr = async ({ desde: desdeForzado } = {}) => {
     return;
   }
   try {
-    const r = await reconciliarLeads({ empresa: 'novonet', desde, aplicar: true, log: () => {} });
-    if (r.escritos > 0 || r.errores > 0) {
-      console.log(`🩹 [reconciliacion] deals=${r.deals} faltaban=${r.faltantes.length} desfasados=${r.desfasados.length} escritos=${r.escritos} errores=${r.errores}`);
+    const resultados = [];
+    for (const empresa of ['novonet', 'velsa']) {
+      resultados.push([empresa, await reconciliarLeads({ empresa, desde, aplicar: true, log: () => {} })]);
+    }
+    for (const [empresa, r] of resultados) if (r.escritos > 0 || r.errores > 0) {
+      console.log(`🩹 [reconciliacion:${empresa}] deals=${r.deals} faltaban=${r.faltantes.length} desfasados=${r.desfasados.length} escritos=${r.escritos} errores=${r.errores}`);
       // Señal para investigar: si esto crece día a día, hay automatizaciones
       // rotas en Bitrix, no es solo ruido puntual.
       if (r.faltantes.length > 20) {
-        console.warn(`⚠️  [reconciliacion] ${r.faltantes.length} leads faltaban en la tabla — revisar las automatizaciones de Bitrix.`);
+        console.warn(`⚠️  [reconciliacion:${empresa}] ${r.faltantes.length} leads faltaban en la tabla — revisar las automatizaciones de Bitrix.`);
       }
     }
   } catch (e) {

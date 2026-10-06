@@ -648,6 +648,7 @@ router.put('/:id', async (req, res) => {
       }
       if (!Array.isArray(historial)) historial = [];
       historial.push({
+        version: 2,
         usuario_id: req.user?.id || null,
         usuario: req.user?.usuario || null,
         nombre_usuario: req.user?.nombreCompleto || req.user?.usuario || null,

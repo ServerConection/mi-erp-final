@@ -58,8 +58,10 @@ const JOIN_VAN_NOVONET = `LEFT JOIN (
         MAX(plan_pyme)                AS plan_pyme,
         MAX(plan_pyme_corp)          AS plan_pyme_corp,
         MAX(plan_hogar_adulto_mayor) AS plan_hogar_adulto_mayor,
-        MAX(plan_centro_comercial)   AS plan_centro_comercial
-    FROM public.vista_analisis_novonet
+        MAX(plan_centro_comercial)   AS plan_centro_comercial,
+        MAX(NULLIF(TRIM(to_jsonb(van_src)->>'servicio_empaquetado'), '')) AS servicio_empaquetado,
+        MAX(NULLIF(TRIM(to_jsonb(van_src)->>'servicio_adicional'), '')) AS servicio_adicional
+    FROM public.vista_analisis_novonet van_src
     GROUP BY id_bitrix
 ) van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
 
@@ -976,36 +978,38 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- a la etapa histórica de mestra_bitrix solo si el webhook no tiene
                 -- ese deal todavía.
                 COALESCE(NULLIF(TRIM(bwl.etapa_bitrix), ''), NULLIF(TRIM(mb.b_etapa_de_la_negociacion), '')) AS "ETAPA",
-                -- FIX (2026-09-14, a pedido): FECHA_CREACION debe ser igual a
-                -- FECHA_CREACION_JOT (antes usaba mb.b_creado_el_fecha, que sale
-                -- vacío en filas que solo llegaron por Jotform).
-                mb.j_fecha_registro_sistema AS "FECHA_CREACION",
+                -- Fecha real del negocio en Bitrix; Jotform conserva su fecha
+                -- propia en FECHA_CREACION_JOT.
+                COALESCE(NULLIF(TRIM(bwl.created_at_ecuador), ''), bwl.created_at::text, mb.b_creado_el_fecha::text) AS "FECHA_CREACION",
                 -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
                 -- y solo cae al histórico si el webhook no tiene dato. Ver
                 -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
-                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
+                COALESCE(esup.supervisor, ejot.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 bwl.source AS "ORIGEN",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
-                NULL::text AS "FECHA_CREADO_JOT",
                 to_jsonb(mb) ->> 'j_codigo_asesor' AS "COD_ASESOR_JOT",
+                ujot.asesor_usuario AS "ASESOR_USUARIO",
                 mb.j_netlife_login AS "LOGIN",
                 COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
-                NULL::text AS "OBSERVACION_TELCOS",
                 NULL::text AS "INGRESO_TELCOS",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
                 mb.j_detalle_regularizacion AS "OBSERV_REGULARIZACION",
                 mb.j_novedades_atc AS "NOVEDADES_ATC",
-                van.plan_casa               AS "PLAN_CASA",
-                van.plan_pyme               AS "PLAN_PYME",
-                van.plan_profesional        AS "PLAN_PROFESIONAL",
-                van.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
-                van.plan_pyme_corp          AS "PLAN_PYME_CORP",
-                -- PLAN GAMER (2026-09): en Novonet el plan gamer se guarda en
-                -- plan_centro_comercial. Se renombra la columna del Excel para que
-                -- diga lo que de verdad trae.
-                van.plan_centro_comercial   AS "PLAN_GAMER",
+                CASE
+                    WHEN NULLIF(TRIM(van.plan_casa), '') IS NOT NULL THEN 'HOME'
+                    WHEN NULLIF(TRIM(van.plan_pyme), '') IS NOT NULL THEN 'PYME'
+                    WHEN NULLIF(TRIM(van.plan_profesional), '') IS NOT NULL THEN 'PRO'
+                    WHEN NULLIF(TRIM(van.plan_hogar_adulto_mayor), '') IS NOT NULL THEN 'ADULTO MAYOR'
+                    WHEN NULLIF(TRIM(van.plan_pyme_corp), '') IS NOT NULL THEN 'PYME CORP'
+                    WHEN NULLIF(TRIM(van.plan_centro_comercial), '') IS NOT NULL THEN 'GAMER'
+                END AS "TIPO_PLAN",
+                NULLIF(SUBSTRING(COALESCE(van.plan_casa, van.plan_pyme, van.plan_profesional,
+                    van.plan_hogar_adulto_mayor, van.plan_pyme_corp, van.plan_centro_comercial)
+                    FROM '(?i)([0-9]+(?:[.,][0-9]+)?\\s*(?:MBPS?|MEGAS?|GBPS?))'), '') AS "VELOCIDAD",
+                van.servicio_empaquetado AS "EMPAQUETADO",
+                van.servicio_adicional AS "SERVICIO_ADICIONAL_FACTURADO",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 to_jsonb(mb) ->> 'j_aplica_descuento_3ra_edad' AS "APLICA_DESCUENTO",
                 mb.j_fecha_agenda AS "FECHA_AGENDA",
@@ -1015,6 +1019,26 @@ const getIndicadoresDashboard = async (req, res) => {
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(
+                    NULLIF(BTRIM(u.usuario), ''),
+                    NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
+                ) AS asesor_usuario,
+                NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS nombre_completo
+                FROM public.usuarios u
+                WHERE (UPPER(BTRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(BTRIM(COALESCE(to_jsonb(mb) ->> 'j_codigo_asesor', '')))
+                   OR UPPER(BTRIM(COALESCE(u.usuario, ''))) = UPPER(BTRIM(COALESCE(to_jsonb(mb) ->> 'j_codigo_asesor', ''))))
+                  AND UPPER(BTRIM(COALESCE(u.empresa, ''))) LIKE '%NOVONET%'
+                ORDER BY u.activo DESC, u.id DESC
+                LIMIT 1
+            ) ujot ON true
+            LEFT JOIN LATERAL (
+                SELECT e4.supervisor
+                FROM public.empleados e4
+                WHERE UPPER(BTRIM(e4.nombre_completo)) = UPPER(BTRIM(ujot.nombre_completo))
+                ORDER BY e4.codigo::int DESC
+                LIMIT 1
+            ) ejot ON true
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersJoinResuelto}
             LIMIT 6000

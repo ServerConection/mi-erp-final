@@ -133,12 +133,12 @@ function ClienteModal({ cliente, onClose }) {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 14, fontWeight: 800, color: "#9333ea", flexShrink: 0,
             }}>
-              {initials(cliente.ASESOR || "?")}
+              {initials(cliente.ASESOR || cliente.ASESOR_RESPONSABLE_BITRIX || "?")}
             </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a",
                 textTransform: "uppercase", letterSpacing: ".02em" }}>
-                {cliente.ASESOR || "—"}
+                {cliente.ASESOR || cliente.ASESOR_RESPONSABLE_BITRIX || "—"}
               </div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
                 {cliente.SUPERVISOR_ASIGNADO || "Sin supervisor"}
@@ -492,7 +492,7 @@ export default function VistaAsesorVelsa() {
       .map((a) => {
         // dataJotform de Velsa usa campo "ASESOR" (t1_assigned_to en el SELECT AS)
         const registros = dataJotform.filter(
-          (r) => (r.ASESOR || "").trim().toUpperCase() === (a.nombre_grupo || "").trim().toUpperCase()
+          (r) => (r.ASESOR_RESPONSABLE_BITRIX || r.ASESOR || "").trim().toUpperCase() === (a.nombre_grupo || "").trim().toUpperCase()
         );
         const conteo = {};
         registros.forEach((r) => {

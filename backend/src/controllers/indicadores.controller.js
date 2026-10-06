@@ -1159,6 +1159,19 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
                 ) AS total_tarjeta,
+                COUNT(*) FILTER (
+                    WHERE ${ACTIVACION_CON_PLAN}
+                      AND CASE
+                        WHEN COALESCE(mb.j_plan_contratado_final, '') ~* 'GBPS?'
+                          THEN REPLACE(SUBSTRING(mb.j_plan_contratado_final FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric * 1000
+                        ELSE REPLACE(SUBSTRING(mb.j_plan_contratado_final FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric
+                      END > 0
+                      AND CASE
+                        WHEN COALESCE(mb.j_plan_contratado_final, '') ~* 'GBPS?'
+                          THEN REPLACE(SUBSTRING(mb.j_plan_contratado_final FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric * 1000
+                        ELSE REPLACE(SUBSTRING(mb.j_plan_contratado_final FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric
+                      END <= 600
+                ) AS total_planes_hasta_600,
                 COUNT(*) AS total_jotform
             FROM public.mestra_bitrix mb
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1382,6 +1395,7 @@ const getIndicadoresDashboard = async (req, res) => {
         const rowMetas = resMetasGlobales.rows[0] || {};
         const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
         const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
+        const totalPlanesHasta600 = Number(rowMetas.total_planes_hasta_600 || 0);
         const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
 
         // Todos los porcentajes comerciales usan Ingresos Tot. Jot como base.
@@ -1389,6 +1403,8 @@ const getIndicadoresDashboard = async (req, res) => {
             ? Number(((totalTerceraEdad / totalJotformTarjeta) * 100).toFixed(2)) : 0;
         const porcentajeTarjeta = totalJotformTarjeta > 0
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+        const porcentajePlanesHasta600 = totalJotformTarjeta > 0
+            ? Number(((totalPlanesHasta600 / totalJotformTarjeta) * 100).toFixed(2)) : 0;
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Asesores: ${asesoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
@@ -1410,6 +1426,8 @@ const getIndicadoresDashboard = async (req, res) => {
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
             porcentajeTarjeta,
+            porcentajePlanesHasta600,
+            totalPlanesHasta600,
             // canales: agrupaciones fijas (ARTS, VIDIKA, REMARKETING...)
             canales: CANALES_DISPONIBLES,
             // origenes: TODOS los valores reales de b_origen presentes en la data

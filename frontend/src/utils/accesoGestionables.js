@@ -5,7 +5,7 @@ export function puedeAccederGestionables() {
     const token = localStorage.getItem('token');
     if (!token) return false;
     const user = jwtDecode(token);
-    return ['ADMINISTRADOR', 'GERENCIA'].includes((user.perfil || user.rol || '').toUpperCase())
+    return ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'].includes((user.perfil || user.rol || '').toUpperCase())
       || Number(user.id) === 76;
   } catch {
     return false;

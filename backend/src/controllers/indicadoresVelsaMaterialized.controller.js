@@ -762,6 +762,25 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const qTarjeta = `
       SELECT
         COUNT(*) FILTER (WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%') AS total_tarjeta,
+        COUNT(*) FILTER (
+          WHERE ${VENTA_SERVICIO_VELSA_MV}
+            AND CASE
+              WHEN CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) ~* 'GBPS?'
+                THEN REPLACE(SUBSTRING(CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                  mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric * 1000
+              ELSE REPLACE(SUBSTRING(CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric
+            END > 0
+            AND CASE
+              WHEN CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) ~* 'GBPS?'
+                THEN REPLACE(SUBSTRING(CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                  mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric * 1000
+              ELSE REPLACE(SUBSTRING(CONCAT_WS(' ', mv.plan_casa, mv.plan_pyme, mv.plan_profesional,
+                mv.plan_hogar_adulto_mayor, mv.plan_pyme_corp, mv.plan_centro_red_comercial) FROM '([0-9]+(?:[.,][0-9]+)?)'), ',', '.')::numeric
+            END <= 600
+        ) AS total_planes_hasta_600,
         COUNT(*) AS total_jotform
       FROM ${MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
@@ -971,6 +990,9 @@ LIMIT 6000
       ? parseFloat(((Number(tRow.total_tercera) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
     const porcentajeTarjeta = Number(taRow.total_jotform) > 0
       ? parseFloat(((Number(taRow.total_tarjeta) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
+    const totalPlanesHasta600 = Number(taRow.total_planes_hasta_600 || 0);
+    const porcentajePlanesHasta600 = Number(taRow.total_jotform) > 0
+      ? parseFloat(((totalPlanesHasta600 / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
 
     console.log(`[DASHBOARD-VELSA] ${desde}~${hasta} | Sup:${supervisores.length} Ases:${asesores.length}`);
 
@@ -991,6 +1013,8 @@ LIMIT 6000
       origenes:              resOrigenes.rows.map(r => r.origen),
       porcentajeTerceraEdad,
       porcentajeTarjeta,
+      porcentajePlanesHasta600,
+      totalPlanesHasta600,
       planesPorCategoria: (() => {
         const p = resPlanesDash.rows[0] || {};
         return {

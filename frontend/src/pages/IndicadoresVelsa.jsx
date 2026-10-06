@@ -100,7 +100,7 @@ const METAS_COMERCIALES_VELSA = {
   tasaInstalacion:  '85%',
   tarjeta:          '35%',
   terceraEdad:      '15%',
-  planes150200:     '15%',
+  planesHasta600:   '15%',
 };
 
 // ======================================================
@@ -1629,7 +1629,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   · "Venta Servicio" — no existe en Novonet.
                 Se reemplazan por la tarjeta 17 de Novonet para que ambas
                 empresas tengan EXACTAMENTE las mismas 19 tarjetas (0-18). */}
-            <KpiMini index={17} variant="stone" label="% Planes 150/200" meta={METAS_COMERCIALES_VELSA.planes150200} real="0.0%"          color="border-l-lime-600" tooltip={TIP.planes150200} />
+            <KpiMini index={17} variant="stone" label="% Planes ≤600 Mbps" meta={METAS_COMERCIALES_VELSA.planesHasta600} real={`${stats.planesHasta600}%`} color="border-l-lime-600" tooltip={TIP.planesHasta600} />
             <KpiMini index={18} variant="stone" label="Por Regularizar"  value={stats.regularizar}       color="border-l-rose-500" tooltip={TIP.porRegularizar} />
           </div>
 

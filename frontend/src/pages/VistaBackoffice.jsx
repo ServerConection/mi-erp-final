@@ -695,6 +695,62 @@ function BotonDescargaExcel({
   );
 }
 
+/**
+ * Reporte Excel de Validación / Regularización:
+ *  1) Registros CON fecha_regularizacion_atc, contados por esa fecha.
+ *  2) Registros SIN fecha_regularizacion_atc (faltan por auditar),
+ *     contados por día de creación (fecha_registro_sistema).
+ */
+function exportarReporteFechaRegularizacion(rows, nombreArchivo = "Reporte_Fecha_Regularizacion") {
+  if (!rows?.length) {
+    alert("No hay registros disponibles para exportar con los filtros actuales.");
+    return;
+  }
+  const conFecha = {};
+  const pendientes = {};
+  rows.forEach((row) => {
+    const fReg = fechaCalendarioEC(row.fecha_regularizacion_atc);
+    if (fReg) {
+      conFecha[fReg] = (conFecha[fReg] || 0) + 1;
+    } else {
+      const fCre = fechaCalendarioEC(row.fecha_registro_sistema) || "SIN FECHA";
+      pendientes[fCre] = (pendientes[fCre] || 0) + 1;
+    }
+  });
+  const ordenar = (obj) => Object.entries(obj).sort(([a], [b]) => a.localeCompare(b));
+  const filasCon = ordenar(conFecha);
+  const filasPend = ordenar(pendientes);
+  const totalCon = filasCon.reduce((acc, [, n]) => acc + n, 0);
+  const totalPend = filasPend.reduce((acc, [, n]) => acc + n, 0);
+
+  const aoa = [
+    ["REGISTROS CON FECHA REGULARIZACIÓN ATC"],
+    ["FECHA REGULARIZACIÓN ATC", "CANTIDAD"],
+    ...filasCon,
+    ["TOTAL", totalCon],
+    [],
+    [],
+    ["FALTAN POR AUDITAR (SIN FECHA REGULARIZACIÓN ATC) POR DÍA DE CREACIÓN"],
+    ["FECHA DE CREACIÓN", "CANTIDAD"],
+    ...filasPend,
+    ["TOTAL", totalPend],
+    [],
+    ["TOTAL GENERAL", totalCon + totalPend],
+  ];
+
+  try {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 70 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fecha Regularizacion");
+    const fechaHoy = fmtFechaEC.format(new Date());
+    XLSX.writeFile(wb, `${nombreArchivo.replace(/[^\w-]+/g, "_")}_${fechaHoy}.xlsx`);
+  } catch (error) {
+    console.error("[REPORTE-FECHA-REGULARIZACION]", error);
+    alert(`No se pudo generar el archivo Excel.\n\n${error.message || "Error desconocido"}`);
+  }
+}
+
 function CargandoBackoffice({ filas = 4 }) {
   return (
     <div aria-label="Cargando registros" aria-busy="true" style={{ display: "grid", gap: 9 }}>
@@ -7745,6 +7801,15 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
               <h3 style={{ margin: "4px 0 0", fontSize: 18, color: "#4338ca", textTransform: "uppercase" }}>{estadoSeleccionado} · {rowsFiltradas.length}</h3>
             </div>
             <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
+            <button
+              type="button"
+              onClick={() => exportarReporteFechaRegularizacion(rowsConFiltros, `Reporte_Fecha_Regularizacion_${empresa || "Todos"}`)}
+              title="Conteo por fecha de regularización ATC y pendientes por auditar por día de creación"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid #fcd34d", background: "#fffbeb", color: "#b45309", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              <span>📊</span>
+              Reporte Fecha Regularización
+            </button>
           </div>
 
           {alerta && (

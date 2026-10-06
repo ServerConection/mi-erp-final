@@ -990,7 +990,10 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   };
 
   useEffect(() => {
-    if (tabActiva === "GENERAL") fetchDashboard();
+    if (tabActiva === "GENERAL") {
+      fetchDashboard();
+      fetchDetalleCRMData();
+    }
     else if (tabActiva === "MONITOREO") fetchMonitoreo();
     else if (tabActiva === "REPORTE180") fetchReporte180();
   }, [tabActiva]);

@@ -677,8 +677,10 @@ export default function Seguimientovelsa() {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)
         const netMap = {};
         (result.dataNetlife || []).forEach(r => {
-          if (r.ASESOR && r.SUPERVISOR_ASIGNADO)
-            netMap[r.ASESOR.toUpperCase()] = r.SUPERVISOR_ASIGNADO;
+          // 2026-10-06: el detalle ahora trae ASESOR_RESPONSABLE_BITRIX
+          const asesorFila = r.ASESOR_RESPONSABLE_BITRIX || r.ASESOR;
+          if (asesorFila && r.SUPERVISOR_ASIGNADO)
+            netMap[asesorFila.toUpperCase()] = r.SUPERVISOR_ASIGNADO;
         });
         const enriched = (result.asesores || []).map(a => ({
           ...a,

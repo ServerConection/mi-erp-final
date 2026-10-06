@@ -24,6 +24,7 @@ const {
     esIngresoJotformExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
+const { fuenteDetalleJotform, columnasDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
     enPeriodoSeleccionadoExpr,
     backlogEnPeriodoSeleccionadoExpr,
@@ -328,11 +329,9 @@ const getIndicadoresDashboard = async (req, res) => {
         // Se incluye el id del usuario cuando es ASESOR (esPerfilAsesor) para que
         // el caché nunca mezcle el resultado de un asesor con el de otro.
         const cacheKey = JSON.stringify({ asesorQuery, supervisor, desde, hasta, estadoNetlife, estadoRegularizacion, etapaCRM, etapaJotform, canal, idBitrix, gestionables, fechaActivacionDesde, fechaActivacionHasta, uid: esPerfilAsesor ? req.user.id : null });
+        // El retorno desde caché se hace más abajo (antes del primer await):
+        // el detalle Jotform (envios_ventas) se consulta SIEMPRE en vivo.
         const cached = getDashboardCache(cacheKey);
-        if (cached) {
-            console.log(`[DASHBOARD] Cache hit → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
-            return res.json(cached);
-        }
 
         let values = [desde, hasta];
         let filtersJoin = filtroOrigenNovonet(values);
@@ -943,58 +942,23 @@ const getIndicadoresDashboard = async (req, res) => {
         //     vacía en lugar de tumbar TODO el reporte.
         //   · Novonet no trabaja con Telcos ni guarda la hora de llegada del
         //     payload; esas columnas van vacías para que el archivo sea igual.
+        // 2026-10-06: lee DIRECTO de envios_ventas (sin vistas). Ver
+        // shared/detalleJotformEnviosVentas.js. Los JOINs de asesor/supervisor
+        // resuelto y filtersJoinResuelto se reutilizan tal cual porque la
+        // subconsulta expone los mismos nombres mb.j_* / mb.b_*.
         const queryJotform = `
             SELECT
-                mb.j_id_bitrix AS "ID_CRM",
-                -- FIX (2026-09-14, a pedido): ID_JOT debe ser el mismo Deal ID que
-                -- ID_CRM (antes traía el id interno del submission de Jotform).
-                mb.j_id_bitrix AS "ID_JOT",
-                -- FIX (2026-09-14, a pedido): ETAPA debe reflejar la etapa VIVA de
-                -- Bitrix (bwl.etapa_bitrix, ya joineado arriba por Deal ID), cayendo
-                -- a la etapa histórica de mestra_bitrix solo si el webhook no tiene
-                -- ese deal todavía.
-                COALESCE(NULLIF(TRIM(bwl.etapa_bitrix), ''), NULLIF(TRIM(mb.b_etapa_de_la_negociacion), '')) AS "ETAPA",
-                -- FIX (2026-09-14, a pedido): FECHA_CREACION debe ser igual a
-                -- FECHA_CREACION_JOT (antes usaba mb.b_creado_el_fecha, que sale
-                -- vacío en filas que solo llegaron por Jotform).
-                mb.j_fecha_registro_sistema AS "FECHA_CREACION",
-                -- ASESOR: se toma del webhook (bitrix_webhook_leads.responsible)
-                -- y solo cae al histórico si el webhook no tiene dato. Ver
-                -- ASESOR_RESUELTO arriba. Antes: mb.b_persona_responsable (='REVISAR').
-                ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
-                COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
-                bwl.source AS "ORIGEN",
-                mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
-                NULL::text AS "FECHA_CREADO_JOT",
-                to_jsonb(mb) ->> 'j_codigo_asesor' AS "COD_ASESOR_JOT",
-                mb.j_netlife_login AS "LOGIN",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
-                NULL::text AS "OBSERVACION_TELCOS",
-                NULL::text AS "INGRESO_TELCOS",
-                mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
-                mb.j_detalle_regularizacion AS "OBSERV_REGULARIZACION",
-                mb.j_novedades_atc AS "NOVEDADES_ATC",
-                van.plan_casa               AS "PLAN_CASA",
-                van.plan_pyme               AS "PLAN_PYME",
-                van.plan_profesional        AS "PLAN_PROFESIONAL",
-                van.plan_hogar_adulto_mayor AS "PLAN_HOGAR_ADULTO_MAYOR",
-                van.plan_pyme_corp          AS "PLAN_PYME_CORP",
-                -- PLAN GAMER (2026-09): en Novonet el plan gamer se guarda en
-                -- plan_centro_comercial. Se renombra la columna del Excel para que
-                -- diga lo que de verdad trae.
-                van.plan_centro_comercial   AS "PLAN_GAMER",
-                mb.j_forma_pago AS "FORMA_PAGO",
-                to_jsonb(mb) ->> 'j_aplica_descuento_3ra_edad' AS "APLICA_DESCUENTO",
-                mb.j_fecha_agenda AS "FECHA_AGENDA",
-                to_jsonb(mb) ->> 'j_observacion_venta_original' AS "OBSERVACION"
-            FROM mestra_bitrix mb
-            ${JOIN_VAN_NOVONET}
+                ${columnasDetalleJotform('mb', {
+                    asesorExpr: ASESOR_RESUELTO_NORMALIZADO,
+                    supervisorExpr: 'COALESCE(esup.supervisor, e.supervisor)',
+                })}
+            FROM ${fuenteDetalleJotform('novonet', 'mb')}
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
-            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+            WHERE mb.ts_local::date BETWEEN $1::date AND $2::date
             ${filtersJoinResuelto}
+            ORDER BY mb.ts_local DESC
             LIMIT 6000
         `;
 
@@ -1177,6 +1141,16 @@ const getIndicadoresDashboard = async (req, res) => {
         `;
 
         // ── Lote 1: KPIs + agregaciones (6 queries) ─ Lote 2: tablas + backlogs ──
+        // 2026-10-06 (a pedido): "DETALLE BASE JOTFORM" debe reflejar al
+        // instante lo que se guarda/edita en envios_ventas. Si el resto del
+        // dashboard está en caché, se reutiliza, pero el detalle se vuelve a
+        // consultar en vivo (1 sola query, no el dashboard completo).
+        if (cached) {
+            const resNetVivo = await pool.query(queryJotform, values);
+            console.log(`[DASHBOARD] Cache hit (detalle Jotform en vivo) → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
+            return res.json({ ...cached, dataNetlife: resNetVivo.rows });
+        }
+
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).
         // queryMetasGlobales reemplaza a queryTerceraEdad + queryTarjeta (−1 query, −1 scan).
         const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resMetasGlobales, resOrigenesEtapasDia]] = await Promise.all([

@@ -661,11 +661,17 @@ export default function NuevaVenta() {
   const user = (() => { try { return JSON.parse(userRaw); } catch { return {}; } })();
   const token = localStorage.getItem("token");
 
-  // Si la URL trae ?id=123, estamos continuando un borrador propio
+  // La URL solo propone un borrador. Se considera editable después de que el
+  // backend confirme que todavía sigue en BORRADOR. Así una URL antigua no
+  // convierte accidentalmente una venta nueva en una edición.
   const borradorId = new URLSearchParams(window.location.search).get("id");
+  const [borradorEditableId, setBorradorEditableId] = useState(null);
+  const [resolviendoBorrador, setResolviendoBorrador] = useState(Boolean(borradorId));
   const [origenVentaLocked, setOrigenVentaLocked] = useState(false);
 
   useEffect(() => {
+    setBorradorEditableId(null);
+    setResolviendoBorrador(Boolean(borradorId));
     if (!borradorId) return;
     (async () => {
       try {
@@ -674,6 +680,7 @@ export default function NuevaVenta() {
         });
         const d = await r.json();
         if (d.success) {
+          setBorradorEditableId(String(d.data.id));
           const data = d.data;
           setForm(f => {
             const next = { ...f };
@@ -724,9 +731,14 @@ export default function NuevaVenta() {
           setAlert({ tipo: "ok", msg: `Continuando borrador #${borradorId}. Completa los campos faltantes.` });
         } else {
           setAlert({ tipo: "err", msg: d.error || "No se pudo cargar el borrador." });
+          // El enlace apunta a un registro inexistente o ya finalizado. Se
+          // limpia para que el siguiente envío sea una creación (POST).
+          navigate(window.location.pathname, { replace: true });
         }
       } catch {
         setAlert({ tipo: "err", msg: "Error de conexión al cargar el borrador." });
+      } finally {
+        setResolviendoBorrador(false);
       }
     })();
   }, [borradorId]);
@@ -1367,6 +1379,11 @@ export default function NuevaVenta() {
   const handleSubmit = async (accion) => {
     setAlert(null);
 
+    if (resolviendoBorrador) {
+      setAlert({ tipo: "err", msg: "Espera un momento mientras verificamos el borrador." });
+      return;
+    }
+
     if (!validar(accion)) {
       return;
     }
@@ -1479,8 +1496,8 @@ export default function NuevaVenta() {
         novedades_atc: null,
       };
 
-      const url = borradorId ? `${API}/api/envios-ventas/${borradorId}` : `${API}/api/envios-ventas`;
-      const method = borradorId ? "PUT" : "POST";
+      const url = borradorEditableId ? `${API}/api/envios-ventas/${borradorEditableId}` : `${API}/api/envios-ventas`;
+      const method = borradorEditableId ? "PUT" : "POST";
 
       const r = await fetch(url, {
         method,
@@ -1501,7 +1518,10 @@ export default function NuevaVenta() {
           });
           reiniciarFormulario();
           // Si venía de un borrador (?id=...), quitarlo para que la siguiente venta se cree como NUEVA
-          if (borradorId) navigate(window.location.pathname, { replace: true });
+          if (borradorEditableId) {
+            setBorradorEditableId(null);
+            navigate(window.location.pathname, { replace: true });
+          }
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } else {

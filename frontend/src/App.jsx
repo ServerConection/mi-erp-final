@@ -48,8 +48,10 @@ const Evaluaciones         = lazy(() => import("./pages/Evaluaciones"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
 const NuevaVenta           = lazy(() => import("./pages/NuevaVenta"));
 const CatalogoPlanes       = lazy(() => import("./pages/CatalogoPlanes"));
+const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales"));
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
+const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
@@ -85,12 +87,46 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const AdminOnlyRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  let userProfile = null;
+
+  try {
+    userProfile = JSON.parse(localStorage.getItem("userProfile") || "null");
+  } catch (_) {
+    userProfile = null;
+  }
+
+  if (!token) return <Navigate to="/login" replace />;
+  if (!userProfile || (userProfile.perfil || "").toUpperCase() !== "ADMINISTRADOR") {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
+
+// RolesAllowedRoute: allow access to a list of uppercase perfil values (e.g. ["ADMINISTRADOR","GERENCIA"]).
+const RolesAllowedRoute = ({ children, allowed = [] }) => {
+  const token = localStorage.getItem("token");
+  if (!token) return <Navigate to="/login" replace />;
+  let userProfile = null;
+  try {
+    userProfile = JSON.parse(localStorage.getItem("userProfile") || "null");
+  } catch (_) { userProfile = null; }
+  const perfil = (userProfile?.perfil || "").toUpperCase();
+  if (!allowed.includes(perfil)) return <Navigate to="/" replace />;
+  return children;
+};
+
 // Botones flotantes (soporte WhatsApp, chat interno, tareas): se ocultan en
 // las rutas /embed/* -- son el iframe "WABOT Inbox" dentro de Bitrix, y ahí
 // no pintan botones internos del ERP encima del chat del cliente.
 const FloatingWidgets = () => {
   const location = useLocation();
   if (location.pathname.startsWith("/embed/")) return null;
+  try {
+    const perfil = (JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").trim().toUpperCase();
+    if (["ATC", "ANALISTA"].includes(perfil)) return null;
+  } catch (_) { /* una sesión inválida será atendida por ProtectedRoute */ }
   return (
     <>
       {/* Botón flotante de soporte por WhatsApp — visible en todas las rutas excepto embeds */}
@@ -136,7 +172,8 @@ export default function App() {
             <Route path="notificaciones"            element={<Notificaciones />} />
             <Route path="broadcast"                 element={<BroadcastPanel />} />
             <Route path="appsheet"                  element={<AppSheetModule />} />
-            <Route path="guia-planes"               element={<Guiaplanesmarzo />} />
+            <Route path="guia-comercial"            element={<AdminOnlyRoute><Guiaplanesmarzo /></AdminOnlyRoute>} />
+            <Route path="guia-planes"               element={<AdminOnlyRoute><Guiaplanesmarzo /></AdminOnlyRoute>} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />
@@ -158,8 +195,10 @@ export default function App() {
             <Route path="forecast"                 element={<Forecast />} />
             <Route path="nueva-venta"              element={<NuevaVenta />} />
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
+            <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="vista-backoffice"         element={<VistaBackoffice />} />
+            <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
+            <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
             <Route path="nexo-ia"                    element={<NexoIa />} />

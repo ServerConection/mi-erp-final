@@ -4,7 +4,7 @@
 // GET  /api/backoffice        → listar registros
 // GET  /api/backoffice/:id    → detalle completo de un registro
 // PUT  /api/backoffice/:id    → editar solo campos de auditoría
-// Todos los perfiles excepto ASESOR
+// Acceso exclusivo: ADMINISTRADOR y ATC
 // ============================================================
 
 const express = require('express');
@@ -21,14 +21,12 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 // cualquier vendedor podía leer y editar ventas ajenas —incluido valor_pago,
 // plan contratado y los datos personales del cliente.
 //
-// Se cambia a lista blanca en vez de lista negra: si mañana aparece un perfil
+// Se usa una lista blanca: si mañana aparece un perfil
 // nuevo en la base, queda FUERA por defecto en vez de entrar por descuido.
 // `noAsesor` se deja intacto porque lo usan otras 11 rutas del ERP.
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
-  'GERENCIA',
-  'SUPERVISOR',
-  'ANALISTA',
+  'ATC',
 ]);
 
 const soloBackoffice = (req, res, next) => {
@@ -52,6 +50,53 @@ router.use(verificarToken, soloBackoffice);
 // malformado y tumba toda la consulta. LEFT(col::text, 10) devuelve siempre
 // 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
 const fechaCol = (col) => `LEFT(${col}::text, 10)`;
+// Alcance histórico autorizado para TODO Backoffice. Este límite vive en el
+// backend para que tampoco pueda evadirse manipulando filtros o URLs.
+const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
+const condicionFechaBackoffice = (alias = '') => (
+  `${fechaCol(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
+);
+
+// envios_ventas conserva el código con el que se registró la venta. El nombre
+// se resuelve contra usuarios.codigo_vendedor para no duplicarlo ni dejarlo
+// desactualizado cuando cambie la ficha del asesor.
+const columnasBackoffice = `
+  ev.*,
+  COALESCE(asesor.codigo_vendedor, ev.codigo_asesor, '') AS id_asesor_comercial,
+  COALESCE(asesor.nombre_completo, '') AS nombre_asesor_comercial
+`;
+const joinAsesorBackoffice = `
+  LEFT JOIN LATERAL (
+    SELECT
+      NULLIF(TRIM(u.codigo_vendedor), '') AS codigo_vendedor,
+      NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS nombre_completo
+    FROM public.usuarios u
+    WHERE NULLIF(TRIM(ev.codigo_asesor), '') IS NOT NULL
+      AND (
+        UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(ev.codigo_asesor))
+        OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(ev.codigo_asesor))
+      )
+    ORDER BY u.activo DESC, u.id DESC
+    LIMIT 1
+  ) asesor ON TRUE
+`;
+
+// Los listados masivos no necesitan campos extensos que solo se muestran al
+// abrir el detalle. Excluirlos reduce considerablemente el JSON transferido y
+// el trabajo de serializaciÃ³n cuando existen decenas de miles de ventas.
+const columnasBackofficeLista = `
+  (
+    to_jsonb(ev)
+    - ARRAY[
+        'hist_cambio_estatus', 'resumen_venta', 'observacion_auditoria',
+        'observacion_gestion_cobranza', 'links_documentos'
+      ]::text[]
+    || jsonb_build_object(
+      'id_asesor_comercial', COALESCE(asesor.codigo_vendedor, ev.codigo_asesor, ''),
+      'nombre_asesor_comercial', COALESCE(asesor.nombre_completo, '')
+    )
+  ) AS registro
+`;
 
 // ─── AISLAMIENTO POR EMPRESA ────────────────────────────────────────────────
 // `distribuidor_autorizado` guarda NOVONET o VELSA y se deriva de
@@ -68,44 +113,23 @@ const fechaCol = (col) => `LEFT(${col}::text, 10)`;
 // esconderle trabajo a nadie de un día para otro. Cuando esas filas estén
 // normalizadas, quitar el `OR ... IS NULL` de abajo cierra el aislamiento
 // del todo.
-const empresaDelUsuario = (req) => {
-  if (!req.user) return null;
-  if (req.user.perfil === 'ADMINISTRADOR') return null;   // sin restricción
-  const e = (req.user.empresa || '').trim().toUpperCase();
-  return e || null;
-};
-
-/** Condición SQL de visibilidad. Devuelve '' cuando el usuario ve todo. */
-const filtroEmpresa = (req, P) => {
-  const empresa = empresaDelUsuario(req);
-  if (!empresa) return '';
-  return ` AND (UPPER(TRIM(COALESCE(distribuidor_autorizado,''))) = ${P(empresa)}
-                OR COALESCE(TRIM(distribuidor_autorizado),'') = '')`;
-};
-
-/** ¿Este usuario puede tocar esta fila? */
-const puedeVerRegistro = (req, row) => {
-  const empresa = empresaDelUsuario(req);
-  if (!empresa) return true;
-  const dist = (row?.distribuidor_autorizado || '').trim().toUpperCase();
-  return dist === '' || dist === empresa;
-};
-
 router.get('/', async (req, res) => {
   try {
     const {
       buscar = '', page = 1, limit = 100,
       fechaDesde = '', fechaHasta = '',                 // fecha_registro_sistema
       activacionDesde = '', activacionHasta = '',       // fecha_activacion_netlife
+      agendaDesde = '', agendaHasta = '',               // fecha_agenda
       login = '',                                        // netlife_login
       estatusNetlife = '',                               // netlife_estatus_real
       terceraEdad = '',                                  // aplica_descuento_3ra_edad
       estatusRegularizacion = '',                        // estatus_regularizacion
       empresa = '',
       includeTotal = 'true',
+      vista = 'completa',
     } = req.query;
 
-    let whereClause = "WHERE estatus_envio != 'BORRADOR'";
+    let whereClause = `WHERE estatus_envio != 'BORRADOR' AND ${condicionFechaBackoffice()}`;
     const params = [];
     const P = (v) => { params.push(v); return `$${params.length}`; };
 
@@ -116,8 +140,19 @@ router.get('/', async (req, res) => {
         id_bitrix                ILIKE ${p} OR
         nombre_cliente_completo  ILIKE ${p} OR
         numero_identificacion    ILIKE ${p} OR
+        telf_celular_pin         ILIKE ${p} OR
+        telf_celular_2           ILIKE ${p} OR
+        telf_fijo                ILIKE ${p} OR
+        netlife_login            ILIKE ${p} OR
         distribuidor_autorizado  ILIKE ${p} OR
-        supervisor               ILIKE ${p}
+        supervisor               ILIKE ${p} OR
+        to_jsonb(ev)::text       ILIKE ${p} OR
+        EXISTS (
+          SELECT 1 FROM public.usuarios u
+          WHERE (UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, '')))
+              OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, ''))))
+            AND (u.codigo_vendedor ILIKE ${p} OR CONCAT_WS(' ', u.nombres, u.apellidos) ILIKE ${p})
+        )
       )`;
     }
 
@@ -128,6 +163,10 @@ router.get('/', async (req, res) => {
     // ── FECHA DE ACTIVACIÓN ──────────────────────────────────────────────
     if (activacionDesde) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} >= ${P(activacionDesde)}`;
     if (activacionHasta) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} <= ${P(activacionHasta)}`;
+
+    // ─── FECHA DE AGENDAMIENTO ──────────────────────────────────────────────
+    if (agendaDesde) whereClause += ` AND ${fechaCol('fecha_agenda')} >= ${P(agendaDesde)}`;
+    if (agendaHasta) whereClause += ` AND ${fechaCol('fecha_agenda')} <= ${P(agendaHasta)}`;
 
     // ── LOGIN NETLIFE ────────────────────────────────────────────────────
     if (login.trim()) whereClause += ` AND netlife_login ILIKE ${P(`%${login.trim()}%`)}`;
@@ -141,17 +180,8 @@ router.get('/', async (req, res) => {
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
 
     // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
-    whereClause += filtroEmpresa(req, P);
-
     const empresaPedida = empresa.trim().toUpperCase();
-    const alcance = empresaDelUsuario(req);
     if (empresaPedida && empresaPedida !== 'TODOS') {
-      if (alcance && empresaPedida !== alcance) {
-        return res.status(403).json({
-          success: false,
-          error: 'No tienes acceso a los registros de esa empresa.',
-        });
-      }
       whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
     }
 
@@ -171,17 +201,20 @@ router.get('/', async (req, res) => {
       paginacionSql = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
     }
 
+    const listadoLigero = String(vista).toLowerCase() === 'lista';
     const { rows } = await pool.query(`
-      SELECT *
-      FROM public.envios_ventas
+      SELECT ${listadoLigero ? columnasBackofficeLista : columnasBackoffice}
+      FROM public.envios_ventas ev
+      ${joinAsesorBackoffice}
       ${whereClause}
-      ORDER BY id DESC
+      ORDER BY ev.id DESC
       ${paginacionSql}
     `, params);
 
     // PanelRegistros carga sin límite y ya conoce rows.length. Permitirle omitir
     // el COUNT evita un segundo recorrido completo de la tabla en cada consulta.
-    let total = rows.length;
+    const data = listadoLigero ? rows.map((row) => row.registro) : rows;
+    let total = data.length;
     if (String(includeTotal).toLowerCase() !== 'false') {
       const { rows: countRows } = await pool.query(
         `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
@@ -190,7 +223,7 @@ router.get('/', async (req, res) => {
       total = countRows[0].total;
     }
 
-    res.json({ success: true, data: rows, total });
+    res.json({ success: true, data, total });
   } catch (e) {
     console.error('[BACKOFFICE] GET list:', e.message);
     res.status(500).json({ success: false, error: 'Error interno al cargar los registros' });
@@ -205,20 +238,15 @@ router.get('/', async (req, res) => {
 // match de '/opciones' contra '/:id' (id = "opciones") y la consulta falla.
 router.get('/opciones', async (req, res) => {
   try {
-    // Los combos solo ofrecen valores que el usuario realmente puede ver.
-    const params = [];
-    const P = (v) => { params.push(v); return `$${params.length}`; };
-    const alcanceSql = filtroEmpresa(req, P);
-
     const distintos = async (col) => {
       const { rows } = await pool.query(`
         SELECT DISTINCT TRIM(${col}) AS v
         FROM public.envios_ventas
         WHERE ${col} IS NOT NULL AND TRIM(${col}) <> ''
           AND estatus_envio != 'BORRADOR'
-          ${alcanceSql}
+          AND ${condicionFechaBackoffice()}
         ORDER BY 1
-      `, params);
+      `);
       return rows.map(r => r.v);
     };
 
@@ -240,7 +268,11 @@ router.get('/opciones', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM public.envios_ventas WHERE id = $1',
+      `SELECT ${columnasBackoffice}
+       FROM public.envios_ventas ev
+       ${joinAsesorBackoffice}
+       WHERE ev.id = $1
+         AND ${condicionFechaBackoffice('ev.')}`,
       [req.params.id]
     );
     if (rows.length === 0)
@@ -248,9 +280,6 @@ router.get('/:id', async (req, res) => {
 
     // 404 (y no 403) a propósito: un usuario de otra empresa no debe poder
     // deducir que el registro existe probando IDs.
-    if (!puedeVerRegistro(req, rows[0]))
-      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     console.error('[BACKOFFICE] GET detail:', e.message);
@@ -269,7 +298,7 @@ const CAMPOS_EDITABLES = new Set([
   'provincia', 'ciudad', 'parroquia_barrio', 'direccion_calles',
   'direccion_manzana_villa', 'referencia_ubicacion', 'coordenadas_gps',
   'tipo_vivienda', 'regimen_vivienda',
-  'plan_contratado_final', 'servicios_digitales', 'forma_pago',
+  'plan_contratado_final', 'plan_contratado', 'velocidad_plan', 'servicios_digitales', 'forma_pago',
   'detalle_bancario_ahorros', 'valor_pago', 'tipo_contrato', 'banco', 'tipo_cuenta',
   'ciclo_facturacion', 'costo_instalacion', 'descuento_instalacion',
   'beneficios_adicionales', 'beneficios_de_ley', 'plazo_contrato_meses',
@@ -278,9 +307,12 @@ const CAMPOS_EDITABLES = new Set([
   'calidad_venta_analista', 'novedades_atc', 'estado_welcome', 'venta_efectiva',
   'auditoria_documentos', 'auditado_por', 'inconsistencia_documental',
   'observacion_auditoria', 'errores_telcos', 'estatus_regularizacion',
-  'detalle_regularizacion', 'fecha_regularizacion_atc', 'mes_regularizacion',
+  'detalle_regularizacion', 'fecha_regularizacion_atc',
+  'año_regularizacion_atc', 'mes_regularizacion_atc',
+  'dia_num_regularizacion_atc', 'dia_abc_regularizacion_atc',
+  'mes_regularizacion',
   'observacion_venta_original', 'observacion_gestion_cobranza',
-  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet',
+  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet', 'foto_cartel',
   'archivo_resumen',
   'archivo_planilla', 'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
   'links_documentos',
@@ -289,6 +321,8 @@ const CAMPOS_EDITABLES = new Set([
   // Agendamiento
   'turno_agendado',
   'fecha_agenda',
+  'hora_agenda',
+  'franja_horaria_agendamiento',
   'mes_agenda',
   'dia_abc_agenda',
 
@@ -306,10 +340,12 @@ const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "
 router.get('/welcome/programaciones', async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT registro_id, scheduled_at, status, attempts, last_error
-       FROM welcome_notifications
-       WHERE status IN ('pending', 'processing', 'failed')
-       ORDER BY scheduled_at ASC`
+      `SELECT wn.registro_id, wn.scheduled_at, wn.status, wn.attempts, wn.last_error
+       FROM welcome_notifications wn
+       INNER JOIN public.envios_ventas ev ON ev.id = wn.registro_id
+       WHERE wn.status IN ('pending', 'processing', 'failed')
+         AND ${condicionFechaBackoffice('ev.')}
+       ORDER BY wn.scheduled_at ASC`
     );
     res.json({ success: true, data: rows });
   } catch (error) {
@@ -339,6 +375,7 @@ router.post('/welcome/programar', async (req, res) => {
       `SELECT id
        FROM public.envios_ventas
        WHERE id = ANY($1::bigint[])
+         AND ${condicionFechaBackoffice()}
          AND COALESCE(UPPER(TRIM(estado_welcome)), 'SIN_NOTIFICAR') = 'SIN_NOTIFICAR'
        ORDER BY array_position($1::bigint[], id::bigint)`,
       [ids]
@@ -410,6 +447,8 @@ router.post('/welcome/programaciones/:registroId/cancelar', async (req, res) => 
 });
 
 router.put('/:id', async (req, res) => {
+  let client;
+  let transaccionAbierta = false;
   try {
     const { id } = req.params;
 
@@ -421,15 +460,17 @@ router.put('/:id', async (req, res) => {
     // El registro debe existir Y pertenecer a la empresa del usuario.
     // Sin esto, cualquier perfil no-ASESOR podía editar ventas de la otra
     // empresa mandando el id directo al endpoint.
-    const { rows: actual } = await pool.query(
-      'SELECT distribuidor_autorizado, tipo_documento FROM public.envios_ventas WHERE id = $1',
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transaccionAbierta = true;
+    const { rows: actual } = await client.query(
+      `SELECT * FROM public.envios_ventas
+       WHERE id = $1 AND ${condicionFechaBackoffice()}
+       FOR UPDATE`,
       [id]
     );
     if (actual.length === 0)
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-    if (!puedeVerRegistro(req, actual[0]))
-      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
-
     // Construcción del payload filtrando solo lo permitido
     const payload = {};
     for (const [clave, valor] of Object.entries(req.body || {})) {
@@ -454,12 +495,53 @@ router.put('/:id', async (req, res) => {
     // campos de un registro que ya estaba notificado no debe reenviarlo.
     let debeEnviarBienvenida = false;
     if (String(payload.estado_welcome || '').trim().toUpperCase() === 'NOTIFICADO') {
-      const anterior = await pool.query(
-        'SELECT estado_welcome FROM public.envios_ventas WHERE id = $1',
-        [id]
-      );
-      const estadoAnterior = String(anterior.rows[0]?.estado_welcome || '').trim().toUpperCase();
+      const estadoAnterior = String(actual[0]?.estado_welcome || '').trim().toUpperCase();
       debeEnviarBienvenida = estadoAnterior !== 'NOTIFICADO';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'franja_horaria_agendamiento') && !Object.prototype.hasOwnProperty.call(payload, 'fecha_agenda')) {
+      const franja = String(payload.franja_horaria_agendamiento || '').trim();
+      const matchFranja = franja.match(/^([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)$/);
+      const duraDosHoras = matchFranja && matchFranja[2] === matchFranja[4]
+        && (Number(matchFranja[3]) - Number(matchFranja[1]) + 24) % 24 === 2;
+      if (franja && !duraDosHoras) {
+        return res.status(400).json({ success: false, error: 'Franja horaria inválida' });
+      }
+      payload.franja_horaria_agendamiento = franja || null;
+    }
+
+    // Seleccionar "Auditado por" es la acción que sella la regularización.
+    // Ambas fechas las genera el servidor; el cliente no decide sus valores.
+    if (Object.prototype.hasOwnProperty.call(payload, 'auditado_por')) {
+      const auditor = String(payload.auditado_por || '').trim();
+      if (!auditor) {
+        return res.status(400).json({ success: false, error: 'Debe seleccionar quién auditó el registro' });
+      }
+      payload.auditado_por = auditor;
+      const selloAuditoria = actual[0].fecha_hora_regularizacion
+        ? new Date(actual[0].fecha_hora_regularizacion)
+        : new Date();
+      if (!actual[0].fecha_hora_regularizacion) {
+        payload.fecha_hora_regularizacion = selloAuditoria;
+      }
+      // Los registros auditados antes de crear las columnas separadas ya
+      // tienen fecha_hora_regularizacion. Se usa ese sello original para
+      // completar fecha/hora sin reemplazarlo por el momento actual.
+      if (!actual[0].fecha_auditoria) {
+        payload.fecha_auditoria = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(selloAuditoria);
+      }
+      if (!actual[0].hora_auditoria) {
+        payload.hora_auditoria = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        }).format(selloAuditoria);
+      }
+      if (!actual[0].fecha_regularizacion_atc) {
+        payload.fecha_regularizacion_atc = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(new Date());
+      }
     }
 
     // Manejo de la fecha y cálculo de campos derivados
@@ -498,24 +580,83 @@ router.put('/:id', async (req, res) => {
       // Si el usuario borra la fecha
       if (!raw) {
         payload.fecha_agenda = null;
+        payload.hora_agenda = null;
+        payload.franja_horaria_agendamiento = null;
         payload.mes_agenda = null;
         payload.dia_abc_agenda = null;
       } else {
-        // El frontend envía YYYY-MM-DD
-        const soloFecha = String(raw).slice(0, 10);
-        const d = new Date(`${soloFecha}T00:00:00`);
+        // El frontend envía fecha y hora local de Ecuador: YYYY-MM-DDTHH:mm.
+        const fechaHora = String(raw).trim();
+        const formatoValido = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(fechaHora);
+        const d = new Date(fechaHora);
 
-        if (Number.isNaN(d.getTime())) {
+        if (!formatoValido || Number.isNaN(d.getTime())) {
           return res.status(400).json({
             success: false,
-            error: 'fecha_agenda debe tener formato YYYY-MM-DD',
+            error: 'fecha_agenda debe tener formato YYYY-MM-DDTHH:mm',
           });
         }
 
-        payload.fecha_agenda = soloFecha;
+        payload.fecha_agenda = fechaHora.slice(0, 10);
+        const horaAgenda = fechaHora.slice(11, 19);
+        payload.hora_agenda = horaAgenda.length === 5 ? `${horaAgenda}:00` : horaAgenda;
+        const horaInicio = Number(fechaHora.slice(11, 13));
+        const minutos = fechaHora.slice(14, 16);
+        const horaFin = String((horaInicio + 2) % 24).padStart(2, '0');
+        payload.franja_horaria_agendamiento = `${String(horaInicio).padStart(2, '0')}:${minutos} - ${horaFin}:${minutos}`;
         payload.mes_agenda = MESES[d.getMonth()];
         payload.dia_abc_agenda = DIAS[d.getDay()];
       }
+    }
+
+    // Identidad y momento de auditoría: los decide el servidor y nunca el
+    // navegador. La primera regularización queda inmutable.
+    const CAMPOS_AUDITORIA = new Set([
+      'estatus_regularizacion', 'auditoria_documentos', 'detalle_regularizacion',
+      'gestion_atc', 'inconsistencia_documental', 'observacion_auditoria',
+    ]);
+    const intervinoAuditor = Object.keys(payload).some(campo => CAMPOS_AUDITORIA.has(campo));
+    const estadoRegAnterior = String(actual[0].estatus_regularizacion || '').trim().toUpperCase();
+    const estadoRegNuevo = String(payload.estatus_regularizacion || '').trim().toUpperCase();
+    if (intervinoAuditor && estadoRegNuevo === 'REGULARIZADO' && estadoRegAnterior !== 'REGULARIZADO' && !actual[0].fecha_hora_regularizacion) {
+      payload.fecha_hora_regularizacion = new Date();
+    }
+
+    // hist_cambio_estatus existía, pero esta ruta no lo actualizaba. Se agrega
+    // un evento append-only por cada campo de estado que realmente cambió.
+    const CAMPOS_ESTADO = new Set([
+      'estatus_envio', 'netlife_estatus_real', 'estatus_regularizacion',
+      'estado_welcome', 'estado_recaudacion', 'auditoria_documentos',
+      'calidad_venta_analista', 'venta_efectiva',
+    ]);
+    const cambiosEstado = Object.entries(payload)
+      .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && (
+        campo === 'netlife_estatus_real'
+        || String(actual[0][campo] ?? '') !== String(valor ?? '')
+      ))
+      .map(([campo, valor]) => ({
+        campo,
+        anterior: actual[0][campo] ?? null,
+        nuevo: valor ?? null,
+        reafirmacion: campo === 'netlife_estatus_real'
+          && String(actual[0][campo] ?? '') === String(valor ?? ''),
+      }));
+    if (cambiosEstado.length) {
+      let historial = actual[0].hist_cambio_estatus;
+      if (typeof historial === 'string') {
+        try { historial = JSON.parse(historial); } catch { historial = []; }
+      }
+      if (!Array.isArray(historial)) historial = [];
+      historial.push({
+        usuario_id: req.user?.id || null,
+        usuario: req.user?.usuario || null,
+        nombre_usuario: req.user?.nombreCompleto || req.user?.usuario || null,
+        perfil_usuario: req.user?.perfil || null,
+        empresa_usuario: req.user?.empresa || null,
+        fecha_hora: new Date().toISOString(),
+        cambios: cambiosEstado,
+      });
+      payload.hist_cambio_estatus = JSON.stringify(historial);
     }
 
     const fields = Object.keys(payload);
@@ -538,7 +679,7 @@ router.put('/:id', async (req, res) => {
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, values);
+    const { rows } = await client.query(query, values);
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
@@ -550,13 +691,26 @@ router.put('/:id', async (req, res) => {
       Object.prototype.hasOwnProperty.call(payload, 'estado_welcome') &&
       String(payload.estado_welcome || '').trim().toUpperCase() !== 'PENDIENTE'
     ) {
-      await pool.query(
+      await client.query(
         `UPDATE welcome_notifications
          SET status='cancelled', updated_at=NOW()
          WHERE registro_id=$1 AND status IN ('pending', 'failed')`,
         [id]
       );
     }
+
+    await client.query('COMMIT');
+    transaccionAbierta = false;
+
+    // Invalida en tiempo real calendarios, contadores y tablas abiertas.
+    try {
+      require('../config/socket').getIO().emit('backoffice:registro-actualizado', {
+        id: rows[0].id,
+        empresa: rows[0].distribuidor_autorizado || null,
+        campos: fields,
+        registro: rows[0],
+      });
+    } catch (_) { /* el proceso de pruebas puede no inicializar Socket.IO */ }
 
     let correoBienvenida = null;
     let whatsappBienvenida = null;
@@ -588,6 +742,10 @@ router.put('/:id', async (req, res) => {
       whatsapp_bienvenida: whatsappBienvenida,
     });
   } catch (e) {
+    if (client && transaccionAbierta) {
+      await client.query('ROLLBACK').catch(() => {});
+      transaccionAbierta = false;
+    }
     console.error(
       '[BACKOFFICE] Error en PUT update:',
       e
@@ -599,6 +757,9 @@ router.put('/:id', async (req, res) => {
       code: e.code || null,
       detail: e.detail || null,
     });
+  } finally {
+    if (client && transaccionAbierta) await client.query('ROLLBACK').catch(() => {});
+    client?.release();
   }
 });
 

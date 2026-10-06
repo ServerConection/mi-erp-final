@@ -7,6 +7,7 @@ const {
   downloadMediaMessage,
   normalizeMessageContent,
   WAMessageStubType,
+  makeCacheableSignalKeyStore,
 } = require('@whiskeysockets/baileys')
 const { Boom } = require('@hapi/boom')
 const path = require('path')
@@ -438,7 +439,14 @@ class BaileysManager {
 
     const socketOptions = {
       version,
-      auth: state,
+      // En modo 'pg' cada lectura/escritura de llaves Signal iba directo a
+      // Postgres: al reconectar 50 líneas con mensajes pendientes, eso son miles
+      // de consultas que agotan el pool ("timeout exceeded when trying to
+      // connect") y las líneas se quedan en "Conectando...". La caché en memoria
+      // de Baileys sirve las lecturas y solo escribe a Postgres lo que cambia.
+      auth: AUTH_STORE === 'pg'
+        ? { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) }
+        : state,
       printQRInTerminal: false,
       logger: silentLogger,
       browser: ['WaBot Platform', 'Chrome', '120.0'],
@@ -1199,6 +1207,12 @@ class BaileysManager {
       await new Promise(r => setTimeout(r, ms))
       await sock.sendPresenceUpdate('paused', jid)
     } catch (e) { /* ignorar */ }
+  }
+
+  async startCall(lineId, to, { video = false } = {}) {
+    const error = new Error('Baileys no soporta llamadas salientes; abre el contacto en WhatsApp')
+    error.code = 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED'
+    throw error
   }
 
   async sendText(lineId, to, text, { inboxNoteId, messageId } = {}) {

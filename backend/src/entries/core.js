@@ -13,6 +13,7 @@ const startHttp = require('../shared/startHttp');
 const app = buildBaseApp({ serviceName: 'core' });
 app.use('/api/semillero', require('../routes/semillero.routes'));
 app.use('/api/gestionables-asesores', require('../routes/gestionables.routes'));
+require('../routes/bitrixConnector.mount').mountBitrixConnector(app);
 
 // ── Auth / usuarios ──────────────────────────────────────────
 app.use('/api/auth',      require('../routes/auth.routes'));
@@ -31,6 +32,7 @@ app.use('/api/bitrix-sesiones',   require('../routes/bitrixSesiones.routes'));
 app.use('/api/inventario',        require('../routes/inventario.routes'));
 app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
+app.use('/api/metas-carga',       require('../routes/metasCarga.routes'));
 app.use('/api/backoffice',        require('../routes/backoffice.routes'));
 app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'));
 app.use('/api/salud',require('../routes/salud.routes'));

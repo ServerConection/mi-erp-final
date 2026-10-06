@@ -10,6 +10,7 @@ const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMater
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
 const { initReconciliacionBitrix } = require('./jobs/reconciliacionBitrix.cron');
+const { initColaGestionables } = require('./jobs/colaGestionables.cron');
 const { initContactabilidadSync } = require('./jobs/contactabilidad.cron');
 const { initContactabilidadTiempoReal } = require('./jobs/contactabilidadTiempoReal.cron');
 const { initNexoIa } = require('./jobs/nexoIa.cron');
@@ -56,7 +57,14 @@ server.listen(process.env.PORT, async () => {
   initNexoIa();
   initWinTrackerSync();
   initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
-  iniciarWhatsApp();
+  initColaGestionables();        // entrega cada minuto los leads que esperan en la estación (reparto de gestionables)
+  // WABOT EXTERNO: con WABOT_REMOTE_URL, WhatsApp corre en su propio servicio
+  // de Render y este proceso NO abre sesiones (evita dos dueños por línea).
+  if (process.env.WABOT_REMOTE_URL) {
+    console.log('[WA] WhatsApp corre en servicio externo; no se inicia aquí:', process.env.WABOT_REMOTE_URL);
+  } else {
+    iniciarWhatsApp();
+  }
 });
 
 // Apagado limpio (Render envia SIGTERM antes de reiniciar)

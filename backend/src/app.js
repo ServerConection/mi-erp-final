@@ -37,6 +37,7 @@ const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const planesCatalogoRoutes         = require('./routes/planes-catalogo.routes');
 const backofficeRoutes             = require('./routes/backoffice.routes');
+const controlAsistenciaRoutes      = require('./routes/controlAsistencia.routes');
 const consultorRoutes              = require('./routes/consultor.routes');
 const consultorVelsaRoutes         = require('./routes/consultorVelsa.routes');
 const whatsappRoutes               = require('./routes/whatsapp.routes');
@@ -90,7 +91,7 @@ app.use((req, res, next) => {
   // SU dominio (bitrix24.es). SAMEORIGIN se lo bloquearia ("rechazo la
   // conexion" en el navegador), por eso estas dos rutas quedan afuera.
   const esEmbedBitrixSinFrameOptions = [
-    '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox',
+    '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox', '/api/bitrix-connector/placement-call',
     '/api/bitrix-connector-velsa/install', '/api/bitrix-connector-velsa/settings', '/api/bitrix-connector-velsa/placement-inbox',
   ].some((p) => req.path.startsWith(p));
   if (!esEmbedBitrixSinFrameOptions) {
@@ -130,9 +131,20 @@ app.set('trust proxy', 1);
 // Se autentica con token propio por empresa y trae su propio parser de cuerpo.
 app.use(contactabilidadWebhookRoutes);
 
+
 // SEGURIDAD: Rate limiting global (umbral alto, no afecta uso normal de dashboards)
 const rateLimit = require('./middleware/rateLimit');
 app.use(rateLimit);
+
+// WABOT EXTERNO: si WABOT_REMOTE_URL existe, WhatsApp vive en otro servicio de
+// Render y estas rutas se reenvían allá. Va ANTES de express.json() para
+// reenviar el cuerpo intacto. Sin la variable no se monta nada (igual que antes).
+const { wabotApiProxy, wabotUploadsProxy } = require('./middleware/wabotProxy');
+const _wabotApi = wabotApiProxy();
+if (_wabotApi) {
+  app.use(_wabotApi);
+  console.log('[WABOT] Modo externo: /api/wa y /api/bitrix-connector* ->', process.env.WABOT_REMOTE_URL);
+}
 
 // SEGURIDAD (2026-09): las rutas de sesion son las unicas que responden sin
 // token, asi que son la puerta natural para saturar el servidor con cuerpos
@@ -142,9 +154,14 @@ app.use(rateLimit);
 // El limite general de 10mb se deja igual porque hay modulos que suben
 // imagenes y hojas grandes.
 app.use(['/api/auth', '/api/otp'], express.json({ limit: '64kb' }));
+app.use('/api/bitrix-connector/placement-call', express.urlencoded({ limit: '32kb', extended: false, parameterLimit: 20 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
+// Va DESPUES de express.json: si se monta antes, req.body llega vacio y responde "Actividad inválida".
+app.use('/api/control-asistencia', controlAsistenciaRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, ts: Date.now(), uptime: process.uptime() });
@@ -210,6 +227,9 @@ app.use('/api/broadcast',         broadcastRoutes);
 // WA_UPLOADS_DIR: en Render apunta al disco persistente (/var/data/wa_uploads)
 const waUploadsPath = process.env.WA_UPLOADS_DIR || path.resolve(__dirname, '..', 'wa_uploads');
 app.use('/wa-uploads', express.static(waUploadsPath, { maxAge: '7d' }));
+// Medios nuevos: si el archivo no está en el disco de este servicio, se busca en el wabot.
+const _wabotUploads = wabotUploadsProxy();
+if (_wabotUploads) app.use(_wabotUploads);
 app.use('/api/wa', whatsappRoutes);
 app.use('/api/asistente', asistenteRoutes);
 app.use('/api/reporte-detalle', reporteDetalleRoutes);
@@ -217,6 +237,8 @@ app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
+// Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
+app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);

@@ -239,9 +239,74 @@ const nombresCanonicosVelsa = {
 // ======================================================
 // DATA VISOR — tabla colapsable de datos raw
 // ======================================================
+const CAMPOS_PLAN_JOTFORM = [
+  ["PLAN_CASA", "HOME"], ["PLAN_PYME", "PYME"], ["PLAN_PROFESIONAL", "PRO"],
+  ["PLAN_HOGAR_ADULTO_MAYOR", "ADULTO MAYOR"], ["PLAN_PYME_CORP", "PYME CORP"],
+  ["PLAN_GAMER", "GAMER"], ["PLAN_CENTRO_RED_COMERCIAL", "GAMER"],
+];
+
+const normalizarFilaDetalleJotform = (fila = {}) => {
+  const plan = CAMPOS_PLAN_JOTFORM.find(([campo]) => String(fila[campo] ?? "").trim());
+  const textoPlan = plan ? String(fila[plan[0]]) : "";
+  const velocidad = textoPlan.match(/\d+(?:[.,]\d+)?\s*(?:mbps?|megas?|gbps?)/i)?.[0] || "";
+  const salida = {};
+  const camposPlan = new Set(CAMPOS_PLAN_JOTFORM.map(([campo]) => campo));
+  let agregoPlanConsolidado = false;
+
+  Object.entries(fila).forEach(([campo, valor]) => {
+    if (campo === "FECHA_CREADO_JOT" || campo === "OBSERVACION_TELCOS") return;
+    if (campo === "ASESOR_JOTFORM") campo = "ASESOR_USUARIO";
+    if (camposPlan.has(campo)) {
+      if (!agregoPlanConsolidado) {
+        salida.TIPO_PLAN = fila.TIPO_PLAN || plan?.[1] || "";
+        salida.VELOCIDAD = fila.VELOCIDAD || velocidad;
+        salida.EMPAQUETADO = fila.EMPAQUETADO || fila.SERVICIO_EMPAQUETADO || "";
+        salida.SERVICIO_ADICIONAL_FACTURADO = fila.SERVICIO_ADICIONAL_FACTURADO || fila.SERVICIO_ADICIONAL || "";
+        agregoPlanConsolidado = true;
+      }
+      return;
+    }
+    if (campo === "NOVEDADES_ATC") {
+      salida[campo] = valor || fila.OBSERVACION_TELCOS || "";
+      return;
+    }
+    salida[campo] = valor;
+    if (campo === "COD_ASESOR_JOT" && !Object.prototype.hasOwnProperty.call(fila, "ASESOR_USUARIO") && !Object.prototype.hasOwnProperty.call(fila, "ASESOR_JOTFORM")) {
+      salida.ASESOR_USUARIO = "";
+    }
+  });
+
+  if (!agregoPlanConsolidado) {
+    const antesFormaPago = {};
+    Object.entries(salida).forEach(([campo, valor]) => {
+      if (campo === "FORMA_PAGO") {
+        antesFormaPago.TIPO_PLAN = fila.TIPO_PLAN || plan?.[1] || "";
+        antesFormaPago.VELOCIDAD = fila.VELOCIDAD || velocidad;
+        antesFormaPago.EMPAQUETADO = fila.EMPAQUETADO || fila.SERVICIO_EMPAQUETADO || "";
+        antesFormaPago.SERVICIO_ADICIONAL_FACTURADO = fila.SERVICIO_ADICIONAL_FACTURADO || fila.SERVICIO_ADICIONAL || "";
+      }
+      antesFormaPago[campo] = valor;
+    });
+    return antesFormaPago;
+  }
+  return salida;
+};
+
 function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtroBadge = null }) {
   const [open, setOpen] = useState(false);
-  const cols = data.length > 0 ? Object.keys(data[0]) : [];
+  const esDetalleJotform = title.includes("DETALLE BASE JOTFORM");
+  const dataVisible = esDetalleJotform ? data.map(normalizarFilaDetalleJotform) : data;
+  const cols = dataVisible.length > 0 ? Object.keys(dataVisible[0]) : [];
+  const etiquetasJotform = {
+    ETAPA: "ETAPA BITRIX",
+    FECHA_CREACION: "FECHA DE CREACIÓN BITRIX",
+    ASESOR: "ASESOR RESPONSABLE BITRIX",
+    FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM",
+    COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM",
+    ASESOR_USUARIO: "ASESOR USUARIO",
+    SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)",
+    OBSERVACION: "OBSERVACIÓN DE LA VENTA",
+  };
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
       <div className={`${color} text-white px-5 py-3 flex justify-between items-center`}>
@@ -266,20 +331,24 @@ function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtr
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-800 text-white">
                   {cols.map(c => (
-                    <th key={c} className="px-2 py-1.5 text-left font-black uppercase whitespace-nowrap border-r border-slate-700 last:border-0">{c}</th>
+                    <th key={c} className="px-2 py-1.5 text-left font-black uppercase whitespace-nowrap border-r border-slate-700 last:border-0">{esDetalleJotform ? (etiquetasJotform[c] || c) : c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, i) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                {dataVisible.map((row, i) => {
+                  const etapaBitrix = String(row.ETAPA || "").trim().toUpperCase();
+                  const requiereRevision = esDetalleJotform && etapaBitrix !== "VENTA SUBIDA";
+                  return (
+                  <tr key={i} title={requiereRevision ? "Revisar: la etapa Bitrix no es VENTA SUBIDA o no existe" : undefined} className={requiereRevision ? "bg-red-100 hover:bg-red-200" : (i % 2 === 0 ? "bg-white" : "bg-slate-50")}>
                     {cols.map(c => (
                       <td key={c} className="px-2 py-1 border-r border-slate-100 last:border-0 whitespace-nowrap text-slate-700 max-w-[160px] truncate">
                         {row[c] != null ? String(row[c]) : '—'}
                       </td>
                     ))}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -960,7 +1029,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? dataCRMDetalle : data.dataNetlife;
     if (!list || !list.length) return;
-    const ws = XLSX.utils.json_to_sheet(list);
+    const nombresJotform = { ETAPA: "ETAPA BITRIX", FECHA_CREACION: "FECHA DE CREACIÓN BITRIX", ASESOR: "ASESOR RESPONSABLE BITRIX", FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM", COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM", ASESOR_USUARIO: "ASESOR USUARIO", SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)", OBSERVACION: "OBSERVACIÓN DE LA VENTA" };
+    const filasExcel = tipo === "JOTFORM"
+      ? list.map(normalizarFilaDetalleJotform).map((fila) => Object.fromEntries(Object.entries(fila).map(([clave, valor]) => [nombresJotform[clave] || clave, valor])))
+      : list;
+    const ws = XLSX.utils.json_to_sheet(filasExcel);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, tipo);
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -1528,6 +1601,8 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={2}  variant="stone" label="% Leads Gestionables"   meta={METAS_COMERCIALES_VELSA.pctGestionables}                                                        real={`${stats.pctGestionablesVsTotales}%`}  color="border-l-orange-400" tooltip={TIP.pctGestionablesVsTotales} />
             <KpiMini index={3}  variant="stone" label="JOT / Leads Tot." meta={METAS_COMERCIALES_VELSA.efectVsLeads}                                                        real={`${stats.efectividadVsLeadsTotales}%`} color="border-l-amber-600" tooltip={TIP.efectividadVsLeadsTotales} />
             <KpiMini index={4}  variant="stone" label="Efectividad"   meta={METAS_COMERCIALES_VELSA.efectVsGestion}                                                        real={`${stats.efectividad}%`}               color="border-l-orange-600" tooltip={TIP.efectividad} />
+            <KpiMini index={20} variant="stone" label="Efectividad efectiva" value={`${stats.efectividadEfectiva}%`} color="border-l-emerald-600" tooltip={TIP.efectividadEfectiva} />
+            <KpiMini index={21} variant="stone" label="Efectividad ácida" value={`${stats.efectividadAcida}%`} color="border-l-red-600" tooltip={TIP.efectividadAcida} />
             <KpiMini index={5}  variant="stone" label="Descarte %"           meta={METAS_COMERCIALES_VELSA.descarte}                                                        real={`${stats.descartePorc}%`}              color="border-l-red-500" tooltip={TIP.descarte} />
             <KpiMini index={6}  variant="stone" label="Ingresos CRM"         meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRM, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosCRM}                     color="border-l-orange-700" tooltip={TIP.ventasCRM} />
             <KpiMini index={7}  variant="stone" label="Ingresos CRM día"     meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosCRMDia, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventasDelDia}                    color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -1535,6 +1610,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <KpiMini index={9}  variant="stone" label="Ingresos Jot Seg."    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosJotSeg, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ventaSeguimiento}                color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} variant="stone" label="Ingresos Tot. Jot"    meta={metaDinamica(METAS_COMERCIALES_VELSA.ingresosTotJot, filtros.fechaDesde, filtros.fechaHasta)} real={stats.ingresosJotform}                 color="border-l-amber-600" tooltip={TIP.ingresosReales} />
             <KpiMini index={19} variant="stone" label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-600" tooltip={TIP.ingresosJotEfectivo} />
+            <KpiMini index={22} variant="stone" label="Ingresos Jot Ácido" value={stats.ingresosJotAcido} color="border-l-red-700" tooltip={TIP.ingresosJotAcido} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} variant="stone" label="Activas Mes"     meta={metaDinamica(METAS_COMERCIALES_VELSA.activasMes, filtros.fechaDesde, filtros.fechaHasta)} real={stats.activaMes} color="border-l-orange-500" tooltip={TIP.activaMes} />
@@ -1792,10 +1868,12 @@ const COLUMNAS_VELSA = [
   { header: 'FECHA DE CARGA A JOT',                    field: 'created_at' },
   { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix_ghl' },
   { header: 'CODIGO EJECUTIVO',                         field: 'codigo_asesor' },
+  { header: 'NOMBRE COMPLETO ASESOR',                    field: 'nombre_completo_asesor' },
   { header: 'PLAN. CASA',                               field: 'plan_casa' },
   { header: 'PLAN. PROFESIONAL.',                       field: 'plan_profesional' },
   { header: 'PLAN PYME',                                field: 'plan_pyme' },
   { header: 'PLAN HOGAR ADULTO MAYOR',                  field: 'plan_hogar_adulto_mayor' },
+  { header: 'PLAN GAMER',                               field: 'plan_gamer' },
   { header: 'APLICA DESCUENTO (3ERA EDAD O CONADIS)',   field: 'aplica_descuento' },
   { header: 'ADICIONAL',                                field: 'servicio_normales' },
   { header: 'LOGIN',                                    field: 'inicio_sesion_netlife' },
@@ -1816,6 +1894,11 @@ function ConsultaDescargaVelsa() {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [asesor, setAsesor] = useState('');
+  const [loginNetlife, setLoginNetlife] = useState('');
+  const [idBitrix, setIdBitrix] = useState('');
+  const [busquedaGeneral, setBusquedaGeneral] = useState('');
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [loading,    setLoading]    = useState(false);
   const [rows,       setRows]       = useState(null);
   const [error,      setError]      = useState(null);
@@ -1823,9 +1906,17 @@ function ConsultaDescargaVelsa() {
   const consultar = async () => {
     setLoading(true); setError(null); setRows(null);
     try {
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`);
+      const params = new URLSearchParams({ fechaDesde, fechaHasta });
+      if (asesor.trim()) params.set('asesor', asesor.trim());
+      if (loginNetlife.trim()) params.set('loginNetlife', loginNetlife.trim());
+      if (idBitrix.trim()) params.set('idBitrix', idBitrix.trim());
+      if (busquedaGeneral.trim()) params.set('busquedaGeneral', busquedaGeneral.trim());
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?${params.toString()}`);
       const result = await res.json();
-      if (result.success) setRows(result.rows || result.registros || []);
+      if (result.success) {
+        setRows(result.rows || result.registros || []);
+        setBusquedaAplicada(busquedaGeneral.trim());
+      }
       else setError(result.error || 'Error al consultar');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -1878,10 +1969,38 @@ function ConsultaDescargaVelsa() {
             <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
               className="border border-stone-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </div>
+          <div className="flex flex-col gap-1 min-w-[175px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Asesor</label>
+            <input value={asesor} onChange={e => setAsesor(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Código/nombre asesor"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Login Netlife</label>
+            <input value={loginNetlife} onChange={e => setLoginNetlife(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Login Netlife"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[145px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">ID Bitrix</label>
+            <input value={idBitrix} onChange={e => setIdBitrix(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="ID Bitrix"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
           <button onClick={consultar} disabled={loading}
             className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
             {loading ? '⏳ Consultando...' : '🔍 Consultar'}
           </button>
+          <div className="flex flex-col gap-1 min-w-[225px]">
+            <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Búsqueda general</label>
+            <input value={busquedaGeneral} onChange={e => setBusquedaGeneral(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && consultar()}
+              placeholder="Asesor, login, ID negociación o estado"
+              className="h-[42px] border border-stone-300 rounded-xl px-3 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </div>
           {rows !== null && rows.length > 0 && (
             <button onClick={descargarExcel}
               className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-emerald-600 hover:bg-emerald-700 shadow transition-all active:scale-95 flex items-center gap-2">
@@ -1889,6 +2008,9 @@ function ConsultaDescargaVelsa() {
             </button>
           )}
         </div>
+        {busquedaAplicada && rows !== null && (
+          <p className="mt-3 text-[10px] font-bold text-stone-500">Búsqueda aplicada: <span className="text-[#1A3A6E]">{busquedaAplicada}</span></p>
+        )}
         {error && <p className="mt-3 text-[10px] font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg">⚠️ {error}</p>}
       </div>
 

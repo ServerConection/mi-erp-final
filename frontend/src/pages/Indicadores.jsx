@@ -372,9 +372,74 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "b
 // ======================================================
 // DATA VISOR — tabla colapsable de datos raw
 // ======================================================
+const CAMPOS_PLAN_JOTFORM = [
+  ["PLAN_CASA", "HOME"], ["PLAN_PYME", "PYME"], ["PLAN_PROFESIONAL", "PRO"],
+  ["PLAN_HOGAR_ADULTO_MAYOR", "ADULTO MAYOR"], ["PLAN_PYME_CORP", "PYME CORP"],
+  ["PLAN_GAMER", "GAMER"], ["PLAN_CENTRO_RED_COMERCIAL", "GAMER"],
+];
+
+const normalizarFilaDetalleJotform = (fila = {}) => {
+  const plan = CAMPOS_PLAN_JOTFORM.find(([campo]) => String(fila[campo] ?? "").trim());
+  const textoPlan = plan ? String(fila[plan[0]]) : "";
+  const velocidad = textoPlan.match(/\d+(?:[.,]\d+)?\s*(?:mbps?|megas?|gbps?)/i)?.[0] || "";
+  const salida = {};
+  const camposPlan = new Set(CAMPOS_PLAN_JOTFORM.map(([campo]) => campo));
+  let agregoPlanConsolidado = false;
+
+  Object.entries(fila).forEach(([campo, valor]) => {
+    if (campo === "FECHA_CREADO_JOT" || campo === "OBSERVACION_TELCOS") return;
+    if (campo === "ASESOR_JOTFORM") campo = "ASESOR_USUARIO";
+    if (camposPlan.has(campo)) {
+      if (!agregoPlanConsolidado) {
+        salida.TIPO_PLAN = fila.TIPO_PLAN || plan?.[1] || "";
+        salida.VELOCIDAD = fila.VELOCIDAD || velocidad;
+        salida.EMPAQUETADO = fila.EMPAQUETADO || fila.SERVICIO_EMPAQUETADO || "";
+        salida.SERVICIO_ADICIONAL_FACTURADO = fila.SERVICIO_ADICIONAL_FACTURADO || fila.SERVICIO_ADICIONAL || "";
+        agregoPlanConsolidado = true;
+      }
+      return;
+    }
+    if (campo === "NOVEDADES_ATC") {
+      salida[campo] = valor || fila.OBSERVACION_TELCOS || "";
+      return;
+    }
+    salida[campo] = valor;
+    if (campo === "COD_ASESOR_JOT" && !Object.prototype.hasOwnProperty.call(fila, "ASESOR_USUARIO") && !Object.prototype.hasOwnProperty.call(fila, "ASESOR_JOTFORM")) {
+      salida.ASESOR_USUARIO = "";
+    }
+  });
+
+  if (!agregoPlanConsolidado) {
+    const antesFormaPago = {};
+    Object.entries(salida).forEach(([campo, valor]) => {
+      if (campo === "FORMA_PAGO") {
+        antesFormaPago.TIPO_PLAN = fila.TIPO_PLAN || plan?.[1] || "";
+        antesFormaPago.VELOCIDAD = fila.VELOCIDAD || velocidad;
+        antesFormaPago.EMPAQUETADO = fila.EMPAQUETADO || fila.SERVICIO_EMPAQUETADO || "";
+        antesFormaPago.SERVICIO_ADICIONAL_FACTURADO = fila.SERVICIO_ADICIONAL_FACTURADO || fila.SERVICIO_ADICIONAL || "";
+      }
+      antesFormaPago[campo] = valor;
+    });
+    return antesFormaPago;
+  }
+  return salida;
+};
+
 function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtroBadge = null }) {
   const [open, setOpen] = useState(false);
-  const cols = data.length > 0 ? Object.keys(data[0]) : [];
+  const esDetalleJotform = title.includes("DETALLE BASE JOTFORM");
+  const dataVisible = esDetalleJotform ? data.map(normalizarFilaDetalleJotform) : data;
+  const cols = dataVisible.length > 0 ? Object.keys(dataVisible[0]) : [];
+  const etiquetasJotform = {
+    ETAPA: "ETAPA BITRIX",
+    FECHA_CREACION: "FECHA DE CREACIÓN BITRIX",
+    ASESOR: "ASESOR RESPONSABLE BITRIX",
+    FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM",
+    COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM",
+    ASESOR_USUARIO: "ASESOR USUARIO",
+    SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)",
+    OBSERVACION: "OBSERVACIÓN DE LA VENTA",
+  };
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
       <div className={`${color} text-white px-5 py-3 flex justify-between items-center`}>
@@ -399,20 +464,24 @@ function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtr
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-800 text-white">
                   {cols.map(c => (
-                    <th key={c} className="px-2 py-1.5 text-left font-black uppercase whitespace-nowrap border-r border-slate-700 last:border-0">{c}</th>
+                    <th key={c} className="px-2 py-1.5 text-left font-black uppercase whitespace-nowrap border-r border-slate-700 last:border-0">{esDetalleJotform ? (etiquetasJotform[c] || c) : c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, i) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                {dataVisible.map((row, i) => {
+                  const etapaBitrix = String(row.ETAPA || "").trim().toUpperCase();
+                  const requiereRevision = esDetalleJotform && etapaBitrix !== "VENTA SUBIDA";
+                  return (
+                  <tr key={i} title={requiereRevision ? "Revisar: la etapa Bitrix no es VENTA SUBIDA o no existe" : undefined} className={requiereRevision ? "bg-red-100 hover:bg-red-200" : (i % 2 === 0 ? "bg-white" : "bg-slate-50")}>
                     {cols.map(c => (
                       <td key={c} className="px-2 py-1 border-r border-slate-100 last:border-0 whitespace-nowrap text-slate-700 max-w-[160px] truncate">
                         {row[c] != null ? String(row[c]) : '—'}
                       </td>
                     ))}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -1267,7 +1336,11 @@ ${asesoresPDF.length>0?`
   const descargarExcel = (tipo) => {
     const list = tipo === "CRM" ? data.dataCRM : data.dataNetlife;
     if (!list || !list.length) return;
-    const ws = XLSX.utils.json_to_sheet(list);
+    const nombresJotform = { ETAPA: "ETAPA BITRIX", FECHA_CREACION: "FECHA DE CREACIÓN BITRIX", ASESOR: "ASESOR RESPONSABLE BITRIX", FECHA_CREACION_JOT: "FECHA DE CREACIÓN JOTFORM", COD_ASESOR_JOT: "CÓDIGO ASESOR JOTFORM", ASESOR_USUARIO: "ASESOR USUARIO", SERVICIO_ADICIONAL_FACTURADO: "SERVICIO ADICIONAL (FACTURADO)", OBSERVACION: "OBSERVACIÓN DE LA VENTA" };
+    const filasExcel = tipo === "JOTFORM"
+      ? list.map(normalizarFilaDetalleJotform).map((fila) => Object.fromEntries(Object.entries(fila).map(([clave, valor]) => [nombresJotform[clave] || clave, valor])))
+      : list;
+    const ws = XLSX.utils.json_to_sheet(filasExcel);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, tipo);
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -1838,6 +1911,8 @@ ${asesoresPDF.length>0?`
             <KpiMini index={2} label="% Leads Gestionables"   meta={METAS_COMERCIALES.pctGestionables} real={`${stats.pctGestionablesVsTotales}%`}   color="border-l-fuchsia-500" tooltip={TIP.pctGestionablesVsTotales} />
             <KpiMini index={3} label="JOT / Leads Tot." meta={METAS_COMERCIALES.efectVsLeads}    real={`${stats.efectividadVsLeadsTotales}%`}  color="border-l-indigo-600" tooltip={TIP.efectividadVsLeadsTotales} />
             <KpiMini index={4} label="Efectividad"   meta={METAS_COMERCIALES.efectVsGestion}  real={`${stats.efectividad}%`}                color="border-l-purple-500" tooltip={TIP.efectividad} />
+            <KpiMini index={20} label="Efectividad efectiva" value={`${stats.efectividadEfectiva}%`} color="border-l-emerald-500" tooltip={TIP.efectividadEfectiva} />
+            <KpiMini index={21} label="Efectividad ácida" value={`${stats.efectividadAcida}%`} color="border-l-rose-600" tooltip={TIP.efectividadAcida} />
             <KpiMini index={5} label="Descarte %"           meta={METAS_COMERCIALES.descarte}        real={`${stats.descartePorc}%`}               color="border-l-rose-500" tooltip={TIP.descarte} />
             <KpiMini index={6} label="Ingresos CRM"         meta={METAS_COMERCIALES.ingresosCRM}     real={stats.ingresosCRM}                      color="border-l-blue-500" tooltip={TIP.ventasCRM} />
             <KpiMini index={7} label="Ingresos CRM día"     meta={METAS_COMERCIALES.ingresosCRMDia}  real={stats.ventasDelDia}                     color="border-l-green-600" tooltip={TIP.ventasDelDia} />
@@ -1848,6 +1923,7 @@ ${asesoresPDF.length>0?`
             <KpiMini index={9} label="Ingresos Jot Seg."    meta={METAS_COMERCIALES.ingresosJotSeg}  real={stats.ventaSeguimiento}                 color="border-l-amber-500" tooltip={TIP.ventaSeguimiento} />
             <KpiMini index={10} label="Ingresos Tot. Jot"   meta={METAS_COMERCIALES.ingresosTotJot}  real={stats.ingresosJotform}                  color="border-l-emerald-500" tooltip={TIP.ingresosReales} />
             <KpiMini index={19} label="Ingresos Jot Efectivo" value={stats.ingresosJotEfectivo} color="border-l-lime-500" tooltip={TIP.ingresosJotEfectivo} />
+            <KpiMini index={22} label="Ingresos Jot Ácido" value={stats.ingresosJotAcido} color="border-l-red-600" tooltip={TIP.ingresosJotAcido} />
 
             {/* FILA 2 — Activaciones y calidad */}
             <KpiMini index={11} label="Activas Mes"     meta={METAS_COMERCIALES.activasMes}      real={stats.activaMes}               color="border-l-emerald-500" tooltip={TIP.activaMes} />
@@ -2111,10 +2187,12 @@ const COLUMNAS_NOVONET = [
   { header: 'FECHA DE CARGA A JOT',                    field: 'created_at' },
   { header: 'ID NEGOCIACIÓN',                           field: 'id_bitrix' },
   { header: 'CODIGO EJECUTIVO',                         field: 'codigo_asesor' },
+  { header: 'NOMBRE COMPLETO ASESOR',                    field: 'nombre_completo_asesor' },
   { header: 'PLAN. CASA',                               field: 'plan_casa' },
   { header: 'PLAN. PROFESIONAL.',                       field: 'plan_profesional' },
   { header: 'PLAN PYME',                                field: 'plan_pyme' },
   { header: 'PLAN HOGAR ADULTO MAYOR',                  field: 'plan_hogar_adulto_mayor' },
+  { header: 'PLAN GAMER',                               field: 'plan_gamer' },
   { header: 'APLICA DESCUENTO (3ERA EDAD O CONADIS)',   field: 'descuento_3era_edad' },
   { header: 'ADICIONAL',                                field: 'servicio_empaquetado' },
   { header: 'LOGIN',                                    field: 'login_netlife' },

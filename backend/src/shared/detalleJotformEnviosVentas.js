@@ -66,6 +66,8 @@ function fuenteDetalleJotform(empresa, alias) {
         e.observacion_venta_original                           AS observacion_venta,
         bw0.etapa_bitrix                                       AS etapa_bitrix,
         (bw0.created_at AT TIME ZONE 'America/Guayaquil')      AS creado_bitrix,
+        COALESCE(NULLIF(TRIM(to_jsonb(bw0) ->> 'created_at_ecuador'), ''),
+                 to_char(bw0.created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS')) AS creado_bitrix_txt,
         COALESCE(NULLIF(BTRIM(bw0.responsible), ''),
                  CASE WHEN e.origen_dato = 'ERP' THEN NULLIF(BTRIM(e.nombre_atc), '') END) AS responsable,
         NULLIF(BTRIM(bw0.source), '')                          AS origen_bitrix,
@@ -114,24 +116,26 @@ function fuenteDetalleJotform(empresa, alias) {
 
 /**
  * Columnas de la tabla (pantalla + Excel). MISMO orden en Novonet y Velsa.
- * Sin espacios en los nombres (rompe cruces en Excel) — ver
- * backend/test/detalleJotform.columnas.test.js.
+ * Las claves son las que el frontend (Indicadores.jsx / IndicadoresVelsa.jsx,
+ * normalizarFilaDetalleJotform + etiquetasJotform) traduce a los títulos
+ * visibles: ETAPA → "ETAPA BITRIX", ASESOR → "ASESOR RESPONSABLE BITRIX", etc.
+ * Sin espacios en las claves — ver backend/test/detalleJotform.columnas.test.js.
  */
 function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
   const a = alias;
   return `
     ${a}.id_bitrix                                   AS "ID_CRM",
     ${a}.id_bitrix                                   AS "ID_JOT",
-    ${a}.etapa_bitrix                                AS "ETAPA_BITRIX",
-    to_char(${a}.creado_bitrix, 'YYYY-MM-DD HH24:MI:SS') AS "FECHA_CREACION_BITRIX",
-    ${asesorExpr}                                    AS "ASESOR_RESPONSABLE_BITRIX",
+    ${a}.etapa_bitrix                                AS "ETAPA",
+    ${a}.creado_bitrix_txt                           AS "FECHA_CREACION",
+    ${asesorExpr}                                    AS "ASESOR",
     ${supervisorExpr}                                AS "SUPERVISOR_ASIGNADO",
     ${a}.origen_bitrix                               AS "ORIGEN",
-    to_char(${a}.ts_local, 'YYYY-MM-DD HH24:MI:SS')  AS "FECHA_CREACION_JOTFORM",
-    ${a}.codigo_asesor                               AS "CODIGO_ASESOR_JOTFORM",
-    ${a}.asesor_usuario                              AS "ASESOR_USUARIO",
+    to_char(${a}.ts_local, 'YYYY-MM-DD HH24:MI:SS')  AS "FECHA_CREACION_JOT",
+    ${a}.codigo_asesor                               AS "COD_ASESOR_JOT",
+    COALESCE(${a}.asesor_usuario, ujot.asesor_usuario) AS "ASESOR_USUARIO",
     ${a}.netlife_login                               AS "LOGIN",
-    ${a}.netlife_estatus_real                        AS "ESTADO_NETLIFE",
+    COALESCE(NULLIF(TRIM(${a}.netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
     ${a}.fecha_ingreso_telcos                        AS "INGRESO_TELCOS",
     COALESCE(${a}.f_act::text, ${a}.fecha_activacion_netlife::text) AS "FECHA_ACTIVACION",
     ${a}.estatus_regularizacion                      AS "ESTADO_REGULARIZACION",
@@ -144,7 +148,47 @@ function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
     ${a}.forma_pago                                  AS "FORMA_PAGO",
     ${a}.aplica_descuento_3ra_edad                   AS "APLICA_DESCUENTO",
     ${a}.fecha_agenda                                AS "FECHA_AGENDA",
-    ${a}.observacion_venta                           AS "OBSERVACION_VENTA"`;
+    ${a}.observacion_venta                           AS "OBSERVACION"`;
 }
 
-module.exports = { fuenteDetalleJotform, columnasDetalleJotform };
+/**
+ * JOINs de respaldo (van DESPUÉS del FROM, así solo corren sobre las filas ya
+ * filtradas por fecha):
+ *   ujot → usuario ERP por código de vendedor (histórico Jotform sin usuario_id)
+ *   ejot → supervisor de ese usuario en empleados
+ *   eresp → supervisor del responsable Bitrix en empleados
+ */
+function joinsDetalleJotform(alias, empresa) {
+  const cfg = EMPRESAS[empresa];
+  if (!cfg) throw new Error(`Empresa inválida: ${empresa}`);
+  const a = alias;
+  return `
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(NULLIF(BTRIM(u.usuario), ''),
+                        NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')) AS asesor_usuario,
+               NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')        AS nombre_completo
+        FROM public.usuarios u
+        WHERE NULLIF(BTRIM(${a}.codigo_asesor), '') IS NOT NULL
+          AND (UPPER(BTRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(BTRIM(${a}.codigo_asesor))
+               OR UPPER(BTRIM(COALESCE(u.usuario, ''))) = UPPER(BTRIM(${a}.codigo_asesor)))
+          AND UPPER(BTRIM(COALESCE(u.empresa, ''))) LIKE '%${cfg.distribuidor}%'
+        ORDER BY u.activo DESC, u.id DESC
+        LIMIT 1
+    ) ujot ON true
+    LEFT JOIN LATERAL (
+        SELECT e4.supervisor
+        FROM public.empleados e4
+        WHERE UPPER(BTRIM(e4.nombre_completo)) = UPPER(BTRIM(ujot.nombre_completo))
+        ORDER BY e4.codigo::int DESC
+        LIMIT 1
+    ) ejot ON true
+    LEFT JOIN LATERAL (
+        SELECT e5.supervisor
+        FROM public.empleados e5
+        WHERE UPPER(BTRIM(e5.nombre_completo)) = UPPER(BTRIM(${a}.responsable))
+        ORDER BY e5.codigo::int DESC
+        LIMIT 1
+    ) eresp ON true`;
+}
+
+module.exports = { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform };

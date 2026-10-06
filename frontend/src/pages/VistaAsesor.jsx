@@ -621,6 +621,8 @@ export default function VistaAsesor() {
   const totales = useMemo(() => {
     const base = asesoresEnriquecidos;
     const totalJot = base.reduce((a, r) => a + Number(r.ingresos_reales || 0), 0);
+    const totalJotEfectivo = base.reduce((a, r) => a + Number(r.ingresos_jot_efectivo || 0), 0);
+    const totalJotAcido = base.reduce((a, r) => a + Number(r.ingresos_jot_acido || 0), 0);
     const totalActivas = base.reduce((a, r) => a + Number(r.real_mes || 0), 0);
     const totalBacklog = base.reduce((a, r) => a + Number(r.backlog || 0), 0);
     const totalTarjeta = base.reduce((a, r) => a + Number(r.tarjeta_credito || 0), 0);
@@ -648,6 +650,7 @@ export default function VistaAsesor() {
       gestionables:   totalGest,
       ingresos_crm:   totalCrm,
       ingresos_jot:   totalJot,
+      ingresos_jot_acido: totalJotAcido,
       // FIX 2026-08-18: "real_mes" (totalActivas) YA incluye el backlog (activadas
       // este mes sin importar cuándo se registraron). "Activas mes" ahora muestra
       // SOLO lo activado Y registrado este mes (real_mes − backlog = activa_mes);
@@ -660,6 +663,8 @@ export default function VistaAsesor() {
       // Nuevos
       pct_descarte:    pctDescarte,
       pct_efectividad: pctEfectividad,
+      pct_efectividad_efectiva: totalGest > 0 ? (totalJotEfectivo / totalGest) * 100 : 0,
+      pct_efectividad_acida: totalGest > 0 ? (totalJotAcido / totalGest) * 100 : 0,
       pct_tasa_inst:   pctTasaInst,
       pct_tarjeta:     pctTarjeta,
     };
@@ -876,6 +881,7 @@ export default function VistaAsesor() {
         <StripCard index={0} label="Leads gestionables" value={totales.gestionables}  color="#0ea5e9" meta={METAS.gestionables * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={1} label="Ingresos CRM"       value={totales.ingresos_crm}  color="#8b5cf6" meta={METAS.ingresos_crm * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={2} label="Ingresos Jotform"   value={totales.ingresos_jot}  color="#10b981" meta={METAS.ingresos_jot * (asesoresEnriquecidos.length || 1)} />
+        <StripCard index={7} label="Ingresos Jot Ácido" value={totales.ingresos_jot_acido} color="#dc2626" />
         <StripCard index={3} label="Activas mes"        value={totales.activas_mes}   color="#f59e0b" meta={METAS.activas * (asesoresEnriquecidos.length || 1)} />
         <StripCard index={4} label="Backlog"            value={totales.backlog}       color="#64748b" />
         <StripCard index={5} label="Activas totales"    value={totales.activas_tot}   color="#0f172a" />
@@ -886,6 +892,8 @@ export default function VistaAsesor() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StripCard index={0} label="% Descarte (promedio)"   value={totales.pct_descarte}    color="#ef4444" isPct={true} meta={METAS.descarte}        invertSemaforo={true} />
         <StripCard index={1} label="% Efectividad (promedio)" value={totales.pct_efectividad} color="#10b981" isPct={true} meta={METAS.efectividad} />
+        <StripCard index={4} label="% Efectividad efectiva" value={totales.pct_efectividad_efectiva} color="#059669" isPct={true} />
+        <StripCard index={5} label="% Efectividad ácida" value={totales.pct_efectividad_acida} color="#dc2626" isPct={true} />
         <StripCard index={2} label="% Tasa Instalación"      value={totales.pct_tasa_inst}   color="#0ea5e9" isPct={true} meta={METAS.tasa_instalacion} />
         <StripCard index={3} label="% Tarjeta Crédito"       value={totales.pct_tarjeta}     color="#8b5cf6" isPct={true} meta={METAS.tarjeta} />
       </div>

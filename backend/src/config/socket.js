@@ -38,6 +38,10 @@ const initSocket = (httpServer) => {
     },
   });
 
+  // WABOT externo: comparte eventos entre el ERP y el servicio wabot vía
+  // Postgres. Apagado salvo SOCKET_PG_ADAPTER=on (sin la var, nada cambia).
+  require('./socketPgAdapter').aplicarAdaptadorPg(_io);
+
   // Middleware de autenticacion
   _io.use(async (socket, next) => {
     try {

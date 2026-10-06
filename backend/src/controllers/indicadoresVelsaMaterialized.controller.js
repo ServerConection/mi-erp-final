@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const { fuenteDetalleJotform, columnasDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
   enPeriodoSeleccionadoExpr,
   backlogEnPeriodoSeleccionadoExpr,
@@ -23,6 +23,7 @@ const {
     ETAPAS_NO_GESTIONABLES,
     esEstadoIngresoJotformValidoExpr,
     esIngresoJotformExpr,
+    esIngresoJotformAcidoExpr,
 } = require('../shared/etapas');
 
 const getFechaEcuador = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -34,6 +35,45 @@ const getPrimerDiaMesEcuador = () => {
 
 const MV = `public.mv_indicadores_velsa_completo mv`;
 const ESTADO_ACTIVO = `'ACTIVO'`;
+
+// Jotform guarda las respuestas de checkbox como IDs internos, por ejemplo
+// `["{yzom82705kp}"]`. La pregunta 186 incluye en `options_array` el catálogo
+// ID -> nombre visible; esta función lo resuelve sin amarrar la consulta a los
+// IDs actuales. El mapa de respaldo cubre registros históricos sin catálogo.
+const ESTADOS_REGULARIZACION_JOTFORM = {
+  yzom82705kp: 'REGULARIZADO',
+  ls1l93qc1: 'NO REQUIERE REGULARIZAR',
+  gwbf28v33iv: 'REGULARIZA ATC',
+  dc98ezkovf: 'ASESOR EN GESTION',
+  ox2b11nexb: 'EN GESTIÓN ATC',
+  '61f5wr5ds0b': 'RECHAZADA',
+  kzzvj20ufy: 'POR REGULARIZAR',
+  mhpuj0xxl1: 'ASESOR NO REGULARIZA',
+  '6hblozwrw6o': 'ATC RESPONSABLE',
+};
+
+function nombreEstadoRegularizacionVelsa(valorCrudo, answers) {
+  if (valorCrudo == null || String(valorCrudo).trim() === '') return valorCrudo;
+  const pregunta = answers?.['186'] || answers || {};
+  let opciones = pregunta.options_array || {};
+  try {
+    if (typeof opciones === 'string') opciones = JSON.parse(opciones);
+  } catch (_) { opciones = {}; }
+
+  let seleccion = pregunta.answer;
+  if (!seleccion) {
+    try { seleccion = JSON.parse(String(valorCrudo)); }
+    catch (_) { seleccion = [valorCrudo]; }
+  }
+  if (!Array.isArray(seleccion)) seleccion = [seleccion];
+
+  const nombres = seleccion.map(item => {
+    const codigo = String(item ?? '').trim().replace(/^\{+|\}+$/g, '');
+    return opciones?.[codigo]?.value || ESTADOS_REGULARIZACION_JOTFORM[codigo] || '';
+  }).filter(Boolean);
+
+  return nombres.length ? nombres.join(', ') : valorCrudo;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CACHÉ EN MEMORIA ALINEADO AL CICLO DE 10 MINUTOS
@@ -332,6 +372,26 @@ const queryKPI = (columna, filters) => {
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
     ) AS ingresos_jot_efectivo,
+    COUNT(*) FILTER (
+      WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+      AND ${esIngresoJotformAcidoExpr('mv.estado_venta')}
+    ) AS ingresos_jot_acido,
+    ROUND(COALESCE(
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND ${esIngresoJotformExpr('mv.etapa_crm', 'mv.estado_venta')}
+      )::numeric / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
+        WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+        AND ${esGestionableExpr('mv.etapa_crm')}
+      ), 0), 0) * 100, 2) AS efectividad_efectiva,
+    ROUND(COALESCE(
+      COUNT(*) FILTER (
+        WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
+        AND ${esIngresoJotformAcidoExpr('mv.estado_venta')}
+      )::numeric / NULLIF(COUNT(DISTINCT mv.id_crm) FILTER (
+        WHERE ${CRM_DATE} BETWEEN $1::date AND $2::date
+        AND ${esGestionableExpr('mv.etapa_crm')}
+      ), 0), 0) * 100, 2) AS efectividad_acida,
     COUNT(*) FILTER (
       WHERE ${JF_DATE} BETWEEN $1::date AND $2::date
       AND ${CRM_DATE} = ${JF_DATE}
@@ -713,9 +773,10 @@ async function getIndicadoresDashboardVelsa(req, res) {
 SELECT
   ${columnasDetalleJotform('mv', {
     asesorExpr: 'mv.asesor',
-    supervisorExpr: EXPR_SUPERVISOR,
+    supervisorExpr: `COALESCE(eresp.supervisor, ejot.supervisor, ${EXPR_SUPERVISOR})`,
   })}
 FROM ${fuenteDetalleJotform('velsa', 'mv')}
+${joinsDetalleJotform('mv', 'velsa')}
 WHERE mv.ts_local::date BETWEEN $1::date AND $2::date
 ${filters}
 ORDER BY mv.ts_local DESC
@@ -784,7 +845,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
@@ -815,7 +876,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.forma_pago AS "FORMA_PAGO",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION"
       FROM ${MV}
@@ -847,7 +908,7 @@ LIMIT 6000
         ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
         mv.fecha_registro_jotform AS "FECHA_CREACION_JOT",
         mv.fecha_activacion AS "FECHA_ACTIVACION",
-        mv.estado_venta AS "ESTADO_NETLIFE",
+        COALESCE(NULLIF(TRIM(mv.estado_venta), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
         mv.estado_regularizacion AS "ESTADO_REGULARIZACION",
         mv.detalle_regularizacion AS "MOTIVO_REGULARIZAR",
         mv.forma_pago AS "FORMA_PAGO",
@@ -1177,6 +1238,56 @@ async function getConsultaDescargaVelsa(req, res) {
     const desde = req.query.fechaDesde || hoy;
     const hasta = req.query.fechaHasta || hoy;
 
+    const asesor = String(req.query.asesor || '').trim();
+    const loginNetlife = String(req.query.loginNetlife || '').trim();
+    const idBitrix = String(req.query.idBitrix || '').trim();
+    const busquedaGeneral = String(req.query.busquedaGeneral || '').trim();
+    const values = [desde, hasta];
+    const filtros = [];
+
+    const addFiltro = (valor, sql) => {
+      if (!valor) return;
+      values.push(`%${valor}%`);
+      filtros.push(sql.replaceAll('__PARAM__', `$${values.length}`));
+    };
+
+    addFiltro(asesor, `(
+      COALESCE(jf.codigo_asesor::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.nombre_y_codigo_asesor, '') ILIKE __PARAM__
+      OR EXISTS (
+        SELECT 1 FROM public.usuarios u_filtro
+        WHERE (
+          UPPER(TRIM(COALESCE(u_filtro.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+        )
+        AND TRIM(CONCAT_WS(' ', u_filtro.nombres, u_filtro.apellidos)) ILIKE __PARAM__
+      )
+    )`);
+    addFiltro(loginNetlife, `COALESCE(jf.inicio_sesion_netlife, '') ILIKE __PARAM__`);
+    addFiltro(idBitrix, `(
+      COALESCE(jf.id_bitrix_ghl::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_negociacion_bitrix::text, '') ILIKE __PARAM__
+    )`);
+    addFiltro(busquedaGeneral, `(
+      COALESCE(jf.codigo_asesor::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.nombre_y_codigo_asesor, '') ILIKE __PARAM__
+      OR COALESCE(jf.inicio_sesion_netlife, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_bitrix_ghl::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.id_negociacion_bitrix::text, '') ILIKE __PARAM__
+      OR COALESCE(jf.estado_venta_netlife, '') ILIKE __PARAM__
+      OR EXISTS (
+        SELECT 1 FROM public.usuarios u_filtro
+        WHERE (
+          UPPER(TRIM(COALESCE(u_filtro.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+          OR UPPER(TRIM(COALESCE(u_filtro.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+        )
+        AND TRIM(CONCAT_WS(' ', u_filtro.nombres, u_filtro.apellidos)) ILIKE __PARAM__
+      )
+    )`);
+    const filtrosSql = filtros.length ? `AND ${filtros.join('\n        AND ')}` : '';
+
     // FIX: esta pantalla ("CONSULTA Y DESCARGA — VELSA") muestra la data CRUDA de
     // Jotform, no la MV de indicadores. Antes consultaba la MV y devolvía la data
     // en `registros`, mientras el frontend leía `rows`: quedaba rows=undefined y
@@ -1194,6 +1305,15 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.id_negociacion_bitrix,
         jf.codigo_asesor,
         jf.nombre_y_codigo_asesor,
+        COALESCE((
+          SELECT NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
+          FROM public.usuarios u
+          WHERE UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+             OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(jf.codigo_asesor, '')))
+             OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(jf.inicio_sesion_netlife, '')))
+          ORDER BY u.activo DESC, u.id DESC
+          LIMIT 1
+        ), NULLIF(TRIM(jf.nombre_y_codigo_asesor), ''), '') AS nombre_completo_asesor,
         jf.plan_casa,
         jf.plan_profesional,
         jf.plan_pyme,
@@ -1213,19 +1333,27 @@ async function getConsultaDescargaVelsa(req, res) {
         jf.ciudad,
         jf.observacion_venta,
         jf.estado_regularizacion_novo,
-        jf.detalle_regularizacion
+        jf.detalle_regularizacion,
+        jf.answers->'186' AS _pregunta_regularizacion
       FROM public.vw_jotform_velsa_netlife_completo jf
       WHERE (((jf.created_at AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/Guayaquil')::date
             BETWEEN $1::date AND $2::date
+        ${filtrosSql}
       ORDER BY jf.created_at DESC
       LIMIT 10000
-    `, [desde, hasta]);
+    `, values);
+
+    const rows = result.rows.map(row => {
+      const estado = nombreEstadoRegularizacionVelsa(row.estado_regularizacion_novo, row._pregunta_regularizacion);
+      const { _pregunta_regularizacion, ...registro } = row;
+      return { ...registro, estado_regularizacion_novo: estado };
+    });
 
     res.json({
       success: true,
-      rows: result.rows,
-      registros: result.rows,
-      total: result.rowCount,
+      rows,
+      registros: rows,
+      total: rows.length,
     });
   } catch (error) {
     console.error('[CONSULTA-VELSA] Error:', error);

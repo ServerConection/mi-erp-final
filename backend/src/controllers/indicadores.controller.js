@@ -21,19 +21,19 @@ const {
     descarteIndicadoresExpr,
     esDescarteExactoExpr,
     esEstadoIngresoJotformValidoExpr,
-    esIngresoJotformExpr
+    esIngresoJotformExpr,
+    esIngresoJotformAcidoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
-const { fuenteDetalleJotform, columnasDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
     enPeriodoSeleccionadoExpr,
     backlogEnPeriodoSeleccionadoExpr,
     asesorResueltoNormalizadoExpr,
 } = require('../shared/vistaAsesorPeriodo');
-// NOVONET cuenta INNEGOCIABLE COMO GESTIONABLE (regla previa de este dashboard).
-// FIX (2026-08-19): INNEGOCIABLE deja de contar como gestionable en Novonet,
-// unificado con el resto de módulos (Velsa, kpiComercial). Decisión de gerencia.
-const esGestionableExpr = (col) => _esGestionableExpr(col, { innegociableEsGestionable: false });
+// INNEGOCIABLE SÍ cuenta como gestionable (2026-10-05). La regla vive en
+// shared/etapas.js, igual para todos los módulos.
+const esGestionableExpr = (col) => _esGestionableExpr(col);
 // ─────────────────────────────────────────────────────────────────────────────
 // VENTA DE SERVICIO: misma condición de "venta activa" (estatus = ACTIVO) PERO
 // solo cuenta si al menos uno de los campos de "plan" tiene datos reales. Si
@@ -59,8 +59,10 @@ const JOIN_VAN_NOVONET = `LEFT JOIN (
         MAX(plan_pyme)                AS plan_pyme,
         MAX(plan_pyme_corp)          AS plan_pyme_corp,
         MAX(plan_hogar_adulto_mayor) AS plan_hogar_adulto_mayor,
-        MAX(plan_centro_comercial)   AS plan_centro_comercial
-    FROM public.vista_analisis_novonet
+        MAX(plan_centro_comercial)   AS plan_centro_comercial,
+        MAX(NULLIF(TRIM(to_jsonb(van_src)->>'servicio_empaquetado'), '')) AS servicio_empaquetado,
+        MAX(NULLIF(TRIM(to_jsonb(van_src)->>'servicio_adicional'), '')) AS servicio_adicional
+    FROM public.vista_analisis_novonet van_src
     GROUP BY id_bitrix
 ) van ON mb.j_id_bitrix::text = van.id_bitrix::text`;
 
@@ -659,6 +661,28 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
                 ) AS ingresos_jot_efectivo,
                 COUNT(*) FILTER (
+                    WHERE _jf_date BETWEEN $1::date AND $2::date
+                    AND ${esIngresoJotformAcidoExpr('j_netlife_estatus_real')}
+                ) AS ingresos_jot_acido,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformExpr('b_etapa_de_la_negociacion', 'j_netlife_estatus_real')}
+                    )::numeric / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                    ), 0), 0) * 100, 2) AS efectividad_efectiva,
+                ROUND(COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE _jf_date BETWEEN $1::date AND $2::date
+                        AND ${esIngresoJotformAcidoExpr('j_netlife_estatus_real')}
+                    )::numeric / NULLIF(COUNT(DISTINCT b_id) FILTER (
+                        WHERE _bc_date BETWEEN $1::date AND $2::date
+                        AND ${esGestionableExpr('b_etapa_de_la_negociacion')}
+                        AND ${sumaReporteExpr('b_origen', 'b_etapa_de_la_negociacion')}
+                    ), 0), 0) * 100, 2) AS efectividad_acida,
+                COUNT(*) FILTER (
                     WHERE _jf_date BETWEEN $1::date AND $2::date AND _venta_servicio
                 ) AS activas,
                 COUNT(*) FILTER (
@@ -950,12 +974,13 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 ${columnasDetalleJotform('mb', {
                     asesorExpr: ASESOR_RESUELTO_NORMALIZADO,
-                    supervisorExpr: 'COALESCE(esup.supervisor, e.supervisor)',
+                    supervisorExpr: 'COALESCE(esup.supervisor, ejot.supervisor, e.supervisor)',
                 })}
             FROM ${fuenteDetalleJotform('novonet', 'mb')}
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
+            ${joinsDetalleJotform('mb', 'novonet')}
             WHERE mb.ts_local::date BETWEEN $1::date AND $2::date
             ${filtersJoinResuelto}
             ORDER BY mb.ts_local DESC
@@ -981,7 +1006,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_id_bitrix AS "ID_CRM",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
                 mb.j_novedades_atc AS "NOVEDADES_ATC",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION",
@@ -1233,7 +1258,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
@@ -1264,7 +1289,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO",
                 mb.j_fecha_registro_sistema AS "FECHA_CREACION_JOT",
                 mb.j_fecha_activacion_netlife AS "FECHA_ACTIVACION",
-                mb.j_netlife_estatus_real AS "ESTADO_NETLIFE",
+                COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
@@ -1947,12 +1972,23 @@ const getConsultaDescargaNovonet = async (req, res) => {
                         'YYYY-MM-DD"T"HH24:MI:SS') || '-05:00' AS created_at,
                 id_bitrix,
                 codigo_asesor,
+                COALESCE((
+                    SELECT NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '')
+                    FROM public.usuarios u
+                    WHERE UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) =
+                          UPPER(TRIM(COALESCE(vista_analisis_novonet.codigo_asesor, '')))
+                       OR UPPER(TRIM(COALESCE(u.usuario, ''))) =
+                          UPPER(TRIM(COALESCE(vista_analisis_novonet.codigo_asesor, '')))
+                    ORDER BY u.id DESC
+                    LIMIT 1
+                ), '') AS nombre_completo_asesor,
                 plan_casa,
                 plan_profesional,
                 plan_pyme,
                 plan_pyme_corp,
                 plan_hogar_adulto_mayor,
                 plan_centro_comercial,
+                plan_centro_comercial AS plan_gamer,
                 descuento_3era_edad,
                 servicio_empaquetado,
                 login_netlife,

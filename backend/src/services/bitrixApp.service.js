@@ -31,6 +31,12 @@ const OAUTH_URL = 'https://oauth.bitrix.info/oauth/token/'
 // Margen para renovar antes de que venza de verdad: evita la carrera de que el
 // token muera entre que lo leemos y que Bitrix procesa el request.
 const MARGEN_SEG = 120
+const CALL_REQUIRED_SCOPES = ['crm', 'user', 'placement', 'telephony']
+
+function requiredScopes(scope) {
+  const granted = new Set(String(scope || '').toLowerCase().split(/[\s,]+/).filter(Boolean))
+  return CALL_REQUIRED_SCOPES.filter((item) => !granted.has(item))
+}
 
 function crearBitrixApp({ portalUrl, clientId, clientSecret }) {
   const PORTAL        = (portalUrl || '').replace(/\/+$/, '')
@@ -169,7 +175,32 @@ function crearBitrixApp({ portalUrl, clientId, clientSecret }) {
     }
   }
 
-  return { llamar, guardarTokens, leerTokens, refrescar, tokenVigente, configurado, PORTAL, usuarioActualPorAuthId }
+  /** Ejecuta un método REST en el contexto del asesor autenticado por Bitrix.
+   * Así Bitrix aplica los permisos reales del usuario sobre CRM y telefonía. */
+  async function llamarConAuthId(metodo, params = {}, authId) {
+    if (!authId) throw new Error('BITRIX_SSO_FALTAN_DATOS')
+    const portalHost = PORTAL.replace(/^https?:\/\//i, '').toLowerCase()
+    if (!portalHost) throw new Error('BITRIX_SSO_PORTAL_NO_CONFIGURADO')
+    const controlador = new AbortController()
+    const timeout = setTimeout(() => controlador.abort(), 20_000)
+    try {
+      const res = await fetch(`https://${portalHost}/rest/${metodo}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...params, auth: authId }),
+        signal: controlador.signal,
+      })
+      const json = await res.json()
+      if (json.error || json.result === undefined) {
+        throw new Error(`Bitrix [${metodo}]: ${json.error_description || json.error || 'sin resultado'}`)
+      }
+      return json.result
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  return { llamar, llamarConAuthId, guardarTokens, leerTokens, refrescar, tokenVigente, configurado, PORTAL, usuarioActualPorAuthId }
 }
 
 // ── Instancia Novonet: mismo comportamiento que antes de este refactor ─────
@@ -179,4 +210,4 @@ const novonet = crearBitrixApp({
   clientSecret: process.env.BITRIX_APP_CLIENT_SECRET,
 })
 
-module.exports = { crearBitrixApp, ...novonet }
+module.exports = { crearBitrixApp, requiredScopes, ...novonet }

@@ -43,7 +43,13 @@ function buildBaseApp({ serviceName = 'service' } = {}) {
   // Cabeceras de seguridad (idénticas al monolito)
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // WABOT-BITRIX: install/settings/placement los abre Bitrix24 en un iframe
+    // de SU dominio; SAMEORIGIN los bloquearía (igual que en app.js).
+    const esEmbedBitrix = [
+      '/api/bitrix-connector/install', '/api/bitrix-connector/settings', '/api/bitrix-connector/placement-inbox', '/api/bitrix-connector/placement-call',
+      '/api/bitrix-connector-velsa/install', '/api/bitrix-connector-velsa/settings', '/api/bitrix-connector-velsa/placement-inbox',
+    ].some((p) => req.path.startsWith(p));
+    if (!esEmbedBitrix) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'interest-cohort=()');
@@ -56,6 +62,8 @@ function buildBaseApp({ serviceName = 'service' } = {}) {
   app.set('trust proxy', 1);
   app.use(rateLimit);
   app.use(express.json({ limit: '10mb' }));
+  // Bitrix24 envía install/events como formulario (urlencoded), igual que en app.js.
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   app.get('/health', (req, res) => {
     res.json({ ok: true, service: serviceName, ts: Date.now(), uptime: process.uptime() });

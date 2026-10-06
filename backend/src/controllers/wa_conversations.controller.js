@@ -1,4 +1,5 @@
 const { query } = require('../config/db')
+const { asegurarLocal } = require('../services/waMediaFallback')
 const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
@@ -55,6 +56,7 @@ async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
           if (resp.ok) buffer = Buffer.from(await resp.arrayBuffer())
         } else {
           const filePath = resolveMediaPath(pres.media_url)
+          await asegurarLocal(filePath)
           if (fs.existsSync(filePath)) buffer = fs.readFileSync(filePath)
         }
       } catch (e) { console.warn('[Presentación] No se pudo leer el medio:', e.message) }
@@ -265,16 +267,33 @@ async function createInternalNote(req, res) {
   try {
     const { id } = req.params
     const content = String(req.body.text || req.body.body || '').trim()
-    if (!content) return res.status(400).json({ success: false, error: 'Texto requerido' })
+    const mediaUrl = String(req.body.media_url || '').trim()
+    const mediaType = String(req.body.media_type || '').trim()
+    const mediaFilename = String(req.body.media_filename || '').trim()
+    if (!content && !mediaUrl) return res.status(400).json({ success: false, error: 'Texto o imagen requerido' })
     if (content.length > 4000) return res.status(400).json({ success: false, error: 'Máximo 4000 caracteres' })
+    if (mediaUrl) {
+      if (!mediaType.startsWith('image/')) {
+        return res.status(400).json({ success: false, error: 'El adjunto oculto debe ser una imagen' })
+      }
+      const filePath = resolveMediaPath(mediaUrl)
+      await asegurarLocal(filePath)
+      if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'La imagen subida no existe' })
+    }
     const c = await findOwnedConversation(req, id)
     if (!c) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
-    const metadata = { internal: true, author_id: req.user.id, author: req.user.nombre || req.user.username || 'Usuario' }
+    const metadata = {
+      internal: true,
+      author_id: req.user.id,
+      author: req.user.nombre || req.user.username || 'Usuario',
+      ...(mediaType ? { media_type: mediaType } : {}),
+      ...(mediaFilename ? { media_filename: mediaFilename } : {}),
+    }
     const saved = await query(
-      `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,status,metadata,timestamp)
-       VALUES ($1,$2,$3,'out','internal_note',$4,'internal',$5::jsonb,NOW())
+      `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,media_url,status,metadata,timestamp)
+       VALUES ($1,$2,$3,'out','internal_note',$4,$5,'internal',$6::jsonb,NOW())
        RETURNING id,direction,type,content,media_url,status,timestamp,wa_msg_id,metadata`,
-      [id, c.line_id, c.wa_number, content, JSON.stringify(metadata)]
+      [id, c.line_id, c.wa_number, content, mediaUrl || null, JSON.stringify(metadata)]
     )
     await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [id])
     const message = { ...saved.rows[0], conversation_id: id, lineId: c.line_id, waNumber: c.wa_number }
@@ -284,6 +303,19 @@ async function createInternalNote(req, res) {
   } catch (err) {
     res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'No se pudo guardar la nota' : err.message })
   }
+}
+
+async function callConversation(req, res) {
+  // Baileys permite observar/rechazar eventos de llamada, pero no originar una
+  // llamada saliente soportada. Mantener este endpoint como no implementado
+  // evita registrar intentos como llamadas reales si un cliente antiguo lo usa.
+  const owned = await findOwnedConversation(req, req.params.id)
+  if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
+  return res.status(501).json({
+    success: false,
+    code: 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED',
+    error: 'Abre el contacto en WhatsApp para iniciar la llamada de voz o video.',
+  })
 }
 
 // ── Enviar mensaje manual desde el inbox ─────────────────────
@@ -330,6 +362,7 @@ async function sendMessage(req, res) {
         buffer = Buffer.from(await resp.arrayBuffer())
       } else {
         const filePath = resolveMediaPath(media_url)
+        await asegurarLocal(filePath)
         if (!fs.existsSync(filePath)) return res.status(400).json({ success: false, error: 'Archivo no existe' })
         buffer = fs.readFileSync(filePath)
       }
@@ -740,4 +773,4 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }
+module.exports = { getAll, getMessages, sendMessage, callConversation, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }

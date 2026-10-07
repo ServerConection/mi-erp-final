@@ -4024,7 +4024,8 @@ const fmtFechaEC = new Intl.DateTimeFormat("en-CA", {
 function fechaCalendarioEC(valor) {
   if (!valor) return null;
   const s = String(valor).trim();
-  const match = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  // Solo fechas SIN hora ("2026-10-06") se toman tal cual; un timestamp UTC se convierte a hora Ecuador.
+  const match = s.match(/^(\d{4}-\d{2}-\d{2})$/);
   if (match) return match[1];
 
   const d = new Date(s);

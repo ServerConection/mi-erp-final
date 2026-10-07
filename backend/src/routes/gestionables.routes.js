@@ -20,7 +20,7 @@ router.use(verificarToken, (req, res, next) => {
 router.get('/', async (req, res) => {
   if (!fechaValida(req.query.fecha)) return res.status(400).json({ success: false, error: 'Fecha inválida' });
   try {
-    const result = await erp.query('SELECT id, nombre_bitrix_asesor, gestionables_permitidos, fecha_carga::text FROM gestionables_asesores WHERE fecha_carga = $1 ORDER BY nombre_bitrix_asesor', [req.query.fecha]);
+    const result = await erp.query('SELECT id, nombre_bitrix_asesor, gestionables_permitidos, porcentaje_atc_max, fecha_carga::text FROM gestionables_asesores WHERE fecha_carga = $1 ORDER BY nombre_bitrix_asesor', [req.query.fecha]);
     const max = await erp.query('SELECT COALESCE(MAX(id), 0) AS ultimo_id FROM gestionables_asesores');
     let counts = new Map(), aviso = null;
     try {
@@ -61,10 +61,10 @@ async function guardar(req, res, importar) {
     await client.query('BEGIN');
     await client.query('LOCK TABLE gestionables_asesores IN SHARE ROW EXCLUSIVE MODE');
     for (const r of rows) {
-      const existing = await client.query('SELECT id, nombre_bitrix_asesor, fecha_carga::text, gestionables_permitidos FROM gestionables_asesores WHERE id = $1 OR (UPPER(BTRIM(nombre_bitrix_asesor)) = UPPER($2) AND fecha_carga = $3)', [r.id, r.nombre_bitrix_asesor, r.fecha_carga]);
+      const existing = await client.query('SELECT id, nombre_bitrix_asesor, fecha_carga::text, gestionables_permitidos, porcentaje_atc_max FROM gestionables_asesores WHERE id = $1 OR (UPPER(BTRIM(nombre_bitrix_asesor)) = UPPER($2) AND fecha_carga = $3)', [r.id, r.nombre_bitrix_asesor, r.fecha_carga]);
       if (existing.rows.some(x => x.id !== r.id || x.nombre_bitrix_asesor !== r.nombre_bitrix_asesor || x.fecha_carga !== r.fecha_carga)) throw Object.assign(new Error(`El ID ${r.id} o el asesor/fecha ya pertenece a otro registro`), { status: 409 });
-      if (!importar && (!existing.rows.length || existing.rows[0].gestionables_permitidos !== r.original)) throw Object.assign(new Error('Las cuotas cambiaron. Consulte la fecha otra vez antes de actualizar.'), { status: 409 });
-      await client.query('INSERT INTO gestionables_asesores (id, nombre_bitrix_asesor, gestionables_permitidos, fecha_carga) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET gestionables_permitidos = EXCLUDED.gestionables_permitidos', [r.id, r.nombre_bitrix_asesor, r.gestionables_permitidos, r.fecha_carga]);
+      if (!importar && (!existing.rows.length || existing.rows[0].gestionables_permitidos !== r.original || (r.original_atc !== undefined && existing.rows[0].porcentaje_atc_max !== r.original_atc))) throw Object.assign(new Error('Las cuotas cambiaron. Consulte la fecha otra vez antes de actualizar.'), { status: 409 });
+      await client.query('INSERT INTO gestionables_asesores (id, nombre_bitrix_asesor, gestionables_permitidos, fecha_carga, porcentaje_atc_max) VALUES ($1,$2,$3,$4,COALESCE($5::int, 50)) ON CONFLICT (id) DO UPDATE SET gestionables_permitidos = EXCLUDED.gestionables_permitidos, porcentaje_atc_max = COALESCE($5::int, gestionables_asesores.porcentaje_atc_max)', [r.id, r.nombre_bitrix_asesor, r.gestionables_permitidos, r.fecha_carga, r.porcentaje_atc_max ?? null]);
     }
     await client.query("SELECT setval(pg_get_serial_sequence('gestionables_asesores', 'id'), GREATEST((SELECT MAX(id) FROM gestionables_asesores), (SELECT last_value FROM gestionables_asesores_id_seq)), true)");
     await client.query('COMMIT');
@@ -82,7 +82,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -103,7 +103,7 @@ router.get('/reparto/estado', async (req, res) => {
       leerConfig({ sinCache: true }),
       leerEnLinea(),
       erp.query(
-        `SELECT g.nombre_bitrix_asesor AS nombre, g.gestionables_permitidos AS permitidos,
+        `SELECT g.nombre_bitrix_asesor AS nombre, g.gestionables_permitidos AS permitidos, g.porcentaje_atc_max AS atc_max,
                 COUNT(a.id)::int AS asignados,
                 COUNT(a.id) FILTER (WHERE a.origen <> 'humano')::int AS asignados_bot,
                 COUNT(a.id) FILTER (WHERE a.origen = 'humano')::int  AS asignados_humano,
@@ -114,7 +114,7 @@ router.get('/reparto/estado', async (req, res) => {
             AND a.vigente
             AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
           WHERE g.fecha_carga = ${HOY_EC_SQL}
-          GROUP BY 1, 2`
+          GROUP BY 1, 2, 3`
       ),
       erp.query(
         `SELECT (SELECT COUNT(*) FROM gestionables_asignaciones WHERE fecha = ${HOY_EC_SQL} AND vigente AND origen <> 'humano')::int AS repartidos,
@@ -145,6 +145,10 @@ router.get('/reparto/estado', async (req, res) => {
         encontrado_en_bitrix: enLinea ? !!l : null,
         es_estacion: esEstacion,
         gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
+        // % ATC de lo recibido hoy y si ya llegó a su máximo (el bot no le entrega)
+        atc: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.atc || 0) : null,
+        atc_pct: gestMap && r.asignados ? Math.round(((gestMap.get(normalizarNombre(r.nombre))?.atc || 0) * 100) / r.asignados) : 0,
+        bloqueado_atc: gestMap ? bloqueadoPorAtc({ total: r.asignados, atc: gestMap.get(normalizarNombre(r.nombre))?.atc || 0, maxPct: r.atc_max }) : false,
       };
     });
     res.json({

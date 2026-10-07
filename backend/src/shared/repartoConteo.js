@@ -20,6 +20,21 @@ const { normalizarNombre } = require('./repartoGestionables');
 
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
+// ¿La etapa es ATC? (ATC, ATC/SOPORTE, ATC SOPORTE, atc…)
+const esEtapaAtc = (etapa) => /^ATC([ /-]?SOPORTE)?$/.test(
+  String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase()
+);
+
+/**
+ * ¿Bloqueado por % ATC? De lo recibido hoy (total), si el % en ATC llega al
+ * máximo permitido, el bot no le entrega aunque tenga cupo. 100 = sin límite.
+ */
+const bloqueadoPorAtc = ({ total, atc, maxPct }) => {
+  const max = Number.isInteger(maxPct) ? maxPct : 50;
+  if (max >= 100 || !total) return false;
+  return (atc * 100) / total >= max;
+};
+
 const conteoGestionablesHoy = async (erpDb) => {
   const asig = await erpDb.query(
     `SELECT asesor_asignado, bitrix_deal_id FROM gestionables_asignaciones
@@ -43,13 +58,14 @@ const conteoGestionablesHoy = async (erpDb) => {
   }
   for (const a of asig.rows) {
     const k = normalizarNombre(a.asesor_asignado);
-    const x = m.get(k) || { total: 0, gestionables: 0 };
+    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0 };
     const etapa = etapas.get(String(a.bitrix_deal_id));
     x.total += 1;
     if (!etapa || esEtapaGestionable(etapa)) x.gestionables += 1;
+    if (etapa && esEtapaAtc(etapa)) x.atc += 1;
     m.set(k, x);
   }
   return m;
 };
 
-module.exports = { conteoGestionablesHoy };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc };

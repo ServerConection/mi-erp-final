@@ -8,7 +8,7 @@ const filtrosEstado = [
   { key: 'todos', label: 'Todos', coincide: () => true, color: 'bg-blue-50 text-blue-700 border-blue-300' },
   { key: 'limite', label: 'Límite alcanzado', coincide: r => r.gestionables_actuales !== null && r.gestionables_actuales >= r.gestionables_permitidos, color: 'bg-red-50 text-red-700 border-red-300' },
   { key: 'cupo', label: 'Con cupo', coincide: r => r.gestionables_actuales !== null && r.gestionables_actuales < r.gestionables_permitidos, color: 'bg-emerald-50 text-emerald-700 border-emerald-300' },
-  { key: 'pendientes', label: 'Cambios pendientes', coincide: r => r.original !== r.gestionables_permitidos, color: 'bg-amber-50 text-amber-800 border-amber-300' },
+  { key: 'pendientes', label: 'Cambios pendientes', coincide: r => r.original !== r.gestionables_permitidos || r.original_atc !== r.porcentaje_atc_max, color: 'bg-amber-50 text-amber-800 border-amber-300' },
   { key: 'sin-conteo', label: 'Sin conteo', coincide: r => r.gestionables_actuales === null, color: 'bg-slate-100 text-slate-700 border-slate-400' },
 ];
 const hoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -25,7 +25,7 @@ export default function GestionablesAsesores() {
   const [contenido, setContenido] = useState(''), [archivo, setArchivo] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [mensaje, setMensaje] = useState(''), [aviso, setAviso] = useState('');
   const permitido = puedeAccederGestionables();
-  const cambios = rows.filter(r => r.original !== r.gestionables_permitidos);
+  const cambios = rows.filter(r => r.original !== r.gestionables_permitidos || r.original_atc !== r.porcentaje_atc_max);
   const buscados = rows.filter(r => normalizar(r.nombre_bitrix_asesor).includes(normalizar(busqueda)));
   const visibles = buscados.filter(filtrosEstado.find(f => f.key === estado).coincide)
     .sort((a, b) => (b.gestionables_actuales ?? -1) - (a.gestionables_actuales ?? -1)
@@ -35,7 +35,7 @@ export default function GestionablesAsesores() {
     setBusy(true); setError(''); setRows([]);
     try {
       const result = await request(`?fecha=${fecha}`);
-      setRows(result.data.map(r => ({ ...r, original: r.gestionables_permitidos })));
+      setRows(result.data.map(r => ({ ...r, porcentaje_atc_max: r.porcentaje_atc_max ?? 50, original: r.gestionables_permitidos, original_atc: r.porcentaje_atc_max ?? 50 })));
       setUltimo(result.ultimo_id); setAviso(result.aviso || '');
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }, [fecha]);
@@ -58,7 +58,7 @@ export default function GestionablesAsesores() {
   }
   function plantilla() {
     const id = (ultimo || 0) + 1;
-    const url = URL.createObjectURL(new Blob([`id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga\n${id};NOMBRE COMPLETO EN BITRIX;4;${fecha}\n`], { type: 'text/plain;charset=utf-8' }));
+    const url = URL.createObjectURL(new Blob([`id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga;porcentaje_atc_max\n${id};NOMBRE COMPLETO EN BITRIX;4;${fecha};50\n`], { type: 'text/plain;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = 'plantilla-gestionables.txt'; a.click(); URL.revokeObjectURL(url);
   }
   if (!permitido) return <p className="p-6">No tiene acceso a este módulo.</p>;
@@ -74,7 +74,8 @@ export default function GestionablesAsesores() {
       <div className="flex flex-wrap items-center gap-3"><label>Fecha <input type="date" value={fecha} disabled={busy || cambios.length > 0} onChange={e => { setFecha(e.target.value); setMensaje(''); }} className="border rounded-lg p-2 ml-2" /></label><button disabled={busy} onClick={consultar} className="border rounded-lg px-3 py-2">{busy ? 'Procesando…' : cambios.length ? 'Descartar cambios y consultar' : 'Consultar'}</button><span className="text-slate-500">Último ID cargado: {ultimo ?? '—'}</span></div>
       {tab === 'carga' ? <>
         <p>TXT en UTF-8, separado por punto y coma o tabulaciones. Use el nombre completo exactamente como aparece en Bitrix, un ID manual único, una cantidad entera desde cero y fecha AAAA-MM-DD.</p>
-        <pre className="bg-slate-50 p-3 rounded-lg overflow-auto text-sm">id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga{'\n'}{(ultimo || 0) + 1};NOMBRE COMPLETO EN BITRIX;4;{fecha}</pre>
+        <pre className="bg-slate-50 p-3 rounded-lg overflow-auto text-sm">id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga;porcentaje_atc_max{'\n'}{(ultimo || 0) + 1};NOMBRE COMPLETO EN BITRIX;4;{fecha};50</pre>
+        <p className="text-sm text-slate-500">La última columna (% ATC máximo, de 0 a 100) es opcional: si el archivo no la trae, se conserva el valor actual (50 por defecto). 100 = sin límite de ATC.</p>
         <p className="text-sm text-slate-500">Un registro por asesor y fecha. Para corregir una cuota cargada, conserve su ID, nombre y fecha. Todo el archivo se valida antes de guardarse.</p>
         <button onClick={plantilla} disabled={busy || ultimo === null} className="border px-4 py-2 rounded-lg">Descargar plantilla</button>
         <input type="file" accept=".txt,text/plain" disabled={busy} onChange={cargar} className="block" />
@@ -97,10 +98,11 @@ export default function GestionablesAsesores() {
           </div>
           <p role="status" className="text-sm text-slate-500">Mostrando {visibles.length} de {rows.length} asesores{estado === 'limite' ? ' · Incluye los que alcanzaron o superaron su cuota.' : ''}</p>
         </div>
-        <div className="overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b">{['ID', 'Responsable', 'Gestionables actuales', 'Permitidos', 'Disponibles', 'Estado'].map(h => <th key={h} className={`p-3 ${['Gestionables actuales', 'Permitidos', 'Disponibles'].includes(h) ? 'text-center' : ''}`}>{h}</th>)}</tr></thead><tbody>{visibles.map(r => {
+        <div className="overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b">{['ID', 'Responsable', 'Gestionables actuales', 'Permitidos', '% ATC máx', 'Disponibles', 'Estado'].map(h => <th key={h} className={`p-3 ${['Gestionables actuales', 'Permitidos', '% ATC máx', 'Disponibles'].includes(h) ? 'text-center' : ''}`} title={h === '% ATC máx' ? 'Si de lo recibido hoy el % en ATC llega a este valor, el bot deja de entregarle. 100 = sin límite' : undefined}>{h}</th>)}</tr></thead><tbody>{visibles.map(r => {
           const limite = r.gestionables_actuales !== null && r.gestionables_actuales >= r.gestionables_permitidos;
           const cambiar = delta => setRows(prev => prev.map(x => x.id === r.id ? { ...x, gestionables_permitidos: Math.max(0, x.gestionables_permitidos + delta) } : x));
-          return <tr key={r.id} className={`border-b ${limite ? 'bg-red-50 text-red-800' : ''}`}><td className="p-3">{r.id}</td><td className="p-3 font-semibold">{r.nombre_bitrix_asesor}</td><td className="p-3 text-center">{r.gestionables_actuales ?? '—'}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-3"><button aria-label={`Reducir cuota de ${r.nombre_bitrix_asesor}`} disabled={busy || r.gestionables_permitidos === 0} onClick={() => cambiar(-1)} className="border rounded px-3 py-1 disabled:opacity-30">−</button><strong>{r.gestionables_permitidos}</strong><button aria-label={`Aumentar cuota de ${r.nombre_bitrix_asesor}`} disabled={busy || r.gestionables_permitidos >= 2147483647} onClick={() => cambiar(1)} className="border rounded px-3 py-1">+</button></div></td><td className="p-3 text-center">{r.gestionables_actuales === null ? '—' : Math.max(0, r.gestionables_permitidos - r.gestionables_actuales)}</td><td className="p-3">{r.original !== r.gestionables_permitidos ? 'Cambio pendiente' : r.gestionables_actuales === null ? 'Sin conteo' : limite ? 'Límite alcanzado' : 'Con cupo'}</td></tr>;
+          const cambiarAtc = delta => setRows(prev => prev.map(x => x.id === r.id ? { ...x, porcentaje_atc_max: Math.min(100, Math.max(0, x.porcentaje_atc_max + delta)) } : x));
+          return <tr key={r.id} className={`border-b ${limite ? 'bg-red-50 text-red-800' : ''}`}><td className="p-3">{r.id}</td><td className="p-3 font-semibold">{r.nombre_bitrix_asesor}</td><td className="p-3 text-center">{r.gestionables_actuales ?? '—'}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-3"><button aria-label={`Reducir cuota de ${r.nombre_bitrix_asesor}`} disabled={busy || r.gestionables_permitidos === 0} onClick={() => cambiar(-1)} className="border rounded px-3 py-1 disabled:opacity-30">−</button><strong>{r.gestionables_permitidos}</strong><button aria-label={`Aumentar cuota de ${r.nombre_bitrix_asesor}`} disabled={busy || r.gestionables_permitidos >= 2147483647} onClick={() => cambiar(1)} className="border rounded px-3 py-1">+</button></div></td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button aria-label={`Bajar % ATC de ${r.nombre_bitrix_asesor}`} disabled={busy || r.porcentaje_atc_max <= 0} onClick={() => cambiarAtc(-5)} className="border rounded px-2 py-1 disabled:opacity-30">−</button><strong className="tabular-nums w-12">{r.porcentaje_atc_max}%</strong><button aria-label={`Subir % ATC de ${r.nombre_bitrix_asesor}`} disabled={busy || r.porcentaje_atc_max >= 100} onClick={() => cambiarAtc(5)} className="border rounded px-2 py-1 disabled:opacity-30">+</button></div></td><td className="p-3 text-center">{r.gestionables_actuales === null ? '—' : Math.max(0, r.gestionables_permitidos - r.gestionables_actuales)}</td><td className="p-3">{(r.original !== r.gestionables_permitidos || r.original_atc !== r.porcentaje_atc_max) ? 'Cambio pendiente' : r.gestionables_actuales === null ? 'Sin conteo' : limite ? 'Límite alcanzado' : 'Con cupo'}</td></tr>;
         })}</tbody></table></div>
         {!busy && !rows.length && <p className="text-slate-500">No hay cuotas cargadas para esta fecha.</p>}
         {!busy && rows.length > 0 && !visibles.length && <div className="text-center py-6"><p className="font-medium text-slate-700">No hay responsables que coincidan con estos filtros.</p><button onClick={limpiarFiltros} className="mt-2 text-blue-700 font-medium">Ver todos los asesores</button></div>}

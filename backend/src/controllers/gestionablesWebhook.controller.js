@@ -411,6 +411,9 @@ const sincronizarManuales = async () => {
     if (!cfg.activo_efectivo) return { registrados, motivo: 'reparto apagado' };
 
     const categoria = await resolverCategoria();
+    // Momento de la foto de Bitrix: lo que el bot asignó DESPUÉS de esta foto
+    // no se puede comparar con ella (la foto aún muestra el responsable viejo).
+    const fotoEn = Date.now();
     const deals = [];
     let start = 0;
     for (let pagina = 0; pagina < 40; pagina++) {
@@ -446,7 +449,7 @@ const sincronizarManuales = async () => {
       );
       const asesorPorNorm = new Map(cupos.rows.map((r) => [normalizarNombre(r.nombre), r.nombre]));
       const vig = await client.query(
-        `SELECT id, bitrix_deal_id, asesor_asignado FROM gestionables_asignaciones
+        `SELECT id, bitrix_deal_id, asesor_asignado, creado_en FROM gestionables_asignaciones
           WHERE fecha = ${HOY_EC} AND vigente AND bitrix_deal_id = ANY($1::text[])`,
         [deals.map((d) => String(d.ID))]
       );
@@ -460,6 +463,9 @@ const sincronizarManuales = async () => {
 
         // Sigue con quien ya está registrado → nada que hacer
         if (fila && actualNorm && normalizarNombre(fila.asesor_asignado) === actualNorm) continue;
+        // El bot lo asignó mientras se tomaba (o después de) la foto: la foto está
+        // vieja para este lead. Se revisa en la próxima pasada (5 min).
+        if (fila && new Date(fila.creado_en).getTime() >= fotoEn - 60 * 1000) continue;
         // En la estación y sin registro → lo maneja la cola
         if (!fila && (actualNorm === estNorm || !actualNorm)) continue;
 

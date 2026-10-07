@@ -15,31 +15,18 @@ test('valida filtros obligatorios y rango de fechas', () => {
   )
 })
 
-test('consulta Bitrix, normaliza teléfonos y elimina duplicados', async t => {
-  const originalFetch = global.fetch
-  t.after(() => { global.fetch = originalFetch })
-  global.fetch = async url => {
-    const parsed = new URL(url)
-    if (parsed.pathname.endsWith('/crm.deal.list.json')) {
-      assert.equal(parsed.searchParams.get('filter[STAGE_ID]'), 'C19:LOSE')
-      assert.equal(parsed.searchParams.get('filter[ASSIGNED_BY_ID]'), '42')
-      return { ok: true, json: async () => ({ result: [
-        { ID: '10', TITLE: 'Uno', CONTACT_ID: '100', DATE_CREATE: '2026-10-01T10:00:00-05:00', STAGE_ID: 'C19:LOSE', ASSIGNED_BY_ID: '42' },
-        { ID: '11', TITLE: 'Dos', CONTACT_ID: '101', DATE_CREATE: '2026-10-02T10:00:00-05:00', STAGE_ID: 'C19:LOSE', ASSIGNED_BY_ID: '42' },
-      ] }) }
-    }
-    if (parsed.pathname.endsWith('/crm.contact.list.json')) {
-      return { ok: true, json: async () => ({ result: [
-        { ID: '100', NAME: 'Ana', LAST_NAME: 'Pérez', PHONE: [{ VALUE: '+593 99 111 2233' }] },
-        { ID: '101', NAME: 'Ana duplicada', PHONE: [{ VALUE: '0991112233' }] },
-      ] }) }
-    }
-    throw new Error(`URL inesperada: ${url}`)
-  }
-
+test('consulta la base sincronizada, normaliza teléfonos y elimina duplicados', async () => {
+  const db = { query: async (sql, params) => {
+    assert.match(sql, /FROM bitrix_webhook_leads/)
+    assert.deepEqual(params.slice(0, 5), ['novonet', 'innegociable', 'Bryan Pineda', '2026-10-01', '2026-10-07'])
+    return { rows: [
+      { bitrix_id: '10', phone: '+593 99 111 2233', etapa: 'innegociable', etapa_bitrix: 'INNEGOCIABLE', responsible: 'Bryan Pineda', created_at: '2026-10-01T15:00:00Z', contact_name: 'Ana Pérez' },
+      { bitrix_id: '11', phone: '0991112233', etapa: 'innegociable', etapa_bitrix: 'INNEGOCIABLE', responsible: 'Bryan Pineda', created_at: '2026-10-02T15:00:00Z', contact_name: 'Ana duplicada' },
+    ] }
+  } }
   const result = await service.consultar(
     { empresa: 'NOVONET' },
-    { stage_id: 'C19:LOSE', responsible_id: '42', date_from: '2026-10-01', date_to: '2026-10-07' }
+    { stage_id: 'innegociable', responsible_id: 'Bryan Pineda', date_from: '2026-10-01', date_to: '2026-10-07' }, db
   )
   assert.equal(result.total_deals, 2)
   assert.equal(result.unique_contacts, 1)

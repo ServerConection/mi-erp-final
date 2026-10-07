@@ -76,8 +76,7 @@ async function gracefulShutdown(signal) {
   // duplicadas que choquen con la nueva instancia (causa de 401/428 en deploys).
   try {
     const wa = require('./services/whatsapp.service');
-    const bm = wa.getBaileysManager && wa.getBaileysManager();
-    if (bm && bm.shutdown) await bm.shutdown();
+    if (wa.detenerWhatsApp) await wa.detenerWhatsApp();
   } catch (e) {
     console.warn('[Server] No se pudo cerrar WhatsApp limpio:', e.message);
   }

@@ -1123,7 +1123,8 @@ function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAle
                   field,
                   etiqueta: FIELD_LABELS[field] || field,
                   valor: detail?.[field] || "",
-                })).filter((item) => item.valor);
+                  // Otro 1–4 se muestran vacíos para que Backoffice pueda subirlos.
+                })).filter((item) => item.valor || (puedeEditar && item.field.startsWith("archivo_otro")));
 
                 if (!items.length) return null;
 

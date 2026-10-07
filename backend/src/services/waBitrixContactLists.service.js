@@ -85,19 +85,22 @@ function validarFiltros(input = {}) {
   return { stageId, responsibleId, from, to }
 }
 
-async function obtenerOpciones(user) {
-  const cfg = configuracion(user)
-  const [stagesPayload, users] = await Promise.all([
-    llamar(cfg.webhook, 'crm.dealcategory.stage.list', { id: cfg.categoryId }),
-    listarTodo(cfg.webhook, 'user.get', { filter: { ACTIVE: 'Y' } }, 5000),
+async function obtenerOpciones(user, db = require('../config/db')) {
+  const empresa = empresaUsuario(user)
+  const [stageResult, responsibleResult] = await Promise.all([
+    db.query(
+      `SELECT etapa AS id,
+              COALESCE(NULLIF(MAX(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS name
+         FROM bitrix_webhook_leads
+        WHERE empresa=$1 AND NULLIF(BTRIM(etapa), '') IS NOT NULL
+        GROUP BY etapa ORDER BY name`, [empresa.toLowerCase()]),
+    db.query(
+      `SELECT responsible AS id, responsible AS name
+         FROM bitrix_webhook_leads
+        WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL
+        GROUP BY responsible ORDER BY responsible`, [empresa.toLowerCase()]),
   ])
-  const stages = (Array.isArray(stagesPayload.result) ? stagesPayload.result : [])
-    .map(s => ({ id: String(s.STATUS_ID), name: String(s.NAME || s.STATUS_ID) }))
-  const responsibles = users
-    .filter(u => String(u.ACTIVE || 'Y') === 'Y' && String(u.USER_TYPE || 'employee') !== 'extranet')
-    .map(u => ({ id: String(u.ID), name: [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `Usuario ${u.ID}` }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  return { empresa: cfg.empresa, stages, responsibles }
+  return { empresa, stages: stageResult.rows, responsibles: responsibleResult.rows }
 }
 
 function extraerTelefonos(contact) {
@@ -118,44 +121,42 @@ async function cargarContactos(webhook, contactIds) {
   return map
 }
 
-async function consultar(user, input) {
-  const cfg = configuracion(user)
+async function consultar(user, input, db = require('../config/db')) {
+  const empresa = empresaUsuario(user)
   const f = validarFiltros(input)
-  const deals = await listarTodo(cfg.webhook, 'crm.deal.list', {
-    filter: {
-      CATEGORY_ID: cfg.categoryId,
-      STAGE_ID: f.stageId,
-      ASSIGNED_BY_ID: f.responsibleId,
-      '>=DATE_CREATE': `${f.from}T00:00:00-05:00`,
-      '<=DATE_CREATE': `${f.to}T23:59:59-05:00`,
-    },
-    select: ['ID', 'TITLE', 'CONTACT_ID', 'DATE_CREATE', 'STAGE_ID', 'ASSIGNED_BY_ID'],
-    order: { DATE_CREATE: 'DESC' },
-  })
-  const contactIds = [...new Set(deals.map(d => String(d.CONTACT_ID || '')).filter(Boolean))]
-  const contacts = await cargarContactos(cfg.webhook, contactIds)
+  const result = await db.query(
+    `SELECT bitrix_id, phone, etapa, etapa_bitrix, responsible, created_at,
+            COALESCE(NULLIF(BTRIM(raw_query->>'title'), ''), NULLIF(BTRIM(raw_query->>'TITLE'), '')) AS contact_name
+       FROM bitrix_webhook_leads
+      WHERE empresa=$1
+        AND etapa=$2
+        AND UPPER(BTRIM(responsible))=UPPER(BTRIM($3))
+        AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $4::date AND $5::date
+      ORDER BY created_at DESC, bitrix_id DESC
+      LIMIT $6`,
+    [empresa.toLowerCase(), f.stageId, f.responsibleId, f.from, f.to, MAX_DEALS]
+  )
+  const deals = result.rows
   const byPhone = new Map()
   let dealsWithoutPhone = 0
   for (const deal of deals) {
-    const contact = contacts.get(String(deal.CONTACT_ID || ''))
-    const phones = extraerTelefonos(contact)
+    const phones = String(deal.phone || '').split(/[,;|/]+/).map(normalizeNumber).filter(Boolean)
     if (!phones.length) { dealsWithoutPhone++; continue }
-    const contactName = [contact?.NAME, contact?.SECOND_NAME, contact?.LAST_NAME].filter(Boolean).join(' ').trim()
     for (const phone of phones) {
       if (byPhone.has(phone)) continue
       byPhone.set(phone, {
         wa_number: phone,
-        name: contactName || deal.TITLE || null,
+        name: deal.contact_name || null,
         variables: {
-          bitrix_id: String(deal.ID), bitrix_stage_id: String(deal.STAGE_ID || ''),
-          bitrix_responsible_id: String(deal.ASSIGNED_BY_ID || ''),
-          bitrix_date_create: deal.DATE_CREATE || null, bitrix_company: cfg.empresa,
+          bitrix_id: String(deal.bitrix_id), bitrix_stage: String(deal.etapa_bitrix || deal.etapa || ''),
+          bitrix_responsible: String(deal.responsible || ''),
+          bitrix_date_create: deal.created_at || null, bitrix_company: empresa,
         },
       })
     }
   }
   const items = [...byPhone.values()]
-  return { company: cfg.empresa, total_deals: deals.length, deals_without_phone: dealsWithoutPhone,
+  return { company: empresa, total_deals: deals.length, deals_without_phone: dealsWithoutPhone,
     unique_contacts: items.length, truncated: deals.length >= MAX_DEALS, items }
 }
 

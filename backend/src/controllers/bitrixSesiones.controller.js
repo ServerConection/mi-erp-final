@@ -206,8 +206,9 @@ async function traerCuenta(baseUrl, cuenta) {
   return { cuenta, usuarios: filas, timemanDisponible };
 }
 
-async function recolectar() {
-  if (_cache.data && Date.now() < _cache.expira) return _cache.data;
+async function recolectar({ forzar = false } = {}) {
+  // forzar = true lo usa el botón "Forzar actualización" del Reparto de Gestionables
+  if (!forzar && _cache.data && Date.now() < _cache.expira) return _cache.data;
 
   const [nov, vel] = await Promise.all([
     traerCuenta(BITRIX_APIS.NOVONET, 'NOVONET').catch(e => ({ cuenta: 'NOVONET', usuarios: [], timemanDisponible: false, error: e.message })),

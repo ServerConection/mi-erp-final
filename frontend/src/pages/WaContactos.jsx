@@ -1,7 +1,7 @@
 /**
  * WaContactos.jsx — Contactos y listas de difusión WhatsApp en el ERP
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import WaCreationDateFilter from "../components/WaCreationDateFilter";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 
@@ -11,6 +11,80 @@ const authH = (json = true) => {
   if (json) h["Content-Type"] = "application/json";
   return h;
 };
+
+const normalizeSearch = (value = "") => String(value)
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+function SearchableSelect({ options = [], value, onChange, disabled, placeholder = "Buscar responsable…" }) {
+  const rootRef = useRef(null);
+  const selected = options.find(option => String(option.id) === String(value));
+  const [query, setQuery] = useState(selected?.name || "");
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+
+  const filtered = useMemo(() => {
+    const needle = normalizeSearch(query);
+    if (!needle || selected?.name === query) return options.slice(0, 100);
+    return options.filter(option => normalizeSearch(option.name).includes(needle)).slice(0, 100);
+  }, [options, query, selected?.name]);
+
+  useEffect(() => {
+    const close = event => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const choose = option => {
+    onChange(String(option.id));
+    setQuery(option.name);
+    setOpen(false);
+  };
+
+  const onKeyDown = event => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault(); setOpen(true);
+      setHighlighted(index => Math.min(index + 1, Math.max(0, filtered.length - 1)));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlighted(index => Math.max(index - 1, 0));
+    } else if (event.key === "Enter" && open && filtered[highlighted]) {
+      event.preventDefault(); choose(filtered[highlighted]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  return <div ref={rootRef} className="relative mt-1">
+    <div className={`flex items-center border rounded-lg bg-white transition-colors ${open ? "border-blue-400 ring-2 ring-blue-100" : "border-slate-200"} ${disabled ? "bg-slate-50 opacity-60" : ""}`}>
+      <span className="pl-3 text-slate-400" aria-hidden="true">⌕</span>
+      <input
+        type="text" value={query} disabled={disabled} placeholder={placeholder}
+        autoComplete="off" role="combobox" aria-expanded={open} aria-autocomplete="list"
+        onFocus={event => { setOpen(true); setHighlighted(0); event.currentTarget.select(); }}
+        onChange={event => { setQuery(event.target.value); setHighlighted(0); setOpen(true); if (value) onChange(""); }}
+        onKeyDown={onKeyDown}
+        className="w-full px-2 py-2 text-sm bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
+      />
+      {query && !disabled && <button type="button" aria-label="Limpiar responsable"
+        onClick={() => { setQuery(""); onChange(""); setOpen(true); }}
+        className="px-3 py-2 text-slate-400 hover:text-slate-700">×</button>}
+      <span className="pr-3 text-xs text-slate-400 pointer-events-none">▾</span>
+    </div>
+    {open && !disabled && <div role="listbox" className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+      {filtered.length ? filtered.map((option, index) => <button
+        type="button" role="option" aria-selected={String(option.id) === String(value)} key={option.id}
+        onMouseEnter={() => setHighlighted(index)} onMouseDown={event => event.preventDefault()} onClick={() => choose(option)}
+        className={`block w-full px-3 py-2 text-left text-sm ${index === highlighted ? "bg-blue-50 text-blue-800" : "text-slate-700 hover:bg-slate-50"} ${String(option.id) === String(value) ? "font-semibold" : ""}`}>
+        {option.name}
+      </button>) : <div className="px-3 py-4 text-center text-sm text-slate-500">
+        No encontramos responsables con “{query}”
+      </div>}
+      {filtered.length === 100 && <div className="sticky bottom-0 border-t bg-slate-50 px-3 py-2 text-xs text-slate-500">Escribe más letras para precisar la búsqueda.</div>}
+    </div>}
+  </div>;
+}
 
 export default function WaContactos() {
   const [tab, setTab]           = useState("lists"); // "lists" | "contacts"
@@ -402,13 +476,10 @@ export default function WaContactos() {
                     {(bitrixOptions?.stages || []).map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
                   </select>
                 </label>
-                <label className="text-xs font-semibold text-slate-500">RESPONSABLE
-                  <select value={bitrixForm.responsible_id} onChange={e => updateBitrixForm("responsible_id", e.target.value)} disabled={bitrixBusy || !bitrixOptions}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">Selecciona un responsable</option>
-                    {(bitrixOptions?.responsibles || []).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-                  </select>
-                </label>
+                <div className="text-xs font-semibold text-slate-500">RESPONSABLE
+                  <SearchableSelect options={bitrixOptions?.responsibles || []} value={bitrixForm.responsible_id}
+                    onChange={value => updateBitrixForm("responsible_id", value)} disabled={bitrixBusy || !bitrixOptions} />
+                </div>
                 <label className="text-xs font-semibold text-slate-500">FECHA DESDE
                   <input type="date" value={bitrixForm.date_from} onChange={e => updateBitrixForm("date_from", e.target.value)}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />

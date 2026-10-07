@@ -3,6 +3,17 @@ const { ensureAtcNotificationSchema } = require('../services/atcNotificationQueu
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BIGINT_RE = /^\d{1,19}$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateFilter(value) {
+  const date = String(value || '').trim();
+  if (!date) return null;
+  if (!DATE_RE.test(date)) return undefined;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date
+    ? undefined
+    : date;
+}
 
 function isAdmin(req) {
   return String(req.user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR';
@@ -39,16 +50,36 @@ async function getOverview(req, res) {
   try {
     await ensureAtcNotificationSchema();
     const status = String(req.query.status || '').trim().toLowerCase();
+    const dateFrom = parseDateFilter(req.query.date_from);
+    const dateTo = parseDateFilter(req.query.date_to);
+    if (dateFrom === undefined || dateTo === undefined || (dateFrom && dateTo && dateFrom > dateTo)) {
+      return res.status(400).json({ success: false, error: 'Rango de fechas inválido' });
+    }
     const allowedStatuses = new Set(['pending', 'processing', 'retry', 'sent', 'failed']);
     const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit || '30', 10) || 30));
     const offset = (page - 1) * limit;
+    const filters = [];
     const params = [];
-    let statusWhere = '';
     if (allowedStatuses.has(status)) {
       params.push(status);
-      statusWhere = `WHERE q.status = $${params.length}`;
+      filters.push(`q.status = $${params.length}`);
     }
+    if (dateFrom) {
+      params.push(dateFrom);
+      filters.push(`q.created_at >= ($${params.length}::date AT TIME ZONE 'America/Guayaquil')`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      filters.push(`q.created_at < (($${params.length}::date + 1) AT TIME ZONE 'America/Guayaquil')`);
+    }
+    const historyWhere = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const dateFilters = filters.filter((filter) => !filter.startsWith('q.status'));
+    const dateParams = params.slice(allowedStatuses.has(status) ? 1 : 0);
+    const statsWhere = dateFilters.length
+      ? `WHERE ${dateFilters.map((filter, index) => filter.replace(/\$(\d+)/g, () => `$${index + 1}`)).join(' AND ')}`
+      : '';
+    const filterParamCount = params.length;
     params.push(limit, offset);
 
     const [configResult, linesResult, templatesResult, statsResult, queueResult, countResult] = await Promise.all([
@@ -69,7 +100,9 @@ async function getOverview(req, res) {
       pool.query(
         `SELECT status, COUNT(*)::int AS total
            FROM public.atc_notification_queue
+          ${statsWhere}
           GROUP BY status`
+        , dateParams
       ),
       pool.query(
         `SELECT q.id, q.empresa, q.bitrix_id, q.transition_number,
@@ -78,15 +111,15 @@ async function getOverview(req, res) {
                 l.name AS line_name
            FROM public.atc_notification_queue q
            LEFT JOIN public.lines l ON l.id = q.line_id
-           ${statusWhere}
+           ${historyWhere}
           ORDER BY q.created_at DESC, q.id DESC
           LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params
       ),
       pool.query(
         `SELECT COUNT(*)::int AS total
-           FROM public.atc_notification_queue q ${statusWhere}`,
-        params.slice(0, statusWhere ? 1 : 0)
+           FROM public.atc_notification_queue q ${historyWhere}`,
+        params.slice(0, filterParamCount)
       ),
     ]);
 

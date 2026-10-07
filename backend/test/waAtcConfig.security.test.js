@@ -57,3 +57,14 @@ test('un administrador no puede guardar un identificador de línea inválido', a
   assert.equal(res.statusCode, 400);
   assert.equal(res.payload.error, 'Línea inválida');
 });
+
+test('rechaza rangos de fechas inválidos antes de consultar el historial', async () => {
+  const controller = require(controllerPath);
+  const res = responseMock();
+  await controller.getOverview({
+    user: { perfil: 'ADMINISTRADOR', id: 1 },
+    query: { date_from: '2026-10-08', date_to: '2026-10-07' },
+  }, res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error, 'Rango de fechas inválido');
+});

@@ -25,6 +25,12 @@
 
 const pool = require('../config/db');
 const poolErp = require('../config/dbErp');
+const crypto = require('crypto');
+const {
+  ensureAtcNotificationSchema,
+  enqueueAtcTransition,
+} = require('../services/atcNotificationQueue.service');
+const { isAtcEntry } = require('../shared/atcNotificationUtils');
 
 // Replica una escritura en "erp_database" (el nuevo desarrollo), en el MISMO
 // servidor Postgres. Best-effort: si esa base falla, no existe todavía, o
@@ -50,6 +56,12 @@ const slugify = (valor = '') =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+const secretMatches = (received, expected) => {
+  const left = Buffer.from(String(received || ''), 'utf8');
+  const right = Buffer.from(String(expected || ''), 'utf8');
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+};
+
 // Campos que vienen de placeholders de Bitrix (todos opcionales, default '').
 // Nota: {{Contacto: Teléfono (texto)}} y {{Origen}} ya se capturan como
 // phone/source; {{Negociación repetida > printable}} reemplaza al viejo
@@ -68,13 +80,25 @@ const recibirLead = async (req, res) => {
     // SEGURIDAD: token compartido en query string (Bitrix no permite headers
     // custom en el nodo de automatización, así que se valida por query param).
     const tokenEsperado = process.env.BITRIX_WEBHOOK_TOKEN;
-    if (tokenEsperado && req.query.token !== tokenEsperado) {
+    if (!tokenEsperado) {
+      console.error('[bitrixWebhook] BITRIX_WEBHOOK_TOKEN no está configurado; webhook bloqueado');
+      return res.status(503).send('Webhook no configurado');
+    }
+    if (!secretMatches(req.query.token, tokenEsperado)) {
       return res.status(401).send('No autorizado');
     }
 
     const id      = req.query.id || '';
     const etapa   = slugify(req.query.etapa || '');
     const empresa = slugify(req.query.empresa || '') || 'novonet'; // retro-compatibilidad
+
+    if (id && !/^\d{1,20}$/.test(String(id))) {
+      return res.status(400).send('ID de Bitrix inválido');
+    }
+
+    // Provisionamiento idempotente. Se ejecuta antes de abrir la transacción
+    // para no mantener bloqueado el lead durante el DDL inicial.
+    await ensureAtcNotificationSchema();
 
     // Valores de todos los campos Bitrix, en el mismo orden que CAMPOS_BITRIX
     // etapa_bitrix se guarda SIEMPRE en MAYUSCULAS. Bitrix la manda en
@@ -142,7 +166,24 @@ const recibirLead = async (req, res) => {
        ON CONFLICT (empresa, bitrix_id) DO UPDATE SET ${setClause}`;
     const sqlInsertHistorial = `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`;
 
+    let notificacionAtc = null;
     await pool.transaction(async (client) => {
+      // Bitrix puede disparar varios eventos del mismo lead simultáneamente.
+      // El bloqueo transaccional evita dos detecciones de entrada a ATC.
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+        [empresa, String(id)]
+      );
+      const anteriorResult = await client.query(
+        `SELECT etapa, phone
+           FROM bitrix_webhook_leads
+          WHERE empresa = $1 AND bitrix_id = $2
+          FOR UPDATE`,
+        [empresa, id]
+      );
+      const anterior = anteriorResult.rows[0] || null;
+      const etapaAnterior = anterior?.etapa || null;
+
       // 1) Estado ACTUAL — la etapa nueva reemplaza a la anterior para este
       //    lead (identificado por empresa + bitrix_id, no solo bitrix_id,
       //    porque Novonet y Velsa son 2 Bitrix distintos y pueden repetir IDs)
@@ -150,7 +191,26 @@ const recibirLead = async (req, res) => {
 
       // 2) Historial — queda 1 fila más, nunca se toca lo anterior
       await client.query(sqlInsertHistorial, paramsUpsert);
+
+      // Solo una entrada real a ATC genera notificación. Un webhook repetido
+      // mientras continúa en ATC no envía; salir y volver a entrar sí lo hace.
+      if (isAtcEntry(etapa, etapaAnterior)) {
+        notificacionAtc = await enqueueAtcTransition(client, {
+          empresa,
+          bitrixId: String(id),
+          previousStage: etapaAnterior,
+          phoneRaw: String(req.query.phone || '').trim() || anterior?.phone || '',
+        });
+      }
     });
+
+    if (notificacionAtc) {
+      console.log(
+        `[bitrixWebhook] ATC encolado empresa=${empresa} bitrix_id=${id}` +
+        ` transicion=${notificacionAtc.transition_number} plantilla=${notificacionAtc.template_key}` +
+        ` estado=${notificacionAtc.status}`
+      );
+    }
 
     // 3) Replica best-effort en erp_database (nuevo desarrollo) — no bloquea
     //    ni afecta la respuesta del webhook si esta base falla o no existe.

@@ -1,4 +1,4 @@
-const { query } = require('../config/db')
+const { query, transaction } = require('../config/db')
 const { asegurarLocal } = require('../services/waMediaFallback')
 const fs = require('fs')
 const path = require('path')
@@ -40,12 +40,32 @@ function guessMime(filename) {
 async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
   try {
     if (!ownerId) return
-    const { rows } = await query(
-      `SELECT message_text, media_url, media_type, media_filename
-       FROM wa_presentations WHERE user_id=$1`,
-      [ownerId]
-    )
-    const pres = rows[0]
+    let pres = await transaction(async client => {
+      await client.query(
+        `INSERT INTO wa_presentation_rotation (user_id, next_index, updated_at)
+         VALUES ($1,0,NOW()) ON CONFLICT (user_id) DO NOTHING`, [ownerId])
+      const state = await client.query(
+        'SELECT next_index FROM wa_presentation_rotation WHERE user_id=$1 FOR UPDATE', [ownerId])
+      const variants = await client.query(
+        `SELECT message_text, media_url, media_type, media_filename
+           FROM wa_presentation_variants
+          WHERE user_id=$1 AND is_active
+          ORDER BY position ASC, created_at ASC`, [ownerId])
+      if (!variants.rows.length) return null
+      const index = Number(state.rows[0]?.next_index || 0) % variants.rows.length
+      await client.query(
+        'UPDATE wa_presentation_rotation SET next_index=$2, updated_at=NOW() WHERE user_id=$1',
+        [ownerId, (index + 1) % variants.rows.length])
+      return variants.rows[index]
+    })
+    // Compatibilidad defensiva: si todavía no se migró una presentación histórica,
+    // el envío existente continúa funcionando hasta el próximo arranque/migración.
+    if (!pres) {
+      const legacy = await query(
+        `SELECT message_text, media_url, media_type, media_filename
+           FROM wa_presentations WHERE user_id=$1`, [ownerId])
+      pres = legacy.rows[0]
+    }
     if (!pres || (!pres.media_url && !pres.message_text)) return
 
     if (pres.media_url) {

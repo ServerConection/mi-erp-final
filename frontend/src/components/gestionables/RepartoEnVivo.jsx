@@ -50,16 +50,17 @@ export default function RepartoEnVivo() {
   const [confirmarApagar, setConfirmarApagar] = useState(false);
   const [ayuda, setAyuda] = useState(false);
 
-  const consultar = useCallback(async () => {
+  const [actualizado, setActualizado] = useState(null);
+  const consultar = useCallback(async (forzar = false) => {
     setBusy(true); setError('');
-    try { setDatos(await repartoRequest('/reparto/estado')); }
+    try { setDatos(await repartoRequest(`/reparto/estado${forzar ? '?forzar=1' : ''}`)); setActualizado(new Date()); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }, []);
 
   useEffect(() => {
     consultar();
-    const t = setInterval(consultar, 60_000);   // se actualiza solo cada minuto
+    const t = setInterval(() => consultar(false), 60_000);   // se actualiza solo cada minuto
     return () => clearInterval(t);
   }, [consultar]);
 
@@ -76,13 +77,20 @@ export default function RepartoEnVivo() {
   const horario = datos?.horario;
   const estacion = datos?.estacion;
 
-  const { pueden, siguiente, rondaActual, otros } = useMemo(() => {
+  const { pueden, siguiente, rondaActual, ordenadas } = useMemo(() => {
     const conCupo = filas.filter((r) => r.asignados < r.permitidos);
     const pueden = ordenarPorTurno(conCupo.filter((r) => !filtroLinea || r.en_linea));
-    const ids = new Set(pueden.map((r) => r.nombre));
-    const otros = filas.filter((r) => !ids.has(r.nombre))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    return { pueden, siguiente: pueden[0] || null, rondaActual: pueden.length ? pueden[0].asignados + 1 : null, otros };
+    const turnoDe = new Map(pueden.map((r, i) => [r.nombre, i + 1]));
+    // Orden de la vista: En línea → En pausa → Desconectado → resto.
+    // Dentro de cada grupo: primero los que tienen cupo (por turno), luego los llenos (por nombre).
+    const grupo = { linea: 0, pausa: 1, fuera: 2, noBitrix: 3, sinDato: 4 };
+    const ordenadas = [...filas].sort((a, b) =>
+      (grupo[estadoDe(a)] - grupo[estadoDe(b)])
+      || ((a.asignados < a.permitidos ? 0 : 1) - (b.asignados < b.permitidos ? 0 : 1))
+      || ((turnoDe.get(a.nombre) ?? 999) - (turnoDe.get(b.nombre) ?? 999))
+      || (a.nombre.localeCompare(b.nombre, 'es'))
+    ).map((r) => ({ r, turno: turnoDe.get(r.nombre) ?? null }));
+    return { pueden, siguiente: pueden[0] || null, rondaActual: pueden.length ? pueden[0].asignados + 1 : null, ordenadas };
   }, [filas, filtroLinea]);
 
   const activo = !!cfg?.activo_efectivo;
@@ -227,7 +235,10 @@ export default function RepartoEnVivo() {
       <div className="rounded-2xl border bg-white p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-slate-800">Asesores de hoy</h2>
-          <button onClick={consultar} disabled={busy} className="rounded-lg border px-3 py-2 text-sm">{busy ? 'Actualizando…' : 'Actualizar'}</button>
+          <div className="flex flex-wrap items-center gap-2">
+            {actualizado && <span className="text-xs text-slate-500">Actualizado {actualizado.toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil' })} · se refresca solo cada minuto</span>}
+            <button onClick={() => consultar(true)} disabled={busy} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Actualizando…' : 'Forzar actualización'}</button>
+          </div>
         </div>
         {!filas.length && !busy && <p className="text-slate-500">No hay cuotas cargadas para hoy. Cárgalas en la pestaña Cuotas.</p>}
         {filas.length > 0 && (
@@ -235,10 +246,10 @@ export default function RepartoEnVivo() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Total</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
-                {[...pueden.map((r, i) => ({ r, turno: i + 1 })), ...otros.map((r) => ({ r, turno: null }))].map(({ r, turno }) => {
+                {ordenadas.map(({ r, turno }) => {
                   const e = ESTADOS[estadoDe(r)];
                   const lleno = r.asignados >= r.permitidos;
                   const pct = r.permitidos ? Math.min(100, (r.asignados / r.permitidos) * 100) : 0;
@@ -253,6 +264,7 @@ export default function RepartoEnVivo() {
                           <span className="tabular-nums">{r.asignados} / {r.permitidos}</span>
                         </div>
                       </td>
+                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.asignados}</td>
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>

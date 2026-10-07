@@ -83,10 +83,10 @@ const guardarConfig = async (cambios, usuario) => {
  * Map nombreNormalizado → { enLinea, online, jornada } de NOVONET, o null si
  * Bitrix Live no respondió. `criterio` dice qué se usó: 'jornada' | 'conexion'.
  */
-const leerEnLinea = async () => {
+const leerEnLinea = async ({ forzar = false } = {}) => {
   try {
     const { recolectar } = require('../controllers/bitrixSesiones.controller');
-    const data = await recolectar();
+    const data = await recolectar({ forzar });
     const fuente = data?.fuentes?.NOVONET;
     if (!fuente || fuente.error || !fuente.usuarios) return null;
     const criterio = fuente.timeman ? 'jornada' : 'conexion';

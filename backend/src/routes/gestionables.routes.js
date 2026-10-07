@@ -123,6 +123,15 @@ const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 // Estado en vivo: interruptores + cada asesor con su cupo, ronda y si está en línea.
 router.get('/reparto/estado', async (req, res) => {
   try {
+    // Botón "Forzar actualización": consulta a Bitrix sin caché quién está en
+    // línea y corre ya la revisión de entregas manuales y la cola (no espera al cron).
+    const forzar = req.query.forzar === '1';
+    if (forzar) {
+      const { procesarCola, sincronizarManuales } = require('../controllers/gestionablesWebhook.controller');
+      await leerEnLinea({ forzar: true });
+      await sincronizarManuales().catch(() => null);
+      await procesarCola().catch(() => null);
+    }
     const [cfg, enLinea, asesores, resumen, cola, gestMap] = await Promise.all([
       leerConfig({ sinCache: true }),
       leerEnLinea(),

@@ -1,10 +1,12 @@
 -- Cola transaccional para avisos automáticos al ENTRAR a la etapa ATC.
 -- Idempotente: puede ejecutarse en cada arranque de Ingesta y WaBot.
 CREATE SEQUENCE IF NOT EXISTS public.atc_notification_rotation_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS public.atc_notification_template_key_seq START 1000;
 
 CREATE TABLE IF NOT EXISTS public.atc_notification_templates (
   id          BIGSERIAL PRIMARY KEY,
   template_key VARCHAR(40) NOT NULL UNIQUE,
+  name        VARCHAR(120),
   body        TEXT NOT NULL,
   sort_order  INTEGER NOT NULL,
   active      BOOLEAN NOT NULL DEFAULT TRUE,
@@ -13,6 +15,26 @@ CREATE TABLE IF NOT EXISTS public.atc_notification_templates (
   CONSTRAINT atc_template_body_not_blank CHECK (BTRIM(body) <> ''),
   CONSTRAINT atc_template_sort_positive CHECK (sort_order > 0)
 );
+
+ALTER TABLE public.atc_notification_templates
+  ADD COLUMN IF NOT EXISTS name VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS public.atc_notification_config (
+  id          SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+  line_id     UUID,
+  updated_by  VARCHAR(80),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.atc_notification_config (id, enabled)
+VALUES (1, FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.atc_notification_config
+  ALTER COLUMN updated_by TYPE VARCHAR(80) USING updated_by::text;
 
 CREATE TABLE IF NOT EXISTS public.atc_notification_queue (
   id                    BIGSERIAL PRIMARY KEY,

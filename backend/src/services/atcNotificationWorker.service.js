@@ -4,7 +4,6 @@ const {
 } = require('./atcNotificationQueue.service');
 const { sanitizeError } = require('../shared/atcNotificationUtils');
 
-const LINE_NAME = 'NOTIFICACIONES_ATC';
 const MAX_SEND_ATTEMPTS = 5;
 const POLL_MS = 5000;
 
@@ -31,7 +30,7 @@ class AtcNotificationWorker {
     }), POLL_MS);
     this.interval.unref?.();
     setTimeout(() => this.tick().catch(() => {}), 1500).unref?.();
-    console.log(`[ATC Notifications] Worker iniciado; línea exclusiva: ${LINE_NAME}`);
+    console.log('[ATC Notifications] Worker iniciado; línea administrada desde Configuración ATC');
   }
 
   stop() {
@@ -81,19 +80,14 @@ class AtcNotificationWorker {
     });
   }
 
-  async findNotificationLine() {
+  async getRuntimeConfig() {
     const result = await pool.query(
-      `SELECT id, status
-         FROM public.lines
-        WHERE UPPER(BTRIM(name)) = $1
-          AND deleted_at IS NULL
-        ORDER BY created_at ASC
-        LIMIT 2`,
-      [LINE_NAME]
+      `SELECT c.enabled, c.line_id, l.id, l.name, l.status
+         FROM public.atc_notification_config c
+         LEFT JOIN public.lines l
+           ON l.id = c.line_id AND l.deleted_at IS NULL
+        WHERE c.id = 1`
     );
-    if (result.rows.length > 1) {
-      throw new Error(`Existe más de una línea activa llamada ${LINE_NAME}`);
-    }
     return result.rows[0] || null;
   }
 
@@ -127,16 +121,20 @@ class AtcNotificationWorker {
       if (!item.phone_normalized || !/^5939\d{8}$/.test(item.phone_normalized)) {
         throw new Error('Teléfono ecuatoriano ausente o inválido');
       }
-      const line = await this.findNotificationLine();
-      if (!line) {
-        await this.postponeWithoutAttempt(item, `La línea ${LINE_NAME} aún no existe`, 60);
+      const config = await this.getRuntimeConfig();
+      if (!config?.enabled) {
+        await this.postponeWithoutAttempt(item, 'La automatización ATC está pausada', 60);
+        return;
+      }
+      if (!config.id) {
+        await this.postponeWithoutAttempt(item, 'La línea configurada para ATC no existe', 60);
         return;
       }
 
-      if (this.baileysManager.getStatus(line.id) !== 'connected') {
-        const connected = await this.baileysManager.ensureConnected(line.id, 12000);
+      if (this.baileysManager.getStatus(config.id) !== 'connected') {
+        const connected = await this.baileysManager.ensureConnected(config.id, 12000);
         if (!connected) {
-          await this.postponeWithoutAttempt(item, `La línea ${LINE_NAME} está desconectada`, 60);
+          await this.postponeWithoutAttempt(item, `La línea configurada (${config.name}) está desconectada`, 60);
           return;
         }
       }
@@ -145,7 +143,7 @@ class AtcNotificationWorker {
       // después de que WhatsApp acepta el mensaje y antes del UPDATE final.
       const messageId = `ATC${String(item.id).padStart(12, '0')}`;
       const sent = await this.baileysManager.sendText(
-        line.id,
+        config.id,
         item.phone_normalized,
         item.message_body,
         { messageId }
@@ -156,7 +154,7 @@ class AtcNotificationWorker {
                 processing_started_at = NULL, sent_at = NOW(),
                 wa_message_id = $3, last_error = NULL, updated_at = NOW()
           WHERE id = $1 AND status = 'processing'`,
-        [item.id, line.id, sent?.key?.id || messageId]
+        [item.id, config.id, sent?.key?.id || messageId]
       );
       console.log(
         `[ATC Notifications] Enviado queue_id=${item.id} empresa=${item.empresa}` +

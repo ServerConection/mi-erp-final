@@ -18,13 +18,10 @@ async function ensureAtcNotificationSchema() {
         const template = templates[index];
         await pool.query(
           `INSERT INTO public.atc_notification_templates
-             (template_key, body, sort_order, active, updated_at)
-           VALUES ($1, $2, $3, TRUE, NOW())
-           ON CONFLICT (template_key) DO UPDATE SET
-             body = EXCLUDED.body,
-             sort_order = EXCLUDED.sort_order,
-             updated_at = NOW()`,
-          [template.key, template.body, index + 1]
+             (template_key, name, body, sort_order, active, updated_at)
+           VALUES ($1, $2, $3, $4, TRUE, NOW())
+           ON CONFLICT (template_key) DO NOTHING`,
+          [template.key, `Variante ${index + 1}`, template.body, index + 1]
         );
       }
     })().catch((error) => {
@@ -38,10 +35,15 @@ async function ensureAtcNotificationSchema() {
 async function enqueueAtcTransition(client, { empresa, bitrixId, previousStage, phoneRaw }) {
   if (!['novonet', 'velsa'].includes(empresa)) return null;
 
+  const configResult = await client.query(
+    `SELECT enabled FROM public.atc_notification_config WHERE id = 1`
+  );
+  if (!configResult.rows[0]?.enabled) return null;
+
   const templatesResult = await client.query(
     `SELECT id, template_key, body
        FROM public.atc_notification_templates
-      WHERE active = TRUE
+      WHERE active = TRUE AND archived_at IS NULL
       ORDER BY sort_order ASC, id ASC`
   );
   if (!templatesResult.rows.length) {

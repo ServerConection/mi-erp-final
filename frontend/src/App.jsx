@@ -52,6 +52,7 @@ const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales")
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
+const ConfiguracionAtc     = lazy(() => import("./pages/ConfiguracionAtc"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
@@ -199,6 +200,7 @@ export default function App() {
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
+            <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
             <Route path="nexo-ia"                    element={<NexoIa />} />

@@ -203,6 +203,7 @@ const MOTIVOS = {
   nadie_en_linea:   'Ningún asesor con cupo está en línea',
   todos_al_limite:  'Todos los asesores llegaron a su límite',
   cola_en_espera:   'Hay leads esperando antes que este',
+  en_estacion:      'Ya estaba a nombre de la estación',
 };
 const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
   const userId = await idUsuarioBitrix(cfg.estacion_nombre);
@@ -239,6 +240,20 @@ const procesarCola = async () => {
     const lk = await lockClient.query('SELECT pg_try_advisory_lock($1) AS ok', [COLA_LOCK_KEY]);
     if (!lk.rows[0].ok) return { entregados, motivo: 'otra instancia procesando' };
 
+    const estacionId = await idUsuarioBitrix(cfg.estacion_nombre);
+    // Solo se entrega lo que SIGUE en Contacto nuevo. Si alguien lo movió de
+    // etapa (ATC, Descarte, etc.) mientras esperaba, ya fue gestionado: se descarta.
+    let etapaContactoNuevo = null;
+    try { etapaContactoNuevo = await resolverEtapaContactoNuevo(); }
+    catch (e) { console.warn('[gestionables] No se pudo identificar la etapa Contacto nuevo:', e.message); }
+
+    // Todo lo que esté a nombre de la estación en Contacto nuevo (desde ayer)
+    // entra a la cola aunque haya llegado por otro camino.
+    if (estacionId && etapaContactoNuevo) {
+      try { await sembrarColaDesdeBitrix(estacionId, etapaContactoNuevo); }
+      catch (e) { console.warn('[gestionables] No se pudo revisar la estación en Bitrix:', e.message); }
+    }
+
     const pend = await poolErp.query(
       `SELECT id, bitrix_deal_id FROM gestionables_cola
         WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 30`
@@ -246,12 +261,6 @@ const procesarCola = async () => {
     if (!pend.rows.length) return { entregados, motivo: 'cola vacía' };
 
     const enLinea = cfg.solo_en_linea ? await leerEnLinea() : null;
-    const estacionId = await idUsuarioBitrix(cfg.estacion_nombre);
-    // Solo se entrega lo que SIGUE en Contacto nuevo. Si alguien lo movió de
-    // etapa (ATC, Descarte, etc.) mientras esperaba, ya fue gestionado: se descarta.
-    let etapaContactoNuevo = null;
-    try { etapaContactoNuevo = await resolverEtapaContactoNuevo(); }
-    catch (e) { console.warn('[gestionables] No se pudo identificar la etapa Contacto nuevo:', e.message); }
     let limite = null;
 
     for (const item of pend.rows) {
@@ -323,6 +332,40 @@ const resolverCategoria = async () => {
   const cat = cats.find((c) => normalizarNombre(c.name) === normalizarNombre(process.env.GESTIONABLES_PIPELINE || 'NETLIFE NUEVO'));
   if (!cat) throw new Error('No se encontró el pipeline NETLIFE NUEVO en Bitrix (defina GESTIONABLES_CATEGORY_ID)');
   return (categoriaCache = String(cat.id));
+};
+
+// Leads a nombre de la estación en Contacto nuevo creados desde ayer (00:00 Ecuador)
+// que no estén en la cola → se agregan con su fecha de creación real, para que
+// la cola los entregue del más antiguo al más nuevo.
+const sembrarColaDesdeBitrix = async (estacionId, etapaContactoNuevo) => {
+  const categoria = await resolverCategoria();
+  const ayer = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() - 24 * 3600 * 1000));
+  const deals = [];
+  let start = 0;
+  for (let pagina = 0; pagina < 20; pagina++) {
+    const json = await bitrixCallNovonet('crm.deal.list', {
+      filter: { CATEGORY_ID: categoria, ASSIGNED_BY_ID: estacionId, STAGE_ID: etapaContactoNuevo, '>=DATE_CREATE': `${ayer}T00:00:00-05:00` },
+      select: ['ID', 'DATE_CREATE'],
+      order: { DATE_CREATE: 'ASC' },
+      start,
+    });
+    deals.push(...(json.result || []));
+    if (!json.next) break;
+    start = json.next;
+  }
+  let nuevos = 0;
+  for (const d of deals) {
+    const r = await poolErp.query(
+      `INSERT INTO gestionables_cola (bitrix_deal_id, motivo, responsable_original, creado_en)
+       VALUES ($1, 'en_estacion', NULL, COALESCE($2::timestamptz, NOW()))
+       ON CONFLICT (bitrix_deal_id) WHERE estado = 'pendiente' DO NOTHING`,
+      [String(d.ID), d.DATE_CREATE || null]
+    );
+    nuevos += r.rowCount || 0;
+  }
+  if (nuevos) console.log(`[gestionables] Cola: ${nuevos} lead(s) que ya estaban en la estación agregados`);
+  return nuevos;
 };
 
 // STAGE_ID de "CONTACTO NUEVO" en Netlife Nuevo (GESTIONABLES_STAGE_ID o búsqueda por nombre).

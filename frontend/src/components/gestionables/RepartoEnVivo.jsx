@@ -25,6 +25,7 @@ const MOTIVOS_COLA = {
   nadie_en_linea: 'No había asesores en línea',
   todos_al_limite: 'Todos estaban en su límite',
   cola_en_espera: 'Había otros esperando antes',
+  en_estacion: 'Ya estaba a nombre de la estación',
 };
 
 const ESTADOS = {
@@ -234,7 +235,7 @@ export default function RepartoEnVivo() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
                 {[...pueden.map((r, i) => ({ r, turno: i + 1 })), ...otros.map((r) => ({ r, turno: null }))].map(({ r, turno }) => {
@@ -254,6 +255,7 @@ export default function RepartoEnVivo() {
                       </td>
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
+                      <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
                     </tr>
@@ -261,7 +263,7 @@ export default function RepartoEnVivo() {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">"Recibidos hoy" = Bot + Humano. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
+            <p className="mt-2 text-xs text-slate-500">"Recibidos hoy" = Bot + Humano. "Gestionables" = de esos, cuántos siguen en una etapa gestionable (sin ATC, Duplicado, Fuera de cobertura, etc.). "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
           </div>
         )}
       </div>

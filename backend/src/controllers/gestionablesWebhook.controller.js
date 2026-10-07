@@ -30,6 +30,7 @@ const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { elegirAsesor, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
+const { conteoGestionablesHoy } = require('../shared/repartoConteo');
 
 const FIELD_NAME = process.env.GESTIONABLES_FIELD_NAME || 'UF_CRM_GESTIONABLES';
 // Opcional: si se define, antes de escribir se verifica que el deal siga
@@ -121,6 +122,15 @@ const asesoresDeHoy = async (db, enLinea, estacion) => {
       WHERE g.fecha_carga = ${HOY_EC}
       GROUP BY 1, 2`
   );
+  // El cupo se mide en GESTIONABLES: un lead que pasó a ATC, Duplicado, etc.
+  // ya no consume permitido. `asignados` = gestionables; `total` = todo lo entregado.
+  const conteo = await conteoGestionablesHoy(db);
+  if (conteo) {
+    for (const r of rows) {
+      r.total = r.asignados;
+      r.asignados = conteo.get(normalizarNombre(r.nombre))?.gestionables || 0;
+    }
+  }
   const estNorm = normalizarNombre(estacion);
   const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);
   // Si Bitrix Live no respondió (enLinea = null) no se filtra por en línea.

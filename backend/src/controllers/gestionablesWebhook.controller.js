@@ -30,7 +30,7 @@ const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { elegirAsesor, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
-const { conteoGestionablesHoy } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc } = require('../shared/repartoConteo');
 
 const FIELD_NAME = process.env.GESTIONABLES_FIELD_NAME || 'UF_CRM_GESTIONABLES';
 // Opcional: si se define, antes de escribir se verifica que el deal siga
@@ -112,6 +112,7 @@ const asesoresDeHoy = async (db, enLinea, estacion) => {
   const { rows } = await db.query(
     `SELECT g.nombre_bitrix_asesor AS nombre,
             g.gestionables_permitidos AS permitidos,
+            g.porcentaje_atc_max      AS atc_max,
             COUNT(a.id)::int          AS asignados,
             MAX(a.creado_en)          AS ultima_asignacion
        FROM gestionables_asesores g
@@ -120,15 +121,18 @@ const asesoresDeHoy = async (db, enLinea, estacion) => {
         AND a.vigente                      -- bot + humano; lo reasignado a otro ya no cuenta
         AND UPPER(BTRIM(a.asesor_asignado)) = UPPER(BTRIM(g.nombre_bitrix_asesor))
       WHERE g.fecha_carga = ${HOY_EC}
-      GROUP BY 1, 2`
+      GROUP BY 1, 2, 3`
   );
   // El cupo se mide en GESTIONABLES: un lead que pasó a ATC, Duplicado, etc.
   // ya no consume permitido. `asignados` = gestionables; `total` = todo lo entregado.
   const conteo = await conteoGestionablesHoy(db);
   if (conteo) {
     for (const r of rows) {
+      const c = conteo.get(normalizarNombre(r.nombre));
       r.total = r.asignados;
-      r.asignados = conteo.get(normalizarNombre(r.nombre))?.gestionables || 0;
+      r.asignados = c?.gestionables || 0;
+      // % ATC: si de lo recibido hoy el % en ATC llega al máximo, no recibe más
+      r.bloqueado_atc = bloqueadoPorAtc({ total: r.total, atc: c?.atc || 0, maxPct: r.atc_max });
     }
   }
   const estNorm = normalizarNombre(estacion);
@@ -138,8 +142,11 @@ const asesoresDeHoy = async (db, enLinea, estacion) => {
     ? sinEstacion.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea)
     : sinEstacion;
   return {
-    disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos),
+    disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos && !r.bloqueado_atc),
     hayConCupo: sinEstacion.some((r) => r.asignados < r.permitidos),
+    // Hay asesores en línea con cupo, pero todos frenados por su % de ATC
+    soloBloqueadosAtc: enLineaRows.some((r) => r.asignados < r.permitidos)
+      && enLineaRows.every((r) => !(r.asignados < r.permitidos) || r.bloqueado_atc),
   };
 };
 
@@ -162,14 +169,14 @@ const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea, cfg, origen 
       return { estado: 'ya_repartido', elegido: { nombre: ya.rows[0].asesor_asignado } };
     }
 
-    const { disponibles, hayConCupo } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
+    const { disponibles, hayConCupo, soloBloqueadosAtc } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
     const elegido = elegirAsesor(disponibles.map((r) => ({
       nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
     })));
 
     if (!elegido) {
       await client.query('ROLLBACK');
-      return { estado: 'sin_disponible', motivo: enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite' };
+      return { estado: 'sin_disponible', motivo: soloBloqueadosAtc ? 'limite_atc' : (enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite') };
     }
 
     const userId = await idUsuarioBitrix(elegido.nombre);
@@ -214,6 +221,7 @@ const MOTIVOS = {
   todos_al_limite:  'Todos los asesores llegaron a su límite',
   cola_en_espera:   'Hay leads esperando antes que este',
   en_estacion:      'Ya estaba a nombre de la estación',
+  limite_atc:       'Los asesores con cupo superaron su % de ATC',
 };
 const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
   const userId = await idUsuarioBitrix(cfg.estacion_nombre);

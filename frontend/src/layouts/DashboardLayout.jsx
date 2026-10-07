@@ -677,15 +677,15 @@ export default function DashboardLayout() {
       <style>{`
         .dl-sidebar-scrollbar::-webkit-scrollbar { width: 4px; }
         .dl-sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 99px; }
-        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.4); }
+        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 99px; }
+        .dl-sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
         @keyframes dl-fadein { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
         .dl-nav-label { animation: dl-fadein .22s cubic-bezier(.16,1,.3,1) both; }
         .dl-nav-btn { transition: background .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
-        .dl-nav-btn:hover:not(.dl-active) { background: rgba(255,255,255,.10) !important; color: #ffffff !important; transform: translateX(2px); }
-        .dl-active { background: rgba(255,255,255,.18) !important; color: #ffffff !important; border-left: 3px solid #ffffff !important; box-shadow: 0 2px 10px -2px rgba(37,99,235,.18) !important; }
+        .dl-nav-btn:hover:not(.dl-active) { background: rgba(255,255,255,.06) !important; color: #ffffff !important; transform: translateX(2px); }
+        .dl-active { background: rgba(59,130,246,.16) !important; color: #ffffff !important; border-left: 3px solid #60a5fa !important; box-shadow: none !important; }
         .dl-logout { transition: background .15s ease, border-color .15s ease, transform .15s ease; }
-        .dl-logout:hover { background: rgba(239,68,68,.25) !important; border-color: #fca5a5 !important; transform: translateY(-1px); }
+        .dl-logout:hover { background: rgba(239,68,68,.12) !important; border-color: rgba(252,165,165,.6) !important; transform: translateY(-1px); }
         @keyframes dl-logoshine { 0%,100%{opacity:.7} 50%{opacity:1} }
         .dl-header-shadow { box-shadow: 0 1px 0 #e8edf5, 0 4px 16px -4px rgba(15,23,42,.06) !important; }
         .dl-status-dot { animation: dl-pulse 2.4s ease-in-out infinite; }
@@ -711,8 +711,8 @@ export default function DashboardLayout() {
             md:translate-x-0
             ${isDesktopCollapsed ? "md:w-20" : "md:w-64"}`}
           style={{
-            background: "linear-gradient(180deg,#1d4ed8 0%,#1e3a8a 100%)",
-            borderRight: "1px solid rgba(255,255,255,.15)",
+            background: "linear-gradient(180deg,#0f2147 0%,#0b1a38 100%)",
+            borderRight: "1px solid rgba(255,255,255,.08)",
             boxShadow: "2px 0 16px rgba(30,58,138,0.06)",
           }}
         >
@@ -739,7 +739,7 @@ export default function DashboardLayout() {
             style={{
               padding: isDesktopCollapsed ? "1.1rem 0" : "1.1rem 1.25rem",
               justifyContent: isDesktopCollapsed ? "center" : "flex-start",
-              borderBottom: "1px solid rgba(255,255,255,.12)",
+              borderBottom: "1px solid rgba(255,255,255,.08)",
               minHeight: 64,
               background: "transparent",
             }}
@@ -762,10 +762,10 @@ export default function DashboardLayout() {
             </div>
             {!isDesktopCollapsed && (
               <div className="dl-nav-label ml-3 overflow-hidden">
-                <span className="font-black tracking-wide" style={{ fontSize: "1.05rem", color: "#ffffff", whiteSpace: "nowrap" }}>
-                  NOVO <span style={{ background: "linear-gradient(90deg,#bfdbfe,#e0e7ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
+                <span className="font-black tracking-wide" style={{ fontSize: "1.05rem", color: "#f8fafc", whiteSpace: "nowrap" }}>
+                  NOVO <span style={{ background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
                 </span>
-                <p style={{ fontSize: "0.6rem", color: "#bfdbfe", margin: 0, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Sistema de Gestión</p>
+                <p style={{ fontSize: "0.6rem", color: "#8a9bc2", margin: 0, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Sistema de Gestión</p>
               </div>
             )}
           </div>
@@ -777,7 +777,7 @@ export default function DashboardLayout() {
           >
             {/* Separador de sección */}
             {!isDesktopCollapsed && (
-              <p style={{ fontSize: "0.58rem", fontWeight: 800, color: "#bfdbfe", textTransform: "uppercase", letterSpacing: "0.14em", padding: "0 0.5rem", marginBottom: "0.5rem" }}>
+              <p style={{ fontSize: "0.58rem", fontWeight: 800, color: "#7c8db5", textTransform: "uppercase", letterSpacing: "0.14em", padding: "0 0.5rem", marginBottom: "0.5rem" }}>
                 Navegación
               </p>
             )}
@@ -787,11 +787,11 @@ export default function DashboardLayout() {
                 // Separador de sección
                 if (item.isSeparator) {
                   if (isDesktopCollapsed) return (
-                    <div key={item.name} style={{ height: 1, background: "rgba(255,255,255,.15)", margin: "6px 4px" }} />
+                    <div key={item.name} style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "6px 4px" }} />
                   );
                   return (
                     <div key={item.name} style={{
-                      fontSize: "0.58rem", fontWeight: 800, color: "#93c5fd",
+                      fontSize: "0.58rem", fontWeight: 800, color: "#5b6b91",
                       textTransform: "uppercase", letterSpacing: "0.14em",
                       padding: "0.6rem 0.5rem 0.2rem",
                     }}>
@@ -816,11 +816,11 @@ export default function DashboardLayout() {
                         padding: isDesktopCollapsed ? "0.6rem 0" : "0.52rem 0.75rem",
                         justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                         gap: isDesktopCollapsed ? 0 : 10,
-                        borderLeft: groupActive ? "3px solid #ffffff" : "3px solid transparent",
-                        color: groupActive ? "#ffffff" : "#e0e7ff",
+                        borderLeft: groupActive ? "3px solid #60a5fa" : "3px solid transparent",
+                        color: groupActive ? "#ffffff" : "#cbd5e1",
                         fontWeight: 700,
                         cursor: "pointer",
-                        background: groupActive ? "rgba(255,255,255,.18)" : "transparent",
+                        background: groupActive ? "rgba(59,130,246,.16)" : "transparent",
                       }}
                     >
                       <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : "1.05rem", lineHeight: 1, flexShrink: 0 }}>
@@ -831,7 +831,7 @@ export default function DashboardLayout() {
                           <span className="dl-nav-label truncate" style={{ fontSize: "0.8rem", letterSpacing: ".01em" }}>
                             {item.name}
                           </span>
-                          <span style={{ marginLeft: "auto", fontSize: "0.6rem", color: "#bfdbfe", flexShrink: 0 }}>
+                          <span style={{ marginLeft: "auto", fontSize: "0.6rem", color: "#8a9bc2", flexShrink: 0 }}>
                             {groupOpen ? "▼" : "▶"}
                           </span>
                         </>
@@ -856,16 +856,16 @@ export default function DashboardLayout() {
                       justifyContent: isDesktopCollapsed ? "center" : "flex-start",
                       gap: isDesktopCollapsed ? 0 : 10,
                       border: isActive ? "none" : "none",
-                      borderLeft: isActive ? "3px solid #ffffff" : "3px solid transparent",
-                      color: isActive ? "#ffffff" : isChild ? "#c7d2fe" : "#e0e7ff",
+                      borderLeft: isActive ? "3px solid #60a5fa" : "3px solid transparent",
+                      color: isActive ? "#ffffff" : isChild ? "#a3b1cc" : "#cbd5e1",
                       fontWeight: isActive ? 700 : 500,
                       cursor: "pointer",
-                      background: isActive ? "rgba(255,255,255,.18)" : "transparent",
+                      background: isActive ? "rgba(59,130,246,.16)" : "transparent",
                       fontSize: isChild ? "0.75rem" : undefined,
                     }}
                   >
                     {isChild && !isDesktopCollapsed && (
-                      <span style={{ color: "#93c5fd", fontSize: "0.65rem", flexShrink: 0, marginRight: -4 }}>└</span>
+                      <span style={{ color: "#5b6b91", fontSize: "0.65rem", flexShrink: 0, marginRight: -4 }}>└</span>
                     )}
                     <span style={{ fontSize: isDesktopCollapsed ? "1.35rem" : isChild ? "0.9rem" : "1.05rem", lineHeight: 1, flexShrink: 0, filter: isActive ? "none" : "saturate(.8)" }}>
                       {item.icon}
@@ -876,7 +876,7 @@ export default function DashboardLayout() {
                       </span>
                     )}
                     {isActive && !isDesktopCollapsed && (
-                      <div style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: "#ffffff", flexShrink: 0, boxShadow: "0 0 0 3px rgba(255,255,255,.25)" }} />
+                      <div style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: "#60a5fa", flexShrink: 0, boxShadow: "0 0 0 3px rgba(96,165,250,.20)" }} />
                     )}
                   </button>
                 );
@@ -888,8 +888,8 @@ export default function DashboardLayout() {
           <div
             style={{
               padding: isDesktopCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
-              borderTop: "1px solid rgba(255,255,255,.15)",
-              background: "linear-gradient(180deg,#1d4ed8 0%,#1e3a8a 100%)",
+              borderTop: "1px solid rgba(255,255,255,.08)",
+              background: "linear-gradient(180deg,#0f2147 0%,#0b1a38 100%)",
             }}
           >
             <div
@@ -914,11 +914,11 @@ export default function DashboardLayout() {
               </div>
               {!isDesktopCollapsed && (
                 <div className="dl-nav-label overflow-hidden flex-1">
-                  <p style={{ fontSize: "0.78rem", fontWeight: 700, color: "#ffffff", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <p style={{ fontSize: "0.78rem", fontWeight: 700, color: "#f8fafc", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {user.usuario}
                   </p>
                   <p style={{ fontSize: "0.62rem", fontWeight: 600, margin: 0, whiteSpace: "nowrap",
-                    background: "linear-gradient(90deg,#bfdbfe,#e0e7ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                     {user.perfil} · {user.empresa}
                   </p>
                 </div>
@@ -928,8 +928,8 @@ export default function DashboardLayout() {
               onClick={handleLogout}
               className="dl-logout w-full flex items-center justify-center"
               style={{
-                gap: 6, fontSize: "0.68rem", fontWeight: 700, color: "#fecaca",
-                background: "transparent", border: "1px solid rgba(254,202,202,.5)",
+                gap: 6, fontSize: "0.68rem", fontWeight: 700, color: "#fca5a5",
+                background: "transparent", border: "1px solid rgba(252,165,165,.35)",
                 borderRadius: 8, padding: "0.42rem", cursor: "pointer",
                 textTransform: "uppercase", letterSpacing: "0.06em",
                 transition: "background .15s ease",
@@ -950,8 +950,8 @@ export default function DashboardLayout() {
             style={{
               height: 60,
               padding: "0 1.5rem",
-              background: "linear-gradient(180deg,#1d4ed8 0%,#1e3a8a 100%)",
-              borderBottom: "1px solid rgba(255,255,255,.15)",
+              background: "#ffffff",
+              borderBottom: "1px solid #e2e8f0",
             }}
           >
             <div className="flex items-center gap-3">
@@ -1000,10 +1000,10 @@ export default function DashboardLayout() {
                   {navItems.find(m => m.path === location.pathname)?.icon || "🏠"}
                 </div>
                 <div>
-                  <h2 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: ".01em", lineHeight: 1.2 }}>
+                  <h2 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: ".01em", lineHeight: 1.2 }}>
                     {navItems.find(m => m.path === location.pathname)?.name || "Dashboard"}
                   </h2>
-                  <p style={{ fontSize: "0.62rem", color: "#bfdbfe", margin: 0, letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600 }}>
+                  <p style={{ fontSize: "0.62rem", color: "#94a3b8", margin: 0, letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600 }}>
                     {new Date().toLocaleDateString("es-GT", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </p>
                 </div>

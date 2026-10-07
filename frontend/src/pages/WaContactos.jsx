@@ -26,6 +26,11 @@ export default function WaContactos() {
   const [bulkText, setBulkText] = useState("");
   const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [creator, setCreator] = useState("");
+  const [bitrixOptions, setBitrixOptions] = useState(null);
+  const [bitrixForm, setBitrixForm] = useState({ stage_id: "", responsible_id: "", date_from: "", date_to: "", name: "" });
+  const [bitrixPreview, setBitrixPreview] = useState(null);
+  const [bitrixBusy, setBitrixBusy] = useState(false);
+  const [bitrixError, setBitrixError] = useState("");
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -50,7 +55,10 @@ export default function WaContactos() {
     }
   }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
 
   const openListDetail = async (lst) => {
     setDetail(lst);
@@ -106,6 +114,59 @@ export default function WaContactos() {
     setListItems(prev => prev.filter(i => i.id !== itemId));
   };
 
+  const openBitrix = async () => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
+    setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
+    setBitrixForm({ stage_id: "", responsible_id: "", date_from: today, date_to: today, name: "" });
+    if (bitrixOptions) return;
+    setBitrixBusy(true);
+    try {
+      const response = await fetch(`${API}/lists/bitrix/options`, { headers: authH(false) });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudieron cargar los filtros de Bitrix");
+      setBitrixOptions(payload.data);
+    } catch (error) { setBitrixError(error.message); }
+    finally { setBitrixBusy(false); }
+  };
+
+  const generatedBitrixName = (current = bitrixForm) => {
+    const stage = bitrixOptions?.stages?.find(s => s.id === current.stage_id)?.name || "";
+    const responsible = bitrixOptions?.responsibles?.find(u => u.id === current.responsible_id)?.name || "";
+    const date = current.date_from ? current.date_from.split("-").reverse().join("-") : "";
+    return [stage, date, responsible].filter(Boolean).join(" - ").toUpperCase();
+  };
+
+  const updateBitrixForm = (field, value) => {
+    setBitrixPreview(null); setBitrixError("");
+    setBitrixForm(prev => {
+      const next = { ...prev, [field]: value };
+      if (field !== "name") next.name = generatedBitrixName(next);
+      return next;
+    });
+  };
+
+  const previewFromBitrix = async () => {
+    setBitrixBusy(true); setBitrixError(""); setBitrixPreview(null);
+    try {
+      const response = await fetch(`${API}/lists/bitrix/preview`, { method: "POST", headers: authH(), body: JSON.stringify(bitrixForm) });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudo consultar Bitrix");
+      setBitrixPreview(payload.data);
+    } catch (error) { setBitrixError(error.message); }
+    finally { setBitrixBusy(false); }
+  };
+
+  const createFromBitrix = async () => {
+    setBitrixBusy(true); setBitrixError("");
+    try {
+      const response = await fetch(`${API}/lists/bitrix/create`, { method: "POST", headers: authH(), body: JSON.stringify(bitrixForm) });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudo crear la lista");
+      setModal(null); await load();
+    } catch (error) { setBitrixError(error.message); }
+    finally { setBitrixBusy(false); }
+  };
+
   const creatorLabel = (list) => list.owner_username || (list.created_by != null ? `Usuario #${list.created_by}` : "Sin creador registrado");
   const creators = [...new Map(lists.map(list => [String(list.created_by ?? "unknown"), creatorLabel(list)])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
@@ -132,12 +193,13 @@ export default function WaContactos() {
           <h1 className="text-xl font-bold text-slate-800">👥 Contactos</h1>
           <p className="text-sm text-slate-500 mt-0.5">Listas de difusión y contactos</p>
         </div>
-        {tab === "lists" && (
-          <button onClick={() => { setForm({}); setModal("newList"); }}
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            + Nueva lista
+        {tab === "lists" && <div className="flex flex-wrap justify-end gap-2">
+          <button onClick={openBitrix} className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            Importar desde Bitrix
           </button>
-        )}
+          <button onClick={() => { setForm({}); setModal("newList"); }}
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">+ Nueva lista</button>
+        </div>}
       </div>
 
       {/* Tabs */}
@@ -317,6 +379,72 @@ export default function WaContactos() {
                 className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
                 {saving ? "Guardando…" : "Crear lista"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal crear base desde Bitrix */}
+      {modal === "bitrix" && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between">
+              <div><h3 className="font-bold text-slate-800">Crear base desde Bitrix</h3>
+                <p className="text-xs text-slate-500 mt-1">Empresa: {bitrixOptions?.empresa || "cargando…"}</p></div>
+              <button onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <label className="text-xs font-semibold text-slate-500">ETAPA
+                  <select value={bitrixForm.stage_id} onChange={e => updateBitrixForm("stage_id", e.target.value)} disabled={bitrixBusy || !bitrixOptions}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">Selecciona una etapa</option>
+                    {(bitrixOptions?.stages || []).map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-500">RESPONSABLE
+                  <select value={bitrixForm.responsible_id} onChange={e => updateBitrixForm("responsible_id", e.target.value)} disabled={bitrixBusy || !bitrixOptions}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">Selecciona un responsable</option>
+                    {(bitrixOptions?.responsibles || []).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-500">FECHA DESDE
+                  <input type="date" value={bitrixForm.date_from} onChange={e => updateBitrixForm("date_from", e.target.value)}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">FECHA HASTA
+                  <input type="date" value={bitrixForm.date_to} onChange={e => updateBitrixForm("date_to", e.target.value)}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </label>
+              </div>
+              <label className="block text-xs font-semibold text-slate-500">NOMBRE DE LA LISTA
+                <input value={bitrixForm.name} onChange={e => updateBitrixForm("name", e.target.value)} placeholder="Se genera al seleccionar los filtros"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </label>
+              {bitrixError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{bitrixError}</div>}
+              {bitrixPreview && <div className="border border-blue-100 bg-blue-50/40 rounded-xl p-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 text-center">
+                  <div><div className="text-xl font-bold text-slate-800">{bitrixPreview.total_deals}</div><div className="text-xs text-slate-500">Negocios</div></div>
+                  <div><div className="text-xl font-bold text-green-700">{bitrixPreview.unique_contacts}</div><div className="text-xs text-slate-500">Teléfonos únicos</div></div>
+                  <div><div className="text-xl font-bold text-amber-600">{bitrixPreview.deals_without_phone}</div><div className="text-xs text-slate-500">Sin teléfono</div></div>
+                </div>
+                {bitrixPreview.truncated && <p className="text-xs text-amber-700 mb-2">La consulta alcanzó el límite de seguridad de 10.000 negocios. Reduce el rango de fechas.</p>}
+                <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 bg-white border border-slate-200 rounded-lg">
+                  {(bitrixPreview.items || []).map(item => <div key={item.wa_number} className="px-3 py-2 flex justify-between gap-3 text-sm">
+                    <span className="truncate">{item.name || "Sin nombre"}</span><span className="text-slate-500 whitespace-nowrap">+{item.wa_number}</span>
+                  </div>)}
+                  {!bitrixPreview.items?.length && <div className="p-4 text-center text-sm text-slate-500">No se encontraron teléfonos válidos.</div>}
+                </div>
+                {bitrixPreview.unique_contacts > 100 && <p className="text-xs text-slate-400 mt-2">Se muestran los primeros 100; la lista incluirá los {bitrixPreview.unique_contacts} números únicos.</p>}
+              </div>}
+            </div>
+            <div className="p-5 border-t border-slate-100 flex flex-wrap gap-3 justify-end">
+              <button onClick={() => setModal(null)} className="text-sm text-slate-500 px-4 py-2">Cancelar</button>
+              <button onClick={previewFromBitrix} disabled={bitrixBusy || !bitrixForm.stage_id || !bitrixForm.responsible_id || !bitrixForm.date_from || !bitrixForm.date_to}
+                className="border border-blue-600 text-blue-700 disabled:opacity-40 px-5 py-2 rounded-lg text-sm font-medium">{bitrixBusy ? "Consultando…" : "Consultar"}</button>
+              <button onClick={createFromBitrix} disabled={bitrixBusy || !bitrixPreview?.unique_contacts || !bitrixForm.name.trim()}
+                className="bg-green-600 text-white disabled:bg-slate-300 px-5 py-2 rounded-lg text-sm font-medium">Crear base</button>
             </div>
           </div>
         </div>

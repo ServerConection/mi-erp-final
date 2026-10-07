@@ -58,6 +58,7 @@ const iniciarWhatsApp = async (appInstance) => {
     const io = getIO();
 
     await ejecutarMigracion();
+    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/20261007_wa_presentation_variants.sql'), 'utf8'));
     await ejecutarMigracionWabotBitrix();
     await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/wa_line_downtime.sql'), 'utf8'));
 

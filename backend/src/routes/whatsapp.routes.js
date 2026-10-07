@@ -81,6 +81,9 @@ router.put   ('/contacts/:id',  contactsCtrl.update);
 router.delete('/contacts/:id',  contactsCtrl.remove);
 
 // ── LISTAS ────────────────────────────────────────────────────
+router.get   ('/lists/bitrix/options',     listsCtrl.getBitrixOptions);
+router.post  ('/lists/bitrix/preview',     listsCtrl.previewBitrix);
+router.post  ('/lists/bitrix/create',      listsCtrl.createFromBitrix);
 router.get   ('/lists',                    listsCtrl.getAll);
 router.get   ('/lists/:id',                listsCtrl.getOne);
 router.post  ('/lists',                    listsCtrl.create);
@@ -120,6 +123,7 @@ router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
 router.get  ('/presentation',            presentationCtrl.getMine);
 router.put  ('/presentation',            presentationCtrl.saveMine);
 router.get  ('/presentations',           presentationCtrl.getAll);
+router.get  ('/presentations/:userId',   presentationCtrl.getForUser);
 router.put  ('/presentations/:userId',   presentationCtrl.saveForUser);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────

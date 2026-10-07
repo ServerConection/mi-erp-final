@@ -44,6 +44,11 @@ function fechaHoyEcuador() {
   }).format(new Date());
 }
 
+function fechaInicioMesEcuador() {
+  const hoy = fechaHoyEcuador();
+  return `${hoy.slice(0, 7)}-01`;
+}
+
 function fechaVisible(valor) {
   const match = String(valor || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "—";
@@ -136,7 +141,8 @@ export default function ControlAsistencia() {
     useState(null);
 
   const [vistaActiva, setVistaActiva] = useState("REGISTRO");
-  const [fechaConsulta, setFechaConsulta] = useState(fechaHoyEcuador);
+  const [fechaDesde, setFechaDesde] = useState(fechaInicioMesEcuador);
+  const [fechaHasta, setFechaHasta] = useState(fechaHoyEcuador);
   const [resumenDia, setResumenDia] = useState([]);
   const [cargandoResumen, setCargandoResumen] = useState(false);
 
@@ -232,12 +238,12 @@ export default function ControlAsistencia() {
     }
   };
 
-  const cargarResumenDia = async (fecha = fechaConsulta) => {
+  const cargarResumenDia = async (desde = fechaDesde, hasta = fechaHasta) => {
     try {
       setCargandoResumen(true);
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `${API}/api/control-asistencia/resumen-dia?fecha=${encodeURIComponent(fecha)}`,
+        `${API}/api/control-asistencia/resumen-dia?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
       const json = await response.json().catch(() => ({}));
@@ -254,10 +260,10 @@ export default function ControlAsistencia() {
 
   useEffect(() => {
     if (vistaActiva === "MARCACIONES") {
-      cargarResumenDia(fechaConsulta);
+      cargarResumenDia(fechaDesde, fechaHasta);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fechaConsulta, vistaActiva]);
+  }, [fechaDesde, fechaHasta, vistaActiva]);
 
   // ─────────────────────────────────────────────
   // OBTENER GEOLOCALIZACIÓN
@@ -471,7 +477,7 @@ export default function ControlAsistencia() {
 
         // Limpiamos solo actividad.
         setActividad("");
-        await cargarResumenDia(fechaConsulta);
+        await cargarResumenDia(fechaDesde, fechaHasta);
       } catch (error) {
         console.error(
           "[ControlAsistencia] Error:",
@@ -1128,10 +1134,16 @@ export default function ControlAsistencia() {
               </div>
             </div>
           </div>
-          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
-            Fecha
-            <input type="date" value={fechaConsulta} onChange={(e) => setFechaConsulta(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }} />
-          </label>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
+              Desde
+              <input type="date" value={fechaDesde} max={fechaHasta} onChange={(e) => setFechaDesde(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }} />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
+              Hasta
+              <input type="date" value={fechaHasta} min={fechaDesde} onChange={(e) => setFechaHasta(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }} />
+            </label>
+          </div>
         </div>
         {mensaje?.type === "error" && (
           <div style={{ margin: "16px 20px 0", padding: "11px 14px", borderRadius: 10, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12, fontWeight: 700 }}>{mensaje.text}</div>

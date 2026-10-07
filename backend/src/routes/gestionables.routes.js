@@ -82,41 +82,8 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { esEtapaGestionable } = require('../shared/etapas');
+const { conteoGestionablesHoy } = require('../shared/repartoConteo');
 
-// Cuántos de los leads recibidos HOY por cada asesor (bot + humano, vigentes)
-// siguen siendo gestionables según su etapa ACTUAL en Bitrix (misma regla de
-// etapas de todo el ERP). La etapa sale de bitrix_webhook_leads (bddgeneral);
-// un lead sin registro de etapa todavía está en Contacto nuevo → gestionable.
-async function gestionablesPorAsesor() {
-  const asig = await erp.query(
-    `SELECT asesor_asignado, bitrix_deal_id FROM gestionables_asignaciones
-      WHERE fecha = (NOW() AT TIME ZONE 'America/Guayaquil')::date AND vigente`
-  );
-  if (!asig.rows.length) return new Map();
-  const ids = [...new Set(asig.rows.map((r) => String(r.bitrix_deal_id)))];
-  const etapas = new Map();
-  try {
-    const r = await db.query(
-      `SELECT bitrix_id::text AS id, COALESCE(NULLIF(BTRIM(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS etapa
-         FROM public.bitrix_webhook_leads
-        WHERE empresa = 'novonet' AND bitrix_id::text = ANY($1::text[])`,
-      [ids]
-    );
-    r.rows.forEach((x) => etapas.set(x.id, x.etapa));
-  } catch (e) {
-    console.error('[gestionables] etapas para columna Gestionables:', e.message);
-    return null;
-  }
-  const m = new Map();
-  for (const a of asig.rows) {
-    const etapa = etapas.get(String(a.bitrix_deal_id));
-    const ok = !etapa || esEtapaGestionable(etapa);
-    const k = normalizarNombre(a.asesor_asignado);
-    m.set(k, (m.get(k) || 0) + (ok ? 1 : 0));
-  }
-  return m;
-}
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
@@ -162,19 +129,22 @@ router.get('/reparto/estado', async (req, res) => {
         `SELECT bitrix_deal_id, motivo, creado_en FROM gestionables_cola
           WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 200`
       ).catch(() => ({ rows: [], sinTabla: true })),
-      gestionablesPorAsesor().catch(() => null),
+      conteoGestionablesHoy(erp).catch(() => null),
     ]);
     const data = asesores.rows.map((r) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
       const esEstacion = normalizarNombre(r.nombre) === normalizarNombre(cfg.estacion_nombre);
       return {
         ...r,
-        disponibles: Math.max(0, r.permitidos - r.asignados),
+        // Cupo usado = gestionables (lo que pasó a ATC, Duplicado, etc. libera cupo)
+        total_asignados: r.asignados,
+        asignados: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : r.asignados,
+        disponibles: Math.max(0, r.permitidos - (gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : r.asignados)),
         en_linea: enLinea ? !!l?.enLinea : null,
         jornada: l?.jornada || null,
         encontrado_en_bitrix: enLinea ? !!l : null,
         es_estacion: esEstacion,
-        gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre)) || 0) : null,
+        gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
       };
     });
     res.json({

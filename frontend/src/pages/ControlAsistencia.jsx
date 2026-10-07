@@ -16,28 +16,38 @@ const API = import.meta.env.VITE_API_URL;
 const ACTIVIDADES = [
   {
     value: "INGRESO",
-    label:
-      "Ingreso · ¡Que tengas un excelente día! 💪",
+    label: "Ingreso",
   },
 
   {
     value: "SALIDA ALMUERZO",
-    label:
-      "Salida a almuerzo · ¡Buen provecho! 🍽️",
+    label: "Salida a almuerzo",
   },
 
   {
     value: "INGRESO ALMUERZO",
-    label:
-      "Regreso de almuerzo · ¡Vamos con todo! 🚀",
+    label: "Regreso de almuerzo",
   },
 
   {
     value: "SALIDA",
-    label:
-      "Salida · ¡Gracias por tu esfuerzo de hoy! 🙌",
+    label: "Salida",
   },
 ];
+
+function fechaHoyEcuador() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function fechaVisible(valor) {
+  const match = String(valor || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "—";
+}
 
 // ─────────────────────────────────────────────
 // FECHA / HORA ECUADOR
@@ -124,6 +134,11 @@ export default function ControlAsistencia() {
 
   const [mensaje, setMensaje] =
     useState(null);
+
+  const [vistaActiva, setVistaActiva] = useState("REGISTRO");
+  const [fechaConsulta, setFechaConsulta] = useState(fechaHoyEcuador);
+  const [resumenDia, setResumenDia] = useState([]);
+  const [cargandoResumen, setCargandoResumen] = useState(false);
 
   const [
     estadoUbicacion,
@@ -216,6 +231,33 @@ export default function ControlAsistencia() {
         }, 3500);
     }
   };
+
+  const cargarResumenDia = async (fecha = fechaConsulta) => {
+    try {
+      setCargandoResumen(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `${API}/api/control-asistencia/resumen-dia?fecha=${encodeURIComponent(fecha)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.success) {
+        throw new Error(json.error || "No se pudo cargar el panel diario");
+      }
+      setResumenDia(json.data || []);
+    } catch (error) {
+      mostrarMensaje("error", error.message || "No se pudo cargar el panel diario");
+    } finally {
+      setCargandoResumen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (vistaActiva === "MARCACIONES") {
+      cargarResumenDia(fechaConsulta);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fechaConsulta, vistaActiva]);
 
   // ─────────────────────────────────────────────
   // OBTENER GEOLOCALIZACIÓN
@@ -409,23 +451,13 @@ export default function ControlAsistencia() {
           );
         }
 
-        // Guardamos antes de limpiar.
-        const actividadRegistrada =
-          actividad;
-
         // ───────────────────────────
         // MENSAJE DEL BACKEND
         // ───────────────────────────
 
         const mensajeBackend =
           json.mensaje ||
-          "Marcación registrada correctamente";
-
-        // Hora visual.
-        const horaRegistro =
-          formatearHora(
-            new Date()
-          );
+          "Que tengas un excelente día.";
 
         // ───────────────────────────
         // MENSAJE FINAL
@@ -433,12 +465,13 @@ export default function ControlAsistencia() {
 
         mostrarMensaje(
           "success",
-          `✓ ${actividadRegistrada} registrado a las ${horaRegistro}. ${mensajeBackend}`,
+          mensajeBackend,
           true
         );
 
         // Limpiamos solo actividad.
         setActividad("");
+        await cargarResumenDia(fechaConsulta);
       } catch (error) {
         console.error(
           "[ControlAsistencia] Error:",
@@ -586,20 +619,69 @@ export default function ControlAsistencia() {
         padding:
           "32px 20px",
 
-        display: "flex",
-
-        justifyContent:
-          "center",
+        display: "grid",
+        gap: 24,
+        justifyItems: "center",
 
         alignItems:
           "flex-start",
       }}
     >
+      <nav
+        aria-label="Vistas de control de asistencia"
+        style={{
+          width: "100%",
+          maxWidth: 980,
+          padding: 5,
+          display: "flex",
+          gap: 6,
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 15,
+          boxShadow: "0 8px 24px rgba(15,23,42,.06)",
+        }}
+      >
+        {[
+          { id: "REGISTRO", icono: "⏱️", texto: "REGISTRAR MARCACIÓN" },
+          { id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" },
+        ].map((opcion) => {
+          const activa = vistaActiva === opcion.id;
+          return (
+            <button
+              key={opcion.id}
+              type="button"
+              onClick={() => setVistaActiva(opcion.id)}
+              style={{
+                flex: 1,
+                minHeight: 42,
+                padding: "10px 16px",
+                border: 0,
+                borderRadius: 11,
+                background: activa
+                  ? "linear-gradient(135deg, #0f766e, #0ea5a4)"
+                  : "transparent",
+                color: activa ? "#fff" : "#64748b",
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: ".035em",
+                cursor: "pointer",
+                boxShadow: activa ? "0 6px 14px rgba(14,165,164,.22)" : "none",
+                transition: "all .18s ease",
+              }}
+            >
+              <span style={{ marginRight: 7 }}>{opcion.icono}</span>
+              {opcion.texto}
+            </button>
+          );
+        })}
+      </nav>
+
+      {vistaActiva === "REGISTRO" ? (
       <div
         style={{
           width: "100%",
 
-          maxWidth: 820,
+          maxWidth: 980,
 
           background: "#fff",
 
@@ -690,9 +772,7 @@ export default function ControlAsistencia() {
                     "#64748b",
                 }}
               >
-                Registra tu
-                ingreso, almuerzo
-                o salida
+                Registra tu ingreso, salida a almuerzo, regreso de almuerzo o salida
               </div>
             </div>
           </div>
@@ -1036,6 +1116,66 @@ export default function ControlAsistencia() {
           )}
         </div>
       </div>
+      ) : (
+      <section style={{ width: "100%", maxWidth: 1180, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, boxShadow: "0 10px 30px rgba(15,23,42,.07)", overflow: "hidden" }}>
+        <div style={{ padding: "22px 24px", borderBottom: "1px solid #e8eef5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", background: "linear-gradient(135deg,#f0fdfa 0%,#ffffff 65%)" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 11, background: "#ccfbf1", fontSize: 18 }}>📋</div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 19, fontWeight: 900, color: "#0f172a" }}>Marcaciones del día</h2>
+                <p style={{ margin: "3px 0 0", fontSize: 12, color: "#64748b" }}>{resumenDia.length} usuario{resumenDia.length === 1 ? "" : "s"} con registros</p>
+              </div>
+            </div>
+          </div>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
+            Fecha
+            <input type="date" value={fechaConsulta} onChange={(e) => setFechaConsulta(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }} />
+          </label>
+        </div>
+        {mensaje?.type === "error" && (
+          <div style={{ margin: "16px 20px 0", padding: "11px 14px", borderRadius: 10, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12, fontWeight: 700 }}>{mensaje.text}</div>
+        )}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 850 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Fecha", "Usuario", "Ingreso", "Salida almuerzo", "Regreso almuerzo", "Salida"].map((titulo) => (
+                  <th key={titulo} style={{ padding: "13px 16px", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em", whiteSpace: "nowrap" }}>{titulo}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {resumenDia.map((fila) => (
+                <tr key={`${fila.fecha}-${fila.usuario_id}`}>
+                  <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9", fontSize: 12, fontWeight: 700 }}>{fechaVisible(fila.fecha)}</td>
+                  <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 32, height: 32, flex: "0 0 32px", display: "grid", placeItems: "center", borderRadius: "50%", color: "#0f766e", background: "#ccfbf1", fontSize: 11, fontWeight: 900 }}>{String(fila.nombre_completo || fila.usuario || "U").trim().charAt(0).toUpperCase()}</div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{fila.nombre_completo || fila.usuario || "Usuario"}</div>
+                        {fila.usuario && <div style={{ marginTop: 2, fontSize: 10, color: "#64748b" }}>@{fila.usuario}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  {[fila.ingreso, fila.salida_almuerzo, fila.regreso_almuerzo, fila.salida].map((hora, index) => (
+                    <td key={index} style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ display: "inline-block", minWidth: 52, padding: "6px 9px", textAlign: "center", borderRadius: 8, fontSize: 12, fontWeight: 900, color: hora ? "#0f766e" : "#94a3b8", background: hora ? "#f0fdfa" : "#f8fafc" }}>{hora || "—"}</span>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {!cargandoResumen && resumenDia.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>No hay marcaciones registradas para esta fecha.</td></tr>
+              )}
+              {cargandoResumen && (
+                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#64748b", fontSize: 12 }}>Cargando marcaciones…</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      )}
     </div>
   );
 }

@@ -18,6 +18,10 @@ test('normaliza exclusivamente teléfonos móviles ecuatorianos válidos', () =>
   assert.equal(normalizePhone('098 765 4321'), '593987654321');
   assert.equal(normalizePhone('+593 98 765 4321'), '593987654321');
   assert.equal(normalizePhone('987654321'), '593987654321');
+  assert.equal(
+    normalizePhone(' 593960288044,  593985970000,  59323920000'),
+    '593960288044'
+  );
   assert.equal(normalizePhone('123'), null);
   assert.equal(normalizePhone(''), null);
 });

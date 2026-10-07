@@ -182,7 +182,18 @@ const recibirLead = async (req, res) => {
         [empresa, id]
       );
       const anterior = anteriorResult.rows[0] || null;
-      const etapaAnterior = anterior?.etapa || null;
+      // Para detectar reingresos se usa el último evento REAL recibido, no
+      // solo el estado actual. El UPSERT protege `contacto_nuevo` tardío para
+      // reporting y puede conservar ATC aunque Bitrix haya salido de esa etapa.
+      const eventoAnteriorResult = await client.query(
+        `SELECT etapa
+           FROM bitrix_webhook_leads_historial
+          WHERE empresa = $1 AND bitrix_id = $2
+          ORDER BY id DESC
+          LIMIT 1`,
+        [empresa, id]
+      );
+      const etapaAnterior = eventoAnteriorResult.rows[0]?.etapa || anterior?.etapa || null;
 
       // 1) Estado ACTUAL — la etapa nueva reemplaza a la anterior para este
       //    lead (identificado por empresa + bitrix_id, no solo bitrix_id,

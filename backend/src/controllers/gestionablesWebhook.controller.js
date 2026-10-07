@@ -247,6 +247,11 @@ const procesarCola = async () => {
 
     const enLinea = cfg.solo_en_linea ? await leerEnLinea() : null;
     const estacionId = await idUsuarioBitrix(cfg.estacion_nombre);
+    // Solo se entrega lo que SIGUE en Contacto nuevo. Si alguien lo movió de
+    // etapa (ATC, Descarte, etc.) mientras esperaba, ya fue gestionado: se descarta.
+    let etapaContactoNuevo = null;
+    try { etapaContactoNuevo = await resolverEtapaContactoNuevo(); }
+    catch (e) { console.warn('[gestionables] No se pudo identificar la etapa Contacto nuevo:', e.message); }
     let limite = null;
 
     for (const item of pend.rows) {
@@ -266,7 +271,7 @@ const procesarCola = async () => {
       try { deal = (await bitrixCallNovonet('crm.deal.get', { id: item.bitrix_deal_id })).result; } catch { deal = null; }
       const descartar = !deal ? 'El lead ya no existe en Bitrix'
         : (estacionId && Number(deal.ASSIGNED_BY_ID) !== Number(estacionId)) ? 'Ya no está a nombre de la estación (alguien lo reasignó)'
-        : (EXPECTED_STAGE_ID && deal.STAGE_ID !== EXPECTED_STAGE_ID) ? `Ya no está en Contacto nuevo (${deal.STAGE_ID})`
+        : (etapaContactoNuevo && deal.STAGE_ID !== etapaContactoNuevo) ? `Ya no está en Contacto nuevo (pasó a ${deal.STAGE_ID}); alguien ya lo gestionó`
         : null;
       if (descartar) {
         await poolErp.query(
@@ -318,6 +323,19 @@ const resolverCategoria = async () => {
   const cat = cats.find((c) => normalizarNombre(c.name) === normalizarNombre(process.env.GESTIONABLES_PIPELINE || 'NETLIFE NUEVO'));
   if (!cat) throw new Error('No se encontró el pipeline NETLIFE NUEVO en Bitrix (defina GESTIONABLES_CATEGORY_ID)');
   return (categoriaCache = String(cat.id));
+};
+
+// STAGE_ID de "CONTACTO NUEVO" en Netlife Nuevo (GESTIONABLES_STAGE_ID o búsqueda por nombre).
+let etapaCache = null;
+const resolverEtapaContactoNuevo = async () => {
+  if (etapaCache) return etapaCache;
+  if (EXPECTED_STAGE_ID) return (etapaCache = EXPECTED_STAGE_ID);
+  const categoria = await resolverCategoria();
+  const res = await bitrixCallNovonet('crm.dealcategory.stage.list', { id: categoria });
+  const nombre = normalizarNombre(process.env.GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO');
+  const etapa = (res.result || []).find((e) => normalizarNombre(e.NAME) === nombre);
+  if (!etapa) throw new Error('No se encontró la etapa CONTACTO NUEVO en el pipeline (defina GESTIONABLES_STAGE_ID)');
+  return (etapaCache = etapa.STATUS_ID);
 };
 
 // Inicio de la jornada actual en hora Ecuador: ayer a hora_fin + 1 s

@@ -635,10 +635,19 @@ router.put('/:id', async (req, res) => {
       'estado_welcome', 'estado_recaudacion', 'auditoria_documentos',
       'calidad_venta_analista', 'venta_efectiva',
     ]);
+    const valorComparableEstado = (campo, valor) => {
+      if (campo !== 'auditoria_documentos') return String(valor ?? '');
+      let lista = valor;
+      if (!Array.isArray(lista)) {
+        try { lista = JSON.parse(String(valor || '')); } catch { lista = String(valor || '').split(/\s*(?:,|\||\n)\s*/); }
+      }
+      if (!Array.isArray(lista)) lista = [lista];
+      return lista.map(item => String(item).trim().toUpperCase()).filter(Boolean).sort().join('|');
+    };
     const cambiosEstado = Object.entries(payload)
       .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && (
         campo === 'netlife_estatus_real'
-        || String(actual[0][campo] ?? '') !== String(valor ?? '')
+        || valorComparableEstado(campo, actual[0][campo]) !== valorComparableEstado(campo, valor)
       ))
       .map(([campo, valor]) => ({
         campo,

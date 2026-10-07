@@ -1709,10 +1709,37 @@ function CeldaValor({ campo, valor, textoVacio }) {
 
 function valoresSeleccionMultiple(valor) {
   if (Array.isArray(valor)) return valor.map(String).map((v) => v.trim()).filter(Boolean);
-  return String(valor || "")
+  const texto = String(valor || "").trim();
+  if (texto.startsWith("[") && texto.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(texto);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).map((v) => v.trim()).filter(Boolean);
+      }
+    } catch { /* compatibilidad con valores históricos que no son JSON válido */ }
+  }
+  return texto
     .split(/\s*(?:,|\||\n)\s*/)
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+function valorVisibleHistorial(campo, valor) {
+  if (campo !== "auditoria_documentos") return valor || "Sin estado";
+  const valores = valoresSeleccionMultiple(valor);
+  if (!valores.length) return "Sin documentos";
+  return valores.map((item) => /^\{[^}]+\}$/.test(item)
+    ? "Referencia documental heredada"
+    : item).join(", ");
+}
+
+function cambioVisibleHistorial(cambio) {
+  if (cambio?.campo !== "auditoria_documentos") return true;
+  const normalizar = (valor) => valoresSeleccionMultiple(valor)
+    .map((item) => item.toLocaleUpperCase("es"))
+    .sort()
+    .join("|");
+  return normalizar(cambio?.anterior) !== normalizar(cambio?.nuevo);
 }
 
 // La tabla puede contener miles de filas y decenas de columnas. Mantenerla
@@ -2362,7 +2389,9 @@ function HistorialCambiosEstado({ valor }) {
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {[...eventos].reverse().map((evento, indice) => {
-            const cambios = Array.isArray(evento?.cambios) ? evento.cambios : [];
+            const cambios = Array.isArray(evento?.cambios)
+              ? evento.cambios.filter(cambioVisibleHistorial)
+              : [];
             const usuarioEvento = evento?.usuario || evento?.username || evento?.login_usuario || evento?.modificado_por || "";
             const nombre = evento?.nombre_usuario || evento?.usuario_nombre || evento?.nombreUsuario || usuarioEvento || (evento?.usuario_id ? `Usuario #${evento.usuario_id}` : "Historial anterior — usuario no registrado");
             const login = usuarioEvento && usuarioEvento !== nombre ? `@${usuarioEvento}` : "";
@@ -2382,9 +2411,9 @@ function HistorialCambiosEstado({ valor }) {
                   {cambios.map((cambio, cambioIndice) => (
                     <div key={`${cambio?.campo || "estado"}-${cambioIndice}`} style={{ display: "grid", gridTemplateColumns: "minmax(130px, .8fr) minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, fontSize: 11.5 }}>
                       <strong style={{ color: "#334155" }}>{FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}</strong>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.anterior || "Sin estado"}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.anterior)}</span>
                       <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.nuevo || "Sin estado"}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.nuevo)}</span>
                     </div>
                   ))}
                 </div>
@@ -2938,6 +2967,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
          */
         if (
           typeof nuevo === "string" &&
+          campo !== "auditoria_documentos" &&
           !esCampoDocumento(campo) &&
           !CAMPOS_FECHA.includes(campo)
         ) {

@@ -305,8 +305,8 @@ router.post("/", verificarToken, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// GET /api/control-asistencia/resumen-dia?fecha=YYYY-MM-DD
-// Una fila por usuario con la primera marcación de cada actividad.
+// GET /api/control-asistencia/resumen-dia?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Una fila por usuario y fecha con la primera marcación de cada actividad.
 router.get("/resumen-dia", verificarToken, async (req, res) => {
   try {
     const usuario = req.user;
@@ -317,9 +317,14 @@ router.get("/resumen-dia", verificarToken, async (req, res) => {
       return res.status(403).json({ success: false, error: "No tiene permiso para consultar marcaciones" });
     }
 
-    const fecha = String(req.query.fecha || "").trim();
-    if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      return res.status(400).json({ success: false, error: "La fecha debe tener formato YYYY-MM-DD" });
+    const desde = String(req.query.desde || req.query.fecha || "").trim();
+    const hasta = String(req.query.hasta || req.query.fecha || desde).trim();
+    const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
+    if ((desde && !formatoFecha.test(desde)) || (hasta && !formatoFecha.test(hasta))) {
+      return res.status(400).json({ success: false, error: "Las fechas deben tener formato YYYY-MM-DD" });
+    }
+    if (desde && hasta && desde > hasta) {
+      return res.status(400).json({ success: false, error: "La fecha desde no puede ser posterior a la fecha hasta" });
     }
 
     const result = await pool.query(`
@@ -333,14 +338,15 @@ router.get("/resumen-dia", verificarToken, async (req, res) => {
         TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'INGRESO ALMUERZO'), 'HH24:MI') AS regreso_almuerzo,
         TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'SALIDA'), 'HH24:MI') AS salida
       FROM public.control_asistencia
-      WHERE fecha = COALESCE(NULLIF($1, '')::date,
-        (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
+      WHERE fecha BETWEEN
+        COALESCE(NULLIF($1, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
+        AND COALESCE(NULLIF($2, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
       GROUP BY fecha, usuario_id
-      ORDER BY COALESCE(
+      ORDER BY fecha DESC, COALESCE(
         MIN(hora) FILTER (WHERE actividad = 'INGRESO'),
         MIN(hora)
       ) ASC, MAX(nombre_completo) ASC
-    `, [fecha]);
+    `, [desde, hasta]);
 
     return res.json({ success: true, data: result.rows });
   } catch (error) {

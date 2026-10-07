@@ -321,6 +321,7 @@ const CAMPOS_EDITABLES = new Set([
   'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet', 'foto_cartel',
   'archivo_resumen',
   'archivo_planilla', 'archivo_nombramiento', 'archivo_registro_mercantil', 'archivo_ruc',
+  'archivo_otro1', 'archivo_otro2', 'archivo_otro3', 'archivo_otro4',
   'links_documentos',
   'gestion_atc',
 

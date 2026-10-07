@@ -30,6 +30,14 @@ const PROXY_BASE_PORT = parseInt(process.env.PROXY_STICKY_BASE_PORT || '10000', 
 const PROXY_PUERTOS   = parseInt(process.env.PROXY_PUERTOS || '120', 10)
 const PROXY_MAX_PORT  = PROXY_BASE_PORT + PROXY_PUERTOS - 1
 
+// Un timeout (408) NO es un bloqueo de WhatsApp: casi siempre es un fallo
+// momentáneo del gateway del proxy. Antes esas IPs se quemaban para siempre y
+// el pool se agotaba solo (49 de 120 quemadas por timeouts). Ahora un
+// 'timeout_408' es una cuarentena: pasado este plazo la IP vuelve al pool.
+// Los 'bloqueado_403' (bloqueo real) siguen quemados de forma permanente.
+const CUARENTENA_TIMEOUT_HORAS = parseInt(process.env.PROXY_CUARENTENA_TIMEOUT_HORAS || '6', 10)
+const FILTRO_QUEMADO_VIGENTE = `(q.motivo IS DISTINCT FROM 'timeout_408' OR q.quemado_at > NOW() - make_interval(hours => ${CUARENTENA_TIMEOUT_HORAS}))`
+
 const hayCredenciales = () => !!(PROXY_USER && PROXY_PASS)
 
 /**
@@ -52,6 +60,7 @@ async function siguientePuertoLibre() {
     AND NOT EXISTS (
       SELECT 1 FROM proxy_puertos_quemados q
       WHERE q.host = $3 AND q.puerto = g.puerto
+        AND ${FILTRO_QUEMADO_VIGENTE}
     )
     ORDER BY g.puerto
     LIMIT 1
@@ -134,8 +143,9 @@ async function estadoPool() {
           AND (l.proxy_config->>'port')::int BETWEEN $2 AND $3
       `, [PROXY_HOST, PROXY_BASE_PORT, PROXY_MAX_PORT]),
       query(`
-        SELECT COUNT(*)::int AS n FROM proxy_puertos_quemados
-        WHERE host = $1 AND puerto BETWEEN $2 AND $3
+        SELECT COUNT(*)::int AS n FROM proxy_puertos_quemados q
+        WHERE q.host = $1 AND q.puerto BETWEEN $2 AND $3
+          AND ${FILTRO_QUEMADO_VIGENTE}
       `, [PROXY_HOST, PROXY_BASE_PORT, PROXY_MAX_PORT]),
     ])
     const total    = PROXY_PUERTOS
@@ -190,7 +200,10 @@ async function quemarPuerto(host, puerto, lineId, motivo) {
     await query(`
       INSERT INTO proxy_puertos_quemados (host, puerto, line_id, motivo)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (host, puerto) DO NOTHING
+      ON CONFLICT (host, puerto) DO UPDATE
+        SET quemado_at = NOW(), motivo = EXCLUDED.motivo, line_id = EXCLUDED.line_id
+        -- Un timeout nunca degrada un bloqueo real (403) ya registrado.
+        WHERE proxy_puertos_quemados.motivo = 'timeout_408'
     `, [host, parseInt(puerto, 10), lineId || null, motivo || 'manual'])
     console.warn(`[proxyPool] 🔥 IP retirada: ${host}:${puerto} (motivo: ${motivo}). No se reasignará.`)
     return true

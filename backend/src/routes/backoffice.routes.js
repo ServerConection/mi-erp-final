@@ -50,11 +50,17 @@ router.use(verificarToken, soloBackoffice);
 // malformado y tumba toda la consulta. LEFT(col::text, 10) devuelve siempre
 // 'YYYY-MM-DD' en los tres casos y nunca lanza excepción.
 const fechaCol = (col) => `LEFT(${col}::text, 10)`;
+// fecha_registro_sistema guarda un timestamp UTC (ej. "2026-10-07T04:19:00+00:00"):
+// se convierte a día Ecuador para que cuadre con Indicadores. Si el valor no trae
+// hora+zona (solo "2026-10-06" o formato raro) se usa tal cual, sin riesgo de error de cast.
+const fechaRegEC = (col) => `(CASE WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}(:?\\d{2})?)$'
+  THEN ((${col}::text)::timestamptz AT TIME ZONE 'America/Guayaquil')::date::text
+  ELSE LEFT(${col}::text, 10) END)`;
 // Alcance histórico autorizado para TODO Backoffice. Este límite vive en el
 // backend para que tampoco pueda evadirse manipulando filtros o URLs.
 const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
 const condicionFechaBackoffice = (alias = '') => (
-  `${fechaCol(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
+  `${fechaRegEC(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
 );
 
 // envios_ventas conserva el código con el que se registró la venta. El nombre
@@ -157,8 +163,8 @@ router.get('/', async (req, res) => {
     }
 
     // ── FECHA DE REGISTRO ────────────────────────────────────────────────
-    if (fechaDesde) whereClause += ` AND ${fechaCol('fecha_registro_sistema')} >= ${P(fechaDesde)}`;
-    if (fechaHasta) whereClause += ` AND ${fechaCol('fecha_registro_sistema')} <= ${P(fechaHasta)}`;
+    if (fechaDesde) whereClause += ` AND ${fechaRegEC('fecha_registro_sistema')} >= ${P(fechaDesde)}`;
+    if (fechaHasta) whereClause += ` AND ${fechaRegEC('fecha_registro_sistema')} <= ${P(fechaHasta)}`;
 
     // ── FECHA DE ACTIVACIÓN ──────────────────────────────────────────────
     if (activacionDesde) whereClause += ` AND ${fechaCol('fecha_activacion_netlife')} >= ${P(activacionDesde)}`;

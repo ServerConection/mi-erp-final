@@ -1,13 +1,28 @@
-const PERFILES_GESTIONABLES = new Set(['SUPERVISOR', 'GERENCIA', 'ADMINISTRADOR']);
+const normalizar = (valor) => String(valor || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .trim().replace(/\s+/g, ' ').toUpperCase();
 
-function puedeAccederGestionables(usuario, empresaObjetivo) {
-  const perfil = String(usuario?.perfil || '').trim().toUpperCase();
-  const empresa = String(usuario?.empresa || '').trim().toUpperCase();
-  const objetivo = String(empresaObjetivo || '').trim().toUpperCase();
-
-  return PERFILES_GESTIONABLES.has(perfil)
-    && ['NOVONET', 'VELSA'].includes(objetivo)
-    && empresa === objetivo;
+function perfilGestionables(valor) {
+  const perfil = normalizar(valor);
+  if (perfil === 'ADMINISTRADOR') return 'ADMINISTRADOR';
+  if (perfil === 'GERENCIA' || perfil === 'GERENTE' || perfil.startsWith('GERENCIA ') || perfil.startsWith('GERENTE ')) return 'GERENCIA';
+  if (perfil === 'SUPERVISOR' || perfil === 'SUPERVISORA' || perfil.startsWith('SUPERVISOR ')) return 'SUPERVISOR';
+  return null;
 }
 
-module.exports = { PERFILES_GESTIONABLES, puedeAccederGestionables };
+function empresaGestionables(valor) {
+  const empresa = normalizar(valor);
+  if (empresa === 'NOVONET' || empresa.startsWith('NOVONET ')) return 'NOVONET';
+  if (empresa === 'VELSA' || empresa.startsWith('VELSA ')) return 'VELSA';
+  return null;
+}
+
+function puedeAccederGestionables(usuario, empresaObjetivo) {
+  const perfil = perfilGestionables(usuario?.perfil || usuario?.rol);
+  const empresa = empresaGestionables(usuario?.empresa);
+  const objetivo = empresaGestionables(empresaObjetivo);
+
+  return perfil !== null && empresa !== null && empresa === objetivo;
+}
+
+module.exports = { perfilGestionables, empresaGestionables, puedeAccederGestionables };

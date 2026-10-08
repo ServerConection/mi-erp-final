@@ -7,8 +7,9 @@
  *
  * NIVELES (de mayor a menor):
  *   ADMIN   → perfil ADMINISTRADOR. Ve y edita absolutamente todas las hojas.
- *   DUENO / EDITOR / LECTOR se conservan por compatibilidad de datos, pero el
- *   módulo completo está restringido al perfil ADMINISTRADOR.
+ *   DUENO   → creó la hoja. Edita, define columnas y reparte permisos.
+ *   EDITOR  → invitado con permiso de escritura. Edita celdas y filas.
+ *   LECTOR  → invitado de solo lectura.
  *   (null)  → sin acceso. Ni siquiera sabe que la hoja existe.
  *
  * Debe usarse SIEMPRE después de verificarToken.
@@ -17,7 +18,7 @@
 const pool = require('../config/db');
 
 // Perfiles autorizados a crear hojas nuevas.
-const PERFILES_CREADORES = ['ADMINISTRADOR'];
+const PERFILES_CREADORES = ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'];
 
 const NIVELES = { ADMIN: 4, DUENO: 3, EDITOR: 2, LECTOR: 1 };
 
@@ -32,9 +33,6 @@ const alcanza = (nivel, minimo) => (NIVELES[nivel] || 0) >= (NIVELES[minimo] || 
  * decisión que las rutas HTTP: una sola fuente de verdad.
  */
 async function resolverAcceso(hojaId, usuario) {
-  if ((usuario?.perfil || '').trim().toUpperCase() !== 'ADMINISTRADOR') {
-    return { hoja: null, nivel: null };
-  }
   const id = parseInt(hojaId, 10);
   if (!Number.isInteger(id) || id <= 0) return { hoja: null, nivel: null };
 
@@ -70,16 +68,15 @@ async function resolverAcceso(hojaId, usuario) {
 }
 
 /**
- * Puerta de entrada del módulo: exclusivamente ADMINISTRADOR.
+ * Puerta de entrada del módulo. Deja pasar a cualquier usuario autenticado:
+ * el listado se encarga de mostrarle solo lo suyo. Un asesor sin hojas
+ * compartidas simplemente verá la lista vacía.
  */
 const accesoHojas = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, error: 'No autenticado' });
   }
-  if ((req.user.perfil || '').trim().toUpperCase() !== 'ADMINISTRADOR') {
-    return res.status(403).json({ success: false, error: 'Solo un administrador puede acceder a Archivos Compartidos.' });
-  }
-  req.puedeCrearHojas = true;
+  req.puedeCrearHojas = PERFILES_CREADORES.includes(req.user.perfil);
   next();
 };
 

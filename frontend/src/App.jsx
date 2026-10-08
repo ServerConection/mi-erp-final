@@ -197,7 +197,7 @@ export default function App() {
             {/* Reporte Gerencial: salud comercial de ambas empresas en una pantalla */}
             <Route path="reporte-gerencial"        element={<ReporteGerencial />} />
             <Route path="tareas"                   element={<Tareas />} />
-            <Route path="archivos-compartidos"     element={<AdminOnlyRoute><ArchivosCompartidos /></AdminOnlyRoute>} />
+            <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
             <Route path="chat"                     element={<ChatInterno />} />
             <Route path="evaluaciones"             element={<Evaluaciones />} />
             <Route path="forecast"                 element={<Forecast />} />

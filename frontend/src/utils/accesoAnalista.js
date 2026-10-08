@@ -6,6 +6,7 @@ export const RUTAS_ANALISTA = new Set([
   '/gestionables-asesores', '/whatsapp/lineas', '/whatsapp/inbox',
   '/whatsapp/campanas', '/whatsapp/chatbots', '/whatsapp/contactos',
   '/whatsapp/respaldos', '/whatsapp/presentacion', '/whatsapp/control-lineas',
+  '/archivos-compartidos',
 ]);
 
 export const rutaPermitidaAnalista = (ruta) => RUTAS_ANALISTA.has(ruta);

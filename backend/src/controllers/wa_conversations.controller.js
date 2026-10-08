@@ -5,6 +5,7 @@ const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
 const { protectedNumbers, isAdminOnlyNumber } = require('../services/waPrivacy')
+const { esMandoWabot, empresaVisibleWabot } = require('../shared/waAccesoEmpresa')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -102,9 +103,8 @@ async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
 
 // Perfiles "gerenciales" ven todos los chats de SU empresa (no de otras).
 // Solo ADMINISTRADOR ve todo, sin restricción de empresa.
-const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
-const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
+const isSupervisor = (req) => esMandoWabot(req.user)
 
 // Condición SQL de visibilidad de conversaciones/líneas según el perfil.
 //  - ADMINISTRADOR: ve todo (null → sin filtro)
@@ -115,7 +115,7 @@ const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil ||
 function visibilityCondition(req, params) {
   if (isAdmin(req)) return null
   if (isSupervisor(req)) {
-    params.push((req.user.empresa || '').toUpperCase())
+    params.push(empresaVisibleWabot(req.user))
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
   }
   params.push(req.user.id)
@@ -139,7 +139,7 @@ async function findOwnedConversation(req, id) {
   if (isAdmin(req)) return conv
   if (isAdminOnlyNumber(conv.wa_number) || isAdminOnlyNumber(conv.contact_real_phone)) return null
   if (isSupervisor(req)) {
-    return (conv.line_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? conv : null
+    return (conv.line_empresa || '').toUpperCase() === empresaVisibleWabot(req.user) ? conv : null
   }
   // Asesor: solo lo suyo (o líneas huérfanas)
   if (conv.line_created_by === req.user.id || conv.line_created_by === null) return conv
@@ -556,7 +556,7 @@ async function startFromBitrix(req, res) {
       return res.status(400).json({ success: false, error: 'Debes indicar un número o un ID de negociación' })
     }
 
-    const empresa = (req.user.empresa || '').toUpperCase()
+    const empresa = empresaVisibleWabot(req.user)
 
     // 1) Determinar el número: directo o desde Bitrix
     let waNumber = ''

@@ -1,11 +1,11 @@
 const { query } = require('../config/db')
+const { esMandoWabot, empresaVisibleWabot } = require('../shared/waAccesoEmpresa')
 
 // Helpers de perfil
 // Perfiles "gerenciales" ven todas las líneas/chats de SU empresa (no de otras).
 // Solo ADMINISTRADOR ve todo, sin restricción de empresa.
-const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
-const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
+const isSupervisor = (req) => esMandoWabot(req.user)
 
 // SEGURIDAD: proxy_config guarda usuario y contraseña del proveedor de proxies.
 // La API nunca debe devolver esa contraseña (cualquiera con acceso al inbox
@@ -42,7 +42,7 @@ async function findOwnedLine(req, id) {
   const line = result.rows[0]
   if (isAdmin(req)) return line
   if (isSupervisor(req)) {
-    return (line.owner_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? line : null
+    return (line.owner_empresa || '').toUpperCase() === empresaVisibleWabot(req.user) ? line : null
   }
   if (line.created_by === null || line.created_by === req.user.id) return line
   return null
@@ -56,7 +56,7 @@ async function getAll(req, res) {
     // conserva para no perder el historial de chats asociado.
     const conds = ['l.deleted_at IS NULL']
     if (isSupervisor(req)) {
-      params.push((req.user.empresa || '').toUpperCase())
+      params.push(empresaVisibleWabot(req.user))
       conds.push(`l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`)
     } else if (!isAdmin(req)) {
       params.push(req.user.id)
@@ -474,7 +474,7 @@ async function dashboard(req, res) {
 
     if (!isAdmin(req)) {
       if (isSupervisor(req)) {
-        params.push((req.user.empresa || '').toUpperCase())
+        params.push(empresaVisibleWabot(req.user))
         conds.push(`UPPER(COALESCE(u.empresa, '')) = $${params.length}`)
       } else {
         params.push(req.user.id)

@@ -27,6 +27,7 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
   'ATC',
+  'ANALISTA',
 ]);
 
 const soloBackoffice = (req, res, next) => {

@@ -19,6 +19,12 @@ test('administrador puede acceder a los repartos de NOVONET y VELSA', () => {
   assert.equal(puedeAccederGestionables({ perfil: 'ADMINISTRADOR', empresa: 'NOVONET' }, 'OTRA'), false);
 });
 
+test('analista accede únicamente al reparto NOVONET', () => {
+  assert.equal(puedeAccederGestionables({ perfil: 'ANALISTA', empresa: 'NOVONET' }, 'NOVONET'), true);
+  assert.equal(puedeAccederGestionables({ perfil: 'ANALISTA', empresa: 'VELSA' }, 'NOVONET'), true);
+  assert.equal(puedeAccederGestionables({ perfil: 'ANALISTA', empresa: 'NOVONET' }, 'VELSA'), false);
+});
+
 test('normaliza perfiles gerenciales y supervisores históricos', () => {
   for (const perfil of ['GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'SUPERVISORA', 'SUPERVISOR COMERCIAL']) {
     assert.equal(puedeAccederGestionables({ perfil, empresa: 'NOVONET' }, 'NOVONET'), true, perfil);
@@ -33,7 +39,7 @@ test('normaliza variantes controladas del nombre de empresa', () => {
 });
 
 test('rechaza perfiles inferiores y empresas no admitidas', () => {
-  for (const perfil of ['ASESOR', 'USUARIO', 'CONSULTOR', 'ATC', 'ANALISTA', 'COORDINADOR', 'TV', '']) {
+  for (const perfil of ['ASESOR', 'USUARIO', 'CONSULTOR', 'ATC', 'COORDINADOR', 'TV', '']) {
     assert.equal(puedeAccederGestionables({ perfil, empresa: 'NOVONET' }, 'NOVONET'), false);
   }
 });

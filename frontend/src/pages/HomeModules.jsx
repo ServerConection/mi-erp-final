@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
+import { rutaPermitidaAnalista } from '../utils/accesoAnalista';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -99,7 +100,8 @@ export default function HomeModules() {
       desc: "Registra tareas y acuerdos, define responsable y fecha de entrega, y sigue el cumplimiento por área.",
       requiereTareas: true },
     { title: "Archivos Compartidos", path: "/archivos-compartidos", icon: FileSpreadsheet, accent: "azul", cat: "equipo",
-      desc: "Planillas colaborativas tipo hoja de cálculo: comparte con quien elijas, edición en tiempo real y exporta a Excel." },
+      desc: "Planillas colaborativas tipo hoja de cálculo: comparte con quien elijas, edición en tiempo real y exporta a Excel.",
+      rolesPermitidos: ['ADMINISTRADOR'] },
     { title: "Evaluaciones", path: "/evaluaciones", icon: GraduationCap, accent: "verde", cat: "equipo",
       desc: "Capacitación y evaluación por módulo: preguntas de opción múltiple, calificación automática y certificado por correo." },
     { title: "Recursos Humanos", path: "/rrhh", icon: Users, accent: "morado", cat: "equipo",
@@ -165,6 +167,7 @@ export default function HomeModules() {
     }
 
     return modules.filter(mod => {
+      if (userRol === 'ANALISTA' && !rutaPermitidaAnalista(mod.path)) return false;
       if (mod.llamadas) return !!userRol && !['ASESOR', 'USUARIO'].includes(String(userRol).trim().toUpperCase()) && (!q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q));
       // Módulo de Tareas: el acceso lo decide el área/cargo en la BD, no el perfil.
       // Mientras se resuelve la consulta no se muestra, para evitar parpadeo.

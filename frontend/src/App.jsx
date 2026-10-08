@@ -197,7 +197,7 @@ export default function App() {
             {/* Reporte Gerencial: salud comercial de ambas empresas en una pantalla */}
             <Route path="reporte-gerencial"        element={<ReporteGerencial />} />
             <Route path="tareas"                   element={<Tareas />} />
-            <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
+            <Route path="archivos-compartidos"     element={<AdminOnlyRoute><ArchivosCompartidos /></AdminOnlyRoute>} />
             <Route path="chat"                     element={<ChatInterno />} />
             <Route path="evaluaciones"             element={<Evaluaciones />} />
             <Route path="forecast"                 element={<Forecast />} />
@@ -205,7 +205,7 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
+            <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC","ANALISTA"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
             <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />

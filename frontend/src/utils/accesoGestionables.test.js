@@ -16,3 +16,8 @@ test('supervisión y gerencia siguen aisladas por empresa', () => {
   assert.equal(tieneAccesoGestionables({ perfil: 'GERENCIA', empresa: 'VELSA' }, 'VELSA'), true);
   assert.equal(tieneAccesoGestionables({ perfil: 'GERENCIA', empresa: 'VELSA' }, 'NOVONET'), false);
 });
+
+test('analista ve NOVONET pero no VELSA', () => {
+  assert.equal(tieneAccesoGestionables({ perfil: 'ANALISTA', empresa: 'VELSA' }, 'NOVONET'), true);
+  assert.equal(tieneAccesoGestionables({ perfil: 'ANALISTA', empresa: 'NOVONET' }, 'VELSA'), false);
+});

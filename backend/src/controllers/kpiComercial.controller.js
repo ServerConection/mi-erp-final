@@ -106,6 +106,43 @@ function nombreAsesorDisplaySQL(campo) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ESTADOS DEL BACKOFFICE (2026-10-08) — columnas "STATUS DE CADA RAZÓN" del
+// Excel de gerencia. Cuenta los INGRESOS JOT del periodo por estado Netlife
+// (j_netlife_estatus_real). El texto se normaliza (sin tildes, espacios ni
+// símbolos) para que "FIN DE GESTIÓN" = "FIN DE GESTION" y
+// "VENTA PERDIDA/OTRO ASESOR" = "VENTA PERDIDA OTRO ASESOR".
+// Lo que no cae en ninguno va a est_otros (se calcula por resta en derivar).
+// El frontend (utils/exportarKpiExcel.js) usa las mismas claves est_*.
+const ESTADOS_BO = [
+  ['est_activo',          ['ACTIVO']],
+  ['est_asignado',        ['ASIGNADO']],
+  ['est_preservicio',     ['PRESERVICIO']],
+  ['est_preplanificado',  ['PREPLANIFICADO', 'PREPLANIIFICADO']],
+  ['est_fin_gestion',     ['FINDEGESTION']],
+  ['est_desiste',         ['DESISTEDELSERVICIO']],
+  ['est_factible',        ['FACTIBLE']],
+  ['est_detenido',        ['DETENIDO']],
+  ['est_anulado',         ['ANULADO', 'ANULADA']],
+  ['est_duplicado',       ['DUPLICADO']],
+  ['est_en_verificacion', ['ENVERIFICACION']],
+  ['est_venta_perdida',   ['VENTAPERDIDAOTROASESOR']],
+  ['est_rechazado',       ['RECHAZADO']],
+  ['est_replanificado',   ['REPLANIFICADO']],
+  ['est_sin_estado',      ['SINESTADO', '']],
+  ['est_eliminado',       ['ELIMINADO']],
+  ['est_zona_peligrosa',  ['ZONAPELIGROSA']],
+  ['est_fiscalizacion',   ['FISCALIZACION']],
+  ['est_incorte',         ['INCORTE', 'ENCORTE']],
+];
+const ESTADO_NORM_SQL = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(mb.j_netlife_estatus_real::text, '')), 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNAEIOUUN'), '[^A-Z]', '', 'g')`;
+const SQL_ESTADOS_BO = ESTADOS_BO.map(([campo, valores]) => `
+        COUNT(*) FILTER (
+            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
+                  BETWEEN $1::date AND $2::date
+              AND ${ESTADO_NORM_SQL} IN (${valores.map(v => `'${v}'`).join(', ')})
+        )                                                  AS ${campo},`).join('');
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Consulta base: una fila por ASESOR con todos los reales + sus metas.
 // El nivel supervisor se obtiene agregando esta misma base.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +201,8 @@ WITH datos AS (
                   BETWEEN $1::date AND $2::date
               AND ${esIngresoJotformAcidoExpr('mb.j_netlife_estatus_real')}
         )                                                  AS ingresos_jot_acido,
+
+        -- Estados del backoffice (ver ESTADOS_BO)${SQL_ESTADOS_BO}
 
         -- ACTIVAS TOTALES: activo + activación dentro del rango
         COUNT(*) FILTER (
@@ -270,10 +309,13 @@ const derivar = (f) => {
   // Se calcula por resta y no con su propio FILTER: así los tres siempre
   // cuadran entre sí, en cualquier nivel (asesor, supervisor o total).
   const activasBacklog = Math.max(0, n(f.activas_totales) - n(f.activa_mes));
+  // Ingresos JOT cuyo estado no está en ESTADOS_BO
+  const estOtros = Math.max(0, n(f.ingresos_jot) - ESTADOS_BO.reduce((acc, [c]) => acc + n(f[c]), 0));
 
   return {
     ...f,
     activas_backlog: activasBacklog,
+    est_otros: estOtros,
     pct_gestion_vs_total: pct(f.leads_gestion, f.leads_total),
     pct_efect_vs_leads:   pct(f.ingresos_jot,  f.leads_total),
     pct_efect_vs_gestion: pct(f.ingresos_jot,  f.leads_gestion),
@@ -294,6 +336,7 @@ const CAMPOS_SUMA = [
   'activas_totales', 'activa_mes', 'activas_backlog', 'tercera_edad_n',
   'tarjeta_n', 'planes_150_200_n', 'por_regularizar',
   'meta_leads_total', 'meta_leads_gestion', 'meta_ingresos_jot', 'meta_activas_totales',
+  ...ESTADOS_BO.map(([c]) => c),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

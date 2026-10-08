@@ -21,8 +21,14 @@ export function empresaGestionables(valor) {
 
 export function tieneAccesoGestionables(usuario, empresaObjetivo) {
   const perfil = perfilGestionables(usuario?.perfil || usuario?.rol);
-  const empresa = empresaGestionables(usuario?.empresa);
   const objetivo = empresaGestionables(empresaObjetivo);
+
+  // El administrador corporativo puede operar ambos repartos, sin depender de
+  // la empresa guardada en su perfil. Los demás perfiles siguen limitados a su
+  // propia empresa.
+  if (perfil === 'ADMINISTRADOR') return objetivo !== null;
+
+  const empresa = empresaGestionables(usuario?.empresa);
 
   return perfil !== null && empresa !== null && empresa === objetivo;
 }

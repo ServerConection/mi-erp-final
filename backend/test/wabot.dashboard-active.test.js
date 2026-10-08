@@ -19,11 +19,34 @@ test('panel incluye usuarios activos sin líneas y alerta excesos de asesores', 
     await require(file).dashboard({ user: { perfil: 'ADMINISTRADOR' }, app: { get: () => null } }, {
       json: value => { body = value; }, status() { return this; },
     });
-    assert.match(sql, /UPPER\(TRIM\(u.activo\)\) = 'SI'/);
-    assert.match(sql, /FROM usuarios u[\s\S]*LEFT JOIN lines/);
+    assert.match(sql, /UPPER\(TRIM\(COALESCE\(u.activo, ''\)\)\) = 'SI'/);
+    assert.match(sql, /FROM usuarios u[\s\S]*FULL JOIN/);
     assert.equal(body.resumen.lineas, 2);
     assert.equal(body.data.find(e => e.empresa === 'VELSA').asesores[0].alerta, 'Sin líneas asignadas');
     assert.equal(body.data.find(e => e.empresa === 'NOVONET').asesores[0].alerta, 'Asesor con más de 1 línea');
     assert.equal(body.resumen.conectadas, 0);
+  } finally { delete require.cache[file]; if (previous) require.cache[db] = previous; else delete require.cache[db]; }
+});
+
+test('panel cuenta líneas activas aunque el propietario esté inactivo o no exista', async () => {
+  const db = require.resolve('../src/config/db');
+  const file = require.resolve('../src/controllers/wa_lines.controller');
+  const previous = require.cache[db];
+  require.cache[db] = { id: db, filename: db, loaded: true, exports: { query: async () => ({ rows: [
+    { id: 'inactiva', usuario: 'usuario-inactivo', empresa: 'NOVONET', perfil: 'ASESOR', activo: 'NO', status: 'connected' },
+    { id: 'huerfana', usuario: 'SIN ASIGNAR', empresa: 'SIN EMPRESA', perfil: null, status: 'connected' },
+  ] }) } };
+  delete require.cache[file];
+  try {
+    let body;
+    const bm = {
+      instances: { inactiva: { status: 'connected' }, huerfana: { status: 'connected' } },
+      getStatus: id => id === 'inactiva' || id === 'huerfana' ? 'connected' : 'disconnected',
+    };
+    await require(file).dashboard({ user: { perfil: 'ADMINISTRADOR' }, app: { get: () => bm } }, {
+      json: value => { body = value; }, status() { return this; },
+    });
+    assert.equal(body.resumen.lineas, 2);
+    assert.equal(body.resumen.conectadas, 2);
   } finally { delete require.cache[file]; if (previous) require.cache[db] = previous; else delete require.cache[db]; }
 });

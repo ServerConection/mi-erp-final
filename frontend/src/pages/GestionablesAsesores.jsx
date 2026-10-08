@@ -27,7 +27,7 @@ export default function GestionablesAsesores({ empresa = 'novonet' }) {
   const [busqueda, setBusqueda] = useState(''), [estado, setEstado] = useState('todos');
   const [contenido, setContenido] = useState(''), [archivo, setArchivo] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [mensaje, setMensaje] = useState(''), [aviso, setAviso] = useState('');
-  const permitido = puedeAccederGestionables();
+  const permitido = puedeAccederGestionables(nombreEmpresa);
   const cambios = rows.filter(r => r.original !== r.gestionables_permitidos || r.original_atc !== r.porcentaje_atc_max);
   const buscados = rows.filter(r => normalizar(r.nombre_bitrix_asesor).includes(normalizar(busqueda)));
   const visibles = buscados.filter(filtrosEstado.find(f => f.key === estado).coincide)

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
-import { rutaPermitidaAnalista } from '../utils/accesoAnalista';
+import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -322,20 +322,10 @@ const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
-const RUTAS_INDICADORES = new Set([
-  '/indicadores',
-  '/reporte-detalle-novonet',
-  '/comparativa-supervisores',
-  '/indicadores-velsa',
-  '/indicadores-semillero',
-  '/reporte-detalle-velsa',
-]);
-
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
   if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
   if (perfil === 'ANALISTA') return rutaPermitidaAnalista(ruta);
-  if (RUTAS_INDICADORES.has(ruta)) return true;
-  return perfil === 'ATC' && ruta === '/vista-backoffice';
+  return perfil === 'ATC' && rutaPermitidaAtc(ruta);
 };
 
 // Lista de IDs de grupos colapsables — se usa para inicializar openGroups
@@ -629,6 +619,7 @@ export default function DashboardLayout() {
     const perfil = (user?.perfil || '').trim().toUpperCase();
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
       if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);
+      if (perfil === 'ATC') return !!item.path && rutaPermitidaAtc(item.path);
       // Para estos perfiles la lista es cerrada y no depende de permisos
       // individuales: deben ver todas las opciones del grupo Indicadores.
       if (item.isChild && item.group === 'indicadores') return true;

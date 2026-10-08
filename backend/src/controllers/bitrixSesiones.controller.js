@@ -34,6 +34,8 @@
  */
 
 const XLSX = require('xlsx');
+const db = require('../config/db');
+const { empresaVisible, puedeCerrarJornada } = require('../shared/bitrixSesionesAcceso');
 
 const BITRIX_APIS = {
   NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
@@ -45,6 +47,40 @@ const BATCH_MAX = 50;              // límite duro de Bitrix por llamada batch
 const CACHE_TTL = 60 * 1000;       // el tablero refresca cada 60 s
 
 const _cache = { data: null, expira: 0 };
+
+const normalizar = (v) => String(v || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .trim().replace(/\s+/g, ' ').toUpperCase();
+
+async function mapaEmpresasUsuarios() {
+  const [catalogos, erp] = await Promise.all([
+    db.query(`
+      SELECT id::text, 'VELSA'::text AS empresa FROM public.bitrix_usuarios WHERE activo = true
+      UNION ALL
+      SELECT id::text, 'NOVONET'::text AS empresa FROM public.bitrix_usuarios_novonet WHERE activo = true
+    `),
+    db.query(`
+      SELECT empresa, usuario, nombres, apellidos
+      FROM public.usuarios
+      WHERE activo = 'SI' AND UPPER(COALESCE(empresa, '')) IN ('NOVONET', 'VELSA', 'SEMILLERO')
+    `),
+  ]);
+
+  const porId = new Map();
+  // VELSA prevalece: el catálogo NOVONET viene de la licencia madre y también
+  // contiene a las personas VELSA.
+  for (const r of catalogos.rows.filter(r => r.empresa === 'NOVONET')) porId.set(r.id, r.empresa);
+  for (const r of catalogos.rows.filter(r => r.empresa === 'VELSA')) porId.set(r.id, r.empresa);
+
+  const porIdentidad = new Map();
+  for (const r of erp.rows) {
+    const nombre = normalizar(`${r.nombres || ''} ${r.apellidos || ''}`);
+    const usuario = normalizar(r.usuario);
+    if (nombre) porIdentidad.set(nombre, String(r.empresa).toUpperCase());
+    if (usuario) porIdentidad.set(usuario, String(r.empresa).toUpperCase());
+  }
+  return { porId, porIdentidad };
+}
 
 // ── Utilidades de llamada ────────────────────────────────────────────────────
 
@@ -125,7 +161,7 @@ function resolverDispositivo(movil, escritorio) {
 
 // ── Recolección por cuenta ───────────────────────────────────────────────────
 
-async function traerCuenta(baseUrl, cuenta) {
+async function traerCuenta(baseUrl, cuenta, mapaEmpresas) {
   if (!baseUrl) return { cuenta, usuarios: [], timemanDisponible: false, error: 'Sin URL configurada' };
 
   // 1 · Usuarios activos (paginado)
@@ -175,10 +211,17 @@ async function traerCuenta(baseUrl, cuenta) {
     // devuelven los dos y el tablero muestra el que corresponda.
     const segDesdeInicio = inicio ? Math.floor((Date.now() - new Date(inicio).getTime()) / 1000) : null;
 
+    const nombre = [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `ID-${id}`;
+    const empresaClasificada = mapaEmpresas.porIdentidad.get(normalizar(nombre))
+      || mapaEmpresas.porIdentidad.get(normalizar(u.EMAIL))
+      || mapaEmpresas.porId.get(id)
+      || (cuenta === 'VELSA' ? 'VELSA' : 'NOVONET');
+
     return {
       id,
-      nombre:       [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || `ID-${id}`,
-      cuenta,
+      nombre,
+      cuenta:       empresaClasificada,
+      portalCuenta: cuenta,
       cargo:        u.WORK_POSITION || null,
       email:        u.EMAIL || null,
       online:       u.IS_ONLINE === 'Y' || imu.status === 'online',
@@ -193,6 +236,7 @@ async function traerCuenta(baseUrl, cuenta) {
       jornada:        estadoJornada,                       // OPENED | PAUSED | CLOSED | EXPIRED | null
       jornadaInicio:  inicio,
       jornadaFin:     fecha(st?.TIME_FINISH),
+      jornadaFinSugerida: fecha(st?.TIME_FINISH_DEFAULT),
       duracionSeg:    duracionASegundos(st?.DURATION),     // descuenta pausas
       conectadoSeg:   estadoJornada === 'OPENED' || estadoJornada === 'PAUSED' ? segDesdeInicio : null,
       pausasSeg:      duracionASegundos(st?.TIME_LEAKS),
@@ -210,12 +254,20 @@ async function recolectar({ forzar = false } = {}) {
   // forzar = true lo usa el botón "Forzar actualización" del Reparto de Gestionables
   if (!forzar && _cache.data && Date.now() < _cache.expira) return _cache.data;
 
+  const mapaEmpresas = await mapaEmpresasUsuarios();
   const [nov, vel] = await Promise.all([
-    traerCuenta(BITRIX_APIS.NOVONET, 'NOVONET').catch(e => ({ cuenta: 'NOVONET', usuarios: [], timemanDisponible: false, error: e.message })),
-    traerCuenta(BITRIX_APIS.VELSA,   'VELSA'  ).catch(e => ({ cuenta: 'VELSA',   usuarios: [], timemanDisponible: false, error: e.message })),
+    traerCuenta(BITRIX_APIS.NOVONET, 'NOVONET', mapaEmpresas).catch(e => ({ cuenta: 'NOVONET', usuarios: [], timemanDisponible: false, error: e.message })),
+    traerCuenta(BITRIX_APIS.VELSA,   'VELSA', mapaEmpresas).catch(e => ({ cuenta: 'VELSA',   usuarios: [], timemanDisponible: false, error: e.message })),
   ]);
 
-  const usuarios = [...nov.usuarios, ...vel.usuarios];
+  // La licencia NOVONET es corporativa y puede devolver también personas de
+  // VELSA. Si el portal VELSA las devuelve otra vez, se conserva una sola fila.
+  const unicos = new Map();
+  for (const u of [...nov.usuarios, ...vel.usuarios]) {
+    const clave = `${u.cuenta}:${u.id}`;
+    if (!unicos.has(clave)) unicos.set(clave, u);
+  }
+  const usuarios = [...unicos.values()];
   const data = {
     usuarios,
     timemanDisponible: nov.timemanDisponible || vel.timemanDisponible,
@@ -300,11 +352,17 @@ function construirOpciones(usuarios) {
   };
 }
 
+const universoPara = (base, usuario) => {
+  const empresa = empresaVisible(usuario);
+  return empresa ? base.usuarios.filter(u => u.cuenta === empresa) : [];
+};
+
 // ── GET /api/bitrix-sesiones/live ────────────────────────────────────────────
 const getLive = async (req, res) => {
   try {
     const base = await recolectar();
-    const filtrados = aplicarFiltros(base.usuarios, req.query);
+    const universo = universoPara(base, req.user);
+    const filtrados = aplicarFiltros(universo, { ...req.query, cuenta: empresaVisible(req.user) });
 
     const conJornada = filtrados.filter(u => u.conectadoSeg != null);
     const promedio = conJornada.length
@@ -315,13 +373,14 @@ const getLive = async (req, res) => {
       success: true,
       generado: base.generado,
       timemanDisponible: base.timemanDisponible,
-      fuentes: base.fuentes,
+      empresa: empresaVisible(req.user),
+      puedeCerrarJornada: puedeCerrarJornada(req.user),
       // Las opciones salen del universo COMPLETO, no del filtrado: si vinieran
       // del filtrado, al elegir un valor desaparecerían los demás y el usuario
       // quedaría atrapado sin poder cambiar de filtro.
-      opciones: construirOpciones(base.usuarios),
+      opciones: construirOpciones(universo),
       resumen: {
-        totalUsuarios:  base.usuarios.length,
+        totalUsuarios:  universo.length,
         mostrados:      filtrados.length,
         jornadaAbierta: filtrados.filter(ESTADOS.activos).length,
         enPausa:        filtrados.filter(ESTADOS.pausa).length,
@@ -345,7 +404,8 @@ const getLive = async (req, res) => {
 const exportar = async (req, res) => {
   try {
     const base = await recolectar();
-    const filas = aplicarFiltros(base.usuarios, req.query);
+    const universo = universoPara(base, req.user);
+    const filas = aplicarFiltros(universo, { ...req.query, cuenta: empresaVisible(req.user) });
 
     const hhmmss = (s) => {
       if (s == null) return '';
@@ -399,8 +459,10 @@ const exportar = async (req, res) => {
 // Dice, sin rodeos, qué métodos responden en cada cuenta. Sirve para saber si
 // "Registro de jornada laboral" está activo antes de culpar al módulo.
 const diagnostico = async (req, res) => {
+  const empresa = empresaVisible(req.user);
   const salida = {};
   for (const [cuenta, url] of Object.entries(BITRIX_APIS)) {
+    if (cuenta !== empresa && !(empresa === 'VELSA' && cuenta === 'NOVONET')) continue;
     if (!url) { salida[cuenta] = { configurada: false }; continue; }
     const probar = async (m, p) => {
       try { const r = await bitrixCall(url, m, p); return { ok: true, muestra: Array.isArray(r) ? r.length : typeof r }; }
@@ -419,4 +481,85 @@ const diagnostico = async (req, res) => {
   res.json({ success: true, cuentas: salida });
 };
 
-module.exports = { getLive, exportar, diagnostico, recolectar, BITRIX_APIS };
+let auditoriaLista = false;
+async function asegurarAuditoria() {
+  if (auditoriaLista) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS public.bitrix_sesiones_auditoria (
+      id BIGSERIAL PRIMARY KEY,
+      actor_usuario_id INTEGER NOT NULL,
+      actor_usuario VARCHAR(200), actor_perfil VARCHAR(50) NOT NULL, actor_empresa VARCHAR(50) NOT NULL,
+      objetivo_bitrix_id VARCHAR(50) NOT NULL, objetivo_nombre VARCHAR(250), objetivo_empresa VARCHAR(50) NOT NULL,
+      accion VARCHAR(50) NOT NULL, resultado VARCHAR(20) NOT NULL, detalle TEXT, ip VARCHAR(100),
+      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  auditoriaLista = true;
+}
+
+async function auditarCierre(req, objetivo, resultado, detalle) {
+  await asegurarAuditoria();
+  await db.query(
+    `INSERT INTO public.bitrix_sesiones_auditoria
+       (actor_usuario_id, actor_usuario, actor_perfil, actor_empresa,
+        objetivo_bitrix_id, objetivo_nombre, objetivo_empresa, accion, resultado, detalle, ip)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'CERRAR_JORNADA',$8,$9,$10)`,
+    [req.user.id, req.user.nombreCompleto || req.user.usuario || null, req.user.perfil, req.user.empresa,
+      objetivo?.id || req.params.usuarioId, objetivo?.nombre || null, req.params.cuenta, resultado,
+      String(detalle || '').slice(0, 2000), req.ip || null]
+  );
+}
+
+// POST /api/bitrix-sesiones/:cuenta/:usuarioId/cerrar-jornada
+// timeman.close finaliza la jornada; Bitrix no expone por REST una revocación
+// general de todas las sesiones web del empleado.
+const cerrarJornada = async (req, res) => {
+  const empresa = empresaVisible(req.user);
+  const cuenta = String(req.params.cuenta || '').toUpperCase();
+  const usuarioId = String(req.params.usuarioId || '').trim();
+  if (!puedeCerrarJornada(req.user) || cuenta !== empresa) {
+    await auditarCierre(req, null, 'RECHAZADO', 'Intento de cerrar una jornada fuera de su empresa').catch(() => {});
+    return res.status(403).json({ success: false, error: 'No puede cerrar jornadas de otra empresa' });
+  }
+  if (!/^\d+$/.test(usuarioId)) return res.status(400).json({ success: false, error: 'Usuario Bitrix inválido' });
+
+  let objetivo = null;
+  try {
+    const base = await recolectar({ forzar: true });
+    objetivo = universoPara(base, req.user).find(u => u.cuenta === cuenta && u.id === usuarioId);
+    if (!objetivo) {
+      await auditarCierre(req, null, 'RECHAZADO', 'Usuario no encontrado en la empresa autorizada');
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado en su empresa' });
+    }
+    if (!['OPENED', 'PAUSED', 'EXPIRED'].includes(objetivo.jornada)) {
+      await auditarCierre(req, objetivo, 'RECHAZADO', `La jornada estaba en estado ${objetivo.jornada || 'SIN_REGISTRO'}`);
+      return res.status(409).json({ success: false, error: 'La jornada ya no está abierta' });
+    }
+
+    const url = BITRIX_APIS[objetivo.portalCuenta];
+    if (!url) throw new Error('La cuenta Bitrix del usuario no está configurada');
+    const params = { USER_ID: usuarioId };
+    // Una jornada expirada comenzó otro día. Bitrix entrega el cierre sugerido
+    // para esa fecha; al enviar TIME también exige REPORT.
+    if (objetivo.jornada === 'EXPIRED' && objetivo.jornadaFinSugerida) {
+      params.TIME = objetivo.jornadaFinSugerida;
+      params.REPORT = 'Cierre remoto desde ERP: jornada olvidada por el usuario';
+    }
+    const resultado = await bitrixCall(url, 'timeman.close', params);
+    _cache.data = null;
+    _cache.expira = 0;
+    await auditarCierre(req, objetivo, 'EXITO', `Estado devuelto por Bitrix: ${resultado?.STATUS || 'CLOSED'}`);
+    res.json({
+      success: true,
+      message: `Jornada de ${objetivo.nombre} cerrada en Bitrix`,
+      jornada: resultado?.STATUS || 'CLOSED',
+      nota: 'Se cerró la jornada laboral. La API de Bitrix no revoca todas las sesiones web del usuario.',
+    });
+  } catch (err) {
+    console.error('[bitrix-sesiones cerrar-jornada]', err.message);
+    await auditarCierre(req, objetivo, 'ERROR', err.message).catch(e => console.error('[bitrix-sesiones auditoría]', e.message));
+    res.status(502).json({ success: false, error: `Bitrix no pudo cerrar la jornada: ${err.message}` });
+  }
+};
+
+module.exports = { getLive, exportar, diagnostico, cerrarJornada, recolectar, BITRIX_APIS };

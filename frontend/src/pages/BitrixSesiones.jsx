@@ -45,6 +45,7 @@ const I = {
   pause:    <Ico d={<><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></>}/>,
   play:     <Ico d={<><circle cx="12" cy="12" r="9"/><path d="M10.5 9 15 12l-4.5 3z"/></>}/>,
   alert:    <Ico d={<><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 17a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></>}/>,
+  power:    <Ico d={<><path d="M12 2v10"/><path d="M6.4 5.6a8 8 0 1 0 11.2 0"/></>}/>,
 };
 
 const DISPO = {
@@ -120,6 +121,7 @@ export default function BitrixSesiones() {
   const [error, setError]     = useState(null);
   const [countdown, setCd]    = useState(REFRESH_SECS);
   const [bajando, setBajando] = useState(false);
+  const [cerrando, setCerrando] = useState(null);
   const abortRef = useRef(null);
 
   // El buscador espera 350 ms: no dispara una petición por tecla.
@@ -191,6 +193,28 @@ export default function BitrixSesiones() {
     finally { setBajando(false); }
   };
 
+  const cerrarJornada = async (u) => {
+    const ok = window.confirm(
+      `¿Cerrar la jornada laboral de ${u.nombre}?\n\n` +
+      "Bitrix registrará el cierre de jornada. Esto no cambia la contraseña ni garantiza expulsar todas sus pestañas abiertas."
+    );
+    if (!ok) return;
+    setCerrando(`${u.cuenta}-${u.id}`);
+    try {
+      const r = await fetch(`${API}/api/bitrix-sesiones/${u.cuenta}/${u.id}/cerrar-jornada`, {
+        method: "POST",
+        headers: { ...authH(), "Content-Type": "application/json" },
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      await cargar(true);
+    } catch (e) {
+      setError(e.message || "No se pudo cerrar la jornada en Bitrix.");
+    } finally {
+      setCerrando(null);
+    }
+  };
+
   const k  = res?.resumen || {};
   const op = res?.opciones || {};
   const filas = res?.data || [];
@@ -209,7 +233,7 @@ export default function BitrixSesiones() {
             </span>
           </div>
           <p className="ui-meta mt-1">
-            Novonet y Velsa
+            {res?.empresa || "Tu empresa"}
             {res?.generado && ` · consultado ${new Date(res.generado).toLocaleTimeString("es-EC", { timeStyle: "short" })}`}
             {` · próximo refresco en ${countdown}s`}
           </p>
@@ -270,8 +294,6 @@ export default function BitrixSesiones() {
             </span>
           </label>
 
-          <Selector label="Cuenta" valor={f.cuenta} onChange={set("cuenta")} opciones={op.cuentas}
-                    todosValor="TODOS" todosLabel="Novonet y Velsa"/>
           <Selector label="Estado" valor={f.estado} onChange={set("estado")} opciones={op.estados}
                     todosLabel="Cualquier estado"/>
           <Selector label="Dispositivo" valor={f.dispositivo} onChange={set("dispositivo")}
@@ -340,6 +362,7 @@ export default function BitrixSesiones() {
                 <th>Dispositivo</th>
                 <th>IP</th>
                 <th>Última actividad</th>
+                {res?.puedeCerrarJornada && <th>Acción</th>}
               </tr>
             </thead>
             <tbody>
@@ -378,12 +401,27 @@ export default function BitrixSesiones() {
                       )}
                     </td>
                     <td className="whitespace-nowrap">{fh(u.ultimaActividad)}</td>
+                    {res?.puedeCerrarJornada && (
+                      <td>
+                        {['OPENED', 'PAUSED', 'EXPIRED'].includes(u.jornada) ? (
+                          <button
+                            onClick={() => cerrarJornada(u)}
+                            disabled={cerrando === `${u.cuenta}-${u.id}`}
+                            className="ui-btn ui-t whitespace-nowrap"
+                            style={{ color: "var(--ui-bad)" }}
+                            title="Cierra la jornada laboral mediante timeman.close"
+                          >
+                            {I.power} {cerrando === `${u.cuenta}-${u.id}` ? "Cerrando…" : "Cerrar jornada"}
+                          </button>
+                        ) : <span className="ui-meta">—</span>}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
 
               {!filas.length && !loading && (
-                <tr><td colSpan={7} style={{ padding: "56px 16px", textAlign: "center" }}>
+                <tr><td colSpan={res?.puedeCerrarJornada ? 8 : 7} style={{ padding: "56px 16px", textAlign: "center" }}>
                   <div className="ui-body">Ningún usuario coincide con estos filtros.</div>
                   {fichas.length > 0 && (
                     <button onClick={limpiar} className="ui-btn ui-t mt-3">
@@ -393,7 +431,7 @@ export default function BitrixSesiones() {
                 </td></tr>
               )}
               {loading && !filas.length && (
-                <tr><td colSpan={7} style={{ padding: "56px 16px", textAlign: "center" }} className="ui-body">
+                <tr><td colSpan={res?.puedeCerrarJornada ? 8 : 7} style={{ padding: "56px 16px", textAlign: "center" }} className="ui-body">
                   Consultando Bitrix24…
                 </td></tr>
               )}
@@ -407,6 +445,7 @@ export default function BitrixSesiones() {
         <b style={{ fontWeight: 550 }}> im.user.list.get</b> (móvil o escritorio) y
         <b style={{ fontWeight: 550 }}> timeman.status</b> (jornada, tiempo conectado, IP y ubicación).
         El tiempo conectado cuenta desde la apertura de jornada; el neto sin pausas va en el Excel.
+        “Cerrar jornada” usa <b style={{ fontWeight: 550 }}>timeman.close</b>; no revoca la sesión web ni la contraseña.
       </p>
     </div>
   );

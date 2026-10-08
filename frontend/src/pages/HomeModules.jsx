@@ -193,9 +193,9 @@ export default function HomeModules() {
   return (
     <div className="animate-fade-in-up pb-12">
       {/* Hero header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-9 mb-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f2147] via-[#13295a] to-[#0b1a38] px-8 py-9 mb-8 shadow-xl">
         <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-blue-500/20 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-10 w-72 h-72 rounded-full bg-orange-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-10 w-72 h-72 rounded-full bg-indigo-400/10 blur-3xl pointer-events-none" />
         <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-5">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-[12px] font-medium text-slate-200 mb-3">

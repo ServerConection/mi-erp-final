@@ -954,8 +954,8 @@ export default function DashboardLayout() {
             style={{
               height: 60,
               padding: "0 1.5rem",
-              background: "#f4f7fc",
-              borderBottom: "1px solid #dbe3f0",
+              background: "#e3ebf7",
+              borderBottom: "1px solid #c7d4ea",
             }}
           >
             <div className="flex items-center gap-3">

@@ -446,6 +446,9 @@ const ALL_MENU_ITEMS = [
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Presentación", path: "/whatsapp/presentacion", icon: "🪪", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // Llamadas WhatsApp (calls-service). Quién puede llamar se habilita dentro del módulo (Configuración → Asesores)
+  { name: "Llamadas WA",  path: "/whatsapp/llamadas",  icon: "📞", isChild: true, group: "wabot",
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR', 'ASESOR'].includes((p || '').toUpperCase()) },
   // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
   { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },

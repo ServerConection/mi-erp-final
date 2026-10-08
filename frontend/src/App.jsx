@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
+import { puedeAccederGestionables } from './utils/accesoGestionables';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -118,6 +119,11 @@ const RolesAllowedRoute = ({ children, allowed = [] }) => {
   return children;
 };
 
+const GestionablesRoute = ({ children, empresa }) => {
+  if (!puedeAccederGestionables(empresa)) return <Navigate to="/" replace />;
+  return children;
+};
+
 // Botones flotantes (soporte WhatsApp, chat interno, tareas): se ocultan en
 // las rutas /embed/* -- son el iframe "WABOT Inbox" dentro de Bitrix, y ahí
 // no pintan botones internos del ERP encima del chat del cliente.
@@ -178,8 +184,8 @@ export default function App() {
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />
-            <Route path="gestionables-asesores" element={<GestionablesAsesores key="novonet" />} />
-            <Route path="gestionables-velsa" element={<GestionablesAsesores key="velsa" empresa="velsa" />} />
+            <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
+            <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />

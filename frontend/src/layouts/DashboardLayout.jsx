@@ -407,9 +407,9 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
-    accessCheck: () => puedeAccederGestionables() },
+    accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
-    accessCheck: () => puedeAccederGestionables() },
+    accessCheck: () => puedeAccederGestionables('VELSA') },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },

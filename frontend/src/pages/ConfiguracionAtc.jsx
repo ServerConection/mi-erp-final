@@ -2,6 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa/atc-config`;
 
+function localDateValue(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map(({ type, value: part }) => [type, part]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function initialDateRange() {
+  const today = localDateValue();
+  return { from: `${today.slice(0, 8)}01`, to: today };
+}
+
 const headers = (json = false) => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
   ...(json ? { "Content-Type": "application/json" } : {}),
@@ -56,16 +69,21 @@ export default function ConfiguracionAtc() {
   const [lineId, setLineId] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
+  const [dateRange, setDateRange] = useState(initialDateRange);
+  const [appliedDates, setAppliedDates] = useState(initialDateRange);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState(null);
   const [editor, setEditor] = useState(null);
 
-  const load = useCallback(async (nextPage = page, status = filterStatus) => {
+  const load = useCallback(async (nextPage = page, status = filterStatus, dates = appliedDates) => {
     setLoading(true);
     try {
-      const payload = await request(`?page=${nextPage}&limit=30&status=${encodeURIComponent(status)}`, { headers: headers() });
+      const query = new URLSearchParams({ page: String(nextPage), limit: "30", status });
+      if (dates.from) query.set("date_from", dates.from);
+      if (dates.to) query.set("date_to", dates.to);
+      const payload = await request(`?${query.toString()}`, { headers: headers() });
       setData(payload.data);
       setLineId(payload.data.config?.line_id || "");
       setEnabled(Boolean(payload.data.config?.enabled));
@@ -74,9 +92,30 @@ export default function ConfiguracionAtc() {
     } finally {
       setLoading(false);
     }
-  }, [page, filterStatus]);
+  }, [page, filterStatus, appliedDates]);
 
-  useEffect(() => { load(page, filterStatus); }, [load, page, filterStatus]);
+  useEffect(() => { load(page, filterStatus, appliedDates); }, [load, page, filterStatus, appliedDates]);
+
+  function applyDateRange() {
+    if (dateRange.from && dateRange.to && dateRange.from > dateRange.to) {
+      setNotice({ type: "error", text: "La fecha inicial no puede ser posterior a la fecha final." });
+      return;
+    }
+    setPage(1);
+    setAppliedDates({ ...dateRange });
+  }
+
+  function useDatePreset(preset) {
+    const today = localDateValue();
+    const dates = preset === "today"
+      ? { from: today, to: today }
+      : preset === "month"
+        ? { from: `${today.slice(0, 8)}01`, to: today }
+        : { from: "", to: "" };
+    setDateRange(dates);
+    setPage(1);
+    setAppliedDates(dates);
+  }
 
   const selectedLine = useMemo(
     () => data.lines.find((line) => line.id === lineId),
@@ -188,7 +227,7 @@ export default function ConfiguracionAtc() {
   return (
     <main className="atc-page">
       <style>{`
-        .atc-page{max-width:1500px;margin:0 auto;padding:28px;color:#0f172a}.atc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:20px}.atc-head h1{font-size:25px;margin:0;font-weight:900}.atc-head p{margin:6px 0 0;color:#64748b;font-size:13px}.atc-grid{display:grid;grid-template-columns:minmax(320px,.8fr) minmax(480px,1.2fr);gap:18px}.atc-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 6px 22px #0f172a0a;overflow:hidden}.atc-card-head{padding:18px 20px;border-bottom:1px solid #eef2f7}.atc-card-head h2{font-size:16px;margin:0;font-weight:900}.atc-card-head p{font-size:11px;color:#64748b;margin:4px 0 0}.atc-body{padding:20px}.atc-label{display:grid;gap:6px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase}.atc-select,.atc-input,.atc-textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;background:#fff;padding:11px 12px;color:#0f172a;outline:none}.atc-textarea{min-height:190px;resize:vertical;line-height:1.5}.atc-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:9px;padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}.atc-btn:disabled{opacity:.5;cursor:not-allowed}.atc-primary{background:#0f766e;border-color:#0f766e;color:#fff}.atc-danger{color:#b91c1c;border-color:#fecaca;background:#fff7f7}.atc-switch{display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #e2e8f0;border-radius:12px;margin-top:16px}.atc-switch input{width:42px;height:22px;accent-color:#0f766e}.atc-line-state{margin-top:10px;padding:10px 12px;background:#f8fafc;border-radius:9px;font-size:11px;color:#475569}.atc-variants{display:grid;gap:10px}.atc-variant{border:1px solid #e2e8f0;border-radius:12px;padding:14px}.atc-variant-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.atc-variant p{white-space:pre-wrap;margin:10px 0 0;color:#475569;font-size:11px;line-height:1.45;max-height:78px;overflow:hidden}.atc-actions{display:flex;gap:6px;flex-wrap:wrap}.atc-notice{padding:12px 14px;border-radius:10px;font-size:12px;font-weight:700;margin-bottom:16px}.atc-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:18px 0}.atc-stat{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:13px}.atc-stat b{display:block;font-size:20px}.atc-stat span{font-size:10px;color:#64748b;text-transform:uppercase;font-weight:800}.atc-history{margin-top:18px}.atc-table-wrap{overflow:auto}.atc-table{width:100%;border-collapse:collapse;min-width:980px}.atc-table th{background:#f8fafc;color:#64748b;text-transform:uppercase;font-size:9px;letter-spacing:.04em;text-align:left;padding:11px 12px}.atc-table td{padding:12px;border-top:1px solid #f1f5f9;font-size:11px;vertical-align:top}.atc-modal{position:fixed;inset:0;background:#0f172a80;display:grid;place-items:center;padding:20px;z-index:1000}.atc-modal-card{width:min(680px,100%);background:#fff;border-radius:16px;padding:22px;box-shadow:0 24px 70px #0004}.atc-modal-card h2{margin:0 0 18px}.atc-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}@media(max-width:1000px){.atc-grid{grid-template-columns:1fr}.atc-stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.atc-page{padding:14px}.atc-head{flex-direction:column}.atc-actions{margin-top:8px}}
+        .atc-page{max-width:1500px;margin:0 auto;padding:28px;color:#0f172a}.atc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:20px}.atc-head h1{font-size:25px;margin:0;font-weight:900}.atc-head p{margin:6px 0 0;color:#64748b;font-size:13px}.atc-grid{display:grid;grid-template-columns:minmax(320px,.8fr) minmax(480px,1.2fr);gap:18px}.atc-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 6px 22px #0f172a0a;overflow:hidden}.atc-card-head{padding:18px 20px;border-bottom:1px solid #eef2f7}.atc-card-head h2{font-size:16px;margin:0;font-weight:900}.atc-card-head p{font-size:11px;color:#64748b;margin:4px 0 0}.atc-body{padding:20px}.atc-label{display:grid;gap:6px;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase}.atc-select,.atc-input,.atc-textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;background:#fff;padding:11px 12px;color:#0f172a;outline:none}.atc-textarea{min-height:190px;resize:vertical;line-height:1.5}.atc-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:9px;padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}.atc-btn:disabled{opacity:.5;cursor:not-allowed}.atc-primary{background:#0f766e;border-color:#0f766e;color:#fff}.atc-danger{color:#b91c1c;border-color:#fecaca;background:#fff7f7}.atc-switch{display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #e2e8f0;border-radius:12px;margin-top:16px}.atc-switch input{width:42px;height:22px;accent-color:#0f766e}.atc-line-state{margin-top:10px;padding:10px 12px;background:#f8fafc;border-radius:9px;font-size:11px;color:#475569}.atc-variants{display:grid;gap:10px}.atc-variant{border:1px solid #e2e8f0;border-radius:12px;padding:14px}.atc-variant-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.atc-variant p{white-space:pre-wrap;margin:10px 0 0;color:#475569;font-size:11px;line-height:1.45;max-height:78px;overflow:hidden}.atc-actions{display:flex;gap:6px;flex-wrap:wrap}.atc-notice{padding:12px 14px;border-radius:10px;font-size:12px;font-weight:700;margin-bottom:16px}.atc-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:18px 0}.atc-stat{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:13px}.atc-stat b{display:block;font-size:20px}.atc-stat span{font-size:10px;color:#64748b;text-transform:uppercase;font-weight:800}.atc-history{margin-top:18px}.atc-filters{display:flex;align-items:end;justify-content:flex-end;gap:8px;flex-wrap:wrap}.atc-date{display:grid;gap:4px;font-size:9px;font-weight:900;color:#64748b;text-transform:uppercase}.atc-date input{border:1px solid #cbd5e1;border-radius:9px;padding:9px 10px;color:#0f172a;background:#fff}.atc-table-wrap{overflow:auto}.atc-table{width:100%;border-collapse:collapse;min-width:980px}.atc-table th{background:#f8fafc;color:#64748b;text-transform:uppercase;font-size:9px;letter-spacing:.04em;text-align:left;padding:11px 12px}.atc-table td{padding:12px;border-top:1px solid #f1f5f9;font-size:11px;vertical-align:top}.atc-modal{position:fixed;inset:0;background:#0f172a80;display:grid;place-items:center;padding:20px;z-index:1000}.atc-modal-card{width:min(680px,100%);background:#fff;border-radius:16px;padding:22px;box-shadow:0 24px 70px #0004}.atc-modal-card h2{margin:0 0 18px}.atc-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}@media(max-width:1000px){.atc-grid{grid-template-columns:1fr}.atc-stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.atc-page{padding:14px}.atc-head{flex-direction:column}.atc-actions{margin-top:8px}.atc-filters{justify-content:flex-start;width:100%}}
       `}</style>
 
       <header className="atc-head">
@@ -269,10 +308,18 @@ export default function ConfiguracionAtc() {
       <section className="atc-card atc-history">
         <div className="atc-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div><h2>Historial de notificaciones</h2><p>Auditoría de entradas a ATC, envíos y errores.</p></div>
-          <select className="atc-select" style={{ width: 190 }} value={filterStatus} onChange={(event) => { setPage(1); setFilterStatus(event.target.value); }}>
-            <option value="">Todos los estados</option>
-            {Object.entries(STATUS).map(([key, value]) => <option key={key} value={key}>{value[0]}</option>)}
-          </select>
+          <div className="atc-filters">
+            <button className="atc-btn" onClick={() => useDatePreset("today")}>Hoy</button>
+            <button className="atc-btn" onClick={() => useDatePreset("month")}>Este mes</button>
+            <button className="atc-btn" onClick={() => useDatePreset("all")}>Todo</button>
+            <label className="atc-date">Desde<input type="date" value={dateRange.from} max={dateRange.to || undefined} onChange={(event) => setDateRange((value) => ({ ...value, from: event.target.value }))} /></label>
+            <label className="atc-date">Hasta<input type="date" value={dateRange.to} min={dateRange.from || undefined} max={localDateValue()} onChange={(event) => setDateRange((value) => ({ ...value, to: event.target.value }))} /></label>
+            <button className="atc-btn atc-primary" onClick={applyDateRange}>Aplicar</button>
+            <select className="atc-select" style={{ width: 170 }} aria-label="Filtrar por estado" value={filterStatus} onChange={(event) => { setPage(1); setFilterStatus(event.target.value); }}>
+              <option value="">Todos los estados</option>
+              {Object.entries(STATUS).map(([key, value]) => <option key={key} value={key}>{value[0]}</option>)}
+            </select>
+          </div>
         </div>
         <div className="atc-table-wrap">
           <table className="atc-table">

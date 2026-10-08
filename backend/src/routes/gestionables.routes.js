@@ -4,6 +4,7 @@ const db = require('../config/db');
 const { verificarToken } = require('../middleware/auth');
 const { fechaValida, validarFilas, parseTxt } = require('../shared/gestionablesCarga');
 const { EMPRESAS, empresaValida } = require('../shared/repartoEmpresas');
+const { puedeAccederGestionables } = require('../shared/accesoGestionables');
 // ?empresa=velsa (o en el body) → tablas de Velsa. Sin empresa = NOVONET, como siempre.
 const empresaDe = (req) => {
   const e = req.query.empresa ?? req.body?.empresa;
@@ -21,7 +22,11 @@ const ETAPAS_NO_GESTIONABLES_LEADS = [
   'regularizacion', 'remarketing', 'fuera_de_cobertura', 'atc', // innegociable SÍ es gestionable (2026-10-05)
 ];
 router.use(verificarToken, (req, res, next) => {
-  if (!['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'].includes(req.user.perfil) && Number(req.user.id) !== 76) return res.status(403).json({ success: false, error: 'No tiene acceso a este módulo' });
+  const empresa = empresaDe(req);
+  if (!empresa) return res.status(400).json({ success: false, error: 'Empresa inválida' });
+  if (!puedeAccederGestionables(req.user, empresa.etiqueta)) {
+    return res.status(403).json({ success: false, error: 'No tiene acceso al reparto de esta empresa' });
+  }
   next();
 });
 router.get('/', async (req, res) => {

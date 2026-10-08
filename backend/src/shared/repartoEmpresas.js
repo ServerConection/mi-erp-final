@@ -17,7 +17,9 @@ const EMPRESAS = {
   novonet: {
     clave: 'novonet',
     etiqueta: 'NOVONET',
-    cuentaLive: 'NOVONET',                       // cuenta en Bitrix Live
+    portal: 'novonet',                           // portal Bitrix donde viven los deals
+    cuentasLive: ['NOVONET'],                    // cuenta(s) en Bitrix Live
+    estacion: 'BRYAN PINEDA',
     url: () => (env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
     tablas: {
       asesores: 'gestionables_asesores',
@@ -37,8 +39,11 @@ const EMPRESAS = {
   velsa: {
     clave: 'velsa',
     etiqueta: 'VELSA',
-    cuentaLive: 'VELSA',
-    url: () => (env.BITRIX_VELSA_URL || '').replace(/\/+$/, ''),
+    // El pipeline VELSA vive en el mismo portal de Novonet (novonet.bitrix24.es, categoría 51)
+    portal: 'novonet',
+    cuentasLive: ['NOVONET', 'VELSA'],           // jornada abierta en cualquiera de las dos
+    estacion: 'GERENCIAL COMERCIAL VELSA',
+    url: () => (env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
     tablas: {
       asesores: 'velsa_gestionables_asesores',
       asignaciones: 'velsa_gestionables_asignaciones',
@@ -49,8 +54,8 @@ const EMPRESAS = {
     },
     fieldName: env.VELSA_GESTIONABLES_FIELD_NAME || null,
     stageId: env.VELSA_GESTIONABLES_STAGE_ID || null,
-    categoryId: env.VELSA_GESTIONABLES_CATEGORY_ID || null,
-    pipeline: env.VELSA_GESTIONABLES_PIPELINE || null,
+    categoryId: env.VELSA_GESTIONABLES_CATEGORY_ID || '51',
+    pipeline: env.VELSA_GESTIONABLES_PIPELINE || 'VELSA',
     etapa: env.VELSA_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874301,
   },

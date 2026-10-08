@@ -16,23 +16,28 @@
  */
 const poolErp = require('../config/dbErp');
 const { normalizarNombre } = require('./repartoGestionables');
+const { getEmpresa } = require('./repartoEmpresas');
 
 const DEFAULT = {
   activo: true, solo_en_linea: true, actualizado_por: null, actualizado_en: null,
   // Horario laboral (hora Ecuador) y usuario "estación" donde esperan los leads
   hora_inicio: '08:00:00', hora_fin: '22:15:59', estacion_nombre: 'BRYAN PINEDA',
 };
-let cacheCfg = { data: null, ts: 0 };
+const cacheCfg = {};   // por empresa: { data, ts }
 
 const apagadoPorEntorno = () =>
   (process.env.GESTIONABLES_REPARTO || 'on').toLowerCase() === 'off';
 
-const leerConfig = async ({ sinCache = false } = {}) => {
-  if (!sinCache && cacheCfg.data && Date.now() - cacheCfg.ts < 10_000) return cacheCfg.data;
-  let cfg = { ...DEFAULT };
+// empresa: 'novonet' (por defecto) | 'velsa'. Cada una tiene su tabla de configuración.
+const leerConfig = async ({ sinCache = false, empresa } = {}) => {
+  const E = getEmpresa(empresa);
+  const c = cacheCfg[E.clave];
+  if (!sinCache && c?.data && Date.now() - c.ts < 10_000) return c.data;
+  // Velsa arranca APAGADO si todavía no tiene su configuración (seguridad)
+  let cfg = { ...DEFAULT, estacion_nombre: E.estacion || DEFAULT.estacion_nombre, ...(E.clave === 'novonet' ? {} : { activo: false }) };
   try {
     const r = await poolErp.query(
-      'SELECT * FROM gestionables_reparto_config WHERE id = 1'
+      `SELECT * FROM ${E.tablas.config} WHERE id = 1`
     );
     // SELECT * + merge: si la migración del horario aún no se corrió, se usan los valores por defecto
     if (r.rows[0]) cfg = { ...DEFAULT, ...Object.fromEntries(Object.entries(r.rows[0]).filter(([, v]) => v !== null && v !== undefined)) };
@@ -40,31 +45,33 @@ const leerConfig = async ({ sinCache = false } = {}) => {
   } catch (e) {
     console.warn('[reparto] Sin tabla de configuración, uso valores por defecto:', e.message);
   }
-  cfg = { ...cfg, apagado_por_entorno: apagadoPorEntorno() };
+  cfg = { ...cfg, empresa: E.clave, apagado_por_entorno: apagadoPorEntorno() };
   cfg.activo_efectivo = cfg.activo && !cfg.apagado_por_entorno;
-  cacheCfg = { data: cfg, ts: Date.now() };
+  cacheCfg[E.clave] = { data: cfg, ts: Date.now() };
   return cfg;
 };
 
-const guardarConfig = async (cambios, usuario) => {
+const guardarConfig = async (cambios, usuario, empresa) => {
+  const E = getEmpresa(empresa);
+  const T = E.tablas;
   const campos = ['activo', 'solo_en_linea'].filter((k) => typeof cambios[k] === 'boolean');
   if (!campos.length) throw Object.assign(new Error('Nada que actualizar'), { status: 400 });
   const client = await poolErp.connect();
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO gestionables_reparto_config (id, activo, solo_en_linea, actualizado_por, actualizado_en)
+      `INSERT INTO ${T.config} (id, activo, solo_en_linea, actualizado_por, actualizado_en)
        VALUES (1, COALESCE($1, TRUE), COALESCE($2, TRUE), $3, NOW())
        ON CONFLICT (id) DO UPDATE SET
-         activo          = COALESCE($1, gestionables_reparto_config.activo),
-         solo_en_linea   = COALESCE($2, gestionables_reparto_config.solo_en_linea),
+         activo          = COALESCE($1, ${T.config}.activo),
+         solo_en_linea   = COALESCE($2, ${T.config}.solo_en_linea),
          actualizado_por = $3,
          actualizado_en  = NOW()`,
       [cambios.activo ?? null, cambios.solo_en_linea ?? null, usuario || null]
     );
     for (const c of campos) {
       await client.query(
-        'INSERT INTO gestionables_reparto_eventos (campo, valor, usuario) VALUES ($1,$2,$3)',
+        `INSERT INTO ${T.eventos} (campo, valor, usuario) VALUES ($1,$2,$3)`,
         [c, cambios[c], usuario || null]
       );
     }
@@ -75,27 +82,34 @@ const guardarConfig = async (cambios, usuario) => {
   } finally {
     client.release();
   }
-  cacheCfg = { data: null, ts: 0 };
-  return leerConfig({ sinCache: true });
+  cacheCfg[E.clave] = null;
+  return leerConfig({ sinCache: true, empresa: E.clave });
 };
 
 /**
  * Map nombreNormalizado → { enLinea, online, jornada } de NOVONET, o null si
  * Bitrix Live no respondió. `criterio` dice qué se usó: 'jornada' | 'conexion'.
  */
-const leerEnLinea = async ({ forzar = false } = {}) => {
+const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
+  const cuentas = getEmpresa(empresa).cuentasLive;   // p. ej. ['NOVONET'] o ['NOVONET','VELSA']
   try {
     const { recolectar } = require('../controllers/bitrixSesiones.controller');
     const data = await recolectar({ forzar });
-    const fuente = data?.fuentes?.NOVONET;
-    if (!fuente || fuente.error || !fuente.usuarios) return null;
-    const criterio = fuente.timeman ? 'jornada' : 'conexion';
+    const validas = cuentas.filter((c) => { const f = data?.fuentes?.[c]; return f && !f.error && f.usuarios; });
+    if (!validas.length) return null;
+    const criterios = {};
+    for (const c of validas) criterios[c] = data.fuentes[c].timeman ? 'jornada' : 'conexion';
     const mapa = new Map();
-    for (const u of data.usuarios.filter((x) => x.cuenta === 'NOVONET')) {
-      const enLinea = criterio === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
-      mapa.set(normalizarNombre(u.nombre), { enLinea, online: !!u.online, jornada: u.jornada || null });
+    // Se recorre en el orden de la lista: si la persona está en línea en cualquier cuenta, cuenta como en línea
+    for (const c of validas) {
+      for (const u of data.usuarios.filter((x) => x.cuenta === c)) {
+        const enLinea = criterios[c] === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
+        const k = normalizarNombre(u.nombre);
+        const prev = mapa.get(k);
+        if (!prev || (!prev.enLinea && enLinea)) mapa.set(k, { enLinea, online: !!u.online, jornada: u.jornada || null });
+      }
     }
-    return { criterio, mapa, generado: data.generado };
+    return { criterio: criterios[validas[0]], mapa, generado: data.generado };
   } catch (e) {
     console.warn('[reparto] Bitrix Live no respondió, se reparte sin filtro de en línea:', e.message);
     return null;

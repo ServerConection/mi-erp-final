@@ -126,6 +126,9 @@ export default function HomeModules() {
     { title: "Reparto de Gestionables", path: "/gestionables-asesores", icon: ClipboardList, accent: "azul", cat: "equipo",
       desc: "Reparto automático de leads por turnos: encender/apagar, quién está en línea, reporte por hora y cuotas diarias.",
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
+    { title: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: ClipboardList, accent: "rosa", cat: "equipo",
+      desc: "El mismo reparto automático por turnos, para los asesores de VELSA: cupos, % ATC, estación y reporte por hora.",
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
@@ -171,7 +174,7 @@ export default function HomeModules() {
         const allowed = userRol === 'CONSULTOR'
           ? mod.rolesPermitidos?.includes('CONSULTOR')
           : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-        if (mod.path === '/gestionables-asesores' ? !puedeAccederGestionables() : !allowed) return false;
+        if (['/gestionables-asesores', '/gestionables-velsa'].includes(mod.path) ? !puedeAccederGestionables() : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);
@@ -193,9 +196,9 @@ export default function HomeModules() {
   return (
     <div className="animate-fade-in-up pb-12">
       {/* Hero header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-9 mb-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f2147] via-[#13295a] to-[#0b1a38] px-8 py-9 mb-8 shadow-xl">
         <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-blue-500/20 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-10 w-72 h-72 rounded-full bg-orange-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-10 w-72 h-72 rounded-full bg-indigo-400/10 blur-3xl pointer-events-none" />
         <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-5">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-[12px] font-medium text-slate-200 mb-3">

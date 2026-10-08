@@ -178,7 +178,8 @@ export default function App() {
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />
-            <Route path="gestionables-asesores" element={<GestionablesAsesores />} />
+            <Route path="gestionables-asesores" element={<GestionablesAsesores key="novonet" />} />
+            <Route path="gestionables-velsa" element={<GestionablesAsesores key="velsa" empresa="velsa" />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />

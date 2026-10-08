@@ -32,6 +32,11 @@ const CAMPOS_DOCUMENTO = [
   "archivo_nombramiento",
   "archivo_registro_mercantil",
   "archivo_ruc",
+  // Adjuntos libres que carga Backoffice (Otro 1 – Otro 4).
+  "archivo_otro1",
+  "archivo_otro2",
+  "archivo_otro3",
+  "archivo_otro4",
 ];
 const GRUPOS_DOCUMENTOS = [
   {
@@ -41,6 +46,10 @@ const GRUPOS_DOCUMENTOS = [
   {
     titulo: "Venta y legal",
     campos: ["archivo_resumen", "archivo_planilla", "archivo_nombramiento", "archivo_registro_mercantil", "archivo_ruc"],
+  },
+  {
+    titulo: "Otros (Backoffice)",
+    campos: ["archivo_otro1", "archivo_otro2", "archivo_otro3", "archivo_otro4"],
   },
 ];
 const esCampoDocumento = (field) => CAMPOS_DOCUMENTO.includes(field);
@@ -1175,7 +1184,8 @@ function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAle
                   field,
                   etiqueta: FIELD_LABELS[field] || field,
                   valor: detail?.[field] || "",
-                })).filter((item) => item.valor);
+                  // Otro 1–4 se muestran vacíos para que Backoffice pueda subirlos.
+                })).filter((item) => item.valor || (puedeEditar && item.field.startsWith("archivo_otro")));
 
                 if (!items.length) return null;
 
@@ -1567,6 +1577,10 @@ const FIELD_LABELS = {
   archivo_nombramiento: "NOMBRAMIENTO",
   archivo_registro_mercantil: "REGISTRO MERCANTIL",
   archivo_ruc: "RUC",
+  archivo_otro1: "OTRO 1",
+  archivo_otro2: "OTRO 2",
+  archivo_otro3: "OTRO 3",
+  archivo_otro4: "OTRO 4",
   fecha_ingreso_telcos: "FECHA INGRESO TELCOS",
   gestion_atc: "GESTIÓN ATC",
 };
@@ -1654,6 +1668,10 @@ const initialDetail = {
   archivo_nombramiento: "",
   archivo_registro_mercantil: "",
   archivo_ruc: "",
+  archivo_otro1: "",
+  archivo_otro2: "",
+  archivo_otro3: "",
+  archivo_otro4: "",
   fecha_activacion_netlife: "",
   fecha_agenda: "",
   franja_horaria_agendamiento: "",

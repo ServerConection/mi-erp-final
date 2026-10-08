@@ -5,6 +5,7 @@ import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import InboxAudioRecorder from "../components/InboxAudioRecorder";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
+import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waInboxFilters";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -194,16 +195,10 @@ export default function WaInbox({ dealId = null } = {}) {
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
-  const loadConvs = useCallback(async (lineId = "") => {
+  const loadConvs = useCallback(async () => {
     const request = ++listRequest.current;
     try {
-      // Administradores ven todas las conversaciones del Deal; otros perfiles ven una.
-      const params = new URLSearchParams();
-      if (dealId) params.set("bitrix_deal_id", dealId);
-      else if (lineId) params.set("line_id", lineId);
-      if (!dealId) params.set("limit", "500");
-      if (search.trim()) params.set("search", search.trim());
-      if (filter !== "all") params.set("status", filter);
+      const params = crearParametrosInbox({ dealId, search, lineFilter, filter });
       const qs = `?${params}`;
       const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
@@ -216,11 +211,11 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [dealId, search, filter, singleDealConversation]);
+  }, [dealId, search, lineFilter, filter, singleDealConversation]);
 
   // Recargar al cambiar el filtro de línea/usuario
   useEffect(() => {
-    const timer = setTimeout(() => loadConvs(lineFilter), 300);
+    const timer = setTimeout(() => loadConvs(), 300);
     return () => clearTimeout(timer);
   }, [lineFilter, loadConvs]);
 
@@ -268,7 +263,7 @@ export default function WaInbox({ dealId = null } = {}) {
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
         if (msg.conversation_id && !prev.some(c => c.id === msg.conversation_id)) {
-          queueMicrotask(() => loadConvs());   // conversación nueva → recargar lista
+          queueMicrotask(() => loadConvs());   // conversación nueva → recargar con TODOS los filtros vigentes
         }
         return prev.map(c =>
           c.id === msg.conversation_id
@@ -299,14 +294,14 @@ export default function WaInbox({ dealId = null } = {}) {
       setConversations(prev => prev.filter(c => c.id !== from));
       setSelected(s => (s && s.id === from ? null : s));
     };
-    const onConnect = () => loadConvs(lineFilter);
+    const onConnect = () => loadConvs();
     socket.on("conversation:new", onConversation);
     socket.on("message:new", onMessage);
     socket.on("message:status", onStatus);
     socket.on("conversation:merged", onMerged);
     socket.on("connect", onConnect);
     return () => { socket.off("conversation:new", onConversation); socket.off("message:new", onMessage); socket.off("message:status", onStatus); socket.off("conversation:merged", onMerged); socket.off("connect", onConnect); };
-  }, [dealId, loadConvs, lineFilter, singleDealConversation]);
+  }, [dealId, loadConvs, singleDealConversation]);
 
   useEffect(() => {
     if (selected) loadMessages(selected.id);
@@ -326,11 +321,11 @@ export default function WaInbox({ dealId = null } = {}) {
   // No fuerza scroll para no interrumpir la lectura de una conversación.
   useEffect(() => {
     const id = setInterval(() => {
-      loadConvs(lineFilter);
+      loadConvs();
       if (selectedRef.current?.id) loadMessages(selectedRef.current.id, { scroll: false });
     }, 30000);
     return () => clearInterval(id);
-  }, [lineFilter, loadConvs, loadMessages]);
+  }, [loadConvs, loadMessages]);
 
   const selectConv = (conv) => {
     if (selectedRef.current?.id !== conv.id) clearInternalImage();
@@ -626,10 +621,10 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally { setBitrixBusy(false); }
   };
 
-  const filtered = conversations.filter(c => {
-    if (filter !== "all" && !(filter === "human_takeover" && ["human", "human_takeover"].includes(c.status)) && c.status !== filter) return false;
-    return true;
-  });
+  // Segunda barrera local: los eventos del socket pueden insertar/actualizar
+  // conversaciones entre dos respuestas HTTP. Nunca deben saltarse los
+  // filtros que el usuario ve activos en pantalla.
+  const filtered = conversations.filter(c => conversacionCoincideFiltros(c, { search, lineFilter, filter }));
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">

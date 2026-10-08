@@ -43,7 +43,7 @@ const estadoDe = (r) => {
   return r.jornada === 'PAUSED' ? 'pausa' : 'fuera';
 };
 
-export default function RepartoEnVivo() {
+export default function RepartoEnVivo({ empresa = 'novonet' }) {
   const [datos, setDatos] = useState(null);
   const [busy, setBusy] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -54,10 +54,10 @@ export default function RepartoEnVivo() {
   const [actualizado, setActualizado] = useState(null);
   const consultar = useCallback(async (forzar = false) => {
     setBusy(true); setError('');
-    try { setDatos(await repartoRequest(`/reparto/estado${forzar ? '?forzar=1' : ''}`)); setActualizado(new Date()); }
+    try { setDatos(await repartoRequest(`/reparto/estado${forzar ? '?forzar=1' : ''}`, {}, empresa)); setActualizado(new Date()); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
-  }, []);
+  }, [empresa]);
 
   useEffect(() => {
     consultar();
@@ -67,7 +67,7 @@ export default function RepartoEnVivo() {
 
   async function cambiar(campo, valor) {
     setGuardando(true); setError(''); setConfirmarApagar(false);
-    try { await repartoRequest('/reparto/config', { method: 'PUT', body: JSON.stringify({ [campo]: valor }) }); await consultar(); }
+    try { await repartoRequest('/reparto/config', { method: 'PUT', body: JSON.stringify({ [campo]: valor }) }, empresa); await consultar(); }
     catch (e) { setError(e.message); }
     finally { setGuardando(false); }
   }

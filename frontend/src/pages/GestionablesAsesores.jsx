@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
 import RepartoEnVivo from '../components/gestionables/RepartoEnVivo';
 import ReporteReparto from '../components/gestionables/ReporteReparto';
+import { conEmpresa } from '../components/gestionables/api';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3050';
 const normalizar = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const filtrosEstado = [
@@ -12,13 +13,15 @@ const filtrosEstado = [
   { key: 'sin-conteo', label: 'Sin conteo', coincide: r => r.gestionables_actuales === null, color: 'bg-slate-100 text-slate-700 border-slate-400' },
 ];
 const hoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-async function request(path = '', options = {}) {
-  const response = await fetch(`${API}/api/gestionables-asesores${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` } });
+async function request(path = '', options = {}, empresa) {
+  const response = await fetch(`${API}/api/gestionables-asesores${conEmpresa(path, empresa)}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` } });
   const result = await response.json();
   if (!response.ok || !result.success) throw new Error(result.error || 'No se pudo completar la operación');
   return result;
 }
-export default function GestionablesAsesores() {
+// empresa = 'novonet' (módulo original) | 'velsa' (Reparto de Gestionables Velsa)
+export default function GestionablesAsesores({ empresa = 'novonet' }) {
+  const nombreEmpresa = empresa === 'velsa' ? 'VELSA' : 'NOVONET';
   const [tab, setTab] = useState('vivo'), [fecha, setFecha] = useState(hoy);
   const [rows, setRows] = useState([]), [ultimo, setUltimo] = useState(null);
   const [busqueda, setBusqueda] = useState(''), [estado, setEstado] = useState('todos');
@@ -34,11 +37,11 @@ export default function GestionablesAsesores() {
   const consultar = useCallback(async () => {
     setBusy(true); setError(''); setRows([]);
     try {
-      const result = await request(`?fecha=${fecha}`);
+      const result = await request(`?fecha=${fecha}`, {}, empresa);
       setRows(result.data.map(r => ({ ...r, porcentaje_atc_max: r.porcentaje_atc_max ?? 50, original: r.gestionables_permitidos, original_atc: r.porcentaje_atc_max ?? 50 })));
       setUltimo(result.ultimo_id); setAviso(result.aviso || '');
     } catch (e) { setError(e.message); } finally { setBusy(false); }
-  }, [fecha]);
+  }, [fecha, empresa]);
   useEffect(() => { if (permitido) consultar(); }, [consultar, permitido]);
   async function cargar(event) {
     const file = event.target.files[0];
@@ -50,7 +53,7 @@ export default function GestionablesAsesores() {
   async function guardar(importar) {
     setBusy(true); setError(''); setMensaje('');
     try {
-      const result = await request(importar ? '/importar' : '', { method: importar ? 'POST' : 'PUT', body: JSON.stringify(importar ? { contenido } : { fecha, items: cambios }) });
+      const result = await request(importar ? '/importar' : '', { method: importar ? 'POST' : 'PUT', body: JSON.stringify(importar ? { contenido } : { fecha, items: cambios }) }, empresa);
       setMensaje(`${result.total} cuotas guardadas correctamente.`);
       if (importar) { setContenido(''); setArchivo(''); }
       await consultar();
@@ -63,10 +66,10 @@ export default function GestionablesAsesores() {
   }
   if (!permitido) return <p className="p-6">No tiene acceso a este módulo.</p>;
   return <div className="space-y-5">
-    <div><h1 className="text-3xl font-bold text-slate-800">Reparto de Gestionables</h1><p className="text-slate-500">Reparto automático de leads por turnos, reporte por hora y cuotas diarias de NOVONET.</p></div>
+    <div><h1 className="text-3xl font-bold text-slate-800">Reparto de Gestionables{empresa === 'velsa' ? ' Velsa' : ''}</h1><p className="text-slate-500">Reparto automático de leads por turnos, reporte por hora y cuotas diarias de {nombreEmpresa}.</p></div>
     <div className="flex gap-2">{[['vivo', 'Reparto en vivo'], ['reporte', 'Reporte por hora'], ['cuotas', 'Cuotas por fecha'], ['carga', 'Cargar TXT']].map(([key, label]) => <button key={key} disabled={busy} onClick={() => setTab(key)} aria-pressed={tab === key} className={`px-4 py-2 rounded-xl font-bold ${tab === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{label}</button>)}</div>
-    {tab === 'vivo' && <RepartoEnVivo />}
-    {tab === 'reporte' && <ReporteReparto />}
+    {tab === 'vivo' && <RepartoEnVivo empresa={empresa} />}
+    {tab === 'reporte' && <ReporteReparto empresa={empresa} />}
     {(tab === 'cuotas' || tab === 'carga') && <>
     {error && <p role="alert" className="p-3 bg-red-50 text-red-700 rounded-xl">{error}</p>}
     {mensaje && <p role="status" className="p-3 bg-green-50 text-green-700 rounded-xl">{mensaje}</p>}

@@ -461,9 +461,10 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
 
   // ── Archivos compartidos (planillas colaborativas) ──────────────────────────
-  // Módulo administrativo: el backend aplica la misma restricción.
+  // Visible para todos menos CONSULTOR: quien no tenga archivos compartidos
+  // simplemente verá la lista vacía, y en cuanto le compartan uno aparece solo.
   { name: "📗 Archivos Compartidos", path: "/archivos-compartidos", icon: "📗",
-    accessCheck: (p) => p === 'ADMINISTRADOR' },
+    accessCheck: (p) => p !== 'CONSULTOR' },
 
   // ── Asistente de datos del ERP ──────────────────────────────────────────────
   { name: "🧠 Asistente ERP", path: "/asistente", icon: "🧠", accessCheck: (p) => p !== 'CONSULTOR' },

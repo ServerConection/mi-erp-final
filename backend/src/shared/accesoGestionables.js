@@ -19,8 +19,13 @@ function empresaGestionables(valor) {
 
 function puedeAccederGestionables(usuario, empresaObjetivo) {
   const perfil = perfilGestionables(usuario?.perfil || usuario?.rol);
-  const empresa = empresaGestionables(usuario?.empresa);
   const objetivo = empresaGestionables(empresaObjetivo);
+
+  // El administrador es corporativo y puede operar NOVONET y VELSA. Para
+  // supervisión y gerencia se mantiene el aislamiento por empresa.
+  if (perfil === 'ADMINISTRADOR') return objetivo !== null;
+
+  const empresa = empresaGestionables(usuario?.empresa);
 
   return perfil !== null && empresa !== null && empresa === objetivo;
 }

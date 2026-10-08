@@ -466,15 +466,19 @@ async function resetAll(req, res) {
 async function dashboard(req, res) {
   try {
     const params = []
-    const conds = ["UPPER(TRIM(u.activo)) = 'SI'"]
+    // Se muestran los usuarios activos aunque todavía no tengan línea, pero una
+    // línea activa nunca se excluye porque su propietario haya sido desactivado.
+    // /lines sigue mostrando esas líneas y pueden continuar conectadas; omitirlas
+    // aquí hacía que los totales del panel no cuadraran con la pantalla Líneas.
+    const conds = ["(UPPER(TRIM(COALESCE(u.activo, ''))) = 'SI' OR l.id IS NOT NULL)"]
 
     if (!isAdmin(req)) {
       if (isSupervisor(req)) {
         params.push((req.user.empresa || '').toUpperCase())
-        conds.push(`UPPER(u.empresa) = $${params.length}`)
+        conds.push(`UPPER(COALESCE(u.empresa, '')) = $${params.length}`)
       } else {
         params.push(req.user.id)
-        conds.push(`u.id = $${params.length}`)
+        conds.push(`(u.id = $${params.length} OR l.created_by IS NULL)`)
       }
     }
 
@@ -487,7 +491,7 @@ async function dashboard(req, res) {
              COALESCE(u.usuario, 'SIN ASIGNAR')        AS usuario,
              TRIM(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre_completo
       FROM usuarios u
-      LEFT JOIN lines l ON l.created_by = u.id AND l.deleted_at IS NULL
+      FULL JOIN (SELECT * FROM lines WHERE deleted_at IS NULL) l ON l.created_by = u.id
       WHERE ${conds.join(' AND ')}
       ORDER BY empresa ASC, usuario ASC, l.created_at ASC
     `, params)

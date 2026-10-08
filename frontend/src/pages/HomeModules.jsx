@@ -174,7 +174,10 @@ export default function HomeModules() {
         const allowed = userRol === 'CONSULTOR'
           ? mod.rolesPermitidos?.includes('CONSULTOR')
           : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
-        if (['/gestionables-asesores', '/gestionables-velsa'].includes(mod.path) ? !puedeAccederGestionables() : !allowed) return false;
+        const empresaGestionables = mod.path === '/gestionables-asesores'
+          ? 'NOVONET'
+          : mod.path === '/gestionables-velsa' ? 'VELSA' : null;
+        if (empresaGestionables ? !puedeAccederGestionables(empresaGestionables) : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);

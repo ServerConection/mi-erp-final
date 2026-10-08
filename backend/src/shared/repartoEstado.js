@@ -34,7 +34,7 @@ const leerConfig = async ({ sinCache = false, empresa } = {}) => {
   const c = cacheCfg[E.clave];
   if (!sinCache && c?.data && Date.now() - c.ts < 10_000) return c.data;
   // Velsa arranca APAGADO si todavía no tiene su configuración (seguridad)
-  let cfg = { ...DEFAULT, ...(E.clave === 'novonet' ? {} : { activo: false }) };
+  let cfg = { ...DEFAULT, estacion_nombre: E.estacion || DEFAULT.estacion_nombre, ...(E.clave === 'novonet' ? {} : { activo: false }) };
   try {
     const r = await poolErp.query(
       `SELECT * FROM ${E.tablas.config} WHERE id = 1`
@@ -91,19 +91,25 @@ const guardarConfig = async (cambios, usuario, empresa) => {
  * Bitrix Live no respondió. `criterio` dice qué se usó: 'jornada' | 'conexion'.
  */
 const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
-  const cuenta = getEmpresa(empresa).cuentaLive;   // NOVONET | VELSA
+  const cuentas = getEmpresa(empresa).cuentasLive;   // p. ej. ['NOVONET'] o ['NOVONET','VELSA']
   try {
     const { recolectar } = require('../controllers/bitrixSesiones.controller');
     const data = await recolectar({ forzar });
-    const fuente = data?.fuentes?.[cuenta];
-    if (!fuente || fuente.error || !fuente.usuarios) return null;
-    const criterio = fuente.timeman ? 'jornada' : 'conexion';
+    const validas = cuentas.filter((c) => { const f = data?.fuentes?.[c]; return f && !f.error && f.usuarios; });
+    if (!validas.length) return null;
+    const criterios = {};
+    for (const c of validas) criterios[c] = data.fuentes[c].timeman ? 'jornada' : 'conexion';
     const mapa = new Map();
-    for (const u of data.usuarios.filter((x) => x.cuenta === cuenta)) {
-      const enLinea = criterio === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
-      mapa.set(normalizarNombre(u.nombre), { enLinea, online: !!u.online, jornada: u.jornada || null });
+    // Se recorre en el orden de la lista: si la persona está en línea en cualquier cuenta, cuenta como en línea
+    for (const c of validas) {
+      for (const u of data.usuarios.filter((x) => x.cuenta === c)) {
+        const enLinea = criterios[c] === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
+        const k = normalizarNombre(u.nombre);
+        const prev = mapa.get(k);
+        if (!prev || (!prev.enLinea && enLinea)) mapa.set(k, { enLinea, online: !!u.online, jornada: u.jornada || null });
+      }
     }
-    return { criterio, mapa, generado: data.generado };
+    return { criterio: criterios[validas[0]], mapa, generado: data.generado };
   } catch (e) {
     console.warn('[reparto] Bitrix Live no respondió, se reparte sin filtro de en línea:', e.message);
     return null;

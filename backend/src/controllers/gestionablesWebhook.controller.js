@@ -47,7 +47,7 @@ const crearReparto = (empresa) => {
   const T = E.tablas;
   const url = E.url();
   // Novonet sigue usando exactamente la misma llamada de siempre
-  const bx = E.clave === 'novonet' ? bitrixCallNovonet : (method, params) => bitrixCallCuenta(url, method, params);
+  const bx = E.portal === 'novonet' ? bitrixCallNovonet : (method, params) => bitrixCallCuenta(url, method, params);
   // Campo de cupo en el deal (si la empresa no lo tiene configurado, no se escribe)
   const campoCupo = (valor) => (E.fieldName ? { [E.fieldName]: valor } : {});
 

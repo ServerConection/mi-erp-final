@@ -52,32 +52,44 @@ const normalizar = (v) => String(v || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .trim().replace(/\s+/g, ' ').toUpperCase();
 
-async function mapaEmpresasUsuarios() {
-  const [catalogos, erp] = await Promise.all([
-    db.query(`
-      SELECT id::text, 'VELSA'::text AS empresa FROM public.bitrix_usuarios WHERE activo = true
-      UNION ALL
-      SELECT id::text, 'NOVONET'::text AS empresa FROM public.bitrix_usuarios_novonet WHERE activo = true
-    `),
-    db.query(`
+async function mapaEmpresasUsuarios(query = db.query.bind(db)) {
+  const porId = new Map();
+  const porIdentidad = new Map();
+
+  // Cada fuente se consulta de forma independiente. En algunos despliegues
+  // históricos no existe uno de los dos catálogos; eso no debe tumbar todo el
+  // tablero con HTTP 500.
+  const [novonet, velsa, erp] = await Promise.allSettled([
+    query(`SELECT id::text FROM public.bitrix_usuarios_novonet WHERE activo = true`),
+    query(`SELECT id::text FROM public.bitrix_usuarios WHERE activo = true`),
+    query(`
       SELECT empresa, usuario, nombres, apellidos
       FROM public.usuarios
-      WHERE activo = 'SI' AND UPPER(COALESCE(empresa, '')) IN ('NOVONET', 'VELSA', 'SEMILLERO')
+      WHERE activo = 'SI' AND UPPER(BTRIM(COALESCE(empresa, ''))) IN ('NOVONET', 'VELSA', 'SEMILLERO')
     `),
   ]);
 
-  const porId = new Map();
-  // VELSA prevalece: el catálogo NOVONET viene de la licencia madre y también
-  // contiene a las personas VELSA.
-  for (const r of catalogos.rows.filter(r => r.empresa === 'NOVONET')) porId.set(r.id, r.empresa);
-  for (const r of catalogos.rows.filter(r => r.empresa === 'VELSA')) porId.set(r.id, r.empresa);
+  if (novonet.status === 'fulfilled') {
+    for (const r of novonet.value.rows) porId.set(r.id, 'NOVONET');
+  } else {
+    console.warn('[bitrix-sesiones] catálogo NOVONET no disponible:', novonet.reason?.message);
+  }
+  // VELSA prevalece: la licencia madre de NOVONET también puede contenerlos.
+  if (velsa.status === 'fulfilled') {
+    for (const r of velsa.value.rows) porId.set(r.id, 'VELSA');
+  } else {
+    console.warn('[bitrix-sesiones] catálogo VELSA no disponible:', velsa.reason?.message);
+  }
 
-  const porIdentidad = new Map();
-  for (const r of erp.rows) {
-    const nombre = normalizar(`${r.nombres || ''} ${r.apellidos || ''}`);
-    const usuario = normalizar(r.usuario);
-    if (nombre) porIdentidad.set(nombre, String(r.empresa).toUpperCase());
-    if (usuario) porIdentidad.set(usuario, String(r.empresa).toUpperCase());
+  if (erp.status === 'fulfilled') {
+    for (const r of erp.value.rows) {
+      const nombre = normalizar(`${r.nombres || ''} ${r.apellidos || ''}`);
+      const usuario = normalizar(r.usuario);
+      if (nombre) porIdentidad.set(nombre, String(r.empresa).trim().toUpperCase());
+      if (usuario) porIdentidad.set(usuario, String(r.empresa).trim().toUpperCase());
+    }
+  } else {
+    console.warn('[bitrix-sesiones] usuarios ERP no disponibles para clasificación:', erp.reason?.message);
   }
   return { porId, porIdentidad };
 }
@@ -562,4 +574,7 @@ const cerrarJornada = async (req, res) => {
   }
 };
 
-module.exports = { getLive, exportar, diagnostico, cerrarJornada, recolectar, BITRIX_APIS };
+module.exports = {
+  getLive, exportar, diagnostico, cerrarJornada, recolectar, BITRIX_APIS,
+  _test: { mapaEmpresasUsuarios },
+};

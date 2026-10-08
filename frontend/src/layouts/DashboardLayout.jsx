@@ -408,6 +408,8 @@ const ALL_MENU_ITEMS = [
 
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables() },
+  { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
+    accessCheck: () => puedeAccederGestionables() },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },

@@ -17,6 +17,7 @@
 const db = require('../config/db');
 const { esEtapaGestionable } = require('./etapas');
 const { normalizarNombre } = require('./repartoGestionables');
+const { getEmpresa } = require('./repartoEmpresas');
 
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
@@ -35,9 +36,10 @@ const bloqueadoPorAtc = ({ total, atc, maxPct }) => {
   return (atc * 100) / total >= max;
 };
 
-const conteoGestionablesHoy = async (erpDb) => {
+const conteoGestionablesHoy = async (erpDb, empresa) => {
+  const E = getEmpresa(empresa);
   const asig = await erpDb.query(
-    `SELECT asesor_asignado, bitrix_deal_id FROM gestionables_asignaciones
+    `SELECT asesor_asignado, bitrix_deal_id FROM ${E.tablas.asignaciones}
       WHERE fecha = ${HOY_EC} AND vigente`
   );
   const m = new Map();
@@ -48,8 +50,8 @@ const conteoGestionablesHoy = async (erpDb) => {
     const r = await db.query(
       `SELECT bitrix_id::text AS id, COALESCE(NULLIF(BTRIM(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS etapa
          FROM public.bitrix_webhook_leads
-        WHERE empresa = 'novonet' AND bitrix_id::text = ANY($1::text[])`,
-      [ids]
+        WHERE empresa = $2 AND bitrix_id::text = ANY($1::text[])`,
+      [ids, E.clave]
     );
     r.rows.forEach((x) => etapas.set(x.id, x.etapa));
   } catch (e) {

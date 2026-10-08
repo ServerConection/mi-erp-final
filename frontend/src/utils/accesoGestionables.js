@@ -27,6 +27,7 @@ export function tieneAccesoGestionables(usuario, empresaObjetivo) {
   // la empresa guardada en su perfil. Los demás perfiles siguen limitados a su
   // propia empresa.
   if (perfil === 'ADMINISTRADOR') return objetivo !== null;
+  if (normalizar(usuario?.perfil || usuario?.rol) === 'ANALISTA') return objetivo === 'NOVONET';
 
   const empresa = empresaGestionables(usuario?.empresa);
 

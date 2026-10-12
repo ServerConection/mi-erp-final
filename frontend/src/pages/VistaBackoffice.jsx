@@ -386,20 +386,11 @@ const OPCIONES_AUDITORIA_DOCUMENTOS = [
 ];
 
 function resultadoBienvenida(json, mensajeBase) {
-  const correo = json?.correo_bienvenida;
   const whatsapp = json?.whatsapp_bienvenida;
-  if (!correo && !whatsapp) return { type: "success", msg: mensajeBase };
+  if (!whatsapp) return { type: "success", msg: mensajeBase };
 
   const exitos = [];
   const advertencias = [];
-
-  if (correo?.enviado) {
-    exitos.push(correo.cliente
-      ? "correo enviado al cliente con copia a Backoffice"
-      : "correo enviado solo a Backoffice (cliente sin correo válido)");
-  } else if (correo?.enviado === false) {
-    advertencias.push("el correo no pudo enviarse");
-  }
 
   if (whatsapp?.encolado) {
     exitos.push("WhatsApp de bienvenida en cola por NOTI_BACK");

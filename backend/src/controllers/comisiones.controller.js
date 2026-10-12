@@ -45,10 +45,10 @@ async function listar(req, res) {
       filtroGlobal = `AND (to_jsonb(e)::text || ' ' || COALESCE(u.usuario, '') || ' ' || COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellidos, '') || ' ' || COALESCE(u.codigo_vendedor, '')) ILIKE $${values.length}`;
     }
 
-    const codigo = `COALESCE(NULLIF(BTRIM(e.codigo_asesor), ''), NULLIF(BTRIM(u.codigo_vendedor), ''), 'SIN CODIGO')`;
+    const codigo = `COALESCE(NULLIF(BTRIM(u.codigo_vendedor), ''), NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN CODIGO')`;
     const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), 'SIN ASIGNAR')`;
     const { rows } = await pool.query(`
-      SELECT ${codigo} AS codigo_asesor, ${usuario} AS usuario,
+      SELECT MAX(${codigo}) AS codigo_asesor, ${usuario} AS usuario,
         MAX(public.parse_fecha_flex(e.fecha_ingreso_telcos::text))::date AS ultima_fecha_ingreso_telcos,
         COUNT(*) FILTER (WHERE ${REG_NORM} = 'PORREGULARIZAR')::int AS activas_por_regularizar,
         COUNT(*) FILTER (WHERE ${REG_NORM} = 'REGULARIZADO')::int AS activas_regularizadas,
@@ -61,8 +61,8 @@ async function listar(req, res) {
         AND ${ESTADO_ACTIVO}
         AND ${filtrosFecha.join('\n        AND ')}
         ${filtroGlobal}
-      GROUP BY ${codigo}, ${usuario}
-      ORDER BY ultima_fecha_ingreso_telcos DESC NULLS LAST, usuario, codigo_asesor
+      GROUP BY ${usuario}
+      ORDER BY activas_regularizadas DESC, activas_totales DESC, usuario, codigo_asesor
     `, values);
 
     const totales = rows.reduce((a, r) => ({

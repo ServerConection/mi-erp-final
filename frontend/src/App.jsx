@@ -9,7 +9,7 @@ import Login          from "./pages/Login";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
-import { Horarios, Billetera, Comisiones } from "./pages/Modules";
+import { Horarios, Billetera } from "./pages/Modules";
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
@@ -71,6 +71,7 @@ const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
+const Comisiones           = lazy(() => import("./pages/Comisiones"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
 const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
@@ -163,7 +164,7 @@ export default function App() {
             <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<Horarios />} />
             <Route path="billetera"                 element={<Billetera />} />
-            <Route path="comisiones"                element={<Comisiones />} />
+            <Route path="comisiones"                element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA"]}><Comisiones /></RolesAllowedRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
             <Route path="redes-velsa"               element={<RedesVelsa />} />

@@ -404,12 +404,14 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederGestionables('VELSA') },
 
   // ── Administración ───────────────────────────────────────────────────────
-  { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },
+  { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
-  { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },
+  { name: "Comisiones", path: "/comisiones", icon: "💰",
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p), isChild: true, group: "administracion" },
   // Mapa de salud del ERP: solo administradores — muestra el estado interno.
   { name: "Salud del sistema", path: "/salud", icon: "🩺",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
@@ -586,6 +588,13 @@ export default function DashboardLayout() {
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
 
+    // Todo el bloque de Administración es exclusivo de Gerencia y
+    // Administradores, incluso si alguien escribe una URL interna a mano.
+    if (itemActual.group === 'administracion' && !['ADMINISTRADOR', 'GERENCIA'].includes(p)) {
+      navigate('/', { replace: true });
+      return;
+    }
+
     // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
@@ -620,6 +629,7 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (item.group === 'administracion' && !['ADMINISTRADOR', 'GERENCIA'].includes(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
       if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);
       if (perfil === 'ATC') return !!item.path && rutaPermitidaAtc(item.path);

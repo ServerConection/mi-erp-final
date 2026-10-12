@@ -23,7 +23,7 @@
  *   ACTIVA MES         = activo + activación en rango + registro Jotform en rango
  *   ACTIVAS BACK       = activas totales - activa mes
  *   ACTIVAS TOTALES    = activo + activación en rango   (= mes + backlog)
- *   Tasa Activación    = activas totales / ingresos Jot
+ *   Tasa Activación    = activa mes (sin backlog) / ingresos Jot
  *   % 3ra Edad         = ventas 3ra edad / ingresos Jot
  *
  * NOTA: los nombres de asesor vienen con distintas escrituras (el webhook usa
@@ -322,7 +322,7 @@ const derivar = (f) => {
     pct_efectividad_efectiva: pct(f.ingresos_jot_efectivo, f.leads_gestion),
     pct_efectividad_acida:    pct(f.ingresos_jot_acido,    f.leads_gestion),
     pct_descarte:         pct(f.descarte_n,    f.leads_gestion),
-    pct_tasa_activacion:  pct(f.activas_totales, f.ingresos_jot),
+    pct_tasa_activacion:  pct(f.activa_mes, f.ingresos_jot), // activas del mes (sin backlog) / ingresos Jot (2026-10)
     // Los tres van sobre INGRESOS JOTFORM del rango, según definió gerencia
     pct_tercera_edad:     pct(f.tercera_edad_n,     f.ingresos_jot),
     pct_tarjeta:          pct(f.tarjeta_n,          f.ingresos_jot),

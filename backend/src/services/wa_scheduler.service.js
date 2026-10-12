@@ -8,7 +8,6 @@
 const { query } = require('../config/db')
 const { asegurarLocal } = require('./waMediaFallback')
 const CampaignEngine = require('./CampaignEngine')
-const { enviarBienvenidaWelcome } = require('./email.service')
 const { prepararWhatsappBienvenida } = require('./welcomeWhatsapp.service')
 
 class SchedulerService {
@@ -144,7 +143,7 @@ class SchedulerService {
       for (const tarea of res.rows) {
         const tomada = await query(
           `UPDATE welcome_notifications
-           SET status='processing', updated_at=NOW()
+           SET status='processing', email_sent=true, updated_at=NOW()
            WHERE id=$1
              AND (status IN ('pending', 'failed')
                   OR (status='processing' AND updated_at < NOW() - INTERVAL '5 minutes'))
@@ -153,7 +152,6 @@ class SchedulerService {
         )
         if (!tomada.rows.length) continue
 
-        let emailSent = tarea.email_sent
         let whatsappSent = tarea.whatsapp_sent
         const errores = []
 
@@ -164,19 +162,6 @@ class SchedulerService {
           )
           const registro = registroRes.rows[0]
           if (!registro) throw new Error('Registro de Welcome no encontrado')
-
-          if (!emailSent) {
-            try {
-              await enviarBienvenidaWelcome(registro)
-              emailSent = true
-              await query(
-                `UPDATE welcome_notifications SET email_sent=true, updated_at=NOW() WHERE id=$1`,
-                [tarea.id]
-              )
-            } catch (error) {
-              errores.push(`Correo: ${error.message}`)
-            }
-          }
 
           if (!whatsappSent) {
             try {
@@ -197,7 +182,7 @@ class SchedulerService {
             }
           }
 
-          if (emailSent && whatsappSent) {
+          if (whatsappSent) {
             await query(
               `UPDATE welcome_notifications
                SET status='completed', completed_at=NOW(), updated_at=NOW(), last_error=NULL

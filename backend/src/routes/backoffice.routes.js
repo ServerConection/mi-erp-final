@@ -11,7 +11,6 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
-const { enviarBienvenidaWelcome } = require('../services/email.service');
 const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.service');
 
 // ─── QUIÉN ENTRA A BACKOFFICE ───────────────────────────────────────────────
@@ -400,9 +399,9 @@ router.post('/welcome/programar', async (req, res) => {
       await client.query(
         `INSERT INTO welcome_notifications
            (registro_id, scheduled_at, status, email_sent, whatsapp_sent, attempts, last_error, created_by, updated_at, completed_at)
-         VALUES ($1, $2, 'pending', false, false, 0, NULL, $3, NOW(), NULL)
+         VALUES ($1, $2, 'pending', true, false, 0, NULL, $3, NOW(), NULL)
          ON CONFLICT (registro_id) DO UPDATE SET
-           scheduled_at=EXCLUDED.scheduled_at, status='pending', email_sent=false,
+           scheduled_at=EXCLUDED.scheduled_at, status='pending', email_sent=true,
            whatsapp_sent=false, attempts=0, last_error=NULL,
            created_by=EXCLUDED.created_by, updated_at=NOW(), completed_at=NULL`,
         [registroId, fechaProgramada.toISOString(), req.user.id]
@@ -734,7 +733,8 @@ router.put('/:id', async (req, res) => {
     let whatsappBienvenida = null;
     if (debeEnviarBienvenida) {
       try {
-        correoBienvenida = await enviarBienvenidaWelcome(rows[0]);
+        // Welcome opera exclusivamente por WhatsApp; el correo queda desactivado.
+        correoBienvenida = null;
       } catch (errorCorreo) {
         // El estado ya quedó guardado. Un fallo SMTP se informa sin revertir
         // la gestión realizada por Backoffice.

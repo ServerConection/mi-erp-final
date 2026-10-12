@@ -42,12 +42,29 @@ const { conteoGestionablesHoy, bloqueadoPorAtc } = require('../shared/repartoCon
 // Todo el reparto vive dentro de esta fábrica: cada empresa (novonet / velsa)
 // tiene sus tablas, su cuenta Bitrix, sus cachés y sus candados. Novonet usa
 // las mismas tablas y valores de siempre.
+// Bitrix responde QUERY_LIMIT_EXCEEDED cuando el portal recibe demasiadas
+// llamadas por segundo. Es momentáneo: se espera y se reintenta.
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+const esLimiteBitrix = (err) => /QUERY_LIMIT_EXCEEDED|Too many requests/i.test(err?.message || '');
+const conReintento = (fn) => async (method, params) => {
+  for (let intento = 1; ; intento++) {
+    try { return await fn(method, params); }
+    catch (err) {
+      if (!esLimiteBitrix(err) || intento >= 5) throw err;
+      await esperar(1000 * intento + Math.floor(Math.random() * 500));
+    }
+  }
+};
+// Novonet y Velsa viven en el mismo portal: comparten la lista de usuarios
+// (antes cada empresa la descargaba por su cuenta y duplicaba las llamadas).
+const usuariosPorPortal = {};
+
 const crearReparto = (empresa) => {
   const E = getEmpresa(empresa);
   const T = E.tablas;
   const url = E.url();
   // Novonet sigue usando exactamente la misma llamada de siempre
-  const bx = E.portal === 'novonet' ? bitrixCallNovonet : (method, params) => bitrixCallCuenta(url, method, params);
+  const bx = conReintento(E.portal === 'novonet' ? bitrixCallNovonet : (method, params) => bitrixCallCuenta(url, method, params));
   // Campo de cupo en el deal (si la empresa no lo tiene configurado, no se escribe)
   const campoCupo = (valor) => (E.fieldName ? { [E.fieldName]: valor } : {});
 
@@ -77,8 +94,16 @@ const crearReparto = (empresa) => {
   const COLA_LOCK_KEY = E.lock + 1;
 
   // ── Nombre del asesor → ID de usuario Bitrix (NOVONET), con caché 10 min ────
-  let cacheUsuarios = { map: new Map(), ts: 0 };
+  const portalKey = E.portal || E.clave;
+  usuariosPorPortal[portalKey] = usuariosPorPortal[portalKey] || { map: new Map(), ts: 0, cargando: null };
+  const cacheUsuarios = usuariosPorPortal[portalKey];
   const cargarUsuariosBitrix = async () => {
+    // Si ya hay una descarga en curso (otra empresa u otro webhook), se espera esa
+    if (cacheUsuarios.cargando) return cacheUsuarios.cargando;
+    cacheUsuarios.cargando = descargarUsuarios().finally(() => { cacheUsuarios.cargando = null; });
+    return cacheUsuarios.cargando;
+  };
+  const descargarUsuarios = async () => {
     const map = new Map();
     let start = 0;
     for (let pagina = 0; pagina < 20; pagina++) {
@@ -89,13 +114,16 @@ const crearReparto = (empresa) => {
       if (!json.next) break;
       start = json.next;
     }
-    cacheUsuarios = { map, ts: Date.now() };
+    cacheUsuarios.map = map;
+    cacheUsuarios.ts = Date.now();
     return map;
   };
   const idUsuarioBitrix = async (nombre) => {
     const key = normalizarNombre(nombre);
-    const vencido = Date.now() - cacheUsuarios.ts > 10 * 60 * 1000;
-    if (vencido || !cacheUsuarios.map.has(key)) await cargarUsuariosBitrix();
+    const edad = Date.now() - cacheUsuarios.ts;
+    // Nombre desconocido: se recarga, pero como máximo una vez por minuto
+    // (antes cada nombre que no estaba en Bitrix descargaba todos los usuarios).
+    if (edad > 10 * 60 * 1000 || (!cacheUsuarios.map.has(key) && edad > 60 * 1000)) await cargarUsuariosBitrix();
     return cacheUsuarios.map.get(key) || null;
   };
 
@@ -233,6 +261,7 @@ const crearReparto = (empresa) => {
     todos_al_limite:  'Todos los asesores llegaron a su límite',
     cola_en_espera:   'Hay leads esperando antes que este',
     en_estacion:      'Ya estaba a nombre de la estación',
+    reintento_bitrix: 'Bitrix estaba saturado; se reintenta desde la cola',
     limite_atc:       'Los asesores con cupo superaron su % de ATC',
   };
   const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
@@ -285,7 +314,7 @@ const crearReparto = (empresa) => {
       }
 
       const pend = await poolErp.query(
-        `SELECT id, bitrix_deal_id FROM ${T.cola}
+        `SELECT id, bitrix_deal_id, motivo, responsable_original FROM ${T.cola}
           WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 30`
       );
       if (!pend.rows.length) return { entregados, motivo: 'cola vacía' };
@@ -308,8 +337,15 @@ const crearReparto = (empresa) => {
         // ¿Sigue esperando en la estación? Si alguien ya lo movió o trabajó, se descarta.
         let deal = null;
         try { deal = (await bx('crm.deal.get', { id: item.bitrix_deal_id })).result; } catch { deal = null; }
+        // Un lead que falló por saturación de Bitrix nunca llegó a la estación:
+        // sigue con el responsable con el que entró. Ese también es válido.
+        let duenoValido = estacionId && Number(deal?.ASSIGNED_BY_ID) === Number(estacionId);
+        if (!duenoValido && deal && item.motivo === 'reintento_bitrix') {
+          const originalId = item.responsable_original ? await idUsuarioBitrix(item.responsable_original) : null;
+          duenoValido = !originalId || Number(deal.ASSIGNED_BY_ID) === Number(originalId);
+        }
         const descartar = !deal ? 'El lead ya no existe en Bitrix'
-          : (estacionId && Number(deal.ASSIGNED_BY_ID) !== Number(estacionId)) ? 'Ya no está a nombre de la estación (alguien lo reasignó)'
+          : (estacionId && !duenoValido) ? 'Ya no está a nombre de la estación (alguien lo reasignó)'
           : (etapaContactoNuevo && deal.STAGE_ID !== etapaContactoNuevo) ? `Ya no está en Contacto nuevo (pasó a ${deal.STAGE_ID}); alguien ya lo gestionó`
           : null;
         if (descartar) {
@@ -595,6 +631,23 @@ const crearReparto = (empresa) => {
 
     } catch (err) {
       console.error('[gestionablesWebhook] recibirGestionable error:', err.message);
+      // Bitrix saturado: el lead no se pierde, queda en la cola y el cron lo
+      // entrega en cuanto se pueda (en horario y con alguien disponible).
+      if (esLimiteBitrix(err) && /^\d+$/.test(bitrixId)) {
+        try {
+          await poolErp.query(
+            `INSERT INTO ${T.cola} (bitrix_deal_id, motivo, responsable_original)
+             VALUES ($1, 'reintento_bitrix', $2)
+             ON CONFLICT (bitrix_deal_id) WHERE estado = 'pendiente'
+             DO UPDATE SET responsable_original = COALESCE(${T.cola}.responsable_original, EXCLUDED.responsable_original)`,
+            [bitrixId, nombreAsesor || null]
+          );
+          await registrarLog({ bitrixId, nombreAsesor, error: 'Bitrix saturado: quedó en la cola para reintentar' });
+          return res.status(200).send('OK (Bitrix saturado, quedó en la cola)');
+        } catch (e2) {
+          console.error('[gestionablesWebhook] No se pudo encolar el reintento:', e2.message);
+        }
+      }
       await registrarLog({ bitrixId: bitrixId || '(vacio)', nombreAsesor, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) });
       return res.status(500).send('Error interno');
     }

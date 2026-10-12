@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 import { puedeAccederGestionables } from './utils/accesoGestionables';
+import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -121,6 +122,15 @@ const RolesAllowedRoute = ({ children, allowed = [] }) => {
   return children;
 };
 
+const AdministracionRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  if (!token) return <Navigate to="/login" replace />;
+  let userProfile = null;
+  try { userProfile = JSON.parse(localStorage.getItem("userProfile") || "null"); } catch (_) { userProfile = null; }
+  if (!puedeAccederAdministracion(userProfile?.perfil)) return <Navigate to="/" replace />;
+  return children;
+};
+
 const GestionablesRoute = ({ children, empresa }) => {
   if (!puedeAccederGestionables(empresa)) return <Navigate to="/" replace />;
   return children;
@@ -164,7 +174,7 @@ export default function App() {
             <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<Horarios />} />
             <Route path="billetera"                 element={<Billetera />} />
-            <Route path="comisiones"                element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA"]}><Comisiones /></RolesAllowedRoute>} />
+            <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
             <Route path="redes-velsa"               element={<RedesVelsa />} />

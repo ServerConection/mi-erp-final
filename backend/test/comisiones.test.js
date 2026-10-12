@@ -16,5 +16,8 @@ assert.match(fuente, /to_jsonb\(e\)::text/);
 assert.match(fuente, /ORDER BY ultima_fecha_ingreso_telcos DESC NULLS LAST/);
 assert.equal(puedeAccederAdministracion('ADMINISTRADOR'), true);
 assert.equal(puedeAccederAdministracion('gerencia'), true);
+for (const p of ['GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'GERENCIA_FINANCIERA']) {
+  assert.equal(puedeAccederAdministracion(p), true, p);
+}
 for (const p of ['SUPERVISOR','ATC','ANALISTA','USUARIO','ASESOR','']) assert.equal(puedeAccederAdministracion(p), false, p);
 console.log('OK comisiones: envios_ventas, fechas independientes y acceso');

@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
+import { puedeAccederAdministracion } from '../utils/accesoAdministracion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -405,13 +406,13 @@ const ALL_MENU_ITEMS = [
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",
-    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p) },
+    accessCheck: (p) => puedeAccederAdministracion(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
-    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA'].includes(p), isChild: true, group: "administracion" },
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   // Mapa de salud del ERP: solo administradores — muestra el estado interno.
   { name: "Salud del sistema", path: "/salud", icon: "🩺",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
@@ -590,7 +591,7 @@ export default function DashboardLayout() {
 
     // Todo el bloque de Administración es exclusivo de Gerencia y
     // Administradores, incluso si alguien escribe una URL interna a mano.
-    if (itemActual.group === 'administracion' && !['ADMINISTRADOR', 'GERENCIA'].includes(p)) {
+    if (itemActual.group === 'administracion' && !puedeAccederAdministracion(p)) {
       navigate('/', { replace: true });
       return;
     }
@@ -629,7 +630,7 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
-    if (item.group === 'administracion' && !['ADMINISTRADOR', 'GERENCIA'].includes(perfil)) return false;
+    if (item.group === 'administracion' && !puedeAccederAdministracion(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
       if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);
       if (perfil === 'ATC') return !!item.path && rutaPermitidaAtc(item.path);

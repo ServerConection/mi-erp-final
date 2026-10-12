@@ -98,7 +98,7 @@ const COLS = [
   { L: 'Y',  k: 'mnum',  w: 9.5,  f: 'meta_activas_totales', sub: 'sum' },
   { L: 'Z',  k: 'num',   w: 9.5,  f: 'activas_totales',      sub: 'sum' },
   { L: 'AA', k: 'mpct',  w: 8,    f: 'meta_pct_tasa_activacion', sub: 'meta' },
-  { L: 'AB', k: 'pct',   w: 8,    f: 'pct_tasa_activacion',  sub: ['div', 'Z', 'U'], meta: 'AA' },
+  { L: 'AB', k: 'pct',   w: 8,    f: 'pct_tasa_activacion',  sub: ['div', 'W', 'U'], meta: 'AA' },
   { L: 'AC', k: 'mpct',  w: 8.5,  f: 'meta_pct_tarjeta',     sub: 'meta' },
   { L: 'AD', k: 'pct',   w: 8.5,  f: 'pct_tarjeta',          sub: ['divn', 'tarjeta_n', 'U'], meta: 'AC' },
   { L: 'AE', k: 'mpct',  w: 8.5,  f: 'meta_pct_tercera_edad', sub: 'meta' },

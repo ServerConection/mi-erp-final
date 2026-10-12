@@ -13,7 +13,10 @@ const fuente = fs.readFileSync(require.resolve('../src/controllers/comisiones.co
 assert.match(fuente, /FROM public\.envios_ventas e/);
 assert.match(fuente, /e\.estatus_envio IS DISTINCT FROM 'BORRADOR'/);
 assert.match(fuente, /to_jsonb\(e\)::text/);
-assert.match(fuente, /ORDER BY ultima_fecha_ingreso_telcos DESC NULLS LAST/);
+assert.match(fuente, /SELECT MAX\(.+\) AS codigo_asesor, .+ AS usuario/s);
+assert.doesNotMatch(fuente, /GROUP BY \$\{codigo\}, \$\{usuario\}/);
+assert.match(fuente, /ORDER BY activas_regularizadas DESC, activas_totales DESC/);
+assert.doesNotMatch(fuente, /ORDER BY ultima_fecha_ingreso_telcos DESC/);
 assert.equal(puedeAccederAdministracion('ADMINISTRADOR'), true);
 assert.equal(puedeAccederAdministracion('gerencia'), true);
 for (const p of ['GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'GERENCIA_FINANCIERA']) {

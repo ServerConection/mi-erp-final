@@ -341,9 +341,23 @@ const CAMPOS_EDITABLES = new Set([
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
+const intervaloWelcome = () => Math.floor(Math.random() * 3) + 5;
+async function reprogramarColaWelcome(client, inicio) {
+  const pendientes = await client.query(
+    `SELECT id FROM welcome_notifications WHERE status IN ('pending','failed') ORDER BY scheduled_at,id FOR UPDATE`
+  );
+  let fecha = new Date(inicio);
+  for (let i = 0; i < pendientes.rows.length; i += 1) {
+    if (i) fecha = new Date(fecha.getTime() + intervaloWelcome() * 60000);
+    await client.query(`UPDATE welcome_notifications SET scheduled_at=$2,status='pending',updated_at=NOW() WHERE id=$1`, [pendientes.rows[i].id, fecha]);
+  }
+  return pendientes.rows.length;
+}
+
 // ─── PUT /api/backoffice/:id ──────────────────────────────────────────────────
-// Programación persistente de bienvenidas: cada registro queda separado tres
-// minutos del siguiente y WaBot procesa correo + WhatsApp en segundo plano.
+// Programación persistente de bienvenidas: cada registro queda separado del
+// siguiente por un intervalo aleatorio de 5, 6 o 7 minutos. WaBot procesa los
+// WhatsApp en segundo plano.
 router.get('/welcome/programaciones', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -359,6 +373,58 @@ router.get('/welcome/programaciones', async (_req, res) => {
     console.error('[WELCOME] Error listando programaciones:', error.message);
     res.status(500).json({ success: false, error: 'No se pudieron cargar las programaciones' });
   }
+});
+
+router.get('/welcome/config', async (_req, res) => {
+  try {
+    const [config, variantes] = await Promise.all([
+      pool.query(`SELECT c.*,l.id AS line_id,l.status AS line_status,l.phone_number
+                  FROM welcome_config c LEFT JOIN LATERAL (
+                    SELECT id,status,phone_number FROM lines WHERE UPPER(TRIM(name))=UPPER(TRIM(c.line_name)) AND deleted_at IS NULL
+                    ORDER BY last_connected DESC NULLS LAST,created_at DESC LIMIT 1
+                  ) l ON true WHERE c.id=1`),
+      pool.query(`SELECT id,code,name,body,active,sort_order FROM welcome_variants ORDER BY sort_order,id`),
+    ]);
+    res.json({ success: true, data: config.rows[0], variantes: variantes.rows });
+  } catch (error) { res.status(500).json({ success:false,error:error.message }); }
+});
+
+router.post('/welcome/pausar', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`UPDATE welcome_config SET paused=true,updated_by=$1,updated_at=NOW() WHERE id=1 RETURNING *`, [req.user.id]);
+    res.json({ success:true,data:rows[0] });
+  } catch (error) { res.status(500).json({ success:false,error:error.message }); }
+});
+
+router.post('/welcome/reanudar', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`UPDATE welcome_config SET paused=false,updated_by=$1,updated_at=NOW() WHERE id=1`, [req.user.id]);
+    const cantidad = await reprogramarColaWelcome(client, new Date());
+    await client.query('COMMIT');
+    res.json({ success:true,reprogramados:cantidad });
+  } catch (error) { await client.query('ROLLBACK'); res.status(500).json({ success:false,error:error.message }); }
+  finally { client.release(); }
+});
+
+router.get('/welcome/respuestas', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT wn.*,ev.nombre_cliente_completo,ev.telf_celular_pin,ev.telf_celular_2,ev.numero_identificacion,wv.name AS variante
+       FROM welcome_notifications wn JOIN envios_ventas ev ON ev.id=wn.registro_id
+       LEFT JOIN welcome_variants wv ON wv.id=wn.variant_id
+       WHERE wn.response_status IS NOT NULL ORDER BY wn.responded_at DESC LIMIT 300`
+    );
+    res.json({success:true,data:rows});
+  } catch (error) { res.status(500).json({success:false,error:error.message}); }
+});
+
+router.post('/welcome/respuestas/:id/atender', async (req,res) => {
+  try {
+    const { rows } = await pool.query(`UPDATE welcome_notifications SET attended=true,attended_by=$2,attended_at=NOW(),updated_at=NOW() WHERE id=$1 RETURNING *`, [req.params.id,req.user.id]);
+    res.json({success:true,data:rows[0]});
+  } catch (error) { res.status(500).json({success:false,error:error.message}); }
 });
 
 router.post('/welcome/programar', async (req, res) => {
@@ -393,28 +459,42 @@ router.post('/welcome/programar', async (req, res) => {
     }
 
     const programaciones = [];
+    let fechaProgramada = new Date(inicio);
     for (let indice = 0; indice < seleccionados.rows.length; indice += 1) {
       const registroId = seleccionados.rows[indice].id;
-      const fechaProgramada = new Date(inicio.getTime() + indice * 3 * 60 * 1000);
+      const intervaloAnteriorMinutos = indice === 0
+        ? null
+        : intervaloWelcome();
+      if (intervaloAnteriorMinutos !== null) {
+        fechaProgramada = new Date(fechaProgramada.getTime() + intervaloAnteriorMinutos * 60 * 1000);
+      }
+      const variante = await client.query(`SELECT id FROM welcome_variants WHERE active=true ORDER BY sort_order,id`);
+      const varianteId = variante.rows.length ? variante.rows[indice % variante.rows.length].id : null;
       await client.query(
         `INSERT INTO welcome_notifications
-           (registro_id, scheduled_at, status, email_sent, whatsapp_sent, attempts, last_error, created_by, updated_at, completed_at)
-         VALUES ($1, $2, 'pending', true, false, 0, NULL, $3, NOW(), NULL)
+           (registro_id, scheduled_at, status, email_sent, whatsapp_sent, attempts, last_error, created_by, updated_at, completed_at,variant_id,delivery_status,response_status,response_text,responded_at,attended)
+         VALUES ($1, $2, 'pending', true, false, 0, NULL, $3, NOW(), NULL,$4,'PENDING',NULL,NULL,NULL,false)
          ON CONFLICT (registro_id) DO UPDATE SET
            scheduled_at=EXCLUDED.scheduled_at, status='pending', email_sent=true,
            whatsapp_sent=false, attempts=0, last_error=NULL,
-           created_by=EXCLUDED.created_by, updated_at=NOW(), completed_at=NULL`,
-        [registroId, fechaProgramada.toISOString(), req.user.id]
+           created_by=EXCLUDED.created_by, updated_at=NOW(), completed_at=NULL,variant_id=EXCLUDED.variant_id,
+           delivery_status='PENDING',response_status=NULL,response_text=NULL,responded_at=NULL,attended=false`,
+        [registroId, fechaProgramada.toISOString(), req.user.id, varianteId]
       );
       await client.query(
         `UPDATE public.envios_ventas SET estado_welcome='PENDIENTE' WHERE id=$1`,
         [registroId]
       );
-      programaciones.push({ registro_id: registroId, scheduled_at: fechaProgramada.toISOString(), status: 'pending' });
+      programaciones.push({
+        registro_id: registroId,
+        scheduled_at: fechaProgramada.toISOString(),
+        status: 'pending',
+        intervalo_anterior_minutos: intervaloAnteriorMinutos,
+      });
     }
 
     await client.query('COMMIT');
-    res.json({ success: true, data: programaciones, intervalo_minutos: 3 });
+    res.json({ success: true, data: programaciones, intervalo_minutos: { minimo: 5, maximo: 7 } });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[WELCOME] Error programando:', error.message);

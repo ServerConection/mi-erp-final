@@ -1499,6 +1499,11 @@ class BaileysManager {
           conversation_id: upd.rows[0].conversation_id,
         })
       }
+      await query(
+        `UPDATE welcome_notifications SET delivery_status=$1,updated_at=NOW()
+         WHERE wa_message_id=$2 AND delivery_status IS DISTINCT FROM 'READ'`,
+        [status >= 4 ? 'READ' : 'DELIVERED', waMsgId]
+      ).catch(() => {})
     } catch (e) { /* no romper los acks de campaña de abajo */ }
 
     // Entregado (solo la primera vez: transición sent → delivered)

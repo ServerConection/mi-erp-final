@@ -33,6 +33,7 @@ class SchedulerService {
     await this._checkScheduledCampaigns()
     await this._checkScheduledMessages()
     await this._checkWelcomeNotifications()
+    await this._classifyWelcomeResponses()
     await this._checkCampanasPausadasPorHorario()
   }
 
@@ -130,6 +131,12 @@ class SchedulerService {
 
   async _checkWelcomeNotifications() {
     try {
+      const cfg = await query(`SELECT paused,send_start::text,send_end::text FROM welcome_config WHERE id=1`)
+      if (cfg.rows[0]?.paused) return
+      const nowEc = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Guayaquil' }))
+      const minutos = nowEc.getHours() * 60 + nowEc.getMinutes()
+      const aMinutos = (v) => { const [h,m] = String(v || '').split(':').map(Number); return h * 60 + m }
+      if (minutos < aMinutos(cfg.rows[0]?.send_start || '08:30') || minutos >= aMinutos(cfg.rows[0]?.send_end || '20:00')) return
       const res = await query(
         `SELECT * FROM welcome_notifications
          WHERE (status IN ('pending', 'failed')
@@ -137,7 +144,7 @@ class SchedulerService {
            AND attempts < 3
            AND scheduled_at <= NOW()
          ORDER BY scheduled_at ASC
-         LIMIT 10`
+         LIMIT 1`
       )
 
       for (const tarea of res.rows) {
@@ -167,15 +174,16 @@ class SchedulerService {
             try {
               const preparado = await prepararWhatsappBienvenida(registro)
               if (!preparado.ok) throw new Error(preparado.motivo)
-              await this.baileysManager.sendText(
+              const enviado = await this.baileysManager.sendText(
                 preparado.linea_id,
                 preparado.telefono,
                 preparado.mensaje
               )
               whatsappSent = true
               await query(
-                `UPDATE welcome_notifications SET whatsapp_sent=true, updated_at=NOW() WHERE id=$1`,
-                [tarea.id]
+                `UPDATE welcome_notifications SET whatsapp_sent=true,variant_id=COALESCE(variant_id,$2),
+                 wa_message_id=$3,delivery_status='SENT',updated_at=NOW() WHERE id=$1`,
+                [tarea.id, preparado.variante_id, enviado?.key?.id || null]
               )
             } catch (error) {
               errores.push(`WhatsApp: ${error.message}`)
@@ -196,6 +204,12 @@ class SchedulerService {
               [tarea.registro_id]
             )
             this.io.emit('welcome:notificado', { registroId: tarea.registro_id })
+            const atrasados = await query(`SELECT id FROM welcome_notifications WHERE status IN ('pending','failed') AND scheduled_at<=NOW() ORDER BY scheduled_at,id`)
+            let cursor = Date.now()
+            for (const pendiente of atrasados.rows) {
+              cursor += (Math.floor(Math.random()*3)+5) * 60000
+              await query(`UPDATE welcome_notifications SET scheduled_at=$2,status='pending',updated_at=NOW() WHERE id=$1`, [pendiente.id,new Date(cursor)])
+            }
             console.log(`[Scheduler] ✅ Bienvenida completada para registro #${tarea.registro_id}`)
           } else {
             const intentos = Number(tarea.attempts || 0) + 1
@@ -220,6 +234,30 @@ class SchedulerService {
     } catch (error) {
       console.warn('[Scheduler] checkWelcomeNotifications:', error.message)
     }
+  }
+
+  async _classifyWelcomeResponses() {
+    try {
+      const respuestas = await query(`
+        SELECT DISTINCT ON (wn.id) wn.id,m.content,m.timestamp,m.conversation_id
+        FROM welcome_notifications wn
+        JOIN envios_ventas ev ON ev.id=wn.registro_id
+        JOIN lines l ON UPPER(TRIM(l.name))=(SELECT UPPER(TRIM(line_name)) FROM welcome_config WHERE id=1)
+        JOIN messages m ON m.line_id=l.id AND m.direction='in'
+        LEFT JOIN conversations c ON c.id=m.conversation_id
+        LEFT JOIN contacts ct ON ct.id=c.contact_id
+        WHERE right(regexp_replace(COALESCE(ct.metadata->>'real_phone',m.wa_number),'[^0-9]','','g'),9) = right(regexp_replace(COALESCE(ev.telf_celular_pin,ev.telf_celular_2,ev.telf_fijo),'[^0-9]','','g'),9)
+          AND m.timestamp >= wn.completed_at
+          AND wn.status='completed' AND wn.response_status IS NULL
+        ORDER BY wn.id,m.timestamp ASC`)
+      for (const r of respuestas.rows) {
+        const texto = String(r.content || '').trim().toLowerCase()
+        const positiva = /^(1|si|sí|ok|entendi|entendí|gracias|todo claro)/.test(texto)
+        const estado = positiva ? 'POSITIVA' : 'DUDA'
+        await query(`UPDATE welcome_notifications SET response_status=$2,response_text=$3,responded_at=$4,conversation_id=$5,updated_at=NOW() WHERE id=$1 AND response_status IS NULL`, [r.id,estado,r.content,r.timestamp,r.conversation_id])
+        this.io.emit('welcome:respuesta', { id:r.id,estado,conversationId:r.conversation_id })
+      }
+    } catch (error) { console.warn('[Scheduler] classifyWelcomeResponses:', error.message) }
   }
 }
 

@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import "../styles/VistaBackoffice.css";
 import { colorDeValor } from "../utils/coloresBackoffice";
 import { getSocketCompartido } from "../utils/socketCompartido";
+import WaInbox from "./WaInbox";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -4812,6 +4813,7 @@ function TarjetaWelcome({
   seleccionable = false, seleccionado = false, onSeleccionar,
   tituloSeleccion = "Seleccionar para programar",
   bloquearArrastre = false,
+  onEditarCampo,
 }) {
   const estaMoviendose = moviendo === row.id;
 
@@ -4877,8 +4879,11 @@ function TarjetaWelcome({
         <div style={{ fontSize: 11, fontWeight: 800, color: "#475569" }}>
           📅 Activación: {row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "Sin fecha"}
         </div>
-        <div>CI {row.numero_identificacion || "—"}</div>
-        {row.netlife_login && <div>Login: {row.netlife_login}</div>}
+        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "numero_identificacion", "Cédula"); }}>CI {row.numero_identificacion || "—"}</div>
+        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "netlife_login", "Login"); }}>Login: {row.netlife_login || "—"}</div>
+        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "plan_contratado_final", "Plan contratado"); }}>Plan: {row.plan_contratado_final || row.plan_contratado || "—"}</div>
+        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "forma_pago", "Forma de pago"); }}>Pago: {row.forma_pago || "—"}</div>
+        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "ciclo_facturacion", "Ciclo de facturación"); }}>Ciclo: {row.ciclo_facturacion || "—"}</div>
         {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
       </div>
     </div>
@@ -5005,7 +5010,23 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [programaciones, setProgramaciones] = useState({});
   const [programando, setProgramando] = useState(false);
   const [cancelandoId, setCancelandoId] = useState(null);
+  const [configWelcome, setConfigWelcome] = useState(null);
+  const [respuestasWelcome, setRespuestasWelcome] = useState([]);
+  const [mostrarChatWelcome, setMostrarChatWelcome] = useState(false);
+  const [chatConversacionId, setChatConversacionId] = useState(null);
   const token = localStorage.getItem("token");
+
+  const cargarOperacionWelcome = useCallback(async () => {
+    try {
+      const [rc, rr] = await Promise.all([
+        fetch(`${API}/api/backoffice/welcome/config`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/backoffice/welcome/respuestas`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const [jc, jr] = await Promise.all([rc.json(), rr.json()]);
+      if (jc.success) setConfigWelcome({ ...jc.data, variantes: jc.variantes || [] });
+      if (jr.success) setRespuestasWelcome(jr.data || []);
+    } catch (e) { console.error("[WELCOME] Operación:", e); }
+  }, [token]);
 
   const cargarProgramaciones = useCallback(async () => {
     try {
@@ -5037,7 +5058,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     setSeleccionados((actuales) => new Set([...actuales].filter((id) => disponibles.has(id))));
   }, [rows]);
 
-  useEffect(() => { cargarProgramaciones(); }, [cargarProgramaciones]);
+  useEffect(() => { cargarProgramaciones(); cargarOperacionWelcome(); }, [cargarProgramaciones, cargarOperacionWelcome]);
 
   // El worker cambia PENDIENTE → NOTIFICADO sin depender del navegador.
   // Esta actualización periódica refleja esos cambios en el Kanban abierto.
@@ -5045,9 +5066,44 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     const intervalo = setInterval(() => {
       recargar();
       cargarProgramaciones();
+      cargarOperacionWelcome();
     }, 30000);
     return () => clearInterval(intervalo);
-  }, [recargar, cargarProgramaciones]);
+  }, [recargar, cargarProgramaciones, cargarOperacionWelcome]);
+
+  const editarCampoWelcome = async (row, campo, etiqueta) => {
+    const valor = window.prompt(`${etiqueta}:`, row?.[campo] || "");
+    if (valor === null || valor === String(row?.[campo] || "")) return;
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/${row.id}`, { method:"PUT", headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify({[campo]:valor.trim()}) });
+      const json = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo guardar");
+      setRows((actuales) => actuales.map((r) => String(r.id) === String(row.id) ? {...r,[campo]:valor.trim()} : r));
+      setAviso(`✅ ${etiqueta} actualizado.`);
+    } catch (e) { setAviso(`❌ ${e.message}`); }
+  };
+
+  const cambiarPausaWelcome = async () => {
+    const accion = configWelcome?.paused ? "reanudar" : "pausar";
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/welcome/${accion}`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      const json = await respuesta.json();
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo actualizar la cola");
+      await cargarOperacionWelcome(); await cargarProgramaciones();
+      setAviso(`✅ Envíos ${accion === "pausar" ? "pausados" : "reanudados"}.`);
+    } catch (e) { setAviso(`❌ ${e.message}`); }
+  };
+
+  const positivas = respuestasWelcome.filter((r) => r.response_status === "POSITIVA").length;
+  const dudas = respuestasWelcome.filter((r) => r.response_status === "DUDA");
+  const abrirDudaWelcome = async (duda) => {
+    setChatConversacionId(duda.conversation_id);
+    setMostrarChatWelcome(true);
+    try {
+      await fetch(`${API}/api/backoffice/welcome/respuestas/${duda.id}/atender`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      setRespuestasWelcome((actuales) => actuales.map((r) => String(r.id) === String(duda.id) ? {...r,attended:true} : r));
+    } catch { /* el chat debe abrir incluso si falla la marca de atención */ }
+  };
 
   const consultarWelcome = () => setFiltrosWelcome({ busqueda, fechaDesde: fechaDesdeWelcome, fechaHasta: fechaHastaWelcome });
   const limpiarFiltrosWelcome = () => {
@@ -5128,7 +5184,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       setSeleccionados(new Set());
       await recargar();
       const ultima = json.data?.[json.data.length - 1]?.scheduled_at;
-      setAviso(`✅ ${ordenados.length} notificación${ordenados.length === 1 ? "" : "es"} programada${ordenados.length === 1 ? "" : "s"} cada 3 minutos${ultima ? `, hasta ${mostrarFechaHoraWelcome(ultima)}` : ""}.`);
+      setAviso(`✅ ${ordenados.length} notificación${ordenados.length === 1 ? "" : "es"} programada${ordenados.length === 1 ? "" : "s"} con intervalos aleatorios de 5 a 7 minutos${ultima ? `, hasta ${mostrarFechaHoraWelcome(ultima)}` : ""}.`);
     } catch (errorProgramar) {
       setAviso(`❌ ${errorProgramar.message}`);
     } finally {
@@ -5281,7 +5337,22 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       setAviso("⚠️ Selecciona al menos un registro para exportar.");
       return;
     }
-    const registrosExportar = filtradas.filter((row) => seleccionadosExportacion.has(String(row.id)));
+    const respuestasPorRegistro = new Map(respuestasWelcome.map((r) => [String(r.registro_id), r]));
+    const registrosExportar = filtradas.filter((row) => seleccionadosExportacion.has(String(row.id))).map((row) => {
+      const gestion = respuestasPorRegistro.get(String(row.id)) || programaciones[String(row.id)] || {};
+      return {
+        ...row,
+        variante_welcome: gestion.variante || "",
+        hora_programada_welcome: gestion.scheduled_at || "",
+        estado_entrega_welcome: gestion.delivery_status || gestion.status || "",
+        respuesta_chatbot: gestion.response_status || "SIN RESPUESTA",
+        texto_respuesta: gestion.response_text || "",
+        fecha_respuesta: gestion.responded_at || "",
+        atendido_welcome: gestion.attended ? "SI" : "NO",
+        intentos_welcome: gestion.attempts ?? "",
+        error_welcome: gestion.last_error || "",
+      };
+    });
     exportarAExcel(registrosExportar, `Reporte_Welcome_${empresa || "Todos"}`);
     setModoExportacion(false);
     setSeleccionadosExportacion(new Set());
@@ -5313,7 +5384,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 Welcome
               </h2>
               <p style={{ margin: "7px 0 0", fontSize: 12.5, color: "#64748b" }}>
-                Solo activaciones con <b>Status NetLife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
+                Solo activaciones con <b>Estatus Netlife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
               </p>
             </div>
 
@@ -5350,6 +5421,12 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 >
                   Refrescar
                 </button>
+                <button type="button" onClick={cambiarPausaWelcome} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #f59e0b",background:configWelcome?.paused?"#ecfdf5":"#fffbeb",color:configWelcome?.paused?"#047857":"#b45309",fontWeight:800,cursor:"pointer" }}>
+                  {configWelcome?.paused ? "▶ Reanudar envíos" : "⏸ Pausar envíos"}
+                </button>
+                <button type="button" onClick={() => setMostrarChatWelcome((v) => !v)} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6d28d9",fontWeight:800,cursor:"pointer" }}>
+                  💬 Chat Welcome
+                </button>
               </div>
             </div>
           </div>
@@ -5368,7 +5445,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
 
         {/* Resumen de los estados de Welcome */}
-        <div className="bo-summary-grid" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+        <div className="bo-summary-grid" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
           <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
               Registros totales
@@ -5416,7 +5493,34 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               Estado Welcome = NOTIFICADO
             </div>
           </div>
+          <div style={{ padding: 18, borderRadius: 14, background: "#ecfdf5", border: "1px solid #6ee7b7" }}>
+            <div style={{ fontSize:11,fontWeight:800,color:"#047857",textTransform:"uppercase" }}>Respuesta positiva</div>
+            <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#047857" }}>{positivas}</div>
+            <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Confirmadas por chatbot</div>
+          </div>
+          <div style={{ padding: 18, borderRadius: 14, background: "#fff7ed", border: "1px solid #fdba74" }}>
+            <div style={{ fontSize:11,fontWeight:800,color:"#c2410c",textTransform:"uppercase" }}>Clientes con duda</div>
+            <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#c2410c" }}>{dudas.filter((r) => !r.attended).length}</div>
+            <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Pendientes de atención</div>
+          </div>
         </div>
+
+        <div style={{ margin:"0 18px 18px",padding:"10px 14px",borderRadius:12,border:"1px solid #e2e8f0",background:"#f8fafc",display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12 }}>
+          <b>Línea base: {configWelcome?.line_name || "NOTI_BACK"}</b>
+          <span>Estado: <b style={{color:configWelcome?.line_status === "connected"?"#047857":"#b91c1c"}}>{configWelcome?.line_status || "sin vincular"}</b></span>
+          <span>Número: <b>{configWelcome?.phone_number || "Vincular desde WaBot › Líneas"}</b></span>
+          <span>Horario: <b>{String(configWelcome?.send_start || "08:30").slice(0,5)} a {String(configWelcome?.send_end || "20:00").slice(0,5)}</b></span>
+          <span>Variantes activas: <b>{configWelcome?.variantes?.filter((v) => v.active).length || 0}</b></span>
+          <button type="button" onClick={() => { window.location.href = "/whatsapp/lineas"; }} style={{marginLeft:"auto",padding:"7px 11px",borderRadius:8,border:"1px solid #86efac",background:"#ecfdf5",color:"#047857",fontWeight:800,cursor:"pointer"}}>
+            Vincular número por QR
+          </button>
+        </div>
+
+        {mostrarChatWelcome && (
+          <div style={{ margin:"0 18px 18px",height:"70vh",minHeight:560,border:"1px solid #c4b5fd",borderRadius:14,overflow:"hidden",background:"#fff" }}>
+            <WaInbox fixedLineName={configWelcome?.line_name || "NOTI_BACK"} initialConversationId={chatConversacionId} />
+          </div>
+        )}
 
         {!modoExportacion && (
           <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
@@ -5453,7 +5557,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             </button>
 
             <div style={{ marginLeft: "auto", maxWidth: 360, fontSize: 11.5, lineHeight: 1.55, color: "#475569" }}>
-              El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
+              El primer envío usará la hora elegida. Los siguientes se programarán con intervalos aleatorios de <b>5, 6 o 7 minutos</b>.
             </div>
           </div>
         )}
@@ -5544,6 +5648,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             onSeleccionar={modoExportacion ? cambiarSeleccionExportacion : cambiarSeleccion}
                             tituloSeleccion={modoExportacion ? "Seleccionar para exportar" : "Seleccionar para programar"}
                             bloquearArrastre={modoExportacion}
+                            onEditarCampo={editarCampoWelcome}
                           />
                           {bloque.id === "SIN_NOTIFICAR" && (
                             <button
@@ -5604,6 +5709,14 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             onVolver={() => setDetalleId(null)}
           />
         )}
+        {dudas.find((r) => !r.attended) && (() => {
+          const duda = dudas.find((r) => !r.attended);
+          return <button type="button" onClick={() => abrirDudaWelcome(duda)} style={{position:"fixed",right:82,bottom:96,zIndex:80,width:340,textAlign:"left",padding:"14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 16px 40px rgba(124,45,18,.24)",cursor:"pointer",color:"#7c2d12"}}>
+            <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
+            <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+            <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>
+          </button>;
+        })()}
       </div>
     </div>
   );

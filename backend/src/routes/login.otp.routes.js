@@ -56,7 +56,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await pool.query(
-      "SELECT id, usuario, correo, contraseña, activo, nombres, apellidos, perfil, empresa, codigo_vendedor FROM usuarios WHERE LOWER(usuario) = LOWER($1)",
+      "SELECT id, usuario, correo, contraseña, activo, nombres, apellidos, cargo, perfil, empresa, codigo_vendedor FROM usuarios WHERE LOWER(usuario) = LOWER($1)",
       [usuario]
     );
 
@@ -98,6 +98,7 @@ router.post('/login', async (req, res) => {
           id: user.id,
           usuario: user.usuario,
           nombre: `${user.nombres} ${user.apellidos}`,
+          cargo: user.cargo || '',
           perfil,
           empresa,
           correo: user.correo,
@@ -155,7 +156,7 @@ router.post('/verify-otp', async (req, res) => {
     if (usuario_id) {
       // Camino seguro: usar el ID directo
       userResult = await pool.query(
-        `SELECT id, usuario, correo, nombres, apellidos, perfil, empresa, activo, codigo_vendedor
+        `SELECT id, usuario, correo, nombres, apellidos, cargo, perfil, empresa, activo, codigo_vendedor
          FROM usuarios WHERE id = $1 AND activo = 'SI'`,
         [usuario_id]
       );
@@ -174,7 +175,7 @@ router.post('/verify-otp', async (req, res) => {
     } else {
       // Fallback: buscar por nombre de usuario
       userResult = await pool.query(
-        `SELECT id, usuario, correo, nombres, apellidos, perfil, empresa, activo, codigo_vendedor
+        `SELECT id, usuario, correo, nombres, apellidos, cargo, perfil, empresa, activo, codigo_vendedor
          FROM usuarios WHERE LOWER(usuario) = LOWER($1) AND activo = 'SI'`,
         [usuario]
       );
@@ -238,6 +239,7 @@ router.post('/verify-otp', async (req, res) => {
         id: user.id,
         usuario: user.usuario,
         nombre: `${user.nombres} ${user.apellidos}`,
+        cargo: user.cargo || '',
         perfil,
         empresa,
         correo: user.correo,

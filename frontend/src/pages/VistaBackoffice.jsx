@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import "../styles/VistaBackoffice.css";
 import { colorDeValor } from "../utils/coloresBackoffice";
+import { filtrarRegistrosBackoffice } from "../utils/filtrosBackoffice";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import WaInbox from "./WaInbox";
 
@@ -2528,11 +2529,18 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [searchAplicada, setSearchAplicada] = useState("");
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
   const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
-  const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
-  const filtrosActivos = Object.values(filtros).filter(Boolean).length;
+  const limpiarFiltros = () => {
+    setSearch("");
+    setSearchAplicada("");
+    setFiltros(FILTROS_VACIOS);
+    setFiltrosAplicados(FILTROS_VACIOS);
+    setPaginaTabla(1);
+  };
+  const filtrosActivos = Object.values(filtros).filter(Boolean).length + (search.trim() ? 1 : 0);
   const consultar = () => {
     setSearchAplicada(search.trim());
     setFiltrosAplicados({ ...filtros });
+    setPaginaTabla(1);
   };
 
   const token = localStorage.getItem("token");
@@ -5114,16 +5122,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   };
 
   const filtradas = (() => {
-    const q = normalizarEstado(filtrosWelcome.busqueda);
-    return rows.filter((r) => {
-      if (q && ![
-        r.nombre_cliente_completo,
-        r.numero_identificacion,
-        r.codigo_asesor,
-        r.id_bitrix,
-        r.netlife_login,
-        String(r.id),
-      ].some((c) => normalizarEstado(c).includes(q))) return false;
+    return filtrarRegistrosBackoffice(rows, filtrosWelcome.busqueda).filter((r) => {
       const fecha = fechaCalendarioEC(r.fecha_registro_sistema);
       if (filtrosWelcome.fechaDesde && (!fecha || fecha < filtrosWelcome.fechaDesde)) return false;
       if (filtrosWelcome.fechaHasta && (!fecha || fecha > filtrosWelcome.fechaHasta)) return false;
@@ -6498,16 +6497,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   );
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(busqueda);
-    return rowsClasificadas.filter((r) => {
-      if (q) {
-        const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
-          r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, ...Object.values(r || {}),
-        ].some((c) => normalizarEstado(c).includes(q));
-        if (!coincide) return false;
-      }
-
+    return filtrarRegistrosBackoffice(rowsClasificadas, busqueda).filter((r) => {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (fechaDesde && (!iso || iso < fechaDesde)) return false;
       if (fechaHasta && (!iso || iso > fechaHasta)) return false;
@@ -6681,15 +6671,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
   };
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(filtrosAplicados.busqueda);
-    return (todas || []).filter((r) => {
-      if (q) {
-        const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
-          r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, r.supervisor, ...Object.values(r || {}),
-        ].some((c) => normalizarEstado(c).includes(q));
-        if (!coincide) return false;
-      }
+    return filtrarRegistrosBackoffice(todas, filtrosAplicados.busqueda).filter((r) => {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (filtrosAplicados.fechaDesde && (!iso || iso < filtrosAplicados.fechaDesde)) return false;
       if (filtrosAplicados.fechaHasta && (!iso || iso > filtrosAplicados.fechaHasta)) return false;
@@ -7441,11 +7423,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   useEffect(() => { setRows(todas); }, [todas]);
 
   const ordenadas = (() => {
-    const q = normalizarEstado(busqueda);
-    const filtradas = !q ? rows : rows.filter((r) =>
-      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial, r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, ...Object.values(r || {})]
-        .some((c) => normalizarEstado(c).includes(q))
-    );
+    const filtradas = filtrarRegistrosBackoffice(rows, busqueda);
     return [...filtradas].sort((a, b) => {
       const fa = String(a.fecha_registro_sistema || "");
       const fb = String(b.fecha_registro_sistema || "");
@@ -7837,16 +7815,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   };
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(filtrosAplicados.busqueda);
-    return todasConCambios.filter((row) => {
-      if (q) {
-        const coincide = [
-          row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor, row.id_asesor_comercial, row.nombre_asesor_comercial,
-          row.id_bitrix, row.netlife_login, row.telf_celular_pin, row.telf_celular_2, row.telf_fijo,
-          row.gestion_atc, row.supervisor, row.estatus_regularizacion, ...Object.values(row || {}),
-        ].some((campo) => normalizarEstado(campo).includes(q));
-        if (!coincide) return false;
-      }
+    return filtrarRegistrosBackoffice(todasConCambios, filtrosAplicados.busqueda).filter((row) => {
       const fecha = fechaCalendarioEC(row.fecha_registro_sistema);
       if (filtrosAplicados.fechaDesde && (!fecha || fecha < filtrosAplicados.fechaDesde)) return false;
       if (filtrosAplicados.fechaHasta && (!fecha || fecha > filtrosAplicados.fechaHasta)) return false;

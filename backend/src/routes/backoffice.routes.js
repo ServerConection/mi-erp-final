@@ -140,25 +140,31 @@ router.get('/', async (req, res) => {
     const P = (v) => { params.push(v); return `$${params.length}`; };
 
     if (buscar.trim()) {
-      const p = P(`%${buscar.trim()}%`);
+      const termino = buscar.trim();
+      const exacto = P(termino);
+      const parcial = P(`%${termino}%`);
       whereClause += ` AND (
-        codigo_asesor            ILIKE ${p} OR
-        id_bitrix                ILIKE ${p} OR
-        nombre_cliente_completo  ILIKE ${p} OR
-        numero_identificacion    ILIKE ${p} OR
-        telf_celular_pin         ILIKE ${p} OR
-        telf_celular_2           ILIKE ${p} OR
-        telf_fijo                ILIKE ${p} OR
-        netlife_login            ILIKE ${p} OR
-        distribuidor_autorizado  ILIKE ${p} OR
-        supervisor               ILIKE ${p} OR
-        to_jsonb(ev)::text       ILIKE ${p} OR
-        EXISTS (
-          SELECT 1 FROM public.usuarios u
-          WHERE (UPPER(TRIM(COALESCE(u.codigo_vendedor, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, '')))
-              OR UPPER(TRIM(COALESCE(u.usuario, ''))) = UPPER(TRIM(COALESCE(codigo_asesor, ''))))
-            AND (u.codigo_vendedor ILIKE ${p} OR CONCAT_WS(' ', u.nombres, u.apellidos) ILIKE ${p})
-        )
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM public.envios_ventas ev_codigo
+          WHERE UPPER(TRIM(COALESCE(ev_codigo.codigo_asesor, ''))) = UPPER(TRIM(${exacto}))
+        ) THEN (
+          UPPER(TRIM(COALESCE(ev.codigo_asesor, ''))) = UPPER(TRIM(${exacto})) OR
+          UPPER(TRIM(COALESCE(asesor.codigo_vendedor, ''))) = UPPER(TRIM(${exacto}))
+        ) ELSE (
+          ev.codigo_asesor            ILIKE ${parcial} OR
+          ev.id_bitrix                ILIKE ${parcial} OR
+          ev.nombre_cliente_completo  ILIKE ${parcial} OR
+          ev.numero_identificacion    ILIKE ${parcial} OR
+          ev.telf_celular_pin         ILIKE ${parcial} OR
+          ev.telf_celular_2           ILIKE ${parcial} OR
+          ev.telf_fijo                ILIKE ${parcial} OR
+          ev.netlife_login            ILIKE ${parcial} OR
+          ev.distribuidor_autorizado  ILIKE ${parcial} OR
+          ev.supervisor               ILIKE ${parcial} OR
+          COALESCE(asesor.codigo_vendedor, '') ILIKE ${parcial} OR
+          COALESCE(asesor.nombre_completo, '') ILIKE ${parcial}
+        ) END
       )`;
     }
 
@@ -223,7 +229,10 @@ router.get('/', async (req, res) => {
     let total = data.length;
     if (String(includeTotal).toLowerCase() !== 'false') {
       const { rows: countRows } = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM public.envios_ventas ${whereClause}`,
+        `SELECT COUNT(*)::int AS total
+         FROM public.envios_ventas ev
+         ${joinAsesorBackoffice}
+         ${whereClause}`,
         countParams
       );
       total = countRows[0].total;

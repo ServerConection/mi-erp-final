@@ -4824,12 +4824,79 @@ function TarjetaWelcome({
   onEditarCampo,
 }) {
   const estaMoviendose = moviendo === row.id;
+  const [edicion, setEdicion] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const cancelarRef = useRef(false);
+
+  const iniciarEdicion = (campo, etiqueta, valor) => {
+    if (guardando) return;
+    cancelarRef.current = false;
+    setEdicion({ campo, etiqueta, valor: String(valor ?? ""), original: String(valor ?? "") });
+  };
+
+  const cancelarEdicion = () => {
+    cancelarRef.current = true;
+    setEdicion(null);
+  };
+
+  const guardarEdicion = async () => {
+    if (!edicion || guardando || cancelarRef.current) return;
+    const actual = edicion;
+    const valor = actual.valor.trim();
+    if (valor === actual.original.trim()) {
+      setEdicion(null);
+      return;
+    }
+    setGuardando(true);
+    const guardado = await onEditarCampo?.(row, actual.campo, actual.etiqueta, valor);
+    setGuardando(false);
+    if (guardado !== false) setEdicion(null);
+  };
+
+  const campoEditable = (campo, etiqueta, valor, prefijo = "", tipo = "text") => {
+    if (edicion?.campo === campo) {
+      const opciones = opcionesEditorCelda(campo, row);
+      const props = {
+        autoFocus: true,
+        value: edicion.valor,
+        disabled: guardando,
+        onClick: (e) => e.stopPropagation(),
+        onDoubleClick: (e) => e.stopPropagation(),
+        onChange: (e) => setEdicion((actual) => ({ ...actual, valor: e.target.value })),
+        onBlur: () => void guardarEdicion(),
+        onKeyDown: (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") cancelarEdicion();
+        },
+        style: {
+          width: "100%", boxSizing: "border-box", padding: "5px 7px", borderRadius: 7,
+          border: "1px solid #38bdf8", background: "#fff", color: "#0f172a", fontSize: 11.5,
+          outline: "2px solid rgba(56,189,248,.15)",
+        },
+      };
+      return opciones ? (
+        <select {...props}>
+          <option value="">Seleccionar...</option>
+          {!opciones.includes(edicion.valor) && edicion.valor && <option value={edicion.valor}>{edicion.valor}</option>}
+          {opciones.map((opcion) => <option key={opcion} value={opcion}>{opcion}</option>)}
+        </select>
+      ) : <input {...props} type={tipo} />;
+    }
+    return (
+      <div
+        title={`${etiqueta}: doble clic para editar`}
+        onDoubleClick={(e) => { e.stopPropagation(); iniciarEdicion(campo, etiqueta, valor); }}
+        style={{ cursor: "text", borderRadius: 5, padding: "1px 3px", margin: "0 -3px" }}
+      >
+        {prefijo}{valor || "—"}
+      </div>
+    );
+  };
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      draggable={!estaMoviendose && !bloquearArrastre}
+      draggable={!estaMoviendose && !bloquearArrastre && !edicion}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(row.id));
@@ -4838,14 +4905,7 @@ function TarjetaWelcome({
       onDragEnd={() => {
         onArrastrar(null);
       }}
-      onClick={() => onAbrir?.(row.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onAbrir?.(row.id);
-        }
-      }}
-      title="Clic para abrir el detalle · arrastra para cambiar de bloque"
+      title="Doble clic sobre un dato para editar · arrastra para cambiar de bloque"
       style={{
         width: "100%",
         boxSizing: "border-box",
@@ -4854,7 +4914,9 @@ function TarjetaWelcome({
         border: `1px solid ${arrastrando === row.id ? "#10b981" : "#e5e7eb"}`,
         borderRadius: 12,
         padding: 13,
-        cursor: estaMoviendose ? "wait" : bloquearArrastre ? "default" : "grab",
+        paddingRight: 108,
+        position: "relative",
+        cursor: estaMoviendose ? "wait" : bloquearArrastre || edicion ? "default" : "grab",
         opacity: estaMoviendose ? 0.6 : 1,
         boxShadow: "0 2px 8px rgba(15,23,42,.05)",
         display: "flex",
@@ -4864,35 +4926,46 @@ function TarjetaWelcome({
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
-          {row.nombre_cliente_completo || "Sin nombre"}
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, flex: "none" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
-          {seleccionable && (
-            <input
-              type="checkbox"
-              checked={seleccionado}
-              aria-label={`Seleccionar registro ${row.id}`}
-              title={tituloSeleccion}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
-              style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer" }}
-            />
-          )}
+        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
+          {campoEditable("nombre_cliente_completo", "Nombre del cliente", row.nombre_cliente_completo)}
+        </div>
+        <div style={{ position: "absolute", top: 12, right: 22, width: 66, display: "flex", flexDirection: "column", alignItems: "center", gap: 22, zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+            {seleccionable && (
+              <input
+                type="checkbox"
+                checked={seleccionado}
+                aria-label={`Seleccionar registro ${row.id}`}
+                title={tituloSeleccion}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
+                style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer", flex: "none" }}
+              />
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAbrir?.(row.id); }}
+            title="Abrir detalle completo"
+            style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}
+          >
+            👁 Ver
+          </button>
         </div>
       </div>
 
       <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: "#475569" }}>
-          📅 Activación: {row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "Sin fecha"}
+          {campoEditable("fecha_activacion_netlife", "Fecha de activación", row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "", "📅 Activación: ", "date")}
         </div>
-        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "numero_identificacion", "Cédula"); }}>CI {row.numero_identificacion || "—"}</div>
-        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "netlife_login", "Login"); }}>Login: {row.netlife_login || "—"}</div>
-        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "plan_contratado_final", "Plan contratado"); }}>Plan: {row.plan_contratado_final || row.plan_contratado || "—"}</div>
-        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "forma_pago", "Forma de pago"); }}>Pago: {row.forma_pago || "—"}</div>
-        <div onDoubleClick={(e) => { e.stopPropagation(); onEditarCampo?.(row, "ciclo_facturacion", "Ciclo de facturación"); }}>Ciclo: {row.ciclo_facturacion || "—"}</div>
+        {campoEditable("numero_identificacion", "Cédula", row.numero_identificacion, "CI: ")}
+        {campoEditable("netlife_login", "Login", row.netlife_login, "Login: ")}
+        {campoEditable("plan_contratado_final", "Plan contratado", row.plan_contratado_final || row.plan_contratado, "Plan: ")}
+        {campoEditable("forma_pago", "Forma de pago", row.forma_pago, "Pago: ")}
+        {campoEditable("ciclo_facturacion", "Ciclo de facturación", row.ciclo_facturacion, "Ciclo: ")}
         {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
+        {edicion && <div style={{ marginTop: 4, color: guardando ? "#0369a1" : "#64748b", fontSize: 10.5, fontWeight: 700 }}>{guardando ? "Guardando…" : "Enter o clic fuera para guardar · Esc para cancelar"}</div>}
       </div>
     </div>
   );
@@ -5079,16 +5152,17 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     return () => clearInterval(intervalo);
   }, [recargar, cargarProgramaciones, cargarOperacionWelcome]);
 
-  const editarCampoWelcome = async (row, campo, etiqueta) => {
-    const valor = window.prompt(`${etiqueta}:`, row?.[campo] || "");
-    if (valor === null || valor === String(row?.[campo] || "")) return;
+  const editarCampoWelcome = async (row, campo, etiqueta, valor) => {
     try {
       const respuesta = await fetch(`${API}/api/backoffice/${row.id}`, { method:"PUT", headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify({[campo]:valor.trim()}) });
       const json = await respuesta.json().catch(() => ({}));
       if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo guardar");
       setRows((actuales) => actuales.map((r) => String(r.id) === String(row.id) ? {...r,[campo]:valor.trim()} : r));
-      setAviso(`✅ ${etiqueta} actualizado.`);
-    } catch (e) { setAviso(`❌ ${e.message}`); }
+      return true;
+    } catch (e) {
+      setAviso(`❌ No se pudo actualizar ${etiqueta}: ${e.message}`);
+      return false;
+    }
   };
 
   const cambiarPausaWelcome = async () => {

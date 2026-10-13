@@ -2214,6 +2214,7 @@ const COLUMNAS_NOVONET = [
 ];
 
 const COLUMNAS_CONSULTA_NOVONET = [
+  { header: 'DISTRIBUIDOR', field: 'DISTRIBUIDOR' },
   { header: 'ID CRM', field: 'ID_CRM' }, { header: 'ID JOT', field: 'ID_JOT' },
   { header: 'ETAPA BITRIX', field: 'ETAPA' }, { header: 'FECHA DE CREACIÓN BITRIX', field: 'FECHA_CREACION' },
   { header: 'ASESOR RESPONSABLE BITRIX', field: 'ASESOR' }, { header: 'SUPERVISOR ASIGNADO', field: 'SUPERVISOR_ASIGNADO' },
@@ -2255,7 +2256,7 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
       setBusquedaAplicada(busquedaGeneral.trim());
       const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/consulta-descarga?${params.toString()}`);
       const result = await res.json();
-      if (result.success) setRows(result.rows);
+      if (result.success) setRows((result.rows || []).map(row => ({ ...row, DISTRIBUIDOR: empresa })));
       else setError(result.error || 'Error al consultar');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }

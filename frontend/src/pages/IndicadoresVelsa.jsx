@@ -1896,6 +1896,7 @@ const COLUMNAS_VELSA = [
 ];
 
 const COLUMNAS_CONSULTA_VELSA = [
+  { header: 'DISTRIBUIDOR', field: 'DISTRIBUIDOR' },
   { header: 'ID CRM', field: 'ID_CRM' }, { header: 'ID JOT', field: 'ID_JOT' },
   { header: 'ETAPA BITRIX', field: 'ETAPA' }, { header: 'FECHA DE CREACIÓN BITRIX', field: 'FECHA_CREACION' },
   { header: 'ASESOR RESPONSABLE BITRIX', field: 'ASESOR' }, { header: 'SUPERVISOR ASIGNADO', field: 'SUPERVISOR_ASIGNADO' },
@@ -1935,7 +1936,7 @@ function ConsultaDescargaVelsa() {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores-velsa/consulta-descarga?${params.toString()}`);
       const result = await res.json();
       if (result.success) {
-        setRows(result.rows || result.registros || []);
+        setRows((result.rows || result.registros || []).map(row => ({ ...row, DISTRIBUIDOR: 'VELSA' })));
         setBusquedaAplicada(busquedaGeneral.trim());
       }
       else setError(result.error || 'Error al consultar');

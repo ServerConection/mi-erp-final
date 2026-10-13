@@ -44,7 +44,7 @@ const sqlCols = columnasDetalleJotform('mb', { asesorExpr: 'x', supervisorExpr: 
 const novonet = [...sqlCols.matchAll(/AS "([^"]+)"/g)].map((m) => m[1]);
 
 const ESPERADAS = [
-  'ID_CRM', 'ID_JOT', 'ETAPA', 'FECHA_CREACION', 'ASESOR', 'SUPERVISOR_ASIGNADO', 'ORIGEN',
+  'DISTRIBUIDOR', 'ID_CRM', 'ID_JOT', 'ETAPA', 'FECHA_CREACION', 'ASESOR', 'SUPERVISOR_ASIGNADO', 'ORIGEN',
   'FECHA_CREACION_JOT', 'FECHA_ASIGNACION', 'FECHA_ACTIVACION',
   'COD_ASESOR_JOT', 'ASESOR_USUARIO', 'LOGIN', 'ESTADO_NETLIFE',
   'INGRESO_TELCOS', 'ESTADO_REGULARIZACION', 'OBSERV_REGULARIZACION',

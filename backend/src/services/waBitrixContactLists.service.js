@@ -11,7 +11,8 @@ function normalizeNumber(raw) {
 }
 
 function empresaUsuario(user) {
-  return String(user?.empresa || 'NOVONET').trim().toUpperCase() === 'VELSA' ? 'VELSA' : 'NOVONET'
+  const empresa = String(user?.empresa || 'NOVONET').trim().toUpperCase()
+  return ['NOVONET', 'VELSA', 'SEMILLERO'].includes(empresa) ? empresa : 'NOVONET'
 }
 
 function configuracion(user) {
@@ -21,7 +22,9 @@ function configuracion(user) {
     : (process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK)
   const categoryId = empresa === 'VELSA'
     ? (process.env.VELSA_CATEGORY_ID || '8')
-    : (process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
+    : empresa === 'SEMILLERO'
+      ? (process.env.SEMILLERO_CATEGORY_ID || process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
+      : (process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
   if (!webhook) {
     const err = new Error(`La conexión de Bitrix para ${empresa} no está configurada`)
     err.status = 503

@@ -260,6 +260,7 @@ const COLUMNAS_VALIDACION_REGULARIZACION = [
   "id_bitrix", "id_asesor_comercial", "fecha_registro_sistema", "numero_identificacion",
   "aplica_descuento_3ra_edad", "nombre_cliente_completo", "plan_contratado_final",
   "servicios_digitales", "tipo_contrato", "forma_pago", "estatus_regularizacion",
+  "auditoria_documentos",
   // La antigua columna NOVEDADES se reemplazó por DETALLE REG.
   "detalle_regularizacion", "fecha_regularizacion_atc", "auditado_por", "netlife_estatus_real",
   "netlife_login", "supervisor", "documentos",
@@ -278,6 +279,7 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
   tipo_contrato: "SERVICIOS ADICIONALES",
   forma_pago: "FORMA DE PAGO",
   estatus_regularizacion: "ESTATUS DE VENTA",
+  auditoria_documentos: "AUDITORÍA DOC.",
   detalle_regularizacion: "NOVEDAD ATC / OBSERVACIÓN DE REGULARIZACIÓN",
   fecha_regularizacion_atc: "FECHA QUE PIDE REGULARIZAR",
   auditado_por: "AUDITADO POR",
@@ -291,7 +293,7 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
 const COLUMNAS_EXPORTACION_REGULARIZACION = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "supervisor",
   "netlife_login", "netlife_estatus_real", "forma_pago", "fecha_activacion_netlife",
-  "estatus_regularizacion", "detalle_regularizacion",
+  "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
 ];
 const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   id_bitrix: "ID BITRIX",
@@ -303,6 +305,7 @@ const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   forma_pago: "FORMA DE PAGO",
   fecha_activacion_netlife: "FECHA DE ACTIVACIÓN",
   estatus_regularizacion: "ESTATUS REG.",
+  auditoria_documentos: "AUDITORÍA DOC.",
   detalle_regularizacion: "DETALLE REG",
 };
 
@@ -2177,7 +2180,11 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                           onDoubleClick={() => void iniciarEdicion(row, h.key)}
                           style={{
                             padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
-                            maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                            maxWidth: edicion?.id === row.id && h.key === "auditoria_documentos" ? 260 : 180,
+                            overflow: edicion?.id === row.id && h.key === "auditoria_documentos" ? "visible" : "hidden",
+                            textOverflow: "ellipsis",
+                            position: edicion?.id === row.id && h.key === "auditoria_documentos" ? "relative" : "static",
+                            zIndex: edicion?.id === row.id && h.key === "auditoria_documentos" ? 20 : "auto",
                             background: filaSeleccionada ? "#ecfdf5" : (edicion?.id === row.id && edicion?.campo === h.key ? "#fff7ed" : fondoBase),
                             cursor: CAMPOS_TABLA_SOLO_LECTURA.has(h.key) ? "default" : "cell",
                           }}>
@@ -2204,6 +2211,34 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                               },
                               style: { width: "100%", minWidth: 150, boxSizing: "border-box", border: "1px solid #f97316", borderRadius: 6, padding: "6px 7px", fontSize: 11, outline: "none", background: "#fff" },
                             };
+                            if (h.key === "auditoria_documentos") {
+                              const seleccionados = valoresSeleccionMultiple(edicion.valor);
+                              const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
+                              return (
+                                <div
+                                  style={{ width: 240, minWidth: 240 }}
+                                  onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget)) void guardarEdicion();
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      cancelarEdicion();
+                                    }
+                                  }}
+                                >
+                                  <SelectMultiple
+                                    valores={seleccionados}
+                                    opciones={opciones}
+                                    disabled={guardando}
+                                    onChange={(valores) => {
+                                      ultimoIntentoFallidoRef.current = null;
+                                      setEdicion((actual) => ({ ...actual, valor: valores.join(", ") }));
+                                    }}
+                                  />
+                                </div>
+                              );
+                            }
                             return opcionesCelda ? (
                               <select {...propsComunes}>
                                 <option value="">Sin valor</option>

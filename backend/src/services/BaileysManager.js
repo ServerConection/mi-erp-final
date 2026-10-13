@@ -21,7 +21,7 @@ const {
 } = require('./proxyPool.service')
 const { useDbAuthState, migrarDesdeDisco, borrarSesion } = require('./baileysAuthPg.service')
 const lineLock = require('./lineLock.service')
-const { isAdminOnlyNumber } = require('./waPrivacy')
+const { isAdminOnlyNumber, isPrivateOwner } = require('./waPrivacy')
 
 // WABOT-BITRIX / Opción B — dónde vive el estado de sesión de Baileys.
 //   'disco' (default) = useMultiFileAuthState, el comportamiento de siempre.
@@ -132,12 +132,12 @@ class BaileysManager {
     let valor = null
     try {
       const r = await query(
-        `SELECT l.created_by AS owner_id, UPPER(COALESCE(u.empresa, '')) AS empresa
+        `SELECT l.created_by AS owner_id, UPPER(COALESCE(u.empresa, '')) AS empresa, u.usuario AS owner_usuario
          FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by
          WHERE l.id = $1`,
         [lineId]
       )
-      if (r.rows.length) valor = { ownerId: r.rows[0].owner_id, empresa: r.rows[0].empresa }
+      if (r.rows.length) valor = { ownerId: r.rows[0].owner_id, empresa: r.rows[0].empresa, ownerUsuario: r.rows[0].owner_usuario }
     } catch (e) {
       console.warn(`[Line ${lineId}] No se pudo resolver la audiencia:`, e.message)
     }
@@ -152,6 +152,11 @@ class BaileysManager {
         return
       }
       const aud = await this._audienciaLinea(lineId)
+      // Línea privada (ej. bpineda): el evento va SOLO a su dueño.
+      if (aud && aud.ownerId && isPrivateOwner(aud.ownerUsuario)) {
+        this.io.to('user:' + aud.ownerId).emit(evento, payload)
+        return
+      }
       if (!aud || !aud.ownerId) { this.io.emit(evento, payload); return }
       const salas = ['broadcast:all', 'user:' + aud.ownerId]
       if (aud.empresa) salas.push('wa:empresa:' + aud.empresa)

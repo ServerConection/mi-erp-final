@@ -35,7 +35,9 @@ const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Llamadas = lazy(() => import("./pages/Llamadas"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
-const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemillero'));
+const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemilleroNovo'));
+const VistaAsesorSemillero = lazy(() => import('./pages/VistaAsesorSemillero'));
+const SeguimientoSemillero = lazy(() => import('./pages/SeguimientoSemillero'));
 const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
@@ -199,6 +201,8 @@ export default function App() {
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
+            <Route path="vista-asesor-semillero" element={<VistaAsesorSemillero />} />
+            <Route path="seguimiento-semillero" element={<SeguimientoSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
@@ -217,7 +221,7 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC","ANALISTA"]}><VistaBackoffice /></RolesAllowedRoute>} />
+            <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
             <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
@@ -237,6 +241,7 @@ export default function App() {
             <Route path="asistente"                 element={<AsistenteERP />} />
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
             <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />
+            <Route path="reporte-detalle-semillero" element={<ReporteDetalle empresa="semillero" />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

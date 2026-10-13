@@ -26,7 +26,6 @@ const { encolarWhatsappBienvenida } = require('../services/welcomeWhatsapp.servi
 const PERFILES_BACKOFFICE = new Set([
   'ADMINISTRADOR',   // transversal, ve las dos empresas
   'ATC',
-  'ANALISTA',
 ]);
 
 const soloBackoffice = (req, res, next) => {
@@ -59,6 +58,7 @@ const fechaRegEC = (col) => `(CASE WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}[T 
 // Alcance histórico autorizado para TODO Backoffice. Este límite vive en el
 // backend para que tampoco pueda evadirse manipulando filtros o URLs.
 const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
+const EMPRESAS_BACKOFFICE = new Set(['NOVONET', 'VELSA', 'SEMILLERO']);
 const condicionFechaBackoffice = (alias = '') => (
   `${fechaRegEC(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
 );
@@ -193,6 +193,9 @@ router.get('/', async (req, res) => {
 
     // ── EMPRESA (distribuidor autorizado) ────────────────────────────────
     const empresaPedida = empresa.trim().toUpperCase();
+    if (empresaPedida && empresaPedida !== 'TODOS' && !EMPRESAS_BACKOFFICE.has(empresaPedida)) {
+      return res.status(400).json({ success: false, error: 'Empresa inválida.' });
+    }
     if (empresaPedida && empresaPedida !== 'TODOS') {
       whereClause += ` AND UPPER(TRIM(distribuidor_autorizado)) = ${P(empresaPedida)}`;
     }

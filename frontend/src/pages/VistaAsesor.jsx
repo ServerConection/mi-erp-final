@@ -530,7 +530,7 @@ function AsesorCard({ row, rank }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
-export default function VistaAsesor() {
+export default function VistaAsesor({ apiBase = '/api/indicadores', empresa = 'NOVONET' } = {}) {
   const [loading, setLoading]               = useState(false);
   const [asesores, setAsesores]             = useState([]);
   const [estadosNetlife, setEstadosNetlife] = useState([]);
@@ -569,7 +569,7 @@ export default function VistaAsesor() {
       // fetchConSesion agrega el Bearer del usuario logueado — el backend lo
       // necesita para saber QUIÉN pide los datos y, si es perfil ASESOR,
       // forzar el filtro a su propio nombre (ver indicadores.controller.js).
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         setAsesores(result.asesores || []);
@@ -988,7 +988,7 @@ export default function VistaAsesor() {
              </p>
            </div>
            <button
-             onClick={() => exportarTablaExcel(ventasActivas, "Ventas activas", "Novonet_Ventas_Activas")}
+             onClick={() => exportarTablaExcel(ventasActivas, "Ventas activas", `${empresa}_Ventas_Activas`)}
              className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
            >
              ⬇ Excel
@@ -1041,7 +1041,7 @@ export default function VistaAsesor() {
              </p>
            </div>
            <button
-             onClick={() => exportarTablaExcel(backlogDetalle, "Backlog", "Novonet_Backlog")}
+             onClick={() => exportarTablaExcel(backlogDetalle, "Backlog", `${empresa}_Backlog`)}
              className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
            >
              ⬇ Excel
@@ -1094,7 +1094,7 @@ export default function VistaAsesor() {
              </p>
            </div>
            <button
-             onClick={() => exportarTablaExcel(regularizaciones, "Por regularizar", "Novonet_Por_Regularizar")}
+             onClick={() => exportarTablaExcel(regularizaciones, "Por regularizar", `${empresa}_Por_Regularizar`)}
              className="text-[9px] bg-emerald-50 hover:bg-emerald-100 px-4 py-1.5 rounded-full font-black border border-emerald-200 text-emerald-700 uppercase tracking-wider transition-all"
            >
              ⬇ Excel

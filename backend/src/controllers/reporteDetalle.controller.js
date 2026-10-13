@@ -103,6 +103,29 @@ const CUBO_SQL = {
     WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
     GROUP BY 1,2,3,4,5
   `,
+  semillero: `
+    SELECT 'lead' AS t,
+           (w.created_at AT TIME ZONE 'America/Guayaquil')::date::text AS f,
+           COALESCE(EXTRACT(HOUR FROM (w.created_at AT TIME ZONE 'America/Guayaquil'))::int, -1) AS h,
+           COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE') AS a,
+           UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS e,
+           COUNT(*)::int AS c
+    FROM public.bitrix_webhook_leads w
+    WHERE LOWER(BTRIM(w.empresa)) = 'semillero'
+      AND (w.created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+    GROUP BY 1,2,3,4,5
+    UNION ALL
+    SELECT 'mod',
+           (w.updated_at AT TIME ZONE 'America/Guayaquil')::date::text,
+           COALESCE(EXTRACT(HOUR FROM (w.updated_at AT TIME ZONE 'America/Guayaquil'))::int, -1),
+           COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE'),
+           UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' ')),
+           COUNT(*)::int
+    FROM public.bitrix_webhook_leads w
+    WHERE LOWER(BTRIM(w.empresa)) = 'semillero'
+      AND (w.updated_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+    GROUP BY 1,2,3,4,5
+  `,
 };
 
 // ── Detalle de leads (drill-down) ──────────────────────────────
@@ -205,6 +228,42 @@ const DETALLE_SQL = {
       `,
     },
   },
+  semillero: {
+    lead: {
+      from: `public.bitrix_webhook_leads w`,
+      fechaExpr: `(w.created_at AT TIME ZONE 'America/Guayaquil')::date`,
+      horaExpr: `COALESCE(EXTRACT(HOUR FROM (w.created_at AT TIME ZONE 'America/Guayaquil'))::int, -1)`,
+      asesorExpr: `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`,
+      etapaExpr: `UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' '))`,
+      select: `
+        w.bitrix_id::text AS id,
+        w.bitrix_id::text AS id_crm,
+        NULL::text AS id_jotform,
+        w.phone AS telefono,
+        w.source AS origen,
+        w.city AS ciudad,
+        w.comentario AS comentario
+      `,
+      extraWhere: `LOWER(BTRIM(w.empresa)) = 'semillero'`,
+    },
+    mod: {
+      from: `public.bitrix_webhook_leads w`,
+      fechaExpr: `(w.updated_at AT TIME ZONE 'America/Guayaquil')::date`,
+      horaExpr: `COALESCE(EXTRACT(HOUR FROM (w.updated_at AT TIME ZONE 'America/Guayaquil'))::int, -1)`,
+      asesorExpr: `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`,
+      etapaExpr: `UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' '))`,
+      select: `
+        w.bitrix_id::text AS id,
+        w.bitrix_id::text AS id_crm,
+        NULL::text AS id_jotform,
+        w.phone AS telefono,
+        w.source AS origen,
+        w.city AS ciudad,
+        w.comentario AS comentario
+      `,
+      extraWhere: `LOWER(BTRIM(w.empresa)) = 'semillero'`,
+    },
+  },
 };
 
 async function getDetalle(req, res) {
@@ -212,7 +271,7 @@ async function getDetalle(req, res) {
     const empresa = (req.params.empresa || '').toLowerCase();
     const tipo = (req.query.tipo || '').toLowerCase();
     const cfgEmpresa = DETALLE_SQL[empresa];
-    if (!cfgEmpresa) return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa)' });
+    if (!cfgEmpresa) return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero)' });
     const cfg = cfgEmpresa[tipo];
     if (!cfg) return res.status(400).json({ success: false, error: 'Tipo inválido (lead|mod|jot)' });
 
@@ -226,6 +285,7 @@ async function getDetalle(req, res) {
     const limit = Math.min(parseInt(req.query.limit, 10) || 300, 1000);
 
     const where = [`(${cfg.fechaExpr}) BETWEEN $1::date AND $2::date`];
+    if (cfg.extraWhere) where.push(cfg.extraWhere);
     const values = [desde, hasta];
 
     if (req.query.asesor) { values.push(req.query.asesor); where.push(`(${cfg.asesorExpr}) = $${values.length}`); }
@@ -282,7 +342,7 @@ async function getCubo(req, res) {
   try {
     const empresa = (req.params.empresa || '').toLowerCase();
     if (!CUBO_SQL[empresa]) {
-      return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa)' });
+      return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero)' });
     }
 
     const hoy   = getFechaEcuador();

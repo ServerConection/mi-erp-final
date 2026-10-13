@@ -374,6 +374,7 @@ const LIDER_POR_SUPERVISOR = {
 const SUPERVISORES_POR_EMPRESA = {
   NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAÑA"],
   VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
+  SEMILLERO: ["ADRIANA SALVATORE"],
 };
 const OPCIONES_AUDITORIA_DOCUMENTOS = [
   "RESUMEN DE VENTA",
@@ -1831,7 +1832,7 @@ function tipoEditorCelda(campo) {
 
 function opcionesEditorCelda(campo, row) {
   const opciones = {
-    distribuidor_autorizado: ["NOVONET", "VELSA"],
+    distribuidor_autorizado: ["NOVONET", "VELSA", "SEMILLERO"],
     netlife_estatus_real: ESTATUS_NETLIFE,
     estatus_regularizacion: OPCIONES_ESTATUS_REGULARIZACION.map((item) => item.valor === "__SIN_REVISAR__" ? "SIN REVISAR" : item.valor),
     forma_pago: OPCIONES_FORMA_PAGO,
@@ -4074,6 +4075,7 @@ const EMPRESAS_FILTRO = [
   { id: "TODOS", label: "Todos" },
   { id: "NOVONET", label: "Novonet" },
   { id: "VELSA", label: "Velsa" },
+  { id: "SEMILLERO", label: "Semillero" },
 ];
 
 function FiltroEmpresa({ valor, onCambiar }) {

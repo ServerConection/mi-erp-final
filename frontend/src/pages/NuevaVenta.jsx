@@ -9,7 +9,7 @@ import FotoCartel from "../components/FotoCartel";
 const API = import.meta.env.VITE_API_URL;
 
 // ─── Catálogos exactos del proceso comercial ─────────────────────────────────
-const DISTRIBUIDORES = ["NOVONET", "VELSA"];
+const DISTRIBUIDORES = ["NOVONET", "VELSA", "SEMILLERO"];
 const TIPOS_CLI = ["NATURAL", "JURÍDICO"];
 const TIPOS_DOC = ["CÉDULA DE IDENTIDAD", "NÚMERO DE PASAPORTE", "RUC PERSONAL", "RUC EMPRESA"];
 const GENEROS = ["HOMBRE", "MUJER"];
@@ -74,6 +74,7 @@ const BENEFICIOS_LEY = ["SI", "NO"];
 const SUPERVISORES = {
   NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAÑA"],
   VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
+  SEMILLERO: ["ADRIANA SALVATORE"],
 };
 
 // Edad mínima para aplicar descuento de 3ra edad
@@ -847,6 +848,7 @@ export default function NuevaVenta() {
     usuario: user.usuario || "",
     nombre_atc: user.nombre || user.usuario || "",
     distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : "",
+    supervisor: distribuidorDelUsuario === "SEMILLERO" ? "ADRIANA SALVATORE" : "",
   });
 
   const reiniciarFormulario = () => {
@@ -866,6 +868,7 @@ export default function NuevaVenta() {
       usuario: user.usuario || f.usuario || "",
       nombre_atc: f.nombre_atc || user.nombre || user.usuario || "",
       distribuidor_autorizado: distribuidorLocked ? distribuidorDelUsuario : f.distribuidor_autorizado,
+      supervisor: distribuidorDelUsuario === "SEMILLERO" ? "ADRIANA SALVATORE" : f.supervisor,
     }));
   }, []);
 
@@ -883,7 +886,8 @@ export default function NuevaVenta() {
     setForm(f => {
       const next = { ...f, [k]: normalizedValue };
       if (k === "distribuidor_autorizado" && v !== f.distribuidor_autorizado) {
-        next.supervisor = "";
+        const supervisores = SUPERVISORES[normalizedValue] || [];
+        next.supervisor = supervisores.length === 1 ? supervisores[0] : "";
       }
       if (k === "tipo_plan" && v !== f.tipo_plan) {
         next.plan_contratado_final = ""; next.servicios_digitales = "";

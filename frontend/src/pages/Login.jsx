@@ -13,9 +13,10 @@ export default function Login() {
     const perfil = (user?.perfil || '').trim().toUpperCase();
     if (perfil === 'ATC' || perfil === 'ANALISTA') return '/indicadores';
     if (perfil !== 'TV') return '/';
-    return (user?.empresa || '').toUpperCase() === 'VELSA'
-      ? '/seguimiento-velsa'
-      : '/seguimiento-ventas';
+    const empresa = (user?.empresa || '').toUpperCase();
+    if (empresa === 'VELSA') return '/seguimiento-velsa';
+    if (empresa === 'SEMILLERO') return '/seguimiento-semillero';
+    return '/seguimiento-ventas';
   };
 
   const [paso, setPaso]               = useState(1);

@@ -346,8 +346,9 @@ const ALL_MENU_ITEMS = [
   { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet",  icon: "🔬", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Comparativa Sup.",           path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Indicadores VELSA",          path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
-  { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
   { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",    icon: "🔬", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
+  { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
+  { name: "🔬 Reporte Detalle SEMILLERO", path: "/reporte-detalle-semillero", icon: "🔬", permiso: "Indicadores", isChild: true, group: "indicadores" },
 
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
@@ -357,11 +358,13 @@ const ALL_MENU_ITEMS = [
   { name: "Vista Asesor", path: null, icon: "👤", isGroup: true, groupId: "vista-asesor" },
   { name: "Vista Asesor NOVONET", path: "/vista-asesor",       icon: "👤", permiso: "VistaAsesor",      isChild: true, group: "vista-asesor" },
   { name: "Vista Asesor VELSA",   path: "/vista-asesor-velsa", icon: "👤", permiso: "VistaAsesorVelsa", isChild: true, group: "vista-asesor" },
+  { name: "Vista Asesor SEMILLERO", path: "/vista-asesor-semillero", icon: "🌱", isChild: true, group: "vista-asesor" },
 
   // ── Seguimiento de venta ─────────────────────────────────────────────────
   { name: "Seguimiento", path: null, icon: "✔️", isGroup: true, groupId: "seguimiento" },
   { name: "Seguimiento NOVONET", path: "/seguimiento-ventas", icon: "✔️", permiso: "SeguimientoVentas", isChild: true, group: "seguimiento" },
   { name: "Seguimiento VELSA",   path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa",  isChild: true, group: "seguimiento" },
+  { name: "Seguimiento SEMILLERO", path: "/seguimiento-semillero", icon: "🌱", isChild: true, group: "seguimiento" },
 
   // ── Redes ────────────────────────────────────────────────────────────────
   // Reactivados (Redes, 2026-08-19). Habían quedado ocultos desde gerencia,
@@ -387,7 +390,7 @@ const ALL_MENU_ITEMS = [
   // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
   { name: "🖥️ Core Backoffice", path: "/vista-backoffice", icon: "🖥️",
-    accessCheck: (p) => ['ADMINISTRADOR', 'ATC', 'ANALISTA'].includes(p),
+    accessCheck: (p) => ['ADMINISTRADOR', 'ATC'].includes(p),
     isChild: true, group: "backoffice" },
 
   // ── Resumenes ────────────────────────────────────────────────────────────
@@ -518,7 +521,8 @@ export default function DashboardLayout() {
       if (perfil === 'TV') {
         const rutaTV = empresa === 'NOVONET'
           ? '/seguimiento-ventas'
-          : empresa === 'VELSA' ? '/seguimiento-velsa' : '/';
+          : empresa === 'VELSA' ? '/seguimiento-velsa'
+          : empresa === 'SEMILLERO' ? '/seguimiento-semillero' : '/';
         if (location.pathname !== rutaTV && location.pathname !== '/llamadas') navigate(rutaTV, { replace: true });
       }
 
@@ -600,8 +604,8 @@ export default function DashboardLayout() {
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
-      const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : null);
-      const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : '/');
+      const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : (empresaUpper === 'SEMILLERO' ? 'Seguimiento SEMILLERO' : null));
+      const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : (empresaUpper === 'SEMILLERO' ? '/seguimiento-semillero' : '/'));
       if (itemActual.path !== '/llamadas' && (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName)) {
         navigate(rutaTV, { replace: true });
       }

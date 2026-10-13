@@ -568,7 +568,11 @@ function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
   );
 }
 
-export default function ReporteComercialCore() {
+export default function ReporteComercialCore({
+  apiBase = '/api/indicadores',
+  empresa = 'NOVONET',
+} = {}) {
+  const esSemillero = empresa.toUpperCase() === 'SEMILLERO';
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);
   // Indicador de carga diferido: solo aparece si la consulta pasa de 250 ms.
@@ -626,7 +630,7 @@ export default function ReporteComercialCore() {
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
       // Fire-and-forget: nunca retrasa la carga del dashboard
-      fetchKpiComercial(filtrosActivos);
+      if (!esSemillero) fetchKpiComercial(filtrosActivos);
       const p = new URLSearchParams(Object.fromEntries(
         Object.entries(filtrosActivos)
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
@@ -634,7 +638,7 @@ export default function ReporteComercialCore() {
       ));
       // /dashboard exige JWT (verificarToken): tiene que ir con Bearer o el
       // backend responde 401 y el interceptor global cierra la sesión.
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${p}`, { signal: ctrl.signal });
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/dashboard?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) {
         setData({
@@ -669,7 +673,7 @@ export default function ReporteComercialCore() {
             .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
         )
       );
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/monitoreo-diario?${p}`, { signal: ctrl.signal });
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/monitoreo-diario?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) setMonitoreoData(result);
     } catch (e) {
@@ -689,7 +693,7 @@ export default function ReporteComercialCore() {
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
           .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
       ));
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/reporte180?${p}`, { signal: ctrl.signal });
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/reporte180?${p}`, { signal: ctrl.signal });
       const result = await res.json();
       if (result.success) setReporte180Data(result);
     } catch (e) {
@@ -706,7 +710,7 @@ export default function ReporteComercialCore() {
       if (f.desde)  p.set('fechaDesde', f.desde);
       if (f.hasta)  p.set('fechaHasta', f.hasta);
       if (f.estado) p.set('estadoVenta', f.estado);
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/activaciones-dia?${p}`);
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/activaciones-dia?${p}`);
       const result = await res.json();
       if (result.success) setActivacionesFiltradas(result.rows || []);
     } catch (e) { console.error('[ACTIV-FILTRO-NOVONET]', e); }
@@ -1321,7 +1325,7 @@ ${asesoresPDF.length>0?`
     setRefreshing(true);
     try {
       await fetch(
-        `${import.meta.env.VITE_API_URL}/api/indicadores/force-refresh`,
+        `${import.meta.env.VITE_API_URL}${apiBase}/force-refresh`,
         { method: 'POST', headers: { 'Cache-Control': 'no-cache' } }
       );
     } catch (e) {
@@ -1729,7 +1733,7 @@ ${asesoresPDF.length>0?`
             <span className="text-white px-2.5 py-1 rounded-lg italic text-lg font-black shadow-lg" style={{background:'linear-gradient(135deg,#2563eb,#1d4ed8)'}}>REV</span>
             SISTEMA DE INDICADORES
           </h1>
-          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">Novonet · Netlife · Análisis en tiempo real</p>
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 ml-0.5">{empresa} · Netlife · Análisis en tiempo real</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Botón FORZAR REFRESH — limpia caché del servidor y re-consulta */}
@@ -1862,7 +1866,7 @@ ${asesoresPDF.length>0?`
                   value={filtros.canal}
                   onChange={vals => updateFiltro('canal', vals)}
                   options={[...new Set([
-                    ...ORIGENES_INICIALES_NOVONET,
+                    ...(esSemillero ? [] : ORIGENES_INICIALES_NOVONET),
                     ...(data.canales || []),
                     ...(data.origenes || []).map(o => o.trim().replace(/\s+/g, ' ')),
                   ])]}
@@ -2080,7 +2084,7 @@ ${asesoresPDF.length>0?`
               <ChartArea h={300}><GraficoEmbudo /></ChartArea>
             </ExpandableChart>
 
-            <ExpandableChart title="PLANES POR CATEGORÍA — NOVONET" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
+            <ExpandableChart title={`PLANES POR CATEGORÍA — ${empresa}`} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md" modalHeight={580}>
               <h3 className="text-[10px] font-black text-violet-600 mb-4 italic tracking-widest flex items-center gap-2 uppercase">
                 <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse"></span>
                 PLANES POR CATEGORÍA — INGRESADOS / ACTIVOS
@@ -2174,7 +2178,7 @@ ${asesoresPDF.length>0?`
       ) : tabActiva === "EFECTIVIDAD" ? (
         <EfectividadDiaria empresa="novonet" />
       ) : (
-        <ConsultaDescargaNovonet />
+        <ConsultaDescargaNovonet apiBase={apiBase} empresa={empresa} />
       )}
     </div>
   );
@@ -2225,7 +2229,7 @@ const COLUMNAS_CONSULTA_NOVONET = [
   { header: 'OBSERVACIÓN DE LA VENTA', field: 'OBSERVACION' },
 ];
 
-function ConsultaDescargaNovonet() {
+function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVONET' }) {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
@@ -2249,7 +2253,7 @@ function ConsultaDescargaNovonet() {
       if (idBitrix.trim())     params.set('idBitrix', idBitrix.trim());
       if (busquedaGeneral.trim()) params.set('busquedaGeneral', busquedaGeneral.trim());
       setBusquedaAplicada(busquedaGeneral.trim());
-      const res    = await fetch(`${import.meta.env.VITE_API_URL}/api/indicadores/consulta-descarga?${params.toString()}`);
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/consulta-descarga?${params.toString()}`);
       const result = await res.json();
       if (result.success) setRows(result.rows);
       else setError(result.error || 'Error al consultar');
@@ -2276,8 +2280,8 @@ function ConsultaDescargaNovonet() {
     ws['!cols'] = COLUMNAS_CONSULTA_NOVONET.map(() => ({ wch: 22 }));
     // Estilo de encabezado (solo en navegadores que soportan xlsx-style)
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Novonet');
-    XLSX.writeFile(wb, `Consulta_Novonet_${fechaDesde}_${fechaHasta}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, empresa);
+    XLSX.writeFile(wb, `Consulta_${empresa}_${fechaDesde}_${fechaHasta}.xlsx`);
   };
 
   return (
@@ -2285,7 +2289,7 @@ function ConsultaDescargaNovonet() {
       {/* Header panel */}
       <div className="bg-[#1A3A6E] text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-[#0f2550]">
         <div>
-          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — NOVONET</h2>
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — {empresa}</h2>
           <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">Vista: vista_analisis_novonet · Filtro por Fecha de Carga a JOT</p>
         </div>
         <div className="text-right text-[9px] text-blue-300">

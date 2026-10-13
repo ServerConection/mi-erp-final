@@ -261,7 +261,7 @@ const COLUMNAS_VALIDACION_REGULARIZACION = [
   "aplica_descuento_3ra_edad", "nombre_cliente_completo", "plan_contratado_final",
   "servicios_digitales", "tipo_contrato", "forma_pago", "estatus_regularizacion",
   // La antigua columna NOVEDADES se reemplazó por DETALLE REG.
-  "detalle_regularizacion", "fecha_regularizacion_atc", "netlife_estatus_real",
+  "detalle_regularizacion", "fecha_regularizacion_atc", "auditado_por", "netlife_estatus_real",
   "netlife_login", "supervisor", "documentos",
 ];
 
@@ -280,6 +280,7 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
   estatus_regularizacion: "ESTATUS DE VENTA",
   detalle_regularizacion: "NOVEDAD ATC / OBSERVACIÓN DE REGULARIZACIÓN",
   fecha_regularizacion_atc: "FECHA QUE PIDE REGULARIZAR",
+  auditado_por: "AUDITADO POR",
   netlife_estatus_real: "ESTATUS NETLIFE",
   netlife_login: "LOGIN",
   supervisor: "SUPERVISOR",
@@ -365,7 +366,7 @@ const OPCIONES_CICLO_FACTURACION = [
   "CICLO (II) DEL 8 AL 7 DE CADA MES",
   "CICLO (III) DEL 15 AL 14 DE CADA MES",
 ];
-const OPCIONES_AUDITOR = ["KELLY", "CRISTIAN", "MARCOS", "ANDRES"];
+const OPCIONES_AUDITOR = ["KELLY", "CRISTIAN", "MARCOS", "ANDRES", "LILY"];
 const OPCIONES_CLAUSULAS = ["FIRMO BIOMETRICO", "FALTA BIOMETRICO"];
 const OPCIONES_LIDER_COMERCIAL = ["DANIELA", "ANGÉLICA"];
 const LIDER_POR_SUPERVISOR = {

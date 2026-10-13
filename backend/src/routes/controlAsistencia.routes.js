@@ -63,6 +63,26 @@ function obtenerIp(req) {
   return ip;
 }
 
+// Devuelve los datos vigentes desde la base. El cargo no debe depender del
+// perfil guardado en localStorage, que puede estar incompleto o desactualizado.
+router.get("/mi-perfil", verificarToken, async (req, res) => {
+  const usuario = req.user;
+  if (!usuario?.id) {
+    return res.status(401).json({ success: false, error: "Usuario no autenticado" });
+  }
+  return res.json({
+    success: true,
+    data: {
+      id: usuario.id,
+      usuario: usuario.usuario || "",
+      nombre: usuario.nombreCompleto || "",
+      cargo: usuario.cargo || "",
+      perfil: usuario.perfil || "",
+      empresa: usuario.empresa || "",
+    },
+  });
+});
+
 // ─────────────────────────────────────────────────────────────
 // POST /api/control-asistencia
 // ─────────────────────────────────────────────────────────────
@@ -181,10 +201,7 @@ router.post("/", verificarToken, async (req, res) => {
       usuario.nombre ||
       "";
 
-    const cargo =
-      usuario.perfil ||
-      usuario.cargo ||
-      "";
+    const cargo = usuario.cargo || "";
 
     const ip = obtenerIp(req);
 

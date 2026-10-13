@@ -163,6 +163,7 @@ export default function ControlAsistencia() {
   // ─────────────────────────────────────────────
 
   useEffect(() => {
+    let activo = true;
     try {
       const perfil = JSON.parse(
         localStorage.getItem(
@@ -174,6 +175,24 @@ export default function ControlAsistencia() {
     } catch {
       setUser(null);
     }
+
+    const cargarPerfilVigente = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const respuesta = await fetch(`${API}/api/control-asistencia/mi-perfil`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await respuesta.json();
+        if (activo && respuesta.ok && payload.success) {
+          setUser(anterior => ({ ...(anterior || {}), ...payload.data }));
+        }
+      } catch (error) {
+        console.warn("[ControlAsistencia] No se pudo actualizar el perfil:", error);
+      }
+    };
+
+    cargarPerfilVigente();
+    return () => { activo = false; };
   }, []);
 
   // ─────────────────────────────────────────────
@@ -889,9 +908,8 @@ export default function ControlAsistencia() {
               <input
                 readOnly
                 value={
-                  user?.perfil ||
                   user?.cargo ||
-                  ""
+                  "Sin cargo asignado"
                 }
                 style={
                   estiloCampo

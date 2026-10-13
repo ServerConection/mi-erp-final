@@ -10,6 +10,8 @@ test('normaliza tildes, espacios, punto final y mayúsculas', () => {
 test('estados usan su color fijo de Jotform', () => {
   assert.deepEqual(colorDeValor('netlife_estatus_real', 'FIN DE GESTIÓN'), { fondo: '#ef5350', texto: '#ffffff' });
   assert.deepEqual(colorDeValor('calidad_venta_analista', 'aprobado'), { fondo: '#6cc070', texto: '#0b3d13' });
+  assert.deepEqual(colorDeValor('netlife_estatus_real', 'Pendiente por Deuda'), { fondo: '#fed7aa', texto: '#9a3412' });
+  assert.deepEqual(colorDeValor('netlife_estatus_real', 'No ingresado'), { fondo: '#bae6fd', texto: '#075985' });
 });
 
 test('mismo valor = mismo color, sin importar formato', () => {

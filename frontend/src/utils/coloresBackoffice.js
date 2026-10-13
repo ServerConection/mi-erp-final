@@ -42,6 +42,8 @@ const COLORES_FIJOS = {
     "DESISTE DEL SERVICIO": c("#fbcfe8", "#9d174d"),
     "ELIMINADO": c("#d1d5db", "#1f2937"),
     "SIN ESTADO": c("#f1f5f9", "#64748b"),
+    "PENDIENTE POR DEUDA": c("#fed7aa", "#9a3412"),
+    "NO INGRESADO": c("#bae6fd", "#075985"),
   },
   calidad_venta_analista: {
     "EN CURSO": c("#4f8ef7", "#ffffff"),

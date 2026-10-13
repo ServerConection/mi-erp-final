@@ -192,10 +192,15 @@ export default function WaContactos() {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
     setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
     setBitrixForm({ stage_id: "", responsible_id: "", date_from: today, date_to: today, name: "" });
-    if (bitrixOptions) return;
+    // La empresa puede cambiar mientras la sesión sigue abierta. No reutilizar
+    // opciones anteriores: el backend resuelve siempre la empresa vigente desde BD.
+    setBitrixOptions(null);
     setBitrixBusy(true);
     try {
-      const response = await fetch(`${API}/lists/bitrix/options`, { headers: authH(false) });
+      const response = await fetch(`${API}/lists/bitrix/options`, {
+        headers: authH(false),
+        cache: "no-store",
+      });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudieron cargar los filtros de Bitrix");
       setBitrixOptions(payload.data);

@@ -63,7 +63,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, usuario, empresa, perfil, nombres, apellidos, activo, contraseña
+      `SELECT id, usuario, empresa, perfil, cargo, nombres, apellidos, activo, contraseña
        FROM usuarios
        WHERE usuario = $1`,
       [userLogin]
@@ -131,6 +131,7 @@ router.post('/login', async (req, res) => {
         perfil: perfil,
         empresa: empresa,
         nombre: `${user.nombres} ${user.apellidos}`,
+        cargo: user.cargo || '',
         url_reporte: urlReporte,
         permisos: permisos
       }
@@ -179,7 +180,7 @@ router.post('/bitrix-exchange', async (req, res) => {
 
     const usuarioId = canje.rows[0].usuario_id;
     const result = await pool.query(
-      `SELECT id, usuario, empresa, perfil, nombres, apellidos, activo
+      `SELECT id, usuario, empresa, perfil, cargo, nombres, apellidos, activo
        FROM usuarios WHERE id = $1`,
       [usuarioId]
     );
@@ -213,6 +214,7 @@ router.post('/bitrix-exchange', async (req, res) => {
         perfil,
         empresa,
         nombre: `${user.nombres} ${user.apellidos}`,
+        cargo: user.cargo || '',
         url_reporte: urlReporte,
         permisos
       }

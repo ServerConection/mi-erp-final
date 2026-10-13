@@ -110,7 +110,8 @@ router.post('/verify-otp', async (req, res) => {
         usuario: user.usuario,
         perfil,
         empresa,
-        nombre: `${user.nombres} ${user.apellidos}`
+        nombre: `${user.nombres} ${user.apellidos}`,
+        cargo: user.cargo || ''
       }
     });
 

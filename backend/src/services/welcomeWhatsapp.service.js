@@ -4,6 +4,16 @@ const pool = require('../config/db');
 // La comparación en la consulta es exacta (ignorando mayúsculas y espacios).
 const LINEA_WELCOME = 'NOTI_BACK';
 
+function reemplazarVariablesWelcome(texto, registro) {
+  const valores = {
+    nombre: obtenerNombreSaludo(registro),
+    plan: String(registro?.plan_contratado_final || registro?.plan_contratado || 'No especificado').trim(),
+    forma_pago: String(registro?.forma_pago || 'No especificada').trim(),
+    ciclo_facturacion: String(registro?.ciclo_facturacion || 'No especificado').trim(),
+  };
+  return String(texto || '').replace(/\{\{(nombre|plan|forma_pago|ciclo_facturacion)\}\}/g, (_m, clave) => valores[clave]);
+}
+
 function normalizarTelefonoEcuador(valor) {
   let numero = String(valor || '').replace(/\D/g, '');
   if (!numero) return '';
@@ -15,9 +25,27 @@ function normalizarTelefonoEcuador(valor) {
   return numero.length >= 10 && numero.length <= 15 ? numero : '';
 }
 
-function crearMensajeBienvenida(registro) {
+function obtenerNombreSaludo(registro) {
   const nombreCompleto = String(registro?.nombre_cliente_completo || '').trim();
-  const primerNombre = nombreCompleto.split(/\s+/)[0] || 'cliente';
+  if (!nombreCompleto) return 'cliente';
+
+  // En ventas de personas el nombre se persiste como:
+  // "primer apellido segundo apellido primer nombre segundo nombre".
+  // Para empresas se conserva la razon social completa.
+  if (String(registro?.tipo_documento || '').trim().toUpperCase() === 'RUC EMPRESA') {
+    return nombreCompleto;
+  }
+
+  const partes = nombreCompleto.split(/\s+/).filter(Boolean);
+  if (partes.length === 1) return partes[0];
+
+  const primerApellido = partes[0];
+  const primerNombre = partes.length >= 3 ? partes[2] : partes[1];
+  return `${primerNombre} ${primerApellido}`;
+}
+
+function crearMensajeBienvenida(registro) {
+  const nombreSaludo = obtenerNombreSaludo(registro);
   const plan = String(registro?.plan_contratado_final || '').trim();
   const login = String(registro?.netlife_login || '').trim();
   const fecha = registro?.fecha_activacion_netlife
@@ -31,7 +59,7 @@ function crearMensajeBienvenida(registro) {
   ].filter(Boolean);
 
   return [
-    `Hola, *${primerNombre}* 👋`,
+    `Hola, *${nombreSaludo}* 👋`,
     '',
     '¡Te damos la bienvenida! 🎉',
     'Nos alegra informarte que tu servicio ya se encuentra *activo*.',
@@ -69,7 +97,7 @@ async function encolarWhatsappBienvenida(registro) {
   };
 }
 
-async function prepararWhatsappBienvenida(registro) {
+async function prepararWhatsappBienvenida(registro, variantId = null) {
   const telefono = normalizarTelefonoEcuador(
     registro?.telf_celular_pin || registro?.telf_celular_2 || registro?.telf_fijo
   );
@@ -78,6 +106,8 @@ async function prepararWhatsappBienvenida(registro) {
     return { ok: false, motivo: 'cliente_sin_telefono_valido' };
   }
 
+  const config = await pool.query(`SELECT line_name FROM welcome_config WHERE id=1`).catch(() => ({ rows: [] }));
+  const nombreLinea = String(config.rows[0]?.line_name || LINEA_WELCOME).trim().toUpperCase();
   const linea = await pool.query(
     `SELECT id, status
      FROM lines
@@ -85,19 +115,33 @@ async function prepararWhatsappBienvenida(registro) {
        AND deleted_at IS NULL
      ORDER BY last_connected DESC NULLS LAST, created_at DESC
      LIMIT 1`,
-    [LINEA_WELCOME]
+    [nombreLinea]
   );
 
   if (!linea.rows.length) {
     return { ok: false, motivo: 'linea_noti_back_no_encontrada' };
   }
 
+  let variante = null;
+  if (variantId) {
+    const resultado = await pool.query(`SELECT id, code, name, body FROM welcome_variants WHERE id=$1 AND active=true`, [variantId]);
+    variante = resultado.rows[0] || null;
+  }
+  if (!variante) {
+    const resultado = await pool.query(
+      `SELECT id, code, name, body FROM welcome_variants WHERE active=true ORDER BY sort_order, id`
+    ).catch(() => ({ rows: [] }));
+    if (resultado.rows.length) variante = resultado.rows[Math.abs(Number(registro?.id) || 0) % resultado.rows.length];
+  }
+
   return {
     ok: true,
     linea_id: linea.rows[0].id,
-    linea: LINEA_WELCOME,
+    linea: nombreLinea,
     telefono,
-    mensaje: crearMensajeBienvenida(registro),
+    mensaje: variante ? reemplazarVariablesWelcome(variante.body, registro) : crearMensajeBienvenida(registro),
+    variante_id: variante?.id || null,
+    variante_codigo: variante?.code || null,
   };
 }
 
@@ -105,5 +149,7 @@ module.exports = {
   encolarWhatsappBienvenida,
   prepararWhatsappBienvenida,
   normalizarTelefonoEcuador,
+  obtenerNombreSaludo,
+  reemplazarVariablesWelcome,
   crearMensajeBienvenida,
 };

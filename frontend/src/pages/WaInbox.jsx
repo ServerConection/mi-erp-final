@@ -126,7 +126,7 @@ const timeAgo = (ts) => {
 // de esa negociación y el Inbox se acota a SU conversación — nunca a la
 // bandeja completa. Sin dealId (uso normal en /whatsapp/inbox) el
 // comportamiento es exactamente el de siempre.
-export default function WaInbox({ dealId = null } = {}) {
+export default function WaInbox({ dealId = null, fixedLineName = "", initialConversationId = null } = {}) {
   // Empresa del usuario (para construir el enlace correcto a Bitrix)
   const USER_PROFILE = (() => {
     try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
@@ -181,9 +181,21 @@ export default function WaInbox({ dealId = null } = {}) {
 
   const connectedLines = lines.filter(l => (l.rt_status || l.status) === "connected");
 
+  useEffect(() => {
+    if (!fixedLineName || !lines.length) return;
+    const linea = lines.find((l) => String(l.name || "").trim().toUpperCase() === String(fixedLineName).trim().toUpperCase());
+    if (linea && String(lineFilter) !== String(linea.id)) setLineFilter(String(linea.id));
+  }, [fixedLineName, lines, lineFilter]);
+
+  useEffect(() => {
+    if (!initialConversationId || !conversations.length) return;
+    const conversacion = conversations.find((c) => String(c.id) === String(initialConversationId));
+    if (conversacion && String(selectedRef.current?.id) !== String(conversacion.id)) setSelected(conversacion);
+  }, [initialConversationId, conversations]);
+
   // Cargar líneas visibles (para filtrar por usuario y elegir línea de envío)
   useEffect(() => {
-    if (!CAN_PICK_LINE) return;
+    if (!CAN_PICK_LINE && !fixedLineName) return;
     (async () => {
       try {
         const r = await fetch(`${API}/lines`, { headers: authH(false) });
@@ -191,7 +203,7 @@ export default function WaInbox({ dealId = null } = {}) {
         setLines(Array.isArray(d?.data) ? d.data : []);
       } catch { /* ignore */ }
     })();
-  }, [CAN_PICK_LINE]);
+  }, [CAN_PICK_LINE, fixedLineName]);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
@@ -1021,7 +1033,7 @@ export default function WaInbox({ dealId = null } = {}) {
               )}
 
               {/* Selector de línea (solo admin/supervisor) */}
-              {CAN_PICK_LINE && (
+              {CAN_PICK_LINE && !fixedLineName && (
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Responder desde la línea</label>
                   <select value={newLineId} onChange={e => setNewLineId(e.target.value)}

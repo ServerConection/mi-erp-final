@@ -386,7 +386,7 @@ const ALL_MENU_ITEMS = [
   // están como 'USUARIO' (no 'ASESOR'), los 93 vendedores veían este menú.
   // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
-  { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
+  { name: "🖥️ Core Backoffice", path: "/vista-backoffice", icon: "🖥️",
     accessCheck: (p) => ['ADMINISTRADOR', 'ATC', 'ANALISTA'].includes(p),
     isChild: true, group: "backoffice" },
 
@@ -745,7 +745,7 @@ export default function DashboardLayout() {
             </div>
           </button>
 
-          {/* Logo NOVO ERP */}
+          {/* Logo NOVO CORE ERP */}
           <div
             className="flex items-center overflow-hidden shrink-0"
             style={{
@@ -775,7 +775,7 @@ export default function DashboardLayout() {
             {!isDesktopCollapsed && (
               <div className="dl-nav-label ml-3 overflow-hidden">
                 <span className="font-black tracking-wide" style={{ fontSize: "1.05rem", color: "#f8fafc", whiteSpace: "nowrap" }}>
-                  NOVO <span style={{ background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
+                  NOVO CORE <span style={{ background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
                 </span>
                 <p style={{ fontSize: "0.6rem", color: "#8a9bc2", margin: 0, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Sistema de Gestión</p>
               </div>

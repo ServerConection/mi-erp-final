@@ -38,6 +38,7 @@ function fuenteDetalleJotform(empresa, alias) {
   return `(
     SELECT
         e.id                                                   AS ev_id,
+        e.distribuidor_autorizado                              AS distribuidor,
         -- Fecha de registro en hora local (mismo criterio que la migración):
         -- el histórico Jotform Novonet ya está en hora local; el resto se
         -- guardó con zona horaria.
@@ -136,6 +137,7 @@ function fuenteDetalleJotform(empresa, alias) {
 function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
   const a = alias;
   return `
+    ${a}.distribuidor                                AS "DISTRIBUIDOR",
     ${a}.id_bitrix                                   AS "ID_CRM",
     ${a}.id_bitrix                                   AS "ID_JOT",
     ${a}.etapa_bitrix                                AS "ETAPA",

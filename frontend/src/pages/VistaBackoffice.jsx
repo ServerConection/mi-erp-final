@@ -287,7 +287,8 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
 // Excel de Validación / Regularización (mismo orden que el formato de reporte).
 const COLUMNAS_EXPORTACION_REGULARIZACION = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "supervisor",
-  "netlife_login", "netlife_estatus_real", "estatus_regularizacion", "detalle_regularizacion",
+  "netlife_login", "netlife_estatus_real", "forma_pago", "fecha_activacion_netlife",
+  "estatus_regularizacion", "detalle_regularizacion",
 ];
 const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   id_bitrix: "ID BITRIX",
@@ -296,6 +297,8 @@ const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   supervisor: "SUPERVISOR",
   netlife_login: "LOGIN NETLIFE",
   netlife_estatus_real: "ESTATUS NETLIFE",
+  forma_pago: "FORMA DE PAGO",
+  fecha_activacion_netlife: "FECHA DE ACTIVACIÓN",
   estatus_regularizacion: "ESTATUS REG.",
   detalle_regularizacion: "DETALLE REG",
 };
@@ -321,7 +324,7 @@ const CAMPOS_CLIENTE_NO_EXPORTABLES = new Set([
   "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2",
   "telf_fijo", "provincia", "ciudad", "parroquia_barrio", "direccion_calles",
   "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
-  "tipo_vivienda", "regimen_vivienda", "forma_pago", "banco", "tipo_cuenta",
+  "tipo_vivienda", "regimen_vivienda", "banco", "tipo_cuenta",
   "detalle_bancario_ahorros", "valor_pago", "links_documentos", "resumen_venta",
   ...CAMPOS_DOCUMENTO,
 ]);

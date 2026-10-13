@@ -61,7 +61,7 @@ router.get('/dashboard', async (req, res) => {
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ventas,
         0::int AS activos ${base} GROUP BY 1 ORDER BY 1`, values),
       pool.query(`SELECT ${origen} AS origen, ${etapa} AS etapa, ${fecha}::text AS fecha, COUNT(*)::int AS total ${base} GROUP BY 1,2,3 ORDER BY 3,1,2`, values),
-      pool.query(`SELECT w.bitrix_id AS "ID_BITRIX", ${responsable} AS "ASESOR_RESPONSABLE_BITRIX",
+      pool.query(`SELECT 'SEMILLERO'::text AS "DISTRIBUIDOR", w.bitrix_id AS "ID_BITRIX", ${responsable} AS "ASESOR_RESPONSABLE_BITRIX",
         ${responsable} AS "ASESOR", ${origen} AS "ORIGEN", ${etapa} AS "ESTADO_NETLIFE",
         ${etapa} AS "ETAPA_CRM", ${fecha}::text AS "FECHA_REGISTRO", w.phone AS "TELEFONO",
         w.city AS "CIUDAD", w.comentario AS "COMENTARIO", 'SEMILLERO'::text AS "SUPERVISOR_ASIGNADO"
@@ -102,7 +102,49 @@ router.get('/dashboard', async (req, res) => {
 router.get('/activaciones-dia', (_req, res) => res.json({ success: true, rows: [] }));
 router.get('/monitoreo-diario', (_req, res) => res.json({ success: true, supervisores: [], asesores: [], dataCRM: [], dataNetlife: [] }));
 router.get('/reporte180', (_req, res) => res.json({ success: true, supervisores: [], asesores: [], data: [] }));
-router.get('/consulta-descarga', (_req, res) => res.json({ success: true, rows: [], total: 0 }));
+router.get('/consulta-descarga', async (req, res) => {
+  const periodo = rango(req, res);
+  if (!periodo) return;
+  const values = [periodo.desde, periodo.hasta];
+  let where = `${esSemillero} AND ${fecha} BETWEEN $1::date AND $2::date`;
+  const agregar = (valor, expresion) => {
+    const limpio = String(valor || '').trim();
+    if (!limpio) return;
+    values.push(`%${limpio}%`);
+    where += ` AND (${expresion}) ILIKE $${values.length}`;
+  };
+  agregar(req.query.asesor, `${responsable} || ' ' || COALESCE(w.responsible, '')`);
+  agregar(req.query.loginNetlife, `''`);
+  agregar(req.query.idBitrix, `COALESCE(w.bitrix_id::text, '')`);
+  agregar(req.query.busquedaGeneral, `${responsable} || ' ' || COALESCE(w.bitrix_id::text, '') || ' ' || ${etapa}`);
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        'SEMILLERO'::text AS "DISTRIBUIDOR",
+        w.bitrix_id AS "ID_CRM", w.bitrix_id AS "ID_JOT",
+        ${etapa} AS "ETAPA", ${fecha}::text AS "FECHA_CREACION",
+        ${responsable} AS "ASESOR", 'ADRIANA SALVATORE'::text AS "SUPERVISOR_ASIGNADO",
+        ${origen} AS "ORIGEN", ${fecha}::text AS "FECHA_CREACION_JOT",
+        NULL::text AS "FECHA_ASIGNACION", NULLIF(w.fecha_venta_subida, '') AS "FECHA_ACTIVACION",
+        NULL::text AS "COD_ASESOR_JOT", ${responsable} AS "ASESOR_USUARIO",
+        NULL::text AS "LOGIN", ${etapa} AS "ESTADO_NETLIFE",
+        NULL::text AS "INGRESO_TELCOS", NULL::text AS "ESTADO_REGULARIZACION",
+        NULL::text AS "OBSERV_REGULARIZACION", w.comentario AS "NOVEDADES_ATC",
+        NULL::text AS "TIPO_PLAN", NULL::text AS "VELOCIDAD",
+        NULL::text AS "EMPAQUETADO", NULL::text AS "SERVICIO_ADICIONAL_FACTURADO",
+        NULL::text AS "FORMA_PAGO", NULL::text AS "APLICA_DESCUENTO",
+        w.comentario AS "OBSERVACION"
+      FROM public.bitrix_webhook_leads w
+      WHERE ${where}
+      ORDER BY w.created_at DESC
+      LIMIT 100000
+    `, values);
+    res.json({ success: true, rows, registros: rows, total: rows.length });
+  } catch (e) {
+    console.error('[semillero/consulta-descarga]', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo consultar el detalle de Semillero' });
+  }
+});
 router.post('/force-refresh', (_req, res) => res.json({ success: true, message: 'Semillero consulta datos en tiempo real' }));
 
 module.exports = router;

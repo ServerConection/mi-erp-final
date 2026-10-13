@@ -292,7 +292,7 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
 // Excel de Validación / Regularización (mismo orden que el formato de reporte).
 const COLUMNAS_EXPORTACION_REGULARIZACION = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "supervisor",
-  "netlife_login", "netlife_estatus_real", "forma_pago", "fecha_activacion_netlife",
+  "netlife_login", "netlife_estatus_real", "fecha_activacion_netlife",
   "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
 ];
 const ETIQUETAS_EXPORTACION_REGULARIZACION = {
@@ -302,7 +302,6 @@ const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   supervisor: "SUPERVISOR",
   netlife_login: "LOGIN NETLIFE",
   netlife_estatus_real: "ESTATUS NETLIFE",
-  forma_pago: "FORMA DE PAGO",
   fecha_activacion_netlife: "FECHA DE ACTIVACIÓN",
   estatus_regularizacion: "ESTATUS REG.",
   auditoria_documentos: "AUDITORÍA DOC.",

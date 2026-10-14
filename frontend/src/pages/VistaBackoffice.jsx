@@ -83,6 +83,7 @@ const ESTATUS_NETLIFE = [
   "LIBERAR EDIFICIO",
   "PENDIENTE POR DEUDA",
   "NO INGRESADO",
+  "CONADIS NO SE PAGA",
 ];
 
 
@@ -315,6 +316,27 @@ const COLUMNAS_MESA_TRABAJO = [
   "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
+
+// Formato solicitado para la descarga de Mesa de trabajo. Es independiente
+// de las columnas visibles para que la tabla conserve todo su detalle.
+const COLUMNAS_EXPORTACION_MESA_TRABAJO = [
+  "id_bitrix",
+  "fecha_registro_sistema",
+  "id_asesor_comercial",
+  "supervisor",
+  "netlife_estatus_real",
+  "netlife_login",
+  "novedades_atc",
+];
+const ETIQUETAS_EXPORTACION_MESA_TRABAJO = {
+  id_bitrix: "ID BITRIX",
+  fecha_registro_sistema: "FECHA DE REGISTRO",
+  id_asesor_comercial: "CODIGO ASESOR",
+  supervisor: "SUPERVISOR",
+  netlife_estatus_real: "ESTATUS NETLIFE",
+  netlife_login: "LOGIN NETLIFE",
+  novedades_atc: "NOVEDADES",
+};
 
 const COLUMNAS_TABLAS_BACKOFFICE = COLUMNAS_TABLA_REGISTROS;
 
@@ -6458,11 +6480,31 @@ function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
  *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
 const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_MESA_TRABAJO;
 
-function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
+function TablaPreservicios({ rows, onAbrirRegistro, onGuardarCelda, loading = false, filtrosActivos = false, editable = true }) {
   const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
     key,
     label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
   }));
+
+  if (editable) {
+    const headersEditables = [
+      { key: "__ver__", label: "" },
+      { key: "__seleccion__", label: "SELECCIÓN" },
+      ...headers,
+    ];
+    return (
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+        <TablaRegistros
+          loading={loading}
+          rows={rows}
+          headers={headersEditables}
+          onGuardarCelda={onGuardarCelda}
+          onVerDetalle={onAbrirRegistro}
+          puedeEditar
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
@@ -6603,13 +6645,43 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   const [busqueda, setBusqueda] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
   const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
+  const [cambios, setCambios] = useState({});
+  const [alerta, setAlerta] = useState(null);
+  const token = localStorage.getItem("token");
 
   const color = "#0891b2";
 
+  const todasConCambios = useMemo(
+    () => (todas || []).map((row) => (cambios[row.id] ? { ...row, ...cambios[row.id] } : row)),
+    [todas, cambios]
+  );
+
+  const guardarCelda = useCallback(async (id, campo, valor) => {
+    try {
+      setAlerta(null);
+      const valorEnviar = campo === "estatus_regularizacion" && valor === "SIN REVISAR"
+        ? ""
+        : normalizarValorFechaHoraGuardar(campo, valor);
+      const res = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ [campo]: valorEnviar }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || `No se pudo guardar ${FIELD_LABELS[campo] || campo}`);
+      setCambios((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...(json.data || { [campo]: valorEnviar }) } }));
+      setAlerta(resultadoBienvenida(json, `${FIELD_LABELS[campo] || campo} actualizado correctamente`));
+      return true;
+    } catch (err) {
+      setAlerta({ type: "error", msg: err.message || "No se pudo guardar el cambio" });
+      return false;
+    }
+  }, [token]);
+
   // Solo entran los registros que caen en alguno de los estados operativos definidos.
   const rowsClasificadas = useMemo(
-    () => (todas || []).filter((r) => clasificarPreservicio(r) !== null),
-    [todas]
+    () => todasConCambios.filter((r) => clasificarPreservicio(r) !== null),
+    [todasConCambios]
   );
 
   const rowsConFiltros = useMemo(() => {
@@ -6658,7 +6730,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`, COLUMNAS_MESA_TRABAJO)}
+                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_MESA_TRABAJO, ETIQUETAS_EXPORTACION_MESA_TRABAJO)}
                 color="#0891b2" fondo="#ecfeff" borde="#a5f3fc"
               />
               <button
@@ -6729,6 +6801,11 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             </div>
 
             <span className="bo-scroll-hint" aria-hidden="true">↔ Desliza horizontalmente para ver todas las columnas</span>
+            {alerta && (
+              <div style={{ padding: "10px 12px", borderRadius: 8, background: alerta.type === "success" ? "#ecfdf5" : "#fef2f2", color: alerta.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${alerta.type === "success" ? "#bbf7d0" : "#fecaca"}`, fontSize: 12, fontWeight: 700 }}>
+                {alerta.msg}
+              </div>
+            )}
             {cargando ? (
               <CargandoBackoffice filas={6} />
             ) : (
@@ -6736,6 +6813,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
                 rows={rowsFiltradas}
                 filtrosActivos={Boolean(fechaDesde || fechaHasta || busqueda)}
                 onAbrirRegistro={(id) => setDetalleId(id)}
+                onGuardarCelda={guardarCelda}
               />
             )}
           </div>

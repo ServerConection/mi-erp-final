@@ -239,9 +239,9 @@ export default function App() {
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
-            <Route path="whatsapp/respaldos"        element={<WaRespaldos />} />
+            <Route path="whatsapp/respaldos"        element={<AdminOnlyRoute><WaRespaldos /></AdminOnlyRoute>} />
             <Route path="whatsapp/presentacion"      element={<WaPresentacion />} />
-            <Route path="whatsapp/llamadas"         element={<LlamadasWhatsApp />} />
+            <Route path="whatsapp/llamadas"         element={<AdminOnlyRoute><LlamadasWhatsApp /></AdminOnlyRoute>} />
             <Route path="asistente"                 element={<AsistenteERP />} />
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
             <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />

@@ -794,16 +794,18 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   + ID Bitrix
                 </button>
               ))}
-              <button onClick={() => exportChatPDF({
-                wa_number: selected.wa_number,
-                contact_name: selected.contact_name,
-                line_name: selected.line_name,
-                messages,
-              })}
-                title="Exportar conversación a PDF"
-                className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                📄 PDF
-              </button>
+              {IS_ADMIN && (
+                <button onClick={() => exportChatPDF({
+                  wa_number: selected.wa_number,
+                  contact_name: selected.contact_name,
+                  line_name: selected.line_name,
+                  messages,
+                })}
+                  title="Exportar conversación a PDF"
+                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                  📄 PDF
+                </button>
+              )}
               {!["human", "human_takeover"].includes(selected.status) ? (
                 <button onClick={takeOver}
                   className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">

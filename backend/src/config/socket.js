@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { usuarioFresco } = require('../middleware/auth');
+const { isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy');
 
 let _io = null;
 
@@ -76,6 +77,7 @@ const initSocket = (httpServer) => {
         rol:     decoded.rol,
         perfil:  (usuario.perfil  || '').toUpperCase(),
         empresa: (usuario.empresa || '').toUpperCase(),
+        usuario: usuario.usuario,
       };
       socket.userId = usuario.id;
       console.log('[SOCKET] Usuario autenticado:', usuario.id, socket.user.perfil + '.' + socket.user.empresa);
@@ -119,6 +121,10 @@ const initSocket = (httpServer) => {
       // solo deben ver los chats de sus propias lineas.
       if (PERFILES_GERENCIALES_WA.includes(perfil)) {
         socket.join('wa:empresa:' + empresa);
+      }
+      // Auditor multiempresa (ej. jsimbana): recibe en vivo los chats de NOVONET y VELSA.
+      if (isAuditor(socket.user.usuario)) {
+        AUDITOR_EMPRESAS.forEach(e => socket.join('wa:empresa:' + e));
       }
       console.log('[SOCKET] Conectado:', socket.id, '(' + perfil + '.' + empresa + ') -> empresa:' + empresa);
     }

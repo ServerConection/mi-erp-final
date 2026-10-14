@@ -4,7 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
-const { protectedNumbers, isAdminOnlyNumber } = require('../services/waPrivacy')
+const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -92,8 +92,12 @@ const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil ||
 //  - ASESOR/otros:  ve solo sus propias líneas (o huérfanas sin dueño)
 // Requiere que la consulta tenga la tabla lines con alias `l`.
 // Agrega los parámetros necesarios al array `params` (por referencia).
-function visibilityCondition(req, params) {
+function baseVisibilityCondition(req, params) {
   if (isAdmin(req)) return null
+  if (isAuditor(req.user?.usuario)) {
+    params.push([...new Set([...AUDITOR_EMPRESAS, (req.user.empresa || '').toUpperCase()])])
+    return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($${params.length}::text[]))`
+  }
   if (isSupervisor(req)) {
     params.push((req.user.empresa || '').toUpperCase())
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
@@ -102,10 +106,20 @@ function visibilityCondition(req, params) {
   return `(l.created_by = $${params.length} OR l.created_by IS NULL)`
 }
 
+// Chats privados: las líneas de los dueños privados (ej. bpineda) solo las
+// ve su propio dueño. Aplica a TODOS los perfiles, incluido ADMINISTRADOR.
+function visibilityCondition(req, params) {
+  const base = baseVisibilityCondition(req, params)
+  if (isPrivateOwner(req.user?.usuario)) return base
+  params.push(privateOwners())
+  const priv = `(l.created_by IS NULL OR l.created_by NOT IN (SELECT id FROM usuarios WHERE LOWER(usuario) = ANY($${params.length}::text[])))`
+  return base ? `(${base} AND ${priv})` : priv
+}
+
 // Verifica que la conversación exista y que el usuario pueda verla según su perfil.
 async function findOwnedConversation(req, id) {
   const result = await query(
-    `SELECT c.*, l.created_by AS line_created_by, u.empresa AS line_empresa,
+    `SELECT c.*, l.created_by AS line_created_by, u.empresa AS line_empresa, u.usuario AS line_owner_usuario,
             ct.metadata->>'real_phone' AS contact_real_phone
      FROM conversations c
      LEFT JOIN lines l ON c.line_id = l.id
@@ -116,8 +130,16 @@ async function findOwnedConversation(req, id) {
   )
   if (!result.rows.length) return null
   const conv = result.rows[0]
+  // Chat privado: solo su dueño, ni siquiera otro administrador.
+  if (isPrivateOwner(conv.line_owner_usuario) && conv.line_created_by !== req.user.id) return null
   if (isAdmin(req)) return conv
   if (isAdminOnlyNumber(conv.wa_number) || isAdminOnlyNumber(conv.contact_real_phone)) return null
+  if (isAuditor(req.user?.usuario)) {
+    const emp = (conv.line_empresa || '').toUpperCase()
+    if (AUDITOR_EMPRESAS.includes(emp) || emp === (req.user.empresa || '').toUpperCase()) return conv
+    if (conv.line_created_by === req.user.id) return conv
+    return null
+  }
   if (isSupervisor(req)) {
     return (conv.line_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? conv : null
   }

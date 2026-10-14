@@ -24,3 +24,20 @@ for (const p of ['GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'GERENCIA_F
 }
 for (const p of ['SUPERVISOR','ATC','ANALISTA','USUARIO','ASESOR','']) assert.equal(puedeAccederAdministracion(p), false, p);
 console.log('OK comisiones: envios_ventas, fechas independientes y acceso');
+
+// ── Catálogo y cálculo de valores ──
+assert.equal(_test.contarServicios(''), 0);
+assert.equal(_test.contarServicios(null), 0);
+assert.equal(_test.contarServicios('Netlife Play'), 1);
+assert.equal(_test.contarServicios('Netlife Play + Paramount'), 2);
+assert.equal(_test.contarServicios('A + B + C'), 3);
+assert.equal(_test.mesValido('2026-10'), true);
+assert.equal(_test.mesValido('2026-13'), false);
+const fila = _test.normalizarFilaCatalogo({ tipo: 'Tercera Edad', velocidad: '750', servicios: 'Netlife Play + Paramount', com_t1: '14,60', com_t2: 15.8 });
+assert.deepEqual([fila.tipo, fila.velocidad, fila.n_servicios, fila.com_t1, fila.com_t2], ['TERCERA EDAD', 750, 2, 14.6, 15.8]);
+assert.equal(_test.normalizarFilaCatalogo({ tipo: 'HOME', velocidad: 150, com_t1: '' }), null);
+assert.equal(_test.normalizarFilaCatalogo({ tipo: 'OTRO', velocidad: 150, com_t1: 3 }), null);
+assert.match(fuente, /AS valor_total/);
+assert.match(fuente, /FILTER \(WHERE v\.reg = 'REGULARIZADO'\), 0\), 2\)::float AS valor_disponible/);
+assert.match(fuente, /MAX\(com_t1\) AS com/);
+console.log('OK comisiones: catalogo, total y disponible');

@@ -3,13 +3,26 @@ const pool = require('../config/db');
 const { verificarToken } = require('../middleware/auth');
 const { fechaValida } = require('../shared/gestionablesCarga');
 const { fechaWebhookExpr } = require('../shared/webhookRedes');
-const { esGestionableExpr, esDescarteExactoExpr } = require('../shared/etapas');
+const { esLeadTotalExpr, esGestionableExpr, esDescarteExactoExpr } = require('../shared/etapas');
+const { reconciliarLeads } = require('../services/reconciliacionBitrix.service');
 
 const etapa = `UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' '))`;
 const origen = `COALESCE(NULLIF(BTRIM(w.source), ''), 'SIN ORIGEN')`;
 const responsable = `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`;
 const fecha = fechaWebhookExpr('w');
-const esSemillero = `LOWER(BTRIM(w.empresa)) = 'semillero'`;
+const CATEGORIA_SEMILLERO = '41';
+// Semillero corresponde exclusivamente al pipeline 41. Se conservan los datos
+// históricos que aún no tienen categoría, salvo CONTACTO NUEVO: esos registros
+// antiguos quedaron congelados aunque el negocio avanzó en Bitrix. Los eventos
+// nuevos ya llegan marcados con categoría 41 y sí cuentan normalmente.
+const esSemillero = `(LOWER(BTRIM(w.empresa)) = 'semillero'
+  AND (
+    BTRIM(COALESCE(w.categoria_id, '')) = '${CATEGORIA_SEMILLERO}'
+    OR (
+      NULLIF(BTRIM(w.categoria_id), '') IS NULL
+      AND ${etapa} <> 'CONTACTO NUEVO'
+    )
+  ))`;
 
 router.use(verificarToken);
 
@@ -44,6 +57,7 @@ router.get('/dashboard', async (req, res) => {
   try {
     const [asesores, embudo, embudoDia, barrasDia, origenesDia, detalle] = await Promise.all([
       pool.query(`SELECT ${responsable} AS nombre_grupo,
+        COUNT(*) FILTER (WHERE ${esLeadTotalExpr(etapa)})::int AS leads_totales,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)})::int AS gestionables,
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ventas_crm,
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ingresos_reales,
@@ -70,6 +84,7 @@ router.get('/dashboard', async (req, res) => {
     const rows = asesores.rows;
     const supervisores = rows.length ? [{
       nombre_grupo: 'SEMILLERO',
+      leads_totales: rows.reduce((s, r) => s + Number(r.leads_totales), 0),
       gestionables: rows.reduce((s, r) => s + Number(r.gestionables), 0),
       ventas_crm: rows.reduce((s, r) => s + Number(r.ventas_crm), 0),
       ingresos_reales: rows.reduce((s, r) => s + Number(r.ingresos_reales), 0),
@@ -145,6 +160,28 @@ router.get('/consulta-descarga', async (req, res) => {
     res.status(500).json({ success: false, error: 'No se pudo consultar el detalle de Semillero' });
   }
 });
-router.post('/force-refresh', (_req, res) => res.json({ success: true, message: 'Semillero consulta datos en tiempo real' }));
+router.post('/force-refresh', async (req, res) => {
+  const desde = fechaValida(req.query.fechaDesde) ? req.query.fechaDesde : undefined;
+  const hasta = fechaValida(req.query.fechaHasta) ? req.query.fechaHasta : undefined;
+  try {
+    const resultado = await reconciliarLeads({
+      empresa: 'semillero',
+      categoria: CATEGORIA_SEMILLERO,
+      filtrarPorCategoria: true,
+      campoFecha: 'DATE_CREATE',
+      soloEtapas: true,
+      depurarCategoria: true,
+      cursorRapido: true,
+      desde,
+      hasta,
+      aplicar: true,
+      log: () => {},
+    });
+    res.json({ success: true, message: 'Semillero sincronizado con Bitrix', resultado });
+  } catch (e) {
+    console.error('[semillero/force-refresh]', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo sincronizar Semillero con Bitrix' });
+  }
+});
 
 module.exports = router;

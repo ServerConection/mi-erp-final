@@ -51,6 +51,15 @@ const cargarEtapas = async (llamarBitrix) => {
   return mapa;
 };
 
+// Ruta ligera para módulos que pertenecen a un único pipeline. Evita recorrer
+// el catálogo completo de categorías en cada refresh (Semillero = categoría 41).
+const cargarEtapasCategoria = async (llamarBitrix, categoria) => {
+  const mapa = {};
+  const etapas = (await llamarBitrix('crm.dealcategory.stage.list', { id: categoria })).result || [];
+  etapas.forEach((etapa) => { mapa[etapa.STATUS_ID] = etapa.NAME; });
+  return mapa;
+};
+
 // Catálogo SOURCE_ID (ej. "33") → nombre visible del origen
 // (ej. "BASE API 593963463480"). El webhook guarda el NOMBRE, así que la
 // reconciliación debe escribir lo mismo o Redes no lo reconoce.
@@ -87,9 +96,29 @@ const asegurarColumnaCategoria = async () => {
   columnaCategoriaLista = true;
 };
 
-const listarDeals = async (llamarBitrix, filter, onProgreso) => {
+const listarDeals = async (llamarBitrix, filter, onProgreso, { cursorRapido = false } = {}) => {
   const select = ['ID', 'TITLE', 'STAGE_ID', 'CATEGORY_ID', 'SOURCE_ID',
     'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'IS_REPEATED_APPROACH'];
+  if (cursorRapido) {
+    const selectLigero = ['ID', 'STAGE_ID', 'CATEGORY_ID', 'DATE_CREATE', 'DATE_MODIFY'];
+    let todos = [];
+    let ultimoId = 0;
+    for (let pagina = 0; pagina < 400; pagina++) {
+      const json = await llamarBitrix('crm.deal.list', {
+        filter: { ...filter, '>ID': ultimoId },
+        select: selectLigero,
+        order: { ID: 'ASC' },
+        start: -1,
+      });
+      const lote = json.result || [];
+      todos = todos.concat(lote);
+      if (onProgreso) onProgreso(todos.length);
+      if (lote.length < 50) break;
+      ultimoId = Math.max(...lote.map((deal) => Number(deal.ID) || 0));
+      await sleep(550);
+    }
+    return todos;
+  }
   let todos = [], start = 0, page = 0;
   while (page < 400) {
     const json = await llamarBitrix('crm.deal.list', { filter, select, order: { ID: 'ASC' }, start });
@@ -117,6 +146,11 @@ const reconciliarLeads = async ({
   // Solo el embudo de Redes (categoría 19). Sin esto se meterían deals de
   // otros embudos a bitrix_webhook_leads e inflarían los totales.
   categoria = null,
+  filtrarPorCategoria = false,
+  campoFecha = 'DATE_MODIFY',
+  soloEtapas = false,
+  depurarCategoria = false,
+  cursorRapido = false,
 } = {}) => {
   const hoy = new Date();
   const _desde = desde || new Date(hoy.getTime() - 7 * 864e5).toISOString().slice(0, 10);
@@ -130,13 +164,24 @@ const reconciliarLeads = async ({
     ? (process.env.RECONCILIACION_BITRIX_CATEGORIA_VELSA || '51')
     : (process.env.RECONCILIACION_BITRIX_CATEGORIA || '19'));
   // Secuencial para respetar el límite de 2 solicitudes por segundo de Bitrix.
-  const stageName = await cargarEtapas(llamarBitrix);
-  const sourceName = await cargarOrigenes(llamarBitrix);
-  const userName = await cargarUsuarios(llamarBitrix);
+  const stageName = filtrarPorCategoria
+    ? await cargarEtapasCategoria(llamarBitrix, categoriaObjetivo)
+    : await cargarEtapas(llamarBitrix);
+  // Para cuadrar el Kanban solo se necesitan ID, etapa y categoría. Conservar
+  // origen y responsable locales evita llamadas extra y no altera esos campos.
+  const sourceName = soloEtapas ? {} : await cargarOrigenes(llamarBitrix);
+  const userName = soloEtapas ? {} : await cargarUsuarios(llamarBitrix);
 
+  const campoFechaSeguro = campoFecha === 'DATE_CREATE' ? 'DATE_CREATE' : 'DATE_MODIFY';
+  const valorDesde = campoFechaSeguro === 'DATE_CREATE' ? `${_desde}T00:00:00-05:00` : _desde;
+  const valorHasta = campoFechaSeguro === 'DATE_CREATE' ? `${_hasta}T23:59:59-05:00` : _hasta;
   const filter = soloId
     ? { ID: soloId }
-    : { '>=DATE_MODIFY': _desde, '<=DATE_MODIFY': _hasta };
+    : {
+        [`>=${campoFechaSeguro}`]: valorDesde,
+        [`<=${campoFechaSeguro}`]: valorHasta,
+        ...(filtrarPorCategoria ? { CATEGORY_ID: categoriaObjetivo } : {}),
+      };
   // OJO: se traen deals de TODAS las categorías para detectar los que salieron
   // de la 19; solo se INSERTAN los faltantes que sí son de la 19.
   const enCategoria = (d) => categoriaObjetivo === '' || categoriaObjetivo == null || String(d.CATEGORY_ID) === String(categoriaObjetivo);
@@ -144,7 +189,7 @@ const reconciliarLeads = async ({
 
   const deals = await listarDeals(llamarBitrix, filter, (n) => {
     if (n % 200 === 0) log(`   📦 ${n} deals traídos de Bitrix...`);
-  });
+  }, { cursorRapido });
 
   if (!deals.length) {
     return { deals: 0, faltantes: [], desfasados: [], escritos: 0, errores: 0, aplicar };
@@ -167,7 +212,7 @@ const reconciliarLeads = async ({
   for (const d of deals) {
     const id = String(d.ID);
     const etapa = slugify(stageName[d.STAGE_ID] || d.STAGE_ID || '');
-    const origen = sourceName[d.SOURCE_ID] || d.SOURCE_ID || '';
+    const origen = soloEtapas ? '' : (sourceName[d.SOURCE_ID] || d.SOURCE_ID || '');
     const fila = enTabla.get(id);
     // Fecha real de creación en Bitrix (día en Ecuador). El webhook guarda
     // created_at = cuando LLEGÓ el primer evento: un deal de enero que se
@@ -190,7 +235,66 @@ const reconciliarLeads = async ({
   }
 
   let escritos = 0, errores = 0;
-  for (const { d, etapa, origen, cambioEtapa = true } of [...faltantes, ...desfasados]) {
+  const cambios = [...faltantes, ...desfasados];
+
+  if (soloEtapas && cambios.length > 0) {
+    const ejecutado = new Date().toISOString();
+    const payload = cambios.map(({ d, etapa, cambioEtapa = true }) => ({
+      bitrix_id: String(d.ID),
+      etapa,
+      etapa_bitrix: String(stageName[d.STAGE_ID] || d.STAGE_ID || '').toUpperCase(),
+      fecha: d.DATE_CREATE || null,
+      categoria_id: String(d.CATEGORY_ID ?? ''),
+      cambio_etapa: cambioEtapa,
+      raw_query: {
+        origen: 'reconciliacion', ejecutado,
+        stage_id: d.STAGE_ID, category_id: d.CATEGORY_ID, date_modify: d.DATE_MODIFY,
+      },
+    }));
+    try {
+      await pool.transaction(async (client) => {
+        await client.query(
+          `WITH cambios AS (
+             SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+               bitrix_id text, etapa text, etapa_bitrix text, fecha timestamptz,
+               categoria_id text, cambio_etapa boolean, raw_query jsonb
+             )
+           )
+           INSERT INTO bitrix_webhook_leads
+             (bitrix_id, empresa, etapa, event, etapa_bitrix, raw_query, created_at, categoria_id)
+           SELECT bitrix_id, $2, etapa, 'semillero_sync', etapa_bitrix, raw_query,
+                  COALESCE(fecha, NOW()), $3
+             FROM cambios
+           ON CONFLICT (empresa, bitrix_id) DO UPDATE
+             SET etapa = EXCLUDED.etapa,
+                 etapa_bitrix = EXCLUDED.etapa_bitrix,
+                 categoria_id = EXCLUDED.categoria_id,
+                 created_at = EXCLUDED.created_at,
+                 raw_query = EXCLUDED.raw_query,
+                 updated_at = NOW()`,
+          [JSON.stringify(payload), empresa, String(categoriaObjetivo)]
+        );
+        await client.query(
+          `WITH cambios AS (
+             SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+               bitrix_id text, etapa text, etapa_bitrix text, fecha timestamptz,
+               categoria_id text, cambio_etapa boolean, raw_query jsonb
+             )
+           )
+           INSERT INTO bitrix_webhook_leads_historial
+             (bitrix_id, empresa, etapa, event, etapa_bitrix, raw_query)
+           SELECT bitrix_id, $2, etapa, 'reconciliacion', etapa_bitrix, raw_query
+             FROM cambios
+            WHERE cambio_etapa`,
+          [JSON.stringify(payload), empresa]
+        );
+      });
+      escritos = cambios.length;
+    } catch (e) {
+      errores = cambios.length;
+      log(`   Error en actualización masiva de ${empresa}: ${e.message}`);
+    }
+  } else for (const { d, etapa, origen, cambioEtapa = true } of cambios) {
     const id = String(d.ID);
     const etapaBitrix = String(stageName[d.STAGE_ID] || d.STAGE_ID || '').toUpperCase();
     // raw_query marca el origen: así se distingue después qué fila entró por
@@ -230,6 +334,22 @@ const reconciliarLeads = async ({
       errores++;
       log(`   ✗ ${id}: ${e.message}`);
     }
+  }
+
+  // Cuando Bitrix entregó correctamente una categoría completa, las filas
+  // locales del mismo período que no aparecen en esa lista ya no pertenecen
+  // al pipeline. Se marcan fuera en lugar de borrarlas para conservar historial.
+  if (depurarCategoria && filtrarPorCategoria && !soloId && errores === 0) {
+    const idsCategoria = deals.map((deal) => String(deal.ID));
+    await pool.query(
+      `UPDATE bitrix_webhook_leads
+          SET categoria_id = $4, updated_at = NOW()
+        WHERE empresa = $1
+          AND created_at >= $2::date
+          AND created_at < ($3::date + INTERVAL '1 day')
+          AND NOT (bitrix_id = ANY($5::text[]))`,
+      [empresa, _desde, _hasta, `FUERA_${categoriaObjetivo}`, idsCategoria]
+    );
   }
 
   return { deals: deals.length, faltantes, desfasados, escritos, errores, aplicar };

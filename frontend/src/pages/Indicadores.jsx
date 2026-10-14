@@ -1324,8 +1324,11 @@ ${asesoresPDF.length>0?`
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await fetch(
-        `${import.meta.env.VITE_API_URL}${apiBase}/force-refresh`,
+      const params = new URLSearchParams();
+      if (filtros.fechaDesde) params.set('fechaDesde', filtros.fechaDesde);
+      if (filtros.fechaHasta) params.set('fechaHasta', filtros.fechaHasta);
+      await fetchConSesion(
+        `${import.meta.env.VITE_API_URL}${apiBase}/force-refresh?${params}`,
         { method: 'POST', headers: { 'Cache-Control': 'no-cache' } }
       );
     } catch (e) {

@@ -109,14 +109,17 @@ const recibirLead = async (req, res) => {
       return campo === 'etapa_bitrix' ? String(v).trim().toUpperCase() : v;
     });
 
-    const columnas = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'raw_query'];
-    const placeholders = columnas.map((_, i) => `$${i + 1}`).join(',');
+    const categoriaId = empresa === 'semillero' ? '41' : null;
+    const columnasHistorial = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'raw_query'];
+    const columnasLead = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'categoria_id', 'raw_query'];
+    const placeholdersHistorial = columnasHistorial.map((_, i) => `$${i + 1}`).join(',');
+    const placeholdersLead = columnasLead.map((_, i) => `$${i + 1}`).join(',');
 
     // Sin ID de Bitrix no hay forma de dar trazabilidad al lead (es la llave
     // que identifica al mismo lead en distintas etapas) — igual se guarda en
     // el historial para no perder el evento, pero no se puede hacer UPSERT.
     if (!id) {
-      const sqlHistorialSinId = `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`;
+      const sqlHistorialSinId = `INSERT INTO bitrix_webhook_leads_historial (${columnasHistorial.join(',')}) VALUES (${placeholdersHistorial})`;
       const paramsHistorialSinId = [null, empresa, etapa, ...valores, JSON.stringify(req.query)];
       await pool.query(sqlHistorialSinId, paramsHistorialSinId);
       await replicarEnErp(sqlHistorialSinId, paramsHistorialSinId);
@@ -124,7 +127,8 @@ const recibirLead = async (req, res) => {
       return res.status(200).send('OK (sin ID, no se pudo actualizar estado actual)');
     }
 
-    const paramsUpsert = [id, empresa, etapa, ...valores, JSON.stringify(req.query)];
+    const paramsUpsert = [id, empresa, etapa, ...valores, categoriaId, JSON.stringify(req.query)];
+    const paramsHistorial = [id, empresa, etapa, ...valores, JSON.stringify(req.query)];
 
     // FIX (2026-08-27, race condition de creacion): al crear un lead, Bitrix
     // dispara varias automatizaciones casi al mismo tiempo (ej. "Contacto
@@ -139,7 +143,7 @@ const recibirLead = async (req, res) => {
     // normal. El historial NUNCA se toca -- ahi queda registrado tal cual
     // llego, sin filtrar nada.
     const COLUMNAS_PROTEGIDAS_DE_CONTACTO_NUEVO = ['etapa', 'etapa_bitrix'];
-    const setClause = ['etapa', ...CAMPOS_BITRIX, 'raw_query']
+    const setClause = ['etapa', ...CAMPOS_BITRIX, 'categoria_id', 'raw_query']
       .map(c => {
         if (COLUMNAS_PROTEGIDAS_DE_CONTACTO_NUEVO.includes(c)) {
           return `${c} = CASE
@@ -156,15 +160,18 @@ const recibirLead = async (req, res) => {
         if (c === 'source') {
           return `source = COALESCE(NULLIF(BTRIM(EXCLUDED.source), ''), bitrix_webhook_leads.source)`;
         }
+        if (c === 'categoria_id') {
+          return `categoria_id = COALESCE(NULLIF(BTRIM(EXCLUDED.categoria_id), ''), bitrix_webhook_leads.categoria_id)`;
+        }
         return `${c} = EXCLUDED.${c}`;
       })
       .concat(['updated_at = NOW()'])
       .join(', ');
 
-    const sqlUpsertLead = `INSERT INTO bitrix_webhook_leads (${columnas.join(',')})
-       VALUES (${placeholders})
+    const sqlUpsertLead = `INSERT INTO bitrix_webhook_leads (${columnasLead.join(',')})
+       VALUES (${placeholdersLead})
        ON CONFLICT (empresa, bitrix_id) DO UPDATE SET ${setClause}`;
-    const sqlInsertHistorial = `INSERT INTO bitrix_webhook_leads_historial (${columnas.join(',')}) VALUES (${placeholders})`;
+    const sqlInsertHistorial = `INSERT INTO bitrix_webhook_leads_historial (${columnasHistorial.join(',')}) VALUES (${placeholdersHistorial})`;
 
     let notificacionAtc = null;
     await pool.transaction(async (client) => {
@@ -201,7 +208,7 @@ const recibirLead = async (req, res) => {
       await client.query(sqlUpsertLead, paramsUpsert);
 
       // 2) Historial — queda 1 fila más, nunca se toca lo anterior
-      await client.query(sqlInsertHistorial, paramsUpsert);
+      await client.query(sqlInsertHistorial, paramsHistorial);
 
       // Solo una entrada real a ATC genera notificación. Un webhook repetido
       // mientras continúa en ATC no envía; salir y volver a entrar sí lo hace.
@@ -226,7 +233,7 @@ const recibirLead = async (req, res) => {
     // 3) Replica best-effort en erp_database (nuevo desarrollo) — no bloquea
     //    ni afecta la respuesta del webhook si esta base falla o no existe.
     await replicarEnErp(sqlUpsertLead, paramsUpsert);
-    await replicarEnErp(sqlInsertHistorial, paramsUpsert);
+    await replicarEnErp(sqlInsertHistorial, paramsHistorial);
 
     return res.status(200).send('OK');
   } catch (err) {

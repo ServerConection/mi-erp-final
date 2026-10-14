@@ -416,6 +416,10 @@ const ALL_MENU_ITEMS = [
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Forecast NOVONET", path: "/forecast-novonet", icon: "📈",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Forecast VELSA", path: "/forecast-velsa", icon: "📊",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   // Mapa de salud del ERP: solo administradores — muestra el estado interno.
   { name: "Salud del sistema", path: "/salud", icon: "🩺",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },

@@ -703,7 +703,7 @@ tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-
     <div class="box">${cicloHTML}</div>
   </div>
 </div>
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Visual — Redes Digitales · Confidencial · Uso Gerencial</span><span>Pág. 1 / 3</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE ${empresa.toUpperCase()}</span><span>Reporte Visual — Redes Digitales · Confidencial · Uso Gerencial</span><span>Pág. 1 / 3</span></div>
 
 <!-- ══ PÁGINA 2: CIUDADES + ATC + HEATMAP HORARIO ══ -->
 <div class="pg"></div>
@@ -739,7 +739,7 @@ tr:nth-child(even) td{background:#f0f6ff;print-color-adjust:exact;-webkit-print-
   </div>
   <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;">${heatmapHTML}</div>
 </div>
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Reporte Visual — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Pág. 2 / 3</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE ${empresa.toUpperCase()}</span><span>Reporte Visual — Redes Digitales · Confidencial · Generado: ${fechaGen}</span><span>Pág. 2 / 3</span></div>
 
 <!-- ══ PÁGINA 3 — ANÁLISIS HORARIO & RECOMENDACIONES ESTRATÉGICAS ══ -->
 <div class="pg"></div>
@@ -823,7 +823,7 @@ ${horaData.length > 0 ? `
   </tbody>
 </table>
 
-<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE VELSA</span><span>Análisis Horario &amp; Recomendaciones — Confidencial · Uso Gerencial</span><span>Pág. 3 / 3 · ${fechaGen}</span></div>
+<div class="ftr"><span class="ftr-logo">▌ NOVO ERP · NETLIFE ${empresa.toUpperCase()}</span><span>Análisis Horario &amp; Recomendaciones — Confidencial · Uso Gerencial</span><span>Pág. 3 / 3 · ${fechaGen}</span></div>
 <script>window.onload=()=>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
 
@@ -989,7 +989,7 @@ ${horaData.length > 0 ? `
                 Reporte Data — {MESES[data.meta.mes - 1]} {data.meta.anio}
               </div>
               <div className="text-[11px] font-medium uppercase tracking-widest mt-0.5" style={{ color: C.muted }}>
-                NETLIFE NOVONET · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
+                NETLIFE {empresa.toUpperCase()} · {canalesSel.length > 0 ? canalesSel.map((c) => getCfg(c).label).join(" · ") : "Todos los canales"}
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">

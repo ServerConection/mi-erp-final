@@ -76,6 +76,7 @@ const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 const Comisiones           = lazy(() => import("./pages/Comisiones"));
 const BilleteraDigital     = lazy(() => import("./pages/BilleteraDigital"));
+const ForecastFinanciero   = lazy(() => import("./pages/ForecastFinanciero"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
 const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
@@ -178,6 +179,8 @@ export default function App() {
             <Route path="horarios"                  element={<Horarios />} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
             <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
+            <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />
+            <Route path="forecast-velsa"            element={<AdministracionRoute><ForecastFinanciero empresa="velsa" /></AdministracionRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
             <Route path="redes-velsa"               element={<RedesVelsa />} />

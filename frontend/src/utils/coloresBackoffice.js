@@ -44,6 +44,7 @@ const COLORES_FIJOS = {
     "SIN ESTADO": c("#f1f5f9", "#64748b"),
     "PENDIENTE POR DEUDA": c("#fed7aa", "#9a3412"),
     "NO INGRESADO": c("#bae6fd", "#075985"),
+    "CONADIS NO SE PAGA": c("#f3e8ff", "#7e22ce"),
   },
   calidad_venta_analista: {
     "EN CURSO": c("#4f8ef7", "#ffffff"),

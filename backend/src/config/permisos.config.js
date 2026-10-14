@@ -21,6 +21,8 @@ const MODULOS = {
   GUIA_COMERCIAL: 'GuiaComercial',
 
   BOT_AUDITOR: 'BotAuditor',
+
+  INDICADORES_SEMILLERO: 'IndicadoresSemillero',
 };
 
 const MODULOS_GERENCIALES = [
@@ -182,6 +184,13 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
       MODULOS.RESUMEN_VELSA,
       MODULOS.BOT_AUDITOR,
       ...MODULOS_GERENCIALES,
+    ],
+  },
+  // SEMILLERO: sin este bloque los usuarios de Semillero recibían permisos []
+  // y el frontend los devolvía al login después del OTP.
+  SEMILLERO: {
+    USUARIO: [
+      MODULOS.INDICADORES_SEMILLERO,
     ],
   },
 };

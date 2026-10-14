@@ -89,9 +89,13 @@ router.post('/verify-otp', async (req, res) => {
       [user.id, ip, userAgent, true]
     );
 
-    // Generar JWT
+    // Generar JWT con la misma identidad (perfil + empresa) que el resto de
+    // rutas de login. Los permisos por empresa no deben depender del endpoint
+    // usado para iniciar sesión.
+    const perfil = user.perfil?.toUpperCase() || '';
+    const empresa = user.empresa?.toUpperCase() || '';
     const token = jwt.sign(
-      { id: user.id, rol: user.perfil },
+      { id: user.id, usuario: user.usuario, empresa, perfil },
       process.env.JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
@@ -104,8 +108,10 @@ router.post('/verify-otp', async (req, res) => {
       user: {
         id: user.id,
         usuario: user.usuario,
-        perfil: user.perfil,
-        nombre: `${user.nombres} ${user.apellidos}`
+        perfil,
+        empresa,
+        nombre: `${user.nombres} ${user.apellidos}`,
+        cargo: user.cargo || ''
       }
     });
 

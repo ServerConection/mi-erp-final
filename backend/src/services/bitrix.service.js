@@ -382,4 +382,8 @@ const completarLog = async (id, { procesados, nuevos, actualizados, error, exito
   );
 };
 
-module.exports = { syncBitrix, syncUsuarios, bitrixCall, bitrixCallNovonet, bitrixListAll, syncNovonet };
+// Llamada a cualquier cuenta Bitrix por URL de webhook (la usa el reparto de
+// gestionables de Velsa: BITRIX_VELSA_URL).
+const bitrixCallCuenta = (webhookUrl, method, params = {}) => bitrixCallBase(webhookUrl, method, params);
+
+module.exports = { syncBitrix, syncUsuarios, bitrixCall, bitrixCallNovonet, bitrixCallCuenta, bitrixListAll, syncNovonet };

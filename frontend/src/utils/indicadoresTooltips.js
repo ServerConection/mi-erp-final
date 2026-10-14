@@ -77,9 +77,12 @@ export const TOOLTIPS_INDICADORES = {
   terceraEdad:
     "Qué porcentaje de las ventas ACTIVAS aplicó descuento de tercera edad.",
 
+  terceraEdadProyectada:
+    "Ventas de tercera edad en ACTIVO, ASIGNADO o PREPLANIFICADO, divididas para todas las ventas que están en esos tres estados.",
+
   porRegularizar:
     "Ventas marcadas con estatus de regularización = POR REGULARIZAR, en el rango de fecha Jotform seleccionado.",
 
-  planes150200:
-    "Porcentaje de ventas que corresponden a los planes de 150/200. Pendiente de cálculo automático (ver docs/DICCIONARIO_INDICADORES.xlsx).",
+  planesHasta600:
+    "Ventas activas con velocidad de hasta 600 Mbps (incluye 600), divididas para los ingresos totales Jotform del período y filtros seleccionados.",
 };

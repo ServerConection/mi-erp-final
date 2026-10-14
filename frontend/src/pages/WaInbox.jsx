@@ -5,6 +5,7 @@ import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import InboxAudioRecorder from "../components/InboxAudioRecorder";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
+import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waInboxFilters";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -125,7 +126,7 @@ const timeAgo = (ts) => {
 // de esa negociación y el Inbox se acota a SU conversación — nunca a la
 // bandeja completa. Sin dealId (uso normal en /whatsapp/inbox) el
 // comportamiento es exactamente el de siempre.
-export default function WaInbox({ dealId = null } = {}) {
+export default function WaInbox({ dealId = null, fixedLineName = "", initialConversationId = null } = {}) {
   // Empresa del usuario (para construir el enlace correcto a Bitrix)
   const USER_PROFILE = (() => {
     try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
@@ -180,9 +181,21 @@ export default function WaInbox({ dealId = null } = {}) {
 
   const connectedLines = lines.filter(l => (l.rt_status || l.status) === "connected");
 
+  useEffect(() => {
+    if (!fixedLineName || !lines.length) return;
+    const linea = lines.find((l) => String(l.name || "").trim().toUpperCase() === String(fixedLineName).trim().toUpperCase());
+    if (linea && String(lineFilter) !== String(linea.id)) setLineFilter(String(linea.id));
+  }, [fixedLineName, lines, lineFilter]);
+
+  useEffect(() => {
+    if (!initialConversationId || !conversations.length) return;
+    const conversacion = conversations.find((c) => String(c.id) === String(initialConversationId));
+    if (conversacion && String(selectedRef.current?.id) !== String(conversacion.id)) setSelected(conversacion);
+  }, [initialConversationId, conversations]);
+
   // Cargar líneas visibles (para filtrar por usuario y elegir línea de envío)
   useEffect(() => {
-    if (!CAN_PICK_LINE) return;
+    if (!CAN_PICK_LINE && !fixedLineName) return;
     (async () => {
       try {
         const r = await fetch(`${API}/lines`, { headers: authH(false) });
@@ -190,20 +203,14 @@ export default function WaInbox({ dealId = null } = {}) {
         setLines(Array.isArray(d?.data) ? d.data : []);
       } catch { /* ignore */ }
     })();
-  }, [CAN_PICK_LINE]);
+  }, [CAN_PICK_LINE, fixedLineName]);
 
   const asArray = (d) => (Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : []);
 
-  const loadConvs = useCallback(async (lineId = "") => {
+  const loadConvs = useCallback(async () => {
     const request = ++listRequest.current;
     try {
-      // Administradores ven todas las conversaciones del Deal; otros perfiles ven una.
-      const params = new URLSearchParams();
-      if (dealId) params.set("bitrix_deal_id", dealId);
-      else if (lineId) params.set("line_id", lineId);
-      if (!dealId) params.set("limit", "500");
-      if (search.trim()) params.set("search", search.trim());
-      if (filter !== "all") params.set("status", filter);
+      const params = crearParametrosInbox({ dealId, search, lineFilter, filter });
       const qs = `?${params}`;
       const r = await fetch(`${API}/conversations${qs}`, { headers: authH(false) });
       const d = await r.json();
@@ -216,11 +223,11 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [dealId, search, filter, singleDealConversation]);
+  }, [dealId, search, lineFilter, filter, singleDealConversation]);
 
   // Recargar al cambiar el filtro de línea/usuario
   useEffect(() => {
-    const timer = setTimeout(() => loadConvs(lineFilter), 300);
+    const timer = setTimeout(() => loadConvs(), 300);
     return () => clearTimeout(timer);
   }, [lineFilter, loadConvs]);
 
@@ -268,7 +275,7 @@ export default function WaInbox({ dealId = null } = {}) {
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
         if (msg.conversation_id && !prev.some(c => c.id === msg.conversation_id)) {
-          queueMicrotask(() => loadConvs());   // conversación nueva → recargar lista
+          queueMicrotask(() => loadConvs());   // conversación nueva → recargar con TODOS los filtros vigentes
         }
         return prev.map(c =>
           c.id === msg.conversation_id
@@ -299,14 +306,14 @@ export default function WaInbox({ dealId = null } = {}) {
       setConversations(prev => prev.filter(c => c.id !== from));
       setSelected(s => (s && s.id === from ? null : s));
     };
-    const onConnect = () => loadConvs(lineFilter);
+    const onConnect = () => loadConvs();
     socket.on("conversation:new", onConversation);
     socket.on("message:new", onMessage);
     socket.on("message:status", onStatus);
     socket.on("conversation:merged", onMerged);
     socket.on("connect", onConnect);
     return () => { socket.off("conversation:new", onConversation); socket.off("message:new", onMessage); socket.off("message:status", onStatus); socket.off("conversation:merged", onMerged); socket.off("connect", onConnect); };
-  }, [dealId, loadConvs, lineFilter, singleDealConversation]);
+  }, [dealId, loadConvs, singleDealConversation]);
 
   useEffect(() => {
     if (selected) loadMessages(selected.id);
@@ -326,11 +333,11 @@ export default function WaInbox({ dealId = null } = {}) {
   // No fuerza scroll para no interrumpir la lectura de una conversación.
   useEffect(() => {
     const id = setInterval(() => {
-      loadConvs(lineFilter);
+      loadConvs();
       if (selectedRef.current?.id) loadMessages(selectedRef.current.id, { scroll: false });
     }, 30000);
     return () => clearInterval(id);
-  }, [lineFilter, loadConvs, loadMessages]);
+  }, [loadConvs, loadMessages]);
 
   const selectConv = (conv) => {
     if (selectedRef.current?.id !== conv.id) clearInternalImage();
@@ -626,10 +633,10 @@ export default function WaInbox({ dealId = null } = {}) {
     } finally { setBitrixBusy(false); }
   };
 
-  const filtered = conversations.filter(c => {
-    if (filter !== "all" && !(filter === "human_takeover" && ["human", "human_takeover"].includes(c.status)) && c.status !== filter) return false;
-    return true;
-  });
+  // Segunda barrera local: los eventos del socket pueden insertar/actualizar
+  // conversaciones entre dos respuestas HTTP. Nunca deben saltarse los
+  // filtros que el usuario ve activos en pantalla.
+  const filtered = conversations.filter(c => conversacionCoincideFiltros(c, { search, lineFilter, filter }));
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -787,16 +794,18 @@ export default function WaInbox({ dealId = null } = {}) {
                   + ID Bitrix
                 </button>
               ))}
-              <button onClick={() => exportChatPDF({
-                wa_number: selected.wa_number,
-                contact_name: selected.contact_name,
-                line_name: selected.line_name,
-                messages,
-              })}
-                title="Exportar conversación a PDF"
-                className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                📄 PDF
-              </button>
+              {IS_ADMIN && (
+                <button onClick={() => exportChatPDF({
+                  wa_number: selected.wa_number,
+                  contact_name: selected.contact_name,
+                  line_name: selected.line_name,
+                  messages,
+                })}
+                  title="Exportar conversación a PDF"
+                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                  📄 PDF
+                </button>
+              )}
               {!["human", "human_takeover"].includes(selected.status) ? (
                 <button onClick={takeOver}
                   className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
@@ -1026,7 +1035,7 @@ export default function WaInbox({ dealId = null } = {}) {
               )}
 
               {/* Selector de línea (solo admin/supervisor) */}
-              {CAN_PICK_LINE && (
+              {CAN_PICK_LINE && !fixedLineName && (
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Responder desde la línea</label>
                   <select value={newLineId} onChange={e => setNewLineId(e.target.value)}

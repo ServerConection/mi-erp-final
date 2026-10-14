@@ -730,7 +730,7 @@ function LiderSplash({ lider, show }) {
   );
 }
 
-export default function Seguimientoventas() {
+export default function Seguimientoventas({ apiBase = '/api/indicadores', empresa = 'Novonet' } = {}) {
   const [loading, setLoading] = useState(false);
   const [asesores, setAsesores] = useState([]);
   const [ultimaAct, setUltimaAct] = useState(null);
@@ -765,7 +765,7 @@ export default function Seguimientoventas() {
     try {
       const params = new URLSearchParams({ fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta });
       // /dashboard exige JWT: sin Bearer devuelve 401 y cierra la sesión.
-      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/dashboard?${params}`);
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/dashboard?${params}`);
       const result = await res.json();
       if (result.success) {
         // Mapear supervisor desde dataNetlife (campo SUPERVISOR_ASIGNADO)
@@ -1104,7 +1104,7 @@ export default function Seguimientoventas() {
         textAlign: "center", fontSize: 9, color: "#cbd5e1", fontWeight: 600,
         textTransform: "uppercase", letterSpacing: ".12em",
       }}>
-        Seguimiento de ventas · Novonet · Datos en tiempo real
+        Seguimiento de ventas · {empresa} · Datos en tiempo real
       </div>
     </div>
   );

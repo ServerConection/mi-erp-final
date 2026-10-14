@@ -129,3 +129,11 @@ simplemente muestran datos viejos. Ver `ORQUESTADOR_IMPACTO_V1.md` §4 y §5.
 | `DOCUMENTACION_PROYECTO.md` | Documentación general |
 | `PLAN_MODULO_TAREAS.md` | Módulo de Tareas |
 | `render.yaml` | Definición de los 7 servicios |
+
+## Servicio de llamadas WhatsApp (`calls-service/`)
+
+Servicio aparte (como wabot) en la carpeta `calls-service/` del repo. Softphone de
+WhatsApp Business Calling API + dashboard comercial + configuración de cuentas.
+Usa la **misma BD** (`DB_*`, tablas `calls_*`) y el **mismo JWT** del ERP. El
+frontend lo embebe en `/whatsapp/llamadas` (`pages/LlamadasWhatsApp.jsx`) vía
+`VITE_CALLS_URL`. No toca el gateway ni el monolito. Ver `calls-service/README.md`.

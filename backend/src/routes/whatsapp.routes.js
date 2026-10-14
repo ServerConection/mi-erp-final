@@ -20,6 +20,7 @@ const scheduledCtrl = require('../controllers/wa_scheduled.controller');
 const dashboardCtrl = require('../controllers/wa_dashboard.controller');
 const statsCtrl    = require('../controllers/wa_stats.controller');
 const presentationCtrl = require('../controllers/wa_presentations.controller');
+const atcConfigCtrl = require('../controllers/wa_atc_config.controller');
 
 // Upload de archivos multimedia
 const uploadsDir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads');
@@ -73,6 +74,15 @@ router.put   ('/campaigns/:campaignId/messages/:messageId',   campMsgCtrl.update
 router.delete('/campaigns/:campaignId/messages/:messageId',   campMsgCtrl.remove);
 router.post  ('/campaigns/:campaignId/messages/reorder',      campMsgCtrl.reorder);
 
+// ── CONFIGURACIÓN ATC (solo ADMINISTRADOR; validación también en controller) ──
+router.get   ('/atc-config',                         atcConfigCtrl.getOverview);
+router.put   ('/atc-config',                         atcConfigCtrl.updateConfig);
+router.post  ('/atc-config/templates',               atcConfigCtrl.createTemplate);
+router.put   ('/atc-config/templates/:id',           atcConfigCtrl.updateTemplate);
+router.delete('/atc-config/templates/:id',           atcConfigCtrl.removeTemplate);
+router.post  ('/atc-config/templates/reorder',       atcConfigCtrl.reorderTemplates);
+router.post  ('/atc-config/history/:id/retry',        atcConfigCtrl.retryQueueItem);
+
 // ── CONTACTOS ─────────────────────────────────────────────────
 router.get   ('/contacts',      contactsCtrl.getAll);
 router.get   ('/contacts/:id',  contactsCtrl.getOne);
@@ -81,6 +91,9 @@ router.put   ('/contacts/:id',  contactsCtrl.update);
 router.delete('/contacts/:id',  contactsCtrl.remove);
 
 // ── LISTAS ────────────────────────────────────────────────────
+router.get   ('/lists/bitrix/options',     listsCtrl.getBitrixOptions);
+router.post  ('/lists/bitrix/preview',     listsCtrl.previewBitrix);
+router.post  ('/lists/bitrix/create',      listsCtrl.createFromBitrix);
 router.get   ('/lists',                    listsCtrl.getAll);
 router.get   ('/lists/:id',                listsCtrl.getOne);
 router.post  ('/lists',                    listsCtrl.create);
@@ -120,6 +133,7 @@ router.post ('/conversations/:id/return-to-bot', convsCtrl.returnToBot);
 router.get  ('/presentation',            presentationCtrl.getMine);
 router.put  ('/presentation',            presentationCtrl.saveMine);
 router.get  ('/presentations',           presentationCtrl.getAll);
+router.get  ('/presentations/:userId',   presentationCtrl.getForUser);
 router.put  ('/presentations/:userId',   presentationCtrl.saveForUser);
 
 // ── MENSAJES PROGRAMADOS ──────────────────────────────────────

@@ -40,7 +40,7 @@ function invalidarUsuarioCache(id) {
   if (id != null) userCache.delete(id);
 }
 
-// Trae el usuario (id, usuario, empresa, perfil, activo, nombres, apellidos)
+// Trae el usuario (id, usuario, empresa, perfil, cargo, activo, nombres, apellidos)
 // desde el cache de 60s o, si no esta, desde la BD. Fuente unica de verdad
 // para "cual es el perfil/empresa VIGENTE de este usuario" — la usan tanto
 // verificarToken (HTTP) como el middleware de Socket.IO, para que un JWT
@@ -50,7 +50,7 @@ async function usuarioFresco(id) {
   let user = cacheGet(id);
   if (!user) {
     const result = await pool.query(
-      `SELECT id, usuario, empresa, perfil, activo, nombres, apellidos, codigo_vendedor
+      `SELECT id, usuario, empresa, perfil, cargo, activo, nombres, apellidos, codigo_vendedor
        FROM usuarios
        WHERE id = $1`,
       [id]
@@ -98,6 +98,7 @@ const verificarToken = async (req, res, next) => {
       usuario: user.usuario,
       empresa: user.empresa?.toUpperCase(),
       perfil: user.perfil?.toUpperCase(),
+      cargo: user.cargo || '',
       activo: user.activo,
       codigo_vendedor: user.codigo_vendedor,
       // Nombre completo del usuario logueado (mismo formato que login: "nombres apellidos").

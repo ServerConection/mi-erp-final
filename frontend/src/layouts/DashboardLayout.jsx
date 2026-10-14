@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables } from '../utils/accesoGestionables';
+import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
+import { puedeAccederAdministracion } from '../utils/accesoAdministracion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -321,19 +323,10 @@ const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
-const RUTAS_INDICADORES = new Set([
-  '/indicadores',
-  '/reporte-detalle-novonet',
-  '/comparativa-supervisores',
-  '/indicadores-velsa',
-  '/indicadores-semillero',
-  '/reporte-detalle-velsa',
-]);
-
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
   if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
-  if (RUTAS_INDICADORES.has(ruta)) return true;
-  return perfil === 'ATC' && ruta === '/vista-backoffice';
+  if (perfil === 'ANALISTA') return rutaPermitidaAnalista(ruta);
+  return perfil === 'ATC' && rutaPermitidaAtc(ruta);
 };
 
 // Lista de IDs de grupos colapsables — se usa para inicializar openGroups
@@ -353,8 +346,9 @@ const ALL_MENU_ITEMS = [
   { name: "🔬 Reporte Detalle NOVONET", path: "/reporte-detalle-novonet",  icon: "🔬", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Comparativa Sup.",           path: "/comparativa-supervisores", icon: "📈", permiso: "Indicadores",      isChild: true, group: "indicadores" },
   { name: "Indicadores VELSA",          path: "/indicadores-velsa",        icon: "📊", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
-  { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
   { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",    icon: "🔬", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
+  { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
+  { name: "🔬 Reporte Detalle SEMILLERO", path: "/reporte-detalle-semillero", icon: "🔬", permiso: "Indicadores", isChild: true, group: "indicadores" },
 
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
@@ -364,11 +358,13 @@ const ALL_MENU_ITEMS = [
   { name: "Vista Asesor", path: null, icon: "👤", isGroup: true, groupId: "vista-asesor" },
   { name: "Vista Asesor NOVONET", path: "/vista-asesor",       icon: "👤", permiso: "VistaAsesor",      isChild: true, group: "vista-asesor" },
   { name: "Vista Asesor VELSA",   path: "/vista-asesor-velsa", icon: "👤", permiso: "VistaAsesorVelsa", isChild: true, group: "vista-asesor" },
+  { name: "Vista Asesor SEMILLERO", path: "/vista-asesor-semillero", icon: "🌱", isChild: true, group: "vista-asesor" },
 
   // ── Seguimiento de venta ─────────────────────────────────────────────────
   { name: "Seguimiento", path: null, icon: "✔️", isGroup: true, groupId: "seguimiento" },
   { name: "Seguimiento NOVONET", path: "/seguimiento-ventas", icon: "✔️", permiso: "SeguimientoVentas", isChild: true, group: "seguimiento" },
   { name: "Seguimiento VELSA",   path: "/seguimiento-velsa",  icon: "✔️", permiso: "SeguimientoVelsa",  isChild: true, group: "seguimiento" },
+  { name: "Seguimiento SEMILLERO", path: "/seguimiento-semillero", icon: "🌱", isChild: true, group: "seguimiento" },
 
   // ── Redes ────────────────────────────────────────────────────────────────
   // Reactivados (Redes, 2026-08-19). Habían quedado ocultos desde gerencia,
@@ -393,7 +389,7 @@ const ALL_MENU_ITEMS = [
   // están como 'USUARIO' (no 'ASESOR'), los 93 vendedores veían este menú.
   // Debe coincidir con PERFILES_BACKOFFICE de backend/src/routes/backoffice.routes.js.
   { name: "Backoffice", path: null, icon: "🔍", isGroup: true, groupId: "backoffice" },
-  { name: "🖥️ Vista Backoffice", path: "/vista-backoffice", icon: "🖥️",
+  { name: "🖥️ Core Backoffice", path: "/vista-backoffice", icon: "🖥️",
     accessCheck: (p) => ['ADMINISTRADOR', 'ATC'].includes(p),
     isChild: true, group: "backoffice" },
 
@@ -407,15 +403,23 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
-    accessCheck: () => puedeAccederGestionables() },
+    accessCheck: () => puedeAccederGestionables('NOVONET') },
+  { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
+    accessCheck: () => puedeAccederGestionables('VELSA') },
 
   // ── Administración ───────────────────────────────────────────────────────
-  { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion" },
+  { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",
+    accessCheck: (p) => puedeAccederAdministracion(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
   { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
-  { name: "Comisiones", path: "/comisiones", icon: "💰", permiso: "Comisiones", isChild: true, group: "administracion" },
+  { name: "Comisiones", path: "/comisiones", icon: "💰",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Forecast NOVONET", path: "/forecast-novonet", icon: "📈",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Forecast VELSA", path: "/forecast-velsa", icon: "📊",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   // Mapa de salud del ERP: solo administradores — muestra el estado interno.
   { name: "Salud del sistema", path: "/salud", icon: "🩺",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
@@ -429,6 +433,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Control Asistencia", path: "/control-asistencia", icon: "🕘",
     accessCheck: (p) => ['ADMINISTRADOR','GERENCIA','SUPERVISOR','ATC'].includes((p || '').toUpperCase()), isChild: true, group: "administracion" },
+  { name: "Configuración ATC", path: "/configuracion-atc", icon: "🔔",
+    accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR', isChild: true, group: "administracion" },
 
   // Formularios fue retirado únicamente del menú lateral. Las rutas y sus
   // interfaces se mantienen intactas para no eliminar su implementación.
@@ -448,8 +454,12 @@ const ALL_MENU_ITEMS = [
   { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
-  { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot",
+    accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   { name: "Presentación", path: "/whatsapp/presentacion", icon: "🪪", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // Respaldos y Llamadas WA son herramientas exclusivas de administración.
+  { name: "Llamadas WA",  path: "/whatsapp/llamadas",  icon: "📞", isChild: true, group: "wabot",
+    accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
   { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
@@ -516,7 +526,8 @@ export default function DashboardLayout() {
       if (perfil === 'TV') {
         const rutaTV = empresa === 'NOVONET'
           ? '/seguimiento-ventas'
-          : empresa === 'VELSA' ? '/seguimiento-velsa' : '/';
+          : empresa === 'VELSA' ? '/seguimiento-velsa'
+          : empresa === 'SEMILLERO' ? '/seguimiento-semillero' : '/';
         if (location.pathname !== rutaTV && location.pathname !== '/llamadas') navigate(rutaTV, { replace: true });
       }
 
@@ -587,12 +598,19 @@ export default function DashboardLayout() {
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
 
+    // Todo el bloque de Administración es exclusivo de Gerencia y
+    // Administradores, incluso si alguien escribe una URL interna a mano.
+    if (itemActual.group === 'administracion' && !puedeAccederAdministracion(p)) {
+      navigate('/', { replace: true });
+      return;
+    }
+
     // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
-      const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : null);
-      const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : '/');
+      const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : (empresaUpper === 'SEMILLERO' ? 'Seguimiento SEMILLERO' : null));
+      const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : (empresaUpper === 'SEMILLERO' ? '/seguimiento-semillero' : '/'));
       if (itemActual.path !== '/llamadas' && (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName)) {
         navigate(rutaTV, { replace: true });
       }
@@ -621,7 +639,10 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (item.group === 'administracion' && !puedeAccederAdministracion(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
+      if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);
+      if (perfil === 'ATC') return !!item.path && rutaPermitidaAtc(item.path);
       // Para estos perfiles la lista es cerrada y no depende de permisos
       // individuales: deben ver todas las opciones del grupo Indicadores.
       if (item.isChild && item.group === 'indicadores') return true;
@@ -733,7 +754,7 @@ export default function DashboardLayout() {
             </div>
           </button>
 
-          {/* Logo NOVO ERP */}
+          {/* Logo NOVO CORE ERP */}
           <div
             className="flex items-center overflow-hidden shrink-0"
             style={{
@@ -763,7 +784,7 @@ export default function DashboardLayout() {
             {!isDesktopCollapsed && (
               <div className="dl-nav-label ml-3 overflow-hidden">
                 <span className="font-black tracking-wide" style={{ fontSize: "1.05rem", color: "#f8fafc", whiteSpace: "nowrap" }}>
-                  NOVO <span style={{ background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
+                  NOVO CORE <span style={{ background: "linear-gradient(90deg,#60a5fa,#a5b4fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ERP</span>
                 </span>
                 <p style={{ fontSize: "0.6rem", color: "#8a9bc2", margin: 0, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Sistema de Gestión</p>
               </div>

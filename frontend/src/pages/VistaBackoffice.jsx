@@ -4,7 +4,9 @@ import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import "../styles/VistaBackoffice.css";
 import { colorDeValor } from "../utils/coloresBackoffice";
+import { filtrarRegistrosBackoffice } from "../utils/filtrosBackoffice";
 import { getSocketCompartido } from "../utils/socketCompartido";
+import WaInbox from "./WaInbox";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -59,6 +61,11 @@ const ESTATUS_NETLIFE = [
   "ASIGNADO",
   "PREFACTIBILIDAD",
   "VENTA PERDIDA/OTRO ASESOR",
+  "EN VERIFICACIÓN",
+  "INCORTE",
+  "CANCELADO",
+  "FISCALIZACIÓN",
+  "CRUCE DE VENTA CON OTRO ASESOR",
   "FIN DE GESTIÓN",
   "RECHAZADO",
   "PRESERVICIO",
@@ -73,6 +80,10 @@ const ESTATUS_NETLIFE = [
   "DESISTE DEL SERVICIO",
   "ELIMINADO",
   "REPLANIFICADO",
+  "LIBERAR EDIFICIO",
+  "PENDIENTE POR DEUDA",
+  "NO INGRESADO",
+  "CONADIS NO SE PAGA",
 ];
 
 
@@ -250,8 +261,9 @@ const COLUMNAS_VALIDACION_REGULARIZACION = [
   "id_bitrix", "id_asesor_comercial", "fecha_registro_sistema", "numero_identificacion",
   "aplica_descuento_3ra_edad", "nombre_cliente_completo", "plan_contratado_final",
   "servicios_digitales", "tipo_contrato", "forma_pago", "estatus_regularizacion",
+  "auditoria_documentos",
   // La antigua columna NOVEDADES se reemplazó por DETALLE REG.
-  "detalle_regularizacion", "fecha_regularizacion_atc", "netlife_estatus_real",
+  "detalle_regularizacion", "fecha_regularizacion_atc", "auditado_por", "netlife_estatus_real",
   "netlife_login", "supervisor", "documentos",
 ];
 
@@ -268,8 +280,10 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
   tipo_contrato: "SERVICIOS ADICIONALES",
   forma_pago: "FORMA DE PAGO",
   estatus_regularizacion: "ESTATUS DE VENTA",
+  auditoria_documentos: "AUDITORÍA DOC.",
   detalle_regularizacion: "NOVEDAD ATC / OBSERVACIÓN DE REGULARIZACIÓN",
   fecha_regularizacion_atc: "FECHA QUE PIDE REGULARIZAR",
+  auditado_por: "AUDITADO POR",
   netlife_estatus_real: "ESTATUS NETLIFE",
   netlife_login: "LOGIN",
   supervisor: "SUPERVISOR",
@@ -279,7 +293,8 @@ const ETIQUETAS_TABLA_REGULARIZACION = {
 // Excel de Validación / Regularización (mismo orden que el formato de reporte).
 const COLUMNAS_EXPORTACION_REGULARIZACION = [
   "id_bitrix", "fecha_registro_sistema", "id_asesor_comercial", "supervisor",
-  "netlife_login", "netlife_estatus_real", "estatus_regularizacion", "detalle_regularizacion",
+  "netlife_login", "netlife_estatus_real", "fecha_activacion_netlife",
+  "estatus_regularizacion", "auditoria_documentos", "detalle_regularizacion",
 ];
 const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   id_bitrix: "ID BITRIX",
@@ -288,7 +303,9 @@ const ETIQUETAS_EXPORTACION_REGULARIZACION = {
   supervisor: "SUPERVISOR",
   netlife_login: "LOGIN NETLIFE",
   netlife_estatus_real: "ESTATUS NETLIFE",
+  fecha_activacion_netlife: "FECHA DE ACTIVACIÓN",
   estatus_regularizacion: "ESTATUS REG.",
+  auditoria_documentos: "AUDITORÍA DOC.",
   detalle_regularizacion: "DETALLE REG",
 };
 
@@ -299,6 +316,27 @@ const COLUMNAS_MESA_TRABAJO = [
   "netlife_login", "novedades_atc", "fecha_ingreso_telcos", "fecha_agenda", "franja_horaria_agendamiento",
   "fecha_activacion_netlife", "observacion_venta_original", "forma_pago", "supervisor",
 ];
+
+// Formato solicitado para la descarga de Mesa de trabajo. Es independiente
+// de las columnas visibles para que la tabla conserve todo su detalle.
+const COLUMNAS_EXPORTACION_MESA_TRABAJO = [
+  "id_bitrix",
+  "fecha_registro_sistema",
+  "id_asesor_comercial",
+  "supervisor",
+  "netlife_estatus_real",
+  "netlife_login",
+  "novedades_atc",
+];
+const ETIQUETAS_EXPORTACION_MESA_TRABAJO = {
+  id_bitrix: "ID BITRIX",
+  fecha_registro_sistema: "FECHA DE REGISTRO",
+  id_asesor_comercial: "CODIGO ASESOR",
+  supervisor: "SUPERVISOR",
+  netlife_estatus_real: "ESTATUS NETLIFE",
+  netlife_login: "LOGIN NETLIFE",
+  novedades_atc: "NOVEDADES",
+};
 
 const COLUMNAS_TABLAS_BACKOFFICE = COLUMNAS_TABLA_REGISTROS;
 
@@ -313,7 +351,7 @@ const CAMPOS_CLIENTE_NO_EXPORTABLES = new Set([
   "fecha_nacimiento", "email_cliente", "telf_celular_pin", "telf_celular_2",
   "telf_fijo", "provincia", "ciudad", "parroquia_barrio", "direccion_calles",
   "direccion_manzana_villa", "referencia_ubicacion", "coordenadas_gps",
-  "tipo_vivienda", "regimen_vivienda", "forma_pago", "banco", "tipo_cuenta",
+  "tipo_vivienda", "regimen_vivienda", "banco", "tipo_cuenta",
   "detalle_bancario_ahorros", "valor_pago", "links_documentos", "resumen_venta",
   ...CAMPOS_DOCUMENTO,
 ]);
@@ -352,7 +390,7 @@ const OPCIONES_CICLO_FACTURACION = [
   "CICLO (II) DEL 8 AL 7 DE CADA MES",
   "CICLO (III) DEL 15 AL 14 DE CADA MES",
 ];
-const OPCIONES_AUDITOR = ["KELLY", "CRISTIAN", "MARCOS", "ANDRES"];
+const OPCIONES_AUDITOR = ["KELLY", "CRISTIAN", "MARCOS", "ANDRES", "LILY"];
 const OPCIONES_CLAUSULAS = ["FIRMO BIOMETRICO", "FALTA BIOMETRICO"];
 const OPCIONES_LIDER_COMERCIAL = ["DANIELA", "ANGÉLICA"];
 const LIDER_POR_SUPERVISOR = {
@@ -366,6 +404,7 @@ const LIDER_POR_SUPERVISOR = {
 const SUPERVISORES_POR_EMPRESA = {
   NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAÑA"],
   VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
+  SEMILLERO: ["ADRIANA SALVATORE"],
 };
 const OPCIONES_AUDITORIA_DOCUMENTOS = [
   "RESUMEN DE VENTA",
@@ -380,20 +419,11 @@ const OPCIONES_AUDITORIA_DOCUMENTOS = [
 ];
 
 function resultadoBienvenida(json, mensajeBase) {
-  const correo = json?.correo_bienvenida;
   const whatsapp = json?.whatsapp_bienvenida;
-  if (!correo && !whatsapp) return { type: "success", msg: mensajeBase };
+  if (!whatsapp) return { type: "success", msg: mensajeBase };
 
   const exitos = [];
   const advertencias = [];
-
-  if (correo?.enviado) {
-    exitos.push(correo.cliente
-      ? "correo enviado al cliente con copia a Backoffice"
-      : "correo enviado solo a Backoffice (cliente sin correo válido)");
-  } else if (correo?.enviado === false) {
-    advertencias.push("el correo no pudo enviarse");
-  }
 
   if (whatsapp?.encolado) {
     exitos.push("WhatsApp de bienvenida en cola por NOTI_BACK");
@@ -697,6 +727,62 @@ function BotonDescargaExcel({
       Descargar Excel
     </button>
   );
+}
+
+/**
+ * Reporte Excel de Validación / Regularización:
+ *  1) Registros CON fecha_regularizacion_atc, contados por esa fecha.
+ *  2) Registros SIN fecha_regularizacion_atc (faltan por auditar),
+ *     contados por día de creación (fecha_registro_sistema).
+ */
+function exportarReporteFechaRegularizacion(rows, nombreArchivo = "Reporte_Fecha_Regularizacion") {
+  if (!rows?.length) {
+    alert("No hay registros disponibles para exportar con los filtros actuales.");
+    return;
+  }
+  const conFecha = {};
+  const pendientes = {};
+  rows.forEach((row) => {
+    const fReg = fechaCalendarioEC(row.fecha_regularizacion_atc);
+    if (fReg) {
+      conFecha[fReg] = (conFecha[fReg] || 0) + 1;
+    } else {
+      const fCre = fechaCalendarioEC(row.fecha_registro_sistema) || "SIN FECHA";
+      pendientes[fCre] = (pendientes[fCre] || 0) + 1;
+    }
+  });
+  const ordenar = (obj) => Object.entries(obj).sort(([a], [b]) => a.localeCompare(b));
+  const filasCon = ordenar(conFecha);
+  const filasPend = ordenar(pendientes);
+  const totalCon = filasCon.reduce((acc, [, n]) => acc + n, 0);
+  const totalPend = filasPend.reduce((acc, [, n]) => acc + n, 0);
+
+  const aoa = [
+    ["REGISTROS CON FECHA REGULARIZACIÓN ATC"],
+    ["FECHA REGULARIZACIÓN ATC", "CANTIDAD"],
+    ...filasCon,
+    ["TOTAL", totalCon],
+    [],
+    [],
+    ["FALTAN POR AUDITAR (SIN FECHA REGULARIZACIÓN ATC) POR DÍA DE CREACIÓN"],
+    ["FECHA DE CREACIÓN", "CANTIDAD"],
+    ...filasPend,
+    ["TOTAL", totalPend],
+    [],
+    ["TOTAL GENERAL", totalCon + totalPend],
+  ];
+
+  try {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 70 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fecha Regularizacion");
+    const fechaHoy = fmtFechaEC.format(new Date());
+    XLSX.writeFile(wb, `${nombreArchivo.replace(/[^\w-]+/g, "_")}_${fechaHoy}.xlsx`);
+  } catch (error) {
+    console.error("[REPORTE-FECHA-REGULARIZACION]", error);
+    alert(`No se pudo generar el archivo Excel.\n\n${error.message || "Error desconocido"}`);
+  }
 }
 
 function CargandoBackoffice({ filas = 4 }) {
@@ -1722,10 +1808,37 @@ function CeldaValor({ campo, valor, textoVacio }) {
 
 function valoresSeleccionMultiple(valor) {
   if (Array.isArray(valor)) return valor.map(String).map((v) => v.trim()).filter(Boolean);
-  return String(valor || "")
+  const texto = String(valor || "").trim();
+  if (texto.startsWith("[") && texto.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(texto);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).map((v) => v.trim()).filter(Boolean);
+      }
+    } catch { /* compatibilidad con valores históricos que no son JSON válido */ }
+  }
+  return texto
     .split(/\s*(?:,|\||\n)\s*/)
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+function valorVisibleHistorial(campo, valor) {
+  if (campo !== "auditoria_documentos") return valor || "Sin estado";
+  const valores = valoresSeleccionMultiple(valor);
+  if (!valores.length) return "Sin documentos";
+  return valores.map((item) => /^\{[^}]+\}$/.test(item)
+    ? "Referencia documental heredada"
+    : item).join(", ");
+}
+
+function cambioVisibleHistorial(cambio) {
+  if (cambio?.campo !== "auditoria_documentos") return true;
+  const normalizar = (valor) => valoresSeleccionMultiple(valor)
+    .map((item) => item.toLocaleUpperCase("es"))
+    .sort()
+    .join("|");
+  return normalizar(cambio?.anterior) !== normalizar(cambio?.nuevo);
 }
 
 // La tabla puede contener miles de filas y decenas de columnas. Mantenerla
@@ -1749,7 +1862,7 @@ function tipoEditorCelda(campo) {
 
 function opcionesEditorCelda(campo, row) {
   const opciones = {
-    distribuidor_autorizado: ["NOVONET", "VELSA"],
+    distribuidor_autorizado: ["NOVONET", "VELSA", "SEMILLERO"],
     netlife_estatus_real: ESTATUS_NETLIFE,
     estatus_regularizacion: OPCIONES_ESTATUS_REGULARIZACION.map((item) => item.valor === "__SIN_REVISAR__" ? "SIN REVISAR" : item.valor),
     forma_pago: OPCIONES_FORMA_PAGO,
@@ -2088,7 +2201,11 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                           onDoubleClick={() => void iniciarEdicion(row, h.key)}
                           style={{
                             padding: "10px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap",
-                            maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                            maxWidth: edicion?.id === row.id && h.key === "auditoria_documentos" ? 260 : 180,
+                            overflow: edicion?.id === row.id && h.key === "auditoria_documentos" ? "visible" : "hidden",
+                            textOverflow: "ellipsis",
+                            position: edicion?.id === row.id && h.key === "auditoria_documentos" ? "relative" : "static",
+                            zIndex: edicion?.id === row.id && h.key === "auditoria_documentos" ? 20 : "auto",
                             background: filaSeleccionada ? "#ecfdf5" : (edicion?.id === row.id && edicion?.campo === h.key ? "#fff7ed" : fondoBase),
                             cursor: CAMPOS_TABLA_SOLO_LECTURA.has(h.key) ? "default" : "cell",
                           }}>
@@ -2115,6 +2232,34 @@ const TablaRegistros = memo(function TablaRegistros({ loading, rows, headers, on
                               },
                               style: { width: "100%", minWidth: 150, boxSizing: "border-box", border: "1px solid #f97316", borderRadius: 6, padding: "6px 7px", fontSize: 11, outline: "none", background: "#fff" },
                             };
+                            if (h.key === "auditoria_documentos") {
+                              const seleccionados = valoresSeleccionMultiple(edicion.valor);
+                              const opciones = [...new Set([...OPCIONES_AUDITORIA_DOCUMENTOS, ...seleccionados])];
+                              return (
+                                <div
+                                  style={{ width: 240, minWidth: 240 }}
+                                  onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget)) void guardarEdicion();
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      cancelarEdicion();
+                                    }
+                                  }}
+                                >
+                                  <SelectMultiple
+                                    valores={seleccionados}
+                                    opciones={opciones}
+                                    disabled={guardando}
+                                    onChange={(valores) => {
+                                      ultimoIntentoFallidoRef.current = null;
+                                      setEdicion((actual) => ({ ...actual, valor: valores.join(", ") }));
+                                    }}
+                                  />
+                                </div>
+                              );
+                            }
                             return opcionesCelda ? (
                               <select {...propsComunes}>
                                 <option value="">Sin valor</option>
@@ -2375,9 +2520,12 @@ function HistorialCambiosEstado({ valor }) {
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {[...eventos].reverse().map((evento, indice) => {
-            const cambios = Array.isArray(evento?.cambios) ? evento.cambios : [];
-            const nombre = evento?.nombre_usuario || evento?.usuario || "Usuario no identificado";
-            const login = evento?.usuario && evento.usuario !== nombre ? `@${evento.usuario}` : "";
+            const cambios = Array.isArray(evento?.cambios)
+              ? evento.cambios.filter(cambioVisibleHistorial)
+              : [];
+            const usuarioEvento = evento?.usuario || evento?.username || evento?.login_usuario || evento?.modificado_por || "";
+            const nombre = evento?.nombre_usuario || evento?.usuario_nombre || evento?.nombreUsuario || usuarioEvento || (evento?.usuario_id ? `Usuario #${evento.usuario_id}` : "Historial anterior — usuario no registrado");
+            const login = usuarioEvento && usuarioEvento !== nombre ? `@${usuarioEvento}` : "";
             const meta = [login, evento?.perfil_usuario, evento?.empresa_usuario].filter(Boolean).join(" · ");
             return (
               <article key={`${evento?.fecha_hora || "sin-fecha"}-${indice}`} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 13, background: "#fcfdff" }}>
@@ -2394,9 +2542,9 @@ function HistorialCambiosEstado({ valor }) {
                   {cambios.map((cambio, cambioIndice) => (
                     <div key={`${cambio?.campo || "estado"}-${cambioIndice}`} style={{ display: "grid", gridTemplateColumns: "minmax(130px, .8fr) minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, fontSize: 11.5 }}>
                       <strong style={{ color: "#334155" }}>{FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}</strong>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.anterior || "Sin estado"}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.anterior)}</span>
                       <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{cambio?.nuevo || "Sin estado"}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.nuevo)}</span>
                     </div>
                   ))}
                 </div>
@@ -2444,11 +2592,18 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [searchAplicada, setSearchAplicada] = useState("");
   const [opciones, setOpciones] = useState({ estatusNetlife: [], estatusRegularizacion: [], terceraEdad: [] });
   const setFiltro = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
-  const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
-  const filtrosActivos = Object.values(filtros).filter(Boolean).length;
+  const limpiarFiltros = () => {
+    setSearch("");
+    setSearchAplicada("");
+    setFiltros(FILTROS_VACIOS);
+    setFiltrosAplicados(FILTROS_VACIOS);
+    setPaginaTabla(1);
+  };
+  const filtrosActivos = Object.values(filtros).filter(Boolean).length + (search.trim() ? 1 : 0);
   const consultar = () => {
     setSearchAplicada(search.trim());
     setFiltrosAplicados({ ...filtros });
+    setPaginaTabla(1);
   };
 
   const token = localStorage.getItem("token");
@@ -2889,7 +3044,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         {
           titulo: "Cliente y estado técnico",
           campos: [
-            "id_bitrix", "codigo_asesor", "nombre_cliente_completo", "numero_identificacion",
+            "id_bitrix", "codigo_asesor", "nombre_asesor_comercial", "nombre_cliente_completo", "numero_identificacion",
             "telf_celular_pin", "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
             "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife",
           ],
@@ -2950,6 +3105,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
          */
         if (
           typeof nuevo === "string" &&
+          campo !== "auditoria_documentos" &&
           !esCampoDocumento(campo) &&
           !CAMPOS_FECHA.includes(campo)
         ) {
@@ -3981,6 +4137,7 @@ const EMPRESAS_FILTRO = [
   { id: "TODOS", label: "Todos" },
   { id: "NOVONET", label: "Novonet" },
   { id: "VELSA", label: "Velsa" },
+  { id: "SEMILLERO", label: "Semillero" },
 ];
 
 function FiltroEmpresa({ valor, onCambiar }) {
@@ -4065,6 +4222,11 @@ const ETAPAS_JOTFORM_RESUMEN = [
   "ASIGNADO",
   "PRESERVICIO",
   "FACTIBLE",
+  "EN VERIFICACIÓN",
+  "INCORTE",
+  "CANCELADO",
+  "FISCALIZACIÓN",
+  "CRUCE DE VENTA CON OTRO ASESOR",
   "REGULARIZACION",
   "REPLANIFICADO",
   "DETENIDO",
@@ -4723,14 +4885,82 @@ function TarjetaWelcome({
   seleccionable = false, seleccionado = false, onSeleccionar,
   tituloSeleccion = "Seleccionar para programar",
   bloquearArrastre = false,
+  onEditarCampo,
 }) {
   const estaMoviendose = moviendo === row.id;
+  const [edicion, setEdicion] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const cancelarRef = useRef(false);
+
+  const iniciarEdicion = (campo, etiqueta, valor) => {
+    if (guardando) return;
+    cancelarRef.current = false;
+    setEdicion({ campo, etiqueta, valor: String(valor ?? ""), original: String(valor ?? "") });
+  };
+
+  const cancelarEdicion = () => {
+    cancelarRef.current = true;
+    setEdicion(null);
+  };
+
+  const guardarEdicion = async () => {
+    if (!edicion || guardando || cancelarRef.current) return;
+    const actual = edicion;
+    const valor = actual.valor.trim();
+    if (valor === actual.original.trim()) {
+      setEdicion(null);
+      return;
+    }
+    setGuardando(true);
+    const guardado = await onEditarCampo?.(row, actual.campo, actual.etiqueta, valor);
+    setGuardando(false);
+    if (guardado !== false) setEdicion(null);
+  };
+
+  const campoEditable = (campo, etiqueta, valor, prefijo = "", tipo = "text") => {
+    if (edicion?.campo === campo) {
+      const opciones = opcionesEditorCelda(campo, row);
+      const props = {
+        autoFocus: true,
+        value: edicion.valor,
+        disabled: guardando,
+        onClick: (e) => e.stopPropagation(),
+        onDoubleClick: (e) => e.stopPropagation(),
+        onChange: (e) => setEdicion((actual) => ({ ...actual, valor: e.target.value })),
+        onBlur: () => void guardarEdicion(),
+        onKeyDown: (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") cancelarEdicion();
+        },
+        style: {
+          width: "100%", boxSizing: "border-box", padding: "5px 7px", borderRadius: 7,
+          border: "1px solid #38bdf8", background: "#fff", color: "#0f172a", fontSize: 11.5,
+          outline: "2px solid rgba(56,189,248,.15)",
+        },
+      };
+      return opciones ? (
+        <select {...props}>
+          <option value="">Seleccionar...</option>
+          {!opciones.includes(edicion.valor) && edicion.valor && <option value={edicion.valor}>{edicion.valor}</option>}
+          {opciones.map((opcion) => <option key={opcion} value={opcion}>{opcion}</option>)}
+        </select>
+      ) : <input {...props} type={tipo} />;
+    }
+    return (
+      <div
+        title={`${etiqueta}: doble clic para editar`}
+        onDoubleClick={(e) => { e.stopPropagation(); iniciarEdicion(campo, etiqueta, valor); }}
+        style={{ cursor: "text", borderRadius: 5, padding: "1px 3px", margin: "0 -3px" }}
+      >
+        {prefijo}{valor || "—"}
+      </div>
+    );
+  };
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      draggable={!estaMoviendose && !bloquearArrastre}
+      draggable={!estaMoviendose && !bloquearArrastre && !edicion}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(row.id));
@@ -4739,14 +4969,7 @@ function TarjetaWelcome({
       onDragEnd={() => {
         onArrastrar(null);
       }}
-      onClick={() => onAbrir?.(row.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onAbrir?.(row.id);
-        }
-      }}
-      title="Clic para abrir el detalle · arrastra para cambiar de bloque"
+      title="Doble clic sobre un dato para editar · arrastra para cambiar de bloque"
       style={{
         width: "100%",
         boxSizing: "border-box",
@@ -4755,7 +4978,9 @@ function TarjetaWelcome({
         border: `1px solid ${arrastrando === row.id ? "#10b981" : "#e5e7eb"}`,
         borderRadius: 12,
         padding: 13,
-        cursor: estaMoviendose ? "wait" : bloquearArrastre ? "default" : "grab",
+        paddingRight: 108,
+        position: "relative",
+        cursor: estaMoviendose ? "wait" : bloquearArrastre || edicion ? "default" : "grab",
         opacity: estaMoviendose ? 0.6 : 1,
         boxShadow: "0 2px 8px rgba(15,23,42,.05)",
         display: "flex",
@@ -4765,32 +4990,46 @@ function TarjetaWelcome({
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
-          {row.nombre_cliente_completo || "Sin nombre"}
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, flex: "none" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
-          {seleccionable && (
-            <input
-              type="checkbox"
-              checked={seleccionado}
-              aria-label={`Seleccionar registro ${row.id}`}
-              title={tituloSeleccion}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
-              style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer" }}
-            />
-          )}
+        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 900, color: "#0f172a", lineHeight: 1.3 }}>
+          {campoEditable("nombre_cliente_completo", "Nombre del cliente", row.nombre_cliente_completo)}
+        </div>
+        <div style={{ position: "absolute", top: 12, right: 22, width: 66, display: "flex", flexDirection: "column", alignItems: "center", gap: 22, zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#94a3b8" }}>#{row.id}</span>
+            {seleccionable && (
+              <input
+                type="checkbox"
+                checked={seleccionado}
+                aria-label={`Seleccionar registro ${row.id}`}
+                title={tituloSeleccion}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => onSeleccionar?.(row.id, e.target.checked)}
+                style={{ width: 19, height: 19, accentColor: "#0ea5e9", cursor: "pointer", flex: "none" }}
+              />
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAbrir?.(row.id); }}
+            title="Abrir detalle completo"
+            style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}
+          >
+            👁 Ver
+          </button>
         </div>
       </div>
 
       <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.6 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: "#475569" }}>
-          📅 Activación: {row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "Sin fecha"}
+          {campoEditable("fecha_activacion_netlife", "Fecha de activación", row.fecha_activacion_netlife ? String(row.fecha_activacion_netlife).slice(0, 10) : "", "📅 Activación: ", "date")}
         </div>
-        <div>CI {row.numero_identificacion || "—"}</div>
-        {row.netlife_login && <div>Login: {row.netlife_login}</div>}
+        {campoEditable("numero_identificacion", "Cédula", row.numero_identificacion, "CI: ")}
+        {campoEditable("netlife_login", "Login", row.netlife_login, "Login: ")}
+        {campoEditable("plan_contratado_final", "Plan contratado", row.plan_contratado_final || row.plan_contratado, "Plan: ")}
+        {campoEditable("forma_pago", "Forma de pago", row.forma_pago, "Pago: ")}
+        {campoEditable("ciclo_facturacion", "Ciclo de facturación", row.ciclo_facturacion, "Ciclo: ")}
         {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
+        {edicion && <div style={{ marginTop: 4, color: guardando ? "#0369a1" : "#64748b", fontSize: 10.5, fontWeight: 700 }}>{guardando ? "Guardando…" : "Enter o clic fuera para guardar · Esc para cancelar"}</div>}
       </div>
     </div>
   );
@@ -4916,7 +5155,23 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [programaciones, setProgramaciones] = useState({});
   const [programando, setProgramando] = useState(false);
   const [cancelandoId, setCancelandoId] = useState(null);
+  const [configWelcome, setConfigWelcome] = useState(null);
+  const [respuestasWelcome, setRespuestasWelcome] = useState([]);
+  const [mostrarChatWelcome, setMostrarChatWelcome] = useState(false);
+  const [chatConversacionId, setChatConversacionId] = useState(null);
   const token = localStorage.getItem("token");
+
+  const cargarOperacionWelcome = useCallback(async () => {
+    try {
+      const [rc, rr] = await Promise.all([
+        fetch(`${API}/api/backoffice/welcome/config`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/backoffice/welcome/respuestas`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const [jc, jr] = await Promise.all([rc.json(), rr.json()]);
+      if (jc.success) setConfigWelcome({ ...jc.data, variantes: jc.variantes || [] });
+      if (jr.success) setRespuestasWelcome(jr.data || []);
+    } catch (e) { console.error("[WELCOME] Operación:", e); }
+  }, [token]);
 
   const cargarProgramaciones = useCallback(async () => {
     try {
@@ -4948,7 +5203,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     setSeleccionados((actuales) => new Set([...actuales].filter((id) => disponibles.has(id))));
   }, [rows]);
 
-  useEffect(() => { cargarProgramaciones(); }, [cargarProgramaciones]);
+  useEffect(() => { cargarProgramaciones(); cargarOperacionWelcome(); }, [cargarProgramaciones, cargarOperacionWelcome]);
 
   // El worker cambia PENDIENTE → NOTIFICADO sin depender del navegador.
   // Esta actualización periódica refleja esos cambios en el Kanban abierto.
@@ -4956,9 +5211,45 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     const intervalo = setInterval(() => {
       recargar();
       cargarProgramaciones();
+      cargarOperacionWelcome();
     }, 30000);
     return () => clearInterval(intervalo);
-  }, [recargar, cargarProgramaciones]);
+  }, [recargar, cargarProgramaciones, cargarOperacionWelcome]);
+
+  const editarCampoWelcome = async (row, campo, etiqueta, valor) => {
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/${row.id}`, { method:"PUT", headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify({[campo]:valor.trim()}) });
+      const json = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo guardar");
+      setRows((actuales) => actuales.map((r) => String(r.id) === String(row.id) ? {...r,[campo]:valor.trim()} : r));
+      return true;
+    } catch (e) {
+      setAviso(`❌ No se pudo actualizar ${etiqueta}: ${e.message}`);
+      return false;
+    }
+  };
+
+  const cambiarPausaWelcome = async () => {
+    const accion = configWelcome?.paused ? "reanudar" : "pausar";
+    try {
+      const respuesta = await fetch(`${API}/api/backoffice/welcome/${accion}`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      const json = await respuesta.json();
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo actualizar la cola");
+      await cargarOperacionWelcome(); await cargarProgramaciones();
+      setAviso(`✅ Envíos ${accion === "pausar" ? "pausados" : "reanudados"}.`);
+    } catch (e) { setAviso(`❌ ${e.message}`); }
+  };
+
+  const positivas = respuestasWelcome.filter((r) => r.response_status === "POSITIVA").length;
+  const dudas = respuestasWelcome.filter((r) => r.response_status === "DUDA");
+  const abrirDudaWelcome = async (duda) => {
+    setChatConversacionId(duda.conversation_id);
+    setMostrarChatWelcome(true);
+    try {
+      await fetch(`${API}/api/backoffice/welcome/respuestas/${duda.id}/atender`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      setRespuestasWelcome((actuales) => actuales.map((r) => String(r.id) === String(duda.id) ? {...r,attended:true} : r));
+    } catch { /* el chat debe abrir incluso si falla la marca de atención */ }
+  };
 
   const consultarWelcome = () => setFiltrosWelcome({ busqueda, fechaDesde: fechaDesdeWelcome, fechaHasta: fechaHastaWelcome });
   const limpiarFiltrosWelcome = () => {
@@ -4969,16 +5260,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   };
 
   const filtradas = (() => {
-    const q = normalizarEstado(filtrosWelcome.busqueda);
-    return rows.filter((r) => {
-      if (q && ![
-        r.nombre_cliente_completo,
-        r.numero_identificacion,
-        r.codigo_asesor,
-        r.id_bitrix,
-        r.netlife_login,
-        String(r.id),
-      ].some((c) => normalizarEstado(c).includes(q))) return false;
+    return filtrarRegistrosBackoffice(rows, filtrosWelcome.busqueda).filter((r) => {
       const fecha = fechaCalendarioEC(r.fecha_registro_sistema);
       if (filtrosWelcome.fechaDesde && (!fecha || fecha < filtrosWelcome.fechaDesde)) return false;
       if (filtrosWelcome.fechaHasta && (!fecha || fecha > filtrosWelcome.fechaHasta)) return false;
@@ -5039,7 +5321,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       setSeleccionados(new Set());
       await recargar();
       const ultima = json.data?.[json.data.length - 1]?.scheduled_at;
-      setAviso(`✅ ${ordenados.length} notificación${ordenados.length === 1 ? "" : "es"} programada${ordenados.length === 1 ? "" : "s"} cada 3 minutos${ultima ? `, hasta ${mostrarFechaHoraWelcome(ultima)}` : ""}.`);
+      setAviso(`✅ ${ordenados.length} notificación${ordenados.length === 1 ? "" : "es"} programada${ordenados.length === 1 ? "" : "s"} con intervalos aleatorios de 5 a 7 minutos${ultima ? `, hasta ${mostrarFechaHoraWelcome(ultima)}` : ""}.`);
     } catch (errorProgramar) {
       setAviso(`❌ ${errorProgramar.message}`);
     } finally {
@@ -5192,7 +5474,22 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       setAviso("⚠️ Selecciona al menos un registro para exportar.");
       return;
     }
-    const registrosExportar = filtradas.filter((row) => seleccionadosExportacion.has(String(row.id)));
+    const respuestasPorRegistro = new Map(respuestasWelcome.map((r) => [String(r.registro_id), r]));
+    const registrosExportar = filtradas.filter((row) => seleccionadosExportacion.has(String(row.id))).map((row) => {
+      const gestion = respuestasPorRegistro.get(String(row.id)) || programaciones[String(row.id)] || {};
+      return {
+        ...row,
+        variante_welcome: gestion.variante || "",
+        hora_programada_welcome: gestion.scheduled_at || "",
+        estado_entrega_welcome: gestion.delivery_status || gestion.status || "",
+        respuesta_chatbot: gestion.response_status || "SIN RESPUESTA",
+        texto_respuesta: gestion.response_text || "",
+        fecha_respuesta: gestion.responded_at || "",
+        atendido_welcome: gestion.attended ? "SI" : "NO",
+        intentos_welcome: gestion.attempts ?? "",
+        error_welcome: gestion.last_error || "",
+      };
+    });
     exportarAExcel(registrosExportar, `Reporte_Welcome_${empresa || "Todos"}`);
     setModoExportacion(false);
     setSeleccionadosExportacion(new Set());
@@ -5224,7 +5521,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 Welcome
               </h2>
               <p style={{ margin: "7px 0 0", fontSize: 12.5, color: "#64748b" }}>
-                Solo activaciones con <b>Status NetLife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
+                Solo activaciones con <b>Estatus Netlife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
               </p>
             </div>
 
@@ -5261,6 +5558,12 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 >
                   Refrescar
                 </button>
+                <button type="button" onClick={cambiarPausaWelcome} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #f59e0b",background:configWelcome?.paused?"#ecfdf5":"#fffbeb",color:configWelcome?.paused?"#047857":"#b45309",fontWeight:800,cursor:"pointer" }}>
+                  {configWelcome?.paused ? "▶ Reanudar envíos" : "⏸ Pausar envíos"}
+                </button>
+                <button type="button" onClick={() => setMostrarChatWelcome((v) => !v)} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6d28d9",fontWeight:800,cursor:"pointer" }}>
+                  💬 Chat Welcome
+                </button>
               </div>
             </div>
           </div>
@@ -5279,7 +5582,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
 
         {/* Resumen de los estados de Welcome */}
-        <div className="bo-summary-grid" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+        <div className="bo-summary-grid" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
           <div style={{ padding: 18, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: ".08em" }}>
               Registros totales
@@ -5327,7 +5630,34 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               Estado Welcome = NOTIFICADO
             </div>
           </div>
+          <div style={{ padding: 18, borderRadius: 14, background: "#ecfdf5", border: "1px solid #6ee7b7" }}>
+            <div style={{ fontSize:11,fontWeight:800,color:"#047857",textTransform:"uppercase" }}>Respuesta positiva</div>
+            <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#047857" }}>{positivas}</div>
+            <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Confirmadas por chatbot</div>
+          </div>
+          <div style={{ padding: 18, borderRadius: 14, background: "#fff7ed", border: "1px solid #fdba74" }}>
+            <div style={{ fontSize:11,fontWeight:800,color:"#c2410c",textTransform:"uppercase" }}>Clientes con duda</div>
+            <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#c2410c" }}>{dudas.filter((r) => !r.attended).length}</div>
+            <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Pendientes de atención</div>
+          </div>
         </div>
+
+        <div style={{ margin:"0 18px 18px",padding:"10px 14px",borderRadius:12,border:"1px solid #e2e8f0",background:"#f8fafc",display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12 }}>
+          <b>Línea base: {configWelcome?.line_name || "NOTI_BACK"}</b>
+          <span>Estado: <b style={{color:configWelcome?.line_status === "connected"?"#047857":"#b91c1c"}}>{configWelcome?.line_status || "sin vincular"}</b></span>
+          <span>Número: <b>{configWelcome?.phone_number || "Vincular desde WaBot › Líneas"}</b></span>
+          <span>Horario: <b>{String(configWelcome?.send_start || "08:30").slice(0,5)} a {String(configWelcome?.send_end || "20:00").slice(0,5)}</b></span>
+          <span>Variantes activas: <b>{configWelcome?.variantes?.filter((v) => v.active).length || 0}</b></span>
+          <button type="button" onClick={() => { window.location.href = "/whatsapp/lineas"; }} style={{marginLeft:"auto",padding:"7px 11px",borderRadius:8,border:"1px solid #86efac",background:"#ecfdf5",color:"#047857",fontWeight:800,cursor:"pointer"}}>
+            Vincular número por QR
+          </button>
+        </div>
+
+        {mostrarChatWelcome && (
+          <div style={{ margin:"0 18px 18px",height:"70vh",minHeight:560,border:"1px solid #c4b5fd",borderRadius:14,overflow:"hidden",background:"#fff" }}>
+            <WaInbox fixedLineName={configWelcome?.line_name || "NOTI_BACK"} initialConversationId={chatConversacionId} />
+          </div>
+        )}
 
         {!modoExportacion && (
           <div style={{ margin: "0 18px 18px", padding: 16, borderRadius: 14, border: "1px solid #bae6fd", background: "#f0f9ff", display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
@@ -5364,7 +5694,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             </button>
 
             <div style={{ marginLeft: "auto", maxWidth: 360, fontSize: 11.5, lineHeight: 1.55, color: "#475569" }}>
-              El primer envío usará la hora elegida. Los siguientes se programarán automáticamente cada <b>3 minutos</b> (20 por hora).
+              El primer envío usará la hora elegida. Los siguientes se programarán con intervalos aleatorios de <b>5, 6 o 7 minutos</b>.
             </div>
           </div>
         )}
@@ -5455,6 +5785,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             onSeleccionar={modoExportacion ? cambiarSeleccionExportacion : cambiarSeleccion}
                             tituloSeleccion={modoExportacion ? "Seleccionar para exportar" : "Seleccionar para programar"}
                             bloquearArrastre={modoExportacion}
+                            onEditarCampo={editarCampoWelcome}
                           />
                           {bloque.id === "SIN_NOTIFICAR" && (
                             <button
@@ -5515,6 +5846,14 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             onVolver={() => setDetalleId(null)}
           />
         )}
+        {dudas.find((r) => !r.attended) && (() => {
+          const duda = dudas.find((r) => !r.attended);
+          return <button type="button" onClick={() => abrirDudaWelcome(duda)} style={{position:"fixed",right:82,bottom:96,zIndex:80,width:340,textAlign:"left",padding:"14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 16px 40px rgba(124,45,18,.24)",cursor:"pointer",color:"#7c2d12"}}>
+            <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
+            <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+            <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>
+          </button>;
+        })()}
       </div>
     </div>
   );
@@ -6141,11 +6480,31 @@ function CardEstadoPreservicio({ estado, cantidad, activo, onClick }) {
  *  de Registros (columnas fijas a la izquierda, scroll horizontal). */
 const COLUMNAS_TABLA_PRESERVICIOS = COLUMNAS_MESA_TRABAJO;
 
-function TablaPreservicios({ rows, onAbrirRegistro, filtrosActivos = false }) {
+function TablaPreservicios({ rows, onAbrirRegistro, onGuardarCelda, loading = false, filtrosActivos = false, editable = true }) {
   const headers = COLUMNAS_TABLA_PRESERVICIOS.map((key) => ({
     key,
     label: FIELD_LABELS[key] || key.replace(/_/g, " ").toUpperCase(),
   }));
+
+  if (editable) {
+    const headersEditables = [
+      { key: "__ver__", label: "" },
+      { key: "__seleccion__", label: "SELECCIÓN" },
+      ...headers,
+    ];
+    return (
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+        <TablaRegistros
+          loading={loading}
+          rows={rows}
+          headers={headersEditables}
+          onGuardarCelda={onGuardarCelda}
+          onVerDetalle={onAbrirRegistro}
+          puedeEditar
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff" }}>
@@ -6286,26 +6645,47 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
   const [busqueda, setBusqueda] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
   const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
+  const [cambios, setCambios] = useState({});
+  const [alerta, setAlerta] = useState(null);
+  const token = localStorage.getItem("token");
 
   const color = "#0891b2";
 
+  const todasConCambios = useMemo(
+    () => (todas || []).map((row) => (cambios[row.id] ? { ...row, ...cambios[row.id] } : row)),
+    [todas, cambios]
+  );
+
+  const guardarCelda = useCallback(async (id, campo, valor) => {
+    try {
+      setAlerta(null);
+      const valorEnviar = campo === "estatus_regularizacion" && valor === "SIN REVISAR"
+        ? ""
+        : normalizarValorFechaHoraGuardar(campo, valor);
+      const res = await fetch(`${API}/api/backoffice/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ [campo]: valorEnviar }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || `No se pudo guardar ${FIELD_LABELS[campo] || campo}`);
+      setCambios((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...(json.data || { [campo]: valorEnviar }) } }));
+      setAlerta(resultadoBienvenida(json, `${FIELD_LABELS[campo] || campo} actualizado correctamente`));
+      return true;
+    } catch (err) {
+      setAlerta({ type: "error", msg: err.message || "No se pudo guardar el cambio" });
+      return false;
+    }
+  }, [token]);
+
   // Solo entran los registros que caen en alguno de los estados operativos definidos.
   const rowsClasificadas = useMemo(
-    () => (todas || []).filter((r) => clasificarPreservicio(r) !== null),
-    [todas]
+    () => todasConCambios.filter((r) => clasificarPreservicio(r) !== null),
+    [todasConCambios]
   );
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(busqueda);
-    return rowsClasificadas.filter((r) => {
-      if (q) {
-        const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
-          r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, ...Object.values(r || {}),
-        ].some((c) => normalizarEstado(c).includes(q));
-        if (!coincide) return false;
-      }
-
+    return filtrarRegistrosBackoffice(rowsClasificadas, busqueda).filter((r) => {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (fechaDesde && (!iso || iso < fechaDesde)) return false;
       if (fechaHasta && (!iso || iso > fechaHasta)) return false;
@@ -6350,7 +6730,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             <div className="bo-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {onCambiarEmpresa && <FiltroEmpresa valor={empresa} onCambiar={onCambiarEmpresa} />}
               <BotonDescargaExcel
-                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`, COLUMNAS_MESA_TRABAJO)}
+                onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Mesa_Trabajo_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_MESA_TRABAJO, ETIQUETAS_EXPORTACION_MESA_TRABAJO)}
                 color="#0891b2" fondo="#ecfeff" borde="#a5f3fc"
               />
               <button
@@ -6421,6 +6801,11 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
             </div>
 
             <span className="bo-scroll-hint" aria-hidden="true">↔ Desliza horizontalmente para ver todas las columnas</span>
+            {alerta && (
+              <div style={{ padding: "10px 12px", borderRadius: 8, background: alerta.type === "success" ? "#ecfdf5" : "#fef2f2", color: alerta.type === "success" ? "#066b4f" : "#b91c1c", border: `1px solid ${alerta.type === "success" ? "#bbf7d0" : "#fecaca"}`, fontSize: 12, fontWeight: 700 }}>
+                {alerta.msg}
+              </div>
+            )}
             {cargando ? (
               <CargandoBackoffice filas={6} />
             ) : (
@@ -6428,6 +6813,7 @@ function TableroPreservicios({ onVolver, empresa, onCambiarEmpresa }) {
                 rows={rowsFiltradas}
                 filtrosActivos={Boolean(fechaDesde || fechaHasta || busqueda)}
                 onAbrirRegistro={(id) => setDetalleId(id)}
+                onGuardarCelda={guardarCelda}
               />
             )}
           </div>
@@ -6479,15 +6865,7 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
   };
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(filtrosAplicados.busqueda);
-    return (todas || []).filter((r) => {
-      if (q) {
-        const coincide = [
-          r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial,
-          r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, r.supervisor, ...Object.values(r || {}),
-        ].some((c) => normalizarEstado(c).includes(q));
-        if (!coincide) return false;
-      }
+    return filtrarRegistrosBackoffice(todas, filtrosAplicados.busqueda).filter((r) => {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (filtrosAplicados.fechaDesde && (!iso || iso < filtrosAplicados.fechaDesde)) return false;
       if (filtrosAplicados.fechaHasta && (!iso || iso > filtrosAplicados.fechaHasta)) return false;
@@ -7239,11 +7617,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   useEffect(() => { setRows(todas); }, [todas]);
 
   const ordenadas = (() => {
-    const q = normalizarEstado(busqueda);
-    const filtradas = !q ? rows : rows.filter((r) =>
-      [r.nombre_cliente_completo, r.numero_identificacion, r.codigo_asesor, r.id_asesor_comercial, r.nombre_asesor_comercial, r.id_bitrix, r.netlife_login, r.telf_celular_pin, r.telf_celular_2, r.telf_fijo, ...Object.values(r || {})]
-        .some((c) => normalizarEstado(c).includes(q))
-    );
+    const filtradas = filtrarRegistrosBackoffice(rows, busqueda);
     return [...filtradas].sort((a, b) => {
       const fa = String(a.fecha_registro_sistema || "");
       const fb = String(b.fecha_registro_sistema || "");
@@ -7635,16 +8009,7 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
   };
 
   const rowsConFiltros = useMemo(() => {
-    const q = normalizarEstado(filtrosAplicados.busqueda);
-    return todasConCambios.filter((row) => {
-      if (q) {
-        const coincide = [
-          row.nombre_cliente_completo, row.numero_identificacion, row.codigo_asesor, row.id_asesor_comercial, row.nombre_asesor_comercial,
-          row.id_bitrix, row.netlife_login, row.telf_celular_pin, row.telf_celular_2, row.telf_fijo,
-          row.gestion_atc, row.supervisor, row.estatus_regularizacion, ...Object.values(row || {}),
-        ].some((campo) => normalizarEstado(campo).includes(q));
-        if (!coincide) return false;
-      }
+    return filtrarRegistrosBackoffice(todasConCambios, filtrosAplicados.busqueda).filter((row) => {
       const fecha = fechaCalendarioEC(row.fecha_registro_sistema);
       if (filtrosAplicados.fechaDesde && (!fecha || fecha < filtrosAplicados.fechaDesde)) return false;
       if (filtrosAplicados.fechaHasta && (!fecha || fecha > filtrosAplicados.fechaHasta)) return false;
@@ -7753,6 +8118,15 @@ function TablaValidacionRegularizacion({ onVolver, empresa, onCambiarEmpresa }) 
               <h3 style={{ margin: "4px 0 0", fontSize: 18, color: "#4338ca", textTransform: "uppercase" }}>{estadoSeleccionado} · {rowsFiltradas.length}</h3>
             </div>
             <BotonDescargaExcel onClick={() => exportarAExcel(rowsFiltradas, `Reporte_Regularizacion_${empresa || "Todos"}`, COLUMNAS_EXPORTACION_REGULARIZACION, ETIQUETAS_EXPORTACION_REGULARIZACION)} color="#4f46e5" fondo="#eef2ff" borde="#c7d2fe" />
+            <button
+              type="button"
+              onClick={() => exportarReporteFechaRegularizacion(rowsConFiltros, `Reporte_Fecha_Regularizacion_${empresa || "Todos"}`)}
+              title="Conteo por fecha de regularización ATC y pendientes por auditar por día de creación"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid #fcd34d", background: "#fffbeb", color: "#b45309", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              <span>📊</span>
+              Reporte Fecha Regularización
+            </button>
           </div>
 
           {alerta && (

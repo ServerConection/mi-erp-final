@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import WaCreationDateFilter from "../components/WaCreationDateFilter";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
+import { lineaEstaConectada } from "../utils/waLineStatus";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -98,7 +99,10 @@ export default function WaCampanas() {
       ]);
       const [dC, dL, dLists] = await Promise.all([rC.json(), rL.json(), rLists.json()]);
       setCampaigns(asArray(dC));
-      setLines(asArray(dL).filter(l => l.status === "connected"));
+      // /lines entrega el estado persistido y el estado en vivo. El módulo de
+      // Líneas muestra el vivo, por lo que Campañas debe usar el mismo criterio
+      // para no ocultar números que realmente están conectados.
+      setLines(asArray(dL).filter(lineaEstaConectada));
       setLists(asArray(dLists));
     } catch (e) {
       console.error("[WaCampanas] Error cargando:", e);

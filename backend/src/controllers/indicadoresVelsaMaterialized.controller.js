@@ -158,7 +158,13 @@ const COL_SUPERVISOR = 'mv.supervisor';
 // corrio (deploy antes que la migracion), en vez de tumbar todo Velsa.
 // FIX 2026-09-22: David Briones ya no es supervisor. Si el catalogo aun no
 // esta instalado, el CRM no puede devolverlo como supervisor.
-let EXPR_SUPERVISOR = `(CASE WHEN mv.supervisor ILIKE '%briones%' THEN 'SIN ASIGNAR' ELSE mv.supervisor END)`;
+// FIX 2026-10-14: en VELSA no hay equipos — TODOS los asesores pertenecen a
+// Alexandra Pacheco y Dariana Leonardi a la vez. El catalogo por mes los
+// partia en dos y dejaba "SIN ASIGNAR" a quien no estaba cargado. Ahora todo
+// registro va al supervisor compartido (el filtro ILIKE por cualquiera de los
+// dos nombres sigue funcionando).
+const SUPERVISOR_VELSA_COMPARTIDO = `'ALEXANDRA PACHECO / DARIANA LEONARDI'`;
+let EXPR_SUPERVISOR = SUPERVISOR_VELSA_COMPARTIDO;
 
 pool.query(`SELECT to_regprocedure('public.supervisor_velsa(text,date)') IS NOT NULL AS existe`)
   .then(({ rows }) => {
@@ -166,14 +172,14 @@ pool.query(`SELECT to_regprocedure('public.supervisor_velsa(text,date)') IS NOT 
       console.warn('[VELSA] catalogo de asesores por mes no instalado: el supervisor sigue saliendo del CRM');
       return;
     }
-    EXPR_SUPERVISOR = `COALESCE(
+    const _exprCatalogoNoUsada = `COALESCE(
       public.supervisor_velsa(
         mv.codigo_asesor,
         COALESCE(mv.fecha_registro_jotform, mv.fecha_creacion_crm)::date
       ),
       'SIN ASIGNAR'
     )`;  // FIX 2026-09-22: sin fallback al CRM — si el asesor no esta en el catalogo, SIN ASIGNAR
-    console.log('[VELSA] supervisor tomado del catalogo del mes');
+    console.log('[VELSA] catalogo instalado, pero se usa el supervisor compartido (sin equipos)');
   })
   .catch((e) => console.warn('[VELSA] no se pudo verificar el catalogo de asesores:', e.message));
 

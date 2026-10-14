@@ -602,6 +602,69 @@ export default function ReporteComercialCore({
   // Ref para cancelar fetches anteriores (evita loading stuck y race conditions)
   const abortRef = useRef(null);
 
+  // Semillero obtiene sus KPI del mismo resultado del dashboard (pipeline 41).
+  // No usa /api/kpi-comercial porque ese endpoint pertenece exclusivamente a
+  // las vistas comerciales de NOVONET y VELSA.
+  const construirKpiSemillero = useCallback((resultado, filtrosActivos) => {
+    const porcentaje = (numerador, denominador) => denominador > 0
+      ? Number(((numerador / denominador) * 100).toFixed(1))
+      : 0;
+    const completar = (fila, nombre, supervisor = 'SEMILLERO') => {
+      const leadsTotal = Number(fila.leads_totales || 0);
+      const gestionables = Number(fila.gestionables || 0);
+      const ingresosCrm = Number(fila.ventas_crm || 0);
+      const ingresosJot = Number(fila.ingresos_reales || 0);
+      const descarte = Number(fila.descarte_count || 0);
+      return {
+        nombre,
+        supervisor,
+        leads_total: leadsTotal,
+        leads_gestion: gestionables,
+        ingresos_crm: ingresosCrm,
+        ingresos_jot: ingresosJot,
+        descarte_n: descarte,
+        ingresos_jot_efectivo: 0,
+        ingresos_jot_acido: 0,
+        activas_totales: 0,
+        activa_mes: 0,
+        activas_backlog: 0,
+        por_regularizar: 0,
+        pct_gestion_vs_total: porcentaje(gestionables, leadsTotal),
+        pct_efect_vs_leads: porcentaje(ingresosJot, leadsTotal),
+        pct_efect_vs_gestion: porcentaje(ingresosJot, gestionables),
+        pct_efectividad_efectiva: 0,
+        pct_efectividad_acida: 0,
+        pct_descarte: porcentaje(descarte, gestionables),
+        pct_tasa_activacion: 0,
+        pct_tarjeta: 0,
+        pct_tercera_edad: 0,
+        pct_planes_150_200: 0,
+      };
+    };
+
+    const asesores = (resultado.asesores || []).map(fila =>
+      completar(fila, fila.nombre_grupo || 'SIN RESPONSABLE', fila.supervisor || 'SIN SUPERVISOR')
+    );
+    const supervisores = (resultado.supervisores || []).map(fila =>
+      completar(fila, fila.nombre_grupo || 'SIN SUPERVISOR', fila.nombre_grupo || 'SIN SUPERVISOR')
+    );
+    const totalBase = supervisores.reduce((total, fila) => ({
+      leads_totales: total.leads_totales + fila.leads_total,
+      gestionables: total.gestionables + fila.leads_gestion,
+      ventas_crm: total.ventas_crm + fila.ingresos_crm,
+      ingresos_reales: total.ingresos_reales + fila.ingresos_jot,
+      descarte_count: total.descarte_count + fila.descarte_n,
+    }), { leads_totales: 0, gestionables: 0, ventas_crm: 0, ingresos_reales: 0, descarte_count: 0 });
+    return {
+      empresa: 'SEMILLERO',
+      fechaDesde: filtrosActivos.fechaDesde,
+      fechaHasta: filtrosActivos.fechaHasta,
+      asesores,
+      supervisores,
+      total: asesores.length ? completar(totalBase, 'TOTAL SEMILLERO') : null,
+    };
+  }, []);
+
   // Listas estables para los dropdowns — nunca se borran al filtrar
   const [allSupervisores, setAllSupervisores] = useState([]);
   const [allAsesores,     setAllAsesores]     = useState([]);
@@ -652,6 +715,10 @@ export default function ReporteComercialCore({
           if (result.asesores?.length)     setAllAsesores(result.asesores);
         }
         mostrarAlertas(result.supervisores);
+
+        if (esSemillero) {
+          setKpiComercial(construirKpiSemillero(result, filtrosActivos));
+        }
 
       }
     } catch (e) {
@@ -2247,8 +2314,20 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
   // Guarda con qué término se ejecutó la última consulta, para poder
   // mostrar "Buscando: ..." aunque el usuario siga editando el input.
   const [busquedaAplicada, setBusquedaAplicada] = useState('');
+  const [modoMaster, setModoMaster] = useState(false);
+  const perfilConsulta = useMemo(() => {
+    try {
+      return String(JSON.parse(localStorage.getItem('userProfile') || '{}').perfil || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .trim().replace(/\s+/g, ' ').toUpperCase();
+    } catch { return ''; }
+  }, []);
+  const puedeConsultaMaster = perfilConsulta === 'ADMIN'
+    || /^ADMINISTRADOR(?:A)?(?:[ _-].*)?$/.test(perfilConsulta)
+    || /^GEREN(?:CIA|TE|TA|CIAL)(?:[ _-].*)?$/.test(perfilConsulta)
+    || /^ANALISTA(?:[ _-].*)?$/.test(perfilConsulta);
 
-  const consultar = async () => {
+  const consultar = async (master = false) => {
     setLoading(true); setError(null); setRows(null);
     try {
       const params = new URLSearchParams({ fechaDesde, fechaHasta });
@@ -2257,9 +2336,15 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
       if (idBitrix.trim())     params.set('idBitrix', idBitrix.trim());
       if (busquedaGeneral.trim()) params.set('busquedaGeneral', busquedaGeneral.trim());
       setBusquedaAplicada(busquedaGeneral.trim());
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/consulta-descarga?${params.toString()}`);
+      const endpoint = master ? '/api/indicadores/consulta-master' : `${apiBase}/consulta-descarga`;
+      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${endpoint}?${params.toString()}`);
       const result = await res.json();
-      if (result.success) setRows((result.rows || []).map(row => ({ ...row, DISTRIBUIDOR: empresa })));
+      if (result.success) {
+        setModoMaster(master);
+        setRows(master
+          ? (result.rows || [])
+          : (result.rows || []).map(row => ({ ...row, DISTRIBUIDOR: row.DISTRIBUIDOR || empresa })));
+      }
       else setError(result.error || 'Error al consultar');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -2284,8 +2369,9 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
     ws['!cols'] = COLUMNAS_CONSULTA_NOVONET.map(() => ({ wch: 22 }));
     // Estilo de encabezado (solo en navegadores que soportan xlsx-style)
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, empresa);
-    XLSX.writeFile(wb, `Consulta_${empresa}_${fechaDesde}_${fechaHasta}.xlsx`);
+    const nombreConsulta = modoMaster ? 'MASTER' : empresa;
+    XLSX.utils.book_append_sheet(wb, ws, nombreConsulta);
+    XLSX.writeFile(wb, `Consulta_${nombreConsulta}_${fechaDesde}_${fechaHasta}.xlsx`);
   };
 
   return (
@@ -2293,8 +2379,8 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
       {/* Header panel */}
       <div className="bg-[#1A3A6E] text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-[#0f2550]">
         <div>
-          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — {empresa}</h2>
-          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">Vista: vista_analisis_novonet · Filtro por Fecha de Carga a JOT</p>
+          <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — {modoMaster ? 'MASTER' : empresa}</h2>
+          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">{modoMaster ? 'NOVONET + VELSA' : empresa} · Filtro por Fecha de Carga a JOT</p>
         </div>
         <div className="text-right text-[9px] text-blue-300">
           {rows !== null && <div className="text-lg font-black text-white">{rows.length.toLocaleString()} registros</div>}
@@ -2329,11 +2415,6 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
             <input type="text" value={idBitrix} onChange={e => setIdBitrix(e.target.value)} placeholder="ID Bitrix"
               className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-36" />
           </div>
-          <button onClick={consultar} disabled={loading}
-            className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
-            {loading ? '⏳ Consultando...' : '🔍 Consultar'}
-          </button>
-
           {/* BÚSQUEDA GENERAL — un solo campo que busca a la vez en:
               asesor / código ejecutivo, login netlife, ID negociación (id bitrix)
               y estado de netlife. Se ubica junto al botón "Descargar Excel"
@@ -2348,10 +2429,22 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
               value={busquedaGeneral}
               onChange={e => setBusquedaGeneral(e.target.value)}
               placeholder="Asesor, login, ID negociación o estado"
-              onKeyDown={e => { if (e.key === 'Enter') consultar(); }}
+              onKeyDown={e => { if (e.key === 'Enter') consultar(false); }}
               className="border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-56"
             />
           </div>
+
+          <button onClick={() => consultar(false)} disabled={loading}
+            className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-[#1A3A6E] hover:bg-[#0f2550] shadow transition-all active:scale-95 disabled:opacity-60">
+            {loading ? '⏳ Consultando...' : '🔍 Consultar'}
+          </button>
+
+          {puedeConsultaMaster && (
+            <button onClick={() => consultar(true)} disabled={loading}
+              className="h-[42px] px-6 rounded-xl text-[10px] font-black uppercase text-white bg-violet-600 hover:bg-violet-700 shadow transition-all active:scale-95 disabled:opacity-60">
+              {loading ? '⏳ Consultando...' : '🌐 Consulta Master'}
+            </button>
+          )}
 
           {rows !== null && rows.length > 0 && (
             <button onClick={descargarExcel}

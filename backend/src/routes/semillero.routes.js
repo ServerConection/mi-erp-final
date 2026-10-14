@@ -10,6 +10,15 @@ const etapa = `UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(
 const origen = `COALESCE(NULLIF(BTRIM(w.source), ''), 'SIN ORIGEN')`;
 const responsable = `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`;
 const fecha = fechaWebhookExpr('w');
+const supervisor = `COALESCE((
+  SELECT NULLIF(BTRIM(e.supervisor), '')
+  FROM public.empleados e
+  WHERE UPPER(BTRIM(e.nombre_completo)) = UPPER(BTRIM(w.responsible))
+  ORDER BY
+    CASE WHEN BTRIM(e.codigo) = EXTRACT(MONTH FROM $2::date)::text THEN 0 ELSE 1 END,
+    CASE WHEN BTRIM(e.codigo) ~ '^\\d+$' THEN BTRIM(e.codigo)::int ELSE -1 END DESC
+  LIMIT 1
+), 'SIN SUPERVISOR')`;
 const CATEGORIA_SEMILLERO = '41';
 // Semillero corresponde exclusivamente al pipeline 41. Se conservan los datos
 // históricos que aún no tienen categoría, salvo CONTACTO NUEVO: esos registros
@@ -56,7 +65,7 @@ router.get('/dashboard', async (req, res) => {
   const base = `FROM public.bitrix_webhook_leads w WHERE ${where}`;
   try {
     const [asesores, embudo, embudoDia, barrasDia, origenesDia, detalle] = await Promise.all([
-      pool.query(`SELECT ${responsable} AS nombre_grupo,
+      pool.query(`SELECT ${responsable} AS nombre_grupo, ${supervisor} AS supervisor,
         COUNT(*) FILTER (WHERE ${esLeadTotalExpr(etapa)})::int AS leads_totales,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)})::int AS gestionables,
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ventas_crm,
@@ -68,7 +77,7 @@ router.get('/dashboard', async (req, res) => {
         CASE WHEN COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)}) > 0
           THEN ROUND(COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA') * 100.0 / COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)}), 2)
           ELSE 0 END AS eficiencia
-        ${base} GROUP BY 1 ORDER BY ingresos_reales DESC, nombre_grupo`, values),
+        ${base} GROUP BY 1, 2 ORDER BY ingresos_reales DESC, nombre_grupo`, values),
       pool.query(`SELECT ${etapa} AS etapa, COUNT(*)::int AS total ${base} GROUP BY 1 ORDER BY total DESC`, values),
       pool.query(`SELECT ${fecha}::text AS fecha, ${etapa} AS etapa, COUNT(*)::int AS total ${base} GROUP BY 1,2 ORDER BY 1,3 DESC`, values),
       pool.query(`SELECT ${fecha}::text AS fecha, COUNT(*)::int AS total,
@@ -82,16 +91,23 @@ router.get('/dashboard', async (req, res) => {
         ${base} ORDER BY w.created_at DESC`, values),
     ]);
     const rows = asesores.rows;
-    const supervisores = rows.length ? [{
-      nombre_grupo: 'SEMILLERO',
-      leads_totales: rows.reduce((s, r) => s + Number(r.leads_totales), 0),
-      gestionables: rows.reduce((s, r) => s + Number(r.gestionables), 0),
-      ventas_crm: rows.reduce((s, r) => s + Number(r.ventas_crm), 0),
-      ingresos_reales: rows.reduce((s, r) => s + Number(r.ingresos_reales), 0),
-      descarte_count: rows.reduce((s, r) => s + Number(r.descarte_count), 0),
-      descarte_base: rows.reduce((s, r) => s + Number(r.descarte_base), 0),
-      real_mes: 0, backlog: 0, eficiencia: 0,
-    }] : [];
+    const porSupervisor = new Map();
+    for (const row of rows) {
+      const nombre = row.supervisor || 'SIN SUPERVISOR';
+      if (!porSupervisor.has(nombre)) {
+        porSupervisor.set(nombre, {
+          nombre_grupo: nombre, supervisor: nombre,
+          leads_totales: 0, gestionables: 0, ventas_crm: 0,
+          ingresos_reales: 0, descarte_count: 0, descarte_base: 0,
+          real_mes: 0, backlog: 0, eficiencia: 0,
+        });
+      }
+      const grupo = porSupervisor.get(nombre);
+      for (const campo of ['leads_totales', 'gestionables', 'ventas_crm', 'ingresos_reales', 'descarte_count', 'descarte_base']) {
+        grupo[campo] += Number(row[campo] || 0);
+      }
+    }
+    const supervisores = [...porSupervisor.values()].sort((a, b) => b.leads_totales - a.leads_totales);
     const etapas = embudo.rows.map(r => r.etapa);
     const origenes = [...new Set(origenesDia.rows.map(r => r.origen))];
     res.json({

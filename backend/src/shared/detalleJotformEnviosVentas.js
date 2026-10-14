@@ -70,7 +70,25 @@ function fuenteDetalleJotform(empresa, alias) {
         e.detalle_regularizacion                               AS detalle_regularizacion,
         e.novedades_atc                                        AS novedades_atc,
         COALESCE(NULLIF(BTRIM(e.plan_contratado), ''), e.plan_contratado_final) AS tipo_plan,
-        to_jsonb(e) ->> 'velocidad_plan'                       AS velocidad,
+        COALESCE(
+          NULLIF(BTRIM(to_jsonb(e) ->> 'velocidad_plan'), ''),
+          CASE
+            WHEN e.plan_contratado_final ~* '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)'
+            THEN CONCAT(
+              (regexp_match(e.plan_contratado_final, '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)', 'i'))[1],
+              ' ',
+              CASE
+                WHEN (regexp_match(e.plan_contratado_final, '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)', 'i'))[2] ~* '^(g|gd)'
+                  THEN 'Gbps'
+                ELSE 'Mbps'
+              END
+            )
+            WHEN e.plan_contratado_final ~* 'DEFENSE\\s+([0-9]{2,4})\\s*$'
+              THEN CONCAT((regexp_match(e.plan_contratado_final, 'DEFENSE\\s+([0-9]{2,4})\\s*$', 'i'))[1], ' Mbps')
+            WHEN e.plan_contratado_final ~* 'PLAN(?:\\s+HOME)?\\s+([0-9]{2,4})\\s*\\+'
+              THEN CONCAT((regexp_match(e.plan_contratado_final, 'PLAN(?:\\s+HOME)?\\s+([0-9]{2,4})\\s*\\+', 'i'))[1], ' Mbps')
+          END
+        )                                                      AS velocidad,
         e.servicios_digitales                                  AS empaquetado,
         e.tipo_contrato                                        AS servicio_adicional,
         e.forma_pago                                           AS forma_pago,

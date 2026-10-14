@@ -15,7 +15,7 @@ const rangoMes = (mes) => {
   return { desde: `${mes}-01`, hasta: `${mes}-${String(fin).padStart(2, '0')}` };
 };
 const iniciales = (n) => String(n || '?').replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g, ' ').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
-const NOMBRE_MES = (mes) => { const [y, m] = mes.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' }); };
+const NOMBRE_MES = (mes) => { const [y, m] = mes.split('-').map(Number); const t = new Date(y, m - 1, 1).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 function Kpi({ etiqueta, valor, ayuda, tono }) {
   const tonos = { verde: 'text-emerald-600', ambar: 'text-amber-600', azul: 'text-indigo-700', gris: 'text-slate-800' };
@@ -26,49 +26,41 @@ function Kpi({ etiqueta, valor, ayuda, tono }) {
   </div>;
 }
 
-function TarjetaBilletera({ a, empresa }) {
-  const pct = a.valor_total > 0 ? Math.round((a.valor_disponible / a.valor_total) * 100) : 0;
-  return <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 via-violet-700 to-fuchsia-600 p-6 text-white shadow-xl">
-    <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10" />
-    <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-white/5" />
-    <div className="relative flex items-start justify-between">
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Billetera {empresa}</div>
-        <div className="mt-1 text-lg font-black leading-tight">{a.usuario}</div>
-      </div>
-      <div className="flex h-9 w-12 items-center justify-center rounded-md bg-gradient-to-br from-amber-200 to-amber-400 shadow-inner"><div className="h-5 w-8 rounded-sm border border-amber-600/40" /></div>
-    </div>
-    <div className="relative mt-7">
-      <div className="text-xs font-semibold text-white/70">Saldo disponible</div>
-      <div className="text-4xl font-black tracking-tight">{dinero(a.valor_disponible)}</div>
-      <div className="mt-1 text-xs text-white/80">+ {dinero(a.valor_total - a.valor_disponible)} por liberar</div>
-    </div>
-    <div className="relative mt-5">
-      <div className="h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${pct}%` }} /></div>
-      <div className="mt-1 flex justify-between text-[11px] text-white/75"><span>{pct}% liberado</span><span>Proyectado {dinero(a.valor_total)}</span></div>
-    </div>
-    <div className="relative mt-5 flex items-end justify-between font-mono text-sm tracking-widest text-white/85">
-      <span>•••• •••• •••• {String(a.codigo_asesor || '').slice(-4).padStart(4, '0')}</span>
-      <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-white/60">Simulación</span>
-    </div>
-  </div>;
-}
+const GRADIENTES = ['from-indigo-600 to-sky-500', 'from-fuchsia-600 to-rose-500', 'from-emerald-600 to-teal-500', 'from-amber-500 to-orange-600', 'from-violet-600 to-purple-500', 'from-cyan-600 to-blue-600'];
 
-function Movimientos({ a, mes }) {
-  const filas = [
-    { icono: '✅', titulo: 'Comisión de ventas regularizadas', detalle: `${a.activas_regularizadas} activas regularizadas`, monto: a.valor_disponible, estado: 'Disponible', tono: 'text-emerald-600 bg-emerald-50' },
-    { icono: '⏳', titulo: 'Comisión retenida por regularizar', detalle: `${a.activas_por_regularizar} activas pendientes de regularización`, monto: a.valor_total - a.valor_disponible, estado: 'Por liberar', tono: 'text-amber-700 bg-amber-50' },
-  ];
-  if (a.sin_valor > 0) filas.push({ icono: '⚠️', titulo: 'Ventas sin valor en catálogo', detalle: `${a.sin_valor} activas con plan no encontrado`, monto: null, estado: 'Revisar', tono: 'text-red-600 bg-red-50' });
-  return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="flex items-center justify-between border-b px-5 py-3"><h3 className="text-sm font-black text-slate-800">Movimientos · {NOMBRE_MES(mes)}</h3><span className="text-[11px] text-slate-400">Calculado con tramo menor a 35</span></div>
-    <ul className="divide-y">
-      {filas.map((f) => <li key={f.titulo} className="flex items-center gap-4 px-5 py-3.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg">{f.icono}</div>
-        <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-slate-800">{f.titulo}</div><div className="text-xs text-slate-500">{f.detalle}</div></div>
-        <div className="text-right"><div className="text-sm font-black text-slate-800">{f.monto === null ? '—' : dinero(f.monto)}</div><span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${f.tono}`}>{f.estado}</span></div>
-      </li>)}
-    </ul>
+// Celular con la billetera del asesor: lo mismo que verá él en su app.
+function CelularBilletera({ a, i }) {
+  const enCamino = Math.max(0, (a.valor_total || 0) - (a.valor_disponible || 0));
+  const pct = a.valor_total > 0 ? Math.round((a.valor_disponible / a.valor_total) * 100) : 0;
+  return <div className="mx-auto w-full max-w-[340px] rounded-[2.75rem] border-[11px] border-slate-900 bg-slate-50 shadow-2xl">
+    <div className="mx-auto mt-2 h-5 w-24 rounded-full bg-slate-900" />
+    <div className="p-4">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0"><p className="text-[11px] text-slate-400">Hola 👋</p><p className="truncate font-black text-slate-800">{a.usuario}</p></div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 font-black text-slate-700">{iniciales(a.usuario)}</div>
+      </div>
+      <div className={`mt-4 rounded-3xl bg-gradient-to-br ${GRADIENTES[i % GRADIENTES.length]} p-5 text-white shadow-lg`}>
+        <p className="text-xs font-semibold text-white/80">Valor total del mes</p>
+        <p className="text-[2.6rem] font-black leading-none tracking-tight">{dinero(a.valor_total)}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white/20 px-3 py-2"><p className="text-[10px] font-semibold text-white/80">Disponible</p><p className="text-lg font-black">{dinero(a.valor_disponible)}</p></div>
+          <div className="rounded-2xl bg-black/10 px-3 py-2"><p className="text-[10px] font-semibold text-white/80">En camino</p><p className="text-lg font-black">{dinero(enCamino)}</p></div>
+        </div>
+        <div className="mt-3 h-1.5 rounded-full bg-white/30"><div className="h-1.5 rounded-full bg-white transition-all" style={{ width: `${pct}%` }} /></div>
+        <p className="mt-1 text-right text-[10px] text-white/80">{pct}% liberado</p>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] font-bold text-slate-600">
+        <div title="Próximamente" className="cursor-not-allowed rounded-2xl bg-white py-3 opacity-60 shadow-sm">💸<br />Retirar</div>
+        <div className="rounded-2xl bg-white py-3 shadow-sm">📊<br />{a.activas_totales} ventas</div>
+        <div className="rounded-2xl bg-white py-3 shadow-sm">🏷️<br />Cód. {a.codigo_asesor}</div>
+      </div>
+      <p className="mt-4 text-xs font-black text-slate-700">Movimientos</p>
+      <div className="mt-2 space-y-2 text-xs">
+        <div className="flex justify-between rounded-xl bg-white p-2.5 shadow-sm"><span>✅ {a.activas_regularizadas} regularizadas</span><b className="text-emerald-600">+{dinero(a.valor_disponible)}</b></div>
+        <div className="flex justify-between rounded-xl bg-white p-2.5 shadow-sm"><span>⏳ {a.activas_por_regularizar} por regularizar</span><b className="text-amber-600">{dinero(enCamino)}</b></div>
+        {a.sin_valor > 0 && <div className="flex justify-between rounded-xl bg-red-50 p-2.5 shadow-sm"><span>⚠️ {a.sin_valor} sin valor en catálogo</span><b className="text-red-600">Revisar</b></div>}
+      </div>
+    </div>
   </div>;
 }
 
@@ -78,7 +70,6 @@ export default function BilleteraDigital() {
   const [data, setData] = useState({ filas: [], totales: {} });
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [buscar, setBuscar] = useState('');
-  const [sel, setSel] = useState(null);
 
   useEffect(() => {
     const ctrl = new AbortController(); setLoading(true); setError('');
@@ -86,7 +77,7 @@ export default function BilleteraDigital() {
     const qs = new URLSearchParams({ empresa, telcosDesde: r.desde, telcosHasta: r.hasta });
     fetch(`${API}/api/comisiones?${qs}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, signal: ctrl.signal })
       .then(async (res) => { const b = await res.json().catch(() => ({})); if (!res.ok) throw new Error(b.error || `HTTP ${res.status}`); return b; })
-      .then((b) => { setData(b.data || { filas: [], totales: {} }); setSel(null); })
+      .then((b) => setData(b.data || { filas: [], totales: {} }))
       .catch((e) => { if (e.name !== 'AbortError') setError(e.message); })
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     return () => ctrl.abort();
@@ -96,13 +87,12 @@ export default function BilleteraDigital() {
     const q = buscar.trim().toLowerCase();
     return [...(data.filas || [])]
       .filter((a) => !q || `${a.usuario} ${a.codigo_asesor}`.toLowerCase().includes(q))
-      .sort((x, y) => (y.valor_disponible - x.valor_disponible) || (y.valor_total - x.valor_total));
+      .sort((x, y) => (y.valor_total - x.valor_total) || (y.valor_disponible - x.valor_disponible));
   }, [data, buscar]);
-  const activo = asesores.find((a) => a.usuario === sel) || asesores[0] || null;
   const t = data.totales || {};
   const conSaldo = (data.filas || []).filter((a) => a.valor_disponible > 0).length;
 
-  return <div className="min-h-full bg-slate-50 p-4 md:p-7"><div className="mx-auto max-w-7xl space-y-5">
+  return <div className="min-h-full bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-4 md:p-7"><div className="mx-auto max-w-7xl space-y-5">
     <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-violet-600">Administración</p>
@@ -124,43 +114,13 @@ export default function BilleteraDigital() {
       <Kpi etiqueta="Asesores con saldo" valor={`${conSaldo} / ${(data.filas || []).length}`} ayuda={data.mes_catalogo ? `Catálogo ${data.mes_catalogo}` : 'Sin catálogo cargado'} />
     </div>
 
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,360px)_1fr]">
-      <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b p-3"><input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar asesor o código…" className="w-full rounded-lg border px-3 py-2 text-sm" /></div>
-        <ul className="max-h-[560px] divide-y overflow-y-auto">
-          {loading ? <li className="p-10 text-center text-sm text-slate-500">Cargando billeteras…</li>
-            : !asesores.length ? <li className="p-10 text-center text-sm text-slate-500">Sin asesores con activas en este mes.</li>
-            : asesores.map((a) => {
-              const on = activo?.usuario === a.usuario;
-              const pct = a.valor_total > 0 ? Math.round((a.valor_disponible / a.valor_total) * 100) : 0;
-              return <li key={a.usuario}><button onClick={() => setSel(a.usuario)} className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${on ? 'bg-violet-50' : 'hover:bg-slate-50'}`}>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-black ${on ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{iniciales(a.usuario)}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-bold text-slate-800">{a.usuario}</span><span className="text-sm font-black text-emerald-600">{dinero(a.valor_disponible)}</span></div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
-                  <div className="mt-0.5 flex justify-between text-[10px] text-slate-400"><span>Cód. {a.codigo_asesor}</span><span>de {dinero(a.valor_total)}</span></div>
-                </div>
-              </button></li>;
-            })}
-        </ul>
-      </aside>
-
-      <section className="space-y-5">
-        {!activo ? <div className="rounded-2xl border border-dashed bg-white p-16 text-center text-sm text-slate-500">Selecciona un asesor para ver su billetera.</div> : <>
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,420px)_1fr]">
-            <TarjetaBilletera a={activo} empresa={empresa} />
-            <div className="grid grid-cols-2 gap-3">
-              <Kpi etiqueta="Activas totales" valor={activo.activas_totales} tono="azul" />
-              <Kpi etiqueta="Regularizadas" valor={activo.activas_regularizadas} tono="verde" />
-              <Kpi etiqueta="Por regularizar" valor={activo.activas_por_regularizar} tono="ambar" />
-              <Kpi etiqueta="Último ingreso" valor={activo.ultima_fecha_ingreso_telcos ? new Date(activo.ultima_fecha_ingreso_telcos).toLocaleDateString('es-EC', { timeZone: 'UTC' }) : '—'} />
-              <button disabled title="Disponible en la versión para asesores" className="col-span-2 cursor-not-allowed rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/50 py-3 text-sm font-bold text-violet-400">💸 Solicitar retiro · próximamente</button>
-            </div>
-          </div>
-          <Movimientos a={activo} mes={mes} />
-        </>}
-      </section>
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <p className="text-sm text-slate-500">Cada celular es lo que verá el asesor en su app · {NOMBRE_MES(mes)}. Ordenados por valor total.</p>
+      <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar asesor o código…" className="w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-sm md:w-72" />
     </div>
+    {loading ? <div className="rounded-2xl border bg-white p-16 text-center text-sm text-slate-500">Cargando billeteras…</div>
+      : !asesores.length ? <div className="rounded-2xl border border-dashed bg-white p-16 text-center text-sm text-slate-500">Sin asesores con activas en este mes.</div>
+      : <div className="grid gap-8 sm:grid-cols-2 xl:grid-cols-3">{asesores.map((a, i) => <CelularBilletera key={a.usuario} a={a} i={i} />)}</div>}
     <p className="text-center text-[11px] text-slate-400">Simulación sin movimientos de dinero reales. Fase 2: chargeback y egresos.</p>
   </div></div>;
 }

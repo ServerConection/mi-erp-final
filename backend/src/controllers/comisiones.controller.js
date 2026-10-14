@@ -126,6 +126,7 @@ async function listar(req, res) {
     const { rows } = await pool.query(`
       WITH ventas AS (
         SELECT ${codigo} AS codigo, ${usuario} AS usuario,
+          COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
@@ -141,6 +142,7 @@ async function listar(req, res) {
           ${filtroGlobal}
       ), cat AS (${catalogo})
       SELECT MAX(v.codigo) AS codigo_asesor, v.usuario AS usuario,
+        MAX(v.nombre_asesor) AS nombre_asesor,
         MAX(v.fecha_telcos) AS ultima_fecha_ingreso_telcos,
         COUNT(*) FILTER (WHERE v.reg = 'PORREGULARIZAR')::int AS activas_por_regularizar,
         COUNT(*) FILTER (WHERE v.reg = 'REGULARIZADO')::int AS activas_regularizadas,

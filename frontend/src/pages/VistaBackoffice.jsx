@@ -3044,7 +3044,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         {
           titulo: "Cliente y estado técnico",
           campos: [
-            "id_bitrix", "codigo_asesor", "nombre_cliente_completo", "numero_identificacion",
+            "id_bitrix", "codigo_asesor", "nombre_asesor_comercial", "nombre_cliente_completo", "numero_identificacion",
             "telf_celular_pin", "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
             "fecha_agenda", "franja_horaria_agendamiento", "fecha_activacion_netlife",
           ],

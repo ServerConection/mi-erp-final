@@ -37,8 +37,24 @@ const correr = async ({ desde: desdeForzado } = {}) => {
   }
   try {
     const resultados = [];
-    for (const empresa of ['novonet', 'velsa']) {
-      resultados.push([empresa, await reconciliarLeads({ empresa, desde, aplicar: true, log: () => {} })]);
+    const empresas = [
+      { empresa: 'novonet' },
+      { empresa: 'velsa' },
+      {
+        empresa: 'semillero',
+        categoria: process.env.RECONCILIACION_BITRIX_CATEGORIA_SEMILLERO || '41',
+        filtrarPorCategoria: true,
+        campoFecha: 'DATE_CREATE',
+        soloEtapas: true,
+        depurarCategoria: true,
+        cursorRapido: true,
+      },
+    ];
+    for (const config of empresas) {
+      resultados.push([
+        config.empresa,
+        await reconciliarLeads({ ...config, desde, aplicar: true, log: () => {} }),
+      ]);
     }
     for (const [empresa, r] of resultados) if (r.escritos > 0 || r.errores > 0) {
       console.log(`🩹 [reconciliacion:${empresa}] deals=${r.deals} faltaban=${r.faltantes.length} desfasados=${r.desfasados.length} escritos=${r.escritos} errores=${r.errores}`);

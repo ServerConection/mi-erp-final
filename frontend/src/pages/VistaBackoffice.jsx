@@ -2986,6 +2986,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     ];
 
     const gruposPorModo = {
+      agendamiento: [
+        {
+          titulo: "Netlife",
+          campos: [
+            "netlife_login", "netlife_estatus_real", "fecha_ingreso_telcos",
+            "fecha_activacion_netlife", "novedades_atc", "estado_welcome",
+          ],
+        },
+        {
+          titulo: "Agendamiento",
+          campos: ["fecha_agenda", "franja_horaria_agendamiento"],
+        },
+      ],
       auditoria: [
         {
           titulo: "Documentos y datos de contraste",
@@ -6412,6 +6425,7 @@ function TableroAgendamientos({ onVolver, nav, navegar, empresa, onCambiarEmpres
         <PanelRegistros
           soloDetalle
           puedeEditar
+          modoDetalle="agendamiento"
           idInicial={detalleId}
           etiquetaContexto="Detalle de Agendamiento"
           onVolver={() => setDetalleId(null)}

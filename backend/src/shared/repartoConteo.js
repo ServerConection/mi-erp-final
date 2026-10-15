@@ -27,13 +27,19 @@ const esEtapaAtc = (etapa) => /^ATC([ /-]?SOPORTE)?$/.test(
 );
 
 /**
- * ¿Bloqueado por % ATC? De lo recibido hoy (total), si el % en ATC llega al
- * máximo permitido, el bot no le entrega aunque tenga cupo. 100 = sin límite.
+ * ¿Bloqueado por ATC? El tope de ATC es un % de sus PERMITIDOS del día
+ * (10 permitidos y 50% → máximo 5 ATC). Al llegar al tope no recibe más.
+ * 100 = sin límite.
  */
-const bloqueadoPorAtc = ({ total, atc, maxPct }) => {
+const topeAtc = ({ permitidos, maxPct }) => {
   const max = Number.isInteger(maxPct) ? maxPct : 50;
-  if (max >= 100 || !total) return false;
-  return (atc * 100) / total >= max;
+  if (max >= 100) return null;
+  return (Number(permitidos) || 0) * max / 100;
+};
+const bloqueadoPorAtc = ({ permitidos, atc, maxPct }) => {
+  const tope = topeAtc({ permitidos, maxPct });
+  if (tope === null || !permitidos) return false;
+  return (Number(atc) || 0) >= tope;
 };
 
 const conteoGestionablesHoy = async (erpDb, empresa) => {
@@ -70,4 +76,4 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc };

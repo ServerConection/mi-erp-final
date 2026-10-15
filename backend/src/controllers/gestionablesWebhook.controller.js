@@ -163,17 +163,14 @@ const crearReparto = (empresa) => {
         WHERE g.fecha_carga = ${HOY_EC}
         GROUP BY 1, 2, 3`
     );
-    // El cupo se mide en GESTIONABLES: un lead que pasó a ATC, Duplicado, etc.
-    // ya no consume permitido. `asignados` = gestionables; `total` = todo lo entregado.
+    // Regla vigente: el cupo es el TOTAL de leads entregados hoy (bot + humano,
+    // en cualquier etapa). Además, el ATC no puede llegar al % de sus permitidos
+    // (10 permitidos y 50% → al llegar a 5 ATC ya no recibe).
     const conteo = await conteoGestionablesHoy(db, empresa);
-    if (conteo) {
-      for (const r of rows) {
-        const c = conteo.get(normalizarNombre(r.nombre));
-        r.total = r.asignados;
-        r.asignados = c?.gestionables || 0;
-        // % ATC: si de lo recibido hoy el % en ATC llega al máximo, no recibe más
-        r.bloqueado_atc = bloqueadoPorAtc({ total: r.total, atc: c?.atc || 0, maxPct: r.atc_max });
-      }
+    for (const r of rows) {
+      const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
+      r.total = r.asignados;
+      r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0, maxPct: r.atc_max }) : false;
     }
     const estNorm = normalizarNombre(estacion);
     const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);

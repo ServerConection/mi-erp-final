@@ -86,7 +86,7 @@ export default function GestionablesAsesores({ empresa = 'novonet' }) {
         <button disabled={busy || !contenido} onClick={() => guardar(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-40">Cargar y actualizar tabla</button>
       </> : <>
         {aviso && <p className="bg-amber-50 text-amber-800 p-3 rounded-lg">{aviso}</p>}
-        <p className="text-sm text-slate-500">Consumo: gestionables creados en la fecha seleccionada, según el reporte del ERP. Rojo indica que alcanzó o superó el límite.</p>
+        <p className="text-sm text-slate-500">Consumo: leads creados en la fecha seleccionada (todas las etapas), según el reporte del ERP. Rojo indica que alcanzó o superó el límite.</p>
         <div className="rounded-xl bg-slate-50 p-4 space-y-3">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex-1 min-w-52 text-sm font-medium text-slate-700">Buscar por responsable
@@ -101,7 +101,7 @@ export default function GestionablesAsesores({ empresa = 'novonet' }) {
           </div>
           <p role="status" className="text-sm text-slate-500">Mostrando {visibles.length} de {rows.length} asesores{estado === 'limite' ? ' · Incluye los que alcanzaron o superaron su cuota.' : ''}</p>
         </div>
-        <div className="overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b">{['ID', 'Responsable', 'Gestionables actuales', 'Permitidos', '% ATC máx', 'Disponibles', 'Estado'].map(h => <th key={h} className={`p-3 ${['Gestionables actuales', 'Permitidos', '% ATC máx', 'Disponibles'].includes(h) ? 'text-center' : ''}`} title={h === '% ATC máx' ? 'Si de lo recibido hoy el % en ATC llega a este valor, el bot deja de entregarle. 100 = sin límite' : undefined}>{h}</th>)}</tr></thead><tbody>{visibles.map(r => {
+        <div className="overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b">{['ID', 'Responsable', 'Leads del día', 'Permitidos', '% ATC máx', 'Disponibles', 'Estado'].map(h => <th key={h} className={`p-3 ${['Leads del día', 'Permitidos', '% ATC máx', 'Disponibles'].includes(h) ? 'text-center' : ''}`} title={h === '% ATC máx' ? '% de sus permitidos que puede llegar a ATC (50% de 10 = 5 ATC). Al llegar, el bot deja de entregarle. 100 = sin límite' : undefined}>{h}</th>)}</tr></thead><tbody>{visibles.map(r => {
           const limite = r.gestionables_actuales !== null && r.gestionables_actuales >= r.gestionables_permitidos;
           const cambiar = delta => setRows(prev => prev.map(x => x.id === r.id ? { ...x, gestionables_permitidos: Math.max(0, x.gestionables_permitidos + delta) } : x));
           const cambiarAtc = delta => setRows(prev => prev.map(x => x.id === r.id ? { ...x, porcentaje_atc_max: Math.min(100, Math.max(0, x.porcentaje_atc_max + delta)) } : x));

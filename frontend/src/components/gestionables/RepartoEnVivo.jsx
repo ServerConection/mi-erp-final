@@ -224,9 +224,9 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             <li>Así todos reciben su 1.º antes de que alguien reciba el 2.º, y nadie pasa su cupo.</li>
             <li>Si alguien entra más tarde, recibe primero hasta igualar a los demás.</li>
             <li>Fuera de horario{horario ? ` (después de las ${horario.fin.slice(0, 5)} y antes de las ${horario.inicio.slice(0, 5)})` : ''}, o si nadie puede recibir, el lead espera a nombre de <strong>{estacion?.nombre || 'la estación'}</strong>.</li>
-            <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan como gestionables del día en que se entregan.</li>
-            <li>El <strong>permitido se mide en gestionables</strong>: si un lead pasa a ATC, Duplicado, Fuera de cobertura, etc., deja de contar y el asesor puede recibir otro.</li>
-            <li><strong>Límite de ATC</strong>: si de lo que recibió hoy el % en ATC llega a su máximo (por defecto 50%, se edita en Cuotas), el bot no le entrega aunque tenga cupo.</li>
+            <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan en el día en que se entregan.</li>
+            <li>El <strong>permitido es el total de leads del día</strong> (bot + humano, en cualquier etapa). Al llegar a su permitido ya no recibe más.</li>
+            <li><strong>Límite de ATC</strong>: su ATC no puede llegar al % de sus permitidos (por defecto 50%: con 10 permitidos, al llegar a 5 ATC ya no recibe). Se edita en Cuotas.</li>
             <li>Si una persona asigna un lead a mano en Bitrix, el ERP lo detecta (cada 5 min) y lo cuenta como <strong>Humano</strong>. Bot + Humano = lo que lleva el asesor contra su permitido: si llega al límite, el bot ya no le entrega.</li>
             <li>Si una persona mueve un lead de un asesor a otro, cuenta solo para el que lo tiene ahora.</li>
             <li>Si apagas el reparto, todo se detiene: no se reparte ni se entrega la cola.</li>
@@ -249,7 +249,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2" title="Gestionables / Permitidos. Lo que pasó a ATC, Duplicado, etc. libera cupo">Cupo usado (gestionables)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC y su %. Si llega al máximo, el bot no le entrega">ATC</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
                 {ordenadas.map(({ r, turno }) => {
@@ -262,7 +262,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                       <td className="p-2 font-medium text-slate-800">{r.nombre}</td>
                       <td className="p-2">
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span>
-                        {r.bloqueado_atc && <span className="ml-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700" title={`Su ATC llegó a ${r.atc_pct}% (máx ${r.atc_max}%). El bot no le entrega hasta que baje.`}>Límite ATC</span>}
+                        {r.bloqueado_atc && <span className="ml-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700" title={`Llegó a ${r.atc} ATC (tope ${r.atc_tope}: ${r.atc_max}% de ${r.permitidos} permitidos). El bot ya no le entrega.`}>Límite ATC</span>}
                       </td>
                       <td className="p-2">
                         <div className="flex items-center gap-2">
@@ -274,8 +274,8 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>
-                      <td className={`p-2 text-center tabular-nums ${r.bloqueado_atc ? 'font-bold text-red-700' : ''}`} title={`Máximo permitido: ${r.atc_max ?? 50}%`}>
-                        {r.atc ?? '—'}{r.atc != null && <span className="ml-1 text-xs">({r.atc_pct}%)</span>}
+                      <td className={`p-2 text-center tabular-nums ${r.bloqueado_atc ? 'font-bold text-red-700' : ''}`} title={`Tope: ${r.atc_max ?? 50}% de ${r.permitidos} permitidos`}>
+                        {r.atc ?? '—'}{r.atc != null && <span className="ml-1 text-xs">{r.atc_tope != null ? `/ ${r.atc_tope}` : '(sin límite)'}</span>}
                       </td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
@@ -284,7 +284,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">"Total asignados" = Bot + Humano. "Gestionables" = de esos, cuántos siguen en una etapa gestionable (sin ATC, Duplicado, Fuera de cobertura, etc.). El permitido se mide contra los gestionables: si un lead pasa a ATC, le libera cupo al asesor. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
+            <p className="mt-2 text-xs text-slate-500">"Total asignados" = Bot + Humano. "Gestionables" = de esos, cuántos no están en ATC, Duplicado, Fuera de cobertura, etc. (solo informativo). El permitido se mide contra el total de leads; el ATC no puede llegar al % de sus permitidos. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
           </div>
         )}
       </div>

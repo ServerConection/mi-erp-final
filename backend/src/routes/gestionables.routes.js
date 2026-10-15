@@ -46,11 +46,10 @@ router.get('/', async (req, res) => {
       const actual = await db.query(
         `SELECT UPPER(BTRIM(responsible)) AS asesor, COUNT(*)::int AS total
            FROM public.bitrix_webhook_leads
-          WHERE empresa = $3
+          WHERE empresa = $2
             AND LEFT(created_at_ecuador, 10) = $1
-            AND LOWER(BTRIM(COALESCE(etapa, ''))) <> ALL($2::text[])
           GROUP BY 1`,
-        [req.query.fecha, ETAPAS_NO_GESTIONABLES_LEADS, E.clave]
+        [req.query.fecha, E.clave]
       );
       counts = new Map(actual.rows.map(r => [r.asesor, r.total]));
     } catch (e) {
@@ -98,7 +97,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy, bloqueadoPorAtc } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -152,21 +151,25 @@ router.get('/reparto/estado', async (req, res) => {
     const data = asesores.rows.map((r) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
       const esEstacion = normalizarNombre(r.nombre) === normalizarNombre(cfg.estacion_nombre);
+      const atcHoy = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.atc || 0) : null;
+      const tope = topeAtc({ permitidos: r.permitidos, maxPct: r.atc_max });
       return {
         ...r,
-        // Cupo usado = gestionables (lo que pasó a ATC, Duplicado, etc. libera cupo)
+        // Cupo usado = TOTAL de leads entregados hoy (bot + humano, cualquier etapa)
         total_asignados: r.asignados,
-        asignados: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : r.asignados,
-        disponibles: Math.max(0, r.permitidos - (gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : r.asignados)),
+        asignados: r.asignados,
+        disponibles: Math.max(0, r.permitidos - r.asignados),
         en_linea: enLinea ? !!l?.enLinea : null,
         jornada: l?.jornada || null,
         encontrado_en_bitrix: enLinea ? !!l : null,
         es_estacion: esEstacion,
         gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
         // % ATC de lo recibido hoy y si ya llegó a su máximo (el bot no le entrega)
-        atc: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.atc || 0) : null,
-        atc_pct: gestMap && r.asignados ? Math.round(((gestMap.get(normalizarNombre(r.nombre))?.atc || 0) * 100) / r.asignados) : 0,
-        bloqueado_atc: gestMap ? bloqueadoPorAtc({ total: r.asignados, atc: gestMap.get(normalizarNombre(r.nombre))?.atc || 0, maxPct: r.atc_max }) : false,
+        // ATC de hoy frente a su tope (% de sus permitidos)
+        atc: atcHoy,
+        atc_tope: tope === null ? null : Math.ceil(tope),
+        atc_pct: atcHoy !== null && r.permitidos ? Math.round((atcHoy * 100) / r.permitidos) : 0,
+        bloqueado_atc: gestMap ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: atcHoy, maxPct: r.atc_max }) : false,
       };
     });
     res.json({

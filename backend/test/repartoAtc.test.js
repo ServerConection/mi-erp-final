@@ -27,3 +27,14 @@ test('TXT acepta 4 o 5 columnas (% ATC opcional)', () => {
   assert.equal(b[0].porcentaje_atc_max, 40);
   assert.throws(() => parseTxt('id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga;porcentaje_atc_max\n1;ANA;4;2026-10-07;140\n'));
 });
+
+test('efectividad: 30% de gestionables con más de 3 h sin Venta Subida bloquea', () => {
+  const { bloqueadoPorEfectividad, esVentaSubida } = require('../src/shared/repartoConteo');
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 3 }), true);   // ejemplo de Bryan
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 2 }), false);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 0, vencidos: 0 }), false);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 2, vencidos: 1 }), true);    // 50% ≥ 30%
+  assert.equal(esVentaSubida('Venta Subida'), true);
+  assert.equal(esVentaSubida('VENTA_SUBIDA'), true);
+  assert.equal(esVentaSubida('Venta por otra pauta de la empresa'), false);
+});

@@ -16,4 +16,14 @@ const privateOwners = () => [...new Set([
 
 const isPrivateOwner = usuario => privateOwners().includes(String(usuario || '').trim().toLowerCase())
 
-module.exports = { clean, protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner }
+// Auditores multiempresa: ven en el Inbox los chats de NOVONET y VELSA
+// (además de su propia empresa). Agregar más con WA_AUDITORES=usr1,usr2
+const AUDITOR_EMPRESAS = ['NOVONET', 'VELSA']
+const auditores = () => [...new Set([
+  'jsimbana',
+  ...String(process.env.WA_AUDITORES || '').split(','),
+].map(v => String(v || '').trim().toLowerCase()).filter(Boolean))]
+
+const isAuditor = usuario => auditores().includes(String(usuario || '').trim().toLowerCase())
+
+module.exports = { clean, protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS }

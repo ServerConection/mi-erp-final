@@ -4,7 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
-const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner } = require('../services/waPrivacy')
+const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy')
 const { esMandoWabot, empresaVisibleWabot } = require('../shared/waAccesoEmpresa')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
@@ -114,6 +114,10 @@ const isSupervisor = (req) => esMandoWabot(req.user)
 // Agrega los parámetros necesarios al array `params` (por referencia).
 function baseVisibilityCondition(req, params) {
   if (isAdmin(req)) return null
+  if (isAuditor(req.user?.usuario)) {
+    params.push([...new Set([...AUDITOR_EMPRESAS, (req.user.empresa || '').toUpperCase()])])
+    return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($${params.length}::text[]))`
+  }
   if (isSupervisor(req)) {
     params.push(empresaVisibleWabot(req.user))
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
@@ -150,6 +154,12 @@ async function findOwnedConversation(req, id) {
   if (isPrivateOwner(conv.line_owner_usuario) && conv.line_created_by !== req.user.id) return null
   if (isAdmin(req)) return conv
   if (isAdminOnlyNumber(conv.wa_number) || isAdminOnlyNumber(conv.contact_real_phone)) return null
+  if (isAuditor(req.user?.usuario)) {
+    const emp = (conv.line_empresa || '').toUpperCase()
+    if (AUDITOR_EMPRESAS.includes(emp) || emp === (req.user.empresa || '').toUpperCase()) return conv
+    if (conv.line_created_by === req.user.id) return conv
+    return null
+  }
   if (isSupervisor(req)) {
     return (conv.line_empresa || '').toUpperCase() === empresaVisibleWabot(req.user) ? conv : null
   }

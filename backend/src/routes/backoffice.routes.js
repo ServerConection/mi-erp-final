@@ -350,6 +350,13 @@ const CAMPOS_EDITABLES = new Set([
   'fecha_activacion_netlife',
 ]);
 
+const CAMPOS_GALERIA = new Set([
+  'foto_cedula_frontal', 'foto_cedula_trasera', 'foto_carnet', 'foto_cartel',
+  'archivo_resumen', 'archivo_planilla', 'archivo_nombramiento',
+  'archivo_registro_mercantil', 'archivo_ruc',
+  'archivo_otro1', 'archivo_otro2', 'archivo_otro3', 'archivo_otro4',
+]);
+
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -721,8 +728,10 @@ router.put('/:id', async (req, res) => {
       payload.fecha_hora_regularizacion = new Date();
     }
 
-    // hist_cambio_estatus existía, pero esta ruta no lo actualizaba. Se agrega
-    // un evento append-only por cada campo de estado que realmente cambió.
+    // El historial es append-only. Los estados distintos de Netlife solo se
+    // registran si cambiaron; Netlife también admite una reafirmación explícita
+    // (p. ej. ASIGNADO -> ASIGNADO). Guardar otro campo no incluye Netlife en
+    // el payload, por lo que nunca crea una reafirmación accidental.
     const CAMPOS_ESTADO = new Set([
       'estatus_envio', 'netlife_estatus_real', 'estatus_regularizacion',
       'estado_welcome', 'estado_recaudacion', 'auditoria_documentos',
@@ -738,17 +747,30 @@ router.put('/:id', async (req, res) => {
       return lista.map(item => String(item).trim().toUpperCase()).filter(Boolean).sort().join('|');
     };
     const cambiosEstado = Object.entries(payload)
-      .filter(([campo, valor]) => CAMPOS_ESTADO.has(campo) && (
-        campo === 'netlife_estatus_real'
-        || valorComparableEstado(campo, actual[0][campo]) !== valorComparableEstado(campo, valor)
-      ))
-      .map(([campo, valor]) => ({
-        campo,
-        anterior: actual[0][campo] ?? null,
-        nuevo: valor ?? null,
-        reafirmacion: campo === 'netlife_estatus_real'
-          && String(actual[0][campo] ?? '') === String(valor ?? ''),
-      }));
+      .filter(([campo, valor]) => (CAMPOS_ESTADO.has(campo) || CAMPOS_GALERIA.has(campo))
+        && (campo === 'netlife_estatus_real'
+          || valorComparableEstado(campo, actual[0][campo]) !== valorComparableEstado(campo, valor)))
+      .map(([campo, valor]) => {
+        if (!CAMPOS_GALERIA.has(campo)) {
+          return {
+            campo,
+            anterior: actual[0][campo] ?? null,
+            nuevo: valor ?? null,
+            reafirmacion: campo === 'netlife_estatus_real'
+              && valorComparableEstado(campo, actual[0][campo]) === valorComparableEstado(campo, valor),
+          };
+        }
+        const teniaDocumento = Boolean(String(actual[0][campo] || '').trim());
+        const tieneDocumento = Boolean(String(valor || '').trim());
+        return {
+          campo,
+          anterior: teniaDocumento ? 'Documento cargado' : 'Sin documento',
+          nuevo: tieneDocumento ? 'Documento cargado' : 'Sin documento',
+          accion: !teniaDocumento && tieneDocumento
+            ? 'AGREGADO'
+            : teniaDocumento && !tieneDocumento ? 'ELIMINADO' : 'REEMPLAZADO',
+        };
+      });
     if (cambiosEstado.length) {
       let historial = actual[0].hist_cambio_estatus;
       if (typeof historial === 'string') {

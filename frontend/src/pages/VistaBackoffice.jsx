@@ -968,6 +968,7 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
   const [abierto, setAbierto] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
   const inputRef = useRef(null);
 
   const MAX_MB = 15;
@@ -1014,6 +1015,30 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
     } finally {
       setSubiendo(false);
       if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const eliminar = async () => {
+    if (!editable || !valor || eliminando) return;
+    if (!window.confirm(`¿Eliminar el documento de “${etiqueta}”?`)) return;
+    setEliminando(true);
+    try {
+      const guardado = await onCambio("");
+      if (guardado === false) {
+        onAlert({ type: "error", msg: "No se pudo eliminar el documento del registro." });
+      } else {
+        setAbierto(false);
+        onAlert({
+          type: "success",
+          msg: guardado === true
+            ? "Documento eliminado correctamente."
+            : "Documento retirado. Recuerda pulsar GUARDAR para confirmar el cambio.",
+        });
+      }
+    } catch {
+      onAlert({ type: "error", msg: "Error de conexión al eliminar el documento." });
+    } finally {
+      setEliminando(false);
     }
   };
 
@@ -1088,6 +1113,16 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
             style={{ ...botonAccionBase, background: "#fff" }}
           >
             {subiendo ? "Subiendo…" : valor ? "Reemplazar" : "Subir documento"}
+          </button>
+        )}
+        {editable && valor && (
+          <button
+            type="button"
+            disabled={subiendo || eliminando}
+            onClick={eliminar}
+            style={{ ...botonAccionBase, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca" }}
+          >
+            {eliminando ? "Eliminando…" : "Eliminar"}
           </button>
         )}
       </div>
@@ -1405,7 +1440,7 @@ function GaleriaDocumentosRegistro({ registroId, puedeEditar, onGuardarDocumento
 
         <div style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700, background: puedeEditar ? "#ecfdf5" : "#eff6ff", color: puedeEditar ? "#047857" : "#1e40af", border: `1px solid ${puedeEditar ? "#a7f3d0" : "#bfdbfe"}` }}>
           {puedeEditar
-            ? "✏️ Puedes reemplazar o subir documentos. Cada cambio se guarda al instante."
+            ? "✏️ Puedes subir, reemplazar o eliminar documentos. Cada cambio se guarda al instante."
             : "👁 Solo lectura: puedes ver los documentos, pero no modificarlos."}
         </div>
 
@@ -1824,6 +1859,7 @@ function valoresSeleccionMultiple(valor) {
 }
 
 function valorVisibleHistorial(campo, valor) {
+  if (esCampoDocumento(campo)) return valor || "Sin documento";
   if (campo !== "auditoria_documentos") return valor || "Sin estado";
   const valores = valoresSeleccionMultiple(valor);
   if (!valores.length) return "Sin documentos";
@@ -2507,7 +2543,7 @@ function HistorialCambiosEstado({ valor }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid #eff6ff" }}>
         <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#eff6ff", color: "#2563eb" }}>↺</span>
         <div>
-          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "#0f172a" }}>Historial de cambios de estado</h4>
+          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "#0f172a" }}>Historial de cambios</h4>
           <div style={{ marginTop: 2, fontSize: 11, color: "#64748b" }}>Solo lectura - generado automaticamente por el sistema</div>
         </div>
         <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: "#1d4ed8", background: "#eff6ff", borderRadius: 999, padding: "3px 9px" }}>{eventos.length}</span>
@@ -2541,7 +2577,10 @@ function HistorialCambiosEstado({ valor }) {
                 <div style={{ display: "grid", gap: 7, marginTop: 11 }}>
                   {cambios.map((cambio, cambioIndice) => (
                     <div key={`${cambio?.campo || "estado"}-${cambioIndice}`} style={{ display: "grid", gridTemplateColumns: "minmax(130px, .8fr) minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, fontSize: 11.5 }}>
-                      <strong style={{ color: "#334155" }}>{FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}</strong>
+                      <strong style={{ color: "#334155" }}>
+                        {FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}
+                        {cambio?.accion ? ` · ${cambio.accion}` : cambio?.reafirmacion ? " · REAFIRMACIÓN" : ""}
+                      </strong>
                       <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.anterior)}</span>
                       <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
                       <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.nuevo)}</span>
@@ -3156,17 +3195,6 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       if (turnoNuevo !== turnoViejo) {
         payload.turno_agendado = turnoNuevo;
       }
-
-      // Al pulsar Guardar se permite reafirmar el mismo Estatus Netlife. El
-      // backend lo registra como una nueva gestiÃ³n aunque anterior y nuevo
-      // sean iguales.
-      if (
-        camposGuardables.includes("netlife_estatus_real") &&
-        detail?.netlife_estatus_real
-      ) {
-        payload.netlife_estatus_real = detail.netlife_estatus_real;
-      }
-
       /*
        * Si no hay cambios, no hacemos PUT.
        */

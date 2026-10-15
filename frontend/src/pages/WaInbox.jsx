@@ -375,18 +375,28 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     if (!newMsg.trim() || !selected || sending) return;
     setSending(true);
     const text = newMsg.trim();
-    setNewMsg("");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       const r = await fetch(`${API}/conversations/${selected.id}/send`, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ text }),   // el backend espera "text"
+        signal: controller.signal,
       });
       const d = await r.json();
-      if (!d.success) { setNewMsg(text); alert(d.error || "No se pudo enviar"); }
+      if (!d.success) { alert(d.error || "No se pudo enviar"); return; }
+      setNewMsg("");
       loadMessages(selected.id);          // refresca para ver el mensaje enviado
     } catch (e) {
-      setNewMsg(text); alert(e.message || "No se pudo enviar el mensaje");
-    } finally { setSending(false); }
+      if (e.name === "AbortError") {
+        alert("El servidor no confirmó el envío en 30 segundos. Revisa el chat antes de volver a enviarlo para evitar duplicados.");
+      } else {
+        alert(e.message || "No se pudo enviar el mensaje");
+      }
+    } finally {
+      clearTimeout(timeout);
+      setSending(false);
+    }
   };
 
   const selectInternalImage = (file) => {
@@ -908,10 +918,11 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                 onChange={e => { sendFile(e.target.files?.[0]); e.target.value = ""; }}
               />
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               placeholder="Escribe un mensaje…"
               value={newMsg}
+              disabled={sending}
               onChange={e => setNewMsg(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
               onPaste={e => {
@@ -925,11 +936,11 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   }
                 }
               }}
-              className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-green-400"
+              className="flex-1 min-w-0 max-h-40 resize-y border border-slate-200 rounded-xl px-4 py-2 text-sm leading-5 focus:outline-none focus:border-green-400 whitespace-pre-wrap"
             />
             <button onClick={send} disabled={sending || !newMsg.trim()}
               className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
-              {sending ? "…" : "Enviar"}
+              {sending ? "Enviando…" : "Enviar"}
             </button>
             <button onClick={saveInternalNote} disabled={sending || uploading || (!newMsg.trim() && !internalImage)}
               title="Guardar solo en el ERP; no se envía al cliente"

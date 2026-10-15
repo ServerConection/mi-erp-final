@@ -31,7 +31,7 @@ const { bitrixCallNovonet, bitrixCallCuenta } = require('../services/bitrix.serv
 const { getEmpresa, empresaValida } = require('../shared/repartoEmpresas');
 const { elegirAsesor, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
-const { conteoGestionablesHoy, bloqueadoPorAtc } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc, bloqueadoPorEfectividad } = require('../shared/repartoConteo');
 
 // Opcional: si se define, antes de escribir se verifica que el deal siga
 // realmente en esta etapa (evita pisar el campo si el lead ya avanzó antes
@@ -171,6 +171,9 @@ const crearReparto = (empresa) => {
       const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
       r.total = r.asignados;
       r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0, maxPct: r.atc_max }) : false;
+      // Efectividad: 30% de sus gestionables con más de 3 h sin Venta Subida → no recibe
+      r.bloqueado_efectividad = conteo ? bloqueadoPorEfectividad({ gestionables: c?.gestionables || 0, vencidos: c?.vencidos || 0 }) : false;
+      r.bloqueado = r.bloqueado_atc || r.bloqueado_efectividad;
     }
     const estNorm = normalizarNombre(estacion);
     const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);
@@ -179,11 +182,12 @@ const crearReparto = (empresa) => {
       ? sinEstacion.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea)
       : sinEstacion;
     return {
-      disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos && !r.bloqueado_atc),
+      disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos && !r.bloqueado),
       hayConCupo: sinEstacion.some((r) => r.asignados < r.permitidos),
-      // Hay asesores en línea con cupo, pero todos frenados por su % de ATC
+      // Hay asesores en línea con cupo, pero todos frenados por ATC o efectividad
       soloBloqueadosAtc: enLineaRows.some((r) => r.asignados < r.permitidos)
-        && enLineaRows.every((r) => !(r.asignados < r.permitidos) || r.bloqueado_atc),
+        && enLineaRows.every((r) => !(r.asignados < r.permitidos) || r.bloqueado),
+      porEfectividad: enLineaRows.some((r) => r.asignados < r.permitidos && r.bloqueado_efectividad),
     };
   };
 
@@ -206,14 +210,14 @@ const crearReparto = (empresa) => {
         return { estado: 'ya_repartido', elegido: { nombre: ya.rows[0].asesor_asignado } };
       }
 
-      const { disponibles, hayConCupo, soloBloqueadosAtc } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
+      const { disponibles, hayConCupo, soloBloqueadosAtc, porEfectividad } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
       const elegido = elegirAsesor(disponibles.map((r) => ({
         nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
       })));
 
       if (!elegido) {
         await client.query('ROLLBACK');
-        return { estado: 'sin_disponible', motivo: soloBloqueadosAtc ? 'limite_atc' : (enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite') };
+        return { estado: 'sin_disponible', motivo: soloBloqueadosAtc ? (porEfectividad ? 'limite_efectividad' : 'limite_atc') : (enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite') };
       }
 
       const userId = await idUsuarioBitrix(elegido.nombre);
@@ -260,6 +264,7 @@ const crearReparto = (empresa) => {
     en_estacion:      'Ya estaba a nombre de la estación',
     reintento_bitrix: 'Bitrix estaba saturado; se reintenta desde la cola',
     limite_atc:       'Los asesores con cupo superaron su % de ATC',
+    limite_efectividad: 'Los asesores con cupo tienen leads de más de 3 h sin Venta Subida',
   };
   const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
     const userId = await idUsuarioBitrix(cfg.estacion_nombre);

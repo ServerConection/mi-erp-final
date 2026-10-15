@@ -27,6 +27,7 @@ const MOTIVOS_COLA = {
   cola_en_espera: 'Había otros esperando antes',
   en_estacion: 'Ya estaba a nombre de la estación',
   limite_atc: 'Los asesores con cupo superaron su % de ATC',
+  limite_efectividad: 'Los asesores con cupo tienen leads de más de 3 h sin Venta Subida',
 };
 
 const ESTADOS = {
@@ -80,7 +81,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
 
   const { pueden, siguiente, rondaActual, ordenadas } = useMemo(() => {
     const conCupo = filas.filter((r) => r.asignados < r.permitidos);
-    const pueden = ordenarPorTurno(conCupo.filter((r) => (!filtroLinea || r.en_linea) && !r.bloqueado_atc));
+    const pueden = ordenarPorTurno(conCupo.filter((r) => (!filtroLinea || r.en_linea) && !r.bloqueado_atc && !r.bloqueado_efectividad));
     const turnoDe = new Map(pueden.map((r, i) => [r.nombre, i + 1]));
     // Orden de la vista: En línea → En pausa → Desconectado → resto.
     // Dentro de cada grupo: primero los que tienen cupo (por turno), luego los llenos (por nombre).
@@ -227,6 +228,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan en el día en que se entregan.</li>
             <li>El <strong>permitido es el total de leads del día</strong> (bot + humano, en cualquier etapa). Al llegar a su permitido ya no recibe más.</li>
             <li><strong>Límite de ATC</strong>: su ATC no puede llegar al % de sus permitidos (por defecto 50%: con 10 permitidos, al llegar a 5 ATC ya no recibe). Se edita en Cuotas.</li>
+            <li><strong>Efectividad</strong>: cada lead tiene {datos?.efectividad?.plazo_horas ?? 3} horas desde que se le entregó para pasar a <strong>Venta Subida</strong>. Si de sus gestionables, los que pasaron ese plazo sin subir llegan al {datos?.efectividad?.pct_max_sin_venta ?? 30}%, ya no recibe aunque tenga cupo. En cuanto los sube, vuelve a recibir.</li>
             <li>Si una persona asigna un lead a mano en Bitrix, el ERP lo detecta (cada 5 min) y lo cuenta como <strong>Humano</strong>. Bot + Humano = lo que lleva el asesor contra su permitido: si llega al límite, el bot ya no le entrega.</li>
             <li>Si una persona mueve un lead de un asesor a otro, cuenta solo para el que lo tiene ahora.</li>
             <li>Si apagas el reparto, todo se detiene: no se reparte ni se entrega la cola.</li>
@@ -249,7 +251,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center" title="Gestionables con más de 3 h desde la entrega y sin Venta Subida / tope (30% de sus gestionables). Al llegar al tope, el bot no le entrega">Sin subir +3h</th><th className="p-2 text-center" title="Leads de hoy en Venta Subida">Venta subida</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
                 {ordenadas.map(({ r, turno }) => {
@@ -262,6 +264,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                       <td className="p-2 font-medium text-slate-800">{r.nombre}</td>
                       <td className="p-2">
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span>
+                        {r.bloqueado_efectividad && <span className="ml-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700" title={`Tiene ${r.vencidos} lead(s) con más de 3 h sin Venta Subida (tope ${r.vencidos_tope}). Vuelve a recibir cuando los suba.`}>Sin subir +3h</span>}
                         {r.bloqueado_atc && <span className="ml-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700" title={`Llegó a ${r.atc} ATC (tope ${r.atc_tope}: ${r.atc_max}% de ${r.permitidos} permitidos). El bot ya no le entrega.`}>Límite ATC</span>}
                       </td>
                       <td className="p-2">
@@ -277,6 +280,10 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                       <td className={`p-2 text-center tabular-nums ${r.bloqueado_atc ? 'font-bold text-red-700' : ''}`} title={`Tope: ${r.atc_max ?? 50}% de ${r.permitidos} permitidos`}>
                         {r.atc ?? '—'}{r.atc != null && <span className="ml-1 text-xs">{r.atc_tope != null ? `/ ${r.atc_tope}` : '(sin límite)'}</span>}
                       </td>
+                      <td className={`p-2 text-center tabular-nums ${r.bloqueado_efectividad ? 'font-bold text-orange-700' : ''}`}>
+                        {r.vencidos ?? '—'}{r.vencidos != null && <span className="ml-1 text-xs">/ {r.vencidos_tope}</span>}
+                      </td>
+                      <td className="p-2 text-center tabular-nums font-semibold text-blue-700">{r.venta_subida ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
                     </tr>
@@ -284,7 +291,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">"Total asignados" = Bot + Humano. "Gestionables" = de esos, cuántos no están en ATC, Duplicado, Fuera de cobertura, etc. (solo informativo). El permitido se mide contra el total de leads; el ATC no puede llegar al % de sus permitidos. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
+            <p className="mt-2 text-xs text-slate-500">"Total asignados" = Bot + Humano. "Gestionables" = de esos, cuántos no están en ATC, Duplicado, Fuera de cobertura, etc. (solo informativo). El permitido se mide contra el total de leads; el ATC no puede llegar al % de sus permitidos. "Sin subir +3h" = gestionables con más de 3 h sin Venta Subida (al llegar al 30% de sus gestionables deja de recibir). "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
           </div>
         )}
       </div>

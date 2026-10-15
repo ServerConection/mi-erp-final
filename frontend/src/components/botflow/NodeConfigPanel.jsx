@@ -129,7 +129,10 @@ export default function NodeConfigPanel({ node, allNodes, onClose, onUpdateField
                               const next = [...options];
                               next[idx] = {
                                 ...optObj,
-                                aliases: e.target.value.split(",").map((alias) => alias.trim()).filter(Boolean),
+                                // Conservar el texto durante la escritura. Si se convierte
+                                // a array en cada tecla, la coma final desaparece y el
+                                // usuario no puede empezar la siguiente variante.
+                                aliases: e.target.value,
                               };
                               onOptionsChange(next);
                             }}

@@ -171,8 +171,8 @@ const crearReparto = (empresa) => {
       const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
       r.total = r.asignados;
       r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0, maxPct: r.atc_max }) : false;
-      // Efectividad: 30% de sus gestionables con más de 3 h sin Venta Subida → no recibe
-      r.bloqueado_efectividad = conteo ? bloqueadoPorEfectividad({ gestionables: c?.gestionables || 0, vencidos: c?.vencidos || 0 }) : false;
+      // Efectividad: vencidos (+3 h sin Venta Subida) ≥ meta y aún no cubre su meta (30% ↑) → no recibe
+      r.bloqueado_efectividad = conteo ? bloqueadoPorEfectividad({ gestionables: c?.gestionables || 0, vencidos: c?.vencidos || 0, venta: c?.venta || 0 }) : false;
       r.bloqueado = r.bloqueado_atc || r.bloqueado_efectividad;
     }
     const estNorm = normalizarNombre(estacion);

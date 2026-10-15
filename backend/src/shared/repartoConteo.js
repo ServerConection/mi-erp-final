@@ -22,17 +22,23 @@ const { getEmpresa } = require('./repartoEmpresas');
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
 // Regla de efectividad: cada lead tiene 3 horas desde que se le entregó al
-// asesor para pasar a "Venta Subida". Si de sus gestionables del día, los que
-// ya vencieron su plazo sin subir llegan al 30%, deja de recibir (aunque tenga
-// cupo). En cuanto los sube, vuelve a recibir solo.
+// asesor para pasar a "Venta Subida". Meta = 30% de sus gestionables del día,
+// redondeado SIEMPRE hacia arriba (7 → 2,1 → 3; 5 → 1,5 → 2).
+// Deja de recibir si ya tiene tantos leads vencidos (+3 h sin subir) como su
+// meta Y todavía no llega a la meta de Ventas Subidas. Si cubre la meta, sigue
+// recibiendo aunque tenga leads vencidos.
 const PLAZO_VENTA_HORAS = Number(process.env.GESTIONABLES_PLAZO_VENTA_HORAS) || 3;
 const PCT_SIN_VENTA_MAX = Number(process.env.GESTIONABLES_PCT_SIN_VENTA) || 30;
 const normEtapa = (etapa) => String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/_/g, ' ').trim().replace(/\s+/g, ' ').toUpperCase();
 const esVentaSubida = (etapa) => normEtapa(etapa) === 'VENTA SUBIDA';
-const bloqueadoPorEfectividad = ({ gestionables, vencidos, pct = PCT_SIN_VENTA_MAX }) => {
-  if (!gestionables || !vencidos) return false;
-  return vencidos * 100 >= gestionables * pct;
+const metaVentaSubida = (gestionables, pct = PCT_SIN_VENTA_MAX) =>
+  Math.ceil(Math.round((Number(gestionables) || 0) * pct) / 100);
+const bloqueadoPorEfectividad = ({ gestionables, vencidos, venta = 0, pct = PCT_SIN_VENTA_MAX }) => {
+  const meta = metaVentaSubida(gestionables, pct);
+  if (!meta || !vencidos) return false;
+  if ((Number(venta) || 0) >= meta) return false;   // cubrió su 30%: habilitado
+  return vencidos >= meta;
 };
 
 // ¿La etapa es ATC? (ATC, ATC/SOPORTE, ATC SOPORTE, atc…)
@@ -94,4 +100,4 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, bloqueadoPorEfectividad, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX };

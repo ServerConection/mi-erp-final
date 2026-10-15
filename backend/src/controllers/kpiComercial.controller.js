@@ -182,12 +182,13 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
-        -- INGRESOS TOTALES JOT: cuenta todos los registros creados en el rango,
-        -- sin excluir por etapa CRM ni por estado Jotform. Debe coincidir con
-        -- el indicador global del dashboard en NOVONET y VELSA.
+        -- INGRESOS TOTALES JOT: cuenta los registros creados en el rango,
+        -- excepto los marcados como DUPLICADO (incluido el typo DUPLLICADO).
+        -- La exclusion se basa en el estado Jotform, no en la etapa CRM.
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
+              AND ${ESTADO_NORM_SQL} NOT IN ('DUPLICADO', 'DUPLLICADO')
         )                                                  AS ingresos_jot,
 
         COUNT(*) FILTER (

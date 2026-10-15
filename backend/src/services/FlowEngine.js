@@ -93,9 +93,23 @@ class FlowEngine {
         const waitingNode = flow.nodes.find(n => n.id === context._waitingPollNode)
         if (waitingNode) {
           // Buscar la opción seleccionada y su destino directo
-          const selectedOption = (waitingNode.data?.options || []).find(
-            o => (typeof o === 'object' ? o.label : o) === text
-          )
+          const rawOptions = waitingNode.data?.options || []
+          const selectedOption = this._findPollOption(rawOptions, text)
+
+          // Una respuesta desconocida no debe sacar al contacto del menu.
+          if (!selectedOption) {
+            const numbers = rawOptions.map((_, index) => index + 1).join(', ')
+            try {
+              await this.baileysManager.sendText(
+                lineId,
+                waNumber,
+                `No reconocí esa opción. Responde con el número de tu elección (${numbers}) o con el texto de la opción.`
+              )
+            } catch (e) {
+              console.error('[FlowEngine] Error recordando las opciones del menu:', e.message)
+            }
+            return
+          }
 
           delete context._waitingPollNode
           delete context._pollOptions
@@ -464,6 +478,38 @@ class FlowEngine {
     } catch (e) {
       return obj
     }
+  }
+
+  _normalizePollAnswer(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ')
+  }
+
+  _findPollOption(options, answer) {
+    const normalizedAnswer = this._normalizePollAnswer(answer)
+    if (!normalizedAnswer) return null
+
+    return options.find((option, index) => {
+      const optionObject = typeof option === 'object' && option !== null
+        ? option
+        : { label: option }
+      const aliases = Array.isArray(optionObject.aliases)
+        ? optionObject.aliases
+        : String(optionObject.aliases || '').split(',')
+      const acceptedAnswers = [
+        String(index + 1),
+        `opcion ${index + 1}`,
+        optionObject.label,
+        ...aliases,
+      ]
+
+      return acceptedAnswers.some(value => this._normalizePollAnswer(value) === normalizedAnswer)
+    }) || null
   }
 
   _evalCondition(input, cond) {

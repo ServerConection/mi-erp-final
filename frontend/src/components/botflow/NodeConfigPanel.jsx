@@ -120,6 +120,25 @@ export default function NodeConfigPanel({ node, allNodes, onClose, onUpdateField
                             className="text-slate-300 hover:text-red-400 text-xs px-1"
                           >🗑️</button>
                         </div>
+                        <div>
+                          <input
+                            type="text"
+                            value={Array.isArray(optObj.aliases) ? optObj.aliases.join(", ") : (optObj.aliases || "")}
+                            placeholder="Variantes: sí, si entendí, entendido"
+                            onChange={(e) => {
+                              const next = [...options];
+                              next[idx] = {
+                                ...optObj,
+                                aliases: e.target.value.split(",").map((alias) => alias.trim()).filter(Boolean),
+                              };
+                              onOptionsChange(next);
+                            }}
+                            className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+                          />
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            El número {idx + 1} siempre funciona. Separa otras respuestas con comas.
+                          </p>
+                        </div>
                         <p className="text-[10px] text-slate-400">
                           Destino: {optObj.nextNodeId
                             ? <span className="text-slate-600 font-medium">{targetLabel(allNodes, optObj.nextNodeId)}</span>

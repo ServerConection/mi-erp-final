@@ -9,12 +9,15 @@ test('detecta etapas ATC', () => {
 });
 
 test('bloquea con % ATC >= máximo (50% por defecto)', () => {
-  assert.equal(bloqueadoPorAtc({ total: 4, atc: 2, maxPct: 50 }), true);   // 50% → bloqueado
-  assert.equal(bloqueadoPorAtc({ total: 4, atc: 1, maxPct: 50 }), false);  // 25%
-  assert.equal(bloqueadoPorAtc({ total: 0, atc: 0, maxPct: 50 }), false);  // sin leads aún
-  assert.equal(bloqueadoPorAtc({ total: 3, atc: 2, maxPct: undefined }), true); // default 50
-  assert.equal(bloqueadoPorAtc({ total: 2, atc: 2, maxPct: 100 }), false); // 100 = sin límite
-  assert.equal(bloqueadoPorAtc({ total: 10, atc: 3, maxPct: 30 }), true);
+  // Tope de ATC = % de sus permitidos (10 permitidos, 50% → 5 ATC)
+  assert.equal(bloqueadoPorAtc({ permitidos: 10, atc: 5, maxPct: 50 }), true);
+  assert.equal(bloqueadoPorAtc({ permitidos: 10, atc: 4, maxPct: 50 }), false);
+  assert.equal(bloqueadoPorAtc({ permitidos: 7, atc: 3, maxPct: 50 }), false);  // tope 3.5
+  assert.equal(bloqueadoPorAtc({ permitidos: 7, atc: 4, maxPct: 50 }), true);
+  assert.equal(bloqueadoPorAtc({ permitidos: 10, atc: 5, maxPct: undefined }), true); // default 50
+  assert.equal(bloqueadoPorAtc({ permitidos: 10, atc: 10, maxPct: 100 }), false); // 100 = sin límite
+  assert.equal(bloqueadoPorAtc({ permitidos: 0, atc: 0, maxPct: 50 }), false);
+  assert.equal(bloqueadoPorAtc({ permitidos: 10, atc: 3, maxPct: 30 }), true);
 });
 
 test('TXT acepta 4 o 5 columnas (% ATC opcional)', () => {

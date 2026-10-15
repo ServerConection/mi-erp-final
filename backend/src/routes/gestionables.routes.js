@@ -97,7 +97,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, bloqueadoPorEfectividad, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -170,13 +170,15 @@ router.get('/reparto/estado', async (req, res) => {
         atc_tope: tope === null ? null : Math.ceil(tope),
         atc_pct: atcHoy !== null && r.permitidos ? Math.round((atcHoy * 100) / r.permitidos) : 0,
         bloqueado_atc: gestMap ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: atcHoy, maxPct: r.atc_max }) : false,
-        // Efectividad: gestionables con más de 3 h sin Venta Subida vs 30% de sus gestionables
+        // Efectividad: Ventas Subidas vs meta (30% ↑ de gestionables) y leads vencidos (+3 h)
         venta_subida: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.venta || 0) : null,
         vencidos: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0) : null,
-        vencidos_tope: gestMap ? Math.max(1, Math.ceil(((gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) * PCT_SIN_VENTA_MAX) / 100)) : null,
+        // Meta de Ventas Subidas = 30% de sus gestionables, redondeado hacia arriba
+        meta_venta: gestMap ? metaVentaSubida(gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
         bloqueado_efectividad: gestMap ? bloqueadoPorEfectividad({
           gestionables: gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0,
           vencidos: gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0,
+          venta: gestMap.get(normalizarNombre(r.nombre))?.venta || 0,
         }) : false,
       };
     });

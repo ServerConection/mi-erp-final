@@ -85,6 +85,19 @@ const corsOptions = {
 app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
 
+// PERFORMANCE (2026-10-08): gzip para las respuestas JSON (Indicadores, Redes,
+// Backoffice pesan varios MB). Se excluye tiempo real y lo que se reenvía a erp-wabot.
+const compression = require('compression');
+const SIN_COMPRIMIR = ['/socket.io', '/wa-uploads', '/api/wa', '/api/bitrix-connector'];
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (SIN_COMPRIMIR.some(p => req.path.startsWith(p))) return false;
+    if ((req.headers.accept || '').includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
+
 // SEGURIDAD: Headers de seguridad nativos (sin dependencia helmet)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');

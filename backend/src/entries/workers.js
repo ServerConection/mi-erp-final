@@ -18,6 +18,7 @@ const { initCierreDiario }           = require('../jobs/cierreDiario.cron');
 const { initWinTrackerSync }         = require('../jobs/syncWinTracker.cron');
 const { initReconciliacionBitrix }  = require('../jobs/reconciliacionBitrix.cron');
 const { initNexoIa }                 = require('../jobs/nexoIa.cron');
+const { initJotformEvRefresh }      = require('../jobs/refreshJotformEv.cron');
 
 (async () => {
   console.log('[workers] iniciando jobs programados...');
@@ -29,6 +30,7 @@ const { initNexoIa }                 = require('../jobs/nexoIa.cron');
     initWinTrackerSync();         // inversión Arts/Velsa al arrancar y cada 30 minutos
     initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
     initCierreDiario();           // cierre diario 23:30 (America/Guayaquil) -> reportegeneral_d1
+    initJotformEvRefresh();       // envios_ventas -> MVs *_ev al instante (LISTEN/NOTIFY)
     initNexoIa();                 // borradores NEXO: cola cada 5 s, concurrencia 1
     console.log('[workers] jobs activos');
   } catch (e) {

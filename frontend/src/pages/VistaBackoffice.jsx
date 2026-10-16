@@ -2608,6 +2608,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
   const [alert, setAlert] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [detailOriginal, setDetailOriginal] = useState({});
+  const [reafirmarEstadoNetlife, setReafirmarEstadoNetlife] = useState(false);
   const [paginaTabla, setPaginaTabla] = useState(1);
   const solicitudDetalleRef = useRef(0);
   const campoDetallePendienteRef = useRef(null);
@@ -2845,6 +2846,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
         const normalizado = normalizarRegistro(json.data);
         setDetail(normalizado);
         setDetailOriginal(normalizado); // Copia original para comparar
+        setReafirmarEstadoNetlife(false);
         setShowModal(true);
       } else {
         setAlert({ type: "error", msg: json.error || "No se pudo cargar el registro" });
@@ -2875,6 +2877,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
     setSelectedId(null);
     setDetail(null);
     setDetailOriginal({});
+    setReafirmarEstadoNetlife(false);
     setAlert(null);
 
     // En Validación/Welcome el detalle vive dentro del tablero.
@@ -3195,6 +3198,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       if (turnoNuevo !== turnoViejo) {
         payload.turno_agendado = turnoNuevo;
       }
+
+      // Una reafirmación solo se envía cuando el usuario la solicita desde
+      // el control de Estatus Netlife. Así DETENIDO -> DETENIDO queda en el
+      // historial, pero editar otro campo no genera movimientos falsos.
+      if (reafirmarEstadoNetlife && detail?.netlife_estatus_real) {
+        payload.netlife_estatus_real = detail.netlife_estatus_real;
+      }
       /*
        * Si no hay cambios, no hacemos PUT.
        */
@@ -3272,6 +3282,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       const registroActualizado = normalizarRegistro(json.data);
       setDetail(registroActualizado);
       setDetailOriginal(registroActualizado);
+      setReafirmarEstadoNetlife(false);
       // No recargar la lista completa: conserva la posiciÃ³n vertical y
       // horizontal aunque el registro editado estÃ© al final de la tabla.
       setRows((actuales) => actuales.map((row) => (
@@ -3678,47 +3689,61 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   ? [valorActual, ...opciones]
                                   : opciones;
                                 return (
-                                  <select
-                                    value={valorActual}
-                                    onChange={(e) => {
-                                      const nuevoAuditor = e.target.value;
-                                      setDetail((prev) => {
-                                        const actualizacion = { ...prev, [field]: nuevoAuditor };
-                                        if (field === "auditado_por" && nuevoAuditor) {
-                                          const ahora = new Date();
-                                          // Fecha calendario Ecuador YYYY-MM-DD
-                                          const hoyIso = new Intl.DateTimeFormat("en-CA", {
-                                            timeZone: "America/Guayaquil",
-                                            year: "numeric",
-                                            month: "2-digit",
-                                            day: "2-digit",
-                                          }).format(ahora);
-
-                                          if (!prev.fecha_hora_regularizacion) {
-                                            actualizacion.fecha_hora_regularizacion = ahora.toLocaleString("es-EC", {
+                                  <>
+                                    <select
+                                      value={valorActual}
+                                      onChange={(e) => {
+                                        const nuevoAuditor = e.target.value;
+                                        if (field === "netlife_estatus_real") setReafirmarEstadoNetlife(false);
+                                        setDetail((prev) => {
+                                          const actualizacion = { ...prev, [field]: nuevoAuditor };
+                                          if (field === "auditado_por" && nuevoAuditor) {
+                                            const ahora = new Date();
+                                            // Fecha calendario Ecuador YYYY-MM-DD
+                                            const hoyIso = new Intl.DateTimeFormat("en-CA", {
                                               timeZone: "America/Guayaquil",
-                                            });
-                                          }
-                                          if (!prev.fecha_auditoria) actualizacion.fecha_auditoria = hoyIso;
-                                          if (!prev.hora_auditoria) {
-                                            actualizacion.hora_auditoria = new Intl.DateTimeFormat("en-GB", {
-                                              timeZone: "America/Guayaquil",
-                                              hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+                                              year: "numeric",
+                                              month: "2-digit",
+                                              day: "2-digit",
                                             }).format(ahora);
+
+                                            if (!prev.fecha_hora_regularizacion) {
+                                              actualizacion.fecha_hora_regularizacion = ahora.toLocaleString("es-EC", {
+                                                timeZone: "America/Guayaquil",
+                                              });
+                                            }
+                                            if (!prev.fecha_auditoria) actualizacion.fecha_auditoria = hoyIso;
+                                            if (!prev.hora_auditoria) {
+                                              actualizacion.hora_auditoria = new Intl.DateTimeFormat("en-GB", {
+                                                timeZone: "America/Guayaquil",
+                                                hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+                                              }).format(ahora);
+                                            }
+                                            if (!prev.fecha_regularizacion_atc) {
+                                              actualizacion.fecha_regularizacion_atc = hoyIso;
+                                            }
                                           }
-                                          if (!prev.fecha_regularizacion_atc) {
-                                            actualizacion.fecha_regularizacion_atc = hoyIso;
-                                          }
-                                        }
-                                        return actualizacion;
-                                      });
-                                    }}
-                                    disabled={field === "tipo_cuenta" && detail?.forma_pago === "EFECTIVO"}
-                                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
-                                  >
-                                    <option value="">Seleccionar...</option>
-                                    {lista.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
-                                  </select>
+                                          return actualizacion;
+                                        });
+                                      }}
+                                      disabled={field === "tipo_cuenta" && detail?.forma_pago === "EFECTIVO"}
+                                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, outline: "none", color: "#111827", background: "#fff", cursor: "pointer" }}
+                                    >
+                                      <option value="">Seleccionar...</option>
+                                      {lista.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+                                    </select>
+                                    {field === "netlife_estatus_real" && valorActual && valorActual === String(detailOriginal?.netlife_estatus_real || "") && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setReafirmarEstadoNetlife((valor) => !valor)}
+                                        style={{ marginTop: 7, width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${reafirmarEstadoNetlife ? "#22c55e" : "#cbd5e1"}`, background: reafirmarEstadoNetlife ? "#ecfdf5" : "#f8fafc", color: reafirmarEstadoNetlife ? "#047857" : "#475569", fontSize: 11, fontWeight: 800, cursor: "pointer" }}
+                                      >
+                                        {reafirmarEstadoNetlife
+                                          ? `✓ Se registrará nuevamente ${valorActual} al guardar`
+                                          : `Reafirmar estado actual: ${valorActual}`}
+                                      </button>
+                                    )}
+                                  </>
                                 );
                               })() : field === "supervisor" ? (() => {
                                 const empresaRegistro = String(detail?.distribuidor_autorizado || "").trim().toUpperCase();

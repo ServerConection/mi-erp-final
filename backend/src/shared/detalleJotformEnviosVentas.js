@@ -38,6 +38,7 @@ function fuenteDetalleJotform(empresa, alias) {
   return `(
     SELECT
         e.id                                                   AS ev_id,
+        e.distribuidor_autorizado                              AS distribuidor,
         -- Fecha de registro en hora local (mismo criterio que la migración):
         -- el histórico Jotform Novonet ya está en hora local; el resto se
         -- guardó con zona horaria.
@@ -46,7 +47,19 @@ function fuenteDetalleJotform(empresa, alias) {
              ELSE (NULLIF(e.fecha_registro_sistema, '')::timestamptz AT TIME ZONE 'America/Guayaquil')
         END                                                    AS ts_local,
         NULLIF(BTRIM(e.id_bitrix::text), '')                   AS id_bitrix,
-        e.codigo_asesor                                        AS codigo_asesor,
+        COALESCE(
+          NULLIF(BTRIM(e.codigo_asesor), ''),
+          NULLIF(BTRIM(u.codigo_vendedor), ''),
+          (
+            SELECT NULLIF(BTRIM(uc.codigo_vendedor), '')
+            FROM public.usuarios uc
+            WHERE UPPER(BTRIM(uc.usuario)) = UPPER(BTRIM(e.usuario))
+              AND UPPER(BTRIM(COALESCE(uc.empresa, ''))) LIKE '%${cfg.distribuidor}%'
+              AND NULLIF(BTRIM(uc.codigo_vendedor), '') IS NOT NULL
+            ORDER BY uc.activo DESC, uc.id DESC
+            LIMIT 1
+          )
+        )                                                      AS codigo_asesor,
         COALESCE(NULLIF(BTRIM(to_jsonb(e) ->> 'usuario'), ''), u.usuario) AS asesor_usuario,
         e.netlife_login                                        AS netlife_login,
         e.netlife_estatus_real                                 AS netlife_estatus_real,
@@ -57,7 +70,25 @@ function fuenteDetalleJotform(empresa, alias) {
         e.detalle_regularizacion                               AS detalle_regularizacion,
         e.novedades_atc                                        AS novedades_atc,
         COALESCE(NULLIF(BTRIM(e.plan_contratado), ''), e.plan_contratado_final) AS tipo_plan,
-        to_jsonb(e) ->> 'velocidad_plan'                       AS velocidad,
+        COALESCE(
+          NULLIF(BTRIM(to_jsonb(e) ->> 'velocidad_plan'), ''),
+          CASE
+            WHEN e.plan_contratado_final ~* '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)'
+            THEN CONCAT(
+              (regexp_match(e.plan_contratado_final, '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)', 'i'))[1],
+              ' ',
+              CASE
+                WHEN (regexp_match(e.plan_contratado_final, '([0-9]+(?:[.,][0-9]+)?)\\s*(Mbps?|Mpbs?|Megas?|Gbps?|Gdps?)', 'i'))[2] ~* '^(g|gd)'
+                  THEN 'Gbps'
+                ELSE 'Mbps'
+              END
+            )
+            WHEN e.plan_contratado_final ~* 'DEFENSE\\s+([0-9]{2,4})\\s*$'
+              THEN CONCAT((regexp_match(e.plan_contratado_final, 'DEFENSE\\s+([0-9]{2,4})\\s*$', 'i'))[1], ' Mbps')
+            WHEN e.plan_contratado_final ~* 'PLAN(?:\\s+HOME)?\\s+([0-9]{2,4})\\s*\\+'
+              THEN CONCAT((regexp_match(e.plan_contratado_final, 'PLAN(?:\\s+HOME)?\\s+([0-9]{2,4})\\s*\\+', 'i'))[1], ' Mbps')
+          END
+        )                                                      AS velocidad,
         e.servicios_digitales                                  AS empaquetado,
         e.tipo_contrato                                        AS servicio_adicional,
         e.forma_pago                                           AS forma_pago,
@@ -124,6 +155,7 @@ function fuenteDetalleJotform(empresa, alias) {
 function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
   const a = alias;
   return `
+    ${a}.distribuidor                                AS "DISTRIBUIDOR",
     ${a}.id_bitrix                                   AS "ID_CRM",
     ${a}.id_bitrix                                   AS "ID_JOT",
     ${a}.etapa_bitrix                                AS "ETAPA",
@@ -131,13 +163,14 @@ function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
     ${asesorExpr}                                    AS "ASESOR",
     ${supervisorExpr}                                AS "SUPERVISOR_ASIGNADO",
     ${a}.origen_bitrix                               AS "ORIGEN",
-    to_char(${a}.ts_local, 'YYYY-MM-DD HH24:MI:SS')  AS "FECHA_CREACION_JOT",
+    to_char(${a}.ts_local, 'DD/MM/YYYY HH24:MI:SS')  AS "FECHA_CREACION_JOT",
+    to_char(public.parse_fecha_flex(${a}.fecha_agenda), 'DD/MM/YYYY') AS "FECHA_ASIGNACION",
+    to_char(COALESCE(${a}.f_act, public.parse_fecha_flex(${a}.fecha_activacion_netlife::text)), 'DD/MM/YYYY') AS "FECHA_ACTIVACION",
     ${a}.codigo_asesor                               AS "COD_ASESOR_JOT",
     COALESCE(${a}.asesor_usuario, ujot.asesor_usuario) AS "ASESOR_USUARIO",
     ${a}.netlife_login                               AS "LOGIN",
     COALESCE(NULLIF(TRIM(${a}.netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
     ${a}.fecha_ingreso_telcos                        AS "INGRESO_TELCOS",
-    COALESCE(${a}.f_act::text, ${a}.fecha_activacion_netlife::text) AS "FECHA_ACTIVACION",
     ${a}.estatus_regularizacion                      AS "ESTADO_REGULARIZACION",
     ${a}.detalle_regularizacion                      AS "OBSERV_REGULARIZACION",
     ${a}.novedades_atc                               AS "NOVEDADES_ATC",
@@ -147,7 +180,6 @@ function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
     ${a}.servicio_adicional                          AS "SERVICIO_ADICIONAL_FACTURADO",
     ${a}.forma_pago                                  AS "FORMA_PAGO",
     ${a}.aplica_descuento_3ra_edad                   AS "APLICA_DESCUENTO",
-    ${a}.fecha_agenda                                AS "FECHA_AGENDA",
     ${a}.observacion_venta                           AS "OBSERVACION"`;
 }
 
@@ -191,4 +223,81 @@ function joinsDetalleJotform(alias, empresa) {
     ) eresp ON true`;
 }
 
-module.exports = { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform };
+// El KPI y el Excel deben usar exactamente las mismas filas. Calcularlo sobre
+// otro snapshot (mestra_bitrix/MV) provoca diferencias cuando una venta ya
+// existe en envios_ventas pero todavía no llegó al proceso histórico.
+function calcularPlanesHasta600(filas = []) {
+  const totalIngresos = filas.length;
+  const totalPlanesHasta600 = filas.filter((fila) => {
+    if (String(fila?.ESTADO_NETLIFE || '').trim().toUpperCase() !== 'ACTIVO') return false;
+    const texto = String(fila?.VELOCIDAD || '').trim();
+    const numero = Number(texto.match(/[0-9]+(?:[.,][0-9]+)?/)?.[0]?.replace(',', '.'));
+    if (!Number.isFinite(numero) || numero <= 0) return false;
+    const velocidadMbps = /GBPS?/i.test(texto) ? numero * 1000 : numero;
+    return velocidadMbps <= 600;
+  }).length;
+  return {
+    totalPlanesHasta600,
+    porcentajePlanesHasta600: totalIngresos > 0
+      ? Number(((totalPlanesHasta600 / totalIngresos) * 100).toFixed(2))
+      : 0,
+  };
+}
+
+function calcularTerceraEdadProyectada(filas = []) {
+  const estadosProyectados = new Set(['ACTIVO', 'ASIGNADO', 'PREPLANIFICADO']);
+  const filasProyectadas = filas.filter((fila) =>
+    estadosProyectados.has(String(fila?.ESTADO_NETLIFE || '').trim().toUpperCase())
+  );
+  const totalTerceraEdadProyectada = filasProyectadas.filter((fila) => {
+    const valor = String(fila?.APLICA_DESCUENTO || '').trim().toUpperCase();
+    return valor.includes('TERCERA EDAD') || valor === 'SI' || valor === 'SÍ';
+  }).length;
+  return {
+    totalBaseTerceraEdadProyectada: filasProyectadas.length,
+    totalTerceraEdadProyectada,
+    porcentajeTerceraEdadProyectada: filasProyectadas.length > 0
+      ? Number(((totalTerceraEdadProyectada / filasProyectadas.length) * 100).toFixed(2))
+      : 0,
+  };
+}
+
+/** Consulta reutilizable para la pestaña "Consulta". Devuelve exactamente las
+ * mismas columnas y orden que Detalle Base Jotform, tanto en pantalla como en
+ * Excel, evitando que cada módulo mantenga un SELECT diferente. */
+async function consultarDetalleJotform(pool, empresa, query = {}) {
+  const alias = empresa === 'novonet' ? 'mb' : 'mv';
+  const desde = query.fechaDesde;
+  const hasta = query.fechaHasta;
+  if (!desde || !hasta) throw Object.assign(new Error('Parámetros fechaDesde y fechaHasta requeridos'), { status: 400 });
+
+  const values = [desde, hasta];
+  let filtros = '';
+  const agregar = (valor, expresion) => {
+    const limpio = String(valor || '').trim();
+    if (!limpio) return;
+    values.push(`%${limpio}%`);
+    filtros += ` AND (${expresion}) ILIKE $${values.length}`;
+  };
+  agregar(query.asesor, `COALESCE(${alias}.codigo_asesor, '') || ' ' || COALESCE(${alias}.responsable, '') || ' ' || COALESCE(${alias}.asesor_usuario, '')`);
+  agregar(query.loginNetlife, `COALESCE(${alias}.netlife_login, '')`);
+  agregar(query.idBitrix, `COALESCE(${alias}.id_bitrix, '')`);
+  agregar(query.busquedaGeneral, `COALESCE(${alias}.codigo_asesor, '') || ' ' || COALESCE(${alias}.responsable, '') || ' ' || COALESCE(${alias}.asesor_usuario, '') || ' ' || COALESCE(${alias}.netlife_login, '') || ' ' || COALESCE(${alias}.id_bitrix, '') || ' ' || COALESCE(${alias}.netlife_estatus_real, '')`);
+
+  const result = await pool.query(`
+    SELECT
+      ${columnasDetalleJotform(alias, {
+        asesorExpr: `${alias}.responsable`,
+        supervisorExpr: `COALESCE(${alias}.supervisor_venta, ejot.supervisor, eresp.supervisor)`,
+      })}
+    FROM ${fuenteDetalleJotform(empresa, alias)}
+    ${joinsDetalleJotform(alias, empresa)}
+    WHERE ${alias}.ts_local::date BETWEEN $1::date AND $2::date
+      ${filtros}
+    ORDER BY ${alias}.ts_local DESC
+    LIMIT 100000
+  `, values);
+  return result.rows;
+}
+
+module.exports = { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600, calcularTerceraEdadProyectada, consultarDetalleJotform };

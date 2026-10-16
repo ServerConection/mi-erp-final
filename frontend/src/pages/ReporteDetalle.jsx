@@ -23,8 +23,12 @@ const TIPOS = {
 const hoyEc = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
 
 export default function ReporteDetalle({ empresa = "novonet" }) {
-  const accent = empresa === "velsa" ? "#7c3aed" : "#2563eb";
-  const titulo = empresa === "velsa" ? "VELSA" : "NOVONET";
+  const configuracionEmpresa = {
+    novonet: { accent: "#2563eb", titulo: "NOVONET" },
+    velsa: { accent: "#7c3aed", titulo: "VELSA" },
+    semillero: { accent: "#059669", titulo: "SEMILLERO" },
+  }[empresa] || { accent: "#2563eb", titulo: String(empresa || "NOVONET").toUpperCase() };
+  const { accent, titulo } = configuracionEmpresa;
 
   const [desde, setDesde]     = useState(hoyEc().slice(0, 7) + "-01");
   const [hasta, setHasta]     = useState(hoyEc());

@@ -53,8 +53,7 @@ startHttp(app, {
     // Cerrar sesiones de WhatsApp limpio evita 401/428 al reiniciar
     try {
       const wa = require('../services/whatsapp.service');
-      const bm = wa.getBaileysManager && wa.getBaileysManager();
-      if (bm && bm.shutdown) await bm.shutdown();
+      if (wa.detenerWhatsApp) await wa.detenerWhatsApp();
     } catch (e) {
       console.warn('[wabot] no se pudo cerrar WhatsApp limpio:', e.message);
     }

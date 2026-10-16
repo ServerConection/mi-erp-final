@@ -25,6 +25,9 @@ const MOTIVOS_COLA = {
   nadie_en_linea: 'No había asesores en línea',
   todos_al_limite: 'Todos estaban en su límite',
   cola_en_espera: 'Había otros esperando antes',
+  en_estacion: 'Ya estaba a nombre de la estación',
+  limite_atc: 'Los asesores con cupo superaron su % de ATC',
+  limite_efectividad: 'Los asesores con cupo tienen leads de más de 3 h sin Venta Subida',
 };
 
 const ESTADOS = {
@@ -41,7 +44,7 @@ const estadoDe = (r) => {
   return r.jornada === 'PAUSED' ? 'pausa' : 'fuera';
 };
 
-export default function RepartoEnVivo() {
+export default function RepartoEnVivo({ empresa = 'novonet' }) {
   const [datos, setDatos] = useState(null);
   const [busy, setBusy] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -49,22 +52,23 @@ export default function RepartoEnVivo() {
   const [confirmarApagar, setConfirmarApagar] = useState(false);
   const [ayuda, setAyuda] = useState(false);
 
-  const consultar = useCallback(async () => {
+  const [actualizado, setActualizado] = useState(null);
+  const consultar = useCallback(async (forzar = false) => {
     setBusy(true); setError('');
-    try { setDatos(await repartoRequest('/reparto/estado')); }
+    try { setDatos(await repartoRequest(`/reparto/estado${forzar ? '?forzar=1' : ''}`, {}, empresa)); setActualizado(new Date()); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
-  }, []);
+  }, [empresa]);
 
   useEffect(() => {
     consultar();
-    const t = setInterval(consultar, 60_000);   // se actualiza solo cada minuto
+    const t = setInterval(() => consultar(false), 60_000);   // se actualiza solo cada minuto
     return () => clearInterval(t);
   }, [consultar]);
 
   async function cambiar(campo, valor) {
     setGuardando(true); setError(''); setConfirmarApagar(false);
-    try { await repartoRequest('/reparto/config', { method: 'PUT', body: JSON.stringify({ [campo]: valor }) }); await consultar(); }
+    try { await repartoRequest('/reparto/config', { method: 'PUT', body: JSON.stringify({ [campo]: valor }) }, empresa); await consultar(); }
     catch (e) { setError(e.message); }
     finally { setGuardando(false); }
   }
@@ -75,13 +79,20 @@ export default function RepartoEnVivo() {
   const horario = datos?.horario;
   const estacion = datos?.estacion;
 
-  const { pueden, siguiente, rondaActual, otros } = useMemo(() => {
+  const { pueden, siguiente, rondaActual, ordenadas } = useMemo(() => {
     const conCupo = filas.filter((r) => r.asignados < r.permitidos);
-    const pueden = ordenarPorTurno(conCupo.filter((r) => !filtroLinea || r.en_linea));
-    const ids = new Set(pueden.map((r) => r.nombre));
-    const otros = filas.filter((r) => !ids.has(r.nombre))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    return { pueden, siguiente: pueden[0] || null, rondaActual: pueden.length ? pueden[0].asignados + 1 : null, otros };
+    const pueden = ordenarPorTurno(conCupo.filter((r) => (!filtroLinea || r.en_linea) && !r.bloqueado_atc && !r.bloqueado_efectividad));
+    const turnoDe = new Map(pueden.map((r, i) => [r.nombre, i + 1]));
+    // Orden de la vista: En línea → En pausa → Desconectado → resto.
+    // Dentro de cada grupo: primero los que tienen cupo (por turno), luego los llenos (por nombre).
+    const grupo = { linea: 0, pausa: 1, fuera: 2, noBitrix: 3, sinDato: 4 };
+    const ordenadas = [...filas].sort((a, b) =>
+      (grupo[estadoDe(a)] - grupo[estadoDe(b)])
+      || ((a.asignados < a.permitidos ? 0 : 1) - (b.asignados < b.permitidos ? 0 : 1))
+      || ((turnoDe.get(a.nombre) ?? 999) - (turnoDe.get(b.nombre) ?? 999))
+      || (a.nombre.localeCompare(b.nombre, 'es'))
+    ).map((r) => ({ r, turno: turnoDe.get(r.nombre) ?? null }));
+    return { pueden, siguiente: pueden[0] || null, rondaActual: pueden.length ? pueden[0].asignados + 1 : null, ordenadas };
   }, [filas, filtroLinea]);
 
   const activo = !!cfg?.activo_efectivo;
@@ -214,7 +225,10 @@ export default function RepartoEnVivo() {
             <li>Así todos reciben su 1.º antes de que alguien reciba el 2.º, y nadie pasa su cupo.</li>
             <li>Si alguien entra más tarde, recibe primero hasta igualar a los demás.</li>
             <li>Fuera de horario{horario ? ` (después de las ${horario.fin.slice(0, 5)} y antes de las ${horario.inicio.slice(0, 5)})` : ''}, o si nadie puede recibir, el lead espera a nombre de <strong>{estacion?.nombre || 'la estación'}</strong>.</li>
-            <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan como gestionables del día en que se entregan.</li>
+            <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan en el día en que se entregan.</li>
+            <li>El <strong>permitido es el total de leads del día</strong> (bot + humano, en cualquier etapa). Al llegar a su permitido ya no recibe más.</li>
+            <li><strong>Límite de ATC</strong>: su ATC no puede llegar al % de sus permitidos (por defecto 50%: con 10 permitidos, al llegar a 5 ATC ya no recibe). Se edita en Cuotas.</li>
+            <li><strong>Efectividad</strong>: cada lead tiene {datos?.efectividad?.plazo_horas ?? 3} horas desde que se le entregó para pasar a <strong>Venta Subida</strong>. Su meta es el {datos?.efectividad?.pct_max_sin_venta ?? 30}% de sus gestionables, redondeado hacia arriba (7 → 3, 5 → 2). Si tiene tantos leads vencidos sin subir como su meta y aún no la cubre, ya no recibe aunque tenga cupo. Si cubre la meta, sigue recibiendo.</li>
             <li>Si una persona asigna un lead a mano en Bitrix, el ERP lo detecta (cada 5 min) y lo cuenta como <strong>Humano</strong>. Bot + Humano = lo que lleva el asesor contra su permitido: si llega al límite, el bot ya no le entrega.</li>
             <li>Si una persona mueve un lead de un asesor a otro, cuenta solo para el que lo tiene ahora.</li>
             <li>Si apagas el reparto, todo se detiene: no se reparte ni se entrega la cola.</li>
@@ -226,7 +240,10 @@ export default function RepartoEnVivo() {
       <div className="rounded-2xl border bg-white p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-slate-800">Asesores de hoy</h2>
-          <button onClick={consultar} disabled={busy} className="rounded-lg border px-3 py-2 text-sm">{busy ? 'Actualizando…' : 'Actualizar'}</button>
+          <div className="flex flex-wrap items-center gap-2">
+            {actualizado && <span className="text-xs text-slate-500">Actualizado {actualizado.toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil' })} · se refresca solo cada minuto</span>}
+            <button onClick={() => consultar(true)} disabled={busy} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Actualizando…' : 'Forzar actualización'}</button>
+          </div>
         </div>
         {!filas.length && !busy && <p className="text-slate-500">No hay cuotas cargadas para hoy. Cárgalas en la pestaña Cuotas.</p>}
         {filas.length > 0 && (
@@ -234,10 +251,10 @@ export default function RepartoEnVivo() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2">Recibidos hoy</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center" title="Gestionables con más de 3 h desde la entrega y sin Venta Subida">Sin subir +3h</th><th className="p-2 text-center" title="Ventas Subidas / meta (30% de sus gestionables, redondeado hacia arriba). Si cubre la meta, sigue recibiendo">Venta subida</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
-                {[...pueden.map((r, i) => ({ r, turno: i + 1 })), ...otros.map((r) => ({ r, turno: null }))].map(({ r, turno }) => {
+                {ordenadas.map(({ r, turno }) => {
                   const e = ESTADOS[estadoDe(r)];
                   const lleno = r.asignados >= r.permitidos;
                   const pct = r.permitidos ? Math.min(100, (r.asignados / r.permitidos) * 100) : 0;
@@ -245,15 +262,28 @@ export default function RepartoEnVivo() {
                     <tr key={r.nombre} className={`border-b ${turno ? '' : 'text-slate-400'}`}>
                       <td className="p-2 font-bold tabular-nums">{turno ?? '—'}</td>
                       <td className="p-2 font-medium text-slate-800">{r.nombre}</td>
-                      <td className="p-2"><span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span></td>
+                      <td className="p-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span>
+                        {r.bloqueado_efectividad && <span className="ml-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700" title={`Tiene ${r.vencidos} lead(s) con más de 3 h sin Venta Subida y lleva ${r.venta_subida} de ${r.meta_venta} Ventas Subidas. Vuelve a recibir al cubrir su meta.`}>Sin subir +3h</span>}
+                        {r.bloqueado_atc && <span className="ml-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700" title={`Llegó a ${r.atc} ATC (tope ${r.atc_tope}: ${r.atc_max}% de ${r.permitidos} permitidos). El bot ya no le entrega.`}>Límite ATC</span>}
+                      </td>
                       <td className="p-2">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-24 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${lleno ? 'bg-red-400' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} /></div>
                           <span className="tabular-nums">{r.asignados} / {r.permitidos}</span>
                         </div>
                       </td>
+                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.total_asignados ?? r.asignados}</td>
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
+                      <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>
+                      <td className={`p-2 text-center tabular-nums ${r.bloqueado_atc ? 'font-bold text-red-700' : ''}`} title={`Tope: ${r.atc_max ?? 50}% de ${r.permitidos} permitidos`}>
+                        {r.atc ?? '—'}{r.atc != null && <span className="ml-1 text-xs">{r.atc_tope != null ? `/ ${r.atc_tope}` : '(sin límite)'}</span>}
+                      </td>
+                      <td className={`p-2 text-center tabular-nums ${r.bloqueado_efectividad ? 'font-bold text-orange-700' : ''}`}>
+                        {r.vencidos ?? '—'}
+                      </td>
+                      <td className="p-2 text-center tabular-nums font-semibold text-blue-700">{r.venta_subida ?? '—'}{r.meta_venta != null && <span className="ml-1 text-xs font-normal">/ {r.meta_venta}</span>}</td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
                     </tr>
@@ -261,7 +291,7 @@ export default function RepartoEnVivo() {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">"Recibidos hoy" = Bot + Humano. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
+            <p className="mt-2 text-xs text-slate-500">"Total asignados" = Bot + Humano. "Gestionables" = de esos, cuántos no están en ATC, Duplicado, Fuera de cobertura, etc. (solo informativo). El permitido se mide contra el total de leads; el ATC no puede llegar al % de sus permitidos. "Venta subida" = ventas subidas / meta (30% de sus gestionables, redondeado hacia arriba). "Sin subir +3h" = gestionables con más de 3 h sin subir; si llegan a la meta y aún no la cubre, deja de recibir. "Turno" = orden en que recibirán los próximos leads. Se actualiza solo cada minuto. Los asesores en gris no pueden recibir ahora (sin cupo{filtroLinea ? ' o no están en línea' : ''}).</p>
           </div>
         )}
       </div>

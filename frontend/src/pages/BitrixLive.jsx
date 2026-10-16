@@ -1423,7 +1423,7 @@ export default function BitrixLive() {
 
   // Quién está conectado y desde qué IP es información de personal: jefatura.
   // El backend lo vuelve a validar — esto solo evita mostrar una pestaña muerta.
-  const esJefatura = ["ADMINISTRADOR", "GERENTE", "SUPERVISOR"].includes(perfil);
+  const esJefatura = ["ADMINISTRADOR", "GERENCIA", "SUPERVISOR"].includes(perfil);
   const visibles = SUBMODULOS.filter(m => !m.soloJefatura || esJefatura);
 
   const [sub, setSub] = useState(() => {

@@ -1,10 +1,11 @@
-const { query } = require('../config/db')
+const { query, transaction } = require('../config/db')
 const { asegurarLocal } = require('../services/waMediaFallback')
 const fs = require('fs')
 const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
 const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy')
+const { esMandoWabot, empresaVisibleWabot } = require('../shared/waAccesoEmpresa')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -40,12 +41,32 @@ function guessMime(filename) {
 async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
   try {
     if (!ownerId) return
-    const { rows } = await query(
-      `SELECT message_text, media_url, media_type, media_filename
-       FROM wa_presentations WHERE user_id=$1`,
-      [ownerId]
-    )
-    const pres = rows[0]
+    let pres = await transaction(async client => {
+      await client.query(
+        `INSERT INTO wa_presentation_rotation (user_id, next_index, updated_at)
+         VALUES ($1,0,NOW()) ON CONFLICT (user_id) DO NOTHING`, [ownerId])
+      const state = await client.query(
+        'SELECT next_index FROM wa_presentation_rotation WHERE user_id=$1 FOR UPDATE', [ownerId])
+      const variants = await client.query(
+        `SELECT message_text, media_url, media_type, media_filename
+           FROM wa_presentation_variants
+          WHERE user_id=$1 AND is_active
+          ORDER BY position ASC, created_at ASC`, [ownerId])
+      if (!variants.rows.length) return null
+      const index = Number(state.rows[0]?.next_index || 0) % variants.rows.length
+      await client.query(
+        'UPDATE wa_presentation_rotation SET next_index=$2, updated_at=NOW() WHERE user_id=$1',
+        [ownerId, (index + 1) % variants.rows.length])
+      return variants.rows[index]
+    })
+    // Compatibilidad defensiva: si todavía no se migró una presentación histórica,
+    // el envío existente continúa funcionando hasta el próximo arranque/migración.
+    if (!pres) {
+      const legacy = await query(
+        `SELECT message_text, media_url, media_type, media_filename
+           FROM wa_presentations WHERE user_id=$1`, [ownerId])
+      pres = legacy.rows[0]
+    }
     if (!pres || (!pres.media_url && !pres.message_text)) return
 
     if (pres.media_url) {
@@ -82,9 +103,8 @@ async function maybeSendPresentation({ bm, lineId, waNumber, ownerId }) {
 
 // Perfiles "gerenciales" ven todos los chats de SU empresa (no de otras).
 // Solo ADMINISTRADOR ve todo, sin restricción de empresa.
-const PERFILES_GERENCIALES = ['SUPERVISOR', 'GERENCIA', 'ANALISTA']
 const isAdmin = (req) => (req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR'
-const isSupervisor = (req) => PERFILES_GERENCIALES.includes((req.user?.perfil || '').toUpperCase())
+const isSupervisor = (req) => esMandoWabot(req.user)
 
 // Condición SQL de visibilidad de conversaciones/líneas según el perfil.
 //  - ADMINISTRADOR: ve todo (null → sin filtro)
@@ -99,7 +119,7 @@ function baseVisibilityCondition(req, params) {
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($${params.length}::text[]))`
   }
   if (isSupervisor(req)) {
-    params.push((req.user.empresa || '').toUpperCase())
+    params.push(empresaVisibleWabot(req.user))
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
   }
   params.push(req.user.id)
@@ -141,7 +161,7 @@ async function findOwnedConversation(req, id) {
     return null
   }
   if (isSupervisor(req)) {
-    return (conv.line_empresa || '').toUpperCase() === (req.user.empresa || '').toUpperCase() ? conv : null
+    return (conv.line_empresa || '').toUpperCase() === empresaVisibleWabot(req.user) ? conv : null
   }
   // Asesor: solo lo suyo (o líneas huérfanas)
   if (conv.line_created_by === req.user.id || conv.line_created_by === null) return conv
@@ -558,7 +578,7 @@ async function startFromBitrix(req, res) {
       return res.status(400).json({ success: false, error: 'Debes indicar un número o un ID de negociación' })
     }
 
-    const empresa = (req.user.empresa || '').toUpperCase()
+    const empresa = empresaVisibleWabot(req.user)
 
     // 1) Determinar el número: directo o desde Bitrix
     let waNumber = ''

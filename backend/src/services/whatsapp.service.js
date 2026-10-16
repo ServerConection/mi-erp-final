@@ -7,6 +7,7 @@ const BaileysManager     = require('./BaileysManager');
 const CampaignEngine     = require('./CampaignEngine');
 const WaTimeoutService   = require('./wa_timeout.service');
 const WaSchedulerService = require('./wa_scheduler.service');
+const AtcNotificationWorker = require('./atcNotificationWorker.service');
 const pool = require('../config/db');
 const path = require('path');
 const fs   = require('fs');
@@ -16,6 +17,7 @@ let baileysManager = null;
 let campaignEngine = null;
 let timeoutService = null;
 let scheduler      = null;
+let atcNotifications = null;
 
 // Ejecuta la migración del módulo (idempotente: CREATE TABLE IF NOT EXISTS)
 // Así no depende de correrla manualmente desde una PC local.
@@ -56,6 +58,8 @@ const iniciarWhatsApp = async (appInstance) => {
     const io = getIO();
 
     await ejecutarMigracion();
+    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/20261012_welcome_operacion_completa.sql'), 'utf8'));
+    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/20261007_wa_presentation_variants.sql'), 'utf8'));
     await ejecutarMigracionWabotBitrix();
     await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/wa_line_downtime.sql'), 'utf8'));
 
@@ -66,6 +70,7 @@ const iniciarWhatsApp = async (appInstance) => {
     campaignEngine = new CampaignEngine(baileysManager, io);
     timeoutService = new WaTimeoutService(baileysManager, io);
     scheduler      = new WaSchedulerService({ baileysManager, campaignEngine, io });
+    atcNotifications = new AtcNotificationWorker(baileysManager);
 
     // Registrar en la app Express para que los controladores accedan vía req.app.get(...)
     const app = appInstance || require('../app');
@@ -74,6 +79,7 @@ const iniciarWhatsApp = async (appInstance) => {
 
     timeoutService.start();
     scheduler.start();
+    await atcNotifications.start();
     // Inbox -> comentarios internos de NOVONET. También se inicia en el monolito.
     require('./inboxBitrixNotes.service').getInboxBitrixNotes().start();
 
@@ -177,6 +183,13 @@ const iniciarWhatsApp = async (appInstance) => {
 const getBaileysManager = () => baileysManager;
 const getCampaignEngine = () => campaignEngine;
 
+const detenerWhatsApp = async () => {
+  atcNotifications?.stop?.();
+  scheduler?.stop?.();
+  timeoutService?.stop?.();
+  if (baileysManager?.shutdown) await baileysManager.shutdown();
+};
+
 const getEstado = () => ({
   estado: baileysManager ? 'activo' : 'desconectado',
   lineas: baileysManager ? Object.keys(baileysManager.instances).length : 0,
@@ -200,6 +213,7 @@ module.exports = {
   iniciarWhatsApp,
   getBaileysManager,
   getCampaignEngine,
+  detenerWhatsApp,
   getEstado,
   enviarMensaje,
   formatearAlerta,

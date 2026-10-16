@@ -16,15 +16,13 @@ const router  = express.Router();
 
 const { verificarToken } = require('../middleware/auth');
 const ctrl = require('../controllers/bitrixSesiones.controller');
-
-const PERFILES = ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'];
+const { empresaVisible } = require('../shared/bitrixSesionesAcceso');
 
 const soloAutorizados = (req, res, next) => {
-  const perfil = (req.user?.perfil || '').toUpperCase();
-  if (!PERFILES.includes(perfil)) {
+  if (!empresaVisible(req.user)) {
     return res.status(403).json({
       success: false,
-      error: 'Acceso denegado. Las sesiones de Bitrix son solo para jefatura.',
+      error: 'Acceso denegado. Bitrix Live está disponible para supervisores o superiores de NOVONET y VELSA.',
     });
   }
   next();
@@ -40,5 +38,8 @@ router.get('/export', ctrl.exportar);
 
 // Qué métodos de la API responden en cada cuenta (para saber si timeman está activo)
 router.get('/diagnostico', ctrl.diagnostico);
+
+// La API oficial no revoca la sesión web: cierra la jornada laboral abierta.
+router.post('/:cuenta/:usuarioId/cerrar-jornada', ctrl.cerrarJornada);
 
 module.exports = router;

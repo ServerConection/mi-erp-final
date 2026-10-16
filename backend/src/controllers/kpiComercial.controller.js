@@ -73,6 +73,13 @@ function claveAsesorSQL(campo) {
       WHEN 'ROSSANNA MARIBEL ALVARADO CRUZ' THEN 'ROSSANNA ALVARADO'
       WHEN 'DAMIAN ARIEL VIERA JACOME' THEN 'DAMIAN VIERA'
       WHEN 'CHRISTIAN PONCE BAROJA' THEN 'CHRISTIAN PONCE'
+      -- VELSA 2026-10: nombres viejos/cortos en Bitrix -> nombre completo
+      WHEN 'ALISON CEPEDA' THEN 'ALISSON ABIGAIL CEPEDA BARROSO'
+      WHEN 'FERNANDO TARCO' THEN 'BYRON FERNANDO TARCO PILAGUANO'
+      WHEN 'SEBASTIAN ECHEVARRIA' THEN 'SEBASTIAN ISRAEL ECHEVERRIA NEPPAS'
+      WHEN 'DAVID GUATEMAL' THEN 'DAVID ALBERTO GUATEMAL LECHON'
+      WHEN 'ALBERTO DAVID GUATEMAL LECHÓN' THEN 'DAVID ALBERTO GUATEMAL LECHON'
+      WHEN 'ALBERTO DAVID GUATEMAL LECHON' THEN 'DAVID ALBERTO GUATEMAL LECHON'
       ELSE ${limpio}
     END`;
 }
@@ -88,6 +95,12 @@ function nombreAsesorDisplaySQL(campo) {
       WHEN 'DAMIAN VIERA' THEN 'Damian Viera'
       WHEN 'CHRISTIAN PONCE BAROJA' THEN 'Christian Ponce'
       WHEN 'CHRISTIAN PONCE' THEN 'Christian Ponce'
+      WHEN 'ALISON CEPEDA' THEN 'ALISSON ABIGAIL CEPEDA BARROSO'
+      WHEN 'FERNANDO TARCO' THEN 'BYRON FERNANDO TARCO PILAGUANO'
+      WHEN 'SEBASTIAN ECHEVARRIA' THEN 'SEBASTIAN ISRAEL ECHEVERRIA NEPPAS'
+      WHEN 'DAVID GUATEMAL' THEN 'DAVID ALBERTO GUATEMAL LECHON'
+      WHEN 'ALBERTO DAVID GUATEMAL LECHÓN' THEN 'DAVID ALBERTO GUATEMAL LECHON'
+      WHEN 'ALBERTO DAVID GUATEMAL LECHON' THEN 'DAVID ALBERTO GUATEMAL LECHON'
       ELSE ${limpio}
     END`;
 }
@@ -169,12 +182,13 @@ WITH datos AS (
         )                                                  AS descarte_n,
 
         -- ── Lado Jotform (por fecha de registro / activación) ─────────────
-        -- INGRESOS TOTALES JOT: cuenta todos los registros creados en el rango,
-        -- sin excluir por etapa CRM ni por estado Jotform. Debe coincidir con
-        -- el indicador global del dashboard en NOVONET y VELSA.
+        -- INGRESOS TOTALES JOT: cuenta los registros creados en el rango,
+        -- excepto los marcados como DUPLICADO (incluido el typo DUPLLICADO).
+        -- La exclusion se basa en el estado Jotform, no en la etapa CRM.
         COUNT(*) FILTER (
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text)
                   BETWEEN $1::date AND $2::date
+              AND ${ESTADO_NORM_SQL} NOT IN ('DUPLICADO', 'DUPLLICADO')
         )                                                  AS ingresos_jot,
 
         COUNT(*) FILTER (
@@ -260,7 +274,8 @@ metas AS (
            MAX(pct_tasa_activacion) AS m_pct_tasa_activacion,
            MAX(pct_tarjeta)         AS m_pct_tarjeta,
            MAX(pct_tercera_edad)    AS m_pct_tercera_edad,
-           MAX(pct_planes_150_200)  AS m_pct_planes
+           MAX(pct_planes_150_200)  AS m_pct_planes,
+           MAX(NULLIF(BTRIM(supervisor), '')) AS m_supervisor
     FROM public.metas_asesor
     WHERE empresa = $3 AND activo
       AND anio = EXTRACT(YEAR  FROM $1::date)::int
@@ -278,7 +293,8 @@ SELECT d.*,
        COALESCE(m.m_pct_tasa_activacion,0)  AS meta_pct_tasa_activacion,
        COALESCE(m.m_pct_tarjeta,0)          AS meta_pct_tarjeta,
        COALESCE(m.m_pct_tercera_edad,0)     AS meta_pct_tercera_edad,
-       COALESCE(m.m_pct_planes,0)           AS meta_pct_planes
+       COALESCE(m.m_pct_planes,0)           AS meta_pct_planes,
+       m.m_supervisor                       AS meta_supervisor
 FROM datos d
 LEFT JOIN metas m ON m.persona = d.persona
 `;
@@ -359,6 +375,11 @@ function fusionarPorNombreSimilar(filas, campoNombre, camposSuma) {
     const base = g.filas.reduce((a, b) =>
       String(b[campoNombre] || '').length > String(a[campoNombre] || '').length ? b : a);
     const fusion = { ...base };
+    const conMeta = g.filas.find(f => f.meta_supervisor);
+    if (conMeta && !fusion.meta_supervisor) {
+      fusion.meta_supervisor = conMeta.meta_supervisor;
+      fusion.supervisor = conMeta.supervisor;
+    }
     for (const c of camposSuma) {
       fusion[c] = g.filas.reduce((acc, f) => acc + Number(f[c] || 0), 0);
     }
@@ -421,8 +442,24 @@ async function getKpiComercial(req, res) {
             ) e ON TRUE`,
         };
 
-    const values = [rango.desde, rango.hasta, empresa];
     const q = req.query;
+
+    // FIX 2026-10-06: si hay metas cargadas para el mes (modulo Carga de metas),
+    // el EXCEL manda la asignacion de equipos (NOVONET y VELSA): supervisor = el del
+    // Excel; quien no esta en el Excel va a "SIN ASIGNAR". Sin metas del mes,
+    // se mantiene el comportamiento anterior (tabla empleados).
+    // (2026-10-06) Aplica igual para VELSA.
+    let usarMetas = false;
+    {
+      const { rows: [c] } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM public.metas_asesor
+          WHERE empresa = $1 AND activo
+            AND anio = EXTRACT(YEAR FROM $2::date)::int
+            AND mes  = EXTRACT(MONTH FROM $2::date)::int`, [empresa, rango.desde]);
+      usarMetas = c.n > 0;
+    }
+
+    const values = [rango.desde, rango.hasta, empresa];
     const filtros = [
       `(mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
         OR public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -440,7 +477,8 @@ async function getKpiComercial(req, res) {
         : 'mb.b_persona_responsable';
       exactos(col, q.asesor);
     }
-    parcial(empresa === 'VELSA' ? 'mb.supervisor' : 'e.supervisor', q.supervisor);
+    // Con metas del mes, el filtro de supervisor se aplica despues (en JS)
+    if (!usarMetas) parcial(empresa === 'VELSA' ? 'mb.supervisor' : 'e.supervisor', q.supervisor);
     parcial('mb.j_netlife_estatus_real', q.estadoNetlife);
     parcial('mb.j_netlife_estatus_real', q.etapaJotform);
     parcial('mb.j_estatus_regularizacion', q.estadoRegularizacion);
@@ -480,7 +518,15 @@ async function getKpiComercial(req, res) {
       .replace('__FILTROS__', () => filtros.join(' AND '))
       .replaceAll('__DISCRIMINACION__', () => empresa === 'NOVONET' ? sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion') : 'TRUE');
 
-    const { rows } = await pool.query(sql, values);
+    let { rows } = await pool.query(sql, values);
+
+    if (usarMetas) {
+      rows = rows.map(r => ({ ...r, supervisor: r.meta_supervisor || 'SIN ASIGNAR' }));
+      if (q.supervisor) {
+        const buscado = String(q.supervisor).trim().toUpperCase();
+        rows = rows.filter(r => String(r.supervisor).toUpperCase().includes(buscado));
+      }
+    }
 
     // Nivel ASESOR — fusiona primero variantes de nombre corto/completo que
     // claveAsesorSQL no haya cubierto todavia (ver fusionarPorNombreSimilar).
@@ -494,7 +540,7 @@ async function getKpiComercial(req, res) {
 
     // Nivel SUPERVISOR — se agregan los absolutos y se recalculan los %
     const porSup = new Map();
-    for (const r of rows) {
+    for (const r of filasAsesorFusionadas) {
       const k = r.supervisor || 'SIN ASIGNAR';
       if (!porSup.has(k)) {
         porSup.set(k, Object.fromEntries([['nombre', k], ...CAMPOS_SUMA.map(c => [c, 0])]));

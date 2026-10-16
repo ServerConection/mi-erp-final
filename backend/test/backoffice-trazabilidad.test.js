@@ -21,7 +21,7 @@ test('la auditoría se estampa en servidor y el historial se agrega automáticam
   assert.match(fuente, /payload\.fecha_regularizacion_atc = new Intl\.DateTimeFormat/);
   assert.match(fuente, /payload\.fecha_hora_regularizacion = new Date\(\)/);
   assert.match(fuente, /historial\.push\(\{/);
-  assert.match(fuente, /SELECT \* FROM public\.envios_ventas WHERE id = \$1 FOR UPDATE/);
+  assert.match(fuente, /SELECT \* FROM public\.envios_ventas[\s\S]*?WHERE id = \$1[\s\S]*?FOR UPDATE/);
   assert.match(fuente.match(/const CAMPOS_EDITABLES[\s\S]*?\]\);/)?.[0] || '', /'auditado_por'/);
 });
 
@@ -36,9 +36,27 @@ test('la migración crea franja, estampa exacta e historial', () => {
 test('el buscador global incluye teléfonos, login e identificadores presentes en la fila', () => {
   assert.match(fuente, /telf_celular_pin\s+ILIKE/);
   assert.match(fuente, /netlife_login\s+ILIKE/);
-  assert.match(fuente, /to_jsonb\(ev\)::text\s+ILIKE/);
+  assert.match(fuente, /numero_identificacion\s+ILIKE/);
 });
 
 test('las actualizaciones invalidan los tableros abiertos en tiempo real', () => {
   assert.match(fuente, /backoffice:registro-actualizado/);
+});
+
+test('solo una selección explícita de Estatus Netlife permite reafirmar el mismo estado', () => {
+  assert.match(
+    fuente,
+    /campo === 'netlife_estatus_real'[\s\S]*?valorComparableEstado\(campo, actual\[0\]\[campo\]\) !== valorComparableEstado\(campo, valor\)/
+  );
+  assert.match(
+    fuente,
+    /reafirmacion: campo === 'netlife_estatus_real'[\s\S]*?valorComparableEstado\(campo, actual\[0\]\[campo\]\) === valorComparableEstado\(campo, valor\)/
+  );
+});
+
+test('la galería registra altas, eliminaciones y reemplazos sin guardar rutas sensibles', () => {
+  assert.match(fuente, /const CAMPOS_GALERIA = new Set/);
+  assert.match(fuente, /\? 'AGREGADO'/);
+  assert.match(fuente, /\? 'ELIMINADO' : 'REEMPLAZADO'/);
+  assert.match(fuente, /anterior: teniaDocumento \? 'Documento cargado' : 'Sin documento'/);
 });

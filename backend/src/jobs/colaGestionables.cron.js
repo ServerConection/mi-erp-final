@@ -15,11 +15,16 @@ function initColaGestionables() {
   // Cada 5 min: registra los leads que un humano asignó a mano en Bitrix
   // (cuentan en el cupo del asesor junto con los del bot).
   cron.schedule('*/5 * * * *', () => {
-    sincronizarManuales().catch((err) => console.error('💥 [Gestionables] Manuales:', err.message));
+    // Novonet y Velsa por separado (cada una no hace nada si está apagada)
+    for (const empresa of ['novonet', 'velsa']) {
+      sincronizarManuales(empresa).catch((err) => console.error(`💥 [Gestionables ${empresa}] Manuales:`, err.message));
+    }
   }, { timezone: 'America/Guayaquil' });
 
   return cron.schedule('* * * * *', () => {
-    procesarCola().catch((err) => console.error('💥 [Gestionables] Cola:', err.message));
+    for (const empresa of ['novonet', 'velsa']) {
+      procesarCola(empresa).catch((err) => console.error(`💥 [Gestionables ${empresa}] Cola:`, err.message));
+    }
   }, { timezone: 'America/Guayaquil' });
 }
 

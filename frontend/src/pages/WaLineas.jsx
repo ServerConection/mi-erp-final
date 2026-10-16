@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getSocketCompartido } from "../utils/socketCompartido";
+import { estadoEfectivoLinea } from "../utils/waLineStatus";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 
@@ -45,7 +46,7 @@ const STATUS_LABEL = {
 // WhatsApp continúe conectado.
 const normalizarLinea = (line) => ({
   ...line,
-  status: line?.rt_status || line?.status || "disconnected",
+  status: estadoEfectivoLinea(line),
 });
 
 // Delegado al socket unico de la app (ver utils/socketCompartido.js):

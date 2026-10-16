@@ -141,3 +141,28 @@ services:
         sync: false
       - key: INGESTA_URL
         sync: false
+
+  # ── CALLS-SERVICE (Llamadas WhatsApp Business Calling API) ──
+  # Servicio aparte, mismo repo. Usa la misma BD y el mismo JWT del ERP (erp-shared).
+  # El frontend lo embebe en /whatsapp/llamadas con VITE_CALLS_URL.
+  - type: web
+    name: calls-service
+    runtime: node
+    rootDir: calls-service
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: false
+    numInstances: 1                # ← los eventos en vivo (SSE) viven en memoria: no escalar aún
+    envVars:
+      - fromGroup: erp-shared
+      - key: DB_POOL_MAX
+        value: "4"
+      - key: CALLS_ENCRYPTION_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: ERP_ORIGINS
+        sync: false

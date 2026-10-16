@@ -16,15 +16,11 @@ const ACTIVIDADES = new Set([
 
 // Mensajes que se muestran al usuario después de registrar.
 const MENSAJES_ACTIVIDAD = {
-  INGRESO:
-    "¡Que tengas un excelente día! Vamos con todo 💪",
-
+  INGRESO: "¡Que tengas un excelente día! Vamos con todo 💪",
   "SALIDA ALMUERZO":
     "¡Buen provecho! Disfruta tu almuerzo y recarga energías 🍽️",
-
   "INGRESO ALMUERZO":
     "¡Bienvenido nuevamente! Vamos con todo en esta segunda parte del día 🚀",
-
   SALIDA:
     "¡Gracias por tu esfuerzo y compromiso de hoy! Que tengas un excelente descanso 🙌",
 };
@@ -66,6 +62,26 @@ function obtenerIp(req) {
 
   return ip;
 }
+
+// Devuelve los datos vigentes desde la base. El cargo no debe depender del
+// perfil guardado en localStorage, que puede estar incompleto o desactualizado.
+router.get("/mi-perfil", verificarToken, async (req, res) => {
+  const usuario = req.user;
+  if (!usuario?.id) {
+    return res.status(401).json({ success: false, error: "Usuario no autenticado" });
+  }
+  return res.json({
+    success: true,
+    data: {
+      id: usuario.id,
+      usuario: usuario.usuario || "",
+      nombre: usuario.nombreCompleto || "",
+      cargo: usuario.cargo || "",
+      perfil: usuario.perfil || "",
+      empresa: usuario.empresa || "",
+    },
+  });
+});
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/control-asistencia
@@ -185,10 +201,7 @@ router.post("/", verificarToken, async (req, res) => {
       usuario.nombre ||
       "";
 
-    const cargo =
-      usuario.perfil ||
-      usuario.cargo ||
-      "";
+    const cargo = usuario.cargo || "";
 
     const ip = obtenerIp(req);
 
@@ -309,6 +322,56 @@ router.post("/", verificarToken, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/control-asistencia/resumen-dia?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Una fila por usuario y fecha con la primera marcación de cada actividad.
+router.get("/resumen-dia", verificarToken, async (req, res) => {
+  try {
+    const usuario = req.user;
+    if (!usuario?.id) {
+      return res.status(401).json({ success: false, error: "Usuario no autenticado" });
+    }
+    if (!PERFILES_PERMITIDOS.has(normalizarTexto(usuario.perfil))) {
+      return res.status(403).json({ success: false, error: "No tiene permiso para consultar marcaciones" });
+    }
+
+    const desde = String(req.query.desde || req.query.fecha || "").trim();
+    const hasta = String(req.query.hasta || req.query.fecha || desde).trim();
+    const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
+    if ((desde && !formatoFecha.test(desde)) || (hasta && !formatoFecha.test(hasta))) {
+      return res.status(400).json({ success: false, error: "Las fechas deben tener formato YYYY-MM-DD" });
+    }
+    if (desde && hasta && desde > hasta) {
+      return res.status(400).json({ success: false, error: "La fecha desde no puede ser posterior a la fecha hasta" });
+    }
+
+    const result = await pool.query(`
+      SELECT
+        fecha::text AS fecha,
+        usuario_id,
+        MAX(NULLIF(TRIM(usuario), '')) AS usuario,
+        MAX(NULLIF(TRIM(nombre_completo), '')) AS nombre_completo,
+        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'INGRESO'), 'HH24:MI') AS ingreso,
+        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'SALIDA ALMUERZO'), 'HH24:MI') AS salida_almuerzo,
+        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'INGRESO ALMUERZO'), 'HH24:MI') AS regreso_almuerzo,
+        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'SALIDA'), 'HH24:MI') AS salida
+      FROM public.control_asistencia
+      WHERE fecha BETWEEN
+        COALESCE(NULLIF($1, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
+        AND COALESCE(NULLIF($2, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
+      GROUP BY fecha, usuario_id
+      ORDER BY fecha DESC, COALESCE(
+        MIN(hora) FILTER (WHERE actividad = 'INGRESO'),
+        MIN(hora)
+      ) ASC, MAX(nombre_completo) ASC
+    `, [desde, hasta]);
+
+    return res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error("[controlAsistencia.routes] Error consultando resumen diario:", error);
+    return res.status(500).json({ success: false, error: "Error al obtener el resumen diario" });
+  }
+});
+
 // GET /api/control-asistencia/mis-registros
 // ─────────────────────────────────────────────────────────────
 

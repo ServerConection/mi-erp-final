@@ -47,6 +47,7 @@ const backofficeJotformRoutes      = require('./routes/backofficeJotform.routes'
 const botAuditorRoutes             = require('./routes/botAuditor.routes');
 const nexoIaRoutes                 = require('./routes/nexoIa.routes');
 const kpiComercialRoutes           = require('./routes/kpiComercial.routes');
+const comisionesRoutes             = require('./routes/comisiones.routes');
 const datosAdicionalesRoutes       = require('./routes/datosAdicionales.routes');
 const tthhRoutes                   = require('./routes/tthh.routes');
 const llamadasRoutes                = require('./routes/llamadas.routes');
@@ -250,6 +251,7 @@ app.use('/api/backoffice-jotform', backofficeJotformRoutes);
 app.use('/api/bot-auditor', botAuditorRoutes);
 app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
+app.use('/api/comisiones',         comisionesRoutes);
 // Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
 app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);

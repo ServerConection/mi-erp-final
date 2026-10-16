@@ -4,7 +4,7 @@ import { repartoRequest, hoyEc } from './api';
 
 const etiquetaHora = (h) => `${String(h).padStart(2, '0')}:00`;
 
-export default function ReporteReparto() {
+export default function ReporteReparto({ empresa = 'novonet' }) {
   const [fecha, setFecha] = useState(hoyEc);
   const [datos, setDatos] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -14,10 +14,10 @@ export default function ReporteReparto() {
 
   const consultar = useCallback(async () => {
     setBusy(true); setError('');
-    try { setDatos(await repartoRequest(`/reparto/reporte?fecha=${fecha}`)); setHora(null); setAsesor(''); }
+    try { setDatos(await repartoRequest(`/reparto/reporte?fecha=${fecha}`, {}, empresa)); setHora(null); setAsesor(''); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
-  }, [fecha]);
+  }, [fecha, empresa]);
   useEffect(() => { consultar(); }, [consultar]);
 
   const todos = datos?.detalle || [];

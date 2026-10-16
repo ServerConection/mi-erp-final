@@ -25,7 +25,7 @@ const {
     esIngresoJotformAcidoExpr
 } = require('../shared/etapas');
 const { normalizarAsesorExpr } = require('../shared/normalizarAsesor');
-const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
+const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600, calcularTerceraEdadProyectada, consultarDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
     enPeriodoSeleccionadoExpr,
     backlogEnPeriodoSeleccionadoExpr,
@@ -1172,8 +1172,9 @@ const getIndicadoresDashboard = async (req, res) => {
         // consultar en vivo (1 sola query, no el dashboard completo).
         if (cached) {
             const resNetVivo = await pool.query(queryJotform, values);
+            const kpiPlanes = calcularPlanesHasta600(resNetVivo.rows);
             console.log(`[DASHBOARD] Cache hit (detalle Jotform en vivo) → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
-            return res.json({ ...cached, dataNetlife: resNetVivo.rows });
+            return res.json({ ...cached, ...kpiPlanes, dataNetlife: resNetVivo.rows });
         }
 
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).
@@ -1389,6 +1390,12 @@ const getIndicadoresDashboard = async (req, res) => {
             ? Number(((totalTerceraEdad / totalJotformTarjeta) * 100).toFixed(2)) : 0;
         const porcentajeTarjeta = totalJotformTarjeta > 0
             ? Number(((totalTarjeta / totalJotformTarjeta) * 100).toFixed(2)) : 0;
+        const { totalPlanesHasta600, porcentajePlanesHasta600 } = calcularPlanesHasta600(resNet.rows);
+        const {
+            totalBaseTerceraEdadProyectada,
+            totalTerceraEdadProyectada,
+            porcentajeTerceraEdadProyectada,
+        } = calcularTerceraEdadProyectada(resNet.rows);
 
         const totalBacklogSup = supervisoresConBacklog.reduce((a, r) => a + Number(r.backlog || 0), 0);
         console.log(`[DASHBOARD] Supervisores: ${supervisoresConBacklog.length} | Asesores: ${asesoresConBacklog.length} | Barras: ${resDia.rows.length} | 3ra Edad: ${porcentajeTerceraEdad}% | Tarjeta: ${porcentajeTarjeta}% | Backlog Total: ${totalBacklogSup}`);
@@ -1409,7 +1416,12 @@ const getIndicadoresDashboard = async (req, res) => {
             etapasCRM: etapasCache.etapasCRM,
             etapasJotform: etapasCache.etapasJotform,
             porcentajeTerceraEdad,
+            porcentajeTerceraEdadProyectada,
+            totalTerceraEdadProyectada,
+            totalBaseTerceraEdadProyectada,
             porcentajeTarjeta,
+            porcentajePlanesHasta600,
+            totalPlanesHasta600,
             // canales: agrupaciones fijas (ARTS, VIDIKA, REMARKETING...)
             canales: CANALES_DISPONIBLES,
             // origenes: TODOS los valores reales de b_origen presentes en la data
@@ -1920,6 +1932,9 @@ const getConsultaDescargaNovonet = async (req, res) => {
         if (!fechaDesde || !fechaHasta) {
             return res.status(400).json({ success: false, error: 'Parámetros fechaDesde y fechaHasta requeridos' });
         }
+
+        const filasDetalle = await consultarDetalleJotform(pool, 'novonet', req.query);
+        return res.json({ success: true, total: filasDetalle.length, rows: filasDetalle, registros: filasDetalle });
 
         const values = [fechaDesde, fechaHasta];
         let filters = '';

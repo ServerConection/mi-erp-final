@@ -12,6 +12,9 @@ function cargar(rows) {
     require: (name) => {
       if (name === '../config/db') return { query: async (sql, values) => {
         queries.push({ sql, values });
+        if (/SELECT COUNT\(\*\)::int AS n FROM public\.metas_asesor/.test(sql)) {
+          return { rows: [{ n: 0 }] };
+        }
         return { rows };
       } };
       if (name === '../shared/etapas') return etapas;
@@ -48,7 +51,7 @@ for (const empresa of ['NOVONET', 'VELSA']) {
     assert.equal(payload.data.total.pct_efect_vs_leads, 15);
     assert.equal(payload.data.total.pct_efect_vs_gestion, 30);
     assert.equal(payload.data.supervisores[0].pct_efect_vs_gestion, 30);
-    const { sql, values } = queries[0];
+    const { sql, values } = queries.find(q => /WITH datos AS/.test(q.sql));
     // Regresión: el filtro gestionables contiene regex terminados en $'.
     // Sustituirlo como string duplicaba el sufijo del SQL y rompía PostgreSQL.
     assert.equal((sql.match(/metas AS \(/g) || []).length, 1);
@@ -57,12 +60,14 @@ for (const empresa of ['NOVONET', 'VELSA']) {
     assert.doesNotMatch(sql, /O'Neil/);
     assert.ok(values.includes("%Equipo O'Neil%"));
     assert.equal(Math.max(...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1]))), values.length);
-    // Ingresos Tot. Jot cuenta todo registro del rango, igual que la tarjeta
-    // global: no agrega exclusiones por etapa CRM ni por estado Jotform.
+    // Ingresos Tot. Jot excluye el estado Jotform DUPLICADO y su typo real,
+    // sin convertir esa regla en una exclusion por etapa CRM.
     const whereDatos = sql.slice(sql.indexOf('WHERE (mb.b_creado_el_fecha'), sql.indexOf('\nmetas AS'));
     assert.doesNotMatch(whereDatos, /NOT IN \('PRESERVICIO'/);
     const bloqueIngresosJot = sql.slice(sql.indexOf('-- INGRESOS TOTALES JOT'), sql.indexOf('AS ingresos_jot') + 'AS ingresos_jot'.length);
-    assert.doesNotMatch(bloqueIngresosJot, /b_etapa_de_la_negociacion|j_netlife_estatus_real|NOT IN/);
+    assert.doesNotMatch(bloqueIngresosJot, /b_etapa_de_la_negociacion/);
+    assert.match(bloqueIngresosJot, /j_netlife_estatus_real/);
+    assert.match(bloqueIngresosJot, /NOT IN \('DUPLICADO', 'DUPLLICADO'\)/);
     assert.ok(!etapas.ESTADOS_EXCLUIDOS_INGRESO_JOTFORM.includes('ELIMINADO'));
     if (empresa === 'VELSA') {
       assert.doesNotMatch(sql, /origen_bwl/);
@@ -106,6 +111,7 @@ test('sin selección de origen no se impone un límite fijo en NOVONET', async (
   await handler({ query: { fechaDesde: '2026-09-01', fechaHasta: '2026-09-14' } }, {
     json() {}, status(code) { assert.fail(`HTTP ${code}`); },
   });
-  assert.doesNotMatch(queries[0].sql, /origen_bwl/);
-  assert.equal(queries[0].values.length, 3);
+  const consultaKpi = queries.find(q => /WITH datos AS/.test(q.sql));
+  assert.doesNotMatch(consultaKpi.sql, /origen_bwl/);
+  assert.equal(consultaKpi.values.length, 3);
 });

@@ -291,6 +291,7 @@ export default function InventarioActivos() {
       } else {
         const payload = {
           ...form,
+          ...(editando ? { responsable } : {}),
           disco_gb: discoEntrada === "" ? null : Number(discoEntrada) * (discoUnidad === "TB" ? 1024 : 1),
         };
         const response = await fetch(editando ? `${API}/${activoId}` : API, {
@@ -434,7 +435,7 @@ export default function InventarioActivos() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-slate-800"><ShieldCheck size={20} className="text-blue-600" /><h2 className="font-black">Datos automaticos</h2></div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable"><input readOnly value={responsable} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo></div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable" requerido={Boolean(activoId && esAdmin)} ayuda={activoId && esAdmin ? "Editable solo por administradores." : "Se asigna automaticamente al registrar."}><input required={Boolean(activoId && esAdmin)} readOnly={!activoId || !esAdmin} value={responsable} onChange={(e) => setResponsable(normalizarEntrada(e.target.value))} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo></div>
           </section>
 
           <div className="mt-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex sm:items-center sm:justify-between sm:px-5">

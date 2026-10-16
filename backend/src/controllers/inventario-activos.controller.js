@@ -88,8 +88,8 @@ const validar = (datos) => {
   return null;
 };
 
-const rechazarCamposServidor = (body) => {
-  const enviados = CAMPOS_SERVIDOR.filter((campo) => Object.prototype.hasOwnProperty.call(body, campo));
+const rechazarCamposServidor = (body, campos = CAMPOS_SERVIDOR) => {
+  const enviados = campos.filter((campo) => Object.prototype.hasOwnProperty.call(body, campo));
   return enviados.length ? `Los campos ${enviados.join(', ')} son asignados por el servidor.` : null;
 };
 
@@ -691,19 +691,23 @@ exports.crear = async (req, res) => {
 };
 
 exports.editar = async (req, res) => {
-  const campoServidor = rechazarCamposServidor(req.body);
+  const campoServidor = rechazarCamposServidor(req.body, ['fecha_revision']);
   if (campoServidor) return res.status(400).json({ success: false, error: campoServidor });
 
   const id = normalizarTexto(req.params.id);
   const datos = normalizarBody(req.body);
+  const responsable = normalizarTexto(req.body.responsable);
+  if (!responsable) {
+    return res.status(400).json({ success: false, error: 'responsable es obligatorio.' });
+  }
   const errorValidacion = validar(datos);
   if (errorValidacion) return res.status(400).json({ success: false, error: errorValidacion });
 
-  const columnasDatos = [...CAMPOS_EDITABLES, 'ram', 'disco_espacio'];
+  const columnasDatos = [...CAMPOS_EDITABLES, 'ram', 'disco_espacio', 'responsable'];
   const asignaciones = columnasDatos.map((campo, index) => `${campo} = $${index + 1}`);
   const valores = [
     ...CAMPOS_EDITABLES.map((campo) => datos[campo]),
-    textoGB(datos.ram_gb), textoGB(datos.disco_gb),
+    textoGB(datos.ram_gb), textoGB(datos.disco_gb), responsable,
   ];
   valores.push(usuarioActual(req), id);
 

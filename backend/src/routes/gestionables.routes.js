@@ -97,7 +97,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, bloqueadoPorEfectividad, metaVentaSubida, plazoVentaHoras, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -189,7 +189,7 @@ router.get('/reparto/estado', async (req, res) => {
       resumen: resumen.rows[0],
       horario: { inicio: cfg.hora_inicio, fin: cfg.hora_fin, dentro: dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin) },
       estacion: { nombre: cfg.estacion_nombre, pendientes: cola.rows.length, lista: cola.rows, sin_tabla: !!cola.sinTabla },
-      efectividad: { plazo_horas: PLAZO_VENTA_HORAS, pct_max_sin_venta: PCT_SIN_VENTA_MAX },
+      efectividad: { plazo_horas: plazoVentaHoras(E.clave), pct_max_sin_venta: PCT_SIN_VENTA_MAX },
       data,
     });
   } catch (e) {

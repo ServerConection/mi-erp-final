@@ -264,7 +264,7 @@ const crearReparto = (empresa) => {
     en_estacion:      'Ya estaba a nombre de la estación',
     reintento_bitrix: 'Bitrix estaba saturado; se reintenta desde la cola',
     limite_atc:       'Los asesores con cupo superaron su % de ATC',
-    limite_efectividad: 'Los asesores con cupo tienen leads de más de 3 h sin Venta Subida',
+    limite_efectividad: 'Los asesores con cupo tienen leads vencidos sin Venta Subida',
   };
   const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
     const userId = await idUsuarioBitrix(cfg.estacion_nombre);

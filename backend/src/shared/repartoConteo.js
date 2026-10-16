@@ -27,7 +27,9 @@ const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 // Deja de recibir si ya tiene tantos leads vencidos (+3 h sin subir) como su
 // meta Y todavía no llega a la meta de Ventas Subidas. Si cubre la meta, sigue
 // recibiendo aunque tenga leads vencidos.
+// Plazo por empresa (Novonet 3 h, Velsa 8 h) en shared/repartoEmpresas.js
 const PLAZO_VENTA_HORAS = Number(process.env.GESTIONABLES_PLAZO_VENTA_HORAS) || 3;
+const plazoVentaHoras = (empresa) => getEmpresa(empresa).plazoVentaHoras || PLAZO_VENTA_HORAS;
 const PCT_SIN_VENTA_MAX = Number(process.env.GESTIONABLES_PCT_SIN_VENTA) || 30;
 const normEtapa = (etapa) => String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/_/g, ' ').trim().replace(/\s+/g, ' ').toUpperCase();
@@ -94,10 +96,10 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
     if (etapa && esEtapaAtc(etapa)) x.atc += 1;
     if (etapa && esVentaSubida(etapa)) x.venta += 1;
     // Gestionable con más de 3 h desde la entrega y todavía sin Venta Subida
-    else if (gestionable && a.creado_en && Date.now() - new Date(a.creado_en).getTime() >= PLAZO_VENTA_HORAS * 3600 * 1000) x.vencidos += 1;
+    else if (gestionable && a.creado_en && Date.now() - new Date(a.creado_en).getTime() >= plazoVentaHoras(empresa) * 3600 * 1000) x.vencidos += 1;
     m.set(k, x);
   }
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };

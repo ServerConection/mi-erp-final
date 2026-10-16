@@ -112,6 +112,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       {
         id: user.id,
+        usuario: user.usuario,
         empresa: empresa,
         perfil: perfil
       },
@@ -198,7 +199,7 @@ router.post('/bitrix-exchange', async (req, res) => {
       : (URL_REPORTES[perfil] || '');
 
     const token = jwt.sign(
-      { id: user.id, empresa, perfil },
+      { id: user.id, usuario: user.usuario, empresa, perfil },
       process.env.JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );

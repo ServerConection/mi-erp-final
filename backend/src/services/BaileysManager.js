@@ -545,8 +545,19 @@ class BaileysManager {
       this.io.emit('line:status', { lineId, status })
       this.io.emit(`line:status:${lineId}`, { lineId, status })
       if (state.creds.registered && !this.reconnectTimers[lineId]) {
-        this.reconnectTimers[lineId] = setTimeout(() => {
+        this.reconnectTimers[lineId] = setTimeout(async () => {
           delete this.reconnectTimers[lineId]
+          // El socket no respondió en 60s: lo normal es que el proxy de la
+          // línea no tenga salida (DataImpulse NO_RAY / NO_HOST_CONNECTION).
+          // Reintentar contra el mismo puerto deja la línea en "Conectando…"
+          // para siempre, así que antes del reintento se rota a un puerto
+          // limpio del pool (con las credenciales vigentes del .env).
+          try {
+            const nueva = await rotarProxyDeLinea(lineId, 'sin_respuesta_60s')
+            if (nueva) console.log(`[Line ${lineId}] ♻️ Proxy rotado tras watchdog → ${nueva.host}:${nueva.port}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo rotar el proxy tras watchdog: ${e.message}`)
+          }
           this.connect(lineId).catch(e => console.warn(`[Line ${lineId}] watchdog retry:`, e.message))
         }, 120000)
       }
@@ -733,7 +744,18 @@ class BaileysManager {
         // sale por proxy, lo más probable es que esa IP esté muerta; reintentar
         // contra el mismo puerto solo gasta los 5 intentos y deja la línea sin QR.
         // A partir del segundo fallo se rota a una IP limpia del pool.
-        if (statusCode === 408 && attempts >= 1) {
+        // QR sin escanear: ahí el 408 es el QR que caducó, NO una IP muerta.
+        // No se quema la IP y, agotados los intentos, se detiene el bucle.
+        const esperandoQr = !state?.creds?.registered
+        if (esperandoQr && attempts >= MAX_RETRIES) {
+          console.log(`[Line ${lineId}] QR sin escanear tras ${MAX_RETRIES} intentos → se detiene. Pulsa "Conectar" para pedir uno nuevo.`)
+          delete this.reconnectAttempts[lineId]
+          this._updateLineStatus(lineId, 'disconnected')
+          this.io.emit('line:status', { lineId, status: 'disconnected' })
+          this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+          return
+        }
+        if (statusCode === 408 && attempts >= 1 && !esperandoQr) {
           try {
             const nueva = await rotarProxyDeLinea(lineId, 'timeout_408')
             if (nueva) console.log(`[Line ${lineId}] ♻️ IP rotada tras timeout → ${nueva.host}:${nueva.port}`)

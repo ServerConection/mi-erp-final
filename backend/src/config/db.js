@@ -48,7 +48,7 @@ CREATE OR REPLACE FUNCTION public.parse_fecha_flex(valor text)
 RETURNS date
 LANGUAGE plpgsql
 IMMUTABLE
-PARALLEL SAFE
+PARALLEL RESTRICTED
 AS $$
 BEGIN
     IF valor IS NULL OR TRIM(valor) = '' THEN
@@ -56,6 +56,10 @@ BEGIN
     END IF;
     IF valor ~ '^\\d{4}-\\d{2}-\\d{2}' THEN
         RETURN SUBSTRING(valor FROM 1 FOR 10)::date;
+    END IF;
+    -- Formato JotForm migrado a envios_ventas: MM-DD-YYYY (ej. 09-14-2026)
+    IF valor ~ '^\\d{2}-\\d{2}-\\d{4}$' THEN
+        RETURN TO_DATE(valor, 'MM-DD-YYYY');
     END IF;
     RETURN TO_DATE(SUBSTRING(valor FROM 5 FOR 11), 'Mon DD YYYY');
 EXCEPTION WHEN OTHERS THEN

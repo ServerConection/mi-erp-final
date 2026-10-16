@@ -19,8 +19,22 @@ require('dotenv').config();
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
+const compression = require('compression');
+
 const app = express();
 app.set('trust proxy', 1);
+
+// PERFORMANCE (2026-10-08): comprime con gzip las respuestas JSON hacia el
+// navegador (indicadores/redes pesan varios MB sin comprimir).
+// Se excluye tiempo real (socket.io, SSE) y archivos de WhatsApp.
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.path.startsWith('/socket.io') || req.path.startsWith('/wa-uploads')) return false;
+    if ((req.headers.accept || '').includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
 
 const TARGETS = {
   WABOT:   process.env.WABOT_URL,

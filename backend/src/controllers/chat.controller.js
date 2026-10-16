@@ -261,8 +261,8 @@ exports.enviarMensaje = async (req, res) => {
     if (!contenido) {
       return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío' });
     }
-    if (contenido.length > 4000) {
-      return res.status(400).json({ success: false, error: 'El mensaje admite máximo 4000 caracteres' });
+    if (contenido.length > 20000) {
+      return res.status(400).json({ success: false, error: 'El mensaje admite máximo 20000 caracteres' });
     }
 
     const { rows } = await pool.query(

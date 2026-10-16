@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.chat_mensajes (
     contenido        TEXT         NOT NULL,
     eliminado        BOOLEAN      NOT NULL DEFAULT false,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT chk_chat_mensajes_contenido CHECK (length(trim(contenido)) BETWEEN 1 AND 4000)
+    CONSTRAINT chk_chat_mensajes_contenido CHECK (length(trim(contenido)) BETWEEN 1 AND 20000)
 );
 
 COMMENT ON TABLE  public.chat_mensajes           IS 'Mensajes de texto. v1: sin adjuntos.';

@@ -166,7 +166,7 @@ export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeid
           }}
           placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)"
           rows={1}
-          maxLength={4000}
+          maxLength={20000}
           className="max-h-32 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
         />
         <button

@@ -83,6 +83,13 @@ export default function Comisiones() {
     return ()=>ctrl.abort();
   },[empresa,filtros,recarga]);
 
+  // Actualización automática cada 10 minutos
+  const [ultima, setUltima] = useState(null);
+  useEffect(() => { if (!loading) setUltima(new Date()); }, [loading]);
+  useEffect(() => {
+    const id = setInterval(() => setRecarga(x => x + 1), 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []); main
   const rangoCorrecto = (r, nombre) => {
     if (!r.desde && !r.hasta) return true;
     if (!r.desde || !r.hasta) { setError(`Completa las dos fechas de ${nombre}.`); return false; }
@@ -97,7 +104,7 @@ export default function Comisiones() {
   const t=data.totales||{};
 
   return <div className="min-h-full bg-slate-50 p-4 md:p-7"><div className="mx-auto max-w-7xl space-y-5">
-    <header><p className="text-xs font-bold uppercase tracking-widest text-amber-600">Administración</p><h1 className="text-2xl font-black text-slate-900">Comisiones</h1><p className="mt-1 text-sm text-slate-500">Fuente oficial: ventas registradas en el CORE, agrupadas por el usuario que realizó el ingreso.</p></header>
+    <header><p className="text-xs font-bold uppercase tracking-widest text-amber-600">Administración</p><h1 className="text-2xl font-black text-slate-900">Comisiones</h1><p className="mt-1 text-sm text-slate-500">Fuente oficial: ventas registradas en el CORE, agrupadas por el usuario que realizó el ingreso. Se actualiza cada 10 minutos{ultima&&<> · última: <b>{ultima.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'})}</b></>}.</p></header>main
     <div className="inline-flex rounded-xl border bg-white p-1 shadow-sm">{['NOVONET','VELSA'].map(x=><button key={x} onClick={()=>setEmpresa(x)} className={`rounded-lg px-5 py-2 text-sm font-bold ${empresa===x?'bg-blue-600 text-white':'text-slate-600 hover:bg-slate-50'}`}>Comisiones {x}</button>)}</div>
     <CargaCatalogo onCargado={()=>setRecarga(x=>x+1)} />
     <form onSubmit={consultar} className="space-y-4 rounded-2xl border bg-white p-4 shadow-sm">

@@ -144,7 +144,8 @@ async function listar(req, res) {
       SELECT MAX(v.codigo) AS codigo_asesor, v.usuario AS usuario,
         MAX(v.nombre_asesor) AS nombre_asesor,
         MAX(v.fecha_telcos) AS ultima_fecha_ingreso_telcos,
-        COUNT(*) FILTER (WHERE v.reg = 'PORREGULARIZAR')::int AS activas_por_regularizar,
+        -- Solo REGULARIZADO se paga; todo lo demás (incl. NO REQUIERE REGULARIZAR) es por regularizar
+        COUNT(*) FILTER (WHERE v.reg IS DISTINCT FROM 'REGULARIZADO')::int AS activas_por_regularizar,
         COUNT(*) FILTER (WHERE v.reg = 'REGULARIZADO')::int AS activas_regularizadas,
         COUNT(*)::int AS activas_totales,
         ROUND(COALESCE(SUM(c.com), 0), 2)::float AS valor_total,

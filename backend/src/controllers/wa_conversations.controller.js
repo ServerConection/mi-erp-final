@@ -579,6 +579,8 @@ async function startFromBitrix(req, res) {
     }
 
     const empresa = empresaVisibleWabot(req.user)
+    // SEMILLERO usa el portal Bitrix de NOVONET
+    const empresaBx = empresa === 'SEMILLERO' ? 'NOVONET' : empresa
 
     // 1) Determinar el número: directo o desde Bitrix
     let waNumber = ''
@@ -588,14 +590,14 @@ async function startFromBitrix(req, res) {
       waNumber = normalizePhoneEC(phoneIn)
       if (!waNumber) return res.status(400).json({ success: false, error: 'Número de teléfono inválido' })
     } else {
-      if (!BITRIX_WEBHOOKS[empresa]) {
+      if (!BITRIX_WEBHOOKS[empresaBx]) {
         return res.status(400).json({ success: false, error: `Tu empresa (${empresa || '—'}) no tiene Bitrix configurado` })
       }
       // La negociación puede vivir en el portal de la otra empresa (p.ej. un
       // asesor VELSA abriendo un deal del portal NOVONET). Se prueba primero
       // la empresa del usuario y luego la otra antes de fallar.
       let info, lastErr
-      for (const emp of [empresa, ...Object.keys(BITRIX_WEBHOOKS).filter(k => k !== empresa)]) {
+      for (const emp of [empresaBx, ...Object.keys(BITRIX_WEBHOOKS).filter(k => k !== empresaBx)]) {
         try { info = await getWabotBitrixLookup().phoneFromDeal(emp, bitrixId); bitrixCompany = emp; break }
         catch (e) { lastErr = e; console.warn(`[wa/bitrix/start] deal ${bitrixId} no encontrado en ${emp}: ${e.message}`) }
       }

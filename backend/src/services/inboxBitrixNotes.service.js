@@ -2,7 +2,12 @@ const { randomUUID, randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const companyOf = (conversation, user) => String(conversation.line_empresa || user.empresa || '').trim().toUpperCase();
+// SEMILLERO trabaja en el portal Bitrix de NOVONET.
+const PORTAL_BITRIX = { SEMILLERO: 'NOVONET' };
+const companyOf = (conversation, user) => {
+  const emp = String(conversation.line_empresa || user.empresa || '').trim().toUpperCase();
+  return PORTAL_BITRIX[emp] || emp;
+};
 const validId = value => /^[1-9]\d{0,14}$/.test(String(value || '').trim());
 function eligibleDeal(conversation, user) {
   return companyOf(conversation, user) === 'NOVONET' && validId(conversation.bitrix_deal_id)

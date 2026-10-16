@@ -45,6 +45,7 @@ export const chatApi = {
     pedir(`/conversaciones/${conversacionId}/mensajes${antes ? `?antes=${antes}` : ''}`),
   enviarMensaje: (conversacionId, contenido) =>
     pedir(`/conversaciones/${conversacionId}/mensajes`, { method: 'POST', body: { contenido } }),
+  eliminarMensaje: (mensajeId) => pedir(`/mensajes/${mensajeId}`, { method: 'DELETE' }),
   marcarLeido: (conversacionId) =>
     pedir(`/conversaciones/${conversacionId}/leido`, { method: 'PATCH' }),
 
@@ -83,7 +84,7 @@ export function useSocketChat(manejadores) {
 
   useEffect(() => {
     const socket = obtenerSocket();
-    const eventos = ['chat:mensaje', 'chat:conversacion_nueva'];
+    const eventos = ['chat:mensaje', 'chat:mensaje_eliminado', 'chat:conversacion_nueva'];
 
     const despachar = {};
     for (const evento of eventos) {

@@ -43,6 +43,7 @@ const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
 const BitrixLive           = lazy(() => import("./pages/BitrixLive"));
 const Inventario           = lazy(() => import("./pages/Inventario"));
+const InventarioActivos    = lazy(() => import("./pages/InventarioActivos"));
 const SaludSistema         = lazy(() => import("./pages/SaludSistema"));
 const ReporteGerencial     = lazy(() => import("./pages/ReporteGerencial"));
 const Tareas               = lazy(() => import("./pages/Tareas"));
@@ -212,6 +213,7 @@ export default function App() {
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
             <Route path="bitrix-live"              element={<BitrixLive />} />
             <Route path="inventario"               element={<Inventario />} />
+            <Route path="inventario-activos"       element={<InventarioActivos />} />
             {/* Mapa de salud: que tuberia de datos esta viva y cual se congelo */}
             <Route path="salud"                    element={<SaludSistema />} />
             {/* Reporte Gerencial: salud comercial de ambas empresas en una pantalla */}

@@ -2,14 +2,15 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
+import { puedeAccederGestionables } from './utils/accesoGestionables';
+import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
-import { Horarios, Billetera } from "./pages/Modules";
-import Comisiones from "./pages/Comisiones";
+import { Horarios } from "./pages/Modules";
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
@@ -34,7 +35,9 @@ const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Llamadas = lazy(() => import("./pages/Llamadas"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
-const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemillero'));
+const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemilleroNovo'));
+const VistaAsesorSemillero = lazy(() => import('./pages/VistaAsesorSemillero'));
+const SeguimientoSemillero = lazy(() => import('./pages/SeguimientoSemillero'));
 const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
 const BroadcastNovonet     = lazy(() => import("./pages/BroadcastNovonet"));
 const BroadcastVelsa       = lazy(() => import("./pages/BroadcastVelsa"));
@@ -53,6 +56,7 @@ const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales")
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
+const ConfiguracionAtc     = lazy(() => import("./pages/ConfiguracionAtc"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
 const WaLineas             = lazy(() => import("./pages/WaLineas"));
@@ -63,12 +67,16 @@ const WaContactos          = lazy(() => import("./pages/WaContactos"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const WaPresentacion       = lazy(() => import("./pages/WaPresentacion"));
+const LlamadasWhatsApp     = lazy(() => import("./pages/LlamadasWhatsApp"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
 const BotAuditor           = lazy(() => import("./pages/BotAuditor"));
 const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
+const Comisiones           = lazy(() => import("./pages/Comisiones"));
+const BilleteraDigital     = lazy(() => import("./pages/BilleteraDigital"));
+const ForecastFinanciero   = lazy(() => import("./pages/ForecastFinanciero"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
 const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
@@ -118,6 +126,20 @@ const RolesAllowedRoute = ({ children, allowed = [] }) => {
   return children;
 };
 
+const AdministracionRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  if (!token) return <Navigate to="/login" replace />;
+  let userProfile = null;
+  try { userProfile = JSON.parse(localStorage.getItem("userProfile") || "null"); } catch (_) { userProfile = null; }
+  if (!puedeAccederAdministracion(userProfile?.perfil)) return <Navigate to="/" replace />;
+  return children;
+};
+
+const GestionablesRoute = ({ children, empresa }) => {
+  if (!puedeAccederGestionables(empresa)) return <Navigate to="/" replace />;
+  return children;
+};
+
 // Botones flotantes (soporte WhatsApp, chat interno, tareas): se ocultan en
 // las rutas /embed/* -- son el iframe "WABOT Inbox" dentro de Bitrix, y ahí
 // no pintan botones internos del ERP encima del chat del cliente.
@@ -155,8 +177,10 @@ export default function App() {
             <Route path="ventas"                    element={<Ventas />} />
             <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<Horarios />} />
-            <Route path="billetera"                 element={<Billetera />} />
-            <Route path="comisiones"                element={<Comisiones />} />
+            <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
+            <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
+            <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />
+            <Route path="forecast-velsa"            element={<AdministracionRoute><ForecastFinanciero empresa="velsa" /></AdministracionRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
             <Route path="redes"                     element={<Redes />} />
             <Route path="redes-velsa"               element={<RedesVelsa />} />
@@ -178,8 +202,11 @@ export default function App() {
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
             <Route path="automarcador"             element={<Automarcador />} />
-            <Route path="gestionables-asesores" element={<GestionablesAsesores />} />
+            <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
+            <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
+            <Route path="vista-asesor-semillero" element={<VistaAsesorSemillero />} />
+            <Route path="seguimiento-semillero" element={<SeguimientoSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
             <Route path="broadcast-novonet"        element={<BroadcastNovonet />} />
             <Route path="broadcast-velsa"          element={<BroadcastVelsa />} />
@@ -200,6 +227,7 @@ export default function App() {
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
+            <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />
             <Route path="nexo-ia"                    element={<NexoIa />} />
@@ -211,11 +239,13 @@ export default function App() {
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
-            <Route path="whatsapp/respaldos"        element={<WaRespaldos />} />
+            <Route path="whatsapp/respaldos"        element={<AdminOnlyRoute><WaRespaldos /></AdminOnlyRoute>} />
             <Route path="whatsapp/presentacion"      element={<WaPresentacion />} />
+            <Route path="whatsapp/llamadas"         element={<AdminOnlyRoute><LlamadasWhatsApp /></AdminOnlyRoute>} />
             <Route path="asistente"                 element={<AsistenteERP />} />
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
             <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />
+            <Route path="reporte-detalle-semillero" element={<ReporteDetalle empresa="semillero" />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

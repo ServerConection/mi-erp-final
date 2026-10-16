@@ -252,8 +252,6 @@ app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
 // Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
 app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
-// Comisiones (Administración) — cálculo mensual, refresco cada 10 min
-app.use('/api/comisiones',         require('./routes/comisiones.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);

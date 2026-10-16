@@ -1,258 +1,126 @@
-// src/pages/Comisiones.jsx
-// ============================================================================
-// Administración > Comisiones (Fase 1)
-// Calcula cuánto toca pagar a cada asesor con las ventas ACTIVAS del mes
-// (envios_ventas) y el catálogo de tarifas por plan y tramo.
-// Se actualiza solo cada 10 minutos (el backend también recalcula cada 10 min).
-// ============================================================================
-
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import * as XLSX from "xlsx";
+import { useEffect, useState } from 'react';
+import * as XLSX from 'xlsx';
+import { formatearFechaTelcos } from '../utils/formatoFechaComisiones';
+import { filasDesdeLibro } from '../utils/catalogoComisiones';
 
 const API = import.meta.env.VITE_API_URL;
-const O = "#FF6B00", OP = "#FFF3E8";
-const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const DIEZ_MIN = 10 * 60 * 1000;
+const hoy = () => {
+  const d = new Date(), y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dia = String(d.getDate()).padStart(2, '0');
+  return { primero: `${y}-${m}-01`, hoy: `${y}-${m}-${dia}` };
+};
+const actual = hoy();
+const rangoVacio = { desde: '', hasta: '' };
+const dinero = (v) => Number(v || 0).toLocaleString('es-EC', { style: 'currency', currency: 'USD' });
+const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-const usd = (v) => `$${Number(v || 0).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const n0 = (v) => Number(v || 0).toLocaleString("es-EC");
-const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" }) : "—");
-const TRAMO_TXT = { 1: "Hasta 35", 2: "36 a 41", 3: "42 o más" };
+// Carga del catálogo mensual (Excel con columnas TIPO ... COM MENOR A 35).
+function CargaCatalogo({ onCargado }) {
+  const [mes, setMes] = useState(actual.primero.slice(0, 7));
+  const [archivo, setArchivo] = useState(null);
+  const [meses, setMeses] = useState([]);
+  const [estado, setEstado] = useState({ tipo: '', texto: '' });
+  const [cargando, setCargando] = useState(false);
+  const leerMeses = () => fetch(`${API}/api/comisiones/catalogo`, { headers: auth() })
+    .then((r) => r.json()).then((b) => setMeses(b.data?.meses || [])).catch(() => {});
+  useEffect(() => { leerMeses(); }, []);
 
-// Lee el Excel del catálogo: columna con "PLAN" + columnas de tramos (35 / 41 / 42)
-function leerCatalogoExcel(wb) {
-  const hoja = wb.Sheets[wb.SheetNames[0]];
-  const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: "" });
-  const iCab = filas.findIndex((f) => f.some((c) => /PLAN/i.test(String(c))));
-  if (iCab < 0) throw new Error('No encontré una columna "PLAN" en la primera hoja');
-  const cab = filas[iCab].map((c) => String(c).toUpperCase());
-  const iPlan = cab.findIndex((c) => c.includes("PLAN"));
-  const i1 = cab.findIndex((c) => c.includes("35"));
-  const i2 = cab.findIndex((c) => c.includes("41"));
-  const i3 = cab.findIndex((c) => c.includes("42"));
-  if (i1 < 0 || i2 < 0 || i3 < 0) throw new Error("Faltan columnas de tramos (menor a 35 / 36 a 41 / 42 en adelante)");
-  return filas.slice(iCab + 1)
-    .filter((f) => String(f[iPlan]).trim())
-    .map((f) => ({ plan: String(f[iPlan]).trim(), t1: f[i1], t2: f[i2], t3: f[i3] }));
+  const subir = async () => {
+    if (!archivo) return setEstado({ tipo: 'error', texto: 'Selecciona el Excel del catálogo.' });
+    setCargando(true); setEstado({ tipo: '', texto: '' });
+    try {
+      const libro = XLSX.read(await archivo.arrayBuffer(), { type: 'array' });
+      const leido = filasDesdeLibro(XLSX, libro);
+      if (!leido) throw new Error('No encontré una hoja con las columnas TIPO y COM MENOR A 35.');
+      const r = await fetch(`${API}/api/comisiones/catalogo`, { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' }, body: JSON.stringify({ mes, filas: leido.filas }) });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
+      setEstado({ tipo: 'ok', texto: `Catálogo ${b.data.mes} cargado: ${b.data.cargadas} planes con valor (${b.data.omitidas} filas sin valor omitidas).` });
+      leerMeses(); onCargado?.();
+    } catch (e) { setEstado({ tipo: 'error', texto: e.message }); }
+    finally { setCargando(false); }
+  };
+
+  return <details className="rounded-2xl border bg-white p-4 shadow-sm">
+    <summary className="cursor-pointer text-sm font-black text-slate-700">📥 Catálogo de comisiones del mes {meses[0] ? <span className="ml-2 font-semibold text-slate-400">· vigente: {meses[0].mes} ({meses[0].filas} planes)</span> : <span className="ml-2 font-semibold text-red-500">· sin catálogo cargado</span>}</summary>
+    <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+      <label className="text-xs font-bold text-slate-600">Mes<input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="mt-1 block rounded-lg border px-3 py-2 text-sm font-normal" /></label>
+      <label className="flex-1 text-xs font-bold text-slate-600">Excel del catálogo<input type="file" accept=".xlsx,.xls" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border px-3 py-1.5 text-sm font-normal" /></label>
+      <button type="button" disabled={cargando} onClick={subir} className="rounded-lg bg-amber-500 px-6 py-2.5 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50">{cargando ? 'Cargando…' : 'Cargar catálogo'}</button>
+    </div>
+    <p className="mt-2 text-[11px] text-slate-500">Se lee la hoja que tenga las columnas TIPO, VELOCIDAD MBPS, SERVICIOS ADICIONALES y COM MENOR A 35. Volver a cargar el mismo mes reemplaza el anterior (queda guardado como inactivo).</p>
+    {estado.texto && <div className={`mt-3 rounded-lg p-2 text-sm font-semibold ${estado.tipo === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{estado.texto}</div>}
+  </details>;
+}
+
+function RangoFecha({ titulo, ayuda, value, onChange, destacado }) {
+  return <fieldset className={`rounded-xl border p-3 ${destacado ? 'border-blue-200 bg-blue-50/60' : 'border-slate-200 bg-slate-50/60'}`}>
+    <legend className="px-1 text-xs font-black text-slate-700">{titulo}</legend>
+    <div className="grid grid-cols-2 gap-2">
+      <label className="text-[10px] font-bold uppercase text-slate-400">Desde<input aria-label={`${titulo} desde`} type="date" value={value.desde} onChange={e=>onChange({...value,desde:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-700" /></label>
+      <label className="text-[10px] font-bold uppercase text-slate-400">Hasta<input aria-label={`${titulo} hasta`} type="date" value={value.hasta} onChange={e=>onChange({...value,hasta:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-700" /></label>
+    </div><p className="mt-2 text-[10px] text-slate-500">{ayuda}</p>
+  </fieldset>;
 }
 
 export default function Comisiones() {
-  const hoy = new Date();
-  const [empresa, setEmpresa] = useState("NOVONET");
-  const [anio, setAnio] = useState(hoy.getFullYear());
-  const [mes, setMes] = useState(hoy.getMonth() + 1);
-  const [data, setData] = useState(null);
-  const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState(null);
-  const [abierto, setAbierto] = useState(null);
-  const [buscar, setBuscar] = useState("");
-  const [msgCat, setMsgCat] = useState(null);
-  const [subiendo, setSubiendo] = useState(false);
-  const fileRef = useRef(null);
-  const token = localStorage.getItem("token");
+  const [empresa, setEmpresa] = useState('NOVONET');
+  const [buscar, setBuscar] = useState('');
+  const [telcos, setTelcos] = useState({ desde: actual.primero, hasta: actual.hoy });
+  const [jotform, setJotform] = useState(rangoVacio);
+  const [activacion, setActivacion] = useState(rangoVacio);
+  const [filtros, setFiltros] = useState({ telcosDesde: actual.primero, telcosHasta: actual.hoy });
+  const [data, setData] = useState({ filas: [], totales: {} });
+  const [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const [recarga, setRecarga] = useState(0);
 
-  const cargar = useCallback(async (forzar = false) => {
-    setCargando(true); setError(null);
-    try {
-      const q = new URLSearchParams({ empresa, anio, mes, ...(forzar ? { refrescar: "1" } : {}) });
-      const r = await fetch(`${API}/api/comisiones/calculo?${q}`, { headers: { Authorization: `Bearer ${token}` } });
-      const j = await r.json();
-      if (!j.success) throw new Error(j.error || "Error al calcular comisiones");
-      setData(j.data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setCargando(false);
-    }
-  }, [empresa, anio, mes, token]);
-
-  // Carga inicial + actualización automática cada 10 minutos
   useEffect(() => {
-    cargar();
-    const id = setInterval(() => cargar(), DIEZ_MIN);
+    const ctrl = new AbortController(); setLoading(true); setError('');
+    const qs = new URLSearchParams({ empresa, ...filtros });
+    fetch(`${API}/api/comisiones?${qs}`, { headers:{Authorization:`Bearer ${localStorage.getItem('token')}`}, signal:ctrl.signal })
+      .then(async r=>{const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error||`HTTP ${r.status}`);return b;})
+      .then(b=>setData(b.data||{filas:[],totales:{}})).catch(e=>{if(e.name!=='AbortError')setError(e.message);})
+      .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
+    return ()=>ctrl.abort();
+  },[empresa,filtros,recarga]);
+
+  // Actualización automática cada 10 minutos
+  const [ultima, setUltima] = useState(null);
+  useEffect(() => { if (!loading) setUltima(new Date()); }, [loading]);
+  useEffect(() => {
+    const id = setInterval(() => setRecarga(x => x + 1), 10 * 60 * 1000);
     return () => clearInterval(id);
-  }, [cargar]);
+  }, []);
 
-  const subirCatalogo = async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    setSubiendo(true); setMsgCat(null);
-    try {
-      const wb = XLSX.read(await f.arrayBuffer());
-      const planes = leerCatalogoExcel(wb);
-      const r = await fetch(`${API}/api/comisiones/catalogo`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ empresa, anio, mes, planes }),
-      });
-      const j = await r.json();
-      if (!j.success) throw new Error(j.error);
-      setMsgCat({ ok: true, t: `Catálogo de ${MESES[mes - 1]} guardado: ${j.guardados} planes` });
-      cargar(true);
-    } catch (err) {
-      setMsgCat({ ok: false, t: err.message });
-    } finally {
-      setSubiendo(false);
-    }
+  const rangoCorrecto = (r, nombre) => {
+    if (!r.desde && !r.hasta) return true;
+    if (!r.desde || !r.hasta) { setError(`Completa las dos fechas de ${nombre}.`); return false; }
+    if (r.desde > r.hasta) { setError(`La fecha inicial de ${nombre} no puede superar la final.`); return false; }
+    return true;
   };
+  const consultar=e=>{e.preventDefault();if(!rangoCorrecto(telcos,'Ingreso Telcos')||!rangoCorrecto(jotform,'Creación Jotform')||!rangoCorrecto(activacion,'Activación'))return;
+    if(!telcos.desde&&!jotform.desde&&!activacion.desde)return setError('Selecciona al menos un rango de fechas.');
+    setFiltros({buscar:buscar.trim(),telcosDesde:telcos.desde,telcosHasta:telcos.hasta,jotformDesde:jotform.desde,jotformHasta:jotform.hasta,activacionDesde:activacion.desde,activacionHasta:activacion.hasta});};
+  const limpiarOpcionales=()=>{setJotform(rangoVacio);setActivacion(rangoVacio);};
+  const cards=[['Por regularizar','activas_por_regularizar','text-amber-600'],['Regularizadas','activas_regularizadas','text-emerald-600'],['Activas totales','activas_totales','text-blue-700']];
+  const t=data.totales||{};
 
-  const asesores = (data?.asesores || []).filter((a) =>
-    !buscar || `${a.asesor} ${a.supervisor || ""} ${a.codigo_asesor || ""}`.toUpperCase().includes(buscar.toUpperCase()));
-  const res = data?.resumen;
-  const proxima = data ? new Date(new Date(data.calculado_en).getTime() + DIEZ_MIN).toISOString() : null;
-
-  return (
-    <div className="p-6 space-y-5">
-      {/* Encabezado */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">💰 Tabla de Comisiones</h1>
-          <p className="text-sm text-slate-500">
-            Ventas activas del mes · se actualiza cada 10 minutos
-            {data && <> · última: <b>{hora(data.calculado_en)}</b> · próxima: <b>{hora(proxima)}</b></>}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <select value={empresa} onChange={(e) => setEmpresa(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-            <option>NOVONET</option><option>VELSA</option>
-          </select>
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
-            {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))} className="border rounded-lg px-3 py-2 text-sm w-24" />
-          <button onClick={() => cargar(true)} disabled={cargando}
-            className="px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50" style={{ background: O }}>
-            {cargando ? "Calculando…" : "Actualizar ahora"}
-          </button>
-        </div>
-      </div>
-
-      {error && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{error}</div>}
-
-      {data?.mes_en_curso && (
-        <div className="p-3 rounded-lg text-sm" style={{ background: OP, color: "#9A3412" }}>
-          Mes en curso: todos los asesores se calculan con el tramo <b>“Hasta 35”</b>. El tramo real se aplica al cerrar el mes.
-        </div>
-      )}
-
-      {data && data.planes_catalogo === 0 && (
-        <div className="p-3 rounded-lg bg-amber-50 text-amber-800 text-sm">
-          No hay catálogo de tarifas cargado para {empresa}. Sube el Excel del catálogo (abajo) para ver los valores.
-        </div>
-      )}
-      {data?.catalogo_periodo && (data.catalogo_periodo.mes !== mes || data.catalogo_periodo.anio !== anio) && (
-        <div className="p-3 rounded-lg bg-amber-50 text-amber-800 text-sm">
-          Usando el catálogo de {MESES[data.catalogo_periodo.mes - 1]} {data.catalogo_periodo.anio} (no hay uno de {MESES[mes - 1]}).
-        </div>
-      )}
-
-      {/* KPIs */}
-      {res && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            ["Asesores", n0(res.asesores)],
-            ["Activas totales", n0(res.activas_total)],
-            ["Regularizadas", n0(res.regularizadas)],
-            ["Valor total", usd(res.valor_total)],
-            ["Disponible a pagar", usd(res.valor_disponible)],
-          ].map(([t, v], i) => (
-            <div key={t} className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
-              <div className="text-xs text-slate-500">{t}</div>
-              <div className="text-xl font-bold" style={{ color: i === 4 ? "#047857" : "#1E293B" }}>{v}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Tabla por asesor */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-3 border-b flex items-center justify-between gap-2">
-          <span className="font-semibold text-slate-700">Comisión por asesor</span>
-          <input placeholder="Buscar asesor o supervisor…" value={buscar} onChange={(e) => setBuscar(e.target.value)}
-            className="border rounded-lg px-3 py-1.5 text-sm w-64" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                {["Asesor","Supervisor","Activas","Regularizadas","Por regularizar","Tramo","Valor total","Disponible",""].map((h) =>
-                  <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {asesores.map((a) => (
-                <Fragment key={a.asesor}>
-                  <tr className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => setAbierto(abierto === a.asesor ? null : a.asesor)}>
-                    <td className="px-3 py-2 font-medium text-slate-800">{a.asesor}
-                      {a.ventas_sin_tarifa > 0 && <span className="ml-2 text-xs text-amber-700">({a.ventas_sin_tarifa} sin tarifa)</span>}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600">{a.supervisor || "—"}</td>
-                    <td className="px-3 py-2">{a.activas_total}</td>
-                    <td className="px-3 py-2 text-emerald-700">{a.regularizadas}</td>
-                    <td className="px-3 py-2 text-red-600">{a.por_regularizar}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{TRAMO_TXT[a.tramo]}</td>
-                    <td className="px-3 py-2 font-semibold">{usd(a.valor_total)}</td>
-                    <td className="px-3 py-2 font-semibold text-emerald-700">{usd(a.valor_disponible)}</td>
-                    <td className="px-3 py-2 text-slate-400">{abierto === a.asesor ? "▲" : "▼"}</td>
-                  </tr>
-                  {abierto === a.asesor && (
-                    <tr className="bg-slate-50">
-                      <td colSpan={9} className="px-3 py-2">
-                        <table className="w-full text-xs">
-                          <thead className="text-slate-500"><tr>
-                            {["ID","Cliente","Plan","Servicios","Activación","Regularización","Valor"].map((h) => <th key={h} className="px-2 py-1 text-left">{h}</th>)}
-                          </tr></thead>
-                          <tbody>
-                            {a.detalle.map((d) => (
-                              <tr key={d.id} className="border-t border-slate-200">
-                                <td className="px-2 py-1">{d.id_bitrix || d.id}</td>
-                                <td className="px-2 py-1">{d.cliente}</td>
-                                <td className="px-2 py-1">{d.plan}{!d.con_tarifa && <span className="ml-1 text-amber-700">⚠ sin tarifa</span>}</td>
-                                <td className="px-2 py-1" title={d.servicios_digitales || ""}>{d.servicios}</td>
-                                <td className="px-2 py-1">{d.fecha_activacion ? String(d.fecha_activacion).slice(0, 10) : "—"}</td>
-                                <td className={`px-2 py-1 ${d.regularizada ? "text-emerald-700" : "text-red-600"}`}>{d.estado_regularizacion}</td>
-                                <td className="px-2 py-1 font-semibold">{usd(d.valor)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-              {!asesores.length && !cargando && (
-                <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-400">Sin ventas activas en este mes</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Planes sin tarifa */}
-      {data?.planes_sin_tarifa?.length > 0 && (
-        <div className="bg-white border border-amber-200 rounded-xl p-4">
-          <div className="font-semibold text-amber-800 mb-2">Planes vendidos sin tarifa en el catálogo ({data.planes_sin_tarifa.length})</div>
-          <ul className="text-sm text-slate-700 space-y-1 max-h-48 overflow-auto">
-            {data.planes_sin_tarifa.map((p) => <li key={p.plan}>{p.plan} — <b>{p.ventas}</b> ventas</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* Carga del catálogo */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[260px]">
-          <div className="font-semibold text-slate-700">Catálogo de tarifas — {MESES[mes - 1]} {anio} ({empresa})</div>
-          <div className="text-xs text-slate-500">Excel con columnas: PLAN · MENOR A 35 · DE 36 A 41 · 42 EN ADELANTE. Agrega o actualiza planes, no borra los existentes.</div>
-        </div>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={subirCatalogo} />
-        <button onClick={() => fileRef.current?.click()} disabled={subiendo}
-          className="px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50" style={{ borderColor: O, color: O }}>
-          {subiendo ? "Subiendo…" : "Subir Excel de catálogo"}
-        </button>
-        {msgCat && <div className={`w-full text-sm ${msgCat.ok ? "text-emerald-700" : "text-red-600"}`}>{msgCat.t}</div>}
-      </div>
+  return <div className="min-h-full bg-slate-50 p-4 md:p-7"><div className="mx-auto max-w-7xl space-y-5">
+    <header><p className="text-xs font-bold uppercase tracking-widest text-amber-600">Administración</p><h1 className="text-2xl font-black text-slate-900">Comisiones</h1><p className="mt-1 text-sm text-slate-500">Fuente oficial: ventas registradas en el CORE, agrupadas por el usuario que realizó el ingreso. Se actualiza cada 10 minutos{ultima&&<> · última: <b>{ultima.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'})}</b></>}.</p></header>
+    <div className="inline-flex rounded-xl border bg-white p-1 shadow-sm">{['NOVONET','VELSA'].map(x=><button key={x} onClick={()=>setEmpresa(x)} className={`rounded-lg px-5 py-2 text-sm font-bold ${empresa===x?'bg-blue-600 text-white':'text-slate-600 hover:bg-slate-50'}`}>Comisiones {x}</button>)}</div>
+    <CargaCatalogo onCargado={()=>setRecarga(x=>x+1)} />
+    <form onSubmit={consultar} className="space-y-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end"><label className="flex-1 text-xs font-bold text-slate-600">Búsqueda global<input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Usuario, código, ID Bitrix, login, estado, plan, ciudad…" className="mt-1 w-full rounded-lg border px-3 py-2.5 text-sm font-normal" /></label><button type="button" onClick={limpiarOpcionales} className="rounded-lg border px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">Limpiar opcionales</button><button className="rounded-lg bg-slate-900 px-7 py-2.5 text-sm font-bold text-white hover:bg-slate-700">Consultar</button></div>
+      <div className="grid gap-3 lg:grid-cols-3"><RangoFecha titulo="Ingreso Telcos" ayuda="Por defecto: desde el primer día del mes hasta hoy." value={telcos} onChange={setTelcos} destacado/><RangoFecha titulo="Creación Jotform" ayuda="Opcional. Vacío no restringe los resultados." value={jotform} onChange={setJotform}/><RangoFecha titulo="Fecha de activación" ayuda="Opcional. Vacío no restringe los resultados." value={activacion} onChange={setActivacion}/></div>
+    </form>
+    {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
+    <div className="grid grid-cols-3 gap-3">{cards.map(([l,k,c])=><div key={k} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase text-slate-400">{l}</div><div className={`mt-1 text-3xl font-black ${c}`}>{Number(data.totales?.[k]||0)}</div></div>)}</div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase text-slate-400">Valor total · sobre activas totales</div><div className="mt-1 text-3xl font-black text-slate-800">{dinero(t.valor_total)}</div><div className="text-[11px] text-slate-500">Lo que se pagaría si todas sus activas se regularizan.</div></div>
+      <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"><div className="text-xs font-bold uppercase text-emerald-700">Disponible · solo regularizadas</div><div className="mt-1 text-3xl font-black text-emerald-700">{dinero(t.valor_disponible)}</div><div className="text-[11px] text-emerald-700/80">Lo que hoy se puede pagar.</div></div>
     </div>
-  );
+    <p className="text-xs text-slate-500">Cálculo con tramo <b>{data.tramo||'MENOR A 35'}</b> y catálogo <b>{data.mes_catalogo||'—'}</b>.{Number(t.sin_valor)>0&&<span className="ml-1 font-bold text-red-600">{t.sin_valor} activas sin valor en el catálogo (plan no encontrado).</span>}</p>
+    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Usuario Jotform/ERP</th><th className="px-5 py-3">Código asesor</th><th className="px-5 py-3">Último ingreso Telcos</th><th className="px-5 py-3 text-center">Por regularizar</th><th className="px-5 py-3 text-center">Regularizadas</th><th className="px-5 py-3 text-center">Activas totales</th><th className="px-5 py-3 text-right">Valor total</th><th className="px-5 py-3 text-right text-emerald-700">Disponible</th></tr></thead><tbody className="divide-y">
+      {loading?<tr><td colSpan="8" className="p-14 text-center text-slate-500">Calculando comisiones…</td></tr>:!data.filas?.length?<tr><td colSpan="8" className="p-14 text-center text-slate-500">No existen activaciones para los filtros aplicados.</td></tr>:data.filas.map((r,i)=><tr key={`${r.codigo_asesor}-${r.usuario}-${i}`} className="hover:bg-slate-50"><td className="px-5 py-3 font-bold">{r.usuario}</td><td className="px-5 py-3 text-slate-500">{r.codigo_asesor}</td><td className="px-5 py-3 whitespace-nowrap text-slate-600">{formatearFechaTelcos(r.ultima_fecha_ingreso_telcos)}</td><td className="px-5 py-3 text-center font-bold text-amber-600">{r.activas_por_regularizar}</td><td className="px-5 py-3 text-center font-bold text-emerald-600">{r.activas_regularizadas}</td><td className="px-5 py-3 text-center font-black text-blue-700">{r.activas_totales}</td><td className="px-5 py-3 text-right whitespace-nowrap font-semibold text-slate-700">{dinero(r.valor_total)}{r.sin_valor>0&&<div className="text-[10px] font-bold text-red-500">{r.sin_valor} sin valor</div>}</td><td className="px-5 py-3 text-right whitespace-nowrap"><span className="rounded-lg bg-emerald-50 px-2 py-1 font-black text-emerald-700">{dinero(r.valor_disponible)}</span><div className="mt-1 text-[10px] text-slate-400">de {dinero(r.valor_total)}</div></td></tr>)}
+    </tbody></table></div><div className="border-t bg-slate-50 px-5 py-3 text-xs text-slate-500">Solo se cuentan registros activos, no borradores. Valor total = comisión de todas las activas; Disponible = solo las regularizadas (lo que se paga).</div></div>
+  </div></div>;
 }

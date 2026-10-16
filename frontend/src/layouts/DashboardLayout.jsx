@@ -714,7 +714,7 @@ export default function DashboardLayout() {
       `}</style>
 
       {/* ── Fondo general claro ── */}
-      <div className="flex h-screen overflow-hidden" style={{ background: "linear-gradient(160deg,#f8fafc 0%,#f1f5f9 100%)" }}>
+      <div className="fixed inset-0 flex overflow-hidden" style={{ background: "linear-gradient(160deg,#f8fafc 0%,#f1f5f9 100%)" }}>
 
         {/* Overlay mobile */}
         {sidebarOpen && (

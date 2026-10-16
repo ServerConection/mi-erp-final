@@ -291,6 +291,7 @@ export default function InventarioActivos() {
       } else {
         const payload = {
           ...form,
+          ...(editando ? { responsable } : {}),
           disco_gb: discoEntrada === "" ? null : Number(discoEntrada) * (discoUnidad === "TB" ? 1024 : 1),
         };
         const response = await fetch(editando ? `${API}/${activoId}` : API, {
@@ -360,7 +361,7 @@ export default function InventarioActivos() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
+    <div className="bg-slate-50 pb-4">
       <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 px-5 py-7 shadow-xl sm:px-8 sm:py-9">
         <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -395,7 +396,7 @@ export default function InventarioActivos() {
           {(esComputador || esPantalla || esImpresora) && <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6"><h2 className="font-black text-slate-800">Caracteristicas tecnicas</h2></div>
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 sm:p-6">
-              {esComputador && <><Campo label="Procesador"><input value={form.procesador} onChange={(e) => cambiar("procesador", e.target.value)} className={inputClass} /></Campo><Campo label="RAM" ayuda="Capacidad expresada en GB."><div className="relative"><input type="number" min="0" step="0.01" value={form.ram_gb} onChange={(e) => cambiar("ram_gb", e.target.value, false)} className={`${inputClass} pr-12`} placeholder="16" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">GB</span></div></Campo><Campo label="Tipo de disco"><SelectOpciones value={form.disco_tipo} onChange={(e) => cambiar("disco_tipo", e.target.value)} opciones={["MECANICO", "SOLIDO", "OTRO"]} /></Campo><Campo label="Espacio de disco"><div className="flex gap-2"><input type="number" min="0" step="0.01" value={discoEntrada} onChange={(e) => setDiscoEntrada(e.target.value)} className={inputClass} placeholder="512" /><select aria-label="Unidad del disco" value={discoUnidad} onChange={(e) => setDiscoUnidad(e.target.value)} className={`${inputClass} w-24 shrink-0`}><option>GB</option><option>TB</option></select></div></Campo><Campo label="Fecha de fabricacion"><input type="date" value={form.fecha_fabricacion} onChange={(e) => cambiar("fecha_fabricacion", e.target.value, false)} className={inputClass} /></Campo></>}
+              {esComputador && <><Campo label="Procesador"><input value={form.procesador} onChange={(e) => cambiar("procesador", e.target.value)} className={inputClass} /></Campo><Campo label="RAM" ayuda="Capacidad expresada en GB."><div className="relative"><input type="number" min="0" step="0.01" value={form.ram_gb} onChange={(e) => cambiar("ram_gb", e.target.value, false)} className={`${inputClass} pr-12`} placeholder="16" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">GB</span></div></Campo><Campo label="Tipo de disco"><SelectOpciones value={form.disco_tipo} onChange={(e) => cambiar("disco_tipo", e.target.value)} opciones={["MECANICO", "SOLIDO", "OTRO"]} /></Campo><Campo label="Espacio de disco"><div className="flex gap-2"><input type="number" min="0" step="0.01" value={discoEntrada} onChange={(e) => setDiscoEntrada(e.target.value)} className={`${inputClass} min-w-0 flex-1`} placeholder="512" /><select aria-label="Unidad del disco" value={discoUnidad} onChange={(e) => setDiscoUnidad(e.target.value)} className={`${inputClass} shrink-0`} style={{ width: "6rem" }}><option>GB</option><option>TB</option></select></div></Campo><Campo label="Fecha de fabricacion"><input type="date" value={form.fecha_fabricacion} onChange={(e) => cambiar("fecha_fabricacion", e.target.value, false)} className={inputClass} /></Campo></>}
               {esPantalla && <Campo label="Pulgadas"><input value={form.pulgadas} onChange={(e) => cambiar("pulgadas", e.target.value)} className={inputClass} placeholder="EJ. 24" /></Campo>}
               {esImpresora && <Campo label="Tipo de impresion"><SelectOpciones value={form.impresion} onChange={(e) => cambiar("impresion", e.target.value)} opciones={["COLOR", "BLANCO Y NEGRO"]} /></Campo>}
             </div>
@@ -434,10 +435,10 @@ export default function InventarioActivos() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-slate-800"><ShieldCheck size={20} className="text-blue-600" /><h2 className="font-black">Datos automaticos</h2></div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable"><input readOnly value={responsable} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo></div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable" requerido={Boolean(activoId && esAdmin)} ayuda={activoId && esAdmin ? "Editable solo por administradores." : "Se asigna automaticamente al registrar."}><input required={Boolean(activoId && esAdmin)} readOnly={!activoId || !esAdmin} value={responsable} onChange={(e) => setResponsable(normalizarEntrada(e.target.value))} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo></div>
           </section>
 
-          <div className="sticky bottom-3 z-10 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex sm:items-center sm:justify-between sm:px-5">
+          <div className="mt-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex sm:items-center sm:justify-between sm:px-5">
             <p className="mb-3 text-center text-xs font-medium text-slate-500 sm:mb-0 sm:text-left">{activoId ? `Editando ${activoId}` : "Registrando un activo nuevo"}</p>
             <button type="submit" disabled={guardando || (activoId && !esAdmin && !fotoArchivo)} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
               {guardando ? <Loader2 size={19} className="animate-spin" /> : <Save size={19} />}{guardando ? "Guardando..." : activoId && !esAdmin ? "Subir foto" : activoId ? "Guardar cambios" : "Registrar activo"}

@@ -100,9 +100,12 @@ const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
     const criterios = {};
     for (const c of validas) criterios[c] = data.fuentes[c].timeman ? 'jornada' : 'conexion';
     const mapa = new Map();
+    // Se filtra por el PORTAL de donde vino la persona (portalCuenta). Bitrix Live
+    // ahora clasifica `cuenta` por empresa (NOVONET/VELSA) y una asesora de Velsa
+    // que trabaja en el portal Novonet quedaba fuera → "nadie en línea".
     // Se recorre en el orden de la lista: si la persona está en línea en cualquier cuenta, cuenta como en línea
     for (const c of validas) {
-      for (const u of data.usuarios.filter((x) => x.cuenta === c)) {
+      for (const u of data.usuarios.filter((x) => (x.portalCuenta || x.cuenta) === c)) {
         const enLinea = criterios[c] === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
         const k = normalizarNombre(u.nombre);
         const prev = mapa.get(k);

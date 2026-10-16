@@ -16,6 +16,10 @@ test("los guardados de celda envían exclusivamente el campo editado", () => {
   assert.equal(coincidencias.length, 3);
 });
 
-test("guardar el detalle no fuerza Estatus Netlife cuando no fue tocado", () => {
-  assert.doesNotMatch(fuente, /payload\.netlife_estatus_real\s*=\s*detail\.netlife_estatus_real/);
+test("el detalle solo reafirma Estatus Netlife mediante una acción explícita", () => {
+  assert.match(
+    fuente,
+    /if \(reafirmarEstadoNetlife && detail\?\.netlife_estatus_real\)[\s\S]*?payload\.netlife_estatus_real = detail\.netlife_estatus_real/
+  );
+  assert.match(fuente, /Reafirmar estado actual:/);
 });

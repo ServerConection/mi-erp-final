@@ -5,7 +5,7 @@ const path = require('path')
 const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes.service')
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
 const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy')
-const { esMandoWabot, empresaVisibleWabot } = require('../shared/waAccesoEmpresa')
+const { esMandoWabot, empresaVisibleWabot, empresasVisiblesWabot } = require('../shared/waAccesoEmpresa')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -119,8 +119,8 @@ function baseVisibilityCondition(req, params) {
     return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($${params.length}::text[]))`
   }
   if (isSupervisor(req)) {
-    params.push(empresaVisibleWabot(req.user))
-    return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = $${params.length})`
+    params.push(empresasVisiblesWabot(req.user))
+    return `l.created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($${params.length}::text[]))`
   }
   params.push(req.user.id)
   return `(l.created_by = $${params.length} OR l.created_by IS NULL)`
@@ -161,7 +161,7 @@ async function findOwnedConversation(req, id) {
     return null
   }
   if (isSupervisor(req)) {
-    return (conv.line_empresa || '').toUpperCase() === empresaVisibleWabot(req.user) ? conv : null
+    return empresasVisiblesWabot(req.user).includes((conv.line_empresa || '').toUpperCase()) ? conv : null
   }
   // Asesor: solo lo suyo (o líneas huérfanas)
   if (conv.line_created_by === req.user.id || conv.line_created_by === null) return conv

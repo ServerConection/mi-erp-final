@@ -217,6 +217,10 @@ export default function WaCampanas() {
   // Sube una imagen/archivo para una variante y guarda su media_url
   const uploadImage = async (file, idx) => {
     if (!file) return;
+    if (file.type?.startsWith("video/") && file.size > 16 * 1024 * 1024) {
+      alert("El video pesa más de 16 MB. WhatsApp lo rechaza; comprímelo e inténtalo de nuevo.");
+      return;
+    }
     setUploadingIdx(idx);
     try {
       const fd = new FormData();
@@ -231,7 +235,8 @@ export default function WaCampanas() {
         setVariants(vs => vs.map((x, j) => j === idx ? {
           ...x,
           media_url: d.data.url,
-          media_type: d.data.mimetype?.startsWith("image/") ? "image" : "document",
+          media_type: d.data.mimetype?.startsWith("image/") ? "image"
+            : d.data.mimetype?.startsWith("video/") ? "video" : "document",
           media_filename: d.data.originalname,
         } : x));
       } else {
@@ -596,9 +601,9 @@ export default function WaCampanas() {
                           </div>
                         ) : (
                           <label className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-500 font-medium cursor-pointer">
-                            {uploadingIdx === i ? "Subiendo…" : "📎 Adjuntar imagen"}
+                            {uploadingIdx === i ? "Subiendo…" : "📎 Adjuntar imagen o video"}
                             <input
-                              type="file" accept="image/*,.pdf"
+                              type="file" accept="image/*,video/mp4,video/3gpp,.pdf"
                               className="hidden"
                               disabled={uploadingIdx === i}
                               onChange={e => { uploadImage(e.target.files?.[0], i); e.target.value = ""; }}

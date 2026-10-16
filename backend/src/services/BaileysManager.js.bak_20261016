@@ -1,0 +1,1717 @@
+const {
+  default: makeWASocket,
+  DisconnectReason,
+  useMultiFileAuthState,
+  getAggregateVotesInPollMessage,
+  fetchLatestBaileysVersion,
+  downloadMediaMessage,
+  normalizeMessageContent,
+  WAMessageStubType,
+  makeCacheableSignalKeyStore,
+} = require('@whiskeysockets/baileys')
+const { Boom } = require('@hapi/boom')
+const path = require('path')
+const fs = require('fs')
+const pino = require('pino')
+const { query, transaction } = require('../config/db')
+const FlowEngine = require('./FlowEngine')
+const {
+  quemarPuerto, liberarPuertoDeLinea, rotarProxyDeLinea,
+  construirProxyAutomatico, PROXY_BASE_PORT, PROXY_MAX_PORT,
+} = require('./proxyPool.service')
+const { useDbAuthState, migrarDesdeDisco, borrarSesion } = require('./baileysAuthPg.service')
+const lineLock = require('./lineLock.service')
+const { isAdminOnlyNumber, isPrivateOwner } = require('./waPrivacy')
+
+// WABOT-BITRIX / Opción B — dónde vive el estado de sesión de Baileys.
+//   'disco' (default) = useMultiFileAuthState, el comportamiento de siempre.
+//   'pg'              = Postgres, que es lo que permite sacar numInstances:1.
+// Arranca en 'disco' A PROPÓSITO: el cambio se activa por variable de entorno
+// cuando la migración esté verificada, no en el deploy que sube este código.
+const AUTH_STORE = (process.env.WA_AUTH_STORE || 'disco').toLowerCase()
+
+// Política fail-closed de proxy: si WA_PROXY_REQUIRED='true', ninguna línea
+// sin proxy VÁLIDO puede conectar directo (saldría por la IP del servidor,
+// que es justo lo que el proxy existe para evitar). Función pura para poder
+// probarla sin abrir sockets ni tocar la base de datos.
+function proxyPermiteConectar(line, proxyRequerido) {
+  if (!proxyRequerido) return true
+  return !!(line?.proxy_enabled && line?.proxy_config?.host && line?.proxy_config?.port)
+}
+
+// WA_AUTH_DIR: variable usada en Render (disco persistente /var/data/auth_sessions)
+const AUTH_BASE = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions')
+const silentLogger = pino({ level: 'silent' })
+
+class BaileysManager {
+  constructor(io) {
+    this.io = io
+    this.instances = {}
+    // Si perdemos el lease de una línea (otra instancia la tomó), hay que
+    // cerrar el socket YA. Seguir conectados con credenciales que ya usa otro
+    // proceso es exactamente lo que WhatsApp castiga con bloqueo del número.
+    if (AUTH_STORE === 'pg') {
+      lineLock.onLeasePerdido(async (lineId) => {
+        const inst = this.instances[lineId]
+        if (!inst) return
+        try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+        delete this.instances[lineId]
+        this.io?.emit?.('line:status', { lineId, status: 'takeover' })
+        console.warn(`[Line ${lineId}] socket cerrado por takeover de otra instancia`)
+      })
+    }
+    this.lidMap = {}
+    this.lineOwners = {}   // lineId → userId autorizado a ver el QR
+    this._audienciaCache = {}  // lineId → { valor:{ownerId,empresa}, ts } (TTL 5 min)
+    this.sentByErp = new Set()  // ids de mensajes enviados por el ERP (evita duplicar en sync fromMe)
+    this.reconnectTimers = {}   // guard: una sola reconexión programada por línea
+    this.reconnectAttempts = {} // contador de reintentos por línea (backoff)
+    // Claves de mensajes entrantes AÚN NO LEÍDOS por un humano.
+    // Formato: { 'lineId:waNumber': [msg.key, ...] }
+    // El acuse de lectura (doble check azul) se envía a WhatsApp solo cuando el
+    // asesor abre realmente la conversación en el Inbox — nunca al recibirlo.
+    this.pendingReads = {}
+  }
+
+  // Guarda la clave de un mensaje entrante para acusarlo recibido más tarde
+  _queuePendingRead(lineId, waNumber, key) {
+    if (!key) return
+    const k = `${lineId}:${waNumber}`
+    if (!this.pendingReads[k]) this.pendingReads[k] = []
+    this.pendingReads[k].push(key)
+    // Tope de seguridad: no acumular memoria sin límite en chats muy activos
+    if (this.pendingReads[k].length > 300) this.pendingReads[k].shift()
+  }
+
+  // Envía a WhatsApp el acuse de lectura de una conversación concreta.
+  // Se llama desde el Inbox cuando el asesor ABRE el chat. Si la línea no está
+  // conectada o no hay nada pendiente, no hace nada (no rompe el flujo).
+  async markAsRead(lineId, waNumber) {
+    const inst = this.instances[lineId]
+    const k = `${lineId}:${waNumber}`
+    const keys = this.pendingReads[k]
+    if (!inst?.sock || !keys || !keys.length) return 0
+    try {
+      await inst.sock.readMessages(keys)
+      delete this.pendingReads[k]
+      console.log(`[Line ${lineId}] ✓✓ Lectura confirmada de ${keys.length} mensaje(s) de ${waNumber} (abierto por un asesor)`)
+      return keys.length
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudo enviar acuse de lectura:`, e.message)
+      return 0
+    }
+  }
+
+  // Marca un mensaje como enviado por el ERP (se limpia solo tras 2 min)
+  _markSentByErp(id) {
+    if (!id) return
+    this.sentByErp.add(id)
+    setTimeout(() => this.sentByErp.delete(id), 120000)
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // A QUIEN SE LE MANDAN LOS EVENTOS DEL INBOX
+  //
+  // Antes todo esto salia con this.io.emit(...), es decir a TODOS los
+  // navegadores conectados: el contenido de cada mensaje de Novonet llegaba
+  // al navegador de un asesor de Velsa (la UI no lo pintaba, pero el dato
+  // viajaba). Ahora se acota a quien de verdad puede ver esa linea, con el
+  // mismo criterio que visibilityCondition() del controlador:
+  //   ADMINISTRADOR            -> broadcast:all
+  //   SUPERVISOR/GERENCIA/ANAL -> wa:empresa:<EMPRESA del dueño de la linea>
+  //   asesor dueño de la linea -> user:<id>
+  // Se emite con UNA sola llamada a io.to([...]) para que socket.io deduplique:
+  // si el dueño es ademas gerencial, recibe el mensaje una vez, no dos (eso
+  // duplicaria la burbuja en el chat abierto).
+  // Linea huerfana (created_by NULL): se conserva el emit global de siempre,
+  // porque esas lineas son visibles para todos los perfiles.
+  // ─────────────────────────────────────────────────────────────────────
+  async _audienciaLinea(lineId) {
+    const cacheada = this._audienciaCache[lineId]
+    if (cacheada && Date.now() - cacheada.ts < 5 * 60 * 1000) return cacheada.valor
+    let valor = null
+    try {
+      const r = await query(
+        `SELECT l.created_by AS owner_id, UPPER(COALESCE(u.empresa, '')) AS empresa, u.usuario AS owner_usuario
+         FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by
+         WHERE l.id = $1`,
+        [lineId]
+      )
+      if (r.rows.length) valor = { ownerId: r.rows[0].owner_id, empresa: r.rows[0].empresa, ownerUsuario: r.rows[0].owner_usuario }
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudo resolver la audiencia:`, e.message)
+    }
+    this._audienciaCache[lineId] = { valor, ts: Date.now() }
+    return valor
+  }
+
+  async _emitInbox(lineId, evento, payload) {
+    try {
+      if (isAdminOnlyNumber(payload?.waNumber || payload?.wa_number)) {
+        this.io.to('broadcast:all').emit(evento, payload)
+        return
+      }
+      const aud = await this._audienciaLinea(lineId)
+      // Línea privada (ej. bpineda): el evento va SOLO a su dueño.
+      if (aud && aud.ownerId && isPrivateOwner(aud.ownerUsuario)) {
+        this.io.to('user:' + aud.ownerId).emit(evento, payload)
+        return
+      }
+      if (!aud || !aud.ownerId) { this.io.emit(evento, payload); return }
+      const salas = ['broadcast:all', 'user:' + aud.ownerId]
+      if (aud.empresa) salas.push('wa:empresa:' + aud.empresa)
+      this.io.to(salas).emit(evento, payload)
+    } catch (e) {
+      // Nunca perder un mensaje del inbox por un fallo al acotar la audiencia.
+      console.warn('[BaileysManager] _emitInbox fallback global:', e.message)
+      this.io.emit(evento, payload)
+    }
+  }
+
+  // Emite el QR SOLO al usuario dueño/solicitante de la línea.
+  // Si no se conoce el dueño (líneas viejas), cae en broadcast:all (solo admins).
+  _emitQrToOwner(lineId, qrImage) {
+    const ownerId = this.lineOwners[lineId]
+    const payload = { lineId, qr: qrImage }
+    if (ownerId) {
+      this.io.to('user:' + ownerId).emit('line:qr', payload)
+      this.io.to('user:' + ownerId).emit(`line:qr:${lineId}`, payload)
+    } else {
+      // Fallback seguro: solo administradores, nunca todos los usuarios
+      this.io.to('broadcast:all').emit('line:qr', payload)
+      this.io.to('broadcast:all').emit(`line:qr:${lineId}`, payload)
+    }
+  }
+
+  _getBaileysVersion() {
+    // Share the in-flight request as well as its result across all lines.
+    if (!this._versionPromise) {
+      this._versionPromise = fetchLatestBaileysVersion().catch(error => {
+        this._versionPromise = null
+        throw error
+      })
+    }
+    return this._versionPromise
+  }
+
+  async _loadLidMapFromDB() {
+    try {
+      const res = await query('SELECT lid_number, real_number FROM lid_mappings')
+      for (const row of res.rows) {
+        this.lidMap[row.lid_number] = row.real_number
+      }
+      // Reconcile duplicates left by earlier deployments even if WhatsApp does
+      // not emit the mapping again during this connection.
+      for (const row of res.rows) {
+        await this._mergeLidConversations(row.lid_number, row.real_number)
+      }
+      console.log(`[BaileysManager] LidMap cargado: ${res.rows.length} entradas`)
+    } catch (e) {
+      console.warn('[BaileysManager] No se pudo cargar lidMap desde DB:', e.message)
+    }
+  }
+
+  async _saveLidMapping(lidNum, realNum) {
+    if (!lidNum || !realNum) return
+    this.lidMap[lidNum] = realNum
+    try {
+      await query(
+        `INSERT INTO lid_mappings (lid_number, real_number)
+         VALUES ($1, $2)
+         ON CONFLICT (lid_number) DO UPDATE SET real_number=$2, updated_at=NOW()`,
+        [lidNum, realNum]
+      )
+    } catch (e) {
+      console.warn('[BaileysManager] Error guardando lid_mapping:', e.message)
+    }
+    // Unificar chats duplicados: al conocer el número real de un LID, fusiona el
+    // chat del LID con el chat del número real (mueve mensajes y borra el duplicado).
+    try { await this._mergeLidConversations(lidNum, realNum) }
+    catch (e) { console.warn('[BaileysManager] Error fusionando chats LID:', e.message) }
+  }
+
+  // Une el chat creado con el número LID al chat del número real (por línea).
+  async _mergeLidConversations(lidNum, realNum) {
+    if (!lidNum || !realNum || lidNum === realNum) return
+    const lidConvs = await query(`SELECT id, line_id FROM conversations WHERE wa_number = $1`, [lidNum])
+    for (const lc of lidConvs.rows) {
+      const realConv = await query(
+        `SELECT id FROM conversations WHERE wa_number = $1 AND line_id = $2 ORDER BY (status != 'closed') DESC, (status = 'human_takeover') DESC, started_at DESC LIMIT 1`,
+        [realNum, lc.line_id]
+      )
+      if (realConv.rows.length && realConv.rows[0].id !== lc.id) {
+        const realId = realConv.rows[0].id
+        await query(`UPDATE messages SET conversation_id = $1, wa_number = $2 WHERE conversation_id = $3`, [realId, realNum, lc.id])
+        await query(`UPDATE conversations SET last_msg_at = NOW() WHERE id = $1`, [realId])
+        await query(`DELETE FROM conversations WHERE id = $1`, [lc.id])
+        console.log(`[Merge] Chat LID ${lidNum} unido a ${realNum} (línea ${lc.line_id})`)
+        this.io.emit('conversation:merged', { from: lc.id, into: realId })
+      } else if (!realConv.rows.length) {
+        // Aún no hay chat con el número real → renombrar el del LID
+        await query(`UPDATE conversations SET wa_number = $1 WHERE id = $2`, [realNum, lc.id])
+        await query(`UPDATE messages SET wa_number = $1 WHERE conversation_id = $2`, [realNum, lc.id])
+        console.log(`[Merge] Chat LID ${lidNum} renombrado a ${realNum} (línea ${lc.line_id})`)
+      }
+    }
+  }
+
+  async _resolveLid(lidRaw, sock, lineId, msg = null) {
+    const lidNum = this._cleanNumber(lidRaw)
+    // Baileys v7 includes the phone JID alongside the privacy JID.
+    const phoneJid = [msg?.key?.remoteJidAlt, msg?.key?.senderPn,
+      msg?.key?.participantPn, msg?.key?.participantAlt,
+      msg?.message?.deviceSentMessage?.destinationJid]
+      .find(jid => typeof jid === 'string' && jid.endsWith('@s.whatsapp.net'))
+    if (phoneJid) {
+      const realNum = this._cleanNumber(phoneJid)
+      await this._saveLidMapping(lidNum, realNum)
+      return realNum
+    }
+
+    if (this.lidMap[lidNum]) {
+      console.log(`[Line ${lineId}] ✅ LID resuelto (memoria): ${lidNum} → ${this.lidMap[lidNum]}`)
+      return this.lidMap[lidNum]
+    }
+
+    try {
+      const res = await query(
+        `SELECT metadata->>'real_phone' as real_phone
+         FROM contacts WHERE wa_number=$1 AND line_id=$2 AND metadata->>'real_phone' IS NOT NULL`,
+        [lidNum, lineId]
+      )
+      if (res.rows[0]?.real_phone) {
+        const realNum = res.rows[0].real_phone
+        await this._saveLidMapping(lidNum, realNum)
+        console.log(`[Line ${lineId}] ✅ LID resuelto (DB contacts): ${lidNum} → ${realNum}`)
+        return realNum
+      }
+    } catch (e) {}
+
+    try {
+      const pn = await sock.signalRepository?.lidMapping?.getPNForLID(lidRaw)
+      if (pn?.endsWith('@s.whatsapp.net')) {
+        const resolved = this._cleanNumber(pn)
+        await this._saveLidMapping(lidNum, resolved)
+        return resolved
+      }
+    } catch (e) {
+      console.log(`[Line ${lineId}] ⚠️ onWhatsApp falló para LID ${lidNum}: ${e.message}`)
+    }
+
+    console.log(`[Line ${lineId}] ⚠️ LID sin resolver: ${lidNum}, usando LID como fallback`)
+    return lidNum
+  }
+
+  async connect(lineId, requesterId = null, opciones = {}) {
+    if (this.stopping) throw new Error('WHATSAPP_SHUTTING_DOWN')
+    // paraQr: la conexión la pidió una persona desde el módulo de líneas para
+    // escanear un código, no es un reintento automático. Cambia una sola cosa:
+    // el emparejamiento no sale por el proxy (ver más abajo).
+    const { paraQr = false } = opciones
+    // Cargar el LidMap UNA sola vez (antes: query a la DB en cada reconexión
+    // mientras estuviera vacío → carga innecesaria durante tormentas de reconexión)
+    if (!this._lidMapLoaded) {
+      this._lidMapPromise ||= this._loadLidMapFromDB()
+      await this._lidMapPromise
+      this._lidMapLoaded = true
+    }
+
+    const prev = this.instances[lineId]
+    if (prev?.sock) {
+      // Solo se respeta la instancia previa si sirve para algo: está conectada
+      // o tiene un QR vigente para escanear. Un socket atascado en 'connecting'
+      // sin QR es un zombi (típico tras un reinicio): se derriba y se reintenta,
+      // si no el modal se queda en "Generando QR…" para siempre.
+      if (prev.status === 'connected' || prev.qr) {
+        console.log(`[Line ${lineId}] Ya está conectada o con QR vigente`)
+        return
+      }
+      console.warn(`[Line ${lineId}] Instancia previa colgada en "${prev.status}" sin QR — se descarta y se reintenta`)
+      this._killing = this._killing || {}
+      this._killing[lineId] = true
+      if (prev._watchdog) { clearTimeout(prev._watchdog); prev._watchdog = null }
+      if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+      try { prev.sock?.end?.(undefined); prev.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+      await new Promise(r => setTimeout(r, 300))
+    }
+
+    // Credenciales: NUNCA se borran por adelantado.
+    //
+    // Antes se limpiaban en cuanto la línea estaba en 'error' o 'logged_out'.
+    // Eso destruía sesiones que seguían siendo válidas: 'error' también aparece
+    // cuando se agotan los reintentos por un corte de red, y ahí las
+    // credenciales del disco funcionan perfectamente. El resultado era que
+    // líneas recuperables quedaban exigiendo un QR manual, y se acumulaban.
+    //
+    // Ahora se intenta conectar con lo que haya. Si WhatsApp responde 401
+    // (credenciales inválidas de verdad), el manejador de 'close' las borra y
+    // reintenta una vez para emitir un QR nuevo. Así:
+    //   - caída de red / reintentos agotados → se reconecta sola, sin QR
+    //   - sesión realmente cerrada          → QR nuevo, igual que antes
+    const estadoPrevio = await query('SELECT status FROM lines WHERE id = $1', [lineId])
+      .then(r => r.rows[0]?.status)
+      .catch(() => null)
+
+    const authDirPrevio = path.join(AUTH_BASE, lineId)
+    const teniaCredenciales = fs.existsSync(path.join(authDirPrevio, 'creds.json'))
+    if ((estadoPrevio === 'logged_out' || estadoPrevio === 'error') && teniaCredenciales) {
+      console.log(`[Line ${lineId}] Estado previo "${estadoPrevio}": se intenta reusar la sesión guardada antes de pedir QR`)
+    }
+
+    const authDir = path.join(AUTH_BASE, lineId)
+    fs.mkdirSync(authDir, { recursive: true })
+
+    let state, saveCreds
+    if (AUTH_STORE === 'pg') {
+      // Un solo dueño por línea. Sin esto, dos instancias podrían levantar la
+      // misma sesión y dos sockets con las mismas credenciales es la señal que
+      // WhatsApp lee como robo de sesión — la forma más rápida de quemar el
+      // número. Si no se consigue el lease, esta instancia NO conecta.
+      const tomada = await lineLock.adquirir(lineId)
+      if (!tomada) {
+        console.warn(`[Line ${lineId}] otra instancia ya tiene esta línea; no se conecta acá.`)
+        throw new Error('LINEA_EN_OTRA_INSTANCIA')
+      }
+      // Primer arranque en modo pg: se sube la sesión que ya está en disco en
+      // vez de pedir QR de nuevo. Idempotente, no pisa lo que ya esté en base.
+      try { await migrarDesdeDisco(lineId, authDir) } catch (e) {
+        console.warn(`[Line ${lineId}] migración disco→pg falló (sigue con lo que haya en base):`, e.message)
+      }
+      ;({ state, saveCreds } = await useDbAuthState(lineId))
+    } else {
+      ;({ state, saveCreds } = await useMultiFileAuthState(authDir))
+    }
+    const { version } = await this._getBaileysVersion()
+    // makeInMemoryStore fue eliminado en Baileys v7 → mini-store propio compatible
+    const store = this._createMessageStore()
+
+    const lineRow = await query('SELECT * FROM lines WHERE id = $1', [lineId])
+    const line = lineRow.rows[0]
+
+    // Saneamiento del proxy ANTES de abrir el socket.
+    //
+    // Los puertos sticky del plan van de PROXY_BASE_PORT a PROXY_MAX_PORT. Si en
+    // la fila quedó guardado un puerto fuera de ese rango (típicamente de una
+    // configuración anterior del pool), el gateway no atiende ahí: el socket se
+    // queda esperando, WhatsApp nunca manda el QR y termina en "Código: 408".
+    // Desde fuera se ve como "el módulo de líneas no funciona", pero el módulo
+    // está bien — la IP no existe. Aquí se detecta y se reasigna una del pool.
+    if (line?.proxy_enabled && line?.proxy_config?.host) {
+      const puertoActual = parseInt(line.proxy_config.port, 10)
+      const fueraDeRango = !Number.isInteger(puertoActual)
+        || puertoActual < PROXY_BASE_PORT
+        || puertoActual > PROXY_MAX_PORT
+      if (fueraDeRango) {
+        console.warn(
+          `[Line ${lineId}] ⚠️ Puerto de proxy inválido (${line.proxy_config.port}); ` +
+          `el plan entrega ${PROXY_BASE_PORT}-${PROXY_MAX_PORT}. Se reasigna una IP del pool.`
+        )
+        try {
+          const nueva = await construirProxyAutomatico()
+          if (nueva) {
+            await query(
+              'UPDATE lines SET proxy_config = $1, updated_at = NOW() WHERE id = $2',
+              [JSON.stringify(nueva), lineId]
+            )
+            line.proxy_config = nueva
+            console.log(`[Line ${lineId}] ✅ Proxy reasignado a ${nueva.host}:${nueva.port}`)
+          } else {
+            console.error(
+              `[Line ${lineId}] ⛔ No se pudo reasignar el proxy: faltan PROXY_USER/PROXY_PASS ` +
+              'o el pool de puertos está agotado.'
+            )
+          }
+        } catch (e) {
+          console.error(`[Line ${lineId}] ⛔ Error reasignando proxy: ${e.message}`)
+        }
+      }
+    }
+
+    // Fail-closed: con WA_PROXY_REQUIRED activo, una línea sin proxy válido
+    // NO conecta directo. Se detiene ANTES de tocar el socket de Baileys.
+    const proxyRequerido = process.env.WA_PROXY_REQUIRED === 'true'
+    if (!proxyPermiteConectar(line, proxyRequerido)) {
+      console.error(`[Line ${lineId}] ⛔ WA_PROXY_REQUIRED activo y la línea no tiene proxy asignado. No se conecta por la IP del servidor.`)
+      await this._updateLineStatus(lineId, 'proxy_error')
+      this.io.emit('line:status', { lineId, status: 'proxy_error' })
+      this.io.emit(`line:status:${lineId}`, { lineId, status: 'proxy_error' })
+      throw new Error('PROXY_REQUIRED: la línea no tiene un proxy válido asignado')
+    }
+
+    // Registrar quién puede ver el QR: el solicitante, o el dueño de la línea
+    this.lineOwners[lineId] = requesterId || line?.created_by || this.lineOwners[lineId] || null
+
+    const socketOptions = {
+      version,
+      // En modo 'pg' cada lectura/escritura de llaves Signal iba directo a
+      // Postgres: al reconectar 50 líneas con mensajes pendientes, eso son miles
+      // de consultas que agotan el pool ("timeout exceeded when trying to
+      // connect") y las líneas se quedan en "Conectando...". La caché en memoria
+      // de Baileys sirve las lecturas y solo escribe a Postgres lo que cambia.
+      auth: AUTH_STORE === 'pg'
+        ? { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) }
+        : state,
+      printQRInTerminal: false,
+      logger: silentLogger,
+      browser: ['WaBot Platform', 'Chrome', '120.0'],
+      syncFullHistory: true,
+      shouldSyncHistoryMessage: () => true,
+      getMessage: async (key) => {
+        // Devolver el mensaje real cacheado o undefined. NUNCA contenido falso:
+        // un "hello" ficticio corrompe el ratchet y provoca cierres de sesión.
+        if (store) {
+          const msg = await store.loadMessage(key.remoteJid, key.id)
+          return msg?.message || undefined
+        }
+        return undefined
+      },
+    }
+
+    // ── Por qué el QR sale SIN proxy ──────────────────────────────────────
+    // Con proxy, el socket moría con "Código: 408" (timeout) ANTES de que
+    // WhatsApp llegara a mandar el evento 'qr', en cuatro IPs seguidas del
+    // pool (1008, 1009, 1010, 1011). Que fallen cuatro IPs distintas
+    // exactamente igual descarta una IP quemada: el tráfico no pasa por ese
+    // gateway, y rotar la IP solo repetía el ciclo. Sin QR no se puede
+    // vincular ninguna línea.
+    //
+    // El emparejamiento es un evento puntual de segundos. Lo que quema la
+    // reputación de un número es el patrón de envío sostenido, y ESO sigue
+    // saliendo por el proxy: las reconexiones automáticas (paraQr=false), las
+    // campañas y los envíos del inbox no cambian en nada.
+    //
+    // WA_QR_SIN_PROXY='false' revierte este comportamiento.
+    const omitirProxyQr = paraQr && process.env.WA_QR_SIN_PROXY !== 'false'
+    if (omitirProxyQr && line?.proxy_enabled && line?.proxy_config?.host) {
+      console.warn(`[Line ${lineId}] 🔓 Vinculación por QR SIN proxy (WA_QR_SIN_PROXY). El proxy vuelve a aplicarse al reconectar y al enviar.`)
+    }
+
+    if (!omitirProxyQr && line?.proxy_enabled && line?.proxy_config?.host) {
+      const pc = line.proxy_config
+      const protocolo = (pc.protocol || 'socks5').toLowerCase()
+      const proxyUrl = pc.username
+        ? `${protocolo}://${pc.username}:${pc.password}@${pc.host}:${pc.port}`
+        : `${protocolo}://${pc.host}:${pc.port}`
+
+      try {
+        // Cada protocolo carga SOLO su paquete. Antes se hacía require de los
+        // dos de golpe: si faltaba el de socks, fallaba también el modo HTTP.
+        if (protocolo.startsWith('socks')) {
+          const { SocksProxyAgent } = require('socks-proxy-agent')
+          socketOptions.agent = new SocksProxyAgent(proxyUrl)
+        } else {
+          const { HttpsProxyAgent } = require('https-proxy-agent')
+          socketOptions.agent = new HttpsProxyAgent(proxyUrl)
+        }
+        console.log(`[Line ${lineId}] 🛡️ Proxy activo: ${protocolo}://${pc.host}:${pc.port}`)
+      } catch (e) {
+        // NO se conecta sin proxy. Hacerlo sacaría el número por la IP del
+        // servidor, que es justamente lo que el proxy viene a evitar: es
+        // preferible dejar la línea caída y visible a quemar el número.
+        const falta = /Cannot find module/.test(e.message)
+          ? ` Falta instalar el paquete: npm install ${protocolo.startsWith('socks') ? 'socks-proxy-agent' : 'https-proxy-agent'}`
+          : ''
+        console.error(`[Line ${lineId}] ⛔ Proxy configurado pero NO se pudo aplicar: ${e.message}.${falta} La línea no se conectará para no exponer el número por la IP del servidor.`)
+        await this._updateLineStatus(lineId, 'error')
+        this.io.emit('line:status', { lineId, status: 'error' })
+        throw new Error(`No se pudo aplicar el proxy de la línea: ${e.message}`)
+      }
+    }
+
+    const sock = makeWASocket(socketOptions)
+    store.bind(sock.ev)
+
+    this.instances[lineId] = { sock, store, status: 'connecting', qr: null }
+    this._updateLineStatus(lineId, 'connecting')
+    // Ya hay socket nuevo vivo: si veníamos de derribar un zombi, el flag de
+    // "cierre intencional" ya cumplió su función. Los eventos tardíos del socket
+    // viejo se filtran por identidad de socket en el manejador de 'close'.
+    if (this._killing?.[lineId]) delete this._killing[lineId]
+
+    // Watchdog: si a los 60s sigue en 'connecting' sin QR (WhatsApp no responde,
+    // proxy caído, egress bloqueado), se cierra el socket colgado y se marca
+    // 'disconnected'. Así el modal deja de girar y el asesor puede reintentar.
+    this.instances[lineId]._watchdog = setTimeout(() => {
+      const inst = this.instances[lineId]
+      if (!inst || inst.status !== 'connecting' || inst.qr) return
+      console.warn(`[Line ${lineId}] ⏱️ 60s en "connecting" sin QR — se cierra el socket colgado`)
+      this._killing = this._killing || {}
+      this._killing[lineId] = true
+      try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+      const status = state.creds.registered ? 'connecting' : 'error'
+      this._updateLineStatus(lineId, status)
+      this.io.emit('line:status', { lineId, status })
+      this.io.emit(`line:status:${lineId}`, { lineId, status })
+      if (state.creds.registered && !this.reconnectTimers[lineId]) {
+        this.reconnectTimers[lineId] = setTimeout(async () => {
+          delete this.reconnectTimers[lineId]
+          // El socket no respondió en 60s: lo normal es que el proxy de la
+          // línea no tenga salida (DataImpulse NO_RAY / NO_HOST_CONNECTION).
+          // Reintentar contra el mismo puerto deja la línea en "Conectando…"
+          // para siempre, así que antes del reintento se rota a un puerto
+          // limpio del pool (con las credenciales vigentes del .env).
+          try {
+            const nueva = await rotarProxyDeLinea(lineId, 'sin_respuesta_60s')
+            if (nueva) console.log(`[Line ${lineId}] ♻️ Proxy rotado tras watchdog → ${nueva.host}:${nueva.port}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo rotar el proxy tras watchdog: ${e.message}`)
+          }
+          this.connect(lineId).catch(e => console.warn(`[Line ${lineId}] watchdog retry:`, e.message))
+        }, 120000)
+      }
+    }, 60000)
+    if (this.instances[lineId]._watchdog.unref) this.instances[lineId]._watchdog.unref()
+
+    sock.ev.on('creds.update', saveCreds)
+
+    sock.ev.on('contacts.update', async (updates) => {
+      for (const contact of updates) {
+        if (contact.id && contact.id.endsWith('@lid') && contact.phoneNumber) {
+          const lidNum = contact.id.replace('@lid', '').replace(/\D/g, '')
+          const realNum = contact.phoneNumber.replace(/\D/g, '')
+          console.log(`[Line ${lineId}] 📞 LID resuelto (contacts.update): ${lidNum} → +${realNum}`)
+          await this._saveLidMapping(lidNum, realNum)
+          try {
+            await query(
+              `UPDATE contacts SET metadata = jsonb_set(
+                COALESCE(metadata, '{}'),
+                '{real_phone}',
+                $1::jsonb
+              ), last_seen = NOW()
+              WHERE wa_number = $2 AND line_id = $3`,
+              [JSON.stringify(realNum), lidNum, lineId]
+            )
+          } catch (e) {}
+        }
+      }
+    })
+
+    sock.ev.on('lid-mapping.update', async (mappings) => {
+      for (const [lid, pn] of (mappings?.lid && mappings?.pn
+        ? [[mappings.lid, mappings.pn]] : Object.entries(mappings || {}))) {
+        const lidNum = this._cleanNumber(lid)
+        const realNum = this._cleanNumber(pn)
+        if (lidNum && realNum) {
+          await this._saveLidMapping(lidNum, realNum)
+          console.log(`[Line ${lineId}] 🔗 lid-mapping: ${lidNum} → +${realNum}`)
+          try {
+            await query(
+              `UPDATE contacts SET metadata = metadata || $1::jsonb, last_seen = NOW()
+               WHERE wa_number = $2 AND line_id = $3`,
+              [JSON.stringify({ real_phone: realNum }), lidNum, lineId]
+            )
+          } catch (e) {}
+        }
+      }
+    })
+
+    sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+      if (this.stopping) return
+      // Cualquier evento de conexión significa que el socket respondió: el
+      // watchdog de "colgado en connecting" ya no hace falta.
+      if (this.instances[lineId]?._watchdog) { clearTimeout(this.instances[lineId]._watchdog); this.instances[lineId]._watchdog = null }
+      if (qr) {
+        const QRCode = require('qrcode')
+        const qrImage = await QRCode.toDataURL(qr)
+        this.instances[lineId].qr = qrImage
+        this.instances[lineId].status = 'qr_ready'
+        this._updateLineStatus(lineId, 'qr_ready')
+        // QR: SOLO al dueño de la línea (evita que otros lo escaneen y secuestren el número)
+        this._emitQrToOwner(lineId, qrImage)
+        this.io.emit('line:status', { lineId, status: 'qr_ready' })
+        const instance = this.instances[lineId]
+        // Los QR sin escanear caducan; no conservar sockets esperando para siempre.
+        instance._qrStartedAt = instance._qrStartedAt || Date.now()
+        instance._watchdog = setTimeout(() => {
+          if (this.instances[lineId] !== instance || instance.status !== 'qr_ready') return
+          this._killing = this._killing || {}
+          this._killing[lineId] = true
+          try { instance.sock?.end?.(undefined); instance.sock?.ws?.close?.() } catch {}
+          delete this.instances[lineId]
+          this._updateLineStatus(lineId, 'logged_out')
+          this.io.emit('line:status', { lineId, status: 'logged_out' })
+          this.io.emit(`line:status:${lineId}`, { lineId, status: 'logged_out' })
+        }, Math.max(1, 180000 - (Date.now() - instance._qrStartedAt)))
+        instance._watchdog.unref?.()
+        console.log(`[Line ${lineId}] QR generado (visible solo para el dueño)`)
+      }
+
+      if (connection === 'open') {
+        // Conexión estable → cancelar reconexión pendiente y resetear contador
+        if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+        delete this.reconnectAttempts[lineId]
+        this.instances[lineId].status = 'connected'
+        this.instances[lineId].qr = null
+        this._updateLineStatus(lineId, 'connected')
+        this.io.emit('line:status', { lineId, status: 'connected' })
+        this.io.emit(`line:status:${lineId}`, { lineId, status: 'connected' })
+        console.log(`[Line ${lineId}] ✅ Conectada`)
+        const phoneNumber = sock.user?.id?.split(':')[0]
+        if (phoneNumber) {
+          await query(
+            'UPDATE lines SET phone_number=$1, last_connected=NOW() WHERE id=$2',
+            [phoneNumber, lineId]
+          )
+          console.log(`[Line ${lineId}] Número registrado: ${phoneNumber}`)
+        }
+      }
+
+      if (connection === 'close') {
+        const instActual = this.instances[lineId]
+        // Evento de un socket VIEJO que ya fue reemplazado por otro (p. ej. al
+        // derribar un zombi y reconectar): se ignora del todo, si no su lógica
+        // de reconexión pisaría al socket nuevo.
+        if (instActual && instActual.sock !== sock) {
+          console.log(`[Line ${lineId}] close de un socket anterior ya reemplazado — ignorado`)
+          return
+        }
+        // Cierre intencional (zombi derribado, watchdog, disconnect, resetAll):
+        // NO reconectar ni tocar estado, ya lo hizo quien lo cerró.
+        if (this._killing?.[lineId]) {
+          delete this._killing[lineId]
+          if (instActual && instActual.sock === sock) delete this.instances[lineId]
+          if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+          console.log(`[Line ${lineId}] cierre intencional — sin reconexión automática`)
+          return
+        }
+        const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode
+        // 401 = sesión cerrada · 403 = número restringido/prohibido por WhatsApp.
+        // En ambos NO se auto-reconecta: reconectar en bucle ahoga la base de datos
+        // y AUMENTA el riesgo de bloqueo. El resto reconecta con espera creciente y tope.
+        const fatal = statusCode === DisconnectReason.loggedOut || statusCode === 403
+        const MAX_RETRIES = 5
+        const attempts = this.reconnectAttempts[lineId] || 0
+        const shouldReconnect = !fatal
+        console.log(`[Line ${lineId}] Desconectada. Código: ${statusCode}. Reconectar: ${shouldReconnect} (intento ${attempts}/${MAX_RETRIES})`)
+        delete this.instances[lineId]
+        if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+
+        // 401 = las credenciales del disco ya no valen. Es AQUÍ (y solo aquí)
+        // donde se borran: WhatsApp lo acaba de confirmar. Se hace un único
+        // reintento para que Baileys emita el QR nuevo — sin esto, el modal se
+        // queda en "Generando QR…" para siempre.
+        if (statusCode === DisconnectReason.loggedOut && !this.qrRelink?.[lineId]) {
+          this.qrRelink = this.qrRelink || {}
+          this.qrRelink[lineId] = true
+          console.log(`[Line ${lineId}] Credenciales rechazadas (401) → se limpian y se pide QR nuevo`)
+          this._wipeAuth(lineId)
+          this._updateLineStatus(lineId, 'logged_out')
+          this.io.emit('line:status', { lineId, status: 'logged_out' })
+          setTimeout(() => {
+            delete this.qrRelink[lineId]
+            this.connect(lineId, this.lineOwners[lineId])
+              .catch(e => console.warn(`[Line ${lineId}] No se pudo pedir QR nuevo:`, e.message))
+          }, 2000)
+          return
+        }
+
+        if (fatal) {
+          // Detener el bucle. Requiere reconexión manual (escanear QR de nuevo).
+          const st = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'error'
+          this._updateLineStatus(lineId, st)
+          this.io.emit('line:status', { lineId, status: st })
+          this.io.emit(`line:status:${lineId}`, { lineId, status: st })
+          if (statusCode === 403) console.warn(`[Line ${lineId}] ⛔ Código 403: número restringido por WhatsApp. Reconexión detenida — revisa el número.`)
+
+          // El número quedó bloqueado o con la sesión cerrada por WhatsApp.
+          // Se retira su IP del pool: reasignarla a otro número le heredaría
+          // la reputación dañada. Solo aplica al 403 (restricción real de
+          // WhatsApp); un logged_out puede ser alguien cerrando sesión desde
+          // el celular, y ahí la IP no tiene la culpa.
+          if (statusCode === 403) {
+            try {
+              const { rows } = await query('SELECT proxy_enabled, proxy_config FROM lines WHERE id = $1', [lineId])
+              const cfg = rows[0]?.proxy_config || {}
+              if (rows[0]?.proxy_enabled && cfg.host && cfg.port) {
+                await quemarPuerto(cfg.host, cfg.port, lineId, 'bloqueado_403')
+              }
+            } catch (e) {
+              console.warn(`[Line ${lineId}] No se pudo retirar la IP:`, e.message)
+            }
+          } else if (st === 'logged_out') {
+            // Sesión cerrada de verdad (el reintento por QR ya se agotó): la
+            // línea necesitará una IP nueva al re-vincular, así que su puerto
+            // actual vuelve al pool para otra línea. La IP NO se quema: no hubo
+            // bloqueo, solo un cierre de sesión.
+            try { await liberarPuertoDeLinea(lineId) } catch (e) { console.warn(`[Line ${lineId}] liberarPuerto:`, e.message) }
+          }
+          return
+        }
+
+        // Timeout (408): el socket nunca llegó a hablar con WhatsApp. Si la línea
+        // sale por proxy, lo más probable es que esa IP esté muerta; reintentar
+        // contra el mismo puerto solo gasta los 5 intentos y deja la línea sin QR.
+        // A partir del segundo fallo se rota a una IP limpia del pool.
+        if (statusCode === 408 && attempts >= 1) {
+          try {
+            const nueva = await rotarProxyDeLinea(lineId, 'timeout_408')
+            if (nueva) console.log(`[Line ${lineId}] ♻️ IP rotada tras timeout → ${nueva.host}:${nueva.port}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo rotar la IP tras timeout: ${e.message}`)
+          }
+        }
+
+        this._updateLineStatus(lineId, 'connecting')
+        this.io.emit('line:status', { lineId, status: 'connecting' })
+        this.io.emit(`line:status:${lineId}`, { lineId, status: 'connecting' })
+
+        // Reconexión con backoff exponencial: 5s, 10s, 20s, 40s, 80s (tope 2 min)
+        this.reconnectAttempts[lineId] = Math.min(attempts + 1, MAX_RETRIES)
+        const delay = Math.min(5000 * Math.pow(2, attempts), 120000)
+        this.reconnectTimers[lineId] = setTimeout(() => {
+          delete this.reconnectTimers[lineId]
+          this.connect(lineId).catch(err => console.warn(`[Line ${lineId}] Reintento falló:`, err.message))
+        }, delay)
+      }
+    })
+
+    const processInboxMessages = async ({ messages, type }) => {
+      // 'notify' = mensajes en vivo. 'append' = mensajes que llegaron durante
+      // una microcaída y se sincronizan al reconectar (recupera lo perdido).
+      if (type !== 'notify' && type !== 'append') return
+
+      // Recupera todo el intervalo desde el ?ltimo mensaje entrante persistido.
+      // El margen de dos minutos es seguro porque wa_msg_id evita duplicados.
+      let appendSince = null
+      if (type === 'append') {
+        const last = await query(
+          `SELECT COALESCE(MAX(timestamp) - INTERVAL '2 minutes', NOW() - INTERVAL '30 days') AS since
+           FROM messages WHERE line_id=$1 AND direction='in' AND wa_msg_id IS NOT NULL`,
+          [lineId]
+        )
+        appendSince = new Date(last.rows[0]?.since || Date.now() - 30 * 86400000).getTime()
+      }
+
+      for (const msg of messages) {
+        const callStub = [
+          WAMessageStubType.CALL_MISSED_VOICE,
+          WAMessageStubType.CALL_MISSED_VIDEO,
+          WAMessageStubType.SILENCED_UNKNOWN_CALLER_AUDIO,
+          WAMessageStubType.SILENCED_UNKNOWN_CALLER_VIDEO,
+        ].includes(msg.messageStubType)
+        if (callStub) {
+          try {
+            await this._handleCallEvent(lineId, sock, {
+              id: msg.key.id,
+              from: msg.key.fromMe ? sock.user?.id : msg.key.remoteJid,
+              chatId: msg.key.remoteJid,
+              status: 'timeout',
+              isVideo: [WAMessageStubType.CALL_MISSED_VIDEO, WAMessageStubType.SILENCED_UNKNOWN_CALLER_VIDEO].includes(msg.messageStubType),
+              date: new Date(Number(msg.messageTimestamp || 0) * 1000),
+              offline: type === 'append',
+            })
+          } catch (e) { console.warn(`[Line ${lineId}] Error registrando llamada sincronizada:`, e.message) }
+          continue
+        }
+        const normalized = normalizeMessageContent(msg.message)
+        if (!normalized) continue
+        msg.message = normalized
+
+        const remoteJid = msg.key.remoteJid
+        if (remoteJid.endsWith('@g.us')) continue           // grupos
+        if (remoteJid === 'status@broadcast') continue       // estados
+        if (remoteJid.endsWith('@newsletter')) continue      // canales
+        if (remoteJid.endsWith('@broadcast')) continue       // listas de difusión
+
+        // En 'append' solo procesar lo reciente (últimos 15 min) y sin duplicar
+        if (type === 'append') {
+          const ts = Number(msg.messageTimestamp || 0) * 1000
+          if (ts && appendSince && ts < appendSince) continue
+          if (msg.key.id) {
+            const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [msg.key.id])
+            if (dup.rows.length) continue
+          }
+        }
+
+        // ── Mensajes que la cuenta envió desde el teléfono / WhatsApp Web ──
+        // Se reflejan en el Inbox como salientes (antes se descartaban).
+        if (msg.key.fromMe) {
+          try { await this._handleOwnOutgoing(lineId, sock, msg, remoteJid) } catch (e) {
+            console.warn(`[Line ${lineId}] Error sync mensaje propio:`, e.message)
+          }
+          continue
+        }
+
+        let waNumber = this._cleanNumber(remoteJid)
+
+        if (remoteJid.endsWith('@lid')) {
+          waNumber = await this._resolveLid(remoteJid, sock, lineId, msg)
+
+          // LID sin resolver → marcar el contacto para que las respuestas salgan al JID @lid
+          if (waNumber === this._cleanNumber(remoteJid)) {
+            try {
+              await query(
+                `INSERT INTO contacts (wa_number, line_id, metadata)
+                 VALUES ($1,$2,'{"is_lid":true}'::jsonb)
+                 ON CONFLICT (wa_number, line_id)
+                 DO UPDATE SET metadata = contacts.metadata || '{"is_lid":true}'::jsonb`,
+                [waNumber, lineId]
+              )
+            } catch (e) {}
+          }
+        }
+
+        const listResponse = msg.message?.listResponseMessage
+        const interactiveResponse = msg.message?.interactiveResponseMessage
+        const nativeFlowResponse = interactiveResponse?.nativeFlowResponseMessage
+
+        let quickReplyResponse = ''
+        if (nativeFlowResponse?.paramsJson) {
+          try {
+            const params = JSON.parse(nativeFlowResponse.paramsJson)
+            quickReplyResponse = params?.id || params?.display_text || ''
+            if (quickReplyResponse.startsWith('opt_')) {
+              const parts = quickReplyResponse.split('_')
+              quickReplyResponse = parts.slice(2).join('_').replace(/_/g, ' ')
+            }
+          } catch (e) {}
+        }
+
+        const text = (
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption ||
+          msg.message?.documentMessage?.caption ||
+          msg.message?.videoMessage?.caption ||
+          listResponse?.title ||
+          listResponse?.singleSelectReply?.selectedRowId ||
+          quickReplyResponse ||
+          ''
+        ).trim()
+
+        const msgType = msg.message?.conversation ? 'text'
+          : msg.message?.extendedTextMessage ? 'text'
+          : msg.message?.listResponseMessage ? 'list_response'
+          : msg.message?.interactiveResponseMessage ? 'interactive_response'
+          : msg.message?.imageMessage ? 'image'
+          : msg.message?.documentMessage ? 'document'
+          : msg.message?.audioMessage ? 'audio'
+          : msg.message?.videoMessage ? 'video'
+          : msg.message?.stickerMessage ? 'sticker'
+          : msg.message?.contactMessage ? 'contact'
+          : msg.message?.contactsArrayMessage ? 'contacts'
+          : (msg.message?.locationMessage || msg.message?.liveLocationMessage) ? 'location'
+          : 'unknown'
+
+        // Ignorar eventos sin contenido (reacciones, protocolo, etc.) → evita burbujas vacías
+        if (!text && !['image', 'document', 'audio', 'video', 'sticker', 'contact', 'contacts', 'location'].includes(msgType)) continue
+
+        const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
+        const contact = msg.message?.contactMessage
+        const contacts = msg.message?.contactsArrayMessage
+        const eventText = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
+          : msgType === 'contact' ? (contact?.displayName || 'Contacto compartido')
+          : msgType === 'contacts' ? (contacts?.displayName || `${contacts?.contacts?.length || 0} contactos compartidos`)
+          : text
+
+        // ── Descargar media entrante (imagen/documento/audio del cliente) ──
+        let inMediaUrl = null
+        if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
+          try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {})
+            const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+            fs.mkdirSync(dir, { recursive: true })
+            const ext = msgType === 'image' ? '.jpg'
+              : msgType === 'audio' ? '.ogg'
+              : msgType === 'video' ? '.mp4'
+              : msgType === 'sticker' ? '.webp'
+              : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
+            const fname = `in-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+            fs.writeFileSync(path.join(dir, fname), buffer)
+            inMediaUrl = `/wa-uploads/${fname}`
+            console.log(`[Line ${lineId}] 📥 Media entrante guardada: ${fname}`)
+          } catch (e) {
+            console.warn(`[Line ${lineId}] No se pudo descargar media entrante:`, e.message)
+          }
+        }
+
+        const pushName = msg.pushName || ''
+        // ── Número de quien escribe ──────────────────────────────
+        const waNumberDisplay = `+${waNumber}`
+
+        let realPhone = null
+        const participant = msg.key?.participant
+        if (participant && participant.endsWith('@s.whatsapp.net')) {
+          realPhone = participant.replace('@s.whatsapp.net', '')
+        }
+
+        console.log(`[Line ${lineId}] 📱 De: ${waNumberDisplay} nombre: "${pushName}" → "${text}"`)
+
+        if (realPhone) {
+          try {
+            await query(
+              `INSERT INTO contacts (wa_number, line_id, metadata)
+               VALUES ($1, $2, $3::jsonb)
+               ON CONFLICT (wa_number, line_id)
+               DO UPDATE SET metadata = contacts.metadata || $3::jsonb, last_seen = NOW()`,
+              [waNumber, lineId, JSON.stringify({ real_phone: realPhone, push_name: pushName })]
+            )
+          } catch (e) {}
+        }
+
+        // NO se marca como leído aquí. Antes se llamaba a sock.readMessages()
+        // apenas llegaba el mensaje, y el cliente veía el doble check azul sin
+        // que ningún asesor lo hubiera abierto. Ahora la clave queda en cola y
+        // el acuse se envía desde el Inbox cuando alguien abre la conversación.
+        this._queuePendingRead(lineId, waNumber, msg.key)
+
+        try {
+          await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, eventText, msgType, pushName, inMediaUrl,
+            location ? { latitude: location.degreesLatitude, longitude: location.degreesLongitude, name: location.name, address: location.address } : null)
+        } catch (err) {
+          console.error(`[Line ${lineId}] Error procesando mensaje:`, err.message)
+          console.error(err.stack)
+        }
+      }
+    }
+
+    sock.ev.on('messages.upsert', processInboxMessages)
+    sock.ev.on('messaging-history.set', ({ messages }) => {
+      processInboxMessages({ messages: messages || [], type: 'append' })
+        .catch(e => console.warn(`[Line ${lineId}] Error sincronizando historial:`, e.message))
+    })
+
+    sock.ev.on('call', async (calls) => {
+      for (const call of calls || []) {
+        try { await this._handleCallEvent(lineId, sock, call) }
+        catch (e) { console.warn(`[Line ${lineId}] Error registrando llamada:`, e.message) }
+      }
+    })
+
+    sock.ev.on('messages.update', async (updates) => {
+      for (const { key, update } of updates) {
+        // ── Acks de entrega/lectura (status: 3=entregado, 4=leído) ──
+        if (typeof update.status === 'number' && key?.id) {
+          try { await this._handleDeliveryAck(lineId, key.id, update.status) } catch (e) {}
+        }
+
+        if (!update.pollUpdates) continue
+
+        const remoteJid = key.remoteJid
+        if (remoteJid.endsWith('@g.us')) continue
+
+        let waNumber = this._cleanNumber(remoteJid)
+
+        if (remoteJid.endsWith('@lid')) {
+          waNumber = await this._resolveLid(remoteJid, sock, lineId)
+        }
+
+        const pollCreation = await store.loadMessage(remoteJid, key.id)
+        if (!pollCreation) continue
+
+        const votes = getAggregateVotesInPollMessage({
+          message: pollCreation,
+          pollUpdates: update.pollUpdates,
+        })
+
+        const selected = votes.find(v => v.voters.length > 0)
+        if (!selected) continue
+
+        console.log(`[Line ${lineId}] 🗳️ Poll de ${waNumber}: "${selected.name}"`)
+
+        try {
+          await this._handlePollVote(lineId, sock, remoteJid, waNumber, selected.name)
+        } catch (err) {
+          console.error(`[Line ${lineId}] Error procesando poll:`, err.message)
+        }
+      }
+    })
+  }
+
+  // Apagado limpio en un reinicio/deploy: cierra los WebSockets SIN cerrar la
+  // sesión (no borra credenciales) para que la nueva instancia reconecte sin
+  // conflicto de "sesión duplicada" (evita 401/428 en cada deploy).
+  async shutdown() {
+    this.stopping = true
+    for (const timer of Object.values(this.reconnectTimers)) clearTimeout(timer)
+    this.reconnectTimers = {}
+    const ids = Object.keys(this.instances)
+    console.log(`[BaileysManager] Cerrando ${ids.length} línea(s) por apagado limpio...`)
+    for (const id of ids) {
+      await this._updateLineStatus(id, 'connecting')
+      // Cancelar reconexiones pendientes
+      if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
+      if (this.instances[id]?._watchdog) clearTimeout(this.instances[id]._watchdog)
+      try {
+        this._killing = this._killing || {}
+        this._killing[id] = true
+        // end() cierra el socket sin hacer logout (conserva la sesión en disco)
+        this.instances[id].sock?.end?.(undefined)
+        this.instances[id].sock?.ws?.close?.()
+      } catch (e) {}
+      delete this.instances[id]
+    }
+    // Soltar los leases para que otra instancia pueda tomar las líneas ya, sin
+    // esperar los 90s de vencimiento. En un deploy de Render esto es la
+    // diferencia entre reanudar en segundos o dejar las líneas mudas.
+    if (AUTH_STORE === 'pg') {
+      try { await lineLock.soltarTodo() } catch (e) { console.warn('[BaileysManager] soltarTodo falló:', e.message) }
+    }
+  }
+
+  // Desconexión masiva a pedido del administrador. logout:true cierra sesión de
+  // verdad en cada número (WhatsApp lo saca de "Dispositivos vinculados") y
+  // borra sus credenciales: todas quedan limpias y hay que re-escanear el QR.
+  // Sirve para salir de estados colgados en bloque ("Conectando…" eterno).
+  async resetAll({ logout = true } = {}) {
+    const ids = new Set(Object.keys(this.instances))
+    try {
+      const { rows } = await query(
+        `SELECT id FROM lines
+          WHERE deleted_at IS NULL
+            AND status IN ('connected','connecting','qr_ready','disconnected','error','logged_out')`
+      )
+      for (const r of rows) ids.add(r.id)
+    } catch (e) { console.warn('[resetAll] no se pudo listar líneas de BD:', e.message) }
+
+    let n = 0
+    for (const id of ids) {
+      // Frenar cualquier reconexión automática y matar el watchdog antes de tocar el socket
+      if (this.reconnectTimers[id]) { clearTimeout(this.reconnectTimers[id]); delete this.reconnectTimers[id] }
+      delete this.reconnectAttempts[id]
+      if (this.instances[id]?._watchdog) { clearTimeout(this.instances[id]._watchdog); this.instances[id]._watchdog = null }
+      this._killing = this._killing || {}
+      this._killing[id] = true
+      try {
+        await this.disconnect(id, { wipeAuth: logout })
+        n++
+      } catch (e) {
+        console.warn(`[resetAll] línea ${id}:`, e.message)
+      }
+      // Ritmo suave: 30 logouts de golpe es un patrón feo para WhatsApp
+      await new Promise(r => setTimeout(r, 500))
+    }
+    console.log(`[BaileysManager] resetAll: ${n} línea(s) procesada(s) (logout=${logout})`)
+    return n
+  }
+
+  // Borra las credenciales locales de una línea. Sin esto, una sesión inválida
+  // (401/logged_out) queda en disco y en el siguiente "Conectar QR" Baileys
+  // intenta reusarla, falla y NUNCA llega a emitir un QR nuevo.
+  _wipeAuth(lineId) {
+    try {
+      const dir = path.join(AUTH_BASE, lineId)
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true })
+        console.log(`[Line ${lineId}] 🧹 Credenciales locales borradas (sesión limpia)`)
+      }
+      // En modo pg la verdad vive en la base: si se borra solo el disco, la
+      // sesión inválida sobrevive y el próximo "Conectar QR" vuelve a fallar.
+      if (AUTH_STORE === 'pg') {
+        borrarSesion(lineId)
+          .then((n) => console.log(`[Line ${lineId}] 🧹 ${n} clave(s) de sesión borradas en Postgres`))
+          .catch((e) => console.warn(`[Line ${lineId}] no se pudo borrar la sesión en Postgres:`, e.message))
+      }
+      return true
+    } catch (e) {
+      console.warn(`[Line ${lineId}] No se pudieron borrar credenciales:`, e.message)
+      return false
+    }
+  }
+
+  async disconnect(lineId, { wipeAuth = false } = {}) {
+    const inst = this.instances[lineId]
+    // Marcar el cierre como intencional: el 'close' que dispara sock.logout()
+    // no debe programar una reconexión ni reescribir el estado.
+    this._killing = this._killing || {}
+    this._killing[lineId] = true
+    // Cancelar cualquier reconexión programada: si no, el timer revive la línea
+    if (this.reconnectTimers[lineId]) { clearTimeout(this.reconnectTimers[lineId]); delete this.reconnectTimers[lineId] }
+    delete this.reconnectAttempts[lineId]
+    if (inst?._watchdog) { clearTimeout(inst._watchdog); inst._watchdog = null }
+
+    if (inst) {
+      try { await inst.sock.logout() } catch (e) {}
+      try { inst.sock?.end?.(undefined); inst.sock?.ws?.close?.() } catch (e) {}
+      delete this.instances[lineId]
+      if (AUTH_STORE === 'pg') {
+        try { await lineLock.soltar(lineId) } catch (e) { console.warn(`[Line ${lineId}] soltar lease falló:`, e.message) }
+      }
+    }
+    if (wipeAuth) this._wipeAuth(lineId)
+
+    // Descartar acuses de lectura pendientes: sus claves ya no sirven en una
+    // sesión nueva y no deben enviarse al reconectar.
+    for (const k of Object.keys(this.pendingReads)) {
+      if (k.startsWith(`${lineId}:`)) delete this.pendingReads[k]
+    }
+
+    // await: quien llama (p. ej. la baja lógica de una línea) escribe el estado
+    // después; sin await ese UPDATE podría pisar al de aquí.
+    await this._updateLineStatus(lineId, 'disconnected')
+    this.io.emit('line:status', { lineId, status: 'disconnected' })
+    this.io.emit(`line:status:${lineId}`, { lineId, status: 'disconnected' })
+  }
+
+  // Pregunta a WhatsApp la identidad REAL de un número (maneja LID) y cachea
+  // el JID de envío + el mapeo lid→número. Devuelve el JID correcto o null.
+  async resolveWaJid(lineId, phone) {
+    const inst = this.instances[lineId]
+    if (!inst?.sock) return null
+    const num = this._cleanNumber(phone)
+    if (!num) return null
+    try {
+      const results = await inst.sock.onWhatsApp('+' + num)
+      const r = results?.[0]
+      if (!r || r.exists === false) return null
+      const jid = r.jid || r.lid || null
+      if (!jid) return null
+
+      const md = { send_jid: jid }
+      const lidJid = jid.endsWith('@lid') ? jid
+        : r.lid || await inst.sock.signalRepository?.lidMapping?.getLIDForPN(jid)
+      if (lidJid?.endsWith('@lid')) {
+        const lidNum = this._cleanNumber(lidJid)
+        md.lid = lidNum
+        await this._saveLidMapping(lidNum, num)   // lid → número real (unifica chats)
+      }
+      try {
+        await query(
+          `INSERT INTO contacts (wa_number, line_id, metadata)
+           VALUES ($1,$2,$3::jsonb)
+           ON CONFLICT (wa_number, line_id) DO UPDATE SET metadata = contacts.metadata || $3::jsonb`,
+          [num, lineId, JSON.stringify(md)]
+        )
+      } catch (e) {}
+      return jid
+    } catch (e) {
+      return null
+    }
+  }
+
+  // Resuelve el JID correcto para enviar. Usa caché (send_jid) y, si no hay,
+  // pregunta a WhatsApp. Así los mensajes a contactos LID SÍ se entregan.
+  async _resolveSendJid(lineId, to) {
+    const str = (to || '').toString()
+    if (str.includes('@')) return this._toJid(str)   // ya viene como JID completo
+    const num = this._cleanNumber(str)
+
+    // 1) Caché en el contacto
+    let isLidContact = false
+    try {
+      const r = await query(
+        `SELECT metadata FROM contacts WHERE wa_number=$1 AND line_id=$2`,
+        [num, lineId]
+      )
+      const md = r.rows[0]?.metadata || {}
+      if (md.send_jid) return md.send_jid
+      if (md.lid)      return `${String(md.lid).replace(/\D/g, '')}@lid`
+      if (md.is_lid)   isLidContact = true   // el número guardado ES un LID
+    } catch (e) {}
+
+    // Si el contacto es un LID, se responde al JID @lid directamente
+    if (isLidContact || num.length > 13) return `${num}@lid`
+
+    // 2) Preguntar a WhatsApp (resuelve LID y cachea)
+    const resolved = await this.resolveWaJid(lineId, num)
+    if (resolved) return resolved
+
+    // 3) Fallbacks
+    if (this.lidMap[num]) return `${this.lidMap[num]}@s.whatsapp.net`
+    return this._toJid(num)
+  }
+
+  // Simula "escribiendo…" antes de enviar (comportamiento humano → anti-bloqueo).
+  // Nunca rompe el envío: si falla, se ignora.
+  async _simulateTyping(sock, jid, textLen = 0) {
+    try {
+      await sock.sendPresenceUpdate('composing', jid)
+      // Tiempo proporcional a la longitud del texto, con tope (0.8s–3s)
+      const ms = Math.min(3000, Math.max(800, (textLen || 20) * 45))
+      await new Promise(r => setTimeout(r, ms))
+      await sock.sendPresenceUpdate('paused', jid)
+    } catch (e) { /* ignorar */ }
+  }
+
+  async startCall(lineId, to, { video = false } = {}) {
+    const error = new Error('Baileys no soporta llamadas salientes; abre el contacto en WhatsApp')
+    error.code = 'WHATSAPP_OUTBOUND_CALL_UNSUPPORTED'
+    throw error
+  }
+
+  async sendText(lineId, to, text, { inboxNoteId, messageId } = {}) {
+    const inst = this.instances[lineId]
+    if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
+    const jid = await this._resolveSendJid(lineId, to)
+    console.log(`[Line ${lineId}] → Enviando texto a ${jid}`)
+    await this._simulateTyping(inst.sock, jid, (text || '').length)
+    const result = await inst.sock.sendMessage(jid, { text }, messageId ? { messageId } : {})
+    this._markSentByErp(result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id, inboxNoteId)
+    return result
+  }
+
+  async sendPoll(lineId, to, pollTitle, options) {
+    const inst = this.instances[lineId]
+    if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
+    const jid = this._toJid(to)
+    console.log(`[Line ${lineId}] → Enviando poll a ${jid}: "${pollTitle}"`)
+    await inst.sock.sendMessage(jid, {
+      poll: { name: pollTitle, values: options, selectableCount: 1 },
+    })
+  }
+
+  // ── SOLO lista numerada, sin botones ─────────────────────────────────────
+  async sendList(lineId, to, { title, description, buttonText, options }) {
+    const inst = this.instances[lineId]
+    if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
+    const jid = this._toJid(to)
+
+    const labels = options
+      .map(o => typeof o === 'object' ? (o.label || '') : (o || ''))
+      .filter(Boolean)
+
+    const lines = [
+      `*${title}*`,
+      '',
+      ...labels.map((label, i) => `${_numEmoji(i + 1)} ${label}`),
+      '',
+      '👆 _Responde con el número de tu opción_',
+    ]
+    await inst.sock.sendMessage(jid, { text: lines.join('\n') })
+    console.log(`[Line ${lineId}] → Menú numerado enviado`)
+  }
+
+  async sendMedia(lineId, to, { type, buffer, mimetype, filename, caption, mediaUrl, inboxNoteId, messageId }) {
+    const inst = this.instances[lineId]
+    if (!inst || inst.status !== 'connected') throw new Error(`Línea ${lineId} no conectada`)
+    const jid = await this._resolveSendJid(lineId, to)
+    const msgContent = { caption: caption || '' }
+    if (type === 'image') msgContent.image = buffer
+    else if (type === 'video') msgContent.video = buffer
+    else if (type === 'document') {
+      msgContent.document = buffer
+      msgContent.mimetype = mimetype
+      msgContent.fileName = filename
+    } else if (type === 'audio') {
+      delete msgContent.caption
+      msgContent.audio = buffer
+      msgContent.mimetype = mimetype
+    }
+    const result = await inst.sock.sendMessage(jid, msgContent, messageId ? { messageId } : {})
+    this._markSentByErp(result?.key?.id)
+    await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id, inboxNoteId)
+    return result
+  }
+
+  // Reconexión perezosa: si la línea está caída pero su sesión existe en disco,
+  // la levanta sin QR y espera hasta timeoutMs a que conecte. Resetea el backoff
+  // (acción manual del usuario = intención explícita de reconectar).
+  async ensureConnected(lineId, timeoutMs = 8000) {
+    if (this.getStatus(lineId) === 'connected') return true
+    delete this.reconnectAttempts[lineId]
+    try { await this.connect(lineId) } catch (e) {
+      console.warn(`[Line ${lineId}] ensureConnected: fallo al iniciar conexión:`, e.message)
+    }
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      if (this.getStatus(lineId) === 'connected') return true
+      await new Promise(r => setTimeout(r, 500))
+    }
+    return this.getStatus(lineId) === 'connected'
+  }
+
+  getStatus(lineId) { return this.instances[lineId]?.status || 'disconnected' }
+  getQR(lineId) { return this.instances[lineId]?.qr || null }
+  getAllStatuses() {
+    const result = {}
+    for (const [id, inst] of Object.entries(this.instances)) {
+      result[id] = { status: inst.status, hasQR: !!inst.qr }
+    }
+    return result
+  }
+
+  async _handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, text, msgType, pushName = '', mediaUrl = null, eventMetadata = null) {
+    const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
+
+    if (pushName) {
+      try {
+        await query(
+          `UPDATE contacts SET name = $1, last_seen = NOW()
+           WHERE wa_number = $2 AND line_id = $3 AND (name IS NULL OR name = '')
+             AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = contacts.id AND c.bitrix_deal_id IS NOT NULL)`,
+          [pushName, waNumber, lineId]
+        )
+      } catch (e) {}
+    }
+
+    try {
+      const saved = await require('./inboxBitrixNotes.service').getInboxBitrixNotes().persistIncoming({
+        conversationId: conv.id, lineId, waNumber, type: msgType, text,
+        waMsgId: msg.key.id, mediaUrl, clientName: pushName,
+        messageAt: Number(msg.messageTimestamp || 0) ? new Date(Number(msg.messageTimestamp)*1000) : null,
+        metadata: eventMetadata,
+      })
+      if (!saved.rows.length) {
+        console.info(`[Line ${lineId}] Mensaje duplicado ignorado: ${msg.key.id}`)
+        return
+      }
+      await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+    } catch (e) {
+      console.error(`[BaileysManager] Error guardando mensaje entrante line=${lineId} wa=${waNumber} msg=${msg.key.id}:`, e.message)
+      return
+    }
+
+    // wa_msg_id: sin el, el listener 'message:status' del inbox no puede
+    // encontrar la burbuja y el doble check (entregado/leido) nunca cambiaba.
+    await this._emitInbox(lineId, 'message:new', {
+      conversation_id: conv.id,
+      lineId, waNumber, text, content: text, direction: 'in',
+      type: msgType, media_url: mediaUrl,
+      metadata: eventMetadata || {},
+      wa_msg_id: msg.key.id,
+      timestamp: new Date().toISOString(),
+    })
+
+    const lineRow = await query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
+    const botId = lineRow.rows[0]?.bot_id
+    if (!botId) {
+      console.log(`[Line ${lineId}] Sin bot asignado`)
+      return
+    }
+
+    const engine = new FlowEngine(this, this.io)
+    await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  async _handleCallEvent(lineId, sock, call) {
+    if (!call?.id || call.isGroup) return
+    const ownNumber = this._cleanNumber(sock.user?.id)
+    const caller = this._cleanNumber(call.from)
+    const chatNumber = this._cleanNumber(call.chatId)
+    const direction = caller && caller === ownNumber ? 'out' : 'in'
+    let waNumber = direction === 'out' ? chatNumber : caller
+    if (!waNumber || waNumber === ownNumber) waNumber = chatNumber
+    if (!waNumber) return
+    const conv = await this._getOrCreateConversation(lineId, waNumber, call.chatId || call.from)
+    const statusLabels = { offer: 'Iniciada', ringing: 'Sonando', accept: 'Aceptada', reject: 'Rechazada', timeout: 'Sin respuesta', terminate: 'Finalizada' }
+    const metadata = { call_status: call.status, video: Boolean(call.isVideo), offline: Boolean(call.offline) }
+    const content = `${call.isVideo ? 'Videollamada' : 'Llamada'} · ${statusLabels[call.status] || call.status}`
+    const existing = await query('SELECT id FROM messages WHERE line_id=$1 AND wa_msg_id=$2 LIMIT 1', [lineId, call.id])
+    let row
+    if (existing.rows.length) {
+      row = (await query(
+        `UPDATE messages SET content=$1, metadata=$2::jsonb, timestamp=COALESCE($3,timestamp)
+         WHERE id=$4 RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+        [content, JSON.stringify(metadata), call.date || null, existing.rows[0].id]
+      )).rows[0]
+    } else {
+      row = (await query(
+        `INSERT INTO messages (conversation_id,line_id,wa_number,direction,type,content,wa_msg_id,status,metadata,timestamp)
+         VALUES ($1,$2,$3,$4,'call',$5,$6,'event',$7::jsonb,COALESCE($8,NOW()))
+         RETURNING id,direction,type,content,status,timestamp,wa_msg_id,metadata`,
+        [conv.id, lineId, waNumber, direction, content, call.id, JSON.stringify(metadata), call.date || null]
+      )).rows[0]
+    }
+    await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+    await this._emitInbox(lineId, 'message:new', { ...row, conversation_id: conv.id, lineId, waNumber })
+  }
+
+  // ── Sincroniza un mensaje que la cuenta envió desde otro dispositivo ──
+  // (teléfono del asesor o WhatsApp Web) → lo guarda como saliente en el Inbox.
+  async _handleOwnOutgoing(lineId, sock, msg, remoteJid) {
+    const waMsgId = msg.key.id
+    // No duplicar los que el propio ERP acaba de enviar
+    if (this.sentByErp.has(waMsgId)) return
+    const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [waMsgId])
+    if (dup.rows.length) return
+
+    const text = (
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.documentMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      ''
+    ).trim()
+
+    const msgType = msg.message?.conversation ? 'text'
+      : msg.message?.extendedTextMessage ? 'text'
+      : msg.message?.imageMessage ? 'image'
+      : msg.message?.documentMessage ? 'document'
+      : msg.message?.audioMessage ? 'audio'
+      : msg.message?.videoMessage ? 'video'
+      : msg.message?.stickerMessage ? 'sticker'
+      : msg.message?.contactMessage ? 'contact'
+      : msg.message?.contactsArrayMessage ? 'contacts'
+      : (msg.message?.locationMessage || msg.message?.liveLocationMessage) ? 'location'
+      : 'other'
+
+    if (!text && !['image', 'document', 'audio', 'video', 'sticker', 'contact', 'contacts', 'location'].includes(msgType)) return
+
+    // Resolver número destinatario (maneja LID)
+    let waNumber = this._cleanNumber(remoteJid)
+    if (remoteJid.endsWith('@lid')) waNumber = await this._resolveLid(remoteJid, sock, lineId, msg)
+
+    // Descargar media si la hay (para verla en el Inbox)
+    let mediaUrl = null
+    if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {})
+        const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+        fs.mkdirSync(dir, { recursive: true })
+        const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg' : msgType === 'video' ? '.mp4' : msgType === 'sticker' ? '.webp'
+          : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
+        const fname = `out-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+        fs.writeFileSync(path.join(dir, fname), buffer)
+        mediaUrl = `/wa-uploads/${fname}`
+      } catch (e) { /* sin media */ }
+    }
+
+    const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
+    const content = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
+      : msgType === 'contact' ? (msg.message?.contactMessage?.displayName || 'Contacto compartido')
+      : msgType === 'contacts' ? (msg.message?.contactsArrayMessage?.displayName || `${msg.message?.contactsArrayMessage?.contacts?.length || 0} contactos compartidos`)
+      : text
+    const metadata = location ? {
+      latitude: location.degreesLatitude, longitude: location.degreesLongitude,
+      name: location.name, address: location.address,
+    } : {}
+
+    const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
+    await query(
+      `INSERT INTO messages
+        (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp, metadata)
+       VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW(),$8::jsonb)`,
+      [conv.id, lineId, waNumber, msgType, content, mediaUrl, waMsgId, JSON.stringify(metadata)]
+    )
+    await query('UPDATE conversations SET last_msg_at=NOW() WHERE id=$1', [conv.id])
+    console.log(`[Line ${lineId}] 🔄 Sync saliente (otro dispositivo) → ${waNumber}`)
+
+    await this._emitInbox(lineId, 'message:new', {
+      conversation_id: conv.id,
+      lineId, waNumber, text: content, content, direction: 'out',
+      type: msgType, media_url: mediaUrl,
+      metadata,
+      wa_msg_id: waMsgId,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  // ── Acks de campañas: marca delivered/read en campaign_recipients ──
+  // Baileys status: 2=server ack, 3=delivery ack, 4=read
+  async _handleDeliveryAck(lineId, waMsgId, status) {
+    if (status >= 2) {
+      await require('./inboxBitrixNotes.service').getInboxBitrixNotes().recordReceipt(lineId, waMsgId)
+    }
+    if (status < 3) return
+
+    // ── Inbox: reflejar entregado/leído en el mensaje (✓✓ estilo WhatsApp) ──
+    // status 3 = entregado, 4 = leído. No degradar de 'read' a 'delivered'.
+    try {
+      const nuevoEstado = status >= 4 ? 'read' : 'delivered'
+      const upd = await query(
+        `UPDATE messages SET status = $1
+         WHERE wa_msg_id = $2 AND direction = 'out' AND status IS DISTINCT FROM 'read'
+         RETURNING conversation_id`,
+        [nuevoEstado, waMsgId]
+      )
+      if (upd.rows.length) {
+        await this._emitInbox(lineId, 'message:status', {
+          wa_msg_id: waMsgId,
+          status: nuevoEstado,
+          conversation_id: upd.rows[0].conversation_id,
+        })
+      }
+    } catch (e) { /* no romper los acks de campaña de abajo */ }
+
+    // Entregado (solo la primera vez: transición sent → delivered)
+    const del = await query(
+      `UPDATE campaign_recipients
+       SET status='delivered', delivered_at=COALESCE(delivered_at, NOW())
+       WHERE wa_msg_id=$1 AND status='sent'
+       RETURNING id, campaign_id, message_id, wa_number`,
+      [waMsgId]
+    )
+    if (del.rows.length) {
+      const r = del.rows[0]
+      await query(`UPDATE campaigns SET delivered_count = delivered_count + 1 WHERE id=$1`, [r.campaign_id])
+      try {
+        await query(
+          `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number)
+           VALUES ($1,$2,$3,'delivered',$4)`,
+          [r.campaign_id, r.id, r.message_id, r.wa_number]
+        )
+      } catch (e) {}
+      this.io.emit('campaign:delivered', { campaignId: r.campaign_id, recipientId: r.id, wa_number: r.wa_number })
+    }
+
+    // Leído (solo la primera vez)
+    if (status >= 4) {
+      const rd = await query(
+        `UPDATE campaign_recipients
+         SET read_at=NOW(), status='read'
+         WHERE wa_msg_id=$1 AND read_at IS NULL AND status IN ('sent','delivered')
+         RETURNING id, campaign_id, message_id, wa_number`,
+        [waMsgId]
+      )
+      if (rd.rows.length) {
+        const r = rd.rows[0]
+        await query(`UPDATE campaigns SET read_count = read_count + 1 WHERE id=$1`, [r.campaign_id])
+        try {
+          await query(
+            `INSERT INTO campaign_events (campaign_id, recipient_id, variant_id, event, wa_number)
+             VALUES ($1,$2,$3,'read',$4)`,
+            [r.campaign_id, r.id, r.message_id, r.wa_number]
+          )
+        } catch (e) {}
+        this.io.emit('campaign:read', { campaignId: r.campaign_id, recipientId: r.id, wa_number: r.wa_number })
+      }
+    }
+  }
+
+  async _handlePollVote(lineId, sock, remoteJid, waNumber, selectedLabel) {
+    const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
+    const lineRow = await query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
+    const botId = lineRow.rows[0]?.bot_id
+    if (!botId) return
+
+    console.log(`[Line ${lineId}] Enviando confirmación: "${selectedLabel}"`)
+    try {
+      await sock.sendMessage(remoteJid, { text: `✅ *${selectedLabel}*` })
+    } catch (e) {}
+
+    try {
+      await query(
+        `INSERT INTO messages
+          (conversation_id, line_id, wa_number, direction, type, content, timestamp)
+         VALUES ($1,$2,$3,'in','text',$4,NOW())`,
+        [conv.id, lineId, waNumber, selectedLabel]
+      )
+    } catch (e) {}
+
+    // Sin conversation_id el inbox no sabia a que chat pertenecia: el voto
+    // no aparecia en la conversacion abierta y ademas disparaba una recarga
+    // completa de la lista en cada voto.
+    await this._emitInbox(lineId, 'message:new', {
+      conversation_id: conv.id,
+      lineId, waNumber, text: selectedLabel, content: selectedLabel,
+      direction: 'in', type: 'text',
+      timestamp: new Date().toISOString(),
+    })
+
+    const engine = new FlowEngine(this, this.io)
+    await engine.process({ lineId, sock, waNumber: remoteJid, text: selectedLabel, conv, botId, isPollVote: true })
+  }
+
+  async _getOrCreateConversation(lineId, waNumber, remoteJid) {
+    // Evitar chats duplicados por "número de privacidad" (LID): si conocemos el
+    // número real de este LID, usarlo como número canónico del chat.
+    if (waNumber && this.lidMap && this.lidMap[waNumber]) {
+      waNumber = this.lidMap[waNumber]
+    }
+
+    return transaction(async client => {
+      const lockKey = `${lineId}:${waNumber}`
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey])
+
+      // Reusar cualquier conversación abierta después de adquirir el bloqueo.
+      const existing = await client.query(
+        `SELECT * FROM conversations
+         WHERE line_id=$1 AND wa_number=$2 AND status != 'closed'
+         ORDER BY started_at DESC LIMIT 1`,
+        [lineId, waNumber]
+      )
+      if (existing.rows.length > 0) return existing.rows[0]
+
+      const contactRes = await client.query(
+        `INSERT INTO contacts (wa_number, line_id)
+         VALUES ($1,$2)
+         ON CONFLICT (wa_number, line_id) DO UPDATE SET last_seen=NOW()
+         RETURNING id`,
+        [waNumber, lineId]
+      )
+
+      const lineRow = await client.query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
+      const newConv = await client.query(
+        `INSERT INTO conversations (line_id, contact_id, wa_number, bot_id)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [lineId, contactRes.rows[0].id, waNumber, lineRow.rows[0]?.bot_id]
+      )
+      console.log(`[BaileysManager] Nueva conversación creada para ${waNumber}`)
+      return newConv.rows[0]
+    })
+  }
+
+  async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null, inboxNoteId = null) {
+    if (!content && !mediaUrl) return   // no guardar burbujas vacías
+    try {
+      const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
+      await query(
+        `INSERT INTO messages
+          (conversation_id, line_id, wa_number, direction, type, content, media_url, wa_msg_id, timestamp, metadata)
+         VALUES ($1,$2,$3,'out',$4,$5,$6,$7,NOW(),$8::jsonb)`,
+        [conv.id, lineId, waNumber, type, content, mediaUrl, waMsgId,
+          JSON.stringify(inboxNoteId ? { inbox_bitrix_note_id: inboxNoteId } : {})]
+      )
+      // Notificar al inbox en tiempo real (mensajes salientes: bot, inbox, campañas)
+      await this._emitInbox(lineId, 'message:new', {
+        conversation_id: conv.id,
+        lineId, waNumber, content, text: content, direction: 'out',
+        type, media_url: mediaUrl,
+        wa_msg_id: waMsgId,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (e) {}
+  }
+
+  async _updateLineStatus(lineId, status) {
+    try {
+      await query('UPDATE lines SET status=$1, updated_at=NOW() WHERE id=$2', [status, lineId])
+    } catch (e) {}
+  }
+
+  _toJid(input) {
+    if (!input) return ''
+    const str = input.toString()
+    if (str.endsWith('@s.whatsapp.net')) return str
+    if (str.endsWith('@lid')) return str
+    if (str.endsWith('@c.us')) return str.replace('@c.us', '@s.whatsapp.net')
+    const clean = str.replace(/\D/g, '')
+    return `${clean}@s.whatsapp.net`
+  }
+
+  _cleanNumber(input) {
+    if (!input) return ''
+    return input.toString()
+      .replace('@s.whatsapp.net', '')
+      .replace('@c.us', '')
+      .replace('@lid', '')
+      .split(':')[0]
+      .replace(/[^0-9]/g, '')
+  }
+
+  // Mini-store en memoria (reemplazo de makeInMemoryStore, eliminado en Baileys v7).
+  // Solo cachea mensajes para getMessage/loadMessage (reintentos y polls).
+  _createMessageStore(maxEntries = 2000) {
+    const cache = new Map()
+    return {
+      bind(ev) {
+        ev.on('messages.upsert', ({ messages }) => {
+          for (const m of messages || []) {
+            if (!m?.key?.id || !m?.key?.remoteJid) continue
+            cache.set(`${m.key.remoteJid}|${m.key.id}`, m)
+            if (cache.size > maxEntries) {
+              const oldest = cache.keys().next().value
+              cache.delete(oldest)
+            }
+          }
+        })
+      },
+      async loadMessage(jid, id) {
+        return cache.get(`${jid}|${id}`) || undefined
+      },
+    }
+  }
+}
+
+function _numEmoji(n) {
+  const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣']
+  return emojis[n - 1] || `${n}.`
+}
+
+BaileysManager.proxyPermiteConectar = proxyPermiteConectar
+
+module.exports = BaileysManager

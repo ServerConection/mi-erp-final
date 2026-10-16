@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardEdit, Cpu, Download, HardDrive, Image as ImageIcon, Laptop, Loader2, MemoryStick, Plus, Save, Search, ShieldCheck, Wrench, X } from "lucide-react";
 
 const API = `${(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")}/api/inventario-activos`;
@@ -132,6 +132,7 @@ function EstadoBadge({ valor }) {
 }
 
 export default function InventarioActivos() {
+  const paginaRef = useRef(null);
   const [perfil] = useState(() => leerPerfil());
   const esAdmin = String(perfil.perfil || "").trim().toUpperCase() === "ADMINISTRADOR";
   const usuarioSesion = normalizarEntrada(String(perfil.usuario || perfil.nombre || "USUARIO AUTENTICADO"));
@@ -161,6 +162,29 @@ export default function InventarioActivos() {
   const esComputador = ["CPU", "LAPTOP"].includes(form.tipo_dispositivo);
   const esPantalla = ["MONITOR", "TELEVISION"].includes(form.tipo_dispositivo);
   const esImpresora = form.tipo_dispositivo === "IMPRESORA";
+
+  const irAlInicio = () => {
+    const contenedor = paginaRef.current?.parentElement;
+    if (contenedor) contenedor.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  const cargarDiscoEnFormulario = (discoGBOriginal) => {
+    const discoGB = discoGBOriginal === null || discoGBOriginal === undefined || discoGBOriginal === ""
+      ? ""
+      : Number(discoGBOriginal);
+    const usarTB = discoGB !== "" && discoGB >= 1024 && discoGB % 1024 === 0;
+    setDiscoUnidad(usarTB ? "TB" : "GB");
+    setDiscoEntrada(discoGB === "" ? "" : String(usarTB ? discoGB / 1024 : discoGB));
+  };
+
+  const cargarActivoEnFormulario = (activo) => {
+    setForm(Object.fromEntries(Object.keys(INICIAL).map((campo) => [campo, activo[campo] ?? INICIAL[campo]])));
+    cargarDiscoEnFormulario(activo.disco_gb);
+    setResponsable(activo.responsable || "-");
+    setFechaRevision(activo.fecha_revision ? new Date(activo.fecha_revision).toLocaleString("es-EC") : "-");
+    setFotoArchivo(null);
+    setFotoPreview(urlFoto(activo.foto));
+  };
 
   const parametrosListado = (incluirPagina = true) => {
     const params = new URLSearchParams();
@@ -237,6 +261,7 @@ export default function InventarioActivos() {
     setFechaRevision("AUTOMATICA AL GUARDAR"); setFotoArchivo(null); setFotoPreview("");
     setDiscoEntrada(""); setDiscoUnidad("GB");
     setMostrarFormulario(true); setMensaje(null);
+    requestAnimationFrame(irAlInicio);
   };
 
   const seleccionarActivo = (id) => {
@@ -244,14 +269,9 @@ export default function InventarioActivos() {
     if (!id) return;
     const activo = activos.find((item) => item.id === id);
     if (!activo) return;
-    setForm(Object.fromEntries(Object.keys(INICIAL).map((campo) => [campo, activo[campo] ?? INICIAL[campo]])));
-    const discoGB = activo.disco_gb === null || activo.disco_gb === undefined ? "" : Number(activo.disco_gb);
-    const usarTB = discoGB !== "" && discoGB >= 1024;
-    setDiscoUnidad(usarTB ? "TB" : "GB"); setDiscoEntrada(discoGB === "" ? "" : String(usarTB ? discoGB / 1024 : discoGB));
-    setResponsable(activo.responsable || "-");
-    setFechaRevision(activo.fecha_revision ? new Date(activo.fecha_revision).toLocaleString("es-EC") : "-");
-    setFotoArchivo(null); setFotoPreview(urlFoto(activo.foto));
+    cargarActivoEnFormulario(activo);
     setMostrarFormulario(true);
+    requestAnimationFrame(irAlInicio);
   };
 
   const abrirDetalle = async (activo) => {
@@ -278,6 +298,14 @@ export default function InventarioActivos() {
       setMensaje({ tipo: "error", texto: "La foto supera el tamano maximo de 5 MB." }); return;
     }
     setFotoArchivo(archivo); setFotoPreview(URL.createObjectURL(archivo)); setMensaje(null);
+
+    // Algunos navegadores conservan una posición inválida del scroll al volver
+    // de la cámara/selector de archivos. Se limita al alto real del contenido.
+    requestAnimationFrame(() => {
+      const contenedor = paginaRef.current?.parentElement;
+      if (!contenedor) return;
+      contenedor.scrollTop = Math.min(contenedor.scrollTop, Math.max(0, contenedor.scrollHeight - contenedor.clientHeight));
+    });
   };
 
   const guardar = async (event) => {
@@ -300,10 +328,7 @@ export default function InventarioActivos() {
         ({ data: guardado } = await leerRespuesta(response));
         idGuardado = guardado.id;
         setActivoId(guardado.id);
-        setResponsable(guardado.responsable || "-");
-        setFechaRevision(new Date(guardado.fecha_revision).toLocaleString("es-EC"));
-        setForm(Object.fromEntries(Object.keys(INICIAL).map((campo) => [campo, guardado[campo] ?? INICIAL[campo]])));
-        setDiscoEntrada(guardado.disco_gb ?? ""); setDiscoUnidad("GB");
+        cargarActivoEnFormulario(guardado);
       }
 
       if (fotoArchivo) {
@@ -318,17 +343,19 @@ export default function InventarioActivos() {
       }
 
       setActivoId(guardado.id);
-      setResponsable(guardado.responsable || "-");
-      setFechaRevision(new Date(guardado.fecha_revision).toLocaleString("es-EC"));
-      setForm(Object.fromEntries(Object.keys(INICIAL).map((campo) => [campo, guardado[campo] ?? INICIAL[campo]])));
-      setDiscoEntrada(guardado.disco_gb ?? ""); setDiscoUnidad("GB");
+      cargarActivoEnFormulario(guardado);
       setMarcasOpciones((actuales) => [...new Set([...actuales, guardado.marca].filter(Boolean))]);
       setFotoArchivo(null); setFotoPreview(urlFoto(guardado.foto));
       await cargarActivos();
       setMensaje({ tipo: "exito", texto: editando ? `Activo ${guardado.id} actualizado correctamente.` : `Activo ${guardado.id} registrado correctamente.` });
       setMostrarFormulario(false);
+      requestAnimationFrame(irAlInicio);
     } catch (error) {
-      const prefijo = idGuardado && !editando ? `El activo ${idGuardado} fue creado, pero la foto no pudo subirse. ` : "";
+      const prefijo = fotoArchivo && idGuardado
+        ? editando
+          ? `Los datos del activo ${idGuardado} se guardaron, pero la foto no pudo subirse. `
+          : `El activo ${idGuardado} fue creado, pero la foto no pudo subirse. `
+        : "";
       setMensaje({ tipo: "error", texto: `${prefijo}${error.message}` });
     } finally { setGuardando(false); }
   };
@@ -361,7 +388,7 @@ export default function InventarioActivos() {
   };
 
   return (
-    <div className="bg-slate-50 pb-4">
+    <div ref={paginaRef} className="bg-slate-50 pb-4">
       <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 px-5 py-7 shadow-xl sm:px-8 sm:py-9">
         <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">

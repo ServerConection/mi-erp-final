@@ -7,18 +7,10 @@
 //   GET  /api/planes-catalogo         — (autenticado) catálogo vigente,
 //                                       agrupado para el formulario NuevaVenta.
 //
-// Estructura esperada del Excel (se mantiene mes a mes, solo cambian valores):
-//   HOME          — A5 headers, filas 6+ · promos TC (J..O) y Cuenta (Q..V)
-//   TERCERA EDAD  — A5 headers, filas 6+ · sin promos
-//   GAMER         — A4 headers, filas 5+ · sin promos
-//   PRO           — B5 headers, filas 6+ · sin promos
-//   PYME          — A6 headers, filas 7+ · sin promos
-//
-// IMPORTANTE: si el mes que viene el Excel trae columnas movidas/insertadas,
-// este parser (basado en letras de columna fijas) volverá a desalinearse.
-// Si vuelve a pasar, compara los headers reales del Excel (fila indicada
-// arriba) contra las letras usadas en cada parseXxx() de abajo antes de asumir
-// que es otro tipo de error.
+// El parser busca los encabezados por nombre dentro de las primeras filas, no
+// por letras/filas fijas. Así tolera que la plantilla mensual mueva columnas o
+// coloque los encabezados en otra fila. Las cinco pestañas son obligatorias y
+// la carga se rechaza antes del DELETE si alguna queda sin opciones.
 //
 // Cada fila del Excel se expande en 1..N registros (plan_base + empaquetado):
 // los textos "X o Y" se separan en opciones únicas para que el asesor elija
@@ -31,6 +23,7 @@ const multer  = require('multer');
 const XLSX    = require('xlsx');
 const pool    = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
+const { parseWorkbook } = require('../services/planesCatalogoParser.service');
 
 router.use(verificarToken);
 
@@ -42,179 +35,6 @@ const upload = multer({
     ok ? cb(null, true) : cb(new Error('Solo se permiten archivos Excel (.xlsx)'));
   },
 });
-
-const IVA = 0.15;
-
-// ─── Helpers de parseo ────────────────────────────────────────────────────────
-const limpiar = (s) => String(s ?? '').replace(/\s+/g, ' ').replace(/\*/g, '').trim();
-const num     = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
-const round2  = (v) => v == null ? null : Math.round(v * 100) / 100;
-
-// "Netlife Play o Extender Dual Band" → ["Netlife Play", "Extender Dual Band"]
-// "2 Extender *o* 1 Netlife Play+1 Assitence Pro" → 2 opciones
-// "ASPRO O EXTENDER WIFI" → ["Aspro", "Extender Wifi"]
-function opcionesDe(texto) {
-  const t = limpiar(texto);
-  if (!t) return [];
-  return t.split(/\s+[oO]\s+/).map(limpiar).filter(Boolean);
-}
-
-// Nombre de plan HOME → { base, tieneParamount }
-// "Plan 400 Mbps+ PARAMOUNT" → { base: "Plan 400 Mbps", tieneParamount: true }
-function basePlanHome(nombre) {
-  const n = limpiar(nombre);
-  const m = n.match(/^(Plan\s+\d+\s*Mbps)/i);
-  return {
-    base: m ? m[1].replace(/\s+/g, ' ') : n,
-    tieneParamount: /paramount/i.test(n),
-  };
-}
-
-// Expande una fila HOME/TERCERA EDAD en registros {plan_base, empaquetado, ...}
-function expandirFilaHome({ nombre, adicionales, paramountExtra, precios, promos }) {
-  const { base, tieneParamount } = basePlanHome(nombre);
-  const alts = opcionesDe(adicionales); // alternativas "escoge una"
-  const sufijo = tieneParamount ? ' + Paramount' : '';
-
-  // Precio: si la fila trae Paramount, se suma al subtotal antes del IVA
-  const extra   = tieneParamount ? (num(paramountExtra) || 0) : 0;
-  const sinIva  = precios.sinIva != null ? round2(precios.sinIva + extra) : null;
-  const conIva  = sinIva != null ? round2(sinIva * (1 + IVA)) : null;
-
-  const etiquetas = alts.length
-    ? alts.map(a => `${a}${sufijo}`)
-    : [tieneParamount ? 'Paramount+' : 'Sin empaquetado'];
-
-  return etiquetas.map(etq => ({
-    plan_base: base,
-    empaquetado: etq,
-    precio_sin_iva: sinIva,
-    precio_con_iva: conIva,
-    ...promos,
-  }));
-}
-
-// ─── Parsers por hoja ────────────────────────────────────────────────────────
-// Devuelven arrays de registros ya expandidos.
-function parseHome(ws) {
-  // SEPTIEMBRE 2026: el Excel agregó la columna "Beneficio extra MINI UPS"
-  // (D) y movió el header una fila abajo (ahora fila 6, datos desde fila 7).
-  // Todo lo que antes estaba en D..V se recorrió una columna a la derecha
-  // (ahora E..W). Ver nota al inicio del archivo si vuelve a desalinearse.
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 6, defval: null }); // desde fila 7
-  const out = [];
-  for (const r of rows) {
-    if (!r.A || !/^plan/i.test(String(r.A))) continue;
-    out.push(...expandirFilaHome({
-      nombre: r.A,
-      adicionales: r.E,
-      paramountExtra: r.J,
-      precios: { sinIva: num(r.G) },
-      promos: {
-        tc_dsto:      num(r.K),  // 0.35 = 35%
-        tc_facturas:  num(r.L),
-        tc_pvp:       round2(num(r.P)),
-        cta_dsto:     num(r.R),
-        cta_facturas: num(r.S),
-        cta_pvp:      round2(num(r.W)),
-      },
-    }).map(x => ({ ...x, tipo_plan: 'HOME', velocidad: limpiar(r.B), plan_promocion: limpiar(r.F), equipo: limpiar(r.C) })));
-  }
-  return out;
-}
-
-function parseTerceraEdad(ws) {
-  // SEPTIEMBRE 2026: misma columna nueva "Beneficio extra MINI UPS" (D)
-  // insertada aquí también, corriendo D..J una columna a la derecha
-  // (ahora E..K). El header sigue en la fila 5 (sin cambio de fila).
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
-  const out = [];
-  for (const r of rows) {
-    if (!r.A || !/^plan/i.test(String(r.A))) continue;
-    out.push(...expandirFilaHome({
-      nombre: r.A,
-      adicionales: r.E,
-      paramountExtra: r.K,
-      precios: { sinIva: num(r.H) },
-      promos: {}, // esta hoja no tiene promociones
-    }).map(x => ({ ...x, tipo_plan: 'TERCERA EDAD', velocidad: limpiar(r.B), plan_promocion: limpiar(r.F), equipo: limpiar(r.C) })));
-  }
-  return out;
-}
-
-function parseGamer(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 4, defval: null }); // desde fila 5
-  const out = [];
-  for (const r of rows) {
-    if (!r.A || !/gamer/i.test(String(r.A))) continue;
-    const sinIva = num(r.C);
-    out.push({
-      tipo_plan: 'GAMER',
-      plan_base: limpiar(r.A),
-      empaquetado: 'Sin empaquetado',
-      velocidad: null,
-      plan_promocion: limpiar(r.B) || null,
-      equipo: limpiar(r.F) || null,
-      precio_sin_iva: round2(sinIva),
-      precio_con_iva: round2(num(r.E) ?? (sinIva != null ? sinIva * (1 + IVA) : null)),
-    });
-  }
-  return out;
-}
-
-function parsePro(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 5, defval: null }); // desde fila 6
-  const out = [];
-  for (const r of rows) {
-    if (!r.B || !/^pro/i.test(String(r.B))) continue;
-    const sinIva = num(r.E);
-    out.push({
-      tipo_plan: 'PRO',
-      plan_base: limpiar(r.B),
-      empaquetado: limpiar(r.D) || 'Sin empaquetado',
-      velocidad: limpiar(r.C) || null,
-      plan_promocion: null,
-      equipo: limpiar(r.H) || null,
-      precio_sin_iva: round2(sinIva),
-      precio_con_iva: round2(num(r.G) ?? (sinIva != null ? sinIva * (1 + IVA) : null)),
-    });
-  }
-  return out;
-}
-
-function parsePyme(ws) {
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: 6, defval: null }); // desde fila 7
-  const out = [];
-  for (const r of rows) {
-    if (!r.A || !/^plan/i.test(String(r.A))) continue;
-    // La columna C trae todo lo incluido en el plan; si contiene "X o Y" se
-    // expande en opciones separadas (igual que en HOME/TERCERA EDAD).
-    const opciones  = opcionesDe(r.C);
-    const etiquetas = opciones.length ? opciones : ['Sin empaquetado'];
-    const sinIva    = num(r.D);
-    for (const etq of etiquetas) {
-      out.push({
-        tipo_plan: 'PYME',
-        plan_base: limpiar(r.A),
-        empaquetado: etq,
-        velocidad: limpiar(r.B) || null,
-        plan_promocion: null,
-        equipo: limpiar(r.G) || null,
-        precio_sin_iva: round2(sinIva),
-        precio_con_iva: round2(num(r.F) ?? (sinIva != null ? sinIva * (1 + IVA) : null)),
-      });
-    }
-  }
-  return out;
-}
-
-const PARSERS = {
-  'HOME':         parseHome,
-  'TERCERA EDAD': parseTerceraEdad,
-  'GAMER':        parseGamer,
-  'PRO':          parsePro,
-  'PYME':         parsePyme,
-};
 
 // ─── Tabla (se auto-crea si no existe) ───────────────────────────────────────
 const DDL = `
@@ -245,16 +65,7 @@ router.post('/upload', noAsesor, upload.single('archivo'), async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, error: 'No se recibió ningún archivo' });
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const registros = [];
-    const resumen   = {};
-
-    for (const [hoja, parser] of Object.entries(PARSERS)) {
-      const nombreReal = wb.SheetNames.find(n => n.trim().toUpperCase() === hoja);
-      if (!nombreReal) { resumen[hoja] = 'hoja no encontrada'; continue; }
-      const regs = parser(wb.Sheets[nombreReal]);
-      resumen[hoja] = `${regs.length} opciones`;
-      registros.push(...regs);
-    }
+    const { registros, resumen } = parseWorkbook(wb);
 
     if (registros.length === 0) {
       return res.status(422).json({ success: false, error: 'No se encontraron planes en el archivo. Verifica que sea el Excel de precios con las pestañas HOME, TERCERA EDAD, GAMER, PRO y PYME.', resumen });
@@ -285,7 +96,7 @@ router.post('/upload', noAsesor, upload.single('archivo'), async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[CATALOGO-PLANES] upload:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.statusCode || 500).json({ success: false, error: e.message });
   } finally {
     client.release();
   }

@@ -307,7 +307,62 @@ exports.enviarMensaje = async (req, res) => {
   }
 };
 
-/** PATCH /api/chat/conversaciones/:conversacionId/leido — marca todo como leído */
+/** DELETE /api/chat/mensajes/:mensajeId - borrado logico por autor o administrador */
+exports.eliminarMensaje = async (req, res) => {
+  const mensajeId = Number(req.params.mensajeId);
+  if (!Number.isInteger(mensajeId) || mensajeId <= 0) {
+    return res.status(400).json({ success: false, error: 'Identificador de mensaje invalido' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, conversacion_id, usuario_id, eliminado
+         FROM chat_mensajes
+        WHERE id = $1`,
+      [mensajeId]
+    );
+    if (!rows.length || rows[0].eliminado) {
+      return res.status(404).json({ success: false, error: 'Mensaje no encontrado' });
+    }
+
+    const mensaje = rows[0];
+    const esAutor = Number(mensaje.usuario_id) === Number(req.user.id);
+    const esAdmin = req.user.perfil === 'ADMINISTRADOR';
+    if (!esAutor && !esAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'No tienes permiso para eliminar mensajes enviados por otra persona.',
+      });
+    }
+
+    const eliminado = await pool.query(
+      `UPDATE chat_mensajes
+          SET eliminado = TRUE
+        WHERE id = $1 AND NOT eliminado
+        RETURNING id, conversacion_id`,
+      [mensajeId]
+    );
+    if (!eliminado.rows.length) {
+      return res.status(404).json({ success: false, error: 'Mensaje no encontrado' });
+    }
+
+    const { rows: participantes } = await pool.query(
+      `SELECT usuario_id
+         FROM chat_participantes
+        WHERE conversacion_id = $1 AND activo`,
+      [mensaje.conversacion_id]
+    );
+    const evento = { id: mensajeId, conversacionId: mensaje.conversacion_id };
+    emitirAParticipantes(participantes.map(p => p.usuario_id), 'chat:mensaje_eliminado', evento);
+
+    return res.json({ success: true, data: evento });
+  } catch (error) {
+    console.error('[chat.eliminarMensaje]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo eliminar el mensaje' });
+  }
+};
+
+/** PATCH /api/chat/conversaciones/:conversacionId/leido - marca todo como leido */
 exports.marcarLeido = async (req, res) => {
   try {
     await pool.query(

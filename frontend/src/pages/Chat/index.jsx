@@ -15,17 +15,22 @@ import ListaConversaciones from './ListaConversaciones';
 import VentanaChat from './VentanaChat';
 import NuevoChatModal, { AgregarParticipanteModal } from './NuevoChatModal';
 
-function miUsuarioId() {
+function miSesion() {
   try {
     const token = localStorage.getItem('token');
-    return token ? jwtDecode(token).id : null;
+    const tokenData = token ? jwtDecode(token) : {};
+    const perfilGuardado = JSON.parse(localStorage.getItem('userProfile') || '{}');
+    return {
+      usuarioId: tokenData.id || perfilGuardado.id || null,
+      esAdmin: String(perfilGuardado.perfil || tokenData.perfil || '').toUpperCase() === 'ADMINISTRADOR',
+    };
   } catch {
-    return null;
+    return { usuarioId: null, esAdmin: false };
   }
 }
 
 export default function ChatInterno() {
-  const usuarioId = useMemo(miUsuarioId, []);
+  const sesion = useMemo(miSesion, []);
   const [conversaciones, setConversaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError]       = useState(null);
@@ -63,6 +68,7 @@ export default function ChatInterno() {
         cargar();
       }
     },
+    'chat:mensaje_eliminado': () => cargar(),
     'chat:conversacion_nueva': () => cargar(),
   });
 
@@ -103,7 +109,8 @@ export default function ChatInterno() {
         <VentanaChat
           key={activa.id}
           conversacion={activa}
-          miUsuarioId={usuarioId}
+          miUsuarioId={sesion.usuarioId}
+          esAdmin={sesion.esAdmin}
           onLeido={alMarcarLeido}
           onAgregarParticipante={() => setModalAgregar(true)}
         />

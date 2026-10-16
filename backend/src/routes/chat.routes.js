@@ -29,6 +29,7 @@ router.post('/conversaciones', chat.crearConversacion);
 // ── Mensajes ──────────────────────────────────────────────────────────────────
 router.get ('/conversaciones/:conversacionId/mensajes', exigeParticipante, chat.listarMensajes);
 router.post('/conversaciones/:conversacionId/mensajes', exigeParticipante, chat.enviarMensaje);
+router.delete('/mensajes/:mensajeId', chat.eliminarMensaje);
 router.patch('/conversaciones/:conversacionId/leido',   exigeParticipante, chat.marcarLeido);
 
 // ── Participantes (grupos) ───────────────────────────────────────────────────

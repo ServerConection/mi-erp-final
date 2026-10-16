@@ -5,16 +5,18 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Send, UserPlus, Users } from 'lucide-react';
+import { Loader2, Send, Trash2, UserPlus, Users } from 'lucide-react';
 import { chatApi, useSocketChat } from '../../hooks/useChat';
 import { Avatar, Cargando, ErrorBox, horaCorta } from './ui';
 
-export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgregarParticipante }) {
+export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeido, onAgregarParticipante }) {
   const [mensajes, setMensajes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError]       = useState(null);
   const [texto, setTexto]       = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState(null);
+  const [errorAccion, setErrorAccion] = useState('');
   const finRef = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -47,7 +49,25 @@ export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgre
       setMensajes(prev => (prev.some(x => x.id === m.id) ? prev : [...prev, { ...m, esMio: m.usuarioId === miUsuarioId }]));
       chatApi.marcarLeido(conversacion.id).then(() => onLeido?.(conversacion.id)).catch(() => {});
     },
+    'chat:mensaje_eliminado': (m) => {
+      if (m.conversacionId !== conversacion.id) return;
+      setMensajes(prev => prev.filter(x => x.id !== m.id));
+    },
   });
+
+  const eliminar = async (mensaje) => {
+    if (!window.confirm('¿Eliminar este mensaje? Dejara de mostrarse para todos los participantes.')) return;
+    setEliminandoId(mensaje.id);
+    setErrorAccion('');
+    try {
+      await chatApi.eliminarMensaje(mensaje.id);
+      setMensajes(prev => prev.filter(x => x.id !== mensaje.id));
+    } catch (e) {
+      setErrorAccion(e.message || 'No se pudo eliminar el mensaje');
+    } finally {
+      setEliminandoId(null);
+    }
+  };
 
   const enviar = async (e) => {
     e.preventDefault();
@@ -96,6 +116,7 @@ export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgre
 
       {/* Mensajes */}
       <div className="flex-1 overflow-y-auto px-5 py-4">
+        {errorAccion && <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"><span>{errorAccion}</span><button type="button" onClick={() => setErrorAccion('')} className="min-h-9 rounded-md px-2 font-bold hover:bg-rose-100">Cerrar</button></div>}
         {cargando ? <Cargando texto="Cargando mensajes…" /> : error ? (
           <ErrorBox error={error} onReintentar={cargar} />
         ) : mensajes.length === 0 ? (
@@ -120,7 +141,13 @@ export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgre
                       </time>
                     </div>
                   )}
-                  <Burbuja m={m} mostrarAutor={conversacion.tipo === 'GRUPO' && !m.esMio && !mismoAutorSeguido} />
+                  <Burbuja
+                    m={m}
+                    mostrarAutor={conversacion.tipo === 'GRUPO' && !m.esMio && !mismoAutorSeguido}
+                    puedeEliminar={m.esMio || esAdmin}
+                    eliminando={eliminandoId === m.id}
+                    onEliminar={() => eliminar(m)}
+                  />
                 </Fragment>
               );
             })}
@@ -154,9 +181,10 @@ export default function VentanaChat({ conversacion, miUsuarioId, onLeido, onAgre
   );
 }
 
-function Burbuja({ m, mostrarAutor }) {
+function Burbuja({ m, mostrarAutor, puedeEliminar, eliminando, onEliminar }) {
   return (
     <div className={`flex ${m.esMio ? 'justify-end' : 'justify-start'}`}>
+      {m.esMio && puedeEliminar && <BotonEliminar eliminando={eliminando} onEliminar={onEliminar} />}
       <div className={`max-w-[75%] ${m.esMio ? 'items-end' : 'items-start'} flex flex-col`}>
         {mostrarAutor && <span className="mb-0.5 px-1 text-[11px] font-medium text-slate-400">{m.autor}</span>}
         <div
@@ -168,6 +196,20 @@ function Burbuja({ m, mostrarAutor }) {
         </div>
         <span className="mt-0.5 px-1 text-[10px] text-slate-400">{horaCorta(m.createdAt)}</span>
       </div>
+      {!m.esMio && puedeEliminar && <BotonEliminar eliminando={eliminando} onEliminar={onEliminar} />}
     </div>
   );
+}
+
+function BotonEliminar({ eliminando, onEliminar }) {
+  return <button
+    type="button"
+    onClick={onEliminar}
+    disabled={eliminando}
+    aria-label="Eliminar mensaje"
+    title="Eliminar mensaje"
+    className="mx-1 mt-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+  >
+    {eliminando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+  </button>;
 }

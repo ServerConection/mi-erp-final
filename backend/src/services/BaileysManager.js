@@ -925,7 +925,7 @@ class BaileysManager {
         const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
         const contact = msg.message?.contactMessage
         const contacts = msg.message?.contactsArrayMessage
-        const eventText = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
+        let eventText = msgType === 'location' ? (location?.name || location?.address || 'Ubicación compartida')
           : msgType === 'contact' ? (contact?.displayName || 'Contacto compartido')
           : msgType === 'contacts' ? (contacts?.displayName || `${contacts?.contacts?.length || 0} contactos compartidos`)
           : text
@@ -934,7 +934,7 @@ class BaileysManager {
         let inMediaUrl = null
         if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
           try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] })
+            const buffer = await this._bajarMedia(lineId, msg)
             const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
             fs.mkdirSync(dir, { recursive: true })
             const ext = msgType === 'image' ? '.jpg'
@@ -948,6 +948,7 @@ class BaileysManager {
             console.log(`[Line ${lineId}] 📥 Media entrante guardada: ${fname}`)
           } catch (e) {
             console.warn(`[Line ${lineId}] No se pudo descargar media entrante:`, e.message)
+            if (!eventText) eventText = '⚠️ El cliente envió un archivo que no se pudo descargar. Pídele que lo reenvíe.'
           }
         }
 
@@ -1339,6 +1340,21 @@ class BaileysManager {
 
   getStatus(lineId) { return this.instances[lineId]?.status || 'disconnected' }
   getQR(lineId) { return this.instances[lineId]?.qr || null }
+
+  // Descarga media con 3 intentos (0s, 3s, 8s) por el proxy de la línea.
+  // Si el enlace de WhatsApp caducó, pide re-subirlo (reuploadRequest).
+  async _bajarMedia(lineId, msg) {
+    const sock = this.instances[lineId]?.sock
+    const ctx = sock?.updateMediaMessage ? { reuploadRequest: sock.updateMediaMessage, logger: silentLogger } : undefined
+    let ultimo
+    for (const espera of [0, 3000, 8000]) {
+      if (espera) await new Promise(res => setTimeout(res, espera))
+      try {
+        return await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] }, ctx)
+      } catch (e) { ultimo = e }
+    }
+    throw ultimo
+  }
   getAllStatuses() {
     const result = {}
     for (const [id, inst] of Object.entries(this.instances)) {
@@ -1473,7 +1489,7 @@ class BaileysManager {
     let mediaUrl = null
     if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
       try {
-        const buffer = await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] })
+        const buffer = await this._bajarMedia(lineId, msg)
         const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
         fs.mkdirSync(dir, { recursive: true })
         const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg' : msgType === 'video' ? '.mp4' : msgType === 'sticker' ? '.webp'

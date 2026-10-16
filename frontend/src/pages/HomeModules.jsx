@@ -8,7 +8,7 @@ import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
-  CheckSquare, FileSpreadsheet, MessageCircle, GraduationCap,
+  CheckSquare, FileSpreadsheet, MessageCircle, GraduationCap, Laptop,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -111,6 +111,8 @@ export default function HomeModules() {
       desc: "Gestión de saldos, pagos corporativos y transferencias." },
     { title: "Comisiones", path: "/comisiones", icon: Coins, accent: "ambar", cat: "equipo",
       desc: "Cálculo automatizado de incentivos y bonos por desempeño." },
+    { title: "Inventario de Activos TI", path: "/inventario-activos", icon: Laptop, accent: "azul", cat: "equipo",
+      desc: "Registra y actualiza computadores, pantallas, televisores e impresoras de la empresa." },
     { title: "Inventario", path: "/inventario", icon: Boxes, accent: "morado", cat: "equipo",
       desc: "Gestión de equipos, materiales y planos. Control de stock, movimientos y alertas de mínimos.",
       rolesPermitidos: ['ADMINISTRADOR'] },
@@ -157,15 +159,19 @@ export default function HomeModules() {
       const perfil = (up.perfil || '').toUpperCase();
       const empresa = (up.empresa || '').toUpperCase();
       if (perfil === 'TV') {
-        if (empresa === 'NOVONET') return modules.filter(m => m.path === '/vista-asesor' || m.path === '/llamadas');
-        if (empresa === 'VELSA') return modules.filter(m => m.path === '/vista-asesor-velsa' || m.path === '/llamadas');
-        return modules.filter(m => m.path === '/llamadas');
+        if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos'].includes(m.path));
+        if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos'].includes(m.path));
+        return modules.filter(m => ['/llamadas', '/inventario-activos'].includes(m.path));
       }
     } catch (e) {
       // ignore parse errors and fall back to normal filtering
     }
 
     return modules.filter(mod => {
+      // Inventario de Activos TI es transversal: basta con tener sesion activa.
+      if (mod.path === '/inventario-activos') {
+        return !q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q);
+      }
       if (userRol === 'ANALISTA' && !rutaPermitidaAnalista(mod.path)) return false;
       if (mod.llamadas) return !!userRol && !['ASESOR', 'USUARIO'].includes(String(userRol).trim().toUpperCase()) && (!q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q));
       // Módulo de Tareas: el acceso lo decide el área/cargo en la BD, no el perfil.

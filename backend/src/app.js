@@ -33,6 +33,7 @@ const jotformWebhookRoutes         = require('./routes/jotformWebhook.routes');
 const contactabilidadWebhookRoutes = require('./routes/contactabilidadWebhook.routes');
 const coverageRoutes               = require('./routes/coverage.routes');
 const inventarioRoutes             = require('./routes/inventario.routes');
+const inventarioActivosRoutes      = require('./routes/inventario-activos.routes');
 const forecastRoutes               = require('./routes/forecast.routes');
 const enviosVentasRoutes           = require('./routes/envios-ventas.routes');
 const planesCatalogoRoutes         = require('./routes/planes-catalogo.routes');
@@ -211,6 +212,7 @@ app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionabl
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);
 app.use('/api/inventario',        inventarioRoutes);
+app.use('/api/inventario-activos', inventarioActivosRoutes);
 app.use('/api/forecast',          forecastRoutes);
 app.use('/api/envios-ventas',     enviosVentasRoutes);
 app.use('/api/planes-catalogo',   planesCatalogoRoutes);

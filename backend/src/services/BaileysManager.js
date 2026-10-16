@@ -611,7 +611,9 @@ class BaileysManager {
       if (this.stopping) return
       // Cualquier evento de conexión significa que el socket respondió: el
       // watchdog de "colgado en connecting" ya no hace falta.
-      if (this.instances[lineId]?._watchdog) { clearTimeout(this.instances[lineId]._watchdog); this.instances[lineId]._watchdog = null }
+      // OJO: Baileys emite connection:'connecting' apenas arranca; ese evento
+      // NO prueba que WhatsApp respondió, así que no debe apagar el watchdog.
+      if ((qr || connection === 'open' || connection === 'close') && this.instances[lineId]?._watchdog) { clearTimeout(this.instances[lineId]._watchdog); this.instances[lineId]._watchdog = null }
       if (qr) {
         const QRCode = require('qrcode')
         const qrImage = await QRCode.toDataURL(qr)

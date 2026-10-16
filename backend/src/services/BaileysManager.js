@@ -47,6 +47,7 @@ class BaileysManager {
   constructor(io) {
     this.io = io
     this.instances = {}
+    this.mediaDispatchers = {}   // proxy por línea para subir/descargar media
     // Si perdemos el lease de una línea (otra instancia la tomó), hay que
     // cerrar el socket YA. Seguir conectados con credenciales que ya usa otro
     // proceso es exactamente lo que WhatsApp castiga con bloqueo del número.
@@ -503,6 +504,16 @@ class BaileysManager {
         } else {
           const { HttpsProxyAgent } = require('https-proxy-agent')
           socketOptions.agent = new HttpsProxyAgent(proxyUrl)
+          // Media (fotos, audios, documentos): Baileys usa fetch con
+          // 'dispatcher'; sin esto salían por la IP del servidor.
+          try {
+            const { ProxyAgent } = require('undici')
+            const dispatcher = new ProxyAgent(proxyUrl)
+            socketOptions.fetchAgent = dispatcher
+            this.mediaDispatchers[lineId] = dispatcher
+          } catch (e) {
+            console.warn(`[Line ${lineId}] ⚠️ undici no disponible: la media saldría sin proxy (${e.message})`)
+          }
         }
         console.log(`[Line ${lineId}] 🛡️ Proxy activo: ${protocolo}://${pc.host}:${pc.port}`)
       } catch (e) {
@@ -923,7 +934,7 @@ class BaileysManager {
         let inMediaUrl = null
         if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
           try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {})
+            const buffer = await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] })
             const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
             fs.mkdirSync(dir, { recursive: true })
             const ext = msgType === 'image' ? '.jpg'
@@ -1462,7 +1473,7 @@ class BaileysManager {
     let mediaUrl = null
     if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
       try {
-        const buffer = await downloadMediaMessage(msg, 'buffer', {})
+        const buffer = await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] })
         const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
         fs.mkdirSync(dir, { recursive: true })
         const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg' : msgType === 'video' ? '.mp4' : msgType === 'sticker' ? '.webp'

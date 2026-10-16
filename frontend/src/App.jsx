@@ -149,7 +149,7 @@ const FloatingWidgets = () => {
   if (location.pathname.startsWith("/embed/")) return null;
   try {
     const perfil = (JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").trim().toUpperCase();
-    if (["ATC", "ANALISTA"].includes(perfil)) return null;
+    if (perfil === "ANALISTA") return null;
   } catch (_) { /* una sesión inválida será atendida por ProtectedRoute */ }
   return (
     <>

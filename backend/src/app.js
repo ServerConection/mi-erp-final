@@ -84,6 +84,19 @@ const corsOptions = {
 app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
 
+// PERFORMANCE (2026-10-08): gzip para las respuestas JSON (Indicadores, Redes,
+// Backoffice pesan varios MB). Se excluye tiempo real y lo que se reenvía a erp-wabot.
+const compression = require('compression');
+const SIN_COMPRIMIR = ['/socket.io', '/wa-uploads', '/api/wa', '/api/bitrix-connector'];
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (SIN_COMPRIMIR.some(p => req.path.startsWith(p))) return false;
+    if ((req.headers.accept || '').includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
+
 // SEGURIDAD: Headers de seguridad nativos (sin dependencia helmet)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -239,6 +252,8 @@ app.use('/api/nexo-ia', nexoIaRoutes);
 app.use('/api/kpi-comercial',      kpiComercialRoutes);
 // Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
 app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
+// Comisiones (Administración) — cálculo mensual, refresco cada 10 min
+app.use('/api/comisiones',         require('./routes/comisiones.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);

@@ -8,7 +8,8 @@ import Login          from "./pages/Login";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
-import { Horarios, Billetera, Comisiones } from "./pages/Modules";
+import { Horarios, Billetera } from "./pages/Modules";
+import Comisiones from "./pages/Comisiones";
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));

@@ -16,6 +16,7 @@ export const RUTAS_ANALISTA = new Set([
 export const rutaPermitidaAnalista = (ruta) => RUTAS_ANALISTA.has(ruta);
 
 export const rutaPermitidaAtc = (ruta) =>
+  ruta === '/chat' ||
   ruta === '/vista-backoffice' ||
   ruta === '/indicadores' ||
   ruta === '/reporte-detalle-novonet' ||

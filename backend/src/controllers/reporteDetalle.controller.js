@@ -132,6 +132,9 @@ const CUBO_SQL = {
 // Devuelve filas individuales (no agregadas) para un asesor/etapa/día/hora
 // específico, dentro del mismo rango de fechas y tipo de evento que el cubo.
 // Estilo "mostrar detalle" de una tabla dinámica de Excel.
+CUBO_SQL.ventaenlinea = CUBO_SQL.semillero
+  .replaceAll("LOWER(BTRIM(w.empresa)) = 'semillero'", "LOWER(BTRIM(w.empresa)) = 'ventaenlinea' AND BTRIM(COALESCE(w.categoria_id, '')) = '61'");
+
 const DETALLE_SQL = {
   novonet: {
     lead: {
@@ -266,12 +269,22 @@ const DETALLE_SQL = {
   },
 };
 
+DETALLE_SQL.ventaenlinea = Object.fromEntries(
+  Object.entries(DETALLE_SQL.semillero).map(([tipo, config]) => [
+    tipo,
+    {
+      ...config,
+      extraWhere: "LOWER(BTRIM(w.empresa)) = 'ventaenlinea' AND BTRIM(COALESCE(w.categoria_id, '')) = '61'",
+    },
+  ])
+);
+
 async function getDetalle(req, res) {
   try {
     const empresa = (req.params.empresa || '').toLowerCase();
     const tipo = (req.query.tipo || '').toLowerCase();
     const cfgEmpresa = DETALLE_SQL[empresa];
-    if (!cfgEmpresa) return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero)' });
+    if (!cfgEmpresa) return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero|ventaenlinea)' });
     const cfg = cfgEmpresa[tipo];
     if (!cfg) return res.status(400).json({ success: false, error: 'Tipo inválido (lead|mod|jot)' });
 
@@ -342,7 +355,7 @@ async function getCubo(req, res) {
   try {
     const empresa = (req.params.empresa || '').toLowerCase();
     if (!CUBO_SQL[empresa]) {
-      return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero)' });
+      return res.status(400).json({ success: false, error: 'Empresa inválida (novonet|velsa|semillero|ventaenlinea)' });
     }
 
     const hoy   = getFechaEcuador();

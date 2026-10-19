@@ -11,7 +11,12 @@ const { buildBaseApp, finalize, express } = require('../shared/createApp');
 const startHttp = require('../shared/startHttp');
 
 const app = buildBaseApp({ serviceName: 'core' });
+// Script publico de despliegue para estaciones de trabajo.
+const publicPath = path.resolve(__dirname, '..', '..', 'public');
+app.use(express.static(publicPath));
+
 app.use('/api/semillero', require('../routes/semillero.routes'));
+app.use('/api/ventaenlinea', require('../routes/ventaenlinea.routes'));
 app.use('/api/gestionables-asesores', require('../routes/gestionables.routes'));
 require('../routes/bitrixConnector.mount').mountBitrixConnector(app);
 

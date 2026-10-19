@@ -109,7 +109,7 @@ const recibirLead = async (req, res) => {
       return campo === 'etapa_bitrix' ? String(v).trim().toUpperCase() : v;
     });
 
-    const categoriaId = empresa === 'semillero' ? '41' : null;
+    const categoriaId = ({ semillero: '41', ventaenlinea: '61' })[empresa] || null;
     const columnasHistorial = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'raw_query'];
     const columnasLead = ['bitrix_id', 'empresa', 'etapa', ...CAMPOS_BITRIX, 'categoria_id', 'raw_query'];
     const placeholdersHistorial = columnasHistorial.map((_, i) => `$${i + 1}`).join(',');

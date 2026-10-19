@@ -49,6 +49,15 @@ const correr = async ({ desde: desdeForzado } = {}) => {
         depurarCategoria: true,
         cursorRapido: true,
       },
+      {
+        empresa: 'ventaenlinea',
+        categoria: process.env.RECONCILIACION_BITRIX_CATEGORIA_VENTAENLINEA || '61',
+        filtrarPorCategoria: true,
+        campoFecha: 'DATE_CREATE',
+        soloEtapas: true,
+        depurarCategoria: true,
+        cursorRapido: true,
+      },
     ];
     for (const config of empresas) {
       resultados.push([

@@ -36,6 +36,7 @@ const Llamadas = lazy(() => import("./pages/Llamadas"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
 const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemilleroNovo'));
+const IndicadoresVentaenlinea = lazy(() => import('./pages/IndicadoresVentaenlinea'));
 const VistaAsesorSemillero = lazy(() => import('./pages/VistaAsesorSemillero'));
 const SeguimientoSemillero = lazy(() => import('./pages/SeguimientoSemillero'));
 const VidikaEmbed          = lazy(() => import("./pages/VidikaEmbed"));
@@ -206,6 +207,7 @@ export default function App() {
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
+            <Route path="indicadores-ventaenlinea" element={<IndicadoresVentaenlinea />} />
             <Route path="vista-asesor-semillero" element={<VistaAsesorSemillero />} />
             <Route path="seguimiento-semillero" element={<SeguimientoSemillero />} />
             <Route path="vidika"                   element={<VidikaEmbed />} />
@@ -248,6 +250,7 @@ export default function App() {
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />
             <Route path="reporte-detalle-velsa"     element={<ReporteDetalle empresa="velsa" />} />
             <Route path="reporte-detalle-semillero" element={<ReporteDetalle empresa="semillero" />} />
+            <Route path="reporte-detalle-ventaenlinea" element={<ReporteDetalle empresa="ventaenlinea" />} />
           </Route>
 
           <Route path="tv" element={<TVMode />} />

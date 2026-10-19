@@ -6,7 +6,7 @@ export const RUTAS_WABOT_MASIVOS = new Set([
 
 export const RUTAS_ANALISTA = new Set([
   '/', '/indicadores', '/reporte-detalle-novonet', '/comparativa-supervisores',
-  '/indicadores-velsa', '/indicadores-semillero', '/reporte-detalle-semillero', '/reporte-detalle-velsa',
+  '/indicadores-velsa', '/indicadores-semillero', '/indicadores-ventaenlinea', '/reporte-detalle-semillero', '/reporte-detalle-ventaenlinea', '/reporte-detalle-velsa',
   '/vista-asesor', '/vista-asesor-velsa', '/seguimiento-ventas', '/seguimiento-velsa',
   '/redes', '/redes-velsa', '/ventas', '/nueva-venta',
   '/gestionables-asesores', ...RUTAS_WABOT_MASIVOS,
@@ -24,5 +24,7 @@ export const rutaPermitidaAtc = (ruta) =>
   ruta === '/indicadores-velsa' ||
   ruta === '/indicadores-semillero' ||
   ruta === '/reporte-detalle-semillero' ||
+  ruta === '/indicadores-ventaenlinea' ||
+  ruta === '/reporte-detalle-ventaenlinea' ||
   ruta === '/reporte-detalle-velsa' ||
   RUTAS_WABOT_MASIVOS.has(ruta);

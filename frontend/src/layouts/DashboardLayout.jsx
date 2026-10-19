@@ -322,6 +322,8 @@ function BroadcastOverlay({ mensaje, onClose }) {
 const isAdmin     = (p)    => p === 'ADMINISTRADOR';
 const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
+const esEmpresaVentaenlinea = (empresa = '') => empresa.replace(/[^A-Z0-9]/g, '') === 'VENTAENLINEA';
+const accesoVentaenlinea = (perfil, empresa) => isAdmin(perfil) || esEmpresaVentaenlinea(empresa);
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
   if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
@@ -349,6 +351,8 @@ const ALL_MENU_ITEMS = [
   { name: "🔬 Reporte Detalle VELSA",   path: "/reporte-detalle-velsa",    icon: "🔬", permiso: "IndicadoresVelsa", isChild: true, group: "indicadores" },
   { name: 'Indicadores Semillero', path: '/indicadores-semillero', icon: '🌱', isChild: true, group: 'indicadores' },
   { name: "🔬 Reporte Detalle SEMILLERO", path: "/reporte-detalle-semillero", icon: "🔬", permiso: "Indicadores", isChild: true, group: "indicadores" },
+  { name: "Indicadores VENTAENLINEA", path: "/indicadores-ventaenlinea", icon: "🛒", accessCheck: accesoVentaenlinea, isChild: true, group: "indicadores" },
+  { name: "🔬 Reporte Detalle VENTAENLINEA", path: "/reporte-detalle-ventaenlinea", icon: "🔬", accessCheck: accesoVentaenlinea, isChild: true, group: "indicadores" },
 
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",

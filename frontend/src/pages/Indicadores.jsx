@@ -572,7 +572,7 @@ export default function ReporteComercialCore({
   apiBase = '/api/indicadores',
   empresa = 'NOVONET',
 } = {}) {
-  const esSemillero = empresa.toUpperCase() === 'SEMILLERO';
+  const esPipelineWebhook = ['SEMILLERO', 'VENTAENLINEA'].includes(empresa.toUpperCase());
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);
   // Indicador de carga diferido: solo aparece si la consulta pasa de 250 ms.
@@ -605,11 +605,11 @@ export default function ReporteComercialCore({
   // Semillero obtiene sus KPI del mismo resultado del dashboard (pipeline 41).
   // No usa /api/kpi-comercial porque ese endpoint pertenece exclusivamente a
   // las vistas comerciales de NOVONET y VELSA.
-  const construirKpiSemillero = useCallback((resultado, filtrosActivos) => {
+  const construirKpiPipeline = useCallback((resultado, filtrosActivos) => {
     const porcentaje = (numerador, denominador) => denominador > 0
       ? Number(((numerador / denominador) * 100).toFixed(1))
       : 0;
-    const completar = (fila, nombre, supervisor = 'SEMILLERO') => {
+    const completar = (fila, nombre, supervisor = empresa.toUpperCase()) => {
       const leadsTotal = Number(fila.leads_totales || 0);
       const gestionables = Number(fila.gestionables || 0);
       const ingresosCrm = Number(fila.ventas_crm || 0);
@@ -656,14 +656,14 @@ export default function ReporteComercialCore({
       descarte_count: total.descarte_count + fila.descarte_n,
     }), { leads_totales: 0, gestionables: 0, ventas_crm: 0, ingresos_reales: 0, descarte_count: 0 });
     return {
-      empresa: 'SEMILLERO',
+      empresa: empresa.toUpperCase(),
       fechaDesde: filtrosActivos.fechaDesde,
       fechaHasta: filtrosActivos.fechaHasta,
       asesores,
       supervisores,
-      total: asesores.length ? completar(totalBase, 'TOTAL SEMILLERO') : null,
+      total: asesores.length ? completar(totalBase, `TOTAL ${empresa.toUpperCase()}`) : null,
     };
-  }, []);
+  }, [empresa]);
 
   // Listas estables para los dropdowns — nunca se borran al filtrar
   const [allSupervisores, setAllSupervisores] = useState([]);
@@ -693,7 +693,7 @@ export default function ReporteComercialCore({
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
       // Fire-and-forget: nunca retrasa la carga del dashboard
-      if (!esSemillero) fetchKpiComercial(filtrosActivos);
+      if (!esPipelineWebhook) fetchKpiComercial(filtrosActivos);
       const p = new URLSearchParams(Object.fromEntries(
         Object.entries(filtrosActivos)
           .filter(([_, v]) => Array.isArray(v) ? v.length > 0 : v !== "")
@@ -716,8 +716,8 @@ export default function ReporteComercialCore({
         }
         mostrarAlertas(result.supervisores);
 
-        if (esSemillero) {
-          setKpiComercial(construirKpiSemillero(result, filtrosActivos));
+        if (esPipelineWebhook) {
+          setKpiComercial(construirKpiPipeline(result, filtrosActivos));
         }
 
       }
@@ -1936,7 +1936,7 @@ ${asesoresPDF.length>0?`
                   value={filtros.canal}
                   onChange={vals => updateFiltro('canal', vals)}
                   options={[...new Set([
-                    ...(esSemillero ? [] : ORIGENES_INICIALES_NOVONET),
+                    ...(esPipelineWebhook ? [] : ORIGENES_INICIALES_NOVONET),
                     ...(data.canales || []),
                     ...(data.origenes || []).map(o => o.trim().replace(/\s+/g, ' ')),
                   ])]}
@@ -2380,7 +2380,7 @@ function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVO
       <div className="bg-[#1A3A6E] text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-[#0f2550]">
         <div>
           <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — {modoMaster ? 'MASTER' : empresa}</h2>
-          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">{modoMaster ? 'NOVONET + VELSA' : empresa} · Filtro por Fecha de Carga a JOT</p>
+          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">{modoMaster ? 'NOVONET + VELSA + SEMILLERO + VENTAENLINEA' : empresa} · Filtro por Fecha de Carga a JOT</p>
         </div>
         <div className="text-right text-[9px] text-blue-300">
           {rows !== null && <div className="text-lg font-black text-white">{rows.length.toLocaleString()} registros</div>}

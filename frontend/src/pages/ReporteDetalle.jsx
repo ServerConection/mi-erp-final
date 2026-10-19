@@ -27,6 +27,7 @@ export default function ReporteDetalle({ empresa = "novonet" }) {
     novonet: { accent: "#2563eb", titulo: "NOVONET" },
     velsa: { accent: "#7c3aed", titulo: "VELSA" },
     semillero: { accent: "#059669", titulo: "SEMILLERO" },
+    ventaenlinea: { accent: "#ea580c", titulo: "VENTAENLINEA" },
   }[empresa] || { accent: "#2563eb", titulo: String(empresa || "NOVONET").toUpperCase() };
   const { accent, titulo } = configuracionEmpresa;
 

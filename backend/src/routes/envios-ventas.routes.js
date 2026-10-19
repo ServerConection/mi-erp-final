@@ -51,9 +51,10 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
-      || file.mimetype === 'audio/mpeg' || file.mimetype === 'video/mp4'
+      || file.mimetype.startsWith('audio/') || file.mimetype === 'video/mp4'
+      || file.mimetype === 'video/webm'
       || file.mimetype === 'application/octet-stream') cb(null, true);
-    else cb(new Error('Solo se permiten imágenes, PDF, MP3 o MP4'));
+    else cb(new Error('Solo se permiten imágenes, PDF, audio o MP4'));
   }
 });
 
@@ -202,7 +203,7 @@ router.post('/upload', limiteSubidas, (req, res, next) => {
     const ref = registrarError('upload:multer', err, { code: err.code });
     return res.status(400).json({
       success: false,
-      error: mapa[err.code] || 'Solo se permiten imágenes, PDF, MP3 o MP4.',
+      error: mapa[err.code] || 'Solo se permiten imágenes, PDF, audio o MP4.',
       codigo: err.code || 'ARCHIVO_INVALIDO',
       ref,
     });
@@ -240,7 +241,7 @@ router.post('/upload', limiteSubidas, (req, res, next) => {
       return res.status(415).json({ success: false, error: veredicto.motivo, codigo: veredicto.codigo });
     }
 
-    const esMultimedia = veredicto.tipo === 'mp3' || veredicto.tipo === 'mp4';
+    const esMultimedia = ['mp3', 'mp4', 'aac', 'm4a', 'ogg', 'wav', 'webm', 'amr'].includes(veredicto.tipo);
     if (!esMultimedia && req.file.size > 15 * 1024 * 1024) {
       return res.status(413).json({
         success: false,

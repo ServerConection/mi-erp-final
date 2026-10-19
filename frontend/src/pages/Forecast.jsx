@@ -793,6 +793,9 @@ function Consolidado({ c }) {
         ))}
       </div>
 
+      {/* Presupuesto APROBADO por agencia vs lo que está pasando */}
+      <PresupuestoAgencias filas={c.presupuesto_agencias} money={money} />
+
       {/* De dónde sale cada parte del total */}
       <div className="border-t border-slate-100 px-5 py-3">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -813,6 +816,80 @@ function Consolidado({ c }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRESUPUESTO APROBADO vs REAL POR AGENCIA
+// ═══════════════════════════════════════════════════════════════════════════
+// Plan: forecast_objetivos (campana = 'AGENCIA <NOMBRE>'). Real: inversión
+// cargada en Redes. Desvío = proyección al cierre − presupuesto.
+// Semáforo: ±5% en rango · arriba = se sobredimensiona · abajo = le falta.
+function PresupuestoAgencias({ filas, money }) {
+  if (!filas?.length) return null;
+
+  const estado = (pct) => {
+    if (pct == null) return { txt: "—", cls: "text-slate-400" };
+    if (pct > 5)  return { txt: `▲ +${pct}% sobre plan`, cls: "text-red-600" };
+    if (pct < -5) return { txt: `▼ ${pct}% bajo plan`,  cls: "text-amber-600" };
+    return { txt: `● ${pct > 0 ? "+" : ""}${pct}% en rango`, cls: "text-emerald-600" };
+  };
+
+  const tot = filas.reduce((a, f) => ({
+    presupuesto: a.presupuesto + f.presupuesto,
+    gastado: a.gastado + f.gastado,
+    esperado: a.esperado + (f.esperado_a_hoy || 0),
+    proy: a.proy + f.proyeccion_cierre,
+  }), { presupuesto: 0, gastado: 0, esperado: 0, proy: 0 });
+  const totPctDesv = tot.presupuesto > 0 ? Number(((tot.proy - tot.presupuesto) / tot.presupuesto * 100).toFixed(1)) : null;
+  const totPctEjec = tot.presupuesto > 0 ? (tot.gastado / tot.presupuesto * 100).toFixed(1) : null;
+
+  const Fila = ({ f, total }) => {
+    const e = estado(total ? totPctDesv : f.pct_desvio);
+    const base = total ? "font-black text-slate-800 bg-slate-50" : "text-slate-700";
+    return (
+      <tr className={`border-t border-slate-100 ${base}`}>
+        <td className="py-2 pr-3">
+          {total ? "TOTAL" : <><b>{f.agencia}</b> <span className="text-[10px] text-slate-400">{f.empresa}</span></>}
+        </td>
+        <td className="py-2 pr-3 text-right">{money(total ? tot.presupuesto : f.presupuesto)}</td>
+        <td className="py-2 pr-3 text-right">{money(total ? tot.gastado : f.gastado)}</td>
+        <td className="py-2 pr-3 text-right">{total ? `${totPctEjec}%` : `${f.pct_ejecutado ?? "—"}%`}</td>
+        <td className="py-2 pr-3 text-right text-slate-400">{money(total ? tot.esperado : f.esperado_a_hoy)}</td>
+        <td className="py-2 pr-3 text-right">{money(total ? tot.proy : f.proyeccion_cierre)}</td>
+        <td className="py-2 pr-3 text-right">{money(total ? tot.proy - tot.presupuesto : f.desvio_proyectado)}</td>
+        <td className={`py-2 text-right text-[11px] font-bold ${e.cls}`}>{e.txt}</td>
+      </tr>
+    );
+  };
+
+  return (
+    <div className="border-t border-slate-100 px-5 py-4">
+      <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-600">
+        Presupuesto aprobado vs real · por agencia
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[9px] uppercase tracking-wider text-slate-400">
+              <th className="pb-1 pr-3 text-left">Agencia</th>
+              <th className="pb-1 pr-3 text-right">Presupuesto</th>
+              <th className="pb-1 pr-3 text-right">Gastado</th>
+              <th className="pb-1 pr-3 text-right">% ejecutado</th>
+              <th className="pb-1 pr-3 text-right" title="Presupuesto × días transcurridos ÷ días del mes">Esperado a hoy</th>
+              <th className="pb-1 pr-3 text-right">Proyección cierre</th>
+              <th className="pb-1 pr-3 text-right">Desvío</th>
+              <th className="pb-1 text-right">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f) => <Fila key={`${f.empresa}-${f.agencia}`} f={f} />)}
+            {filas.length > 1 && <Fila total />}
+          </tbody>
+        </table>
       </div>
     </div>
   );

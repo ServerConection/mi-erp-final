@@ -557,8 +557,58 @@ exports.getConsolidado = async (req, res) => {
       cpa_proyectado: actProy > 0 ? Number((invProy / actProy).toFixed(2)) : null,
     };
 
+    // ── Presupuesto APROBADO por agencia vs real ───────────────────────────
+    // El plan vive en forecast_objetivos con campana = 'AGENCIA <NOMBRE>'
+    // (prefijo para no chocar con las campañas del dashboard).
+    // Novonet: se cruza por agencia (ARTS, VIDIKA). Velsa: una sola agencia,
+    // se suma toda su inversión porque sus canales no se llaman como la agencia.
+    // Si la consulta falla, el consolidado sale igual sin este bloque.
+    let presupuestoAgencias = [];
+    try {
+      const { rows: plan } = await pool.query(`
+        SELECT UPPER(TRIM(empresa)) AS empresa,
+               SUBSTRING(UPPER(TRIM(campana)) FROM 9) AS agencia,
+               inversion_mensual, leads_objetivo, ventas_objetivo, cpl_objetivo, cpa_objetivo
+        FROM public.forecast_objetivos
+        WHERE mes = $1 AND anio = $2 AND UPPER(TRIM(campana)) LIKE 'AGENCIA %'
+        ORDER BY empresa, agencia
+      `, [mes, anio]);
+
+      const diasMes = ultimoDiaMes(desde);
+      presupuestoAgencias = plan.map((p) => {
+        const emp = porEmpresa.find((e) => e.empresa === p.empresa.toLowerCase());
+        const fc  = emp?.forecast || null;
+        const filas = (fc?.por_agencia || []).filter((a) =>
+          p.empresa === 'VELSA' ? true : String(a.agencia).toUpperCase() === p.agencia);
+        const real = filas.reduce((a, x) => a + Number(x.inversion_acumulada || 0), 0);
+        const proy = filas.reduce((a, x) => a + Number(x.proyeccion_cierre  || 0), 0);
+        const presupuesto = Number(p.inversion_mensual) || 0;
+        const diaActual = fc?.dia_actual ?? null;
+        const esperado = presupuesto > 0 && diaActual != null ? presupuesto * diaActual / diasMes : null;
+        const desvio = proy - presupuesto;
+        return {
+          empresa: p.empresa,
+          agencia: p.agencia,
+          presupuesto: Number(presupuesto.toFixed(2)),
+          gastado: Number(real.toFixed(2)),
+          pct_ejecutado: presupuesto > 0 ? Number((real / presupuesto * 100).toFixed(1)) : null,
+          esperado_a_hoy: esperado != null ? Number(esperado.toFixed(2)) : null,
+          proyeccion_cierre: Number(proy.toFixed(2)),
+          desvio_proyectado: Number(desvio.toFixed(2)),
+          pct_desvio: presupuesto > 0 ? Number((desvio / presupuesto * 100).toFixed(1)) : null,
+          ultima_fecha: filas.map((x) => x.ultima_fecha).sort().pop() || null,
+          leads_objetivo: p.leads_objetivo, ventas_objetivo: p.ventas_objetivo,
+          cpl_objetivo: p.cpl_objetivo != null ? Number(p.cpl_objetivo) : null,
+          cpa_objetivo: p.cpa_objetivo != null ? Number(p.cpa_objetivo) : null,
+        };
+      });
+    } catch (e) {
+      console.warn('[forecast.consolidado] presupuesto agencias:', e.message);
+    }
+
     const ref = vivas[0]?.forecast;
     res.json({
+      presupuesto_agencias: presupuestoAgencias,
       success: true,
       mes: ref?.mes || `${anio}-${mm}`,
       dias_del_mes: ref?.dias_del_mes ?? null,

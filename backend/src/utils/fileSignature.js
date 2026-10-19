@@ -30,6 +30,7 @@ const MARCAS_HEIF = new Set([
   'mif1', 'msf1',
 ]);
 const MARCAS_MP4 = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'M4V ', 'MSNV', 'dash']);
+const MARCAS_M4A = new Set(['M4A ', 'M4B ', 'M4P ', 'mp4a']);
 
 /**
  * Detecta el tipo real de un buffer.
@@ -67,14 +68,39 @@ function detectarTipo(buf) {
     if (MARCAS_HEIF.has(marca)) {
       return { tipo: 'heic', mime: 'image/heic', ext: '.heic' };
     }
+    if (MARCAS_M4A.has(marca)) {
+      return { tipo: 'm4a', mime: 'audio/mp4', ext: '.m4a' };
+    }
     if (MARCAS_MP4.has(marca)) {
       return { tipo: 'mp4', mime: 'video/mp4', ext: '.mp4' };
     }
   }
 
+  // AAC crudo con cabecera ADTS. Se comprueba antes de MP3 porque ambos
+  // comienzan con un sync word 0xFF.
+  if (buf[0] === 0xff && (buf[1] & 0xf6) === 0xf0) {
+    return { tipo: 'aac', mime: 'audio/aac', ext: '.aac' };
+  }
+
   if (buf.subarray(0, 3).toString('latin1') === 'ID3' ||
       (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) {
     return { tipo: 'mp3', mime: 'audio/mpeg', ext: '.mp3' };
+  }
+
+  // Audios habituales de WhatsApp y grabadoras móviles.
+  if (buf.subarray(0, 4).toString('latin1') === 'OggS') {
+    return { tipo: 'ogg', mime: 'audio/ogg', ext: '.ogg' };
+  }
+  if (buf.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      buf.subarray(8, 12).toString('latin1') === 'WAVE') {
+    return { tipo: 'wav', mime: 'audio/wav', ext: '.wav' };
+  }
+  if (buf.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) {
+    return { tipo: 'webm', mime: 'audio/webm', ext: '.webm' };
+  }
+  if (buf.subarray(0, 6).toString('latin1') === '#!AMR\n' ||
+      buf.subarray(0, 9).toString('latin1') === '#!AMR-WB\n') {
+    return { tipo: 'amr', mime: 'audio/amr', ext: '.amr' };
   }
 
   // PDF — "%PDF-" (se admite un BOM/basura corta al inicio, como hacen algunos
@@ -129,7 +155,7 @@ function marcadoresActivosPdf(buf) {
 function validarArchivo({
   buffer,
   mimetypeDeclarado = '',
-  permitidos = ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf', 'mp3', 'mp4'],
+  permitidos = ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf', 'mp3', 'mp4', 'aac', 'm4a', 'ogg', 'wav', 'webm', 'amr'],
   pdfEstricto = true,
 } = {}) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
@@ -141,7 +167,7 @@ function validarArchivo({
     return {
       ok: false,
       codigo: 'FIRMA_DESCONOCIDA',
-      motivo: 'El archivo no es una imagen ni un PDF válido (firma binaria no reconocida).',
+      motivo: 'El archivo no es una imagen, PDF, audio o video válido (firma binaria no reconocida).',
     };
   }
 
@@ -149,7 +175,7 @@ function validarArchivo({
     return {
       ok: false,
       codigo: 'TIPO_NO_PERMITIDO',
-      motivo: `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC, PDF, MP3 o MP4.`,
+      motivo: `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC, PDF, MP3, AAC, M4A, OGG/Opus, WAV, WebM, AMR o MP4.`,
     };
   }
 
@@ -189,6 +215,13 @@ function mimeSeguroPorExtension(ext) {
     '.heic': 'image/heic',
     '.pdf': 'application/pdf',
     '.mp3': 'audio/mpeg',
+    '.aac': 'audio/aac',
+    '.m4a': 'audio/mp4',
+    '.ogg': 'audio/ogg',
+    '.opus': 'audio/ogg',
+    '.wav': 'audio/wav',
+    '.webm': 'audio/webm',
+    '.amr': 'audio/amr',
     '.mp4': 'video/mp4',
   };
   return mapa[String(ext || '').toLowerCase()] || null;

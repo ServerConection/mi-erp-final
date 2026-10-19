@@ -964,9 +964,15 @@ function VisorDocumento({ url, titulo, esPdf, onCerrar, onDescargar }) {
 }
 
 // ── Campo de documento dentro del detalle ────────────────────────────────────
+const EXTENSIONES_MULTIMEDIA = "mp3|mp4|aac|m4a|ogg|opus|wav|webm|amr";
+const MIME_MULTIMEDIA = new Set([
+  "audio/mpeg", "audio/aac", "audio/mp4", "audio/ogg", "audio/opus",
+  "audio/wav", "audio/x-wav", "audio/webm", "audio/amr", "video/mp4", "video/webm",
+]);
+
 function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert, onHistorialActualizado, editable = true, mensajeExito }) {
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
-  const extensionMultimedia = String(valor || '').match(/\.(mp3|mp4)(?:$|[?#])/i)?.[1]?.toLowerCase() || '';
+  const extensionMultimedia = String(valor || '').match(new RegExp(`\\.(${EXTENSIONES_MULTIMEDIA})(?:$|[?#])`, "i"))?.[1]?.toLowerCase() || '';
   const esMultimedia = Boolean(extensionMultimedia);
   const [abierto, setAbierto] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -979,7 +985,7 @@ function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificaci
 
   const subir = async (file) => {
     if (!editable || !file) return;
-    const esArchivoMultimedia = ['audio/mpeg', 'video/mp4'].includes(file.type) || /\.(mp3|mp4)$/i.test(file.name);
+    const esArchivoMultimedia = MIME_MULTIMEDIA.has(file.type) || new RegExp(`\\.(${EXTENSIONES_MULTIMEDIA})$`, "i").test(file.name);
     const maxMb = esArchivoMultimedia ? MAX_MB_MULTIMEDIA : MAX_MB_DOCUMENTO;
     if (file.size > maxMb * 1024 * 1024) {
       onAlert({ type: "error", msg: `El archivo pesa ${(file.size / 1048576).toFixed(1)} MB y el máximo es ${maxMb} MB.` });
@@ -1111,7 +1117,7 @@ function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificaci
 
           {!cargando && url && esMultimedia && (
             <div style={{ textAlign: "center", color: "#475569", fontWeight: 800, fontSize: 12 }}>
-              <div style={{ fontSize: 34 }}>{extensionMultimedia === 'mp3' ? '🎵' : '🎬'}</div>
+              <div style={{ fontSize: 34 }}>{extensionMultimedia === 'mp4' ? '🎬' : '🎵'}</div>
               Archivo {extensionMultimedia.toUpperCase()}
             </div>
           )}
@@ -1182,7 +1188,7 @@ function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificaci
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,application/pdf,audio/mpeg,video/mp4,.mp3,.mp4"
+          accept="image/*,application/pdf,audio/*,video/mp4,video/webm,.mp3,.aac,.m4a,.ogg,.opus,.wav,.webm,.amr,.mp4"
           style={{ display: "none" }}
           onChange={(e) => subir(e.target.files?.[0])}
         />
@@ -1197,7 +1203,7 @@ function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificaci
 
 function MiniaturaDocumento({ valor, etiqueta }) {
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
-  const extensionMultimedia = String(valor || '').match(/\.(mp3|mp4)(?:$|[?#])/i)?.[1]?.toLowerCase() || '';
+  const extensionMultimedia = String(valor || '').match(new RegExp(`\\.(${EXTENSIONES_MULTIMEDIA})(?:$|[?#])`, "i"))?.[1]?.toLowerCase() || '';
 
   if (!valor) {
     return (
@@ -1226,7 +1232,7 @@ function MiniaturaDocumento({ valor, etiqueta }) {
   if (extensionMultimedia) {
     return (
       <div style={{ width: "100%", height: 84, borderRadius: 10, background: "#f8fafc", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#475569", fontWeight: 900, fontSize: 11 }}>
-        <span style={{ fontSize: 26 }}>{extensionMultimedia === 'mp3' ? '🎵' : '🎬'}</span>
+        <span style={{ fontSize: 26 }}>{extensionMultimedia === 'mp4' ? '🎬' : '🎵'}</span>
         {extensionMultimedia.toUpperCase()}
       </div>
     );

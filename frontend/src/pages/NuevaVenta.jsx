@@ -79,6 +79,10 @@ const SUPERVISORES = {
 
 // Edad mínima para aplicar descuento de 3ra edad
 const EDAD_MINIMA_3RA_EDAD = 65;
+const LIDER_COMERCIAL_POR_DISTRIBUIDOR = {
+  NOVONET: "DANIELA",
+  VELSA: "ANGÉLICA",
+};
 function calcularEdad(fechaISO) {
   if (!fechaISO) return null;
   const nac = new Date(fechaISO);
@@ -1429,6 +1433,9 @@ export default function NuevaVenta() {
         supervisor: form.supervisor || null,
         nombre_atc: user.nombre || user.usuario || null,
         clausulas: form.clausulas || null,
+        lider_comercial: LIDER_COMERCIAL_POR_DISTRIBUIDOR[
+          String(form.distribuidor_autorizado || "").trim().toUpperCase()
+        ] || null,
         // cliente
         tipo_cliente: form.tipo_cliente || null,
         tipo_documento: form.tipo_documento || null,

@@ -583,6 +583,10 @@ router.put('/:id', async (req, res) => {
       if (!CAMPOS_EDITABLES.has(clave)) continue; // descarta id y todo lo no permitido
       payload[clave] = valor === '' ? null : valor;
     }
+    // Solo estos campos fueron solicitados por ATC. Las reglas de negocio de
+    // abajo agregan valores derivados (fechas, franja, etc.), que se guardan
+    // pero no deben aparentar una edición manual en el historial.
+    const camposSolicitados = new Set(Object.keys(payload));
 
     if ('representante_legal' in payload || 'tipo_documento' in payload) {
       const tipoDocumento = 'tipo_documento' in payload ? payload.tipo_documento : actual[0].tipo_documento;
@@ -728,16 +732,9 @@ router.put('/:id', async (req, res) => {
       payload.fecha_hora_regularizacion = new Date();
     }
 
-    // El historial es append-only. Los estados distintos de Netlife solo se
-    // registran si cambiaron; Netlife también admite una reafirmación explícita
-    // (p. ej. ASIGNADO -> ASIGNADO). Guardar otro campo no incluye Netlife en
-    // el payload, por lo que nunca crea una reafirmación accidental.
-    const CAMPOS_ESTADO = new Set([
-      'estatus_envio', 'netlife_estatus_real', 'estatus_regularizacion',
-      'estado_welcome', 'estado_recaudacion', 'auditoria_documentos',
-      'calidad_venta_analista', 'venta_efectiva',
-    ]);
-    const valorComparableEstado = (campo, valor) => {
+    // Historial append-only de cualquier campo que ATC puede editar. Netlife
+    // conserva la reafirmación explícita (p. ej. ASIGNADO -> ASIGNADO).
+    const valorComparableHistorial = (campo, valor) => {
       if (campo !== 'auditoria_documentos') return String(valor ?? '');
       let lista = valor;
       if (!Array.isArray(lista)) {
@@ -746,10 +743,10 @@ router.put('/:id', async (req, res) => {
       if (!Array.isArray(lista)) lista = [lista];
       return lista.map(item => String(item).trim().toUpperCase()).filter(Boolean).sort().join('|');
     };
-    const cambiosEstado = Object.entries(payload)
-      .filter(([campo, valor]) => (CAMPOS_ESTADO.has(campo) || CAMPOS_GALERIA.has(campo))
+    const cambiosHistorial = Object.entries(payload)
+      .filter(([campo, valor]) => camposSolicitados.has(campo)
         && (campo === 'netlife_estatus_real'
-          || valorComparableEstado(campo, actual[0][campo]) !== valorComparableEstado(campo, valor)))
+          || valorComparableHistorial(campo, actual[0][campo]) !== valorComparableHistorial(campo, valor)))
       .map(([campo, valor]) => {
         if (!CAMPOS_GALERIA.has(campo)) {
           return {
@@ -757,7 +754,7 @@ router.put('/:id', async (req, res) => {
             anterior: actual[0][campo] ?? null,
             nuevo: valor ?? null,
             reafirmacion: campo === 'netlife_estatus_real'
-              && valorComparableEstado(campo, actual[0][campo]) === valorComparableEstado(campo, valor),
+              && valorComparableHistorial(campo, actual[0][campo]) === valorComparableHistorial(campo, valor),
           };
         }
         const teniaDocumento = Boolean(String(actual[0][campo] || '').trim());
@@ -771,7 +768,7 @@ router.put('/:id', async (req, res) => {
             : teniaDocumento && !tieneDocumento ? 'ELIMINADO' : 'REEMPLAZADO',
         };
       });
-    if (cambiosEstado.length) {
+    if (cambiosHistorial.length) {
       let historial = actual[0].hist_cambio_estatus;
       if (typeof historial === 'string') {
         try { historial = JSON.parse(historial); } catch { historial = []; }
@@ -785,7 +782,7 @@ router.put('/:id', async (req, res) => {
         perfil_usuario: req.user?.perfil || null,
         empresa_usuario: req.user?.empresa || null,
         fecha_hora: new Date().toISOString(),
-        cambios: cambiosEstado,
+        cambios: cambiosHistorial,
       });
       payload.hist_cambio_estatus = JSON.stringify(historial);
     }

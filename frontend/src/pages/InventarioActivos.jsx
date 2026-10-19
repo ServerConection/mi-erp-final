@@ -147,6 +147,8 @@ export default function InventarioActivos() {
   const [idSolicitado, setIdSolicitado] = useState("");
   const [usuarioAsignadoId, setUsuarioAsignadoId] = useState(perfil.id ? String(perfil.id) : "");
   const [usuariosAsignables, setUsuariosAsignables] = useState([]);
+  const [busquedaUsuario, setBusquedaUsuario] = useState("");
+  const [selectorUsuarioAbierto, setSelectorUsuarioAbierto] = useState(false);
   const [verTodasEmpresas, setVerTodasEmpresas] = useState(false);
   const [marcasOpciones, setMarcasOpciones] = useState([]);
   const [activoId, setActivoId] = useState("");
@@ -169,6 +171,17 @@ export default function InventarioActivos() {
   const [mensaje, setMensaje] = useState(null);
 
   const marcas = useMemo(() => [...new Set(marcasOpciones.filter(Boolean))].sort(), [marcasOpciones]);
+  const usuariosAsignablesFiltrados = useMemo(() => {
+    const termino = normalizarEntrada(busquedaUsuario.trim());
+    if (!termino) return usuariosAsignables;
+    return usuariosAsignables.filter((usuario) => {
+      return normalizarEntrada([
+        usuario.nombre, usuario.usuario, usuario.cargo, usuario.perfil, usuario.empresa,
+      ].filter(Boolean).join(" ")).includes(termino);
+    });
+  }, [busquedaUsuario, usuariosAsignables]);
+  const usuarioAsignadoActual = usuariosAsignables.find((usuario) => String(usuario.id) === String(usuarioAsignadoId));
+  const etiquetaUsuario = (usuario) => `${usuario.nombre} · ${usuario.cargo || usuario.perfil || "SIN CARGO"} · ${usuario.empresa}`;
   const esComputador = ["CPU", "LAPTOP"].includes(form.tipo_dispositivo);
   const esPantalla = ["MONITOR", "TELEVISION"].includes(form.tipo_dispositivo);
   const esImpresora = form.tipo_dispositivo === "IMPRESORA";
@@ -304,6 +317,7 @@ export default function InventarioActivos() {
   const nuevoActivo = (idPlano = "", empresaPlano = "") => {
     setForm({ ...INICIAL, empresa: empresaPlano }); setActivoId(""); setResponsable(usuarioSesion);
     setIdSolicitado(idPlano); setUsuarioAsignadoId(perfil.id ? String(perfil.id) : "");
+    setBusquedaUsuario("");
     setVerTodasEmpresas(false); setUsuariosAsignables([]);
     setFechaRevision("AUTOMATICA AL GUARDAR"); setFotoArchivo(null); setFotoPreview("");
     setDiscoEntrada(""); setDiscoUnidad("GB");
@@ -321,6 +335,7 @@ export default function InventarioActivos() {
     cargarActivoEnFormulario(seleccionado);
     setIdSolicitado("");
     setUsuarioAsignadoId(seleccionado.usuario_asignado_id ? String(seleccionado.usuario_asignado_id) : "");
+    setBusquedaUsuario("");
     setVerTodasEmpresas(false);
     setMostrarFormulario(true);
     requestAnimationFrame(irAlInicio);
@@ -361,7 +376,12 @@ export default function InventarioActivos() {
   };
 
   const guardar = async (event) => {
-    event.preventDefault(); setGuardando(true); setMensaje(null);
+    event.preventDefault();
+    if (esAdmin && !usuarioAsignadoId && (!activoId || busquedaUsuario)) {
+      setMensaje({ tipo: "error", texto: "Selecciona un usuario asignado de la lista." });
+      return;
+    }
+    setGuardando(true); setMensaje(null);
     const editando = Boolean(activoId);
     let idGuardado = activoId;
     try {
@@ -519,7 +539,29 @@ export default function InventarioActivos() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-slate-800"><ShieldCheck size={20} className="text-blue-600" /><h2 className="font-black">Datos automaticos</h2></div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable" requerido={Boolean(activoId && esAdmin)} ayuda={activoId && esAdmin ? "Editable solo por administradores." : "Se asigna automaticamente al registrar."}><input required={Boolean(activoId && esAdmin)} readOnly={!activoId || !esAdmin} value={responsable} onChange={(e) => setResponsable(normalizarEntrada(e.target.value))} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo>
-              {esAdmin ? <Campo label="Usuario asignado" requerido={!activoId} ayuda="Usuario que utiliza el equipo; no cambia quien lo registro." className="sm:col-span-2"><div className="space-y-2"><select required={!activoId} value={usuarioAsignadoId} onChange={(e) => setUsuarioAsignadoId(e.target.value)} className={inputClass}><option value="">{activoId ? "SIN ASIGNAR" : "SELECCIONE UN USUARIO"}</option>{usuariosAsignables.map((u) => <option key={u.id} value={u.id}>{u.nombre} · {u.cargo || u.perfil || "SIN CARGO"} · {u.empresa}</option>)}</select><label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={verTodasEmpresas} onChange={(e) => setVerTodasEmpresas(e.target.checked)} /> Ver usuarios de todas las empresas</label></div></Campo> : <Campo label="Usuario asignado" ayuda="Al registrar se asigna automaticamente al usuario logueado." className="sm:col-span-2"><input readOnly value={activoId ? (form.usuario_asignado_nombre || usuarioSesion) : usuarioSesion} className={inputClass}/></Campo>}
+              {esAdmin ? <Campo label="Usuario asignado" requerido={!activoId} ayuda="Usuario que utiliza el equipo; no cambia quien lo registro." className="sm:col-span-2">
+                <div className="space-y-2">
+                  <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setSelectorUsuarioAbierto(false); }}>
+                    <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="search"
+                      role="combobox"
+                      aria-expanded={selectorUsuarioAbierto}
+                      value={busquedaUsuario || (usuarioAsignadoActual ? etiquetaUsuario(usuarioAsignadoActual) : "")}
+                      onFocus={() => setSelectorUsuarioAbierto(true)}
+                      onChange={(e) => { setBusquedaUsuario(normalizarEntrada(e.target.value)); setUsuarioAsignadoId(""); setSelectorUsuarioAbierto(true); }}
+                      placeholder={activoId ? "SIN ASIGNAR — BUSCAR USUARIO" : "BUSCAR Y SELECCIONAR USUARIO"}
+                      className={`${inputClass} pl-10`}
+                    />
+                    {selectorUsuarioAbierto && <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                      {activoId && <button type="button" onClick={() => { setUsuarioAsignadoId(""); setBusquedaUsuario(""); setSelectorUsuarioAbierto(false); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-slate-600 hover:bg-slate-100">SIN ASIGNAR</button>}
+                      {usuariosAsignablesFiltrados.map((u) => <button type="button" key={u.id} onClick={() => { setUsuarioAsignadoId(String(u.id)); setBusquedaUsuario(etiquetaUsuario(u)); setSelectorUsuarioAbierto(false); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm hover:bg-blue-50 ${String(u.id) === String(usuarioAsignadoId) ? "bg-blue-50 font-black text-blue-700" : "font-semibold text-slate-700"}`}>{etiquetaUsuario(u)}</button>)}
+                      {!usuariosAsignablesFiltrados.length && <p className="px-3 py-4 text-center text-sm font-semibold text-slate-400">No se encontraron usuarios.</p>}
+                    </div>}
+                  </div>
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={verTodasEmpresas} onChange={(e) => setVerTodasEmpresas(e.target.checked)} /> Ver usuarios de todas las empresas</label>
+                </div>
+              </Campo> : <Campo label="Usuario asignado" ayuda="Al registrar se asigna automaticamente al usuario logueado." className="sm:col-span-2"><input readOnly value={activoId ? (form.usuario_asignado_nombre || usuarioSesion) : usuarioSesion} className={inputClass}/></Campo>}
             </div>
           </section>
 

@@ -1860,7 +1860,11 @@ function valoresSeleccionMultiple(valor) {
 
 function valorVisibleHistorial(campo, valor) {
   if (esCampoDocumento(campo)) return valor || "Sin documento";
-  if (campo !== "auditoria_documentos") return valor || "Sin estado";
+  if (campo !== "auditoria_documentos") {
+    const texto = String(valor ?? "").trim();
+    if (!texto) return "Sin información";
+    return texto.length > 500 ? `${texto.slice(0, 500)}…` : texto;
+  }
   const valores = valoresSeleccionMultiple(valor);
   if (!valores.length) return "Sin documentos";
   return valores.map((item) => /^\{[^}]+\}$/.test(item)
@@ -2551,7 +2555,7 @@ function HistorialCambiosEstado({ valor }) {
 
       {eventos.length === 0 ? (
         <div style={{ padding: "14px 16px", borderRadius: 10, background: "#f8fafc", color: "#64748b", fontSize: 12 }}>
-          Este registro todavia no tiene cambios de estado auditados.
+          Este registro todavía no tiene cambios auditados.
         </div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
@@ -2581,9 +2585,9 @@ function HistorialCambiosEstado({ valor }) {
                         {FIELD_LABELS[cambio?.campo] || String(cambio?.campo || "Estado").replace(/_/g, " ").toUpperCase()}
                         {cambio?.accion ? ` · ${cambio.accion}` : cambio?.reafirmacion ? " · REAFIRMACIÓN" : ""}
                       </strong>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.anterior)}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#fef2f2", color: "#991b1b", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valorVisibleHistorial(cambio?.campo, cambio?.anterior)}</span>
                       <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
-                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{valorVisibleHistorial(cambio?.campo, cambio?.nuevo)}</span>
+                      <span style={{ padding: "5px 8px", borderRadius: 7, background: "#ecfdf5", color: "#065f46", fontWeight: 800, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valorVisibleHistorial(cambio?.campo, cambio?.nuevo)}</span>
                     </div>
                   ))}
                 </div>
@@ -2925,7 +2929,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
   const editableFields = useMemo(() => [
     // Venta
-    "codigo_asesor", "id_asesor_comercial", "nombre_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
+    "codigo_asesor", "nombre_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
     "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
     "nombre_atc", "clausulas", "lider_comercial",
     // Cliente
@@ -3013,7 +3017,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       {
         titulo: "Venta",
         campos: [
-          "codigo_asesor", "id_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
+          "codigo_asesor", "nombre_asesor_comercial", "fecha_registro_sistema", "id_bitrix", "distribuidor_autorizado",
           "supervisor", "origen_venta", "venta_nueva_o_reingreso", "turno",
           "nombre_atc", "clausulas", "lider_comercial",
         ],

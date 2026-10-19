@@ -129,6 +129,18 @@ const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
 // "turno" dejó de ser obligatorio: el campo se retiró del formulario NuevaVenta
 const CAMPOS_OBLIGATORIOS_CARGAR = ['origen_venta', 'venta_nueva_o_reingreso'];
 
+const LIDER_COMERCIAL_POR_DISTRIBUIDOR = Object.freeze({
+  NOVONET: 'DANIELA',
+  VELSA: 'ANGÉLICA',
+});
+
+function asignarLiderComercial(b) {
+  const distribuidor = String(b.distribuidor_autorizado || '').trim().toUpperCase();
+  if (LIDER_COMERCIAL_POR_DISTRIBUIDOR[distribuidor]) {
+    b.lider_comercial = LIDER_COMERCIAL_POR_DISTRIBUIDOR[distribuidor];
+  }
+}
+
 // Columnas editables que acepta el INSERT/UPDATE (todo excepto sistema/auto)
 const COLUMNAS_VENTA = [
   'usuario', 'codigo_asesor', 'id_bitrix', 'distribuidor_autorizado', 'supervisor',
@@ -439,6 +451,7 @@ router.post('/', async (req, res) => {
     // La identidad siempre sale de la sesión autenticada, no del navegador.
     b.usuario = req.user.usuario || null;
     b.codigo_asesor = req.user.codigo_vendedor || null;
+    asignarLiderComercial(b);
 
     if (esAsesor) {
       // Asesores: BORRADOR si lo piden explícitamente, si no PENDIENTE (venta final)
@@ -523,6 +536,7 @@ router.put('/:id', async (req, res) => {
     // También al finalizar un borrador se impone la identidad de su sesión.
     b.usuario = req.user.usuario || null;
     b.codigo_asesor = req.user.codigo_vendedor || null;
+    asignarLiderComercial(b);
 
     const { rows: existentes } = await pool.query(
       `SELECT id, usuario_id, estatus_envio FROM public.envios_ventas WHERE id = $1`,

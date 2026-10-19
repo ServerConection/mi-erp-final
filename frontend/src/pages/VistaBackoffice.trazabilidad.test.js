@@ -23,3 +23,15 @@ test("el detalle solo reafirma Estatus Netlife mediante una acción explícita",
   );
   assert.match(fuente, /Reafirmar estado actual:/);
 });
+
+test("el detalle muestra nombre de asesor después del código y antes de la fecha", () => {
+  assert.match(
+    fuente,
+    /"codigo_asesor", "nombre_asesor_comercial", "fecha_registro_sistema"/
+  );
+});
+
+test("el historial muestra textos manuales completos de manera legible", () => {
+  assert.match(fuente, /whiteSpace: "pre-wrap", overflowWrap: "anywhere"/);
+  assert.match(fuente, /texto\.length > 500/);
+});

@@ -46,11 +46,11 @@ test('las actualizaciones invalidan los tableros abiertos en tiempo real', () =>
 test('solo una selección explícita de Estatus Netlife permite reafirmar el mismo estado', () => {
   assert.match(
     fuente,
-    /campo === 'netlife_estatus_real'[\s\S]*?valorComparableEstado\(campo, actual\[0\]\[campo\]\) !== valorComparableEstado\(campo, valor\)/
+    /campo === 'netlife_estatus_real'[\s\S]*?valorComparableHistorial\(campo, actual\[0\]\[campo\]\) !== valorComparableHistorial\(campo, valor\)/
   );
   assert.match(
     fuente,
-    /reafirmacion: campo === 'netlife_estatus_real'[\s\S]*?valorComparableEstado\(campo, actual\[0\]\[campo\]\) === valorComparableEstado\(campo, valor\)/
+    /reafirmacion: campo === 'netlife_estatus_real'[\s\S]*?valorComparableHistorial\(campo, actual\[0\]\[campo\]\) === valorComparableHistorial\(campo, valor\)/
   );
 });
 
@@ -59,4 +59,11 @@ test('la galería registra altas, eliminaciones y reemplazos sin guardar rutas s
   assert.match(fuente, /\? 'AGREGADO'/);
   assert.match(fuente, /\? 'ELIMINADO' : 'REEMPLAZADO'/);
   assert.match(fuente, /anterior: teniaDocumento \? 'Documento cargado' : 'Sin documento'/);
+});
+
+test('el historial registra todos los campos editables solicitados por ATC', () => {
+  assert.match(fuente, /const camposSolicitados = new Set\(Object\.keys\(payload\)\)/);
+  assert.match(fuente, /camposSolicitados\.has\(campo\)/);
+  assert.match(fuente, /const cambiosHistorial = Object\.entries\(payload\)/);
+  assert.match(fuente, /campo === 'netlife_estatus_real'/);
 });

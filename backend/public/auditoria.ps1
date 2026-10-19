@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Script de auditoría de hardware y seguridad para ERP Novo Core.
+    Script de auditoria de hardware y seguridad para ERP Novo Core.
     Compatible con Windows 10/11 sin instalaciones previas.
 #>
 
@@ -11,10 +11,10 @@ $ApiToken = "iat_F3xEA3E6Iw2v2kQooZEAVa5VTy0xYWNV8xWV2Q4zJEI"
 $ErrorActionPreference = "SilentlyContinue"
 
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "   RECOLECCIÓN DE AUDITORÍA TI - PRODUCCIÓN  " -ForegroundColor Cyan
+Write-Host "   RECOLECCION DE AUDITORIA TI - PRODUCCION  " -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
-# 1. Dirección MAC activa física
+# 1. Direccion MAC activa fisica
 $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { 
     $_.IPEnabled -eq $true -and $_.MACAddress -and $_.Description -notmatch "Virtual|VPN|Loopback|Hyper-V|TAP|Npcap" 
 }
@@ -41,7 +41,7 @@ if ($chassis.ChassisTypes) {
 }
 $tipo = if ($isLaptop) { "LAPTOP" } else { "CPU" }
 
-# Fecha de fabricación aproximada (BIOS ReleaseDate con fallback a OS InstallDate)
+# Fecha de fabricacion aproximada (BIOS ReleaseDate con fallback a OS InstallDate)
 $fechaFabricacion = $null
 if ($bios.ReleaseDate) {
     try {
@@ -106,11 +106,11 @@ $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 $perfilWindows = if ($isAdmin) { "ADMIN" } else { "USUARIO" }
 $usuarioWindows = $env:USERNAME.ToUpper()
 
-# 7. Verificación de Bloqueo USB
+# 7. Verificacion de Bloqueo USB
 $usbReg = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR" -ErrorAction SilentlyContinue
 $usbBloqueado = if ($usbReg -and $usbReg.Start -eq 4) { $true } else { $false }
 
-# 8. Descargas Métricas: Hoy, 7 días, 30 días y promedio diario
+# 8. Descargas Metricas: Hoy, 7 dias, 30 dias y promedio diario
 $downloadsPath = Join-Path $env:USERPROFILE "Downloads"
 $descargasHoy = 0
 $descargas7Dias = 0
@@ -138,7 +138,7 @@ if (Test-Path $downloadsPath) {
     }
 }
 
-# 9. Detección y lista de páginas bloqueadas en hosts
+# 9. Deteccion y lista de paginas bloqueadas en hosts
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $paginasBloqueadas = @()
 $paginasBloqueadasOk = $false
@@ -177,7 +177,7 @@ $datosExtra = @{
     }
 }
 
-# Construcción de Payload
+# Construccion de Payload
 $payload = @{
     mac                   = $mac
     tipo                  = $tipo
@@ -213,13 +213,13 @@ Write-Host "Fecha estimada: $fechaFabricacion" -ForegroundColor Yellow
 Write-Host "Seguridad: Perfil $perfilWindows | USB Bloqueado: $usbBloqueado" -ForegroundColor Yellow
 Write-Host "Descargas: $descargasHoy hoy | $descargas7Dias ultimos 7 dias" -ForegroundColor Yellow
 if ($paginasBloqueadasOk) {
-    Write-Host "Páginas bloqueadas: $($paginasBloqueadas -join ', ')" -ForegroundColor DarkGreen
+    Write-Host "Paginas bloqueadas: $($paginasBloqueadas -join ', ')" -ForegroundColor DarkGreen
 } else {
-    Write-Host "Páginas bloqueadas: NINGUNA DETECTADA EN HOSTS" -ForegroundColor DarkYellow
+    Write-Host "Paginas bloqueadas: NINGUNA DETECTADA EN HOSTS" -ForegroundColor DarkYellow
 }
 Write-Host "`nConectando con Render..." -ForegroundColor Cyan
 
-# Envío con reintentos
+# Envio con reintentos
 $headers = @{
     "Authorization" = "Bearer $ApiToken"
     "Content-Type"  = "application/json; charset=utf-8"
@@ -234,18 +234,18 @@ while (-not $enviado -and $intentos -lt $maxIntentos) {
     try {
         $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($jsonBody)
         $response = Invoke-RestMethod -Uri $ApiUrl -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 90
-        Write-Host "✓ Auditoría registrada exitosamente en el ERP." -ForegroundColor Green
+        Write-Host "OK - Auditoria registrada exitosamente en el ERP." -ForegroundColor Green
         if ($response.data -and $response.data.activo) {
-            Write-Host "Código de Activo: $($response.data.activo.id)" -ForegroundColor Green
+            Write-Host "Codigo de Activo: $($response.data.activo.id)" -ForegroundColor Green
         }
         $enviado = $true
     } catch {
-        Write-Host "Intento $intentos fallido: $($_.Exception.Message)" -ForegroundColor Red
-        if ($intentos -lt $maxIntentos) {
-            Write-Host "Esperando 10 segundos antes de reintentar..." -ForegroundColor DarkYellow
-            Start-Sleep -Seconds 10
-        } else {
-            Write-Host "✗ No se pudo conectar con el servidor tras $maxIntentos intentos." -ForegroundColor Red
+            Write-Host "Intento $intentos fallido: $($_.Exception.Message)" -ForegroundColor Red
+            if ($intentos -lt $maxIntentos) {
+                Write-Host "Esperando 10 segundos antes de reintentar..." -ForegroundColor DarkYellow
+                Start-Sleep -Seconds 10
+            } else {
+                Write-Host "No se pudo conectar con el servidor tras $maxIntentos intentos." -ForegroundColor Red
+            }
         }
     }
-}

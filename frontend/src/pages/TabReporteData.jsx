@@ -46,6 +46,26 @@ const n   = (v) => Number(v || 0);
 const usd = (v) => (v !== null && v !== undefined && !isNaN(n(v)) && n(v) !== 0) ? `$${n(v).toFixed(2)}` : "—";
 const pf  = (v) => (v !== null && v !== undefined && !isNaN(n(v))) ? `${n(v).toFixed(1)}%` : "—";
 
+// Desvío con signo: + = sobre el plan, − = bajo el plan.
+const sgnUsd = (v) => (v === null || v === undefined || isNaN(n(v))) ? "—" : `${n(v) > 0 ? "+" : n(v) < 0 ? "−" : ""}$${Math.abs(n(v)).toFixed(2)}`;
+const colorDesvio = (v) => (v === null || v === undefined || isNaN(n(v)) || Math.abs(n(v)) < 0.005) ? C.muted : (n(v) > 0 ? C.danger : C.warning);
+const colorDesvioCpl = (v) => (v === null || v === undefined || isNaN(n(v)) || Math.abs(n(v)) < 0.005) ? C.muted : (n(v) > 0 ? C.danger : C.success);
+
+// Canal del filtro → agencia del plan aprobado (forecast_plan_diario).
+// Velsa tiene una sola agencia. Sin filtro = todas. Canal sin agencia
+// (p. ej. NO IDENTIFICADO) no suma plan.
+function agenciasPlan(empresa, canales) {
+  if (empresa === "velsa") return ["VELSA"];
+  if (!canales.length) return [];
+  const set = new Set();
+  canales.forEach((c) => {
+    const u = String(c || "").toUpperCase();
+    if (u.includes("ARTS") || u === "ARST") set.add("ARTS");
+    else if (u.includes("VIDIKA")) set.add("VIDIKA");
+  });
+  return [...set];
+}
+
 function fmtCantPct(cant, pct) {
   if (cant === undefined || cant === null) return "—";
   const c = n(cant);
@@ -132,12 +152,12 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
                 else display = (val !== undefined && val !== null && n(val) !== 0) ? String(n(val)) : "—";
               }
               return (
-                <td key={d.dia} className="px-2 py-1.5 text-center border-r" style={{ color: fila.color || C.muted, borderColor: C.border }}>
+                <td key={d.dia} className="px-2 py-1.5 text-center border-r" style={{ color: fila.colorFn ? fila.colorFn(val) : (fila.color || C.muted), borderColor: C.border }}>
                   {display}
                 </td>
               );
             })}
-            <td className="px-3 py-1.5 text-center font-black border-l" style={{ color: fila.color || C.muted, borderColor: C.border }}>
+            <td className="px-3 py-1.5 text-center font-black border-l" style={{ color: fila.colorFn ? fila.colorFn(fila.total) : (fila.color || C.muted), borderColor: C.border }}>
               {fila.separador ? "" :
                 fila.fmt ? fila.fmt(fila.total) :
                 fila.showPct ? fmtCantPct(fila.total, fila.totalPct) :
@@ -168,7 +188,7 @@ function TablaCiudad({ filas }) {
   if (!filas?.length) return <p className="p-4 text-[11px] italic" style={{color:C.muted}}>Sin datos por ciudad para el período.</p>;
   return <table className="text-[11px] border-collapse w-full"><thead style={{background:C.bgHeader}}><tr>{['CIUDAD','PROVINCIA','LEADS','INGRESOS JOT','ACTIVOS','% ACTIVACIÓN'].map(h=><th key={h} className="px-3 py-2 border-b text-center" style={{borderColor:C.border,color:C.slate}}>{h}</th>)}</tr></thead><tbody>{filas.map((r,i)=><tr key={`${r.ciudad}-${i}`} className="border-b" style={{borderColor:C.border}}><td className="px-3 py-2 font-black">{r.ciudad||'SIN CIUDAD'}</td><td className="px-3 py-2">{r.provincia||'—'}</td><td className="px-3 py-2 text-center font-black">{n(r.total_leads)}</td><td className="px-3 py-2 text-center">{n(r.ingresos_jot)}</td><td className="px-3 py-2 text-center" style={{color:C.success}}>{n(r.activos)}</td><td className="px-3 py-2 text-center font-black">{pf(r.pct_activos)}</td></tr>)}</tbody></table>;
 }
-function buildInversionFilas(d) {
+function buildInversionFilas(d, dias, plan) {
   if (!d.inversion || d.inversion.length === 0) return [];
   const g = (key) => byDiaMap(d.inversion, "dia", key);
 
@@ -201,9 +221,41 @@ function buildInversionFilas(d) {
   const tAPAPre      = totalFromMap(actPlanAsigPre);
   const tABAll       = totalFromMap(actBackPlanAsigPre);
 
+  // ── Plan aprobado vs real ──────────────────────────────────────────────
+  // El desvío solo se calcula en días con inversión real cargada; su TOTAL
+  // compara contra el plan de esos mismos días (a la fecha), no del mes.
+  const filasPlanInv = [], filasPlanCpl = [];
+  if (plan && plan.length) {
+    const pInv = byDiaMap(plan, "dia", "inversion");
+    const pLeads = byDiaMap(plan, "dia", "leads");
+    const diasReal = Object.keys(inv).filter((k) => n(inv[k]) > 0);
+    const desvInv = {}, desvCpl = {};
+    let pInvFecha = 0, pLeadsFecha = 0;
+    diasReal.forEach((k) => {
+      desvInv[k] = n(inv[k]) - n(pInv[k]);
+      pInvFecha += n(pInv[k]); pLeadsFecha += n(pLeads[k]);
+      const cplReal = n(leads[k]) > 0 ? n(inv[k]) / n(leads[k]) : null;
+      const cplPlan = n(pLeads[k]) > 0 ? n(pInv[k]) / n(pLeads[k]) : null;
+      desvCpl[k] = cplReal !== null && cplPlan !== null ? cplReal - cplPlan : null;
+    });
+    const tPInv = totalFromMap(pInv), tPLeads = totalFromMap(pLeads);
+    const cplRealT = tLeads > 0 ? tInv / tLeads : null;
+    const cplPlanFecha = pLeadsFecha > 0 ? pInvFecha / pLeadsFecha : null;
+    filasPlanInv.push(
+      { label: "↳ PRESUPUESTO INVERSIÓN  (plan aprobado · total mes)", byDia: pInv, total: tPInv, fmt: usd, color: C.slate },
+      { label: "↳ DESVÍO INVERSIÓN  (real − plan · total a la fecha)",  byDia: desvInv, total: tInv - pInvFecha, fmt: sgnUsd, colorFn: colorDesvio },
+    );
+    filasPlanCpl.push(
+      { label: "↳ CPL PLAN  (plan inv ÷ plan leads)", byDia: divDiaMap(pInv, pLeads), total: tPLeads > 0 ? tPInv / tPLeads : null, fmt: usd, color: C.slate },
+      { label: "↳ DESVÍO CPL  (real − plan)",          byDia: desvCpl, total: cplRealT !== null && cplPlanFecha !== null ? cplRealT - cplPlanFecha : null, fmt: sgnUsd, colorFn: colorDesvioCpl },
+    );
+  }
+
   return [
     { label: "INVERSIÓN DIARIA",                                                          byDia: inv,                           total: tInv,                                            fmt: usd, color: C.violet  },
+    ...filasPlanInv,
     { label: "CPL  (inv ÷ leads totales Bitrix)",                                         byDia: divDiaMap(inv, leads),         total: tLeads       > 0 ? tInv / tLeads       : null,   fmt: usd, color: C.primary },
+    ...filasPlanCpl,
     { label: "COSTO INGRESO BITRIX  (inv ÷ ventas subidas Bitrix)",                       byDia: divDiaMap(inv, ventaSubida),   total: tVentaSubida > 0 ? tInv / tVentaSubida : null,   fmt: usd, color: C.cyan    },
     { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",                        byDia: divDiaMap(inv, jotMes),        total: tJot         > 0 ? tInv / tJot         : null,   fmt: usd, color: C.cyan    },
     { label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",                    byDia: divDiaMap(inv, activosMes),    total: tAct         > 0 ? tInv / tAct         : null,   fmt: usd, color: C.success },
@@ -364,6 +416,7 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState("");
+  const [planDiario,   setPlanDiario]   = useState([]);
 
   const dataLoaded = useRef(false);
   const reportRequest = useRef(null);
@@ -403,6 +456,18 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
       if (!d.meta?.dias || !Array.isArray(d.inversion)) throw new Error("El backend devolvió un reporte incompleto");
       setData(d);
       dataLoaded.current = true;
+      // Plan aprobado: llamada aparte; si falla, el reporte se ve igual sin plan.
+      const ags = agenciasPlan(empresa, canalesSel_);
+      if (empresa !== "velsa" && canalesSel_.length > 0 && ags.length === 0) {
+        setPlanDiario([]);
+      } else {
+        const pp = new URLSearchParams({ empresa, anio: anio_, mes: mes_ });
+        if (ags.length) pp.set("agencias", ags.join(","));
+        fetch(`${API}/api/forecast/plan-diario?${pp}`, { headers: cabecerasSesion() })
+          .then((r) => r.json())
+          .then((p) => setPlanDiario(p.success ? p.dias || [] : []))
+          .catch(() => setPlanDiario([]));
+      }
       if (d.canales_disponibles) setCanalesDisp(d.canales_disponibles.map((c) => c.canal));
     } catch (e) {
       if (controller.signal.reason === "timeout") setError("El backend tardó más de 45 segundos. Intenta de nuevo o revisa el servicio de reportes.");
@@ -411,7 +476,7 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
       clearTimeout(timer);
       if (reportRequest.current === controller) { reportRequest.current = null; setLoading(false); }
     }
-  }, [ruta]);
+  }, [ruta, empresa]);
 
   const handleCargar = () => cargarDatos(canalesSel, anio, mes);
   const cambiarPeriodo = (setter, value) => {
@@ -1045,7 +1110,7 @@ ${horaData.length > 0 ? `
             )}
           </div>
           <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">
-            <TablaHorizontal filas={buildInversionFilas(data, dias)} dias={dias} accent={C.violet} />
+            <TablaHorizontal filas={buildInversionFilas(data, dias, planDiario)} dias={dias} accent={C.violet} />
           </Block>
 
           <Block title="Leads por Canal + Etapas Bitrix" accent={C.primary} id="bloque-etapas">

@@ -174,6 +174,11 @@ app.use('/api/bitrix-connector/placement-call', express.urlencoded({ limit: '32k
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Script publico de despliegue para estaciones de trabajo.
+// Se monta fuera de /api para no interferir con las rutas existentes.
+const publicPath = path.resolve(__dirname, '..', 'public');
+app.use(express.static(publicPath));
+
 // Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
 // Va DESPUES de express.json: si se monta antes, req.body llega vacio y responde "Actividad inválida".
 app.use('/api/control-asistencia', controlAsistenciaRoutes);
@@ -192,6 +197,7 @@ app.use('/api',              testEmailRoutes);
 app.use('/api/indicadores',             indicadoresRoutes);
 app.use('/api/indicadores-velsa',       indicadoresVelsaRoutes);
 app.use('/api/semillero', require('./routes/semillero.routes'));
+app.use('/api/ventaenlinea', require('./routes/ventaenlinea.routes'));
 app.use('/api/comparativa-indicadores', comparativaIndicadoresRoutes);
 app.use('/api/redes',             redesRoutes);
 app.use('/api/redes-velsa',       redesVelsaRoutes);

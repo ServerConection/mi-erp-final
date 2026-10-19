@@ -262,18 +262,15 @@ const reconciliarLeads = async ({
            )
            INSERT INTO bitrix_webhook_leads
              (bitrix_id, empresa, etapa, event, etapa_bitrix, raw_query, created_at, categoria_id, pipeline)
-           SELECT bitrix_id, $2, etapa, 'semillero_sync', etapa_bitrix, raw_query,
+           SELECT bitrix_id, $2::text, etapa, LOWER($2::text) || '_sync', etapa_bitrix, raw_query,
                   COALESCE(fecha, NOW()), $3,
-                  CASE WHEN LOWER($2) = 'semillero' THEN 'SEMILLERO' ELSE NULL END
+                  UPPER($2::text)
              FROM cambios
            ON CONFLICT (empresa, bitrix_id) DO UPDATE
              SET etapa = EXCLUDED.etapa,
                  etapa_bitrix = EXCLUDED.etapa_bitrix,
                  categoria_id = EXCLUDED.categoria_id,
-                 pipeline = CASE
-                   WHEN LOWER(EXCLUDED.empresa) = 'semillero' THEN 'SEMILLERO'
-                   ELSE bitrix_webhook_leads.pipeline
-                 END,
+                 pipeline = UPPER(EXCLUDED.empresa),
                  created_at = EXCLUDED.created_at,
                  raw_query = EXCLUDED.raw_query,
                  updated_at = NOW()`,
@@ -349,10 +346,7 @@ const reconciliarLeads = async ({
     await pool.query(
       `UPDATE bitrix_webhook_leads
           SET categoria_id = $4,
-              pipeline = CASE
-                WHEN LOWER(empresa) = 'semillero' THEN 'FUERA_SEMILLERO'
-                ELSE pipeline
-              END,
+              pipeline = 'FUERA_' || UPPER(empresa),
               updated_at = NOW()
         WHERE empresa = $1
           AND created_at >= $2::date

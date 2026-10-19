@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardEdit, Cpu, Download, HardDrive, Image as ImageIcon, Laptop, Loader2, MemoryStick, Plus, Save, Search, ShieldCheck, Wrench, X } from "lucide-react";
+import PlanoInventarioActivos from "../components/PlanoInventarioActivos";
 
 const API = `${(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")}/api/inventario-activos`;
 const API_ORIGEN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
@@ -25,6 +26,7 @@ const INICIAL = {
   pulgadas: "", impresion: "", ubicacion: "", area: "", estado: "",
   fecha_adquisicion: "", observacion_vida_util: "", mouse: "", teclado: "",
   regulador: "", cambio_reemplazo: "", foto: null,
+  usuario_asignado_id: null, usuario_asignado_nombre: "", usuario_asignado_cargo: "", usuario_asignado_perfil: "",
 };
 
 const leerPerfil = () => {
@@ -68,6 +70,7 @@ function SelectOpciones({ value, onChange, opciones, requerido = false }) {
 const DETALLE_CAMPOS = [
   ["id", "ID"], ["empresa", "Empresa"], ["tipo_dispositivo", "Tipo"], ["marca", "Marca"],
   ["modelo", "Modelo"], ["numero_serie", "Serie / MAC"], ["procesador", "Procesador"],
+  ["usuario_asignado_nombre", "Usuario asignado"], ["usuario_asignado_cargo", "Cargo del usuario"],
   ["ram", "RAM (texto compatible)"], ["ram_gb", "RAM (GB)"], ["disco_tipo", "Tipo de disco"],
   ["disco_espacio", "Disco (texto compatible)"], ["disco_gb", "Disco (GB)"],
   ["fecha_fabricacion", "Fecha de fabricacion"], ["pulgadas", "Pulgadas"], ["impresion", "Impresion"],
@@ -138,6 +141,13 @@ export default function InventarioActivos() {
   const usuarioSesion = normalizarEntrada(String(perfil.usuario || perfil.nombre || "USUARIO AUTENTICADO"));
   const [form, setForm] = useState(INICIAL);
   const [activos, setActivos] = useState([]);
+  const [activosPlano, setActivosPlano] = useState([]);
+  const [cargandoPlano, setCargandoPlano] = useState(true);
+  const [vistaPrincipal, setVistaPrincipal] = useState("plano");
+  const [idSolicitado, setIdSolicitado] = useState("");
+  const [usuarioAsignadoId, setUsuarioAsignadoId] = useState(perfil.id ? String(perfil.id) : "");
+  const [usuariosAsignables, setUsuariosAsignables] = useState([]);
+  const [verTodasEmpresas, setVerTodasEmpresas] = useState(false);
   const [marcasOpciones, setMarcasOpciones] = useState([]);
   const [activoId, setActivoId] = useState("");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -205,6 +215,17 @@ export default function InventarioActivos() {
     setResumen(indicadores.data || { total: 0, por_tipo: [] });
   };
 
+  const cargarPlano = async () => {
+    setCargandoPlano(true);
+    try {
+      const respuesta = await fetch(`${API}/plano`, { headers: cabeceras() });
+      const datos = await leerRespuesta(respuesta);
+      setActivosPlano(datos.data || []);
+    } finally {
+      setCargandoPlano(false);
+    }
+  };
+
   useEffect(() => {
     let vigente = true;
     const params = new URLSearchParams();
@@ -233,6 +254,30 @@ export default function InventarioActivos() {
     return () => { vigente = false; };
   }, []);
 
+  useEffect(() => {
+    cargarPlano().catch((error) => setMensaje({ tipo: "error", texto: error.message }));
+  }, []);
+
+  useEffect(() => {
+    if (!esAdmin || !mostrarFormulario || !form.empresa) return;
+    let vigente = true;
+    const params = new URLSearchParams({ empresa: form.empresa });
+    if (verTodasEmpresas) params.set("todas", "true");
+    fetch(`${API}/usuarios-asignables?${params}`, { headers: cabeceras() })
+      .then(leerRespuesta)
+      .then((datos) => {
+        if (!vigente) return;
+        const usuarios = datos.data || [];
+        setUsuariosAsignables(usuarios);
+        if (!activoId && !usuarioAsignadoId) {
+          const propio = usuarios.find((u) => normalizarEntrada(String(u.usuario || "")) === usuarioSesion);
+          if (propio) setUsuarioAsignadoId(String(propio.id));
+        }
+      })
+      .catch((error) => { if (vigente) setMensaje({ tipo: "error", texto: error.message }); });
+    return () => { vigente = false; };
+  }, [esAdmin, mostrarFormulario, form.empresa, verTodasEmpresas]);
+
   useEffect(() => () => {
     if (fotoPreview.startsWith("blob:")) URL.revokeObjectURL(fotoPreview);
   }, [fotoPreview]);
@@ -256,8 +301,10 @@ export default function InventarioActivos() {
     setMensaje(null);
   };
 
-  const nuevoActivo = () => {
-    setForm(INICIAL); setActivoId(""); setResponsable(usuarioSesion);
+  const nuevoActivo = (idPlano = "", empresaPlano = "") => {
+    setForm({ ...INICIAL, empresa: empresaPlano }); setActivoId(""); setResponsable(usuarioSesion);
+    setIdSolicitado(idPlano); setUsuarioAsignadoId(perfil.id ? String(perfil.id) : "");
+    setVerTodasEmpresas(false); setUsuariosAsignables([]);
     setFechaRevision("AUTOMATICA AL GUARDAR"); setFotoArchivo(null); setFotoPreview("");
     setDiscoEntrada(""); setDiscoUnidad("GB");
     setMostrarFormulario(true); setMensaje(null);
@@ -268,8 +315,13 @@ export default function InventarioActivos() {
     setActivoId(id); setMensaje(null);
     if (!id) return;
     const activo = activos.find((item) => item.id === id);
-    if (!activo) return;
-    cargarActivoEnFormulario(activo);
+    const activoPlano = activosPlano.find((item) => item.id === id);
+    const seleccionado = activo || activoPlano;
+    if (!seleccionado) return;
+    cargarActivoEnFormulario(seleccionado);
+    setIdSolicitado("");
+    setUsuarioAsignadoId(seleccionado.usuario_asignado_id ? String(seleccionado.usuario_asignado_id) : "");
+    setVerTodasEmpresas(false);
     setMostrarFormulario(true);
     requestAnimationFrame(irAlInicio);
   };
@@ -320,6 +372,8 @@ export default function InventarioActivos() {
         const payload = {
           ...form,
           ...(editando ? { responsable } : {}),
+          ...(!editando && idSolicitado ? { id_solicitado: idSolicitado } : {}),
+          ...(esAdmin ? { usuario_asignado_id: usuarioAsignadoId || null } : {}),
           disco_gb: discoEntrada === "" ? null : Number(discoEntrada) * (discoUnidad === "TB" ? 1024 : 1),
         };
         const response = await fetch(editando ? `${API}/${activoId}` : API, {
@@ -347,6 +401,7 @@ export default function InventarioActivos() {
       setMarcasOpciones((actuales) => [...new Set([...actuales, guardado.marca].filter(Boolean))]);
       setFotoArchivo(null); setFotoPreview(urlFoto(guardado.foto));
       await cargarActivos();
+      await cargarPlano();
       setMensaje({ tipo: "exito", texto: editando ? `Activo ${guardado.id} actualizado correctamente.` : `Activo ${guardado.id} registrado correctamente.` });
       setMostrarFormulario(false);
       requestAnimationFrame(irAlInicio);
@@ -398,12 +453,12 @@ export default function InventarioActivos() {
           </div>
           <div className="flex flex-wrap gap-2">
             {mostrarFormulario && <button type="button" onClick={() => setMostrarFormulario(false)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-black text-white hover:bg-white/20"><ArrowLeft size={18} /> Volver al listado</button>}
-            <button type="button" onClick={nuevoActivo} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-slate-900 shadow hover:bg-blue-50"><Plus size={18} /> Nuevo activo</button>
+            <button type="button" onClick={() => nuevoActivo()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-slate-900 shadow hover:bg-blue-50"><Plus size={18} /> Nuevo activo</button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto mt-5 max-w-5xl px-1 sm:mt-7 sm:px-3">
+      <main className={`mx-auto mt-5 px-1 sm:mt-7 sm:px-3 ${vistaPrincipal === "plano" ? "max-w-[1600px]" : "max-w-5xl"}`}>
         {mensaje && <div role="alert" className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm font-semibold ${mensaje.tipo === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
           {mensaje.tipo === "error" ? <AlertCircle className="mt-0.5 shrink-0" size={19} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={19} />}<span>{mensaje.texto}</span>
         </div>}
@@ -412,6 +467,7 @@ export default function InventarioActivos() {
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6"><h2 className="font-black text-slate-800">Identificacion del activo</h2><p className="mt-0.5 text-xs text-slate-500">Los campos marcados con * son obligatorios.</p></div>
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 sm:p-6">
+              {idSolicitado && <Campo label="ID del plano" className="sm:col-span-2"><input readOnly value={idSolicitado} className={inputClass} /></Campo>}
               <Campo label="Empresa" requerido><SelectOpciones value={form.empresa} onChange={(e) => cambiar("empresa", e.target.value)} opciones={["NOVONET", "VELSA"]} requerido /></Campo>
               <Campo label="Tipo de dispositivo" requerido><SelectOpciones value={form.tipo_dispositivo} onChange={(e) => cambiar("tipo_dispositivo", e.target.value)} opciones={TIPOS} requerido /></Campo>
               <Campo label="Marca" requerido ayuda="Puede elegir una marca registrada o escribir una nueva."><input required list="marcas-activos" value={form.marca} onChange={(e) => cambiar("marca", e.target.value)} className={inputClass} placeholder="EJ. DELL" /><datalist id="marcas-activos">{marcas.map((m) => <option key={m} value={m} />)}</datalist></Campo>
@@ -462,7 +518,9 @@ export default function InventarioActivos() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-slate-800"><ShieldCheck size={20} className="text-blue-600" /><h2 className="font-black">Datos automaticos</h2></div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable" requerido={Boolean(activoId && esAdmin)} ayuda={activoId && esAdmin ? "Editable solo por administradores." : "Se asigna automaticamente al registrar."}><input required={Boolean(activoId && esAdmin)} readOnly={!activoId || !esAdmin} value={responsable} onChange={(e) => setResponsable(normalizarEntrada(e.target.value))} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo></div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Campo label="Responsable" requerido={Boolean(activoId && esAdmin)} ayuda={activoId && esAdmin ? "Editable solo por administradores." : "Se asigna automaticamente al registrar."}><input required={Boolean(activoId && esAdmin)} readOnly={!activoId || !esAdmin} value={responsable} onChange={(e) => setResponsable(normalizarEntrada(e.target.value))} className={inputClass} /></Campo><Campo label="Fecha de revision"><input readOnly value={fechaRevision} className={inputClass} /></Campo>
+              {esAdmin ? <Campo label="Usuario asignado" requerido={!activoId} ayuda="Usuario que utiliza el equipo; no cambia quien lo registro." className="sm:col-span-2"><div className="space-y-2"><select required={!activoId} value={usuarioAsignadoId} onChange={(e) => setUsuarioAsignadoId(e.target.value)} className={inputClass}><option value="">{activoId ? "SIN ASIGNAR" : "SELECCIONE UN USUARIO"}</option>{usuariosAsignables.map((u) => <option key={u.id} value={u.id}>{u.nombre} · {u.cargo || u.perfil || "SIN CARGO"} · {u.empresa}</option>)}</select><label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={verTodasEmpresas} onChange={(e) => setVerTodasEmpresas(e.target.checked)} /> Ver usuarios de todas las empresas</label></div></Campo> : <Campo label="Usuario asignado" ayuda="Al registrar se asigna automaticamente al usuario logueado." className="sm:col-span-2"><input readOnly value={activoId ? (form.usuario_asignado_nombre || usuarioSesion) : usuarioSesion} className={inputClass}/></Campo>}
+            </div>
           </section>
 
           <div className="mt-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex sm:items-center sm:justify-between sm:px-5">
@@ -471,7 +529,12 @@ export default function InventarioActivos() {
               {guardando ? <Loader2 size={19} className="animate-spin" /> : <Save size={19} />}{guardando ? "Guardando..." : activoId && !esAdmin ? "Subir foto" : activoId ? "Guardar cambios" : "Registrar activo"}
             </button>
           </div>
-        </form> : <div className="space-y-5">
+        </form> : <>
+          <div className="mb-5 flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+            <button type="button" onClick={() => setVistaPrincipal("plano")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "plano" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Plano</button>
+            <button type="button" onClick={() => setVistaPrincipal("listado")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "listado" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Listado</button>
+          </div>
+          {vistaPrincipal === "plano" ? <PlanoInventarioActivos activos={activosPlano} cargando={cargandoPlano} esAdmin={esAdmin} urlFoto={urlFoto} onRegistrar={nuevoActivo} onEditar={(activo) => seleccionarActivo(activo.id)} /> : <div className="space-y-5">
           <Indicadores resumen={resumen} />
 
           <form onSubmit={aplicarFiltros} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -501,6 +564,7 @@ export default function InventarioActivos() {
 
           {paginacion.total_pages > 1 && <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><button type="button" disabled={pagina <= 1} onClick={() => { setCargando(true); setPagina((p) => p - 1); }} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold disabled:opacity-40"><ChevronLeft size={17}/> Anterior</button><p className="text-xs font-bold text-slate-500">Pagina {paginacion.page} de {paginacion.total_pages} · {paginacion.total} activos</p><button type="button" disabled={pagina >= paginacion.total_pages} onClick={() => { setCargando(true); setPagina((p) => p + 1); }} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente <ChevronRight size={17}/></button></div>}
         </div>}
+        </>}
       </main>
       <ModalDetalle activo={detalle} esAdmin={esAdmin} onCerrar={() => setDetalle(null)} onEditar={() => { seleccionarActivo(detalle.id); setDetalle(null); }} />
     </div>

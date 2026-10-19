@@ -23,6 +23,7 @@ const MODULOS = {
   BOT_AUDITOR: 'BotAuditor',
 
   INDICADORES_SEMILLERO: 'IndicadoresSemillero',
+  INDICADORES_VENTAENLINEA: 'IndicadoresVentaenlinea',
 };
 
 const MODULOS_GERENCIALES = [
@@ -191,6 +192,14 @@ const PERMISOS_POR_EMPRESA_PERFIL = {
   SEMILLERO: {
     USUARIO: [
       MODULOS.INDICADORES_SEMILLERO,
+    ],
+  },
+  VENTAENLINEA: {
+    USUARIO: [
+      MODULOS.INDICADORES_VENTAENLINEA,
+    ],
+    SUPERVISOR: [
+      MODULOS.INDICADORES_VENTAENLINEA,
     ],
   },
 };

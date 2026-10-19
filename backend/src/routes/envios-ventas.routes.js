@@ -44,15 +44,16 @@ router.use(verificarToken);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 15 * 1024 * 1024, // 15 MB
+    fileSize: 50 * 1024 * 1024, // multimedia: 50 MB; imágenes/PDF: 15 MB abajo
     files: 1,                   // un solo archivo por request
     fields: 10,                 // techo de campos de texto (anti-abuso)
     parts: 15,
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
+      || file.mimetype === 'audio/mpeg' || file.mimetype === 'video/mp4'
       || file.mimetype === 'application/octet-stream') cb(null, true);
-    else cb(new Error('Solo se permiten imágenes o PDF'));
+    else cb(new Error('Solo se permiten imágenes, PDF, MP3 o MP4'));
   }
 });
 
@@ -194,14 +195,14 @@ router.post('/upload', limiteSubidas, (req, res, next) => {
     if (!err) return next();
     // Errores de multer: se traducen a mensajes claros, sin filtrar internals.
     const mapa = {
-      LIMIT_FILE_SIZE: 'El archivo supera el máximo de 15 MB. Comprime la imagen o usa menor resolución.',
+      LIMIT_FILE_SIZE: 'El archivo supera el máximo de 50 MB.',
       LIMIT_FILE_COUNT: 'Solo se permite un archivo por subida.',
       LIMIT_UNEXPECTED_FILE: 'Campo de archivo inesperado.',
     };
     const ref = registrarError('upload:multer', err, { code: err.code });
     return res.status(400).json({
       success: false,
-      error: mapa[err.code] || 'Solo se permiten imágenes o PDF.',
+      error: mapa[err.code] || 'Solo se permiten imágenes, PDF, MP3 o MP4.',
       codigo: err.code || 'ARCHIVO_INVALIDO',
       ref,
     });
@@ -237,6 +238,15 @@ router.post('/upload', limiteSubidas, (req, res, next) => {
         detalle: veredicto.detalle,
       });
       return res.status(415).json({ success: false, error: veredicto.motivo, codigo: veredicto.codigo });
+    }
+
+    const esMultimedia = veredicto.tipo === 'mp3' || veredicto.tipo === 'mp4';
+    if (!esMultimedia && req.file.size > 15 * 1024 * 1024) {
+      return res.status(413).json({
+        success: false,
+        error: 'Las imágenes y PDF no pueden superar 15 MB.',
+        codigo: 'ARCHIVO_DEMASIADO_GRANDE',
+      });
     }
 
     if (veredicto.incoherente) {
@@ -352,7 +362,8 @@ router.get('/archivo/:carpeta/:archivo', limiteDescargas, async (req, res) => {
     // Lista blanca: si no reconocemos la extensión, se entrega como descarga
     // binaria opaca en vez de dejar que el navegador la interprete.
     res.set('Content-Type', mime || 'application/octet-stream');
-    res.set('Content-Disposition', `${mime ? 'inline' : 'attachment'}; filename="documento${ext || '.bin'}"`);
+    const mostrarEnLinea = Boolean(mime && !['.mp3', '.mp4'].includes(ext));
+    res.set('Content-Disposition', `${mostrarEnLinea ? 'inline' : 'attachment'}; filename="documento${ext || '.bin'}"`);
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; object-src 'none'; sandbox");
     res.set('X-Frame-Options', 'DENY');

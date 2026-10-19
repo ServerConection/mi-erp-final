@@ -858,7 +858,7 @@ function useDocumentoProtegido(ruta) {
 // foto por los lados, que en una cédula es justo donde está el número. Ahora la
 // miniatura usa "contain" (se ve entera) y al hacer clic se abre esto, que
 // permite acercar, rotar y descargar.
-function VisorDocumento({ url, titulo, esPdf, onCerrar }) {
+function VisorDocumento({ url, titulo, esPdf, onCerrar, onDescargar }) {
   const [zoom, setZoom] = useState(1);
   const [giro, setGiro] = useState(0);
 
@@ -916,9 +916,9 @@ function VisorDocumento({ url, titulo, esPdf, onCerrar }) {
           </>
         )}
 
-        <a href={url} download={`${titulo}`} style={{ ...btn, textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+        <button type="button" style={btn} onClick={(e) => { e.stopPropagation(); onDescargar?.(); }}>
           ⭳ Descargar
-        </a>
+        </button>
         <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
           ⧉ Nueva pestaña
         </a>
@@ -964,19 +964,25 @@ function VisorDocumento({ url, titulo, esPdf, onCerrar }) {
 }
 
 // ── Campo de documento dentro del detalle ────────────────────────────────────
-function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert, editable = true, mensajeExito }) {
+function CampoDocumento({ registroId, field, etiqueta, valor, numeroIdentificacion, onCambio, onAlert, onHistorialActualizado, editable = true, mensajeExito }) {
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
+  const extensionMultimedia = String(valor || '').match(/\.(mp3|mp4)(?:$|[?#])/i)?.[1]?.toLowerCase() || '';
+  const esMultimedia = Boolean(extensionMultimedia);
   const [abierto, setAbierto] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [eliminando, setEliminando] = useState(false);
+  const [descargando, setDescargando] = useState(false);
   const inputRef = useRef(null);
 
-  const MAX_MB = 15;
+  const MAX_MB_DOCUMENTO = 15;
+  const MAX_MB_MULTIMEDIA = 50;
 
   const subir = async (file) => {
     if (!editable || !file) return;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      onAlert({ type: "error", msg: `El archivo pesa ${(file.size / 1048576).toFixed(1)} MB y el máximo es ${MAX_MB} MB.` });
+    const esArchivoMultimedia = ['audio/mpeg', 'video/mp4'].includes(file.type) || /\.(mp3|mp4)$/i.test(file.name);
+    const maxMb = esArchivoMultimedia ? MAX_MB_MULTIMEDIA : MAX_MB_DOCUMENTO;
+    if (file.size > maxMb * 1024 * 1024) {
+      onAlert({ type: "error", msg: `El archivo pesa ${(file.size / 1048576).toFixed(1)} MB y el máximo es ${maxMb} MB.` });
       return;
     }
     setSubiendo(true);
@@ -1042,6 +1048,34 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
     }
   };
 
+  const descargar = async () => {
+    if (!registroId || !field || !url || descargando) return;
+    setDescargando(true);
+    try {
+      const token = localStorage.getItem("token");
+      const respuesta = await fetch(`${API}/api/backoffice/${registroId}/documentos/${encodeURIComponent(field)}/descarga`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const resultado = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !resultado.success) {
+        throw new Error(resultado.error || `No se pudo auditar la descarga (HTTP ${respuesta.status}).`);
+      }
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = esMultimedia ? `${etiqueta}.${extensionMultimedia}` : etiqueta;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      onHistorialActualizado?.(resultado.historial);
+      onAlert?.({ type: "success", msg: "Descarga registrada en el historial de cambios." });
+    } catch (errorDescarga) {
+      onAlert?.({ type: "error", msg: errorDescarga.message || "No se pudo registrar la descarga." });
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   const marco = {
     borderRadius: 8, border: "1px solid #dbe4f0", background: "#f8fafc",
     height: 150, display: "flex", alignItems: "center", justifyContent: "center",
@@ -1075,7 +1109,14 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
             </button>
           )}
 
-          {!cargando && url && !esPdf && (
+          {!cargando && url && esMultimedia && (
+            <div style={{ textAlign: "center", color: "#475569", fontWeight: 800, fontSize: 12 }}>
+              <div style={{ fontSize: 34 }}>{extensionMultimedia === 'mp3' ? '🎵' : '🎬'}</div>
+              Archivo {extensionMultimedia.toUpperCase()}
+            </div>
+          )}
+
+          {!cargando && url && !esPdf && !esMultimedia && (
             <img
               src={url}
               alt={etiqueta}
@@ -1096,13 +1137,23 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
       )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {valor && url && (
+        {valor && url && !esMultimedia && (
           <button
             type="button"
             onClick={() => setAbierto(true)}
             style={{ ...botonAccionBase, fontWeight: 800, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd" }}
           >
             🔍 Ver completo
+          </button>
+        )}
+        {valor && url && esMultimedia && (
+          <button
+            type="button"
+            disabled={descargando}
+            onClick={descargar}
+            style={{ ...botonAccionBase, fontWeight: 800, color: "#0369a1", background: "#e0f2fe", border: "1px solid #bae6fd", textDecoration: "none" }}
+          >
+            {descargando ? "Registrando…" : `⬇ Descargar ${extensionMultimedia.toUpperCase()}`}
           </button>
         )}
         {editable && (
@@ -1131,14 +1182,14 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,audio/mpeg,video/mp4,.mp3,.mp4"
           style={{ display: "none" }}
           onChange={(e) => subir(e.target.files?.[0])}
         />
       )}
 
-      {abierto && url && (
-        <VisorDocumento url={url} titulo={etiqueta} esPdf={esPdf} onCerrar={() => setAbierto(false)} />
+      {abierto && url && !esMultimedia && (
+        <VisorDocumento url={url} titulo={etiqueta} esPdf={esPdf} onCerrar={() => setAbierto(false)} onDescargar={descargar} />
       )}
     </div>
   );
@@ -1146,6 +1197,7 @@ function CampoDocumento({ field, etiqueta, valor, numeroIdentificacion, onCambio
 
 function MiniaturaDocumento({ valor, etiqueta }) {
   const { cargando, url, error, esPdf } = useDocumentoProtegido(valor);
+  const extensionMultimedia = String(valor || '').match(/\.(mp3|mp4)(?:$|[?#])/i)?.[1]?.toLowerCase() || '';
 
   if (!valor) {
     return (
@@ -1171,6 +1223,15 @@ function MiniaturaDocumento({ valor, etiqueta }) {
     );
   }
 
+  if (extensionMultimedia) {
+    return (
+      <div style={{ width: "100%", height: 84, borderRadius: 10, background: "#f8fafc", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#475569", fontWeight: 900, fontSize: 11 }}>
+        <span style={{ fontSize: 26 }}>{extensionMultimedia === 'mp3' ? '🎵' : '🎬'}</span>
+        {extensionMultimedia.toUpperCase()}
+      </div>
+    );
+  }
+
   return (
     <img
       src={url}
@@ -1180,7 +1241,7 @@ function MiniaturaDocumento({ valor, etiqueta }) {
   );
 }
 
-function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAlert, puedeEditar = false }) {
+function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAlert, onHistorialActualizado, puedeEditar = false }) {
   const [abierto, setAbierto] = useState(false);
 
   const documentos = useMemo(
@@ -1257,6 +1318,7 @@ function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAle
                         <div key={`${grupo.titulo}-${item.field}`} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: 10 }}>
                           <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" }}>{item.etiqueta}</div>
                           <CampoDocumento
+                            registroId={detail?.id}
                             field={item.field}
                             etiqueta={item.etiqueta}
                             valor={item.valor}
@@ -1266,6 +1328,7 @@ function CampoDocumentosCompacto({ detail, numeroIdentificacion, onCambio, onAle
                               setAbierto(false);
                             }}
                             onAlert={onAlert}
+                            onHistorialActualizado={onHistorialActualizado}
                             editable={puedeEditar}
                           />
                         </div>
@@ -1467,6 +1530,7 @@ function GaleriaDocumentosRegistro({ registroId, puedeEditar, onGuardarDocumento
                         {FIELD_LABELS[field] || field}
                       </div>
                       <CampoDocumento
+                        registroId={registroId}
                         field={field}
                         etiqueta={FIELD_LABELS[field] || field}
                         valor={detalle[field] || ""}
@@ -1474,6 +1538,7 @@ function GaleriaDocumentosRegistro({ registroId, puedeEditar, onGuardarDocumento
                         editable={puedeEditar}
                         mensajeExito="Documento guardado correctamente."
                         onAlert={setAviso}
+                        onHistorialActualizado={(historial) => setDetalle((prev) => ({ ...prev, hist_cambio_estatus: historial }))}
                         onCambio={async (nuevaRuta) => {
                           const ok = await onGuardarDocumento(registroId, field, nuevaRuta);
                           if (ok) setDetalle((prev) => ({ ...prev, [field]: nuevaRuta }));
@@ -3541,6 +3606,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                 numeroIdentificacion={detail?.numero_identificacion}
                                 onCambio={(campo, nuevaRuta) => setDetail((prev) => ({ ...prev, [campo]: nuevaRuta }))}
                                 onAlert={setAlert}
+                                onHistorialActualizado={(historial) => setDetail((prev) => ({ ...prev, hist_cambio_estatus: historial }))}
                                 puedeEditar={puedeEditar}
                               />
                             </fieldset>
@@ -3566,12 +3632,14 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
 
                               {esCampoDocumento(field) ? (
                                 <CampoDocumento
+                                  registroId={detail?.id || selectedId}
                                   field={field}
                                   etiqueta={FIELD_LABELS[field] || field}
                                   valor={detail?.[field] || ""}
                                   numeroIdentificacion={detail?.numero_identificacion}
                                   onCambio={(nuevaRuta) => setDetail((prev) => ({ ...prev, [field]: nuevaRuta }))}
                                   onAlert={setAlert}
+                                  onHistorialActualizado={(historial) => setDetail((prev) => ({ ...prev, hist_cambio_estatus: historial }))}
                                 />
                               ) : field === "plan_contratado_final" ? (
                                 <div style={{ display: "grid", gap: 8 }}>

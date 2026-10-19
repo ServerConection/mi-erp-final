@@ -33,6 +33,7 @@ const CAMPOS_EDITABLES = [
 const CAMPOS_FECHA = new Set(['fecha_fabricacion', 'fecha_adquisicion']);
 const CAMPOS_NUMERICOS = new Set(['ram_gb', 'disco_gb']);
 const CAMPOS_SERVIDOR = ['responsable', 'fecha_revision'];
+const ID_PLANO_REGEX = /^EQ-(\d{4})$/;
 
 const normalizarTexto = (valor) => {
   if (valor === undefined || valor === null) return null;
@@ -96,14 +97,50 @@ const rechazarCamposServidor = (body, campos = CAMPOS_SERVIDOR) => {
 const usuarioActual = (req) => normalizarTexto(req.user?.usuario) || `USUARIO ${req.user.id}`;
 const textoGB = (valor) => valor === null ? null : `${Number(valor).toString()} GB`;
 
+const idSolicitadoValido = (valor) => {
+  const coincidencia = normalizarTexto(valor)?.match(ID_PLANO_REGEX);
+  if (!coincidencia) return false;
+  const numero = Number(coincidencia[1]);
+  return numero >= 1 && numero <= 52;
+};
+
+const resolverUsuarioAsignado = async (db, req, recibido, { creando = false } = {}) => {
+  const esAdmin = req.user?.perfil === 'ADMINISTRADOR';
+  if (!esAdmin) return creando ? req.user.id : undefined;
+
+  if (!creando && recibido === undefined) return undefined;
+
+  const valor = recibido === '' || recibido === null ? null : Number(recibido ?? req.user.id);
+  if (valor === null) return null;
+  if (!Number.isInteger(valor) || valor <= 0) {
+    const error = new Error('usuario_asignado_id debe ser un usuario valido.');
+    error.status = 400;
+    throw error;
+  }
+  const usuario = await db.query(
+    `SELECT id FROM public.usuarios WHERE id = $1 AND activo = 'SI'`,
+    [valor]
+  );
+  if (!usuario.rows.length) {
+    const error = new Error('El usuario asignado no existe o esta inactivo.');
+    error.status = 400;
+    throw error;
+  }
+  return valor;
+};
+
 const responderError = (res, error, operacion) => {
   console.error(`[InventarioActivos] ${operacion}:`, error.message);
   if (error.code === '23505' && error.constraint === 'inventario_activos_numero_serie_uq') {
     return res.status(409).json({ success: false, error: 'El numero de serie ya esta registrado.' });
   }
+  if (error.code === '23505' && error.constraint === 'inventario_activos_pkey') {
+    return res.status(409).json({ success: false, error: 'El ID solicitado ya esta registrado.' });
+  }
   if (error.code === '22P02' || error.code === '22007') {
     return res.status(400).json({ success: false, error: 'Uno de los valores enviados tiene un formato invalido.' });
   }
+  if (error.status) return res.status(error.status).json({ success: false, error: error.message });
   return res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : error.message,
@@ -397,9 +434,10 @@ const FILTROS_LISTA = {
   cambio_reemplazo: LISTAS.cambio_reemplazo,
 };
 
-const construirFiltros = (query) => {
+const construirFiltros = (query, alias = '') => {
   const condiciones = [];
   const valores = [];
+  const columna = (nombre) => `${alias}${nombre}`;
   const agregar = (valor) => { valores.push(valor); return `$${valores.length}`; };
 
   for (const [campo, permitidos] of Object.entries(FILTROS_LISTA)) {
@@ -408,18 +446,18 @@ const construirFiltros = (query) => {
     if (!permitidos.has(valor)) {
       return { error: `Filtro invalido para ${campo}. Valores permitidos: ${[...permitidos].join(', ')}.` };
     }
-    condiciones.push(`${campo} = ${agregar(valor)}`);
+    condiciones.push(`${columna(campo)} = ${agregar(valor)}`);
   }
 
   const area = normalizarTexto(query.area);
-  if (area) condiciones.push(`area = ${agregar(area)}`);
+  if (area) condiciones.push(`${columna('area')} = ${agregar(area)}`);
 
   const q = normalizarTexto(query.q);
   if (q) {
     const parametro = agregar(`%${q}%`);
     condiciones.push(`(
-      numero_serie ILIKE ${parametro} OR marca ILIKE ${parametro} OR
-      modelo ILIKE ${parametro} OR ubicacion ILIKE ${parametro}
+      ${columna('numero_serie')} ILIKE ${parametro} OR ${columna('marca')} ILIKE ${parametro} OR
+      ${columna('modelo')} ILIKE ${parametro} OR ${columna('ubicacion')} ILIKE ${parametro}
     )`);
   }
 
@@ -431,7 +469,7 @@ const construirFiltros = (query) => {
     if (recibido === undefined || recibido === null || String(recibido).trim() === '') continue;
     const numero = Number(recibido);
     if (!Number.isFinite(numero) || numero < 0) return { error: `${parametro} debe ser un numero mayor o igual a cero.` };
-    condiciones.push(`${columna} ${operador} ${agregar(numero)}`);
+    condiciones.push(`${alias}${columna} ${operador} ${agregar(numero)}`);
   }
 
   return {
@@ -441,7 +479,7 @@ const construirFiltros = (query) => {
 };
 
 exports.listar = async (req, res) => {
-  const filtros = construirFiltros(req.query);
+  const filtros = construirFiltros(req.query, 'ia.');
   if (filtros.error) return res.status(400).json({ success: false, error: filtros.error });
 
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
@@ -451,15 +489,21 @@ exports.listar = async (req, res) => {
   try {
     const [result, conteo] = await Promise.all([
       pool.query(
-        `SELECT * FROM public.inventario_activos
+        `SELECT ia.*,
+                u.usuario AS usuario_asignado_usuario,
+                COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), u.usuario) AS usuario_asignado_nombre,
+                u.cargo AS usuario_asignado_cargo,
+                u.perfil AS usuario_asignado_perfil
+         FROM public.inventario_activos ia
+         LEFT JOIN public.usuarios u ON u.id = ia.usuario_asignado_id
          ${filtros.where}
-         ORDER BY created_at DESC, id DESC
+         ORDER BY ia.created_at DESC, ia.id DESC
          LIMIT $${filtros.valores.length + 1} OFFSET $${filtros.valores.length + 2}`,
         [...filtros.valores, limit, offset]
       ),
       pool.query(
         `SELECT COUNT(*)::INTEGER AS total
-         FROM public.inventario_activos ${filtros.where}`,
+         FROM public.inventario_activos ia ${filtros.where}`,
         filtros.valores
       ),
     ]);
@@ -521,6 +565,49 @@ exports.opciones = async (_req, res) => {
     return res.json({ success: true, data: { marcas: result.rows.map((row) => row.marca) } });
   } catch (error) {
     return responderError(res, error, 'opciones');
+  }
+};
+
+exports.plano = async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ia.*,
+              u.usuario AS usuario_asignado_usuario,
+              COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), u.usuario) AS usuario_asignado_nombre,
+              u.cargo AS usuario_asignado_cargo,
+              u.perfil AS usuario_asignado_perfil
+       FROM public.inventario_activos ia
+       LEFT JOIN public.usuarios u ON u.id = ia.usuario_asignado_id
+       WHERE ia.id ~ '^EQ-[0-9]{4}$'
+         AND SUBSTRING(ia.id FROM 4)::INTEGER BETWEEN 1 AND 52
+       ORDER BY ia.id`
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (error) {
+    return responderError(res, error, 'cargar plano');
+  }
+};
+
+exports.usuariosAsignables = async (req, res) => {
+  const empresa = normalizarTexto(req.query.empresa);
+  const todas = String(req.query.todas || '').toLowerCase() === 'true';
+  if (!todas && !['NOVONET', 'VELSA'].includes(empresa)) {
+    return res.status(400).json({ success: false, error: 'Debe indicar una empresa valida.' });
+  }
+  try {
+    const valores = [];
+    const filtroEmpresa = todas ? '' : `AND UPPER(u.empresa) = $${valores.push(empresa)}`;
+    const result = await pool.query(
+      `SELECT u.id, u.usuario, u.nombres, u.apellidos, u.cargo, u.perfil, u.empresa,
+              COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), u.usuario) AS nombre
+       FROM public.usuarios u
+       WHERE u.activo = 'SI' ${filtroEmpresa}
+       ORDER BY UPPER(COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), u.usuario))`,
+      valores
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (error) {
+    return responderError(res, error, 'listar usuarios asignables');
   }
 };
 
@@ -650,7 +737,17 @@ exports.subirFoto = async (req, res) => {
 exports.obtener = async (req, res) => {
   try {
     const id = normalizarTexto(req.params.id);
-    const result = await pool.query('SELECT * FROM public.inventario_activos WHERE id = $1', [id]);
+    const result = await pool.query(
+      `SELECT ia.*,
+              u.usuario AS usuario_asignado_usuario,
+              COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), u.usuario) AS usuario_asignado_nombre,
+              u.cargo AS usuario_asignado_cargo,
+              u.perfil AS usuario_asignado_perfil
+       FROM public.inventario_activos ia
+       LEFT JOIN public.usuarios u ON u.id = ia.usuario_asignado_id
+       WHERE ia.id = $1`,
+      [id]
+    );
     if (!result.rows.length) {
       return res.status(404).json({ success: false, error: 'Activo no encontrado.' });
     }
@@ -668,25 +765,44 @@ exports.crear = async (req, res) => {
   const errorValidacion = validar(datos);
   if (errorValidacion) return res.status(400).json({ success: false, error: errorValidacion });
 
-  const usuario = usuarioActual(req);
-  const columnasDatos = [...CAMPOS_EDITABLES, 'ram', 'disco_espacio'];
-  const columnas = [...columnasDatos, 'responsable', 'creado_por', 'actualizado_por'];
-  const valores = [
-    ...CAMPOS_EDITABLES.map((campo) => datos[campo]),
-    textoGB(datos.ram_gb), textoGB(datos.disco_gb), usuario, usuario, usuario,
-  ];
-  const placeholders = valores.map((_, index) => `$${index + 1}`).join(', ');
+  const idSolicitado = req.body.id_solicitado === undefined ? null : normalizarTexto(req.body.id_solicitado);
+  if (idSolicitado && !idSolicitadoValido(idSolicitado)) {
+    return res.status(400).json({ success: false, error: 'id_solicitado debe estar entre EQ-0001 y EQ-0052.' });
+  }
 
+  const usuario = usuarioActual(req);
+  const db = await pool.connect();
   try {
-    const result = await pool.query(
+    await db.query('BEGIN');
+    if (idSolicitado) await db.query(`SELECT pg_advisory_xact_lock(hashtext('inventario_activos_id'))`);
+    const usuarioAsignadoId = await resolverUsuarioAsignado(db, req, req.body.usuario_asignado_id, { creando: true });
+    const columnasDatos = [...CAMPOS_EDITABLES, 'ram', 'disco_espacio'];
+    const columnas = [...(idSolicitado ? ['id'] : []), ...columnasDatos, 'responsable', 'creado_por', 'actualizado_por', 'usuario_asignado_id'];
+    const valores = [
+      ...(idSolicitado ? [idSolicitado] : []),
+      ...CAMPOS_EDITABLES.map((campo) => datos[campo]),
+      textoGB(datos.ram_gb), textoGB(datos.disco_gb), usuario, usuario, usuario, usuarioAsignadoId,
+    ];
+    const placeholders = valores.map((_, index) => `$${index + 1}`).join(', ');
+    const result = await db.query(
       `INSERT INTO public.inventario_activos (${columnas.join(', ')})
-       VALUES (${placeholders})
-       RETURNING *`,
+       VALUES (${placeholders}) RETURNING *`,
       valores
     );
+    if (idSolicitado) {
+      await db.query(
+        `SELECT setval('public.inventario_activos_id_seq',
+           GREATEST((SELECT last_value FROM public.inventario_activos_id_seq), $1::BIGINT), true)`,
+        [Number(idSolicitado.slice(3))]
+      );
+    }
+    await db.query('COMMIT');
     return res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
+    await db.query('ROLLBACK');
     return responderError(res, error, 'crear');
+  } finally {
+    db.release();
   }
 };
 
@@ -703,11 +819,23 @@ exports.editar = async (req, res) => {
   const errorValidacion = validar(datos);
   if (errorValidacion) return res.status(400).json({ success: false, error: errorValidacion });
 
+  const db = await pool.connect();
+  let usuarioAsignadoId;
+  try {
+    usuarioAsignadoId = await resolverUsuarioAsignado(db, req, req.body.usuario_asignado_id);
+  } catch (error) {
+    db.release();
+    return responderError(res, error, 'validar usuario asignado');
+  }
+  db.release();
+
   const columnasDatos = [...CAMPOS_EDITABLES, 'ram', 'disco_espacio', 'responsable'];
+  if (usuarioAsignadoId !== undefined) columnasDatos.push('usuario_asignado_id');
   const asignaciones = columnasDatos.map((campo, index) => `${campo} = $${index + 1}`);
   const valores = [
     ...CAMPOS_EDITABLES.map((campo) => datos[campo]),
     textoGB(datos.ram_gb), textoGB(datos.disco_gb), responsable,
+    ...(usuarioAsignadoId !== undefined ? [usuarioAsignadoId] : []),
   ];
   valores.push(usuarioActual(req), id);
 

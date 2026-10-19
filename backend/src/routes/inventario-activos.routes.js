@@ -54,6 +54,8 @@ router.get('/', ctrl.listar);
 router.get('/resumen', ctrl.resumen);
 router.get('/opciones', ctrl.opciones);
 router.get('/exportar', ctrl.exportar);
+router.get('/plano', ctrl.plano);
+router.get('/usuarios-asignables', soloAdmin, ctrl.usuariosAsignables);
 router.get('/:id/auditorias', ctrl.obtenerAuditorias);
 router.get('/:id', ctrl.obtener);
 router.post('/', ctrl.crear);

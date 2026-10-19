@@ -357,6 +357,28 @@ const CAMPOS_GALERIA = new Set([
   'archivo_otro1', 'archivo_otro2', 'archivo_otro3', 'archivo_otro4',
 ]);
 
+const normalizarHistorialBackoffice = (valor) => {
+  if (Array.isArray(valor)) return valor;
+  if (typeof valor === 'string') {
+    try {
+      const parsed = JSON.parse(valor);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+};
+
+const eventoHistorialBackoffice = (req, cambios) => ({
+  version: 2,
+  usuario_id: req.user?.id || null,
+  usuario: req.user?.usuario || null,
+  nombre_usuario: req.user?.nombreCompleto || req.user?.usuario || null,
+  perfil_usuario: req.user?.perfil || null,
+  empresa_usuario: req.user?.empresa || null,
+  fecha_hora: new Date().toISOString(),
+  cambios,
+});
+
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -549,6 +571,68 @@ router.post('/welcome/programaciones/:registroId/cancelar', async (req, res) => 
   } catch (error) {
     console.error('[WELCOME] Error cancelando:', error.message);
     res.status(500).json({ success: false, error: 'No se pudo cancelar la programación' });
+  }
+});
+
+// Registra la descarga intencional desde el detalle. La ruta real del archivo
+// no se copia al historial: solo se conserva qué campo fue descargado, por
+// quién y cuándo.
+router.post('/:id/documentos/:campo/descarga', async (req, res) => {
+  const { id, campo } = req.params;
+  if (!/^\d+$/.test(String(id))) {
+    return res.status(400).json({ success: false, error: 'ID inválido' });
+  }
+  if (!CAMPOS_GALERIA.has(campo)) {
+    return res.status(400).json({ success: false, error: 'Campo documental inválido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT id, distribuidor_autorizado, hist_cambio_estatus, "${campo}" AS documento
+       FROM public.envios_ventas
+       WHERE id = $1 AND ${condicionFechaBackoffice()}
+       FOR UPDATE`,
+      [id]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Registro no encontrado' });
+    }
+    if (!String(rows[0].documento || '').trim()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, error: 'El documento ya no está disponible' });
+    }
+
+    const historial = normalizarHistorialBackoffice(rows[0].hist_cambio_estatus);
+    historial.push(eventoHistorialBackoffice(req, [{
+      campo,
+      anterior: 'Documento cargado',
+      nuevo: 'Documento descargado',
+      accion: 'DESCARGADO',
+    }]));
+    await client.query(
+      'UPDATE public.envios_ventas SET hist_cambio_estatus = $1 WHERE id = $2',
+      [JSON.stringify(historial), id]
+    );
+    await client.query('COMMIT');
+
+    try {
+      require('../config/socket').getIO().emit('backoffice:registro-actualizado', {
+        id: Number(id),
+        empresa: rows[0].distribuidor_autorizado || null,
+        campos: ['hist_cambio_estatus'],
+      });
+    } catch (_) { /* el proceso de pruebas puede no inicializar Socket.IO */ }
+
+    return res.json({ success: true, historial });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[BACKOFFICE] Error auditando descarga:', error);
+    return res.status(500).json({ success: false, error: 'No se pudo registrar la descarga' });
+  } finally {
+    client.release();
   }
 });
 
@@ -769,21 +853,8 @@ router.put('/:id', async (req, res) => {
         };
       });
     if (cambiosHistorial.length) {
-      let historial = actual[0].hist_cambio_estatus;
-      if (typeof historial === 'string') {
-        try { historial = JSON.parse(historial); } catch { historial = []; }
-      }
-      if (!Array.isArray(historial)) historial = [];
-      historial.push({
-        version: 2,
-        usuario_id: req.user?.id || null,
-        usuario: req.user?.usuario || null,
-        nombre_usuario: req.user?.nombreCompleto || req.user?.usuario || null,
-        perfil_usuario: req.user?.perfil || null,
-        empresa_usuario: req.user?.empresa || null,
-        fecha_hora: new Date().toISOString(),
-        cambios: cambiosHistorial,
-      });
+      const historial = normalizarHistorialBackoffice(actual[0].hist_cambio_estatus);
+      historial.push(eventoHistorialBackoffice(req, cambiosHistorial));
       payload.hist_cambio_estatus = JSON.stringify(historial);
     }
 

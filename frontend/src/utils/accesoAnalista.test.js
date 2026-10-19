@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from './accesoAnalista.js';
 
 test('analista accede únicamente a la lista solicitada', () => {
-  for (const ruta of ['/', '/indicadores', '/indicadores-velsa', '/indicadores-semillero', '/reporte-detalle-semillero', '/vista-asesor', '/vista-asesor-velsa', '/seguimiento-ventas', '/seguimiento-velsa', '/redes', '/redes-velsa', '/ventas', '/nueva-venta', '/gestionables-asesores', '/whatsapp/inbox', '/whatsapp/control-lineas', '/archivos-compartidos']) assert.equal(rutaPermitidaAnalista(ruta), true, ruta);
+  for (const ruta of ['/', '/indicadores', '/indicadores-velsa', '/indicadores-semillero', '/indicadores-ventaenlinea', '/reporte-detalle-semillero', '/reporte-detalle-ventaenlinea', '/vista-asesor', '/vista-asesor-velsa', '/seguimiento-ventas', '/seguimiento-velsa', '/redes', '/redes-velsa', '/ventas', '/nueva-venta', '/gestionables-asesores', '/whatsapp/inbox', '/whatsapp/control-lineas', '/archivos-compartidos']) assert.equal(rutaPermitidaAnalista(ruta), true, ruta);
   for (const ruta of ['/vista-backoffice', '/gestionables-velsa', '/llamadas', '/redes-wintracker', '/mis-ventas-pendientes', '/catalogo-planes', '/broadcast']) assert.equal(rutaPermitidaAnalista(ruta), false, ruta);
 });
 

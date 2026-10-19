@@ -13,6 +13,7 @@ frontend/vite.config.js.timestamp-*
 
 # Backups de scripts de optimizacion
 .backups_optimizacion/
+.local-backups/
 
 # Logs sueltos
 backend/err.txt

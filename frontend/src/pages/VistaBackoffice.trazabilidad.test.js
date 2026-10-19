@@ -35,3 +35,11 @@ test("el historial muestra textos manuales completos de manera legible", () => {
   assert.match(fuente, /whiteSpace: "pre-wrap", overflowWrap: "anywhere"/);
   assert.match(fuente, /texto\.length > 500/);
 });
+
+test("las descargas del detalle se registran antes de entregar el archivo", () => {
+  assert.match(fuente, /\/documentos\/\$\{encodeURIComponent\(field\)\}\/descarga/);
+  assert.match(fuente, /method: "POST"/);
+  assert.match(fuente, /if \(!respuesta\.ok \|\| !resultado\.success\)/);
+  assert.match(fuente, /onHistorialActualizado\?\.\(resultado\.historial\)/);
+  assert.doesNotMatch(fuente, /download=\{`\$\{etiqueta\}\.\$\{extensionMultimedia\}`\}/);
+});

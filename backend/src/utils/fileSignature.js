@@ -29,6 +29,7 @@ const MARCAS_HEIF = new Set([
   'heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs',
   'mif1', 'msf1',
 ]);
+const MARCAS_MP4 = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'M4V ', 'MSNV', 'dash']);
 
 /**
  * Detecta el tipo real de un buffer.
@@ -66,6 +67,14 @@ function detectarTipo(buf) {
     if (MARCAS_HEIF.has(marca)) {
       return { tipo: 'heic', mime: 'image/heic', ext: '.heic' };
     }
+    if (MARCAS_MP4.has(marca)) {
+      return { tipo: 'mp4', mime: 'video/mp4', ext: '.mp4' };
+    }
+  }
+
+  if (buf.subarray(0, 3).toString('latin1') === 'ID3' ||
+      (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) {
+    return { tipo: 'mp3', mime: 'audio/mpeg', ext: '.mp3' };
   }
 
   // PDF — "%PDF-" (se admite un BOM/basura corta al inicio, como hacen algunos
@@ -120,7 +129,7 @@ function marcadoresActivosPdf(buf) {
 function validarArchivo({
   buffer,
   mimetypeDeclarado = '',
-  permitidos = ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf'],
+  permitidos = ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf', 'mp3', 'mp4'],
   pdfEstricto = true,
 } = {}) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
@@ -140,7 +149,7 @@ function validarArchivo({
     return {
       ok: false,
       codigo: 'TIPO_NO_PERMITIDO',
-      motivo: `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC o PDF.`,
+      motivo: `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC, PDF, MP3 o MP4.`,
     };
   }
 
@@ -179,6 +188,8 @@ function mimeSeguroPorExtension(ext) {
     '.gif': 'image/gif',
     '.heic': 'image/heic',
     '.pdf': 'application/pdf',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
   };
   return mapa[String(ext || '').toLowerCase()] || null;
 }

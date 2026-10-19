@@ -20,7 +20,7 @@ test('la auditoría se estampa en servidor y el historial se agrega automáticam
   assert.match(fuente, /payload\.auditado_por = auditor/);
   assert.match(fuente, /payload\.fecha_regularizacion_atc = new Intl\.DateTimeFormat/);
   assert.match(fuente, /payload\.fecha_hora_regularizacion = new Date\(\)/);
-  assert.match(fuente, /historial\.push\(\{/);
+  assert.match(fuente, /historial\.push\(eventoHistorialBackoffice\(req, cambiosHistorial\)\)/);
   assert.match(fuente, /SELECT \* FROM public\.envios_ventas[\s\S]*?WHERE id = \$1[\s\S]*?FOR UPDATE/);
   assert.match(fuente.match(/const CAMPOS_EDITABLES[\s\S]*?\]\);/)?.[0] || '', /'auditado_por'/);
 });
@@ -66,4 +66,12 @@ test('el historial registra todos los campos editables solicitados por ATC', () 
   assert.match(fuente, /camposSolicitados\.has\(campo\)/);
   assert.match(fuente, /const cambiosHistorial = Object\.entries\(payload\)/);
   assert.match(fuente, /campo === 'netlife_estatus_real'/);
+});
+
+test('las descargas documentales quedan auditadas sin copiar la ruta del archivo', () => {
+  assert.match(fuente, /router\.post\('\/:id\/documentos\/:campo\/descarga'/);
+  assert.match(fuente, /accion: 'DESCARGADO'/);
+  assert.match(fuente, /nuevo: 'Documento descargado'/);
+  assert.match(fuente, /if \(!CAMPOS_GALERIA\.has\(campo\)\)/);
+  assert.match(fuente, /SET hist_cambio_estatus = \$1 WHERE id = \$2/);
 });

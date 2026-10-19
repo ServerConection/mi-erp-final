@@ -12,6 +12,8 @@ router.get('/consolidado',     ctrl.getConsolidado);
 router.get('/diario/:canal',   ctrl.getDiario);
 router.get('/ejecutivos',      ctrl.getEjecutivos);
 router.get('/objetivos',       ctrl.getObjetivos);
+// Plan diario aprobado (inversión y leads) por agencia — Reporte Data.
+router.get('/plan-diario',     ctrl.getPlanDiario);
 
 // Solo admin puede modificar objetivos
 router.post('/objetivos', soloAdmin, ctrl.upsertObjetivos);

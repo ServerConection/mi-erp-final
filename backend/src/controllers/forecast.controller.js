@@ -626,3 +626,44 @@ exports.getConsolidado = async (req, res) => {
     });
   }
 };
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// GET /api/forecast/plan-diario?empresa=novonet&anio=2026&mes=10&agencias=ARTS,VIDIKA
+// Plan aprobado día a día (tabla forecast_plan_diario), sumado por las agencias
+// pedidas. Sin `agencias` = todas las de la empresa. Lo usa Reporte Data para
+// mostrar presupuesto, CPL plan y desvío debajo del real.
+// ════════════════════════════════════════════════════════════════════════════════
+exports.getPlanDiario = async (req, res) => {
+  try {
+    const empresa = String(req.query.empresa || 'NOVONET').trim().toUpperCase();
+    const anio = Number(req.query.anio);
+    const mes  = Number(req.query.mes);
+    if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12)
+      return res.status(400).json({ success: false, error: 'anio y mes son requeridos' });
+
+    const agencias = String(req.query.agencias || '')
+      .split(',').map((a) => a.trim().toUpperCase()).filter(Boolean);
+
+    const params = [empresa, anio, mes];
+    let filtro = '';
+    if (agencias.length) { params.push(agencias); filtro = 'AND UPPER(agencia) = ANY($4::text[])'; }
+
+    const { rows } = await pool.query(`
+      SELECT EXTRACT(DAY FROM fecha)::int AS dia,
+             SUM(inversion)::float        AS inversion,
+             SUM(leads)::float            AS leads
+      FROM public.forecast_plan_diario
+      WHERE UPPER(empresa) = $1
+        AND EXTRACT(YEAR FROM fecha) = $2
+        AND EXTRACT(MONTH FROM fecha) = $3
+        ${filtro}
+      GROUP BY 1 ORDER BY 1
+    `, params);
+
+    res.json({ success: true, empresa, agencias, dias: rows });
+  } catch (e) {
+    console.error('[Forecast] getPlanDiario:', e.message);
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : e.message) });
+  }
+};

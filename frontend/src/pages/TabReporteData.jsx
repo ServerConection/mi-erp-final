@@ -51,6 +51,18 @@ const sgnUsd = (v) => (v === null || v === undefined || isNaN(n(v))) ? "—" : `
 const colorDesvio = (v) => (v === null || v === undefined || isNaN(n(v)) || Math.abs(n(v)) < 0.005) ? C.muted : (n(v) > 0 ? C.danger : C.warning);
 const colorDesvioCpl = (v) => (v === null || v === undefined || isNaN(n(v)) || Math.abs(n(v)) < 0.005) ? C.muted : (n(v) > 0 ? C.danger : C.success);
 
+// Corte D-1: último día CERRADO del mes del reporte (zona Ecuador).
+// Mes en curso = ayer · mes pasado = mes completo · mes futuro = 0.
+function corteD1(meta) {
+  if (!meta?.anio || !meta?.mes) return 0;
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" })
+    .format(new Date()).split("-").map(Number);
+  const rep = meta.anio * 12 + meta.mes, act = y * 12 + m;
+  if (rep < act) return (meta.dias || []).length || new Date(meta.anio, meta.mes, 0).getDate();
+  if (rep > act) return 0;
+  return d - 1;
+}
+
 // Canal del filtro → agencia del plan aprobado (forecast_plan_diario).
 // Velsa tiene una sola agencia. Sin filtro = todas. Canal sin agencia
 // (p. ej. NO IDENTIFICADO) no suma plan.
@@ -117,7 +129,7 @@ function Block({ title, accent = C.primary, children, id }) {
   );
 }
 
-function TablaHorizontal({ filas, dias, accent = C.primary }) {
+function TablaHorizontal({ filas, dias, accent = C.primary, d1Label = null }) {
   if (!filas || filas.length === 0) return <p className="p-4 text-[11px] italic" style={{ color: C.muted }}>Sin datos</p>;
   return (
     <table className="text-[11px] font-mono border-collapse w-full whitespace-nowrap">
@@ -125,6 +137,12 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
         <tr>
           <th className="px-3 py-2 text-left font-black border-r min-w-[260px] sticky left-0"
             style={{ background: C.bgHeader, color: C.slate, borderColor: C.border }}>MÉTRICA</th>
+          {d1Label && (
+            <th className="px-3 py-2 text-center font-black border-r min-w-[86px]"
+              style={{ background: "#fef9c3", color: C.slate, borderColor: C.border }}>
+              AL D-1<br /><span className="font-medium" style={{ color: C.muted }}>{d1Label}</span>
+            </th>
+          )}
           {dias.map((d) => (
             <th key={d.dia} className="px-2 py-2 text-center font-black border-r min-w-[52px]"
               style={{ color: accent, borderColor: C.border }}>
@@ -142,6 +160,15 @@ function TablaHorizontal({ filas, dias, accent = C.primary }) {
               style={{ background: fila.separador ? "#f8fafc" : "white", color: fila.separador ? C.muted : C.slate, borderColor: C.border }}>
               {fila.label}
             </td>
+            {d1Label && (
+              <td className="px-3 py-1.5 text-center font-black border-r"
+                style={{ background: fila.separador ? "#f8fafc" : "#fefce8", borderColor: C.border,
+                  color: fila.colorFn ? fila.colorFn(fila.totalD1) : (fila.color || C.muted) }}>
+                {fila.separador || fila.totalD1 === undefined ? "" :
+                  fila.fmt ? fila.fmt(fila.totalD1) :
+                  fila.totalD1 !== null ? String(n(fila.totalD1) % 1 !== 0 ? n(fila.totalD1).toFixed(2) : n(fila.totalD1)) : "—"}
+              </td>
+            )}
             {dias.map((d) => {
               const val = fila.byDia?.[Number(d.dia)];
               const pct = fila.pctDia?.[Number(d.dia)];
@@ -221,6 +248,11 @@ function buildInversionFilas(d, dias, plan) {
   const tAPAPre      = totalFromMap(actPlanAsigPre);
   const tABAll       = totalFromMap(actBackPlanAsigPre);
 
+  // ── Acumulado al D-1 (hasta el último día cerrado) ─────────────────────
+  const corte = corteD1(d.meta);
+  const sumH = (m) => Object.keys(m || {}).filter((k) => Number(k) <= corte).reduce((a, k) => a + n(m[k]), 0);
+  const divH = (a, b) => (sumH(b) > 0 ? sumH(a) / sumH(b) : null);
+
   // ── Plan aprobado vs real ──────────────────────────────────────────────
   // El desvío solo se calcula en días con inversión real cargada; su TOTAL
   // compara contra el plan de esos mismos días (a la fecha), no del mes.
@@ -242,28 +274,28 @@ function buildInversionFilas(d, dias, plan) {
     const cplRealT = tLeads > 0 ? tInv / tLeads : null;
     const cplPlanFecha = pLeadsFecha > 0 ? pInvFecha / pLeadsFecha : null;
     filasPlanInv.push(
-      { label: "↳ PRESUPUESTO INVERSIÓN  (plan aprobado · total mes)", byDia: pInv, total: tPInv, fmt: usd, color: C.slate },
-      { label: "↳ DESVÍO INVERSIÓN  (real − plan · total a la fecha)",  byDia: desvInv, total: tInv - pInvFecha, fmt: sgnUsd, colorFn: colorDesvio },
+      { label: "↳ PRESUPUESTO INVERSIÓN  (plan aprobado · total mes)", byDia: pInv, total: tPInv, totalD1: sumH(pInv), fmt: usd, color: C.slate },
+      { label: "↳ DESVÍO INVERSIÓN  (real − plan · total a la fecha)",  byDia: desvInv, total: tInv - pInvFecha, totalD1: sumH(inv) - sumH(pInv), fmt: sgnUsd, colorFn: colorDesvio },
     );
     filasPlanCpl.push(
-      { label: "↳ CPL PLAN  (plan inv ÷ plan leads)", byDia: divDiaMap(pInv, pLeads), total: tPLeads > 0 ? tPInv / tPLeads : null, fmt: usd, color: C.slate },
-      { label: "↳ DESVÍO CPL  (real − plan)",          byDia: desvCpl, total: cplRealT !== null && cplPlanFecha !== null ? cplRealT - cplPlanFecha : null, fmt: sgnUsd, colorFn: colorDesvioCpl },
+      { label: "↳ CPL PLAN  (plan inv ÷ plan leads)", byDia: divDiaMap(pInv, pLeads), total: tPLeads > 0 ? tPInv / tPLeads : null, totalD1: divH(pInv, pLeads), fmt: usd, color: C.slate },
+      { label: "↳ DESVÍO CPL  (real − plan)",          byDia: desvCpl, total: cplRealT !== null && cplPlanFecha !== null ? cplRealT - cplPlanFecha : null, totalD1: divH(inv, leads) !== null && divH(pInv, pLeads) !== null ? divH(inv, leads) - divH(pInv, pLeads) : null, fmt: sgnUsd, colorFn: colorDesvioCpl },
     );
   }
 
   return [
-    { label: "INVERSIÓN DIARIA",                                                          byDia: inv,                           total: tInv,                                            fmt: usd, color: C.violet  },
+    { label: "INVERSIÓN DIARIA",                                                          byDia: inv,                           total: tInv, totalD1: sumH(inv),                                            fmt: usd, color: C.violet  },
     ...filasPlanInv,
-    { label: "CPL  (inv ÷ leads totales Bitrix)",                                         byDia: divDiaMap(inv, leads),         total: tLeads       > 0 ? tInv / tLeads       : null,   fmt: usd, color: C.primary },
+    { label: "CPL  (inv ÷ leads totales Bitrix)",                                         byDia: divDiaMap(inv, leads),         totalD1: divH(inv, leads), total: tLeads       > 0 ? tInv / tLeads       : null,   fmt: usd, color: C.primary },
     ...filasPlanCpl,
-    { label: "COSTO INGRESO BITRIX  (inv ÷ ventas subidas Bitrix)",                       byDia: divDiaMap(inv, ventaSubida),   total: tVentaSubida > 0 ? tInv / tVentaSubida : null,   fmt: usd, color: C.cyan    },
-    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",                        byDia: divDiaMap(inv, jotMes),        total: tJot         > 0 ? tInv / tJot         : null,   fmt: usd, color: C.cyan    },
-    { label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",                    byDia: divDiaMap(inv, activosMes),    total: tAct         > 0 ? tInv / tAct         : null,   fmt: usd, color: C.success },
-    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",                   byDia: divDiaMap(inv, backlog),       total: tBack        > 0 ? tInv / tBack        : null,   fmt: usd, color: C.success },
-    { label: "COSTO ACT+PLAN+ASIG  (inv ÷ activos+preplaneados+asignados)",               byDia: divDiaMap(inv, actPlanAsig),   total: tAPA         > 0 ? tInv / tAPA         : null,   fmt: usd, color: C.warning },
-    { label: "COSTO ACT+PLAN+ASIG+PRE  (inv ÷ activos+plan+asig+preservicio)",            byDia: divDiaMap(inv, actPlanAsigPre), total: tAPAPre     > 0 ? tInv / tAPAPre     : null,   fmt: usd, color: C.warning },
-    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",                                 byDia: divDiaMap(inv, negoc),         total: tNegoc       > 0 ? tInv / tNegoc       : null,   fmt: usd, color: C.slate   },
-    { label: "COSTO BACK+PLAN+ASIG+PRE  (inv ÷ backlog+plan+asig+pre)",                   byDia: divDiaMap(inv, actBackPlanAsigPre), total: tABAll  > 0 ? tInv / tABAll       : null,   fmt: usd, color: C.slate   },
+    { label: "COSTO INGRESO BITRIX  (inv ÷ ventas subidas Bitrix)",                       byDia: divDiaMap(inv, ventaSubida),   totalD1: divH(inv, ventaSubida), total: tVentaSubida > 0 ? tInv / tVentaSubida : null,   fmt: usd, color: C.cyan    },
+    { label: "COSTO INGRESO JOT  (inv ÷ ingresos JOT mismo mes)",                        byDia: divDiaMap(inv, jotMes),        totalD1: divH(inv, jotMes), total: tJot         > 0 ? tInv / tJot         : null,   fmt: usd, color: C.cyan    },
+    { label: "COSTO ACTIVA  (inv ÷ activos mes con fecha activación)",                    byDia: divDiaMap(inv, activosMes),    totalD1: divH(inv, activosMes), total: tAct         > 0 ? tInv / tAct         : null,   fmt: usd, color: C.success },
+    { label: "COSTO ACTIVA + BACKLOG  (inv ÷ activos cualquier fecha)",                   byDia: divDiaMap(inv, backlog),       totalD1: divH(inv, backlog), total: tBack        > 0 ? tInv / tBack        : null,   fmt: usd, color: C.success },
+    { label: "COSTO ACT+PLAN+ASIG  (inv ÷ activos+preplaneados+asignados)",               byDia: divDiaMap(inv, actPlanAsig),   totalD1: divH(inv, actPlanAsig), total: tAPA         > 0 ? tInv / tAPA         : null,   fmt: usd, color: C.warning },
+    { label: "COSTO ACT+PLAN+ASIG+PRE  (inv ÷ activos+plan+asig+preservicio)",            byDia: divDiaMap(inv, actPlanAsigPre), totalD1: divH(inv, actPlanAsigPre), total: tAPAPre     > 0 ? tInv / tAPAPre     : null,   fmt: usd, color: C.warning },
+    { label: "COSTO POR NEGOCIABLE  (inv ÷ negociables)",                                 byDia: divDiaMap(inv, negoc),         totalD1: divH(inv, negoc), total: tNegoc       > 0 ? tInv / tNegoc       : null,   fmt: usd, color: C.slate   },
+    { label: "COSTO BACK+PLAN+ASIG+PRE  (inv ÷ backlog+plan+asig+pre)",                   byDia: divDiaMap(inv, actBackPlanAsigPre), totalD1: divH(inv, actBackPlanAsigPre), total: tABAll  > 0 ? tInv / tABAll       : null,   fmt: usd, color: C.slate   },
   ];
 }
 
@@ -1110,7 +1142,8 @@ ${horaData.length > 0 ? `
             )}
           </div>
           <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">
-            <TablaHorizontal filas={buildInversionFilas(data, dias, planDiario)} dias={dias} accent={C.violet} />
+            <TablaHorizontal filas={buildInversionFilas(data, dias, planDiario)} dias={dias} accent={C.violet}
+              d1Label={corteD1(data.meta) > 0 ? `1 al ${corteD1(data.meta)} ${MESES[data.meta.mes - 1].slice(0, 3).toLowerCase()}` : "sin días cerrados"} />
           </Block>
 
           <Block title="Leads por Canal + Etapas Bitrix" accent={C.primary} id="bloque-etapas">

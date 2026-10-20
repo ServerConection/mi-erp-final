@@ -230,7 +230,7 @@ export default function App() {
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
-            <Route path="control-asistencia"      element={<RolesAllowedRoute allowed={["ADMINISTRADOR","GERENCIA","SUPERVISOR","ATC"]}><ControlAsistencia /></RolesAllowedRoute>} />
+            <Route path="control-asistencia"      element={<ControlAsistencia />} />
             <Route path="control-conexion"        element={<RolesAllowedRoute allowed={["USUARIO"]}><ControlAsistencia /></RolesAllowedRoute>} />
             <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />

@@ -36,8 +36,8 @@ const PERFILES_PERMITIDOS = new Set([
 // Asesores comisionistas: solo registran y ven SUS propias marcaciones
 // (control de conexión para toma de leads). No acceden al resumen general.
 const PERFIL_COMISIONISTA = "USUARIO";
-const puedeMarcar = (perfil) =>
-  PERFILES_PERMITIDOS.has(perfil) || perfil === PERFIL_COMISIONISTA;
+// NOVONET ACCESS: cualquier usuario autenticado registra sus marcaciones.
+const puedeMarcar = (perfil) => Boolean(perfil);
 
 const MENSAJES_CONEXION = {
   INGRESO: "Conexión iniciada. ¡Éxitos en la toma de leads! 💪",

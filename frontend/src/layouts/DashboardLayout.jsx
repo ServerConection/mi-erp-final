@@ -407,7 +407,7 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   // Asesores comisionistas: control de conexión para la toma de leads.
-  { name: "Control Conexión Coworking Leads", path: "/control-conexion", icon: "🔌",
+  { name: "NOVONET ACCESS", path: "/control-conexion", icon: "🔌",
     accessCheck: (p) => p === 'USUARIO' },
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables('NOVONET') },
@@ -438,7 +438,7 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
   { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
-  { name: "Control Asistencia", path: "/control-asistencia", icon: "🕘",
+  { name: "NOVONET ACCESS", path: "/control-asistencia", icon: "🕘",
     accessCheck: (p) => ['ADMINISTRADOR','GERENCIA','SUPERVISOR','ATC'].includes((p || '').toUpperCase()), isChild: true, group: "administracion" },
   { name: "Configuración ATC", path: "/configuracion-atc", icon: "🔔",
     accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR', isChild: true, group: "administracion" },

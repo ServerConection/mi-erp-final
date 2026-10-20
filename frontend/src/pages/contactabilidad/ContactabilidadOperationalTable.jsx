@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   severityMeta, rowSeverity, waitingMinutes, formatRelative,
 } from '../../utils/contactabilidadAnalytics.js';
@@ -8,7 +8,8 @@ const th = { padding: 10, textAlign: 'left', borderBottom: '1px solid #e2e8f0', 
 const td = { padding: 10, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' };
 
 const COLUMNAS = ['Gravedad', 'Esperando', 'Empresa', 'ID', 'Cliente', 'Asesor', 'Origen', 'Etapa',
-  'Msg. cliente', 'Msg. asesor', 'Últ. cliente', 'Últ. asesor', 'Pendiente', 'Chat', ''];
+  'Msg. cliente', 'Msg. asesor', 'MSG cliente WaBot', 'MSG asesor WaBot',
+  'Últ. cliente', 'Últ. asesor', 'Pendiente', 'Chat', ''];
 
 /**
  * Tabla operativa.
@@ -20,6 +21,29 @@ export default function ContactabilidadOperationalTable({
   rows = [], loading, umbrales, ahora, onRefrescarLead, onVerConversacion,
 }) {
   const [refrescando, setRefrescando] = useState(null);
+  const scrollSuperiorRef = useRef(null);
+  const scrollTablaRef = useRef(null);
+  const scrollSuperiorContenidoRef = useRef(null);
+
+  useEffect(() => {
+    const scrollTabla = scrollTablaRef.current;
+    const contenidoSuperior = scrollSuperiorContenidoRef.current;
+    if (!scrollTabla || !contenidoSuperior) return undefined;
+
+    const sincronizarAncho = () => {
+      contenidoSuperior.style.width = `${scrollTabla.scrollWidth}px`;
+    };
+    sincronizarAncho();
+
+    const observer = new ResizeObserver(sincronizarAncho);
+    observer.observe(scrollTabla);
+    if (scrollTabla.firstElementChild) observer.observe(scrollTabla.firstElementChild);
+    return () => observer.disconnect();
+  }, [rows]);
+
+  const sincronizarScroll = (origen, destinoRef) => {
+    if (destinoRef.current) destinoRef.current.scrollLeft = origen.currentTarget.scrollLeft;
+  };
 
   const refrescar = async (fila) => {
     if (!onRefrescarLead) return;
@@ -27,7 +51,19 @@ export default function ContactabilidadOperationalTable({
     try { await onRefrescarLead(fila); } finally { setRefrescando(null); }
   };
 
-  return <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+  return <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+    <div
+      ref={scrollSuperiorRef}
+      onScroll={(event) => sincronizarScroll(event, scrollTablaRef)}
+      style={{ overflowX: 'auto', overflowY: 'hidden', height: 16 }}
+    >
+      <div ref={scrollSuperiorContenidoRef} style={{ height: 1 }} />
+    </div>
+    <div
+      ref={scrollTablaRef}
+      onScroll={(event) => sincronizarScroll(event, scrollSuperiorRef)}
+      style={{ overflowX: 'auto' }}
+    >
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
       <thead><tr>{COLUMNAS.map((h, i) => <th key={`${h}-${i}`} style={th}>{h}</th>)}</tr></thead>
       <tbody>
@@ -60,6 +96,8 @@ export default function ContactabilidadOperationalTable({
                 <td style={td}>{fila.etapa_nombre || fila.etapa_id || '—'}</td>
                 <td style={td}>{fila.mensajes_cliente_total ?? 0}</td>
                 <td style={td}>{fila.mensajes_asesor_total ?? 0}</td>
+                <td style={td}>{fila.msg_cliente_wabot ?? 0}</td>
+                <td style={td}>{fila.msg_asesor_wabot ?? 0}</td>
                 <td style={td} title={fmt(fila.ultimo_mensaje_cliente_at)}>
                   {formatRelative(fila.ultimo_mensaje_cliente_at, ahora)}
                   <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_cliente_at)}</div>
@@ -89,5 +127,6 @@ export default function ContactabilidadOperationalTable({
             })}
       </tbody>
     </table>
+    </div>
   </div>;
 }

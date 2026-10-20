@@ -224,21 +224,45 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
              COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(u.etapa_nombre,''))) = 'VENTA SUBIDA')::int AS ventas_subidas
       FROM universo u`, params),
 
-    pool.query(`${universo}
+    pool.query(`${universo}, operativos AS MATERIALIZED (
+      SELECT u.*
+      FROM universo u
+      ORDER BY u.fecha_creacion DESC NULLS LAST,
+               (u.pendiente_por = 'ASESOR') DESC,
+               (${minutosEspera}) DESC NULLS LAST,
+               GREATEST(u.ultimo_mensaje_cliente_at,u.ultimo_mensaje_asesor_at) DESC NULLS LAST
+      LIMIT 100
+    )
       SELECT u.empresa, u.id_bitrix, u.nombre_cliente, u.asesor_id, u.asesor_nombre,
              u.origen_nombre, u.etapa_id, u.etapa_nombre, u.fecha_creacion,
              u.mensajes_cliente_total, u.mensajes_asesor_total,
+             COALESCE(wb.msg_cliente_wabot, 0)::int AS msg_cliente_wabot,
+             COALESCE(wb.msg_asesor_wabot, 0)::int AS msg_asesor_wabot,
              u.ultimo_mensaje_cliente_at, u.ultimo_mensaje_asesor_at, u.pendiente_por,
              u.temperatura, ${chatId}, u.ultima_sincronizacion_at,
              u.tiempo_primera_respuesta_seg,
              (${severidad}) AS severidad,
              (${minutosEspera}) AS minutos_pendiente
-      FROM universo u
+      FROM operativos u
+      LEFT JOIN LATERAL (
+        SELECT COUNT(m.id) FILTER (WHERE m.direction = 'in')::int AS msg_cliente_wabot,
+               COUNT(m.id) FILTER (
+                 WHERE m.direction = 'out' AND m.type IS DISTINCT FROM 'system'
+               )::int AS msg_asesor_wabot
+        FROM conversations c
+        JOIN lines wl ON wl.id = c.line_id
+        JOIN usuarios wu ON wu.id = wl.created_by
+        JOIN messages m ON m.conversation_id = c.id
+        WHERE c.bitrix_deal_id = u.id_bitrix
+          AND CASE UPPER(TRIM(wu.empresa))
+                WHEN 'SEMILLERO' THEN 'NOVONET'
+                ELSE UPPER(TRIM(wu.empresa))
+              END = u.empresa
+      ) wb ON TRUE
       ORDER BY u.fecha_creacion DESC NULLS LAST,
                (u.pendiente_por = 'ASESOR') DESC,
                minutos_pendiente DESC NULLS LAST,
-               GREATEST(u.ultimo_mensaje_cliente_at,u.ultimo_mensaje_asesor_at) DESC NULLS LAST
-      LIMIT 100`, params),
+               GREATEST(u.ultimo_mensaje_cliente_at,u.ultimo_mensaje_asesor_at) DESC NULLS LAST`, params),
 
     // --- Semaforo de severidad: cuantos criticos / graves hay ahora mismo ------
     pool.query(`${universo}, clasificado AS (
@@ -330,7 +354,7 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
       { clave: 'negociables', etiqueta: 'Negociables', leads: numero(embudoRow.negociables) },
       { clave: 'ventas_subidas', etiqueta: 'Venta subida', leads: numero(embudoRow.ventas_subidas) },
     ],
-    operativo: operativoR.rows.map((r) => ({ ...r, mensajes_cliente_total: numero(r.mensajes_cliente_total), mensajes_asesor_total: numero(r.mensajes_asesor_total), minutos_pendiente: numeroONull(r.minutos_pendiente), tiempo_primera_respuesta_seg: numeroONull(r.tiempo_primera_respuesta_seg) })),
+    operativo: operativoR.rows.map((r) => ({ ...r, mensajes_cliente_total: numero(r.mensajes_cliente_total), mensajes_asesor_total: numero(r.mensajes_asesor_total), msg_cliente_wabot: numero(r.msg_cliente_wabot), msg_asesor_wabot: numero(r.msg_asesor_wabot), minutos_pendiente: numeroONull(r.minutos_pendiente), tiempo_primera_respuesta_seg: numeroONull(r.tiempo_primera_respuesta_seg) })),
     alertas: {
       resumen: {
         critico: numero(severidadRow.critico), grave: numero(severidadRow.grave),

@@ -332,6 +332,9 @@ export default function ControlAsistencia() {
   const esComisionista = String(user?.perfil || "").trim().toUpperCase() === "USUARIO";
   const PASOS = esComisionista ? PASOS_COMISIONISTA : PASOS_NOMINA;
   const TX = esComisionista ? TEXTOS_COMISIONISTA : TEXTOS_NOMINA;
+  // El resumen de todos los usuarios solo lo ven perfiles administrativos.
+  const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "SUPERVISOR", "ATC"]
+    .includes(String(user?.perfil || "").trim().toUpperCase());
 
   const [
     actividad,
@@ -1049,7 +1052,7 @@ export default function ControlAsistencia() {
       >
         {[
           { id: "REGISTRO", icono: "⏱️", texto: "REGISTRAR MARCACIÓN" },
-          ...(esComisionista ? [] : [{ id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" }]),
+          ...(!puedeVerResumen ? [] : [{ id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" }]),
         ].map((opcion) => {
           const activa = vistaActiva === opcion.id;
           return (

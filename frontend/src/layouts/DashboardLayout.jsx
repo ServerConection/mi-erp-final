@@ -11,6 +11,7 @@ const API = import.meta.env.VITE_API_URL;
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
 const RUTAS_PUBLICAS = ['/broadcast'];
+const RUTA_NOVONET_ACCESS = '/control-asistencia';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET SINGLETON
@@ -324,6 +325,7 @@ const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
+  if (ruta === RUTA_NOVONET_ACCESS) return true;
   if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
   if (perfil === 'ANALISTA') return rutaPermitidaAnalista(ruta);
   return perfil === 'ATC' && rutaPermitidaAtc(ruta);
@@ -339,6 +341,9 @@ const GROUP_IDS = [
 const ALL_MENU_ITEMS = [
   { name: 'Llamadas', path: '/llamadas', icon: '☎', accessCheck: p => !!p && !['ASESOR', 'USUARIO'].includes(p.trim().toUpperCase()) },
   { name: "Inicio", path: "/", icon: "🏠", permiso: null },
+
+  // ── NOVONET ACCESS (asistencia / conexión) — visible para todos los perfiles
+  { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
 
   // ── Indicadores ──────────────────────────────────────────────────────────
   { name: "Indicadores", path: null, icon: "📊", isGroup: true, groupId: "indicadores" },
@@ -403,8 +408,6 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
   // Asesores comisionistas: control de conexión para la toma de leads.
-  { name: "NOVONET ACCESS", path: "/control-conexion", icon: "🔌",
-    accessCheck: (p) => p === 'USUARIO' },
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
@@ -434,8 +437,6 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
   { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
-  { name: "NOVONET ACCESS", path: "/control-asistencia", icon: "🕘",
-    accessCheck: (p) => ['ADMINISTRADOR','GERENCIA','SUPERVISOR','ATC'].includes((p || '').toUpperCase()), isChild: true, group: "administracion" },
   { name: "Configuración ATC", path: "/configuracion-atc", icon: "🔔",
     accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR', isChild: true, group: "administracion" },
 
@@ -611,7 +612,7 @@ export default function DashboardLayout() {
     // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
-    if (perfilUpper === 'TV') {
+    if (perfilUpper === 'TV' && location.pathname !== RUTA_NOVONET_ACCESS) {
       const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : (empresaUpper === 'SEMILLERO' ? 'Seguimiento SEMILLERO' : null));
       const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : (empresaUpper === 'SEMILLERO' ? '/seguimiento-semillero' : '/'));
       if (itemActual.path !== '/llamadas' && (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName)) {
@@ -642,6 +643,7 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (item.path === RUTA_NOVONET_ACCESS) return true;
     if (item.group === 'administracion' && !puedeAccederAdministracion(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
       if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);

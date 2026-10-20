@@ -94,7 +94,7 @@ const PASOS_COMISIONISTA = [
 ];
 
 const TEXTOS_NOMINA = {
-  kioskoTitulo: "Kiosko Digital",
+  kioskoTitulo: "NOVONET ACCESS",
   kioskoSub: "Registra tu ingreso, almuerzo o salida",
   panelTitulo: "Mi Jornada Hoy",
   enCurso: "En jornada",

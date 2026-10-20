@@ -33,6 +33,19 @@ const PERFILES_PERMITIDOS = new Set([
   "ATC",
 ]);
 
+// Asesores comisionistas: solo registran y ven SUS propias marcaciones
+// (control de conexión para toma de leads). No acceden al resumen general.
+const PERFIL_COMISIONISTA = "USUARIO";
+const puedeMarcar = (perfil) =>
+  PERFILES_PERMITIDOS.has(perfil) || perfil === PERFIL_COMISIONISTA;
+
+const MENSAJES_CONEXION = {
+  INGRESO: "Conexión iniciada. ¡Éxitos en la toma de leads! 💪",
+  "SALIDA ALMUERZO": "Pausa registrada. La recepción de leads queda en pausa ⏸️",
+  "INGRESO ALMUERZO": "Segundo bloque iniciado. ¡Vamos con todo! 🚀",
+  SALIDA: "Conexión finalizada. ¡Gracias por tu gestión de hoy! 🙌",
+};
+
 const normalizarTexto = (valor) =>
   String(valor || "")
     .trim()
@@ -108,7 +121,7 @@ router.post("/", verificarToken, async (req, res) => {
 
     const perfilUsuario = normalizarTexto(usuario.perfil);
 
-    if (!PERFILES_PERMITIDOS.has(perfilUsuario)) {
+    if (!puedeMarcar(perfilUsuario)) {
       return res.status(403).json({
         success: false,
         error:
@@ -304,7 +317,9 @@ router.post("/", verificarToken, async (req, res) => {
       data: registro,
 
       mensaje:
-        MENSAJES_ACTIVIDAD[actividad] ||
+        (perfilUsuario === PERFIL_COMISIONISTA
+          ? MENSAJES_CONEXION[actividad]
+          : MENSAJES_ACTIVIDAD[actividad]) ||
         "Marcación registrada correctamente",
     });
   } catch (error) {
@@ -392,11 +407,7 @@ router.get(
       const perfilUsuario =
         normalizarTexto(usuario.perfil);
 
-      if (
-        !PERFILES_PERMITIDOS.has(
-          perfilUsuario
-        )
-      ) {
+      if (!puedeMarcar(perfilUsuario)) {
         return res.status(403).json({
           success: false,
           error:

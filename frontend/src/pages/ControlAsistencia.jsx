@@ -17,6 +17,8 @@ import {
   MapPin,
   MapPinOff,
   Monitor,
+  Pause,
+  Play,
   RefreshCw,
   Utensils,
 } from "lucide-react";
@@ -74,12 +76,46 @@ const ZONA_EC = "America/Guayaquil";
 const JORNADA_HORAS = 8;
 
 // Orden natural de la jornada. value = lo que espera el backend.
-const PASOS = [
+const PASOS_NOMINA = [
   { value: "INGRESO", titulo: "Ingreso", Icono: LogIn, color: "#0f766e", fondo: "#ccfbf1" },
   { value: "SALIDA ALMUERZO", titulo: "Salida Almuerzo", Icono: Utensils, color: "#c2410c", fondo: "#ffedd5" },
   { value: "INGRESO ALMUERZO", titulo: "Regreso Almuerzo", Icono: Coffee, color: "#4338ca", fondo: "#e0e7ff" },
   { value: "SALIDA", titulo: "Salida Jornada", Icono: LogOut, color: "#be123c", fondo: "#ffe4e6" },
 ];
+
+// Asesores comisionistas (perfil USUARIO): no es asistencia, es control de
+// conexión al sistema para la entrega de leads. Se guardan los mismos códigos
+// en BD (el perfil/cargo del registro distingue al comisionista).
+const PASOS_COMISIONISTA = [
+  { value: "INGRESO", titulo: "Inicio de Conexión", Icono: LogIn, color: "#0f766e", fondo: "#ccfbf1" },
+  { value: "SALIDA ALMUERZO", titulo: "Pausa Recepción Leads", Icono: Pause, color: "#c2410c", fondo: "#ffedd5" },
+  { value: "INGRESO ALMUERZO", titulo: "Inicio Segundo Bloque", Icono: Play, color: "#4338ca", fondo: "#e0e7ff" },
+  { value: "SALIDA", titulo: "Fin de Conexión", Icono: LogOut, color: "#be123c", fondo: "#ffe4e6" },
+];
+
+const TEXTOS_NOMINA = {
+  kioskoTitulo: "Kiosko Digital",
+  kioskoSub: "Registra tu ingreso, almuerzo o salida",
+  panelTitulo: "Mi Jornada Hoy",
+  enCurso: "En jornada",
+  enPausa: "En almuerzo",
+  finalizado: "Jornada finalizada",
+  completo: "Jornada completa · ¡Buen descanso!",
+  acumulado: "Tiempo acumulado de jornada",
+  pausa: "Almuerzo",
+};
+
+const TEXTOS_COMISIONISTA = {
+  kioskoTitulo: "Control Conexión Coworking Leads",
+  kioskoSub: "Registra tu conexión para la toma de leads",
+  panelTitulo: "Mi Conexión Hoy",
+  enCurso: "Conectado",
+  enPausa: "En pausa",
+  finalizado: "Conexión finalizada",
+  completo: "Conexión finalizada · ¡Gracias!",
+  acumulado: "Tiempo acumulado de conexión",
+  pausa: "Pausa",
+};
 
 // Fecha (YYYY-MM-DD) y hora (HH:mm:ss) en Ecuador para un timestamp ISO.
 function partesEcuador(valor) {
@@ -289,7 +325,13 @@ function formatearHora(fecha) {
 
 export default function ControlAsistencia() {
   const [user, setUser] =
-    useState(null);
+    useState(() => {
+      try { return JSON.parse(localStorage.getItem("userProfile") || "null"); } catch { return null; }
+    });
+
+  const esComisionista = String(user?.perfil || "").trim().toUpperCase() === "USUARIO";
+  const PASOS = esComisionista ? PASOS_COMISIONISTA : PASOS_NOMINA;
+  const TX = esComisionista ? TEXTOS_COMISIONISTA : TEXTOS_NOMINA;
 
   const [
     actividad,
@@ -799,9 +841,9 @@ export default function ControlAsistencia() {
   if (pasoSeleccionado && seleccionYaRegistrada) {
     avisoSeleccion = `Ya registraste ${pasoSeleccionado.titulo} hoy a las ${seleccionYaRegistrada.hora}. Si continúas se guardará una nueva marcación.`;
   } else if (pasoSeleccionado && pasoSeleccionado.value !== "INGRESO" && !jornadaHoy.INGRESO) {
-    avisoSeleccion = "Aún no registras tu Ingreso de hoy. Verifica que sea la actividad correcta.";
+    avisoSeleccion = `Aún no registras tu ${PASOS[0].titulo} de hoy. Verifica que sea la actividad correcta.`;
   } else if (pasoSeleccionado?.value === "INGRESO ALMUERZO" && !jornadaHoy["SALIDA ALMUERZO"]) {
-    avisoSeleccion = "Aún no registras tu Salida a almuerzo.";
+    avisoSeleccion = `Aún no registras tu ${PASOS[1].titulo}.`;
   }
 
   // Tiempo trabajado (excluye almuerzo) y tiempo de almuerzo.
@@ -831,9 +873,9 @@ export default function ControlAsistencia() {
   const CIRCUNFERENCIA = 2 * Math.PI * 50;
 
   let estadoJornada = { texto: "Sin iniciar", clase: "st-off" };
-  if (msSalida) estadoJornada = { texto: "Jornada finalizada", clase: "st-fin" };
-  else if (msSalidaAlm && !msRegresoAlm) estadoJornada = { texto: "En almuerzo", clase: "st-alm" };
-  else if (msIngreso) estadoJornada = { texto: "En jornada", clase: "st-on" };
+  if (msSalida) estadoJornada = { texto: TX.finalizado, clase: "st-fin" };
+  else if (msSalidaAlm && !msRegresoAlm) estadoJornada = { texto: TX.enPausa, clase: "st-alm" };
+  else if (msIngreso) estadoJornada = { texto: TX.enCurso, clase: "st-on" };
 
   const ultimoRegistro = misRegistros[0];
   const ultimaPartes = partesEcuador(ultimoRegistro?.created_at);
@@ -1007,7 +1049,7 @@ export default function ControlAsistencia() {
       >
         {[
           { id: "REGISTRO", icono: "⏱️", texto: "REGISTRAR MARCACIÓN" },
-          { id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" },
+          ...(esComisionista ? [] : [{ id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" }]),
         ].map((opcion) => {
           const activa = vistaActiva === opcion.id;
           return (
@@ -1050,8 +1092,8 @@ export default function ControlAsistencia() {
             <div className="ca-head-title">
               <span className="ca-head-icon"><Monitor size={18} /></span>
               <div>
-                <h2>Kiosko Digital</h2>
-                <p>Registra tu ingreso, almuerzo o salida</p>
+                <h2>{TX.kioskoTitulo}</h2>
+                <p>{TX.kioskoSub}</p>
               </div>
             </div>
             <div className="ca-user">
@@ -1156,7 +1198,7 @@ export default function ControlAsistencia() {
                   {seleccionYaRegistrada ? "Registrar nuevamente" : "Registrar"} {pasoSeleccionado.titulo}
                 </>
               ) : jornadaCompleta ? (
-                "Jornada completa · ¡Buen descanso!"
+                TX.completo
               ) : (
                 "Selecciona una actividad"
               )}
@@ -1187,7 +1229,7 @@ export default function ControlAsistencia() {
                 <ListChecks size={18} />
               </span>
               <div>
-                <h2>Mi Jornada Hoy</h2>
+                <h2>{TX.panelTitulo}</h2>
                 <p>Log de marcaciones</p>
               </div>
             </div>
@@ -1252,8 +1294,8 @@ export default function ControlAsistencia() {
                 <span>de {JORNADA_HORAS}h</span>
               </div>
             </div>
-            <p>Tiempo acumulado de jornada</p>
-            {almuerzoMs > 0 && <small>Almuerzo: {duracionTexto(almuerzoMs)}</small>}
+            <p>{TX.acumulado}</p>
+            {almuerzoMs > 0 && <small>{TX.pausa}: {duracionTexto(almuerzoMs)}</small>}
           </div>
         </aside>
       </div>

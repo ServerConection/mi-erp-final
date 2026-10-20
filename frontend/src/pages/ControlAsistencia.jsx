@@ -87,10 +87,10 @@ const PASOS_NOMINA = [
 // conexión al sistema para la entrega de leads. Se guardan los mismos códigos
 // en BD (el perfil/cargo del registro distingue al comisionista).
 const PASOS_COMISIONISTA = [
-  { value: "INGRESO", titulo: "Inicio de Conexión", Icono: LogIn, color: "#0f766e", fondo: "#ccfbf1" },
+  { value: "INGRESO", titulo: "Inicio de Conexión Toma de Leads", Icono: LogIn, color: "#0f766e", fondo: "#ccfbf1" },
   { value: "SALIDA ALMUERZO", titulo: "Pausa Recepción Leads", Icono: Pause, color: "#c2410c", fondo: "#ffedd5" },
-  { value: "INGRESO ALMUERZO", titulo: "Inicio Segundo Bloque", Icono: Play, color: "#4338ca", fondo: "#e0e7ff" },
-  { value: "SALIDA", titulo: "Fin de Conexión", Icono: LogOut, color: "#be123c", fondo: "#ffe4e6" },
+  { value: "INGRESO ALMUERZO", titulo: "Inicio Segundo Bloque Toma de Leads", Icono: Play, color: "#4338ca", fondo: "#e0e7ff" },
+  { value: "SALIDA", titulo: "Fin de Conexión Toma de Leads", Icono: LogOut, color: "#be123c", fondo: "#ffe4e6" },
 ];
 
 const TEXTOS_NOMINA = {

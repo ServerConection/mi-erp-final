@@ -11,7 +11,7 @@ const API = import.meta.env.VITE_API_URL;
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
 const RUTAS_PUBLICAS = ['/broadcast'];
-const RUTA_NOVONET_ACCESS = '/control-asistencia';
+const RUTA_NOVONET_ACCESS = '/conexiones';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET SINGLETON

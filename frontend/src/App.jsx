@@ -230,8 +230,10 @@ export default function App() {
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
-            <Route path="control-asistencia"      element={<ControlAsistencia />} />
-            <Route path="control-conexion"        element={<RolesAllowedRoute allowed={["USUARIO"]}><ControlAsistencia /></RolesAllowedRoute>} />
+            <Route path="conexiones"              element={<ControlAsistencia />} />
+            {/* Rutas anteriores de NOVONET ACCESS: redirigen a /conexiones */}
+            <Route path="control-asistencia"      element={<Navigate to="/conexiones" replace />} />
+            <Route path="control-conexion"        element={<Navigate to="/conexiones" replace />} />
             <Route path="configuracion-atc"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR"]}><ConfiguracionAtc /></RolesAllowedRoute>} />
             <Route path="bot-auditor"              element={<BotAuditor />} />
             <Route path="bot-auditor/contactabilidad" element={<Contactabilidad />} />

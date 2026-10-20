@@ -402,6 +402,9 @@ const ALL_MENU_ITEMS = [
   // { name: "Resumen NOVONET", path: "/resumen-novonet", icon: "📊", permiso: "ResumenNovonet", isChild: true, group: "resumenes" },
   // { name: "Resumen VELSA",   path: "/resumen-velsa",   icon: "🟣", permiso: "ResumenVelsa",   isChild: true, group: "resumenes" },
 
+  // Asesores comisionistas: control de conexión para la toma de leads.
+  { name: "Control Conexión Coworking Leads", path: "/control-conexion", icon: "🔌",
+    accessCheck: (p) => p === 'USUARIO' },
   { name: "Reparto de Gestionables", path: "/gestionables-asesores", icon: "📋",
     accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",

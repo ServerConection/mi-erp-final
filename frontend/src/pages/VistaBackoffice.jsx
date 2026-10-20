@@ -1582,6 +1582,16 @@ function normalizarRegistro(row) {
       out[k] = CAMPOS_FECHA.includes(k) ? String(v).slice(0, 10) : String(v);
     }
   }
+  // Algunas cargas históricas/exportaciones pueden entregar el encabezado
+  // con otro nombre. El Backoffice trabaja con el nombre canónico de
+  // envios_ventas y debe conservar el valor aunque el catálogo no lo conozca.
+  if (!out.servicios_digitales) {
+    out.servicios_digitales = String(
+      row?.servicio_empaquetado ?? row?.EMPAQUETADO ?? ""
+    ).trim();
+  } else {
+    out.servicios_digitales = String(out.servicios_digitales).trim();
+  }
   // Compatibilidad inmediata con auditorías anteriores a las columnas
   // separadas: se muestran fecha y hora a partir del sello exacto existente.
   if ((!out.fecha_auditoria || !out.hora_auditoria) && row?.fecha_hora_regularizacion) {
@@ -3682,8 +3692,21 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   </select>
                                 </div>
                               ) : field === "servicios_digitales" ? (
-                                <select
-                                  value={detail?.servicios_digitales || ""}
+                                (() => {
+                                  const empaquetadoActual = String(
+                                    detail?.servicios_digitales || detailOriginal?.servicios_digitales || ""
+                                  ).trim();
+                                  const opcionesVisibles = opcionesEmpaquetadoDetalle.some(
+                                    // El navegador compara el value del option
+                                    // exactamente (incluida la capitalización).
+                                    // No basta con considerar iguales dos textos
+                                    // que solo coinciden en mayúsculas/minúsculas.
+                                    (opcion) => opcion === empaquetadoActual
+                                  ) || !empaquetadoActual
+                                    ? opcionesEmpaquetadoDetalle
+                                    : [empaquetadoActual, ...opcionesEmpaquetadoDetalle];
+                                  return <select
+                                  value={empaquetadoActual}
                                   onChange={(e) => setDetail((prev) => ({ ...prev, servicios_digitales: e.target.value }))}
                                   disabled={!detail?.plan_contratado_final}
                                   style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #dbe4f0", fontSize: 12, background: "#fff", cursor: detail?.plan_contratado_final ? "pointer" : "not-allowed" }}
@@ -3691,10 +3714,11 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   <option value="">
                                     {detail?.plan_contratado_final ? "Seleccionar empaquetado..." : "Primero selecciona el plan"}
                                   </option>
-                                  {opcionesEmpaquetadoDetalle.map((empaquetado) => (
+                                  {opcionesVisibles.map((empaquetado) => (
                                     <option key={empaquetado} value={empaquetado}>{empaquetado}</option>
                                   ))}
                                 </select>
+                                })()
                               ) : field === "fecha_agenda" ? (
                                 <input
                                   type="datetime-local"

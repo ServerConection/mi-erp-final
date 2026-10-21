@@ -1405,6 +1405,12 @@ class BaileysManager {
       timestamp: new Date().toISOString(),
     })
 
+    // WABOT-BITRIX: si la línea entrega a un Canal Abierto, empujar el mensaje
+    // a Bitrix. Bitrix crea el chat y, según la config del canal, la negociación
+    // con el nombre (pushName) y el teléfono del cliente. No bloquea el bot.
+    this._empujarABitrix({ lineId, waNumber, pushName, text, msgType, mediaUrl, msg })
+      .catch((e) => console.error(`[Line ${lineId}] WABOT-BITRIX no se pudo empujar a Bitrix:`, e.message))
+
     const lineRow = await query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
     const botId = lineRow.rows[0]?.bot_id
     if (!botId) {
@@ -1414,6 +1420,35 @@ class BaileysManager {
 
     const engine = new FlowEngine(this, this.io)
     await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  // ── WABOT-BITRIX: mensaje entrante → Canal Abierto de Bitrix ──────────
+  async _empujarABitrix({ lineId, waNumber, pushName, text, msgType, mediaUrl, msg }) {
+    const r = await query('SELECT open_line_id FROM lines WHERE id=$1', [lineId])
+    const openLineId = r.rows[0]?.open_line_id
+    if (!openLineId) return // línea sin canal abierto: no va a Bitrix
+
+    const { conector, empresaDeLinea } = require('./bitrixPortales')
+    const empresa = await empresaDeLinea(lineId).catch(() => null)
+    const con = empresa === 'VELSA' ? conector.velsa : conector.novonet
+
+    const numero = String(waNumber || '').replace(/\D/g, '')
+    const archivos = []
+    if (mediaUrl) {
+      const base = (process.env.WABOT_PUBLIC_URL || process.env.BITRIX_APP_BASE_URL || '').replace(/\/+$/, '')
+      if (base) archivos.push({ url: base + mediaUrl, name: mediaUrl.split('/').pop() })
+    }
+    const texto = text || (archivos.length ? '' : `[${msgType}]`)
+
+    await con.enviarAOpenLine({
+      openLineId, lineId, waNumber: numero,
+      nombre: pushName || numero,
+      texto, waMsgId: msg?.key?.id,
+      fechaUnix: Number(msg?.messageTimestamp || 0) || undefined,
+      archivos,
+      nombreChat: `${pushName || 'WhatsApp'} +${numero}`,
+    })
+    console.log(`[Line ${lineId}] ➡️ WABOT-BITRIX: mensaje de +${numero} enviado al canal abierto ${openLineId} (${empresa || 'NOVONET'})`)
   }
 
   async _handleCallEvent(lineId, sock, call) {

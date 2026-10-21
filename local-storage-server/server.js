@@ -46,7 +46,7 @@ const path    = require('path');
 const fs      = require('fs');
 const crypto  = require('crypto');
 
-const { validarArchivo, mimeSeguroPorExtension } = require('./fileSignature');
+const { validarArchivo, mimeSeguroPorExtension, TIPOS_AUDIO } = require('./fileSignature');
 
 const app = express();
 const PORT        = Number(process.env.PORT || 4500);
@@ -149,6 +149,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     // Primer filtro barato. La defensa real es la firma binaria, más abajo.
     if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
+      || file.mimetype.startsWith('audio/') || /^video\/(webm|mp4|3gpp|ogg)$/.test(file.mimetype)
       || file.mimetype === 'application/octet-stream') cb(null, true);
     else cb(new Error('FORMATO_NO_PERMITIDO'));
   }
@@ -163,7 +164,7 @@ app.post('/upload', verificarApiKey, (req, res, next) => {
     if (!err) return next();
     const mensaje = err.code === 'LIMIT_FILE_SIZE'
       ? 'El archivo supera el máximo de 20 MB'
-      : 'Formato no permitido. Usa imagen o PDF.';
+      : 'Formato no permitido. Usa imagen, PDF o audio.';
     console.warn('[STORAGE] upload rechazado en multer:', err.code || err.message);
     return res.status(400).json({ success: false, error: mensaje });
   });
@@ -182,6 +183,8 @@ app.post('/upload', verificarApiKey, (req, res, next) => {
       buffer: req.file.buffer,
       mimetypeDeclarado: req.file.mimetype,
       pdfEstricto: PDF_ESTRICTO,
+      // El backend ya decidió si el campo admite audio; aquí se aceptan por firma.
+      permitidos: ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf', ...TIPOS_AUDIO],
     });
     if (!veredicto.ok) {
       console.warn('[STORAGE] contenido rechazado:', veredicto.codigo);

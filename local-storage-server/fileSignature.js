@@ -30,6 +30,15 @@ const MARCAS_HEIF = new Set([
   'mif1', 'msf1',
 ]);
 
+// Tipos de AUDIO admitidos (solo para los adjuntos libres "Otro 1–4").
+// Se aceptan solo si quien llama los incluye en `permitidos`.
+const TIPOS_AUDIO = ['mp3', 'aac', 'wav', 'ogg', 'flac', 'amr', 'webm', 'm4a', '3gp', 'aiff', 'wma', 'midi', 'caf'];
+
+// Marcas ISO-BMFF de audio (M4A de iPhone/WhatsApp, MP4, 3GP de Android).
+const MARCAS_MP4_AUDIO = new Set([
+  'M4A ', 'M4B ', 'M4P ', 'mp41', 'mp42', 'isom', 'iso2', 'iso5', 'iso6', 'dash', 'avc1', 'MSNV', 'F4A ',
+]);
+
 /**
  * Detecta el tipo real de un buffer.
  * @param {Buffer} buf
@@ -66,7 +75,32 @@ function detectarTipo(buf) {
     if (MARCAS_HEIF.has(marca)) {
       return { tipo: 'heic', mime: 'image/heic', ext: '.heic' };
     }
+    if (/^3g/.test(marca)) return { tipo: '3gp', mime: 'audio/3gpp', ext: '.3gp' };
+    if (MARCAS_MP4_AUDIO.has(marca)) return { tipo: 'm4a', mime: 'audio/mp4', ext: '.m4a' };
   }
+
+  // ── AUDIO ──────────────────────────────────────────────────────────────
+  const cab4 = buf.subarray(0, 4).toString('latin1');
+  if (cab4 === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WAVE') {
+    return { tipo: 'wav', mime: 'audio/wav', ext: '.wav' };
+  }
+  if (cab4 === 'OggS') return { tipo: 'ogg', mime: 'audio/ogg', ext: '.ogg' };   // incluye notas de voz .opus
+  if (cab4 === 'fLaC') return { tipo: 'flac', mime: 'audio/flac', ext: '.flac' };
+  if (cab4 === 'MThd') return { tipo: 'midi', mime: 'audio/midi', ext: '.mid' };
+  if (cab4 === 'caff') return { tipo: 'caf', mime: 'audio/x-caf', ext: '.caf' };
+  if (buf.subarray(0, 5).toString('latin1') === '#!AMR') return { tipo: 'amr', mime: 'audio/amr', ext: '.amr' };
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return { tipo: 'webm', mime: 'audio/webm', ext: '.webm' };
+  }
+  if (cab4 === 'FORM' && /^AIF[FC]$/.test(buf.subarray(8, 12).toString('latin1'))) {
+    return { tipo: 'aiff', mime: 'audio/aiff', ext: '.aiff' };
+  }
+  if (buf.subarray(0, 8).equals(Buffer.from([0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11]))) {
+    return { tipo: 'wma', mime: 'audio/x-ms-wma', ext: '.wma' };
+  }
+  if (buf.subarray(0, 3).toString('latin1') === 'ID3') return { tipo: 'mp3', mime: 'audio/mpeg', ext: '.mp3' };
+  if (buf[0] === 0xff && (buf[1] & 0xf6) === 0xf0) return { tipo: 'aac', mime: 'audio/aac', ext: '.aac' };
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return { tipo: 'mp3', mime: 'audio/mpeg', ext: '.mp3' };
 
   // PDF — "%PDF-" (se admite un BOM/basura corta al inicio, como hacen algunos
   // escáneres; se busca solo en los primeros 1024 bytes)
@@ -140,7 +174,9 @@ function validarArchivo({
     return {
       ok: false,
       codigo: 'TIPO_NO_PERMITIDO',
-      motivo: `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC o PDF.`,
+      motivo: TIPOS_AUDIO.includes(det.tipo)
+        ? 'Los audios solo se pueden cargar en los campos Otro 1 – Otro 4.'
+        : `Tipo de archivo no permitido (${det.tipo}). Usa JPG, PNG, WEBP, HEIC o PDF.`,
     };
   }
 
@@ -179,6 +215,20 @@ function mimeSeguroPorExtension(ext) {
     '.gif': 'image/gif',
     '.heic': 'image/heic',
     '.pdf': 'application/pdf',
+    '.mp3': 'audio/mpeg',
+    '.aac': 'audio/aac',
+    '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg',
+    '.opus': 'audio/ogg',
+    '.flac': 'audio/flac',
+    '.amr': 'audio/amr',
+    '.webm': 'audio/webm',
+    '.m4a': 'audio/mp4',
+    '.3gp': 'audio/3gpp',
+    '.aiff': 'audio/aiff',
+    '.wma': 'audio/x-ms-wma',
+    '.mid': 'audio/midi',
+    '.caf': 'audio/x-caf',
   };
   return mapa[String(ext || '').toLowerCase()] || null;
 }
@@ -188,4 +238,5 @@ module.exports = {
   validarArchivo,
   marcadoresActivosPdf,
   mimeSeguroPorExtension,
+  TIPOS_AUDIO,
 };

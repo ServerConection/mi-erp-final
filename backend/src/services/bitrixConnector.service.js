@@ -145,7 +145,9 @@ function crearBitrixConnector({ bitrixApp, connectorId, connectorName, baseUrl, 
         id: `wa_${waNumber}`,
         name: _limpiarNombre(partes[0]) || waNumber,
         last_name: _limpiarNombre(partes.slice(1).join(' ')),
-        phone: `+${waNumber}`,
+        // Un LID (>13 dígitos) no es un teléfono: no se manda para no crear
+        // la negociación con un número falso.
+        ...(String(waNumber).length <= 13 ? { phone: `+${waNumber}` } : {}),
         // El número de WhatsApp ya viene normalizado a E.164 sin '+'; la
         // validación de Bitrix rechaza formatos locales y perderíamos el mensaje.
         skip_phone_validate: 'Y',

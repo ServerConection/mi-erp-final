@@ -35,6 +35,8 @@
 
 'use strict';
 
+const multimediaDb = require('./multimediaDbStore');
+
 const STORAGE_SERVER_URL = (process.env.STORAGE_SERVER_URL || '').replace(/\/+$/, '');
 const STORAGE_API_KEY    = process.env.STORAGE_API_KEY || '';
 const TIMEOUT_MS         = Number(process.env.STORAGE_TIMEOUT_MS || 20_000);
@@ -159,6 +161,11 @@ async function pedir(ruta, opciones = {}, { reintentable = true } = {}) {
  * @returns {Promise<{carpeta:string, archivo:string, nombreOriginal:string}>}
  */
 async function subirArchivo({ buffer, originalname, mimetype, carpeta, extension }) {
+  // Audios/videos: se guardan en PostgreSQL (el servidor local los rechaza).
+  if (multimediaDb.esMultimedia({ mimetype, extension })) {
+    return multimediaDb.guardarMultimedia({ buffer, originalname, mimetype, carpeta, extension });
+  }
+
   if (!configurado()) {
     const e = new Error(avisoConfig || 'STORAGE_SERVER_URL / STORAGE_API_KEY no están configurados en el backend');
     e.codigo  = 'STORAGE_NO_CONFIGURADO';
@@ -209,6 +216,16 @@ async function subirArchivo({ buffer, originalname, mimetype, carpeta, extension
  * @returns {Promise<{buffer:Buffer, contentType:string}>}
  */
 async function obtenerArchivo(carpeta, archivo) {
+  // Audios/videos guardados en PostgreSQL. Si no está ahí (archivos antiguos),
+  // se sigue buscando en el servidor de almacenamiento como siempre.
+  if (multimediaDb.esMultimedia({ archivo })) {
+    const enBd = await multimediaDb.leerMultimedia(carpeta, archivo).catch((e) => {
+      console.warn('[MULTIMEDIA-DB] lectura falló, se intenta el servidor local:', e.message);
+      return null;
+    });
+    if (enBd) return enBd;
+  }
+
   if (!configurado()) {
     const e = new Error(avisoConfig || 'STORAGE_SERVER_URL / STORAGE_API_KEY no están configurados en el backend');
     e.codigo  = 'STORAGE_NO_CONFIGURADO';

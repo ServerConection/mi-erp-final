@@ -3235,7 +3235,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
       for (const campo of camposGuardables) {
         if (campo === "nombre_asesor_comercial") continue;
         let nuevo = detail?.[campo] ?? "";
-        const viejo = detailOriginal?.[campo] ?? "";
+        let viejo = detailOriginal?.[campo] ?? "";
 
         /*
          * Las fechas NO se convierten a mayúsculas.
@@ -3252,8 +3252,23 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
           nuevo = nuevo.toUpperCase();
         }
 
+        // Los registros históricos pueden conservar mayúsculas/minúsculas de
+        // Jotform. Aplicar la misma normalización al original evita reportar
+        // como editados campos que el usuario nunca tocó.
+        if (
+          typeof viejo === "string" &&
+          campo !== "auditoria_documentos" &&
+          !esCampoDocumento(campo) &&
+          !CAMPOS_FECHA.includes(campo)
+        ) {
+          viejo = viejo.toUpperCase();
+        }
+
         if (campo === "estatus_regularizacion" && nuevo === "SIN REVISAR") {
           nuevo = "";
+        }
+        if (campo === "estatus_regularizacion" && viejo === "SIN REVISAR") {
+          viejo = "";
         }
 
         if (nuevo !== viejo) {

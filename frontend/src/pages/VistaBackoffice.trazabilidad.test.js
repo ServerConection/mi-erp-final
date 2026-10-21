@@ -43,3 +43,9 @@ test("las descargas del detalle se registran antes de entregar el archivo", () =
   assert.match(fuente, /onHistorialActualizado\?\.\(resultado\.historial\)/);
   assert.doesNotMatch(fuente, /download=\{`\$\{etiqueta\}\.\$\{extensionMultimedia\}`\}/);
 });
+
+test("el detalle normaliza también el valor original antes de detectar cambios", () => {
+  assert.match(fuente, /let viejo = detailOriginal\?\.\[campo\] \?\? "";/);
+  assert.match(fuente, /typeof viejo === "string"[\s\S]*?viejo = viejo\.toUpperCase\(\);/);
+  assert.match(fuente, /estatus_regularizacion" && viejo === "SIN REVISAR"/);
+});

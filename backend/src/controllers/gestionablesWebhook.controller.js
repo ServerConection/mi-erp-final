@@ -170,7 +170,7 @@ const crearReparto = (empresa) => {
     for (const r of rows) {
       const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
       r.total = r.asignados;
-      r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0, maxPct: r.atc_max }) : false;
+      r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0 }) : false;
       // Efectividad: vencidos (+3 h sin Venta Subida) ≥ meta y aún no cubre su meta (30% ↑) → no recibe
       r.bloqueado_efectividad = conteo ? bloqueadoPorEfectividad({ gestionables: c?.gestionables || 0, vencidos: c?.vencidos || 0, venta: c?.venta || 0 }) : false;
       r.bloqueado = r.bloqueado_atc || r.bloqueado_efectividad;
@@ -213,6 +213,7 @@ const crearReparto = (empresa) => {
       const { disponibles, hayConCupo, soloBloqueadosAtc, porEfectividad } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
       const elegido = elegirAsesor(disponibles.map((r) => ({
         nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
+        conexion: enLinea?.mapa.get(normalizarNombre(r.nombre))?.inicio || null,
       })));
 
       if (!elegido) {

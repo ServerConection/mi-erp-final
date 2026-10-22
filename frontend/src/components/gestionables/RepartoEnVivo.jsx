@@ -5,8 +5,11 @@ import { repartoRequest, horaEc } from './api';
 // están en línea y tienen cupo, recibe el que menos lleva; si empatan, el que
 // lleva más tiempo sin recibir.
 function ordenarPorTurno(filas) {
+  // Misma regla que el backend: el que lleva más tiempo sin recibir va primero
+  // (quien no recibió hoy, primero; entre ellos, el que se conectó antes).
   const ts = (d) => (d ? new Date(d).getTime() : -Infinity);
-  return [...filas].sort((a, b) => (a.asignados - b.asignados) || (ts(a.ultima_asignacion) - ts(b.ultima_asignacion)));
+  const tc = (d) => (d ? new Date(d).getTime() : Infinity);
+  return [...filas].sort((a, b) => (ts(a.ultima_asignacion) - ts(b.ultima_asignacion)) || (tc(a.conexion) - tc(b.conexion)));
 }
 
 function Interruptor({ encendido, onClick, disabled, etiqueta }) {
@@ -161,6 +164,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             />
           </div>
           {cfg?.solo_en_linea && datos && !datos.en_linea && <p className="mt-3 text-sm text-amber-800">Bitrix no respondió quién está en línea. Mientras tanto se reparte a todos los que tienen cupo.</p>}
+          {cfg?.solo_en_linea && datos?.en_linea?.respaldo && <p className="mt-3 text-sm text-amber-800">Bitrix no está respondiendo ({datos.en_linea.motivo_respaldo}). Se usa el último estado conocido de cada asesor hasta que se restablezca.</p>}
         </div>
       </div>
 
@@ -221,9 +225,8 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
           <ol className="list-decimal space-y-1 px-9 pb-4 text-sm text-slate-600">
             <li>Cuando un lead entra a <strong>Contacto nuevo</strong> (Netlife Nuevo), Bitrix avisa al ERP.</li>
             <li>Se toman los asesores con cupo hoy (pestaña <strong>Cuotas</strong>){cfg?.solo_en_linea ? ' que estén en línea' : ''}.</li>
-            <li>Recibe el que <strong>menos leads lleva</strong>. Si empatan, el que lleva más tiempo sin recibir.</li>
-            <li>Así todos reciben su 1.º antes de que alguien reciba el 2.º, y nadie pasa su cupo.</li>
-            <li>Si alguien entra más tarde, recibe primero hasta igualar a los demás.</li>
+            <li>Recibe el que <strong>lleva más tiempo sin recibir</strong> (rotación en orden). Quien aún no recibió hoy va primero; entre ellos, el que se conectó antes.</li>
+            <li>No se iguala por cantidad: si alguien se conecta tarde, recibe el siguiente lead y luego entra a la fila como los demás. Nadie pasa su cupo.</li>
             <li>Fuera de horario{horario ? ` (después de las ${horario.fin.slice(0, 5)} y antes de las ${horario.inicio.slice(0, 5)})` : ''}, o si nadie puede recibir, el lead espera a nombre de <strong>{estacion?.nombre || 'la estación'}</strong>.</li>
             <li>Los que esperan se entregan primero, a medida que los asesores se conectan, y cuentan en el día en que se entregan.</li>
             <li>El <strong>permitido es el total de leads del día</strong> (bot + humano, en cualquier etapa). Al llegar a su permitido ya no recibe más.</li>

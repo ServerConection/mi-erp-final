@@ -116,7 +116,7 @@ export default function ReporteReparto({ empresa = 'novonet' }) {
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500"><th className="p-2">Hora</th><th className="p-2">Lead</th><th className="p-2">Asignado a</th><th className="p-2 text-center">Su lead n.º</th><th className="p-2">Vía</th></tr></thead>
-              <tbody>{filtrados.map((d) => (
+              <tbody>{[...filtrados].reverse().map((d) => ( /* más reciente primero */
                 <tr key={`${d.bitrix_deal_id}-${d.origen}-${d.asesor_asignado}`} className={`border-b ${d.vigente === false ? 'text-slate-400 line-through decoration-slate-300' : ''}`}>
                   <td className="p-2 tabular-nums">{d.hora_texto}</td>
                   <td className="p-2 tabular-nums">{d.bitrix_deal_id}</td>

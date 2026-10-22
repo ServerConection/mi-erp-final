@@ -1,16 +1,16 @@
 /**
- * REPARTO DE GESTIONABLES POR RONDAS (sin favoritismo) — lógica pura.
+ * REPARTO DE GESTIONABLES — ROTACIÓN POR ORDEN (lógica pura).
  *
- * Regla: entre los asesores que AÚN tienen cupo hoy (asignados < permitidos),
- * gana el que MENOS gestionables lleva asignados hoy. Así nadie recibe su
- * lead N+1 hasta que todos los que tienen cupo recibieron su lead N
- * (primero se completa una ronda y recién ahí empieza la siguiente).
+ * Regla vigente (2026-10-22): NO se iguala por cantidad. Entre los asesores
+ * que aún tienen cupo, recibe el que lleva MÁS TIEMPO sin recibir:
+ *   1. Quien todavía no recibió hoy va primero (el que recién se conecta
+ *      recibe el siguiente lead y luego pasa al final de la fila).
+ *   2. Entre los que nunca recibieron, el que se conectó PRIMERO (inicio de
+ *      jornada en Bitrix).
+ *   3. Si aún empatan, azar.
+ * Así quien entra tarde recibe 1 como todos, sin "ponerse al día".
  *
- * Desempate dentro de la misma ronda: el que lleva MÁS tiempo sin recibir
- * (nunca recibió hoy = primero). Si aún empatan, azar — para que el orden
- * alfabético no favorezca siempre al mismo en la primera ronda.
- *
- * candidatos: [{ nombre, permitidos, asignados, ultimaAsignacion: Date|null }]
+ * candidatos: [{ nombre, permitidos, asignados, ultimaAsignacion: Date|null, conexion: Date|null }]
  * return: el candidato elegido, o null si nadie tiene cupo.
  */
 const normalizarNombre = (s) =>
@@ -27,10 +27,11 @@ const elegirAsesor = (candidatos, azar = Math.random) => {
   if (conCupo.length === 0) return null;
 
   const ts = (d) => (d ? new Date(d).getTime() : -Infinity); // nunca recibió = más antiguo
+  const tc = (d) => (d ? new Date(d).getTime() : Infinity);  // sin hora de conexión = al final
   const conAzar = conCupo.map((c) => ({ c, r: azar() }));
   conAzar.sort((a, b) =>
-    (Number(a.c.asignados) - Number(b.c.asignados)) ||
     (ts(a.c.ultimaAsignacion) - ts(b.c.ultimaAsignacion)) ||
+    (tc(a.c.conexion) - tc(b.c.conexion)) ||
     (a.r - b.r)
   );
   return conAzar[0].c;

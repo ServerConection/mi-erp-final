@@ -90,32 +90,51 @@ const guardarConfig = async (cambios, usuario, empresa) => {
  * Map nombreNormalizado → { enLinea, online, jornada } de NOVONET, o null si
  * Bitrix Live no respondió. `criterio` dice qué se usó: 'jornada' | 'conexion'.
  */
+// Último estado bueno de Bitrix Live por empresa. Si Bitrix se cae o no
+// responde (o deja de devolver la jornada), NO se reparte a ciegas: se usa
+// el último estado conocido de cada asesor hasta que Bitrix se restablezca.
+const ultimoBueno = {};
+
 const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
-  const cuentas = getEmpresa(empresa).cuentasLive;   // p. ej. ['NOVONET'] o ['NOVONET','VELSA']
+  const E = getEmpresa(empresa);
+  const cuentas = E.cuentasLive;   // p. ej. ['NOVONET'] o ['NOVONET','VELSA']
+  const respaldo = (motivo) => {
+    const prev = ultimoBueno[E.clave];
+    if (!prev) return null;        // sin estado previo: comportamiento anterior (sin filtro)
+    console.warn(`[reparto ${E.clave}] Bitrix Live sin respuesta (${motivo}); se usa el último estado de ${prev.generado}`);
+    return { ...prev, respaldo: true, motivo_respaldo: motivo };
+  };
   try {
     const { recolectar } = require('../controllers/bitrixSesiones.controller');
     const data = await recolectar({ forzar });
     const validas = cuentas.filter((c) => { const f = data?.fuentes?.[c]; return f && !f.error && f.usuarios; });
-    if (!validas.length) return null;
+    if (!validas.length) return respaldo('Bitrix no devolvió usuarios');
     const criterios = {};
     for (const c of validas) criterios[c] = data.fuentes[c].timeman ? 'jornada' : 'conexion';
+    // Antes se medía por jornada y ahora Bitrix no la devuelve: es una caída parcial
+    if (ultimoBueno[E.clave]?.criterio === 'jornada' && criterios[validas[0]] !== 'jornada') {
+      return respaldo('Bitrix no devolvió la jornada laboral');
+    }
     const mapa = new Map();
     // Se filtra por el PORTAL de donde vino la persona (portalCuenta). Bitrix Live
-    // ahora clasifica `cuenta` por empresa (NOVONET/VELSA) y una asesora de Velsa
-    // que trabaja en el portal Novonet quedaba fuera → "nadie en línea".
-    // Se recorre en el orden de la lista: si la persona está en línea en cualquier cuenta, cuenta como en línea
+    // clasifica `cuenta` por empresa (NOVONET/VELSA) y una asesora de Velsa
+    // que trabaja en el portal Novonet quedaría fuera → "nadie en línea".
+    // Si la persona está en línea en cualquier cuenta, cuenta como en línea.
     for (const c of validas) {
       for (const u of data.usuarios.filter((x) => (x.portalCuenta || x.cuenta) === c)) {
         const enLinea = criterios[c] === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
         const k = normalizarNombre(u.nombre);
         const prev = mapa.get(k);
-        if (!prev || (!prev.enLinea && enLinea)) mapa.set(k, { enLinea, online: !!u.online, jornada: u.jornada || null });
+        // inicio = hora en que abrió la jornada (orden de conexión para el reparto)
+        if (!prev || (!prev.enLinea && enLinea)) mapa.set(k, { enLinea, online: !!u.online, jornada: u.jornada || null, inicio: u.jornadaInicio || null });
       }
     }
-    return { criterio: criterios[validas[0]], mapa, generado: data.generado };
+    if (!mapa.size) return respaldo('Bitrix devolvió la lista vacía');
+    const res = { criterio: criterios[validas[0]], mapa, generado: data.generado };
+    ultimoBueno[E.clave] = res;
+    return res;
   } catch (e) {
-    console.warn('[reparto] Bitrix Live no respondió, se reparte sin filtro de en línea:', e.message);
-    return null;
+    return respaldo(e.message) || (console.warn('[reparto] Bitrix Live no respondió, se reparte sin filtro de en línea:', e.message), null);
   }
 };
 

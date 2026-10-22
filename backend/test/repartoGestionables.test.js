@@ -33,15 +33,33 @@ test('ejemplo de Bryan: ronda por ronda, Kevin sale al llenar su cupo', () => {
   assert.equal(orden[8], null);
 });
 
-test('nadie recibe 2 seguidos mientras otro con cupo tenga menos', () => {
-  const { orden } = simular([
-    { nombre: 'A', permitidos: 5, asignados: 2 },
-    { nombre: 'B', permitidos: 3 },
-    { nombre: 'C', permitidos: 4, asignados: 1 },
-  ], 3);
-  // B (0) primero, luego B/C empatados en 1, luego el otro -> A no recibe aún
-  assert.equal(orden[0], 'B');
-  assert.ok(!orden.includes('A'));
+test('orden de conexión: el que se conecta tarde recibe 1 y entra a la fila (no iguala)', () => {
+  const t = (min) => new Date(Date.UTC(2026, 9, 22, 13, min));
+  // 5 asesores con 8 leads cada uno; F se conecta ahora y no tiene leads
+  const c = [
+    { nombre: 'A', permitidos: 20, asignados: 8, ultimaAsignacion: t(10) },
+    { nombre: 'B', permitidos: 20, asignados: 8, ultimaAsignacion: t(11) },
+    { nombre: 'C', permitidos: 20, asignados: 8, ultimaAsignacion: t(12) },
+    { nombre: 'D', permitidos: 20, asignados: 8, ultimaAsignacion: t(13) },
+    { nombre: 'E', permitidos: 20, asignados: 8, ultimaAsignacion: t(14) },
+    { nombre: 'F', permitidos: 20, asignados: 0, ultimaAsignacion: null, conexion: t(30) },
+  ];
+  const orden = [];
+  for (let i = 0; i < 7; i++) {
+    const g = elegirAsesor(c, () => 0);
+    orden.push(g.nombre); g.asignados += 1; g.ultimaAsignacion = t(40 + i);
+  }
+  // F recibe primero, luego la fila sigue A..E y F vuelve a su turno (no recibe 8 seguidos)
+  assert.deepEqual(orden, ['F', 'A', 'B', 'C', 'D', 'E', 'F']);
+});
+
+test('entre los que no recibieron, va primero el que se conectó antes', () => {
+  const t = (min) => new Date(Date.UTC(2026, 9, 22, 13, min));
+  const g = elegirAsesor([
+    { nombre: 'TARDE', permitidos: 5, asignados: 0, conexion: t(20) },
+    { nombre: 'TEMPRANO', permitidos: 5, asignados: 0, conexion: t(5) },
+  ], () => 0);
+  assert.equal(g.nombre, 'TEMPRANO');
 });
 
 test('nunca pasa el cupo permitido', () => {

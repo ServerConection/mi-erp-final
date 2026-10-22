@@ -2298,6 +2298,7 @@ const COLUMNAS_CONSULTA_NOVONET = [
   { header: 'EMPAQUETADO', field: 'EMPAQUETADO' }, { header: 'SERVICIO ADICIONAL (FACTURADO)', field: 'SERVICIO_ADICIONAL_FACTURADO' },
   { header: 'FORMA DE PAGO', field: 'FORMA_PAGO' }, { header: 'APLICA DESCUENTO', field: 'APLICA_DESCUENTO' },
   { header: 'OBSERVACIÓN DE LA VENTA', field: 'OBSERVACION' },
+  { header: 'PROVINCIA', field: 'PROVINCIA' }, { header: 'CIUDAD', field: 'CIUDAD' },
 ];
 
 function ConsultaDescargaNovonet({ apiBase = '/api/indicadores', empresa = 'NOVONET' }) {

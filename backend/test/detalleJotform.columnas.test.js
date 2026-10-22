@@ -49,7 +49,7 @@ const ESPERADAS = [
   'COD_ASESOR_JOT', 'ASESOR_USUARIO', 'LOGIN', 'ESTADO_NETLIFE',
   'INGRESO_TELCOS', 'ESTADO_REGULARIZACION', 'OBSERV_REGULARIZACION',
   'NOVEDADES_ATC', 'TIPO_PLAN', 'VELOCIDAD', 'EMPAQUETADO', 'SERVICIO_ADICIONAL_FACTURADO',
-  'FORMA_PAGO', 'APLICA_DESCUENTO', 'OBSERVACION',
+  'FORMA_PAGO', 'APLICA_DESCUENTO', 'OBSERVACION', 'PROVINCIA', 'CIUDAD',
 ];
 assert.deepStrictEqual(novonet, ESPERADAS, `Columnas distintas a las pedidas:\n  ${novonet.join(', ')}`);
 console.log(`✓ Las ${novonet.length} columnas pedidas, en el orden pedido`);
